@@ -16,5 +16,5 @@ export default NextAuth({
   session: {
     strategy: "jwt",
   },
-  debug: false,
+  debug: true,
 });
