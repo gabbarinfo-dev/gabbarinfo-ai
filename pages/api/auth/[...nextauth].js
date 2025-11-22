@@ -11,10 +11,8 @@ export default NextAuth({
   ],
   secret: process.env.NEXTAUTH_SECRET,
   pages: {
-    signIn: "/api/auth/signin", // optional
+    signIn: "/auth/signin",
   },
-  session: {
-    strategy: "jwt",
-  },
-  debug: true,
+  session: { strategy: "jwt" },
+  debug: true, // set to false after testing
 });
