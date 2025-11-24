@@ -1,4 +1,4 @@
-// pages/auth/signin.js
+"use client";
 import { signIn, useSession } from "next-auth/react";
 import { useEffect } from "react";
 import { useRouter } from "next/router";
