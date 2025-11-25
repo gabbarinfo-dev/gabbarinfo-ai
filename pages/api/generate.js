@@ -1,66 +1,85 @@
 // pages/api/generate.js
+// Replace the file contents with this exact code.
+
+// Server-side endpoint that calls Google's Generative Language API using an API key.
+// This code expects the following Vercel environment variables:
+// - GEMINI_API_KEY  (your Google API key, starts with "AIza...")
+// - GEMINI_MODEL    (e.g. "models/gemini-flash-latest")
+
 export default async function handler(req, res) {
-  if (req.method !== "POST") return res.status(405).end("Method not allowed");
-  const { messages } = req.body || {};
-  if (!messages || !Array.isArray(messages)) return res.status(400).json({ error: "Missing messages" });
-
-  // Build a prompt from messages (simple concatenation).
-  const prompt = messages.map(m => (m.role === "user" ? `User: ${m.text}` : `Assistant: ${m.text}`)).join("\n") + "\nAssistant:";
-
-  const KEY = process.env.GEMINI_API_KEY;
-  const MODEL = process.env.GEMINI_MODEL || "models/chat-bison-001"; // set to your model if needed
-
-  // If no key configured, return a simple echo (so the UI still works).
-  if (!KEY) {
-    console.warn("GEMINI_API_KEY not set — returning echo fallback");
-    return res.json({ text: `Echo (no GEMINI_API_KEY): ${messages[messages.length - 1].text}` });
-  }
-
   try {
-    // Example generic request to a Gemini-like endpoint.
-    // NOTE: Replace the URL below with your provider's exact endpoint if different.
-    // For Google Gemini, you may need to call:
-    //   https://generativelanguage.googleapis.com/v1beta2/{MODEL}:generate
-    // or the endpoint your account/docs specify. Adjust accordingly.
-    const endpoint = process.env.GEMINI_ENDPOINT || `https://generativelanguage.googleapis.com/v1/models/${MODEL}:generate`;
+    if (req.method !== "POST") {
+      res.setHeader("Allow", "POST");
+      return res.status(405).json({ error: "Method not allowed. Use POST." });
+    }
 
-    // Build a request body in a simple form — adjust for your exact Gemini API shape.
+    // Basic input validation
+    const { prompt, maxOutputTokens = 256, temperature = 0.2 } = req.body || {};
+    if (!prompt || (typeof prompt !== "string" && !prompt.text)) {
+      return res.status(400).json({
+        error:
+          "Bad request: provide { prompt: 'your text' } or { prompt: { text: 'your text' } } in JSON body.",
+      });
+    }
+
+    // Read env
+    const API_KEY = process.env.GEMINI_API_KEY;
+    const MODEL = process.env.GEMINI_MODEL || "models/gemini-flash-latest";
+
+    if (!API_KEY) {
+      return res.status(500).json({
+        error:
+          "Server misconfiguration: GEMINI_API_KEY is not defined in environment variables.",
+      });
+    }
+
+    // Normalize prompt shape for API
+    const promptText = typeof prompt === "string" ? prompt : prompt.text;
     const body = {
-      // many Gemini APIs expect a `prompt` or `instances` structure. Example generic:
-      prompt,
-      // You can add temperature, max tokens, etc. depending on API.
-      maxOutputTokens: 512,
-      temperature: 0.2,
+      prompt: { text: promptText },
+      temperature,
+      maxOutputTokens,
     };
 
-    const r = await fetch(endpoint + (process.env.GEMINI_USE_APIKEY_QUERY ? `?key=${KEY}` : ""), {
+    // Use x-goog-api-key header (recommended) and include key as query param for compatibility
+    const url = `https://generativelanguage.googleapis.com/v1/${MODEL}:generate?key=${encodeURIComponent(
+      API_KEY
+    )}`;
+
+    const fetchRes = await fetch(url, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
-        ...(process.env.GEMINI_USE_BEARER === "1" ? { Authorization: `Bearer ${KEY}` } : {}),
+        // x-goog-api-key is the correct header when using an API key (do NOT use Authorization: Bearer <API_KEY>)
+        "x-goog-api-key": API_KEY,
       },
       body: JSON.stringify(body),
     });
 
-    if (!r.ok) {
-      const text = await r.text();
-      console.error("Gemini API error:", r.status, text);
-      return res.status(502).json({ error: "Upstream error", detail: text });
+    const text = await fetchRes.text();
+    let data;
+    try {
+      data = JSON.parse(text);
+    } catch (err) {
+      // If response is not JSON, return the raw text for debugging
+      return res
+        .status(fetchRes.status || 500)
+        .json({ error: "Non-JSON response from Google API", raw: text });
     }
 
-    const data = await r.json();
+    // If Google returned an error code, forward useful info back
+    if (!fetchRes.ok) {
+      return res.status(fetchRes.status || 500).json({
+        error: "Google API error",
+        status: fetchRes.status,
+        details: data,
+      });
+    }
 
-    // Extract text from response — shape varies by API provider.
-    // We'll try common paths then fallback to full JSON.
-    let text = "";
-    if (data?.candidates?.[0]?.content) text = data.candidates[0].content;
-    else if (data?.output?.[0]?.content?.type === "text") text = data.output[0].content.text;
-    else if (typeof data?.generated_text === "string") text = data.generated_text;
-    else text = JSON.stringify(data).slice(0, 2000); // fallback trimmed
-
-    return res.json({ text });
+    // Success: return Google response to client (you can modify to pick fields you prefer)
+    return res.status(200).json({ result: data });
   } catch (err) {
-    console.error("Server error:", err);
-    return res.status(500).json({ error: err.message || String(err) });
+    console.error("generate API error:", err);
+    return res.status(500).json({ error: "Internal server error", detail: String(err) });
   }
 }
