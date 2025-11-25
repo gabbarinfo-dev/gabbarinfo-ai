@@ -21,10 +21,11 @@ export default function Home() {
     setLoading(true);
 
     try {
+      // Send correct shape expected by pages/api/generate.js
       const res = await fetch("/api/generate", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ messages: [...messages, userMsg] }),
+        body: JSON.stringify({ prompt }), // <-- important change
       });
 
       if (!res.ok) {
@@ -33,8 +34,30 @@ export default function Home() {
       }
 
       const data = await res.json();
-      // server returns { text: "..." }
-      const assistant = { role: "assistant", text: data.text || data.output || "No response" };
+
+      // Extract assistant text from several possible Gemini response shapes
+      let assistantText = "";
+
+      // The backend returns { result: data } where data is the full Google response.
+      const result = data?.result || data;
+
+      // Common places where text may appear:
+      if (result?.candidates?.[0]?.content) {
+        // some Gemini responses use candidates[0].content (string or object)
+        assistantText = typeof result.candidates[0].content === "string"
+          ? result.candidates[0].content
+          : (result.candidates[0].content.text || JSON.stringify(result.candidates[0].content));
+      } else if (result?.output?.[0]?.content?.[0]?.text) {
+        assistantText = result.output[0].content[0].text;
+      } else if (result?.generated_text) {
+        assistantText = result.generated_text;
+      } else if (typeof result === "string") {
+        assistantText = result;
+      } else {
+        assistantText = JSON.stringify(result).slice(0, 3000); // fallback: trimmed JSON
+      }
+
+      const assistant = { role: "assistant", text: assistantText || "No response" };
       setMessages((m) => [...m, assistant]);
     } catch (err) {
       console.error(err);
@@ -49,11 +72,6 @@ export default function Home() {
       }, 50);
     }
   }
-
-  if (status === "loading") {
-    return <div style={{ padding: 40 }}>Checking session…</div>;
-  }
-
   // Signed out: show simple login button
   if (!session) {
     return (
