@@ -41,41 +41,53 @@ export default async function handler(req, res) {
       maxOutputTokens,
     };
 
-    // Use x-goog-api-key header (recommended) and include key as query param for compatibility
-    const url = `https://generativelanguage.googleapis.com/v1/${MODEL}:generate?key=${encodeURIComponent(
-      API_KEY
-    )}`;
+      // Use x-goog-api-key header and include key as query param for compatibility
+    const url = `https://generativelanguage.googleapis.com/v1/${MODEL}:generate?key=${encodeURIComponent(API_KEY)}`;
 
+    // DEBUG: call Google and capture full response for troubleshooting
     const fetchRes = await fetch(url, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
-        // x-goog-api-key is the correct header when using an API key (do NOT use Authorization: Bearer <API_KEY>)
         "x-goog-api-key": API_KEY,
       },
       body: JSON.stringify(body),
     });
 
-    const text = await fetchRes.text();
-    let data;
-    try {
-      data = JSON.parse(text);
-    } catch (err) {
-      // If response is not JSON, return the raw text for debugging
-      return res
-        .status(fetchRes.status || 500)
-        .json({ error: "Non-JSON response from Google API", raw: text });
-    }
+    // read raw text (may be empty or HTML)
+    const rawText = await fetchRes.text();
 
-    // If Google returned an error code, forward useful info back
+    // return a helpful debug JSON to the client when not OK (so you can screenshot)
     if (!fetchRes.ok) {
-      return res.status(fetchRes.status || 500).json({
-        error: "Google API error",
+      // include status, a few headers, and the raw text (trimmed)
+      const debug = {
         status: fetchRes.status,
-        details: data,
+        statusText: fetchRes.statusText,
+        headers: {
+          "content-type": fetchRes.headers.get("content-type"),
+          "x-goog-request-id": fetchRes.headers.get("x-goog-request-id"),
+        },
+        raw: rawText ? rawText.slice(0, 2000) : "",
+      };
+      console.error("Google API DEBUG error:", debug);
+      return res.status(fetchRes.status || 500).json({
+        error: "Google API error (debuggable)",
+        debug,
       });
     }
 
+    // If ok, try to parse JSON normally
+    let data;
+    try {
+      data = JSON.parse(rawText);
+    } catch (err) {
+      console.error("Google returned non-JSON (but status OK):", { status: fetchRes.status, rawText: rawText.slice(0,2000) });
+      return res.status(500).json({
+        error: "Non-JSON response from Google API",
+        raw: rawText ? rawText.slice(0, 2000) : "",
+      });
+    }
+    
     // Success: return Google response to client (you can modify to pick fields you prefer)
     return res.status(200).json({ result: data });
   } catch (err) {
