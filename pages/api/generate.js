@@ -3,7 +3,7 @@
 //
 // Requires Vercel env vars:
 // - GEMINI_API_KEY  (your Google API key, starts with "AIza...")
-// - GEMINI_MODEL    (e.g. "models/gemini-1.5-flash-latest")
+// - GEMINI_MODEL    (e.g. "models/gemini-flash-latest")
 
 export default async function handler(req, res) {
   try {
@@ -23,7 +23,7 @@ export default async function handler(req, res) {
 
     // Env
     const API_KEY = process.env.GEMINI_API_KEY;
-    const MODEL = process.env.GEMINI_MODEL || "models/gemini-1.5-flash-latest";
+    const MODEL = process.env.GEMINI_MODEL || "models/gemini-flash-latest";
 
     if (!API_KEY) {
       return res.status(500).json({
