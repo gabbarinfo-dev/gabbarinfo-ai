@@ -20,57 +20,39 @@ export default function Home() {
     setInput("");
     setLoading(true);
 
-    try {
-      // Send correct shape expected by pages/api/generate.js
-     const res = await fetch("/api/generate", {
-  method: "POST",
-  headers: { "Content-Type": "application/json" },
-  body: JSON.stringify({ prompt }), // <-- important: { prompt }, not messages
-});
+   try {
+  // Send correct shape expected by pages/api/generate.js
+  const res = await fetch("/api/generate", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ prompt }), // <-- correct: send { prompt }
+  });
 
-      if (!res.ok) {
-        const text = await res.text();
-        throw new Error(text || "Server error");
-      }
+  if (!res.ok) {
+    const text = await res.text();
+    throw new Error(text || "Server error");
+  }
 
-      const data = await res.json();
+  const data = await res.json();
+  const assistantText =
+    data.text ||
+    data.output ||
+    data.candidates?.[0]?.content?.parts?.[0]?.text ||
+    "No response";
 
-      // Extract assistant text from several possible Gemini response shapes
-      let assistantText = "";
-
-      // The backend returns { result: data } where data is the full Google response.
-      const result = data?.result || data;
-
-      // Common places where text may appear:
-      if (result?.candidates?.[0]?.content) {
-        // some Gemini responses use candidates[0].content (string or object)
-        assistantText = typeof result.candidates[0].content === "string"
-          ? result.candidates[0].content
-          : (result.candidates[0].content.text || JSON.stringify(result.candidates[0].content));
-      } else if (result?.output?.[0]?.content?.[0]?.text) {
-        assistantText = result.output[0].content[0].text;
-      } else if (result?.generated_text) {
-        assistantText = result.generated_text;
-      } else if (typeof result === "string") {
-        assistantText = result;
-      } else {
-        assistantText = JSON.stringify(result).slice(0, 3000); // fallback: trimmed JSON
-      }
-
-      const assistant = { role: "assistant", text: assistantText || "No response" };
-      setMessages((m) => [...m, assistant]);
-    } catch (err) {
-      console.error(err);
-      const errMsg = { role: "assistant", text: "Error: " + (err.message || "Unknown") };
-      setMessages((m) => [...m, errMsg]);
-    } finally {
-      setLoading(false);
-      // scroll when message appended
-      setTimeout(() => {
-        const el = document.getElementById("chat-area");
-        if (el) el.scrollTop = el.scrollHeight;
-      }, 50);
-    }
+  const assistant = { role: "assistant", text: assistantText };
+  setMessages((m) => [...m, assistant]);
+} catch (err) {
+  console.error(err);
+  const errMsg = { role: "assistant", text: "Error: " + (err.message || "Unknown") };
+  setMessages((m) => [...m, errMsg]);
+} finally {
+  setLoading(false);
+  setTimeout(() => {
+    const el = document.getElementById("chat-area");
+    if (el) el.scrollTop = el.scrollHeight;
+  }, 50);
+}
   }
   // Signed out: show simple login button
   if (!session) {
