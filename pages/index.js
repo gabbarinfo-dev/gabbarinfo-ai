@@ -22,11 +22,11 @@ export default function Home() {
 
     try {
       // Send correct shape expected by pages/api/generate.js
-      const res = await fetch("/api/generate", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ prompt }), // <-- important change
-      });
+     const res = await fetch("/api/generate", {
+  method: "POST",
+  headers: { "Content-Type": "application/json" },
+  body: JSON.stringify({ prompt }), // <-- important: { prompt }, not messages
+});
 
       if (!res.ok) {
         const text = await res.text();
