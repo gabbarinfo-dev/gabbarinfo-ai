@@ -1,10 +1,9 @@
 // pages/api/generate.js
-// Server-side endpoint that calls Google's Gemini API (Generative Language API)
-// using an API key and the v1beta generateContent method.
-
-// Expected Vercel environment variables:
+// Server-side endpoint that calls Gemini with an API key.
+//
+// Requires Vercel env vars:
 // - GEMINI_API_KEY  (your Google API key, starts with "AIza...")
-// - GEMINI_MODEL    (e.g. "models/gemini-1.5-flash")
+// - GEMINI_MODEL    (e.g. "models/gemini-1.5-flash-latest")
 
 export default async function handler(req, res) {
   try {
@@ -13,75 +12,80 @@ export default async function handler(req, res) {
       return res.status(405).json({ error: "Method not allowed. Use POST." });
     }
 
-    // Basic input validation – we expect { prompt: "text" }
-    const { prompt } = req.body || {};
+    // Read body from client
+    const { prompt, maxOutputTokens = 512, temperature = 0.7 } = req.body || {};
+
     if (!prompt || typeof prompt !== "string") {
       return res.status(400).json({
-        error: "Bad request: provide { prompt: 'your text' } in JSON body.",
+        error: "Bad request: provide JSON body { prompt: 'your text' }.",
       });
     }
 
-    // Read env
+    // Env
     const API_KEY = process.env.GEMINI_API_KEY;
-    const MODEL = process.env.GEMINI_MODEL || "models/gemini-1.5-flash";
+    const MODEL = process.env.GEMINI_MODEL || "models/gemini-1.5-flash-latest";
 
     if (!API_KEY) {
       return res.status(500).json({
-        error:
-          "Server misconfiguration: GEMINI_API_KEY is not defined in environment variables.",
+        error: "Server misconfiguration: GEMINI_API_KEY is not defined.",
       });
     }
 
-    // Build request for v1beta generateContent
-    const url = `https://generativelanguage.googleapis.com/v1beta/${MODEL}:generateContent?key=${encodeURIComponent(
-      API_KEY
-    )}`;
-
+    // Gemini generateContent request body
     const body = {
       contents: [
         {
+          role: "user",
           parts: [{ text: prompt }],
         },
       ],
+      generationConfig: {
+        temperature,
+        maxOutputTokens,
+      },
     };
+
+    // NOTE: Gemini uses v1beta + generateContent
+    const url = `https://generativelanguage.googleapis.com/v1beta/${MODEL}:generateContent`;
 
     const fetchRes = await fetch(url, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
+        "x-goog-api-key": API_KEY, // correct header for API key
       },
       body: JSON.stringify(body),
     });
 
-    const text = await fetchRes.text();
+    const rawText = await fetchRes.text();
     let data;
     try {
-      data = JSON.parse(text);
+      data = JSON.parse(rawText);
     } catch (err) {
-      // If response is not JSON, return the raw text for debugging
+      // If response is not JSON, surface raw text
       return res
         .status(fetchRes.status || 500)
-        .json({ error: "Non-JSON response from Google API", raw: text });
+        .json({ error: "Non-JSON response from Google API", raw: rawText });
     }
 
     if (!fetchRes.ok) {
-      // Forward useful info from Google for debugging
+      // Forward Google error with debug info
       return res.status(fetchRes.status || 500).json({
         error: "Google API error (debuggable)",
         debug: data,
       });
     }
 
-    // Extract plain text from Gemini response:
-    // candidates[0].content.parts[].text
-    const candidate = (data.candidates && data.candidates[0]) || null;
-    const parts = candidate?.content?.parts || [];
-    const assistantText = parts
-      .map((p) => (typeof p.text === "string" ? p.text : ""))
-      .join("")
-      .trim();
+    // Extract text from Gemini candidate(s)
+    const candidate =
+      data.candidates?.[0]?.content?.parts
+        ?.map((p) => p.text || "")
+        .join("") || "";
 
-    return res.status(200).json({ text: assistantText || "[Empty response]" });
+    return res.status(200).json({
+      text: candidate || "No response",
+      raw: data,
+    });
   } catch (err) {
     console.error("generate API error:", err);
     return res
