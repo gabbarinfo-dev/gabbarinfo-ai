@@ -19,7 +19,6 @@ export default function Home() {
     setMessages((m) => [...m, userMsg]);
     setInput("");
     setLoading(true);
-
    try {
   // Send correct shape expected by pages/api/generate.js
   const res = await fetch("/api/generate", {
