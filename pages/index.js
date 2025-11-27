@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import { signIn, signOut, useSession } from "next-auth/react";
 
 const SYSTEM_PROMPT = `
@@ -12,7 +12,7 @@ Your only job:
 - Ask smart follow-up questions about business type, location, budget, goals,
   target audience, and past performance.
 - Give clear, step-by-step answers, with examples when helpful.
-- If user asks for things outside marketing, briefly answer or redirect back to
+- If the user asks for things outside marketing, briefly answer or redirect back to
   digital marketing.
 
 Always answer like a friendly expert consultant, not a robot.
@@ -20,8 +20,12 @@ Always answer like a friendly expert consultant, not a robot.
 
 export default function Home() {
   const { data: session, status } = useSession();
+
   const [messages, setMessages] = useState([
-    { role: "assistant", text: "Hi — ask me anything. I’ll answer using Gemini." },
+    {
+      role: "assistant",
+      text: "Hi — ask me anything. I’ll answer using Gemini.",
+    },
   ]);
   const [input, setInput] = useState("");
   const [loading, setLoading] = useState(false);
@@ -30,27 +34,23 @@ export default function Home() {
   async function sendMessage(e) {
     e?.preventDefault();
 
-    const prompt = input.trim();
-    if (!prompt) return;
+    const userText = input.trim();
+    if (!userText) return;
 
-    const userMsg = { role: "user", text: prompt };
+    const userMsg = { role: "user", text: userText };
 
-    // Add user message to UI, but limit to last 11 messages (system line + 10 turns)
-    setMessages((m) => {
-      const updated = [...m, userMsg];
-      return updated.slice(-11); // keep only last 11 messages in state
-    });
+    // add user message, keep only last 11 (1 system-ish + 10 turns)
+    setMessages((m) => [...m, userMsg].slice(-11));
 
     setInput("");
     setLoading(true);
 
-        try {
-      // We only send the system prompt + the latest user message.
-      // (No long history, so the prompt stays small.)
+    try {
+      // We keep the prompt simple: system prompt + latest user message
       const finalPrompt = `
 ${SYSTEM_PROMPT}
 
-User: ${prompt}
+User: ${userText}
 
 Now answer as GabbarInfo AI, the digital marketing expert.
 Assistant:
@@ -68,28 +68,27 @@ Assistant:
       }
 
       const data = await res.json();
-      console.log("DEBUG Gemini response:", data);
+      // Backend returns: { text, raw }
+      let assistantText = data.text || "";
 
-      // 👉 Backend already gives us a nice final answer here
-      let assistantText = data.text || "No response";
-
-      // Safety fallback: if for some reason text is empty but raw has content
+      // If text is empty or literally "No response", try to pull from raw
       if (
-        assistantText === "No response" &&
-        data.raw?.candidates?.[0]?.content?.parts?.[0]?.text
+        (!assistantText || assistantText === "No response") &&
+        data.raw?.candidates?.[0]?.content?.parts
       ) {
-        assistantText = data.raw.candidates[0].content.parts
-          .map((p) => p.text || "")
-          .join("");
+        assistantText =
+          data.raw.candidates[0].content.parts
+            .map((p) => p.text || "")
+            .join("") || "No response";
+      }
+
+      if (!assistantText) {
+        assistantText = "No response from model.";
       }
 
       const assistant = { role: "assistant", text: assistantText };
 
-      // Add assistant reply, again trimming to last 11 messages
-      setMessages((m) => {
-        const updated = [...m, assistant];
-        return updated.slice(-11);
-      });
+      setMessages((m) => [...m, assistant].slice(-11));
     } catch (err) {
       console.error(err);
       const errMsg = {
@@ -104,6 +103,7 @@ Assistant:
         if (el) el.scrollTop = el.scrollHeight;
       }, 50);
     }
+  }
 
   if (status === "loading") {
     return <div style={{ padding: 40 }}>Checking session…</div>;
@@ -154,7 +154,9 @@ Assistant:
           <strong>GabbarInfo AI</strong> — Chat
         </div>
         <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
-          <div style={{ fontSize: 13, color: "#333" }}>{session.user?.email}</div>
+          <div style={{ fontSize: 13, color: "#333" }}>
+            {session.user?.email}
+          </div>
           <button
             onClick={() => signOut()}
             style={{ padding: "6px 10px", borderRadius: 6 }}
