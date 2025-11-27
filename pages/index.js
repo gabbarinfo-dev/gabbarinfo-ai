@@ -44,18 +44,13 @@ export default function Home() {
     setInput("");
     setLoading(true);
 
-    try {
-      // Build short history (last 10 messages INCLUDING this new user message)
-      const history = [...messages, userMsg]
-        .slice(-10)
-        .map((m) => `${m.role === "user" ? "User" : "Assistant"}: ${m.text}`)
-        .join("\n");
-
+        try {
+      // We only send the system prompt + the latest user message.
+      // (No long history, so the prompt stays small.)
       const finalPrompt = `
 ${SYSTEM_PROMPT}
 
-Conversation so far:
-${history}
+User: ${prompt}
 
 Now answer as GabbarInfo AI, the digital marketing expert.
 Assistant:
@@ -64,7 +59,7 @@ Assistant:
       const res = await fetch("/api/generate", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ prompt: finalPrompt }), // backend unchanged
+        body: JSON.stringify({ prompt: finalPrompt }),
       });
 
       if (!res.ok) {
@@ -72,12 +67,21 @@ Assistant:
         throw new Error(text || "Server error");
       }
 
-                  const data = await res.json();
+      const data = await res.json();
       console.log("DEBUG Gemini response:", data);
 
-      // 🔍 DEBUG MODE:
-      // For now, just show exactly what the backend returns so we can see the shape.
-      const assistantText = JSON.stringify(data, null, 2);
+      // 👉 Backend already gives us a nice final answer here
+      let assistantText = data.text || "No response";
+
+      // Safety fallback: if for some reason text is empty but raw has content
+      if (
+        assistantText === "No response" &&
+        data.raw?.candidates?.[0]?.content?.parts?.[0]?.text
+      ) {
+        assistantText = data.raw.candidates[0].content.parts
+          .map((p) => p.text || "")
+          .join("");
+      }
 
       const assistant = { role: "assistant", text: assistantText };
 
@@ -100,7 +104,6 @@ Assistant:
         if (el) el.scrollTop = el.scrollHeight;
       }, 50);
     }
-  }
 
   if (status === "loading") {
     return <div style={{ padding: 40 }}>Checking session…</div>;
