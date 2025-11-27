@@ -72,39 +72,12 @@ Assistant:
         throw new Error(text || "Server error");
       }
 
-            const data = await res.json();
+                  const data = await res.json();
       console.log("DEBUG Gemini response:", data);
 
-      // Your API returns { result: ... }, so support both shapes
-      const root = data.result || data;
-
-      let assistantText = "";
-
-      // 1) Normal Gemini generateContent shape:
-      // { candidates: [ { content: { parts: [ { text: "..." }, ... ] } } ] }
-      if (root.candidates?.[0]?.content?.parts) {
-        assistantText = root.candidates[0].content.parts
-          .map((p) => p.text || "")
-          .join("")
-          .trim();
-      }
-
-      // 2) If there is some other direct text field, fall back to that
-      if (!assistantText) {
-        assistantText =
-          root.candidates?.[0]?.output_text ||
-          root.text ||
-          root.output ||
-          "";
-      }
-
-      // 3) Final fallback – show *something* useful instead of "No response"
-      if (!assistantText) {
-        assistantText =
-          "I couldn’t read a normal text answer from Gemini.\n\n" +
-          "Raw response:\n" +
-          JSON.stringify(root, null, 2);
-      }
+      // 🔍 DEBUG MODE:
+      // For now, just show exactly what the backend returns so we can see the shape.
+      const assistantText = JSON.stringify(data, null, 2);
 
       const assistant = { role: "assistant", text: assistantText };
 
