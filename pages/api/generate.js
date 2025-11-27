@@ -1,38 +1,37 @@
 // pages/api/generate.js
-// Server-side endpoint that calls Gemini with an API key.
-//
-// Requires Vercel env vars:
-// - GEMINI_API_KEY  (your Google API key, starts with "AIza...")
-// - GEMINI_MODEL    (e.g. "models/gemini-flash-latest")
+import { GoogleGenerativeAI } from "@google/generative-ai";
+
+const apiKey = process.env.GEMINI_API_KEY;
+const modelName =
+  process.env.GEMINI_MODEL || "gemini-flash-latest"; // keep your env if set
+
+if (!apiKey) {
+  console.error("GEMINI_API_KEY is not set in environment variables.");
+}
+
+const genAI = new GoogleGenerativeAI(apiKey);
 
 export default async function handler(req, res) {
-  try {
-    if (req.method !== "POST") {
-      res.setHeader("Allow", "POST");
-      return res.status(405).json({ error: "Method not allowed. Use POST." });
-    }
+  if (req.method !== "POST") {
+    return res.status(405).json({ error: "Method not allowed" });
+  }
 
-    // Read body from client
-    const { prompt, maxOutputTokens = 768, temperature = 0.7 } = req.body || {};
+  try {
+    const {
+      prompt,
+      maxOutputTokens = 768, // plenty of space for campaign steps
+      temperature = 0.5, // balanced, not too random
+    } = req.body || {};
 
     if (!prompt || typeof prompt !== "string") {
-      return res.status(400).json({
-        error: "Bad request: provide JSON body { prompt: 'your text' }.",
-      });
+      return res.status(400).json({ error: "Missing prompt" });
     }
 
-    // Env
-    const API_KEY = process.env.GEMINI_API_KEY;
-    const MODEL = process.env.GEMINI_MODEL || "models/gemini-flash-latest";
+    const model = genAI.getGenerativeModel({
+      model: modelName,
+    });
 
-    if (!API_KEY) {
-      return res.status(500).json({
-        error: "Server misconfiguration: GEMINI_API_KEY is not defined.",
-      });
-    }
-
-    // Gemini generateContent request body
-    const body = {
+    const result = await model.generateContent({
       contents: [
         {
           role: "user",
@@ -40,56 +39,48 @@ export default async function handler(req, res) {
         },
       ],
       generationConfig: {
-        temperature,
         maxOutputTokens,
+        temperature,
       },
-    };
-
-    // NOTE: Gemini uses v1beta + generateContent
-    const url = `https://generativelanguage.googleapis.com/v1beta/${MODEL}:generateContent`;
-
-    const fetchRes = await fetch(url, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        "x-goog-api-key": API_KEY, // correct header for API key
-      },
-      body: JSON.stringify(body),
     });
 
-    const rawText = await fetchRes.text();
-    let data;
-    try {
-      data = JSON.parse(rawText);
-    } catch (err) {
-      // If response is not JSON, surface raw text
-      return res
-        .status(fetchRes.status || 500)
-        .json({ error: "Non-JSON response from Google API", raw: rawText });
+    // Standard Gemini response shape
+    const resp = result.response;
+    let text = "";
+
+    if (typeof resp.text === "function") {
+      text = resp.text() || "";
     }
 
-    if (!fetchRes.ok) {
-      // Forward Google error with debug info
-      return res.status(fetchRes.status || 500).json({
-        error: "Google API error (debuggable)",
-        debug: data,
-      });
+    // Fallbacks
+    if (!text && resp.candidates?.[0]?.content?.parts) {
+      text =
+        resp.candidates[0].content.parts
+          .map((p) => p.text || "")
+          .join("") || "";
     }
 
-    // Extract text from Gemini candidate(s)
-    const candidate =
-      data.candidates?.[0]?.content?.parts
-        ?.map((p) => p.text || "")
-        .join("") || "";
+    if (!text) {
+      text = "No response from model.";
+    }
 
     return res.status(200).json({
-      text: candidate || "No response",
-      raw: data,
+      text,
+      // You can keep raw for debugging if you want:
+      // raw: resp,
     });
   } catch (err) {
-    console.error("generate API error:", err);
-    return res
-      .status(500)
-      .json({ error: "Internal server error", detail: String(err) });
+    console.error("Gemini API error:", err);
+
+    // Normalise error message a bit
+    const msg =
+      err?.response?.statusText ||
+      err?.message ||
+      "Unknown error from Google API";
+
+    return res.status(500).json({
+      error: "Google API error (debuggable)",
+      debug: msg,
+    });
   }
 }
