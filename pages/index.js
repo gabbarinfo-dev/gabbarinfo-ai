@@ -6,16 +6,21 @@ import { signIn, signOut, useSession } from "next-auth/react";
 const SYSTEM_PROMPT = `
 You are GabbarInfo AI, a senior digital marketing strategist.
 
-Your only job:
-- Help with Google Ads, Meta (Facebook/Instagram) Ads, YouTube Ads, landing pages,
-  copywriting, creatives, funnels, and analytics.
-- Ask smart follow-up questions about business type, location, budget, goals,
-  target audience, and past performance.
-- Give clear, step-by-step answers, with examples when helpful.
-- If the user asks for things outside marketing, briefly answer or redirect back to
-  digital marketing.
+Your focus:
+- Google Ads, Meta (Facebook/Instagram) Ads, YouTube Ads
+- Landing pages, funnels, creatives, copy, analytics
 
-Always answer like a friendly expert consultant, not a robot.
+Behaviour rules:
+- When the user clearly asks for a campaign structure, steps, or plan
+  (e.g., "give me the steps", "create a campaign structure"):
+    -> Give a FULL, clear, step-by-step answer.
+    -> Do NOT keep asking long qualifying questions again and again.
+- If important details are missing (business type, location, budget),
+  ask at most 2–3 SHORT follow-up questions and then propose a best-guess plan.
+- Use bullet points, headings, and concrete examples where useful.
+- Always stay within digital marketing topics.
+- Be friendly, confident, and practical. You are not a generic chatbot,
+  you are a hands-on performance marketing consultant.
 `;
 
 export default function Home() {
@@ -30,7 +35,6 @@ export default function Home() {
   const [input, setInput] = useState("");
   const [loading, setLoading] = useState(false);
 
-  // Send user message -> call server -> append assistant response
   async function sendMessage(e) {
     e?.preventDefault();
 
@@ -39,27 +43,36 @@ export default function Home() {
 
     const userMsg = { role: "user", text: userText };
 
-    // add user message, keep only last 11 (1 system-ish + 10 turns)
+    // Add user message in UI
     setMessages((m) => [...m, userMsg].slice(-11));
-
     setInput("");
     setLoading(true);
 
     try {
-      // We keep the prompt simple: system prompt + latest user message
+      // Short history: last 6 messages including this one
+      const history = [...messages, userMsg]
+        .slice(-6)
+        .map((m) => `${m.role === "user" ? "User" : "Assistant"}: ${m.text}`)
+        .join("\n\n");
+
       const finalPrompt = `
 ${SYSTEM_PROMPT}
 
-User: ${userText}
+Conversation so far:
+${history}
 
-Now answer as GabbarInfo AI, the digital marketing expert.
-Assistant:
+Now respond as GabbarInfo AI. If the user is asking for steps or a structure,
+give the complete answer directly, tailored to whatever they already told you.
       `.trim();
 
       const res = await fetch("/api/generate", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ prompt: finalPrompt }),
+        body: JSON.stringify({
+          prompt: finalPrompt,
+          maxOutputTokens: 768,
+          temperature: 0.5,
+        }),
       });
 
       if (!res.ok) {
@@ -68,26 +81,13 @@ Assistant:
       }
 
       const data = await res.json();
-      // Backend returns: { text, raw }
       let assistantText = data.text || "";
-
-      // If text is empty or literally "No response", try to pull from raw
-      if (
-        (!assistantText || assistantText === "No response") &&
-        data.raw?.candidates?.[0]?.content?.parts
-      ) {
-        assistantText =
-          data.raw.candidates[0].content.parts
-            .map((p) => p.text || "")
-            .join("") || "No response";
-      }
 
       if (!assistantText) {
         assistantText = "No response from model.";
       }
 
       const assistant = { role: "assistant", text: assistantText };
-
       setMessages((m) => [...m, assistant].slice(-11));
     } catch (err) {
       console.error(err);
@@ -109,7 +109,6 @@ Assistant:
     return <div style={{ padding: 40 }}>Checking session…</div>;
   }
 
-  // Signed out: show simple login button
   if (!session) {
     return (
       <div style={{ fontFamily: "Inter, Arial", padding: 40 }}>
@@ -131,7 +130,6 @@ Assistant:
     );
   }
 
-  // Signed in: show chat UI
   return (
     <div
       style={{
