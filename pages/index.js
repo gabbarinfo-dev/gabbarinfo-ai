@@ -73,11 +73,15 @@ Assistant:
       }
 
       const data = await res.json();
-      const assistantText =
-        data.text ||
-        data.output ||
-        data.candidates?.[0]?.content?.parts?.[0]?.text ||
-        "No response";
+
+// Your API returns { result: ... }, so normalize it:
+const root = data.result || data;
+
+const assistantText =
+  root.text ||
+  root.output ||
+  root.candidates?.[0]?.content?.parts?.[0]?.text ||
+  "No response from model.";
 
       const assistant = { role: "assistant", text: assistantText };
 
