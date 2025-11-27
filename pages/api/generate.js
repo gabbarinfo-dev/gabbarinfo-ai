@@ -13,7 +13,7 @@ export default async function handler(req, res) {
     }
 
     // Read body from client
-    const { prompt, maxOutputTokens = 768, temperature = 0.2 } = req.body || {};
+    const { prompt, maxOutputTokens = 512, temperature = 0.2 } = req.body || {};
 
     if (!prompt || typeof prompt !== "string") {
       return res.status(400).json({
