@@ -1,6 +1,24 @@
 "use client";
 import { useEffect, useState } from "react";
 import { signIn, signOut, useSession } from "next-auth/react";
+"use client";
+import { useEffect, useState } from "react";
+import { signIn, signOut, useSession } from "next-auth/react";
+
+const SYSTEM_PROMPT = `
+You are **GabbarInfo AI**, a senior digital marketing strategist.
+
+Your only job:
+- Help with Google Ads, Meta (Facebook/Instagram) Ads, YouTube Ads, landing pages,
+  copywriting, creatives, funnels, and analytics.
+- Ask smart follow-up questions about business type, location, budget, goals,
+  target audience, and past performance.
+- Give **clear, step-by-step** answers, with examples when helpful.
+- If user asks for things outside marketing, briefly answer or redirect back to
+  digital marketing.
+
+Always answer like a friendly expert consultant, not a robot.
+`;
 
 export default function Home() {
   const { data: session, status } = useSession();
@@ -13,45 +31,77 @@ export default function Home() {
   // Send user message -> call server -> append assistant response
   async function sendMessage(e) {
     e?.preventDefault();
+
     const prompt = input.trim();
     if (!prompt) return;
+
     const userMsg = { role: "user", text: prompt };
-    setMessages((m) => [...m, userMsg]);
+
+    // Add user message to UI, but limit to last 11 messages (system line + 10 turns)
+    setMessages((m) => {
+      const updated = [...m, userMsg];
+      return updated.slice(-11); // keep only last 11 messages in state
+    });
+
     setInput("");
     setLoading(true);
-   try {
-  // Send correct shape expected by pages/api/generate.js
-  const res = await fetch("/api/generate", {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ prompt }), // <-- correct: send { prompt }
-  });
 
-  if (!res.ok) {
-    const text = await res.text();
-    throw new Error(text || "Server error");
-  }
+    try {
+      // Build short history (last 10 messages INCLUDING this new user message)
+      const history = [...messages, userMsg]
+        .slice(-10)
+        .map((m) => `${m.role === "user" ? "User" : "Assistant"}: ${m.text}`)
+        .join("\n");
 
-  const data = await res.json();
-  const assistantText =
-    data.text ||
-    data.output ||
-    data.candidates?.[0]?.content?.parts?.[0]?.text ||
-    "No response";
+      const finalPrompt = `
+${SYSTEM_PROMPT}
 
-  const assistant = { role: "assistant", text: assistantText };
-  setMessages((m) => [...m, assistant]);
-} catch (err) {
-  console.error(err);
-  const errMsg = { role: "assistant", text: "Error: " + (err.message || "Unknown") };
-  setMessages((m) => [...m, errMsg]);
-} finally {
-  setLoading(false);
-  setTimeout(() => {
-    const el = document.getElementById("chat-area");
-    if (el) el.scrollTop = el.scrollHeight;
-  }, 50);
-}
+Conversation so far:
+${history}
+
+Now answer as GabbarInfo AI, the digital marketing expert.
+Assistant:
+      `.trim();
+
+      const res = await fetch("/api/generate", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ prompt: finalPrompt }), // we keep backend API the same
+      });
+
+      if (!res.ok) {
+        const text = await res.text();
+        throw new Error(text || "Server error");
+      }
+
+      const data = await res.json();
+      const assistantText =
+        data.text ||
+        data.output ||
+        data.candidates?.[0]?.content?.parts?.[0]?.text ||
+        "No response";
+
+      const assistant = { role: "assistant", text: assistantText };
+
+      // Add assistant reply, again trimming to last 11 messages
+      setMessages((m) => {
+        const updated = [...m, assistant];
+        return updated.slice(-11);
+      });
+    } catch (err) {
+      console.error(err);
+      const errMsg = {
+        role: "assistant",
+        text: "Error: " + (err.message || "Unknown"),
+      };
+      setMessages((m) => [...m, errMsg].slice(-11));
+    } finally {
+      setLoading(false);
+      setTimeout(() => {
+        const el = document.getElementById("chat-area");
+        if (el) el.scrollTop = el.scrollHeight;
+      }, 50);
+    }
   }
   // Signed out: show simple login button
   if (!session) {
