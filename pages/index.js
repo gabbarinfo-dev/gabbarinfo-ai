@@ -73,15 +73,26 @@ Assistant:
       }
 
       const data = await res.json();
+      console.log("DEBUG Gemini response:", data);
 
-// Your API returns { result: ... }, so normalize it:
-const root = data.result || data;
+      // If backend ever wraps the response (e.g. { result: ... }) handle both cases
+      const root = data.result || data;
 
-const assistantText =
-  root.text ||
-  root.output ||
-  root.candidates?.[0]?.content?.parts?.[0]?.text ||
-  "No response from model.";
+      // Try the common Gemini shapes first
+      let assistantText =
+        // generateContent: candidates[0].content.parts[].text
+        root.candidates?.[0]?.content?.parts
+          ?.map((p) => p.text || "")
+          .join("") ||
+        // Older / different shapes – just in case
+        root.candidates?.[0]?.output_text ||
+        root.text ||
+        root.output;
+
+      // Absolute fallback: show raw JSON so it's never "No response"
+      if (!assistantText) {
+        assistantText = JSON.stringify(root, null, 2);
+      }
 
       const assistant = { role: "assistant", text: assistantText };
 
