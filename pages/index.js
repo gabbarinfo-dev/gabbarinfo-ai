@@ -65,8 +65,19 @@ export default function Home() {
     console.error("Failed to save chat:", e);
   }
 }, [messages]);
-  
-  async function sendMessage(e) {
+
+// ⬇️ NEW: shared reset function for header + sidebar
+function handleNewChat() {
+  setMessages(DEFAULT_MESSAGES);
+  setInput("");
+  try {
+    localStorage.removeItem("gabbarinfo_chat");
+  } catch (e) {
+    console.error("Failed to clear saved chat:", e);
+  }
+}
+
+async function sendMessage(e) {
     e?.preventDefault();
 
     const userText = input.trim();
@@ -188,26 +199,19 @@ Now respond as GabbarInfo AI.
     <strong>GabbarInfo AI</strong> — Chat
 
     {/* NEW CHAT BUTTON */}
-    <button
-      onClick={() => {
-        setMessages(DEFAULT_MESSAGES);
-        try {
-          localStorage.removeItem("gabbarinfo_chat");
-        } catch (e) {
-          console.error("Failed to clear saved chat:", e);
-        }
-      }}
-      style={{
-        padding: "4px 10px",
-        borderRadius: 6,
-        border: "1px solid #ddd",
-        fontSize: 12,
-        cursor: "pointer",
-        background: "#fafafa",
-      }}
-    >
-      New chat
-    </button>
+   <button
+  onClick={handleNewChat}
+  style={{
+    padding: "4px 10px",
+    borderRadius: 6,
+    border: "1px solid #ddd",
+    fontSize: 12,
+    cursor: "pointer",
+    background: "#fafafa",
+  }}
+>
+  New chat
+</button>
   </div>
 
   <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
@@ -224,18 +228,79 @@ Now respond as GabbarInfo AI.
 </header>
 
       <main style={{ display: "flex", flex: 1 }}>
-        <aside
-          style={{
-            width: 260,
-            borderRight: "1px solid #eee",
-            padding: 12,
-          }}
-        >
-          <div style={{ fontWeight: 600, marginBottom: 12 }}>Conversations</div>
-         <div style={{ color: "#666" }}>
-  Powered by GabbarInfo AI. Ask anything about digital marketing.
-</div>
-        </aside>
+       <aside
+  style={{
+    width: 260,
+    borderRight: "1px solid #eee",
+    padding: 12,
+    display: "flex",
+    flexDirection: "column",
+    gap: 12,
+  }}
+>
+  {/* Title */}
+  <div style={{ fontWeight: 600, fontSize: 15 }}>Conversations</div>
+
+  {/* New chat button in sidebar */}
+  <button
+    onClick={handleNewChat}
+    style={{
+      width: "100%",
+      textAlign: "left",
+      padding: "10px 12px",
+      borderRadius: 8,
+      border: "1px solid #ddd",
+      background: "#f5f5f5",
+      cursor: "pointer",
+      fontSize: 14,
+    }}
+  >
+    + New chat
+  </button>
+
+  {/* Section label */}
+  <div
+    style={{
+      marginTop: 4,
+      fontSize: 11,
+      textTransform: "uppercase",
+      letterSpacing: 0.5,
+      color: "#999",
+    }}
+  >
+    Today
+  </div>
+
+  {/* Current conversation pill */}
+  <div
+    style={{
+      padding: "8px 10px",
+      borderRadius: 6,
+      background: "#e8f0fe",
+      border: "1px solid #d2e3fc",
+      fontSize: 13,
+      color: "#174ea6",
+    }}
+  >
+    Current conversation
+  </div>
+
+  {/* Spacer to push note to bottom */}
+  <div style={{ flex: 1 }} />
+
+  {/* Footer note */}
+  <div
+    style={{
+      fontSize: 11,
+      color: "#aaa",
+      borderTop: "1px solid #f0f0f0",
+      paddingTop: 8,
+    }}
+  >
+    Chats are stored only in your browser.  
+    GabbarInfo AI is tuned for digital marketing.
+  </div>
+</aside>
 
         <section style={{ flex: 1, display: "flex", flexDirection: "column" }}>
           <div
