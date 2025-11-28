@@ -30,18 +30,42 @@ CONVERSATION RULES
   to understand business, location, budget, and goals before giving a strategy.
 `;
 
+const DEFAULT_MESSAGES = [
+  {
+    role: "assistant",
+    text: "Hi — ask me anything. I’ll answer using Gemini.",
+  },
+];
+
 export default function Home() {
   const { data: session, status } = useSession();
 
-  const [messages, setMessages] = useState([
-    {
-      role: "assistant",
-      text: "Hi — ask me anything. I’ll answer using Gemini.",
-    },
-  ]);
+  const [messages, setMessages] = useState(DEFAULT_MESSAGES);
   const [input, setInput] = useState("");
   const [loading, setLoading] = useState(false);
 
+  useEffect(() => {
+  try {
+    const saved = localStorage.getItem("gabbarinfo_chat");
+    if (saved) {
+      const parsed = JSON.parse(saved);
+      if (Array.isArray(parsed) && parsed.length) {
+        setMessages(parsed);
+      }
+    }
+  } catch (e) {
+    console.error("Failed to load saved chat:", e);
+  }
+}, []);
+
+  useEffect(() => {
+  try {
+    localStorage.setItem("gabbarinfo_chat", JSON.stringify(messages));
+  } catch (e) {
+    console.error("Failed to save chat:", e);
+  }
+}, [messages]);
+  
   async function sendMessage(e) {
     e?.preventDefault();
 
@@ -152,29 +176,52 @@ Now respond as GabbarInfo AI.
       }}
     >
       <header
-        style={{
-          display: "flex",
-          justifyContent: "space-between",
-          alignItems: "center",
-          padding: 18,
-          borderBottom: "1px solid #eee",
-        }}
-      >
-        <div>
-          <strong>GabbarInfo AI</strong> — Chat
-        </div>
-        <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
-          <div style={{ fontSize: 13, color: "#333" }}>
-            {session.user?.email}
-          </div>
-          <button
-            onClick={() => signOut()}
-            style={{ padding: "6px 10px", borderRadius: 6 }}
-          >
-            Sign out
-          </button>
-        </div>
-      </header>
+  style={{
+    display: "flex",
+    justifyContent: "space-between",
+    alignItems: "center",
+    padding: 18,
+    borderBottom: "1px solid #eee",
+  }}
+>
+  <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+    <strong>GabbarInfo AI</strong> — Chat
+
+    {/* NEW CHAT BUTTON */}
+    <button
+      onClick={() => {
+        setMessages(DEFAULT_MESSAGES);
+        try {
+          localStorage.removeItem("gabbarinfo_chat");
+        } catch (e) {
+          console.error("Failed to clear saved chat:", e);
+        }
+      }}
+      style={{
+        padding: "4px 10px",
+        borderRadius: 6,
+        border: "1px solid #ddd",
+        fontSize: 12,
+        cursor: "pointer",
+        background: "#fafafa",
+      }}
+    >
+      New chat
+    </button>
+  </div>
+
+  <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+    <div style={{ fontSize: 13, color: "#333" }}>
+      {session.user?.email}
+    </div>
+    <button
+      onClick={() => signOut()}
+      style={{ padding: "6px 10px", borderRadius: 6 }}
+    >
+      Sign out
+    </button>
+  </div>
+</header>
 
       <main style={{ display: "flex", flex: 1 }}>
         <aside
