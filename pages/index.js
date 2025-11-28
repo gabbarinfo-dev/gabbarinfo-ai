@@ -37,67 +37,123 @@ const DEFAULT_MESSAGES = [
   },
 ];
 
+const STORAGE_KEY_CHATS = "gabbarinfo_chats_v1";
+const STORAGE_KEY_ACTIVE = "gabbarinfo_active_chat_v1";
+
+// Helper: create a fresh empty chat
+function createEmptyChat() {
+  const now = Date.now();
+  return {
+    id: String(now),
+    title: "New conversation",
+    messages: [...DEFAULT_MESSAGES],
+    createdAt: now,
+  };
+}
+
 export default function Home() {
   const { data: session, status } = useSession();
 
-  const [messages, setMessages] = useState(DEFAULT_MESSAGES);
+  const [chats, setChats] = useState([]);
+  const [activeChatId, setActiveChatId] = useState(null);
   const [input, setInput] = useState("");
   const [loading, setLoading] = useState(false);
 
+  // Load chats on first render
   useEffect(() => {
-  try {
-    const saved = localStorage.getItem("gabbarinfo_chat");
-    if (saved) {
-      const parsed = JSON.parse(saved);
-      if (Array.isArray(parsed) && parsed.length) {
-        setMessages(parsed);
+    try {
+      const storedChats = localStorage.getItem(STORAGE_KEY_CHATS);
+      const storedActive = localStorage.getItem(STORAGE_KEY_ACTIVE);
+
+      if (storedChats) {
+        const parsed = JSON.parse(storedChats);
+        if (Array.isArray(parsed) && parsed.length) {
+          // If there are more than 5 (old data), keep only last 5
+          let trimmed = parsed;
+          if (parsed.length > 5) {
+            trimmed = parsed
+              .slice()
+              .sort((a, b) => a.createdAt - b.createdAt)
+              .slice(parsed.length - 5);
+          }
+
+          setChats(trimmed);
+
+          const existingActive =
+            trimmed.find((c) => c.id === storedActive)?.id || trimmed[0].id;
+          setActiveChatId(existingActive);
+          return;
+        }
       }
+
+      // No stored chats -> create first one
+      const first = createEmptyChat();
+      setChats([first]);
+      setActiveChatId(first.id);
+    } catch (e) {
+      console.error("Failed to load chats:", e);
+      const first = createEmptyChat();
+      setChats([first]);
+      setActiveChatId(first.id);
     }
-  } catch (e) {
-    console.error("Failed to load saved chat:", e);
-  }
-}, []);
+  }, []);
 
+  // Save chats + active chat to localStorage whenever they change
   useEffect(() => {
-  try {
-    localStorage.setItem("gabbarinfo_chat", JSON.stringify(messages));
-  } catch (e) {
-    console.error("Failed to save chat:", e);
-  }
-}, [messages]);
+    try {
+      localStorage.setItem(STORAGE_KEY_CHATS, JSON.stringify(chats));
+      if (activeChatId) {
+        localStorage.setItem(STORAGE_KEY_ACTIVE, activeChatId);
+      }
+    } catch (e) {
+      console.error("Failed to save chats:", e);
+    }
+  }, [chats, activeChatId]);
 
-// ⬇️ NEW: shared reset function for header + sidebar
-function handleNewChat() {
-  setMessages(DEFAULT_MESSAGES);
-  setInput("");
-  try {
-    localStorage.removeItem("gabbarinfo_chat");
-  } catch (e) {
-    console.error("Failed to clear saved chat:", e);
-  }
-}
+  const activeChat = chats.find((c) => c.id === activeChatId) || null;
+  const messages = activeChat?.messages || DEFAULT_MESSAGES;
 
-async function sendMessage(e) {
+  // Create a brand new chat (and keep only last 5)
+  function handleNewChat() {
+    const newChat = createEmptyChat();
+    setChats((prev) => {
+      let next = [...prev, newChat];
+      if (next.length > 5) {
+        next = next
+          .slice()
+          .sort((a, b) => a.createdAt - b.createdAt)
+          .slice(next.length - 5);
+      }
+      return next;
+    });
+    setActiveChatId(newChat.id);
+    setInput("");
+  }
+
+  // Send user message -> ask Gemini -> save into current chat
+  async function sendMessage(e) {
     e?.preventDefault();
 
     const userText = input.trim();
-    if (!userText) return;
+    if (!userText || !activeChatId) return;
 
     const userMsg = { role: "user", text: userText };
 
-    // Add user message in UI
-    setMessages((m) => [...m, userMsg].slice(-11));
+    // Start from current messages of this chat
+    const baseMessages = messages || DEFAULT_MESSAGES;
+    const updatedMessages = [...baseMessages, userMsg];
+
     setInput("");
     setLoading(true);
 
-  try {
-  // Keep larger history so model never loses context
-  const history = [...messages, userMsg]
-    .slice(-30)   // <-- THE FIX
-    .map((m) => `${m.role === "user" ? "User" : "Assistant"}: ${m.text}`)
-    .join("\n\n");
+    try {
+      // Keep larger text history for the prompt (last 30 turns)
+      const history = updatedMessages
+        .slice(-30)
+        .map((m) => `${m.role === "user" ? "User" : "Assistant"}: ${m.text}`)
+        .join("\n\n");
 
-  const finalPrompt = `
+      const finalPrompt = `
 ${SYSTEM_PROMPT}
 
 Conversation so far:
@@ -134,15 +190,51 @@ Now respond as GabbarInfo AI.
         assistantText = "No response from model.";
       }
 
-      const assistant = { role: "assistant", text: assistantText };
-      setMessages((m) => [...m, assistant].slice(-11));
+      const assistantMsg = { role: "assistant", text: assistantText };
+
+      // Update chats state: update only the active chat
+      setChats((prev) =>
+        prev.map((chat) => {
+          if (chat.id !== activeChatId) return chat;
+
+          // Determine title: if this is first user message, use it as chat title
+          const hadUserBefore = (chat.messages || []).some(
+            (m) => m.role === "user"
+          );
+          let newTitle = chat.title;
+          if (!hadUserBefore) {
+            const snippet =
+              userText.length > 40
+                ? userText.slice(0, 40) + "…"
+                : userText || "New conversation";
+            newTitle = snippet;
+          }
+
+          const finalMessages = [...updatedMessages, assistantMsg];
+
+          return {
+            ...chat,
+            title: newTitle,
+            messages: finalMessages,
+          };
+        })
+      );
     } catch (err) {
       console.error(err);
       const errMsg = {
         role: "assistant",
         text: "Error: " + (err.message || "Unknown"),
       };
-      setMessages((m) => [...m, errMsg].slice(-11));
+
+      setChats((prev) =>
+        prev.map((chat) => {
+          if (chat.id !== activeChatId) return chat;
+          return {
+            ...chat,
+            messages: [...(chat.messages || DEFAULT_MESSAGES), errMsg],
+          };
+        })
+      );
     } finally {
       setLoading(false);
       setTimeout(() => {
@@ -151,6 +243,8 @@ Now respond as GabbarInfo AI.
       }, 50);
     }
   }
+
+  // ---- UI ----
 
   if (status === "loading") {
     return <div style={{ padding: 40 }}>Checking session…</div>;
@@ -187,121 +281,135 @@ Now respond as GabbarInfo AI.
       }}
     >
       <header
-  style={{
-    display: "flex",
-    justifyContent: "space-between",
-    alignItems: "center",
-    padding: 18,
-    borderBottom: "1px solid #eee",
-  }}
->
-  <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
-    <strong>GabbarInfo AI</strong> — Chat
-
-    {/* NEW CHAT BUTTON */}
-   <button
-  onClick={handleNewChat}
-  style={{
-    padding: "4px 10px",
-    borderRadius: 6,
-    border: "1px solid #ddd",
-    fontSize: 12,
-    cursor: "pointer",
-    background: "#fafafa",
-  }}
->
-  New chat
-</button>
-  </div>
-
-  <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
-    <div style={{ fontSize: 13, color: "#333" }}>
-      {session.user?.email}
-    </div>
-    <button
-      onClick={() => signOut()}
-      style={{ padding: "6px 10px", borderRadius: 6 }}
-    >
-      Sign out
-    </button>
-  </div>
-</header>
+        style={{
+          display: "flex",
+          justifyContent: "space-between",
+          alignItems: "center",
+          padding: 18,
+          borderBottom: "1px solid #eee",
+        }}
+      >
+        <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+          <strong>GabbarInfo AI</strong> — Chat
+          <button
+            onClick={handleNewChat}
+            style={{
+              padding: "4px 10px",
+              borderRadius: 6,
+              border: "1px solid #ddd",
+              fontSize: 12,
+              cursor: "pointer",
+              background: "#fafafa",
+            }}
+          >
+            New chat
+          </button>
+        </div>
+        <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+          <div style={{ fontSize: 13, color: "#333" }}>
+            {session.user?.email}
+          </div>
+          <button
+            onClick={() => signOut()}
+            style={{ padding: "6px 10px", borderRadius: 6 }}
+          >
+            Sign out
+          </button>
+        </div>
+      </header>
 
       <main style={{ display: "flex", flex: 1 }}>
-       <aside
-  style={{
-    width: 260,
-    borderRight: "1px solid #eee",
-    padding: 12,
-    display: "flex",
-    flexDirection: "column",
-    gap: 12,
-  }}
->
-  {/* Title */}
-  <div style={{ fontWeight: 600, fontSize: 15 }}>Conversations</div>
+        {/* SIDEBAR WITH MULTIPLE CHATS */}
+        <aside
+          style={{
+            width: 260,
+            borderRight: "1px solid #eee",
+            padding: 12,
+            display: "flex",
+            flexDirection: "column",
+            gap: 10,
+          }}
+        >
+          <div style={{ fontWeight: 600, fontSize: 15 }}>Conversations</div>
 
-  {/* New chat button in sidebar */}
-  <button
-    onClick={handleNewChat}
-    style={{
-      width: "100%",
-      textAlign: "left",
-      padding: "10px 12px",
-      borderRadius: 8,
-      border: "1px solid #ddd",
-      background: "#f5f5f5",
-      cursor: "pointer",
-      fontSize: 14,
-    }}
-  >
-    + New chat
-  </button>
+          <button
+            onClick={handleNewChat}
+            style={{
+              width: "100%",
+              textAlign: "left",
+              padding: "10px 12px",
+              borderRadius: 8,
+              border: "1px solid #ddd",
+              background: "#f5f5f5",
+              cursor: "pointer",
+              fontSize: 14,
+            }}
+          >
+            + New chat
+          </button>
 
-  {/* Section label */}
-  <div
-    style={{
-      marginTop: 4,
-      fontSize: 11,
-      textTransform: "uppercase",
-      letterSpacing: 0.5,
-      color: "#999",
-    }}
-  >
-    Today
-  </div>
+          <div
+            style={{
+              marginTop: 4,
+              fontSize: 11,
+              textTransform: "uppercase",
+              letterSpacing: 0.5,
+              color: "#999",
+            }}
+          >
+            Recent (max 5)
+          </div>
 
-  {/* Current conversation pill */}
-  <div
-    style={{
-      padding: "8px 10px",
-      borderRadius: 6,
-      background: "#e8f0fe",
-      border: "1px solid #d2e3fc",
-      fontSize: 13,
-      color: "#174ea6",
-    }}
-  >
-    Current conversation
-  </div>
+          <div
+            style={{
+              display: "flex",
+              flexDirection: "column",
+              gap: 6,
+              overflowY: "auto",
+              maxHeight: "60vh",
+            }}
+          >
+            {chats.map((chat) => (
+              <button
+                key={chat.id}
+                onClick={() => setActiveChatId(chat.id)}
+                style={{
+                  width: "100%",
+                  textAlign: "left",
+                  padding: "8px 10px",
+                  borderRadius: 6,
+                  border:
+                    chat.id === activeChatId
+                      ? "1px solid #d2e3fc"
+                      : "1px solid #eee",
+                  background:
+                    chat.id === activeChatId ? "#e8f0fe" : "#ffffff",
+                  fontSize: 13,
+                  color: "#174ea6",
+                  cursor: "pointer",
+                }}
+              >
+                {chat.title}
+              </button>
+            ))}
+          </div>
 
-  {/* Spacer to push note to bottom */}
-  <div style={{ flex: 1 }} />
+          <div style={{ flex: 1 }} />
 
-  {/* Footer note */}
-  <div
-    style={{
-      fontSize: 11,
-      color: "#aaa",
-      borderTop: "1px solid #f0f0f0",
-      paddingTop: 8,
-    }}
-  >
-    Chats are stored only in your browser.  
-    GabbarInfo AI is tuned for digital marketing.
-  </div>
-</aside>
+          <div
+            style={{
+              fontSize: 11,
+              color: "#aaa",
+              borderTop: "1px solid #f0f0f0",
+              paddingTop: 8,
+            }}
+          >
+            Chats are stored only in your browser. <br />
+            GabbarInfo AI is tuned for digital marketing.
+          </div>
+        </aside>
 
+        {/* MAIN CHAT AREA */}
         <section style={{ flex: 1, display: "flex", flexDirection: "column" }}>
           <div
             id="chat-area"
