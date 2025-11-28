@@ -68,9 +68,14 @@ ${SYSTEM_PROMPT}
 Conversation so far:
 ${history}
 
-Now respond as GabbarInfo AI. If the user is asking for steps or a structure,
-give the complete answer directly, tailored to whatever they already told you.
-  `.trim();
+Now respond as GabbarInfo AI.
+
+- If the user asks for a plan, framework or "X-step" strategy, give the **entire**
+  plan in this single reply (no stopping at Step 3 or Step 5).
+- Use the business type, city, and budget already mentioned.
+- Only break things into multiple replies when the user clearly asks for that
+  (for example "explain only step 1 first" or "go step by step").
+`.trim();
 
       const res = await fetch("/api/generate", {
         method: "POST",
