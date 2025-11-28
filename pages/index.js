@@ -232,9 +232,9 @@ Now respond as GabbarInfo AI.
           }}
         >
           <div style={{ fontWeight: 600, marginBottom: 12 }}>Conversations</div>
-          <div style={{ color: "#666" }}>
-            This demo uses Gemini (server-side). Type to start a conversation.
-          </div>
+         <div style={{ color: "#666" }}>
+  Powered by GabbarInfo AI. Ask anything about digital marketing.
+</div>
         </aside>
 
         <section style={{ flex: 1, display: "flex", flexDirection: "column" }}>
