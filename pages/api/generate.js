@@ -9,49 +9,43 @@ export default async function handler(req, res) {
     }
 
     const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
-
     const model = genAI.getGenerativeModel({
       model: "gemini-flash-latest",
     });
 
     let fullText = "";
     let round = 0;
-    const maxRounds = 3; // Option B: Silent multi-round stitching
 
-    let currentPrompt = prompt;
+    // 🔼 allow one more continuation round
+    const maxRounds = 4; 
+
+    let requestPrompt = prompt;
 
     while (round < maxRounds) {
       round++;
 
       const result = await model.generateContent({
-        contents: [
-          {
-            role: "user",
-            parts: [{ text: currentPrompt }],
-          },
-        ],
+        contents: [{ role: "user", text: requestPrompt }],
         generationConfig: {
           temperature,
-          maxOutputTokens: 1024,
+          // 🔼 give more room per round
+          maxOutputTokens: 2048,
         },
       });
 
       const response = await result.response;
-
-      // Safely extract clean text
-      const chunkText =
+      const text =
         response.text() ||
-        response.candidates?.[0]?.content?.parts
-          ?.map((p) => p.text || "")
-          .join("") ||
+        response.candidates?.[0]?.content?.parts?.map((p) => p.text).join("") ||
         "";
 
-      if (!chunkText.trim()) break;
+      if (!text.trim()) break;
 
-      fullText += chunkText;
+      fullText += text;
 
-      // Detect if model is done
       const finishReason = response.candidates?.[0]?.finishReason;
+
+      // If model signals it is done → stop early
       if (
         finishReason === "STOP" ||
         finishReason === "STOPPING" ||
@@ -60,9 +54,9 @@ export default async function handler(req, res) {
         break;
       }
 
-      // Request continuation silently
-      currentPrompt =
-        "Continue the previous answer WITHOUT repeating anything.";
+      // Ask it to keep going, without repeating
+      requestPrompt =
+        "Continue the previous answer WITHOUT repeating anything. Pick up exactly where you stopped.";
     }
 
     return res.status(200).json({ text: fullText.trim() });
