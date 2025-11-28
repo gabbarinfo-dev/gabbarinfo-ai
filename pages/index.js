@@ -48,14 +48,14 @@ export default function Home() {
     setInput("");
     setLoading(true);
 
-    try {
-      // Short history: last 6 messages including this one
-      const history = [...messages, userMsg]
-        .slice(-30)
-        .map((m) => `${m.role === "user" ? "User" : "Assistant"}: ${m.text}`)
-        .join("\n\n");
+  try {
+  // Keep larger history so model never loses context
+  const history = [...messages, userMsg]
+    .slice(-30)   // <-- THE FIX
+    .map((m) => `${m.role === "user" ? "User" : "Assistant"}: ${m.text}`)
+    .join("\n\n");
 
-      const finalPrompt = `
+  const finalPrompt = `
 ${SYSTEM_PROMPT}
 
 Conversation so far:
@@ -63,7 +63,7 @@ ${history}
 
 Now respond as GabbarInfo AI. If the user is asking for steps or a structure,
 give the complete answer directly, tailored to whatever they already told you.
-      `.trim();
+  `.trim();
 
       const res = await fetch("/api/generate", {
         method: "POST",
