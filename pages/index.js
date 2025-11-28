@@ -51,7 +51,7 @@ export default function Home() {
     try {
       // Short history: last 6 messages including this one
       const history = [...messages, userMsg]
-        .slice(-6)
+        .slice(-30)
         .map((m) => `${m.role === "user" ? "User" : "Assistant"}: ${m.text}`)
         .join("\n\n");
 
