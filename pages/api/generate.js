@@ -25,13 +25,17 @@ export default async function handler(req, res) {
       round++;
 
       const result = await model.generateContent({
-        contents: [{ role: "user", text: requestPrompt }],
-        generationConfig: {
-          temperature,
-          // 🔼 give more room per round
-          maxOutputTokens: 2048,
-        },
-      });
+  contents: [
+    {
+      role: "user",
+      parts: [{ text: requestPrompt }],  // ✅ correct shape
+    },
+  ],
+  generationConfig: {
+    temperature,
+    maxOutputTokens: 2048,              // our bigger limit
+  },
+});
 
       const response = await result.response;
       const text =
