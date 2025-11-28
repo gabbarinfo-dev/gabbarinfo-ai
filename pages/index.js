@@ -33,7 +33,7 @@ CONVERSATION RULES
 const DEFAULT_MESSAGES = [
   {
     role: "assistant",
-    text: "Hi — ask me anything. I’ll answer using Gemini.",
+    text: "Hi — I’m GabbarInfo AI, your digital marketing strategist. How can I help you today?",
   },
 ];
 
