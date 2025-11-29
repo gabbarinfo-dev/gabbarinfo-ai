@@ -12,7 +12,7 @@ const supabase = createClient(
 // Whitelisted emails
 const allowedEmails = [
   "ndantare@gmail.com",
-  "aniket_akki17@gmail.com",
+  "aniketakki17@gmail.com",
   "ankitakasundra92@gmail.com",
   "doctorsdantare@gmail.com",
 ].map((e) => e.toLowerCase());
