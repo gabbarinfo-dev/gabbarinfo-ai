@@ -1,8 +1,20 @@
 // pages/api/generate.js
 import { GoogleGenerativeAI } from "@google/generative-ai";
+import { getServerSession } from "next-auth/next";
+import { authOptions } from "./auth/[...nextauth]";
 
 export default async function handler(req, res) {
+  if (req.method !== "POST") {
+    return res.status(405).json({ error: "Method not allowed" });
+  }
+
   try {
+    // 🔒 Require signed-in user
+    const session = await getServerSession(req, res, authOptions);
+    if (!session) {
+      return res.status(401).json({ error: "Not authenticated" });
+    }
+
     const { prompt, temperature = 0.5 } = req.body || {};
     if (!prompt) {
       return res.status(400).json({ error: "Missing prompt" });
@@ -15,32 +27,26 @@ export default async function handler(req, res) {
 
     let fullText = "";
     let round = 0;
-
-    // 🔼 allow one more continuation round
-    const maxRounds = 4; 
-
+    const maxRounds = 3;
     let requestPrompt = prompt;
 
     while (round < maxRounds) {
       round++;
 
       const result = await model.generateContent({
-  contents: [
-    {
-      role: "user",
-      parts: [{ text: requestPrompt }],  // ✅ correct shape
-    },
-  ],
-  generationConfig: {
-    temperature,
-    maxOutputTokens: 2048,              // our bigger limit
-  },
-});
+        contents: [{ role: "user", text: requestPrompt }],
+        generationConfig: {
+          temperature,
+          maxOutputTokens: 1024,
+        },
+      });
 
       const response = await result.response;
       const text =
         response.text() ||
-        response.candidates?.[0]?.content?.parts?.map((p) => p.text).join("") ||
+        response.candidates?.[0]?.content?.parts
+          ?.map((p) => p.text || "")
+          .join("") ||
         "";
 
       if (!text.trim()) break;
@@ -48,8 +54,6 @@ export default async function handler(req, res) {
       fullText += text;
 
       const finishReason = response.candidates?.[0]?.finishReason;
-
-      // If model signals it is done → stop early
       if (
         finishReason === "STOP" ||
         finishReason === "STOPPING" ||
@@ -58,9 +62,8 @@ export default async function handler(req, res) {
         break;
       }
 
-      // Ask it to keep going, without repeating
-      requestPrompt =
-        "Continue the previous answer WITHOUT repeating anything. Pick up exactly where you stopped.";
+      // Ask model to continue, without repeating
+      requestPrompt = "Continue the previous answer WITHOUT repeating anything.";
     }
 
     return res.status(200).json({ text: fullText.trim() });
@@ -68,7 +71,7 @@ export default async function handler(req, res) {
     console.error("GENERATION ERROR:", err);
     return res.status(500).json({
       error: "Server error",
-      details: err?.message || err,
+      details: err?.message || String(err),
     });
   }
 }
