@@ -9,15 +9,15 @@ const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
 );
 
-// These emails can use your app
+// Whitelisted emails
 const allowedEmails = [
   "ndantare@gmail.com",
   "aniket_akki17@gmail.com",
   "ankitakasundra92@gmail.com",
-  "doctorsdantare@gmail.com"
+  "doctorsdantare@gmail.com",
 ].map((e) => e.toLowerCase());
 
-export default NextAuth({
+export const authOptions = {
   providers: [
     GoogleProvider({
       clientId: process.env.GOOGLE_CLIENT_ID,
@@ -30,20 +30,18 @@ export default NextAuth({
   callbacks: {
     async signIn({ user }) {
       const email = user?.email?.toLowerCase();
-
-      // Allow only whitelisted users
-      if (!allowedEmails.includes(email)) {
+      if (!email || !allowedEmails.includes(email)) {
         return false;
       }
 
-      // 1️⃣ Sync user into Supabase "profiles" table
+      // 1) Ensure profile exists
       await supabase.from("profiles").upsert({
-        id: user.id,          // google UID
+        id: user.id,
         full_name: user.name || "",
-        email: email,
+        email,
       });
 
-      // 2️⃣ Ensure user has a credits row
+      // 2) Ensure credits row exists
       const { data: credits } = await supabase
         .from("credits")
         .select("*")
@@ -53,7 +51,7 @@ export default NextAuth({
       if (!credits) {
         await supabase.from("credits").insert({
           user_id: user.id,
-          credits_left: 20, // default
+          credits_left: 20,
         });
       }
 
@@ -62,7 +60,6 @@ export default NextAuth({
 
     async jwt({ token, user }) {
       const email = (user?.email || token?.email || "").toLowerCase();
-
       token.role = allowedEmails.includes(email) ? "owner" : "user";
       return token;
     },
@@ -76,4 +73,7 @@ export default NextAuth({
   session: {
     strategy: "jwt",
   },
-});
+};
+
+// Default export for NextAuth
+export default NextAuth(authOptions);
