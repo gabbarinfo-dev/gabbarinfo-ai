@@ -58,6 +58,7 @@ export default function Home() {
   const [activeChatId, setActiveChatId] = useState(null);
   const [input, setInput] = useState("");
   const [loading, setLoading] = useState(false);
+  const role = session?.user?.role || "client";
 
   // Load chats on first render
   useEffect(() => {
@@ -305,17 +306,34 @@ Now respond as GabbarInfo AI.
             New chat
           </button>
         </div>
-        <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
-          <div style={{ fontSize: 13, color: "#333" }}>
-            {session.user?.email}
-          </div>
-          <button
-            onClick={() => signOut()}
-            style={{ padding: "6px 10px", borderRadius: 6 }}
-          >
-            Sign out
-          </button>
-        </div>
+          <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+    {/* Role pill */}
+    <span
+      style={{
+        fontSize: 11,
+        padding: "4px 8px",
+        borderRadius: 999,
+        border: "1px solid #ddd",
+        background: role === "owner" ? "#ffe8cc" : "#e8f0fe",
+        color: role === "owner" ? "#8a3c00" : "#174ea6",
+      }}
+    >
+      {role === "owner" ? "Owner" : "Client"}
+    </span>
+
+    {/* Email */}
+    <div style={{ fontSize: 13, color: "#333" }}>
+      {session.user?.email}
+    </div>
+
+    {/* Sign out */}
+    <button
+      onClick={() => signOut()}
+      style={{ padding: "6px 10px", borderRadius: 6 }}
+    >
+      Sign out
+    </button>
+  </div>
       </header>
 
       <main style={{ display: "flex", flex: 1 }}>
