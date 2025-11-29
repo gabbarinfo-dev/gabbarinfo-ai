@@ -1,14 +1,20 @@
 // pages/api/auth/[...nextauth].js
+
 import NextAuth from "next-auth";
 import GoogleProvider from "next-auth/providers/google";
+import { createClient } from "@supabase/supabase-js";
 
-// 🔒 OWNER (you) and CLIENT emails
-const OWNER_EMAILS = ["ndantare@gmail.com"].map((e) => e.toLowerCase());
+const supabase = createClient(
+  process.env.NEXT_PUBLIC_SUPABASE_URL,
+  process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
+);
 
-const CLIENT_EMAILS = [
-  "aniketakki17@gmail.com",
+// These emails can use your app
+const allowedEmails = [
+  "ndantare@gmail.com",
+  "aniket_akki17@gmail.com",
   "ankitakasundra92@gmail.com",
-  "doctorsdantare@gmail.com",
+  "doctorsdantare@gmail.com"
 ].map((e) => e.toLowerCase());
 
 export default NextAuth({
@@ -25,15 +31,30 @@ export default NextAuth({
     async signIn({ user }) {
       const email = user?.email?.toLowerCase();
 
-      // If email missing, block
-      if (!email) return false;
+      // Allow only whitelisted users
+      if (!allowedEmails.includes(email)) {
+        return false;
+      }
 
-      // Only allow owner or client emails
-      if (
-        !OWNER_EMAILS.includes(email) &&
-        !CLIENT_EMAILS.includes(email)
-      ) {
-        return false; // AccessDenied
+      // 1️⃣ Sync user into Supabase "profiles" table
+      await supabase.from("profiles").upsert({
+        id: user.id,          // google UID
+        full_name: user.name || "",
+        email: email,
+      });
+
+      // 2️⃣ Ensure user has a credits row
+      const { data: credits } = await supabase
+        .from("credits")
+        .select("*")
+        .eq("user_id", user.id)
+        .maybeSingle();
+
+      if (!credits) {
+        await supabase.from("credits").insert({
+          user_id: user.id,
+          credits_left: 20, // default
+        });
       }
 
       return true;
@@ -42,31 +63,17 @@ export default NextAuth({
     async jwt({ token, user }) {
       const email = (user?.email || token?.email || "").toLowerCase();
 
-      if (OWNER_EMAILS.includes(email)) {
-        token.role = "owner";
-      } else if (CLIENT_EMAILS.includes(email)) {
-        token.role = "client";
-      } else {
-        token.role = "guest"; // should never happen, but safe default
-      }
-
+      token.role = allowedEmails.includes(email) ? "owner" : "user";
       return token;
     },
 
     async session({ session, token }) {
-      if (token?.role) {
-        // attach role to session.user
-        session.user.role = token.role;
-      }
+      session.user.role = token.role;
       return session;
     },
   },
 
   session: {
     strategy: "jwt",
-  },
-
-  pages: {
-    signIn: "/auth/signin",
   },
 });
