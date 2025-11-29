@@ -6,7 +6,7 @@ import GoogleProvider from "next-auth/providers/google";
 const OWNER_EMAILS = ["ndantare@gmail.com"].map((e) => e.toLowerCase());
 
 const CLIENT_EMAILS = [
-  "aniket_akki17@gmail.com",
+  "aniketakki17@gmail.com",
   "ankitakasundra92@gmail.com",
   "doctorsdantare@gmail.com",
 ].map((e) => e.toLowerCase());
