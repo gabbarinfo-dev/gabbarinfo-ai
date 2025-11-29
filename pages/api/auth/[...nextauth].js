@@ -2,12 +2,14 @@
 import NextAuth from "next-auth";
 import GoogleProvider from "next-auth/providers/google";
 
-// Read allowed emails from env variable (comma-separated)
-const allowedEmails =
-  (process.env.ALLOWED_EMAILS || "")
-    .split(",")
-    .map((e) => e.trim().toLowerCase())
-    .filter(Boolean);
+// 🔒 OWNER (you) and CLIENT emails
+const OWNER_EMAILS = ["ndantare@gmail.com"].map((e) => e.toLowerCase());
+
+const CLIENT_EMAILS = [
+  "aniket_akki17@gmail.com",
+  "ankitakasundra92@gmail.com",
+  "doctorsdantare@gmail.com",
+].map((e) => e.toLowerCase());
 
 export default NextAuth({
   providers: [
@@ -17,41 +19,43 @@ export default NextAuth({
     }),
   ],
 
-  // Already set in Vercel
   secret: process.env.NEXTAUTH_SECRET,
 
   callbacks: {
-    // 1) Block sign-in if email is not in allowed list
     async signIn({ user }) {
       const email = user?.email?.toLowerCase();
+
+      // If email missing, block
       if (!email) return false;
 
-      // If ALLOWED_EMAILS is set, only those emails can login
-      if (allowedEmails.length > 0 && !allowedEmails.includes(email)) {
-        return false; // NextAuth will show "Access Denied"
+      // Only allow owner or client emails
+      if (
+        !OWNER_EMAILS.includes(email) &&
+        !CLIENT_EMAILS.includes(email)
+      ) {
+        return false; // AccessDenied
       }
 
       return true;
     },
 
-    // 2) Put a role into the JWT token
     async jwt({ token, user }) {
       const email = (user?.email || token?.email || "").toLowerCase();
 
-      if (allowedEmails.includes(email)) {
-        // For now: all allowed emails are "owner"
+      if (OWNER_EMAILS.includes(email)) {
         token.role = "owner";
+      } else if (CLIENT_EMAILS.includes(email)) {
+        token.role = "client";
       } else {
-        token.role = "guest";
+        token.role = "guest"; // should never happen, but safe default
       }
 
       return token;
     },
 
-    // 3) Expose the role to the frontend (session.user.role)
     async session({ session, token }) {
-      if (!session.user) session.user = {};
       if (token?.role) {
+        // attach role to session.user
         session.user.role = token.role;
       }
       return session;
@@ -62,7 +66,6 @@ export default NextAuth({
     strategy: "jwt",
   },
 
-  // Use your custom sign-in page (already created)
   pages: {
     signIn: "/auth/signin",
   },
