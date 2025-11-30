@@ -15,25 +15,40 @@ export default async function handler(req, res) {
       return res.status(401).json({ error: "Not authenticated" });
     }
 
-    const { prompt, temperature = 0.5 } = req.body || {};
-    if (!prompt) {
-      return res.status(400).json({ error: "Missing prompt" });
+    // Read prompt + optional params from body
+    const {
+      prompt,
+      temperature = 0.5,
+      maxOutputTokens = 1024,
+    } = req.body || {};
+
+    if (!prompt || typeof prompt !== "string") {
+      return res.status(400).json({ error: "Missing or invalid 'prompt'" });
     }
 
-    const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
+    // Use env model if present, fallback to gemini-flash-latest
+    const API_KEY = process.env.GEMINI_API_KEY;
+    const MODEL_NAME = process.env.GEMINI_MODEL || "gemini-flash-latest";
+
+    if (!API_KEY) {
+      return res
+        .status(500)
+        .json({ error: "Server misconfigured: GEMINI_API_KEY missing" });
+    }
+
+    const genAI = new GoogleGenerativeAI(API_KEY);
     const model = genAI.getGenerativeModel({
-      model: "gemini-flash-latest",
+      model: MODEL_NAME,
     });
 
     let fullText = "";
     let round = 0;
-    const maxRounds = 3;
+    const maxRounds = 3; // you chose multi-round completion
     let requestPrompt = prompt;
 
     while (round < maxRounds) {
       round++;
 
-      // 🔧 CORRECT PAYLOAD SHAPE FOR GEMINI
       const result = await model.generateContent({
         contents: [
           {
@@ -43,36 +58,36 @@ export default async function handler(req, res) {
         ],
         generationConfig: {
           temperature,
-          maxOutputTokens: 1024,
+          maxOutputTokens,
         },
       });
 
       const response = await result.response;
 
-      const text =
-        // convenience helper
-        (response.text && response.text()) ||
-        // or read from candidates[0].content.parts
+      const chunkText =
+        (typeof response.text === "function" && response.text()) ||
         response.candidates?.[0]?.content?.parts
           ?.map((p) => p.text || "")
           .join("") ||
         "";
 
-      if (!text.trim()) break;
-
-      fullText += text;
-
-      const finishReason = response.candidates?.[0]?.finishReason;
-      if (
-        finishReason === "STOP" ||
-        finishReason === "STOPPING" ||
-        finishReason === "EOF"
-      ) {
+      if (!chunkText.trim()) {
         break;
       }
 
-      // Ask model to continue, without repeating
-      requestPrompt = "Continue the previous answer WITHOUT repeating anything.";
+      // Append with a blank line between rounds
+      fullText += (fullText ? "\n\n" : "") + chunkText;
+
+      const finishReason = response.candidates?.[0]?.finishReason;
+
+      // If model says it's done and NOT just cut by max tokens, stop
+      if (finishReason && finishReason !== "MAX_TOKENS") {
+        break;
+      }
+
+      // Ask the model to continue without repeating
+      requestPrompt =
+        "Continue the previous answer WITHOUT repeating anything.";
     }
 
     return res.status(200).json({ text: fullText.trim() });
