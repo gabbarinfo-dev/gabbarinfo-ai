@@ -1,15 +1,13 @@
 // pages/api/auth/[...nextauth].js
-
 import NextAuth from "next-auth";
 import GoogleProvider from "next-auth/providers/google";
 
-// Whitelisted emails (owners)
-const allowedEmails = [
-  "ndantare@gmail.com",
-  "aniketakki17@gmail.com",
-  "ankitakasundra92@gmail.com",
-  "doctorsdantare@gmail.com",
-].map((e) => e.toLowerCase());
+// Read allowed emails from Vercel env: ALLOWED_EMAILS
+// Example value in Vercel: "ndantare@gmail.com, aniketakki17@gmail.com, ankitakasundra92@gmail.com, doctorsdantare@gmail.com"
+const allowedEmails = (process.env.ALLOWED_EMAILS || "")
+  .split(",")
+  .map((e) => e.trim().toLowerCase())
+  .filter(Boolean);
 
 export const authOptions = {
   providers: [
@@ -22,35 +20,30 @@ export const authOptions = {
   secret: process.env.NEXTAUTH_SECRET,
 
   callbacks: {
-    // Only allow specific email addresses to sign in
     async signIn({ user }) {
       const email = user?.email?.toLowerCase();
       if (!email) return false;
 
-      // Block anyone not on the allowed list
-      if (!allowedEmails.includes(email)) {
-        return false;
+      // Only allow emails from ALLOWED_EMAILS
+      if (allowedEmails.length > 0 && !allowedEmails.includes(email)) {
+        return false; // AccessDenied
       }
 
       return true;
     },
 
-    // Attach a simple role to the JWT
     async jwt({ token, user }) {
       const email = (user?.email || token?.email || "").toLowerCase();
 
-      if (email && allowedEmails.includes(email)) {
-        token.role = "owner"; // your own accounts
-      } else if (email) {
-        token.role = "client"; // for future non-owner users
+      if (allowedEmails.includes(email)) {
+        token.role = "owner"; // you + other admin emails
       } else {
-        token.role = "guest";
+        token.role = "client";
       }
 
       return token;
     },
 
-    // Expose role on the session object for the frontend
     async session({ session, token }) {
       if (token?.role) {
         session.user.role = token.role;
@@ -61,6 +54,10 @@ export const authOptions = {
 
   session: {
     strategy: "jwt",
+  },
+
+  pages: {
+    signIn: "/auth/signin", // your custom sign-in page
   },
 };
 
