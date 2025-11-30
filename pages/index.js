@@ -114,7 +114,8 @@ export default function Home() {
     }
   }, [chats, activeChatId]);
 
-  const activeChat = chats.find((c) => c.id === activeChatId) || null;
+  const activeChat =
+    chats.find((c) => c.id === activeChatId) || null;
   const messages = activeChat?.messages || DEFAULT_MESSAGES;
 
   // Create a brand new chat (and keep only last 5)
@@ -406,7 +407,7 @@ OUTPUT RULES (CRITICAL)
                   border:
                     chat.id === activeChatId
                       ? "1px solid #d2e3fc"
-                      : "1px solid "#eee",
+                      : "1px solid #eee",
                   background:
                     chat.id === activeChatId ? "#e8f0fe" : "#ffffff",
                   fontSize: 13,
