@@ -3,19 +3,18 @@ import { getServerSession } from "next-auth/next";
 import { authOptions } from "../auth/[...nextauth]";
 import { createClient } from "@supabase/supabase-js";
 
-const supabaseAdmin = createClient(
+const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL,
-  process.env.SUPABASE_SERVICE_ROLE_KEY
+  process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
 );
 
 export default async function handler(req, res) {
   if (req.method !== "GET") {
     res.setHeader("Allow", "GET");
-    return res.status(405).json({ error: "Method not allowed. Use GET." });
+    return res.status(405).json({ error: "Method not allowed" });
   }
 
   try {
-    // 1) Require logged-in user
     const session = await getServerSession(req, res, authOptions);
     if (!session || !session.user?.email) {
       return res.status(401).json({ error: "Not authenticated" });
@@ -24,7 +23,7 @@ export default async function handler(req, res) {
     const email = session.user.email.toLowerCase();
     const role = session.user.role || "client";
 
-    // 2) Owners have unlimited credits – no DB needed
+    // Owner has unlimited usage, no need to hit DB
     if (role === "owner") {
       return res.status(200).json({
         credits: null,
@@ -32,53 +31,54 @@ export default async function handler(req, res) {
       });
     }
 
-    // 3) Safety check: env vars
-    if (
-      !process.env.NEXT_PUBLIC_SUPABASE_URL ||
-      !process.env.SUPABASE_SERVICE_ROLE_KEY
-    ) {
-      return res.status(500).json({
-        error: "Supabase is not configured on the server (missing env vars).",
-      });
-    }
-
-    // 4) Try to read credits row for this email
-    const { data, error } = await supabaseAdmin
-      .from("credits")
-      .select("credits_left")
+    // Get profile by email
+    const { data: profile, error: profileError } = await supabase
+      .from("profiles")
+      .select("id, email")
       .eq("email", email)
       .maybeSingle();
 
-    if (error) {
-      console.error("SUPABASE CREDITS GET ERROR:", error);
-      return res.status(500).json({ error: "Failed to load credits" });
+    if (profileError) {
+      console.error("profileError in /api/credits/get:", profileError);
+      return res.status(500).json({ error: "Profile lookup failed" });
     }
 
-    // 5) If no row yet for this client, create one with default 30
-    if (!data) {
-      const defaultCredits = 30;
-      const { error: insertError } = await supabaseAdmin
-        .from("credits")
-        .insert({
-          email,
-          credits_left: defaultCredits,
-        });
-
-      if (insertError) {
-        console.error("SUPABASE CREDITS INSERT ERROR:", insertError);
-        return res.status(500).json({ error: "Failed to init credits" });
-      }
-
-      return res.status(200).json({ credits: defaultCredits });
+    if (!profile) {
+      // No profile yet → treat as 0 credits
+      return res.status(200).json({
+        credits: 0,
+        unlimited: false,
+      });
     }
 
-    // 6) Return current credits
-    return res.status(200).json({ credits: data.credits_left ?? 0 });
-  } catch (err) {
-    console.error("CREDITS GET API ERROR:", err);
-    return res.status(500).json({
-      error: "Internal server error",
-      detail: String(err),
+    const userId = profile.id;
+
+    // Get credits row for this user
+    const { data: creditsRow, error: creditsError } = await supabase
+      .from("credits")
+      .select("credits_left")
+      .eq("user_id", userId)
+      .maybeSingle();
+
+    if (creditsError) {
+      console.error("creditsError in /api/credits/get:", creditsError);
+      return res.status(500).json({ error: "Credits lookup failed" });
+    }
+
+    if (!creditsRow) {
+      // No credits row yet → treat as 0
+      return res.status(200).json({
+        credits: 0,
+        unlimited: false,
+      });
+    }
+
+    return res.status(200).json({
+      credits: creditsRow.credits_left ?? 0,
+      unlimited: false,
     });
+  } catch (err) {
+    console.error("Unexpected error in /api/credits/get:", err);
+    return res.status(500).json({ error: "Server error" });
   }
 }
