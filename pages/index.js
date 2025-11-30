@@ -22,11 +22,8 @@ CONVERSATION RULES
 - Always stay consistent with details already given in the conversation
   (business type, city, budget, goals, past campaigns, etc.).
 - By default, answer in **one complete reply** – like ChatGPT.
-- If you say you will give "X steps" (e.g. a 7-step plan), you **must list ALL steps**
-  in that same reply from Step 1 to Step X. Never stop after only Step 1 or Step 2.
-- If you mention "7-step", "7 step", "7-point", "7 point", or similar, you MUST output
-  exactly 7 clearly numbered steps in that reply, unless the user explicitly asks
-  to go one step at a time.
+- If you say you will give "X steps" (e.g. a 7-step plan), you **must list all steps**
+  in that same reply from Step 1 to Step X.
 - Only go step-by-step across multiple messages when the user **explicitly asks**
   for that (e.g. "tell me only step 1 first", "explain step 3 in detail").
 - When the user is vague (e.g. "I want more leads"), ask 2–4 sharp questions
@@ -43,7 +40,6 @@ const DEFAULT_MESSAGES = [
 const STORAGE_KEY_CHATS = "gabbarinfo_chats_v1";
 const STORAGE_KEY_ACTIVE = "gabbarinfo_active_chat_v1";
 
-// Helper: create a fresh empty chat
 function createEmptyChat() {
   const now = Date.now();
   return {
@@ -56,12 +52,17 @@ function createEmptyChat() {
 
 export default function Home() {
   const { data: session, status } = useSession();
+  const role = session?.user?.role || "client";
 
   const [chats, setChats] = useState([]);
   const [activeChatId, setActiveChatId] = useState(null);
   const [input, setInput] = useState("");
   const [loading, setLoading] = useState(false);
-  const role = session?.user?.role || "client";
+
+  // NEW: credits state
+  const [credits, setCredits] = useState(null);
+  const [creditsLoading, setCreditsLoading] = useState(false);
+  const [creditsError, setCreditsError] = useState(null);
 
   // Load chats on first render
   useEffect(() => {
@@ -72,7 +73,6 @@ export default function Home() {
       if (storedChats) {
         const parsed = JSON.parse(storedChats);
         if (Array.isArray(parsed) && parsed.length) {
-          // If there are more than 5 (old data), keep only last 5
           let trimmed = parsed;
           if (parsed.length > 5) {
             trimmed = parsed
@@ -90,7 +90,6 @@ export default function Home() {
         }
       }
 
-      // No stored chats -> create first one
       const first = createEmptyChat();
       setChats([first]);
       setActiveChatId(first.id);
@@ -114,11 +113,58 @@ export default function Home() {
     }
   }, [chats, activeChatId]);
 
-  const activeChat =
-    chats.find((c) => c.id === activeChatId) || null;
+  const activeChat = chats.find((c) => c.id === activeChatId) || null;
   const messages = activeChat?.messages || DEFAULT_MESSAGES;
 
-  // Create a brand new chat (and keep only last 5)
+  // Load credits once user is authenticated
+  useEffect(() => {
+    if (status !== "authenticated") return;
+
+    let cancelled = false;
+
+    async function loadCredits() {
+      // Owner = unlimited → we don't even need to fetch
+      if (role === "owner") {
+        setCredits(null);
+        setCreditsLoading(false);
+        setCreditsError(null);
+        return;
+      }
+
+      setCreditsLoading(true);
+      setCreditsError(null);
+
+      try {
+        const res = await fetch("/api/credits/get");
+        if (!res.ok) {
+          const text = await res.text();
+          throw new Error(text || "Failed to load credits");
+        }
+        const data = await res.json();
+        if (!cancelled) {
+          setCredits(
+            typeof data.credits === "number" ? data.credits : null
+          );
+        }
+      } catch (err) {
+        console.error("Credits fetch error:", err);
+        if (!cancelled) {
+          setCreditsError("Error");
+        }
+      } finally {
+        if (!cancelled) {
+          setCreditsLoading(false);
+        }
+      }
+    }
+
+    loadCredits();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [status, role]);
+
   function handleNewChat() {
     const newChat = createEmptyChat();
     setChats((prev) => {
@@ -135,7 +181,6 @@ export default function Home() {
     setInput("");
   }
 
-  // Send user message -> ask backend -> save into current chat
   async function sendMessage(e) {
     e?.preventDefault();
 
@@ -144,7 +189,6 @@ export default function Home() {
 
     const userMsg = { role: "user", text: userText };
 
-    // Start from current messages of this chat
     const baseMessages = messages || DEFAULT_MESSAGES;
     const updatedMessages = [...baseMessages, userMsg];
 
@@ -152,7 +196,6 @@ export default function Home() {
     setLoading(true);
 
     try {
-      // Keep larger text history for the prompt (last 30 turns)
       const history = updatedMessages
         .slice(-30)
         .map((m) => `${m.role === "user" ? "User" : "Assistant"}: ${m.text}`)
@@ -166,15 +209,11 @@ ${history}
 
 Now respond as GabbarInfo AI.
 
-OUTPUT RULES (CRITICAL)
-- If the user asks for a plan, framework or "X-step" strategy, you must give the **entire**
-  plan in this single reply.
-- If you write something like "Here is a 7-step strategy" or "7-step plan", you must output
-  **all 7 steps** clearly numbered (Step 1, Step 2, ..., Step 7) in this same message.
-- Never stop after only Step 1 or Step 2 unless the user explicitly asked you to stop early.
+- If the user asks for a plan, framework or "X-step" strategy, give the **entire**
+  plan in this single reply (no stopping at Step 3 or Step 5).
+- Use the business type, city, and budget already mentioned.
 - Only break things into multiple replies when the user clearly asks for that
   (for example "explain only step 1 first" or "go step by step").
-- Otherwise, always give your best, fully-finished answer in one reply.
 `.trim();
 
       const res = await fetch("/api/generate", {
@@ -201,12 +240,10 @@ OUTPUT RULES (CRITICAL)
 
       const assistantMsg = { role: "assistant", text: assistantText };
 
-      // Update chats state: update only the active chat
       setChats((prev) =>
         prev.map((chat) => {
           if (chat.id !== activeChatId) return chat;
 
-          // Determine title: if this is first user message, use it as chat title
           const hadUserBefore = (chat.messages || []).some(
             (m) => m.role === "user"
           );
@@ -314,6 +351,7 @@ OUTPUT RULES (CRITICAL)
             New chat
           </button>
         </div>
+
         <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
           {/* Role pill */}
           <span
@@ -328,6 +366,27 @@ OUTPUT RULES (CRITICAL)
           >
             {role === "owner" ? "Owner" : "Client"}
           </span>
+
+          {/* Credits pill – only for clients */}
+          {role === "client" && (
+            <span
+              style={{
+                fontSize: 11,
+                padding: "4px 8px",
+                borderRadius: 999,
+                border: "1px solid #f4b400",
+                background: "#fef7e0",
+                color: "#8a3c00",
+              }}
+            >
+              Credits:&nbsp;
+              {creditsLoading
+                ? "…"
+                : creditsError
+                ? "Error"
+                : credits ?? 0}
+            </span>
+          )}
 
           {/* Email */}
           <div style={{ fontSize: 13, color: "#333" }}>
@@ -491,7 +550,7 @@ OUTPUT RULES (CRITICAL)
                 flex: 1,
                 padding: 12,
                 borderRadius: 8,
-                border: "1px solid #ddd",
+                border: "1px solid "#ddd",
               }}
               disabled={loading}
             />
