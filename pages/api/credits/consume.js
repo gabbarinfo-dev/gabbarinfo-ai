@@ -23,7 +23,7 @@ export default async function handler(req, res) {
     const email = session.user.email.toLowerCase();
     const role = session.user.role || "client";
 
-    // Owner / unlimited → don't touch DB, just return unlimited
+    // 🔓 Owners have unlimited usage, we never touch DB for them
     if (role === "owner") {
       return res.status(200).json({
         credits: null,
@@ -44,7 +44,8 @@ export default async function handler(req, res) {
     }
 
     if (!profile) {
-      // No profile → no credits
+      // No profile → user exists in auth but not in profiles (strange but possible)
+      // Treat as no credits
       return res.status(402).json({
         error: "No credits available. Please contact GabbarInfo to top up.",
       });
@@ -64,28 +65,63 @@ export default async function handler(req, res) {
       return res.status(500).json({ error: "Credits lookup failed" });
     }
 
-    if (!creditsRow || typeof creditsRow.credits_left !== "number") {
-      // No credits row or invalid value
+    let currentCredits;
+    let rowId = creditsRow?.id || null;
+
+    if (!creditsRow) {
+      // ❗ No credits row at all → give default 30 and create row
+      currentCredits = 30;
+      const { data: inserted, error: insertError } = await supabase
+        .from("credits")
+        .insert({
+          user_id: userId,
+          credits_left: currentCredits,
+        })
+        .select("id, credits_left")
+        .maybeSingle();
+
+      if (insertError) {
+        console.error("insertError in /api/credits/consume:", insertError);
+        return res.status(500).json({ error: "Failed to init credits" });
+      }
+
+      rowId = inserted.id;
+      currentCredits = inserted.credits_left;
+    } else {
+      // Row exists, but might be null or a number
+      if (typeof creditsRow.credits_left !== "number") {
+        // Treat null / invalid as fresh 30
+        currentCredits = 30;
+        const { error: fixError } = await supabase
+          .from("credits")
+          .update({ credits_left: currentCredits })
+          .eq("id", creditsRow.id);
+
+        if (fixError) {
+          console.error("fixError in /api/credits/consume:", fixError);
+          return res.status(500).json({ error: "Failed to fix credits" });
+        }
+        rowId = creditsRow.id;
+      } else {
+        currentCredits = creditsRow.credits_left;
+        rowId = creditsRow.id;
+      }
+    }
+
+    // 3) If after all that credits are still 0 or below → block
+    if (currentCredits <= 0) {
       return res.status(402).json({
         error: "You’ve run out of credits. Please contact GabbarInfo to top up.",
       });
     }
 
-    const current = creditsRow.credits_left;
-
-    if (current <= 0) {
-      return res.status(402).json({
-        error: "You’ve run out of credits. Please contact GabbarInfo to top up.",
-      });
-    }
-
-    // 3) Decrement by 1
-    const newValue = current - 1;
+    // 4) Decrement by 1
+    const newValue = currentCredits - 1;
 
     const { error: updateError } = await supabase
       .from("credits")
       .update({ credits_left: newValue })
-      .eq("id", creditsRow.id);
+      .eq("id", rowId);
 
     if (updateError) {
       console.error("updateError in /api/credits/consume:", updateError);
