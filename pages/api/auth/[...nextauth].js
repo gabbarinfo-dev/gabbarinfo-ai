@@ -1,15 +1,18 @@
 // pages/api/auth/[...nextauth].js
-
 import NextAuth from "next-auth";
 import GoogleProvider from "next-auth/providers/google";
 
-// Whitelisted emails (owners)
-const allowedEmails = [
-  "ndantare@gmail.com",
+// Define owners and clients separately
+const ownerEmails = ["ndantare@gmail.com"].map((e) => e.toLowerCase());
+
+const clientEmails = [
   "aniketakki17@gmail.com",
   "ankitakasundra92@gmail.com",
   "doctorsdantare@gmail.com",
 ].map((e) => e.toLowerCase());
+
+// All emails allowed to log in
+const allowedEmails = [...ownerEmails, ...clientEmails];
 
 export const authOptions = {
   providers: [
@@ -22,27 +25,25 @@ export const authOptions = {
   secret: process.env.NEXTAUTH_SECRET,
 
   callbacks: {
-    // Only allow specific email addresses to sign in
     async signIn({ user }) {
       const email = user?.email?.toLowerCase();
       if (!email) return false;
 
-      // Block anyone not on the allowed list
+      // Only allow defined emails
       if (!allowedEmails.includes(email)) {
-        return false;
+        return false; // AccessDenied
       }
 
       return true;
     },
 
-    // Attach a simple role to the JWT
     async jwt({ token, user }) {
       const email = (user?.email || token?.email || "").toLowerCase();
 
-      if (email && allowedEmails.includes(email)) {
-        token.role = "owner"; // your own accounts
-      } else if (email) {
-        token.role = "client"; // for future non-owner users
+      if (ownerEmails.includes(email)) {
+        token.role = "owner"; // you
+      } else if (clientEmails.includes(email)) {
+        token.role = "client"; // your clients
       } else {
         token.role = "guest";
       }
@@ -50,17 +51,18 @@ export const authOptions = {
       return token;
     },
 
-    // Expose role on the session object for the frontend
     async session({ session, token }) {
-      if (token?.role) {
-        session.user.role = token.role;
-      }
+      session.user.role = token.role || "guest";
       return session;
     },
   },
 
   session: {
     strategy: "jwt",
+  },
+
+  pages: {
+    signIn: "/auth/signin",
   },
 };
 
