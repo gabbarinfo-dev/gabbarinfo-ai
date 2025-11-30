@@ -33,8 +33,14 @@ export default async function handler(req, res) {
     while (round < maxRounds) {
       round++;
 
+      // 🔧 CORRECT PAYLOAD SHAPE FOR GEMINI
       const result = await model.generateContent({
-        contents: [{ role: "user", text: requestPrompt }],
+        contents: [
+          {
+            role: "user",
+            parts: [{ text: requestPrompt }],
+          },
+        ],
         generationConfig: {
           temperature,
           maxOutputTokens: 1024,
@@ -42,8 +48,11 @@ export default async function handler(req, res) {
       });
 
       const response = await result.response;
+
       const text =
-        response.text() ||
+        // convenience helper
+        (response.text && response.text()) ||
+        // or read from candidates[0].content.parts
         response.candidates?.[0]?.content?.parts
           ?.map((p) => p.text || "")
           .join("") ||
