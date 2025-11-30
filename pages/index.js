@@ -40,6 +40,7 @@ const DEFAULT_MESSAGES = [
 const STORAGE_KEY_CHATS = "gabbarinfo_chats_v1";
 const STORAGE_KEY_ACTIVE = "gabbarinfo_active_chat_v1";
 
+// Helper: create a fresh empty chat
 function createEmptyChat() {
   const now = Date.now();
   return {
@@ -59,10 +60,10 @@ export default function Home() {
   const [input, setInput] = useState("");
   const [loading, setLoading] = useState(false);
 
-  // NEW: credits state
+  // 🔢 credits state
   const [credits, setCredits] = useState(null);
-  const [creditsLoading, setCreditsLoading] = useState(false);
-  const [creditsError, setCreditsError] = useState(null);
+  const [unlimited, setUnlimited] = useState(false);
+  const [creditsLoading, setCreditsLoading] = useState(true);
 
   // Load chats on first render
   useEffect(() => {
@@ -73,6 +74,7 @@ export default function Home() {
       if (storedChats) {
         const parsed = JSON.parse(storedChats);
         if (Array.isArray(parsed) && parsed.length) {
+          // If there are more than 5 (old data), keep only last 5
           let trimmed = parsed;
           if (parsed.length > 5) {
             trimmed = parsed
@@ -90,6 +92,7 @@ export default function Home() {
         }
       }
 
+      // No stored chats -> create first one
       const first = createEmptyChat();
       setChats([first]);
       setActiveChatId(first.id);
@@ -113,58 +116,32 @@ export default function Home() {
     }
   }, [chats, activeChatId]);
 
-  const activeChat = chats.find((c) => c.id === activeChatId) || null;
-  const messages = activeChat?.messages || DEFAULT_MESSAGES;
-
-  // Load credits once user is authenticated
+  // 🔢 Load credits from /api/credits/get
   useEffect(() => {
-    if (status !== "authenticated") return;
-
-    let cancelled = false;
-
-    async function loadCredits() {
-      // Owner = unlimited → we don't even need to fetch
-      if (role === "owner") {
-        setCredits(null);
-        setCreditsLoading(false);
-        setCreditsError(null);
-        return;
-      }
-
-      setCreditsLoading(true);
-      setCreditsError(null);
-
+    async function fetchCredits() {
       try {
         const res = await fetch("/api/credits/get");
         if (!res.ok) {
-          const text = await res.text();
-          throw new Error(text || "Failed to load credits");
+          console.error("Failed to load credits", await res.text());
+          return;
         }
         const data = await res.json();
-        if (!cancelled) {
-          setCredits(
-            typeof data.credits === "number" ? data.credits : null
-          );
-        }
+        setCredits(typeof data.credits === "number" ? data.credits : null);
+        setUnlimited(Boolean(data.unlimited));
       } catch (err) {
-        console.error("Credits fetch error:", err);
-        if (!cancelled) {
-          setCreditsError("Error");
-        }
+        console.error("Error loading credits:", err);
       } finally {
-        if (!cancelled) {
-          setCreditsLoading(false);
-        }
+        setCreditsLoading(false);
       }
     }
 
-    loadCredits();
+    fetchCredits();
+  }, []);
 
-    return () => {
-      cancelled = true;
-    };
-  }, [status, role]);
+  const activeChat = chats.find((c) => c.id === activeChatId) || null;
+  const messages = activeChat?.messages || DEFAULT_MESSAGES;
 
+  // Create a brand new chat (and keep only last 5)
   function handleNewChat() {
     const newChat = createEmptyChat();
     setChats((prev) => {
@@ -181,14 +158,34 @@ export default function Home() {
     setInput("");
   }
 
+  // Send user message -> consume credit (if not owner) -> ask Gemini -> save chat
   async function sendMessage(e) {
     e?.preventDefault();
 
     const userText = input.trim();
     if (!userText || !activeChatId) return;
 
+    // If client and clearly 0 credits → block immediately
+    if (role !== "owner" && !unlimited && credits !== null && credits <= 0) {
+      setChats((prev) =>
+        prev.map((chat) => {
+          if (chat.id !== activeChatId) return chat;
+          const errMsg = {
+            role: "assistant",
+            text: "You’ve run out of credits. Please contact GabbarInfo to top up.",
+          };
+          return {
+            ...chat,
+            messages: [...(chat.messages || DEFAULT_MESSAGES), errMsg],
+          };
+        })
+      );
+      return;
+    }
+
     const userMsg = { role: "user", text: userText };
 
+    // Start from current messages of this chat
     const baseMessages = messages || DEFAULT_MESSAGES;
     const updatedMessages = [...baseMessages, userMsg];
 
@@ -196,6 +193,53 @@ export default function Home() {
     setLoading(true);
 
     try {
+      // 1️⃣ If not owner → consume a credit first
+      if (role !== "owner" && !unlimited) {
+        try {
+          const consumeRes = await fetch("/api/credits/consume", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+          });
+
+          if (consumeRes.status === 402) {
+            const data = await consumeRes.json().catch(() => ({}));
+            const msg =
+              data.error ||
+              "You’ve run out of credits. Please contact GabbarInfo to top up.";
+
+            setCredits(0);
+
+            setChats((prev) =>
+              prev.map((chat) => {
+                if (chat.id !== activeChatId) return chat;
+                const errMsg = { role: "assistant", text: msg };
+                return {
+                  ...chat,
+                  messages: [...(chat.messages || DEFAULT_MESSAGES), userMsg, errMsg],
+                };
+              })
+            );
+
+            setLoading(false);
+            return;
+          }
+
+          if (!consumeRes.ok) {
+            console.error("Failed to consume credit:", await consumeRes.text());
+          } else {
+            const data = await consumeRes.json().catch(() => ({}));
+            if (typeof data.credits === "number") {
+              setCredits(data.credits);
+            }
+          }
+        } catch (err) {
+          console.error("Error calling /api/credits/consume:", err);
+          // If this fails, we still let the message go through (better UX),
+          // but we don't change credits state.
+        }
+      }
+
+      // 2️⃣ Build prompt with history
       const history = updatedMessages
         .slice(-30)
         .map((m) => `${m.role === "user" ? "User" : "Assistant"}: ${m.text}`)
@@ -216,6 +260,7 @@ Now respond as GabbarInfo AI.
   (for example "explain only step 1 first" or "go step by step").
 `.trim();
 
+      // 3️⃣ Call the backend generate route
       const res = await fetch("/api/generate", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -240,10 +285,12 @@ Now respond as GabbarInfo AI.
 
       const assistantMsg = { role: "assistant", text: assistantText };
 
+      // Update chats state: update only the active chat
       setChats((prev) =>
         prev.map((chat) => {
           if (chat.id !== activeChatId) return chat;
 
+          // Determine title: if this is first user message, use it as chat title
           const hadUserBefore = (chat.messages || []).some(
             (m) => m.role === "user"
           );
@@ -277,7 +324,7 @@ Now respond as GabbarInfo AI.
           if (chat.id !== activeChatId) return chat;
           return {
             ...chat,
-            messages: [...(chat.messages || DEFAULT_MESSAGES), errMsg],
+            messages: [...(chat.messages || DEFAULT_MESSAGES), userMsg, errMsg],
           };
         })
       );
@@ -353,7 +400,7 @@ Now respond as GabbarInfo AI.
         </div>
 
         <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
-          {/* Role pill */}
+          {/* Role + credits pill */}
           <span
             style={{
               fontSize: 11,
@@ -364,36 +411,17 @@ Now respond as GabbarInfo AI.
               color: role === "owner" ? "#8a3c00" : "#174ea6",
             }}
           >
-            {role === "owner" ? "Owner" : "Client"}
+            {role === "owner"
+              ? "Owner · Unlimited"
+              : creditsLoading
+              ? "Client · Credits: …"
+              : `Client · Credits: ${credits ?? 0}`}
           </span>
 
-          {/* Credits pill – only for clients */}
-          {role === "client" && (
-            <span
-              style={{
-                fontSize: 11,
-                padding: "4px 8px",
-                borderRadius: 999,
-                border: "1px solid #f4b400",
-                background: "#fef7e0",
-                color: "#8a3c00",
-              }}
-            >
-              Credits:&nbsp;
-              {creditsLoading
-                ? "…"
-                : creditsError
-                ? "Error"
-                : credits ?? 0}
-            </span>
-          )}
-
-          {/* Email */}
           <div style={{ fontSize: 13, color: "#333" }}>
             {session.user?.email}
           </div>
 
-          {/* Sign out */}
           <button
             onClick={() => signOut()}
             style={{ padding: "6px 10px", borderRadius: 6 }}
@@ -550,7 +578,7 @@ Now respond as GabbarInfo AI.
                 flex: 1,
                 padding: 12,
                 borderRadius: 8,
-                    border: "1px solid #ddd",
+                border: "1px solid #ddd",
               }}
               disabled={loading}
             />
