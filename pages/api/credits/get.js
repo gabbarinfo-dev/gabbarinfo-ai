@@ -22,15 +22,27 @@ export default async function handler(req, res) {
     }
 
     const email = session.user.email.toLowerCase();
+    const role = session.user.role || "client";
 
-    // 2) Safety check: env vars
-    if (!process.env.NEXT_PUBLIC_SUPABASE_URL || !process.env.SUPABASE_SERVICE_ROLE_KEY) {
+    // 2) Owners have unlimited credits – no DB needed
+    if (role === "owner") {
+      return res.status(200).json({
+        credits: null,
+        unlimited: true,
+      });
+    }
+
+    // 3) Safety check: env vars
+    if (
+      !process.env.NEXT_PUBLIC_SUPABASE_URL ||
+      !process.env.SUPABASE_SERVICE_ROLE_KEY
+    ) {
       return res.status(500).json({
         error: "Supabase is not configured on the server (missing env vars).",
       });
     }
 
-    // 3) Try to read credits row for this email
+    // 4) Try to read credits row for this email
     const { data, error } = await supabaseAdmin
       .from("credits")
       .select("credits_left")
@@ -42,7 +54,7 @@ export default async function handler(req, res) {
       return res.status(500).json({ error: "Failed to load credits" });
     }
 
-    // 4) If no row yet, create one with default credits (e.g. 30)
+    // 5) If no row yet for this client, create one with default 30
     if (!data) {
       const defaultCredits = 30;
       const { error: insertError } = await supabaseAdmin
@@ -60,7 +72,7 @@ export default async function handler(req, res) {
       return res.status(200).json({ credits: defaultCredits });
     }
 
-    // 5) Return current credits
+    // 6) Return current credits
     return res.status(200).json({ credits: data.credits_left ?? 0 });
   } catch (err) {
     console.error("CREDITS GET API ERROR:", err);
