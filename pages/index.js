@@ -22,8 +22,11 @@ CONVERSATION RULES
 - Always stay consistent with details already given in the conversation
   (business type, city, budget, goals, past campaigns, etc.).
 - By default, answer in **one complete reply** – like ChatGPT.
-- If you say you will give "X steps" (e.g. a 7-step plan), you **must list all steps**
-  in that same reply from Step 1 to Step X.
+- If you say you will give "X steps" (e.g. a 7-step plan), you **must list ALL steps**
+  in that same reply from Step 1 to Step X. Never stop after only Step 1 or Step 2.
+- If you mention "7-step", "7 step", "7-point", "7 point", or similar, you MUST output
+  exactly 7 clearly numbered steps in that reply, unless the user explicitly asks
+  to go one step at a time.
 - Only go step-by-step across multiple messages when the user **explicitly asks**
   for that (e.g. "tell me only step 1 first", "explain step 3 in detail").
 - When the user is vague (e.g. "I want more leads"), ask 2–4 sharp questions
@@ -131,7 +134,7 @@ export default function Home() {
     setInput("");
   }
 
-  // Send user message -> ask Gemini -> save into current chat
+  // Send user message -> ask backend -> save into current chat
   async function sendMessage(e) {
     e?.preventDefault();
 
@@ -162,11 +165,15 @@ ${history}
 
 Now respond as GabbarInfo AI.
 
-- If the user asks for a plan, framework or "X-step" strategy, give the **entire**
-  plan in this single reply (no stopping at Step 3 or Step 5).
-- Use the business type, city, and budget already mentioned.
+OUTPUT RULES (CRITICAL)
+- If the user asks for a plan, framework or "X-step" strategy, you must give the **entire**
+  plan in this single reply.
+- If you write something like "Here is a 7-step strategy" or "7-step plan", you must output
+  **all 7 steps** clearly numbered (Step 1, Step 2, ..., Step 7) in this same message.
+- Never stop after only Step 1 or Step 2 unless the user explicitly asked you to stop early.
 - Only break things into multiple replies when the user clearly asks for that
   (for example "explain only step 1 first" or "go step by step").
+- Otherwise, always give your best, fully-finished answer in one reply.
 `.trim();
 
       const res = await fetch("/api/generate", {
@@ -306,34 +313,34 @@ Now respond as GabbarInfo AI.
             New chat
           </button>
         </div>
-          <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
-    {/* Role pill */}
-    <span
-      style={{
-        fontSize: 11,
-        padding: "4px 8px",
-        borderRadius: 999,
-        border: "1px solid #ddd",
-        background: role === "owner" ? "#ffe8cc" : "#e8f0fe",
-        color: role === "owner" ? "#8a3c00" : "#174ea6",
-      }}
-    >
-      {role === "owner" ? "Owner" : "Client"}
-    </span>
+        <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+          {/* Role pill */}
+          <span
+            style={{
+              fontSize: 11,
+              padding: "4px 8px",
+              borderRadius: 999,
+              border: "1px solid #ddd",
+              background: role === "owner" ? "#ffe8cc" : "#e8f0fe",
+              color: role === "owner" ? "#8a3c00" : "#174ea6",
+            }}
+          >
+            {role === "owner" ? "Owner" : "Client"}
+          </span>
 
-    {/* Email */}
-    <div style={{ fontSize: 13, color: "#333" }}>
-      {session.user?.email}
-    </div>
+          {/* Email */}
+          <div style={{ fontSize: 13, color: "#333" }}>
+            {session.user?.email}
+          </div>
 
-    {/* Sign out */}
-    <button
-      onClick={() => signOut()}
-      style={{ padding: "6px 10px", borderRadius: 6 }}
-    >
-      Sign out
-    </button>
-  </div>
+          {/* Sign out */}
+          <button
+            onClick={() => signOut()}
+            style={{ padding: "6px 10px", borderRadius: 6 }}
+          >
+            Sign out
+          </button>
+        </div>
       </header>
 
       <main style={{ display: "flex", flex: 1 }}>
@@ -399,7 +406,7 @@ Now respond as GabbarInfo AI.
                   border:
                     chat.id === activeChatId
                       ? "1px solid #d2e3fc"
-                      : "1px solid #eee",
+                      : "1px solid "#eee",
                   background:
                     chat.id === activeChatId ? "#e8f0fe" : "#ffffff",
                   fontSize: 13,
