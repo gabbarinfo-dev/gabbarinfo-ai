@@ -40,7 +40,6 @@ const DEFAULT_MESSAGES = [
 const STORAGE_KEY_CHATS = "gabbarinfo_chats_v1";
 const STORAGE_KEY_ACTIVE = "gabbarinfo_active_chat_v1";
 
-// Helper: create a fresh empty chat
 function createEmptyChat() {
   const now = Date.now();
   return {
@@ -60,12 +59,10 @@ export default function ChatPage() {
   const [input, setInput] = useState("");
   const [loading, setLoading] = useState(false);
 
-  // credits state
   const [credits, setCredits] = useState(null);
   const [unlimited, setUnlimited] = useState(false);
   const [creditsLoading, setCreditsLoading] = useState(true);
 
-  // Load chats on first render
   useEffect(() => {
     try {
       const storedChats = localStorage.getItem(STORAGE_KEY_CHATS);
@@ -74,7 +71,6 @@ export default function ChatPage() {
       if (storedChats) {
         const parsed = JSON.parse(storedChats);
         if (Array.isArray(parsed) && parsed.length) {
-          // If there are more than 5 (old data), keep only last 5
           let trimmed = parsed;
           if (parsed.length > 5) {
             trimmed = parsed
@@ -92,7 +88,6 @@ export default function ChatPage() {
         }
       }
 
-      // No stored chats -> create first one
       const first = createEmptyChat();
       setChats([first]);
       setActiveChatId(first.id);
@@ -104,7 +99,6 @@ export default function ChatPage() {
     }
   }, []);
 
-  // Save chats + active chat to localStorage whenever they change
   useEffect(() => {
     try {
       localStorage.setItem(STORAGE_KEY_CHATS, JSON.stringify(chats));
@@ -116,7 +110,6 @@ export default function ChatPage() {
     }
   }, [chats, activeChatId]);
 
-  // Load credits from /api/credits/get
   useEffect(() => {
     async function fetchCredits() {
       try {
@@ -141,7 +134,6 @@ export default function ChatPage() {
   const activeChat = chats.find((c) => c.id === activeChatId) || null;
   const messages = activeChat?.messages || DEFAULT_MESSAGES;
 
-  // Create a brand new chat (and keep only last 5)
   function handleNewChat() {
     const newChat = createEmptyChat();
     setChats((prev) => {
@@ -158,14 +150,12 @@ export default function ChatPage() {
     setInput("");
   }
 
-  // Send user message -> consume credit (if not owner) -> ask Gemini -> save chat
   async function sendMessage(e) {
     e?.preventDefault();
 
     const userText = input.trim();
     if (!userText || !activeChatId) return;
 
-    // If client and clearly 0 credits → block immediately
     if (role !== "owner" && !unlimited && credits !== null && credits <= 0) {
       setChats((prev) =>
         prev.map((chat) => {
@@ -184,8 +174,6 @@ export default function ChatPage() {
     }
 
     const userMsg = { role: "user", text: userText };
-
-    // Start from current messages of this chat
     const baseMessages = messages || DEFAULT_MESSAGES;
     const updatedMessages = [...baseMessages, userMsg];
 
@@ -193,7 +181,6 @@ export default function ChatPage() {
     setLoading(true);
 
     try {
-      // 1) If not owner → consume a credit first
       if (role !== "owner" && !unlimited) {
         try {
           const consumeRes = await fetch("/api/credits/consume", {
@@ -234,12 +221,9 @@ export default function ChatPage() {
           }
         } catch (err) {
           console.error("Error calling /api/credits/consume:", err);
-          // If this fails, we still let the message go through (better UX),
-          // but we don't change credits state.
         }
       }
 
-      // 2) Build prompt with history
       const history = updatedMessages
         .slice(-30)
         .map((m) => `${m.role === "user" ? "User" : "Assistant"}: ${m.text}`)
@@ -260,7 +244,6 @@ Now respond as GabbarInfo AI.
   (for example "explain only step 1 first" or "go step by step").
 `.trim();
 
-      // 3) Call the backend generate route
       const res = await fetch("/api/generate", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -278,19 +261,16 @@ Now respond as GabbarInfo AI.
 
       const data = await res.json();
       let assistantText = data.text || "";
-
       if (!assistantText) {
         assistantText = "No response from model.";
       }
 
       const assistantMsg = { role: "assistant", text: assistantText };
 
-      // Update chats state: update only the active chat
       setChats((prev) =>
         prev.map((chat) => {
           if (chat.id !== activeChatId) return chat;
 
-          // Determine title: if this is first user message, use it as chat title
           const hadUserBefore = (chat.messages || []).some(
             (m) => m.role === "user"
           );
@@ -337,8 +317,6 @@ Now respond as GabbarInfo AI.
     }
   }
 
-  // ---- UI ----
-
   if (status === "loading") {
     return <div style={{ padding: 40 }}>Checking session…</div>;
   }
@@ -368,18 +346,22 @@ Now respond as GabbarInfo AI.
     <div
       style={{
         fontFamily: "Inter, Arial",
-        height: "100vh",
+        position: "fixed",   // ⬅ pin whole app to viewport
+        inset: 0,
         display: "flex",
         flexDirection: "column",
       }}
     >
       <header
         style={{
+          flexShrink: 0,
           display: "flex",
           justifyContent: "space-between",
           alignItems: "center",
           padding: 18,
           borderBottom: "1px solid #eee",
+          background: "#fff",
+          zIndex: 10,
         }}
       >
         <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
@@ -400,7 +382,6 @@ Now respond as GabbarInfo AI.
         </div>
 
         <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
-          {/* Role + credits pill */}
           <span
             style={{
               fontSize: 11,
@@ -431,8 +412,13 @@ Now respond as GabbarInfo AI.
         </div>
       </header>
 
-      <main style={{ display: "flex", flex: 1 }}>
-        {/* SIDEBAR WITH MULTIPLE CHATS */}
+      <main
+        style={{
+          flex: "1 1 auto",
+          minHeight: 0, // ⬅ allow children to scroll
+          display: "flex",
+        }}
+      >
         <aside
           style={{
             width: 260,
@@ -441,6 +427,7 @@ Now respond as GabbarInfo AI.
             display: "flex",
             flexDirection: "column",
             gap: 10,
+            flexShrink: 0,
           }}
         >
           <div style={{ fontWeight: 600, fontSize: 15 }}>Conversations</div>
@@ -522,14 +509,21 @@ Now respond as GabbarInfo AI.
           </div>
         </aside>
 
-        {/* MAIN CHAT AREA */}
-        <section style={{ flex: 1, display: "flex", flexDirection: "column" }}>
+        <section
+          style={{
+            flex: "1 1 auto",
+            minHeight: 0, // ⬅ important for inner scroll
+            display: "flex",
+            flexDirection: "column",
+          }}
+        >
           <div
             id="chat-area"
             style={{
-              flex: 1,
+              flex: "1 1 auto",
+              minHeight: 0,
               padding: 20,
-              overflow: "auto",
+              overflowY: "auto", // ⬅ only this scrolls
               background: "#fafafa",
             }}
           >
@@ -562,10 +556,12 @@ Now respond as GabbarInfo AI.
           <form
             onSubmit={sendMessage}
             style={{
+              flexShrink: 0,
               display: "flex",
               padding: 12,
               gap: 8,
               borderTop: "1px solid #eee",
+              background: "#fff",
             }}
           >
             <input
@@ -578,7 +574,7 @@ Now respond as GabbarInfo AI.
                 flex: 1,
                 padding: 12,
                 borderRadius: 8,
-                border: "1px solid #ddd",
+                border: "1px solid "#ddd",
               }}
               disabled={loading}
             />
