@@ -3,7 +3,6 @@ import NextAuth from "next-auth";
 import GoogleProvider from "next-auth/providers/google";
 import { createClient } from "@supabase/supabase-js";
 
-// Server-side Supabase client (for auth checks)
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL,
   process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
@@ -20,12 +19,36 @@ export const authOptions = {
   secret: process.env.NEXTAUTH_SECRET,
 
   callbacks: {
-    // 1️⃣ Check if email is allowed, and get role from allowed_users
+    // 1) Only allow emails that exist in allowed_users
     async signIn({ user }) {
-      const email = user?.email?.toLowerCase();
+      const email = user?.email?.toLowerCase().trim();
       if (!email) return false;
 
-      try {
+      const { data, error } = await supabase
+        .from("allowed_users")
+        .select("role")
+        .eq("email", email)
+        .maybeSingle();
+
+      if (error) {
+        console.error("Supabase error in signIn:", error);
+        return false;
+      }
+
+      if (!data) {
+        // not in allowed_users: hard deny
+        return false;
+      }
+
+      return true;
+    },
+
+    // 2) Put role into the JWT
+    async jwt({ token, user }) {
+      // When the user logs in for the first time in a session
+      if (user?.email) {
+        const email = user.email.toLowerCase().trim();
+
         const { data, error } = await supabase
           .from("allowed_users")
           .select("role")
@@ -33,37 +56,26 @@ export const authOptions = {
           .maybeSingle();
 
         if (error) {
-          console.error("allowed_users lookup error:", error);
-          return false;
+          console.error("Supabase error in jwt:", error);
         }
 
-        // No row => not allowed to sign in
-        if (!data) {
-          console.warn("Sign-in blocked, email not in allowed_users:", email);
-          return false;
+        if (data?.role) {
+          const r = data.role.toLowerCase();
+          token.role = r === "owner" ? "owner" : "client";
+        } else {
+          token.role = "client";
         }
-
-        // Attach role to user object so jwt() can read it
-        user.role = data.role || "client";
-        return true;
-      } catch (err) {
-        console.error("signIn callback error:", err);
-        return false;
       }
-    },
 
-    // 2️⃣ Put role into JWT token
-    async jwt({ token, user }) {
-      if (user?.role) {
-        token.role = user.role;
-      }
       return token;
     },
 
-    // 3️⃣ Expose role in session for frontend (index.js already uses this)
+    // 3) Expose role on session.user.role
     async session({ session, token }) {
       if (token?.role) {
         session.user.role = token.role;
+      } else {
+        session.user.role = "client";
       }
       return session;
     },
@@ -75,6 +87,7 @@ export const authOptions = {
 
   pages: {
     signIn: "/auth/signin",
+    // error page can stay default
   },
 };
 
