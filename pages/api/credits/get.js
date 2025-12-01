@@ -1,4 +1,5 @@
 // pages/api/credits/get.js
+
 import { getServerSession } from "next-auth/next";
 import { authOptions } from "../auth/[...nextauth]";
 import { createClient } from "@supabase/supabase-js";
@@ -8,11 +9,10 @@ const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
 );
 
-export default async function handler(req, res) {
-  if (req.method !== "GET") {
-    return res.status(405).json({ error: "Method not allowed" });
-  }
+// Default starting credits for a new client
+const DEFAULT_CREDITS = 30;
 
+export default async function handler(req, res) {
   try {
     const session = await getServerSession(req, res, authOptions);
     if (!session) {
@@ -23,10 +23,10 @@ export default async function handler(req, res) {
     const role = session.user?.role || "client";
 
     if (!email) {
-      return res.status(400).json({ error: "Missing email" });
+      return res.status(400).json({ error: "Missing email in session" });
     }
 
-    // 🔓 Owners = unlimited, no DB checks
+    // Owners: unlimited
     if (role === "owner") {
       return res.status(200).json({
         credits: null,
@@ -34,43 +34,50 @@ export default async function handler(req, res) {
       });
     }
 
-    // 👇 Clients: look up by EMAIL (matches your table structure)
-    let { data, error } = await supabase
+    // Look for credits row by email
+    const { data: creditRow, error } = await supabase
       .from("credits")
-      .select("credits_left")
+      .select("*")
       .eq("email", email)
       .maybeSingle();
 
     if (error) {
-      console.error("SUPABASE get credits error:", error);
+      console.error("Supabase error in /credits/get:", error);
       return res.status(500).json({ error: "Database error" });
     }
 
-    // If no row yet → create with 30 default credits
-    if (!data) {
+    // If no row, auto-create one with DEFAULT_CREDITS
+    if (!creditRow) {
       const { data: inserted, error: insertError } = await supabase
         .from("credits")
         .insert({
           email,
-          credits_left: 30,
+          credits_left: DEFAULT_CREDITS,
         })
-        .select("credits_left")
+        .select()
         .single();
 
       if (insertError) {
-        console.error("SUPABASE insert credits error:", insertError);
-        return res.status(500).json({ error: "Database error" });
+        console.error("Supabase insert error in /credits/get:", insertError);
+        return res.status(500).json({ error: "Failed to create credits row" });
       }
 
-      data = inserted;
+      return res.status(200).json({
+        credits: inserted.credits_left ?? 0,
+        unlimited: false,
+      });
     }
 
+    // Row exists
     return res.status(200).json({
-      credits: data.credits_left ?? 0,
+      credits: creditRow.credits_left ?? 0,
       unlimited: false,
     });
   } catch (err) {
     console.error("CREDITS GET ERROR:", err);
-    return res.status(500).json({ error: "Server error" });
+    return res.status(500).json({
+      error: "Server error",
+      details: err?.message || String(err),
+    });
   }
 }
