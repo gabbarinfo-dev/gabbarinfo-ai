@@ -1,94 +1,192 @@
-// pages/index.js
-"use client";
+// Send user message -> spend credit (if not owner) -> ask Gemini -> save chat
+async function sendMessage(e) {
+  e?.preventDefault();
 
-import { useSession, signIn, signOut } from "next-auth/react";
+  const userText = input.trim();
+  if (!userText || !activeChatId) return;
 
-export default function HomePage() {
-  const { data: session, status } = useSession();
-
-  if (status === "loading") {
-    return <div style={{ padding: 40 }}>Checking session…</div>;
-  }
-
-  // Not logged in → show simple login
-  if (!session) {
-    return (
-      <div style={{ fontFamily: "Inter, Arial", padding: 40 }}>
-        <h1>Welcome to GabbarInfo AI</h1>
-        <p>Please sign in with your approved email to continue.</p>
-        <button
-          onClick={() => signIn("google")}
-          style={{
-            padding: "10px 16px",
-            borderRadius: 6,
-            border: "1px solid #ddd",
-            background: "#fff",
-            cursor: "pointer",
-          }}
-        >
-          Sign in with Google
-        </button>
-      </div>
+  // If client and clearly 0 credits → block immediately
+  if (role !== "owner" && !unlimited && credits !== null && credits <= 0) {
+    setChats((prev) =>
+      prev.map((chat) => {
+        if (chat.id !== activeChatId) return chat;
+        const errMsg = {
+          role: "assistant",
+          text: "You’ve run out of credits. Please contact GabbarInfo to top up.",
+        };
+        return {
+          ...chat,
+          messages: [...(chat.messages || DEFAULT_MESSAGES), errMsg],
+        };
+      })
     );
+    return;
   }
 
-  const { user } = session;
-  const role = user?.role || "client";
-  const credits = typeof user?.credits === "number" ? user.credits : 0;
+  const userMsg = { role: "user", text: userText };
 
-  return (
-    <div
-      style={{
-        fontFamily: "Inter, Arial",
-        minHeight: "100vh",
-        background: "#f5f5f5",
-      }}
-    >
-      <header
-        style={{
-          padding: "16px 24px",
-          borderBottom: "1px solid #ddd",
-          display: "flex",
-          alignItems: "center",
-          justifyContent: "space-between",
-          background: "#fff",
-        }}
-      >
-        <div>
-          <div style={{ fontSize: 20, fontWeight: 600 }}>GabbarInfo AI</div>
-          <div style={{ fontSize: 12, color: "#666", marginTop: 4 }}>
-            Logged in as {user?.email} ({role})
-          </div>
-        </div>
-        <button
-          onClick={() => signOut()}
-          style={{
-            padding: "8px 14px",
-            borderRadius: 6,
-            border: "1px solid #ddd",
-            background: "#fff",
-            cursor: "pointer",
-          }}
-        >
-          Sign out
-        </button>
-      </header>
+  // Start from current messages of this chat
+  const baseMessages = messages || DEFAULT_MESSAGES;
+  const updatedMessages = [...baseMessages, userMsg];
 
-      <main
-        style={{
-          padding: 24,
-        }}
-      >
-        <h2>Your Credits</h2>
-        <p>
-          You currently have <strong>{credits}</strong> credits left.
-        </p>
+  setInput("");
+  setLoading(true);
 
-        <p style={{ marginTop: 20 }}>
-          {/* Placeholder – here you plug in your existing AI UI */}
-          This is where your main GabbarInfo AI interface goes.
-        </p>
-      </main>
-    </div>
-  );
+  try {
+    // 1️⃣ If not owner → spend a credit first
+    if (role !== "owner" && !unlimited) {
+      try {
+        const spendRes = await fetch("/api/credits/spend", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ amount: 1 }),
+        });
+
+        // Not enough credits
+        if (spendRes.status === 402) {
+          const data = await spendRes.json().catch(() => ({}));
+          const left =
+            typeof data.creditsLeft === "number" ? data.creditsLeft : 0;
+
+          const msg =
+            data.error ||
+            "You’ve run out of credits. Please contact GabbarInfo to top up.";
+
+          setCredits(left);
+
+          setChats((prev) =>
+            prev.map((chat) => {
+              if (chat.id !== activeChatId) return chat;
+              const errMsg = { role: "assistant", text: msg };
+              return {
+                ...chat,
+                messages: [
+                  ...(chat.messages || DEFAULT_MESSAGES),
+                  userMsg,
+                  errMsg,
+                ],
+              };
+            })
+          );
+
+          setLoading(false);
+          return;
+        }
+
+        // Other error
+        if (!spendRes.ok) {
+          console.error("Failed to spend credit:", await spendRes.text());
+        } else {
+          const data = await spendRes.json().catch(() => ({}));
+          if (typeof data.creditsLeft === "number") {
+            setCredits(data.creditsLeft);
+          }
+          if (data.unlimited === true) {
+            setUnlimited(true);
+          }
+        }
+      } catch (err) {
+        console.error("Error calling /api/credits/spend:", err);
+        // If this fails, we still let the message go through (better UX)
+      }
+    }
+
+    // 2️⃣ Build prompt with history
+    const history = updatedMessages
+      .slice(-30)
+      .map(
+        (m) => `${m.role === "user" ? "User" : "Assistant"}: ${m.text}`
+      )
+      .join("\n\n");
+
+    const finalPrompt = `
+${SYSTEM_PROMPT}
+
+Conversation so far:
+${history}
+
+Now respond as GabbarInfo AI.
+
+- If the user asks for a plan, framework or "X-step" strategy, give the **entire**
+  plan in this single reply (no stopping at Step 3 or Step 5).
+- Use the business type, city, and budget already mentioned.
+- Only break things into multiple replies when the user clearly asks for that
+  (for example "explain only step 1 first" or "go step by step").
+`.trim();
+
+    // 3️⃣ Call the backend generate route
+    const res = await fetch("/api/generate", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        prompt: finalPrompt,
+        maxOutputTokens: 768,
+        temperature: 0.5,
+      }),
+    });
+
+    if (!res.ok) {
+      const text = await res.text();
+      throw new Error(text || "Server error");
+    }
+
+    const data = await res.json();
+    let assistantText = data.text || "";
+
+    if (!assistantText) {
+      assistantText = "No response from model.";
+    }
+
+    const assistantMsg = { role: "assistant", text: assistantText };
+
+    // Update chats state: update only the active chat
+    setChats((prev) =>
+      prev.map((chat) => {
+        if (chat.id !== activeChatId) return chat;
+
+        // Determine title: if this is first user message, use it as chat title
+        const hadUserBefore = (chat.messages || []).some(
+          (m) => m.role === "user"
+        );
+        let newTitle = chat.title;
+        if (!hadUserBefore) {
+          const snippet =
+            userText.length > 40
+              ? userText.slice(0, 40) + "…"
+              : userText || "New conversation";
+          newTitle = snippet;
+        }
+
+        const finalMessages = [...updatedMessages, assistantMsg];
+
+        return {
+          ...chat,
+          title: newTitle,
+          messages: finalMessages,
+        };
+      })
+    );
+  } catch (err) {
+    console.error(err);
+    const errMsg = {
+      role: "assistant",
+      text: "Error: " + (err.message || "Unknown"),
+    };
+
+    setChats((prev) =>
+      prev.map((chat) => {
+        if (chat.id !== activeChatId) return chat;
+        return {
+          ...chat,
+          messages: [...(chat.messages || DEFAULT_MESSAGES), userMsg, errMsg],
+        };
+      })
+    );
+  } finally {
+    setLoading(false);
+    setTimeout(() => {
+      const el = document.getElementById("chat-area");
+      if (el) el.scrollTop = el.scrollHeight;
+    }, 50);
+  }
 }
