@@ -14,11 +14,12 @@ export default function AdminPage() {
   const [message, setMessage] = useState("");
   const [messageType, setMessageType] = useState("info"); // "success" | "error" | "info"
 
+  // Loading state
   if (status === "loading") {
     return <div style={{ padding: 40 }}>Checking session…</div>;
   }
 
-  // Not logged in
+  // Not logged in at all
   if (!session) {
     return (
       <div style={{ fontFamily: "Inter, Arial", padding: 40 }}>
@@ -70,7 +71,7 @@ export default function AdminPage() {
     setMessageType("info");
 
     try {
-      const res = await fetch("/api/admin/add-user", {
+      const res = await fetch("/api/admin/user", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -90,13 +91,14 @@ export default function AdminPage() {
         return;
       }
 
+      // Success
       setMessage(
         data.message ||
           `User ${data.email} saved as ${data.role}${
             typeof data.credits === "number"
-              ? ` · Credits now: ${data.credits}`
+              ? ` · Credits: ${data.credits}`
               : ""
-          }`
+          }.`
       );
       setMessageType("success");
     } catch (err) {
@@ -127,9 +129,7 @@ export default function AdminPage() {
         }}
       >
         <div>
-          <div style={{ fontSize: 20, fontWeight: 600 }}>
-            GabbarInfo AI — Admin
-          </div>
+          <div style={{ fontSize: 20, fontWeight: 600 }}>GabbarInfo AI — Admin</div>
           <div style={{ fontSize: 12, color: "#666", marginTop: 4 }}>
             Logged in as {session.user?.email} (Owner)
           </div>
@@ -168,13 +168,10 @@ export default function AdminPage() {
           <h2 style={{ marginTop: 0, marginBottom: 8 }}>Add / Update User</h2>
           <p style={{ fontSize: 13, color: "#666", marginBottom: 16 }}>
             Use this form to allow a new client to sign in, set their role, and
-            optionally add credits.
+            optionally add credits. You no longer need to touch Supabase or URLs.
           </p>
 
-          <form
-            onSubmit={handleSubmit}
-            style={{ display: "flex", flexDirection: "column", gap: 14 }}
-          >
+          <form onSubmit={handleSubmit} style={{ display: "flex", flexDirection: "column", gap: 14 }}>
             {/* Email */}
             <div>
               <label
@@ -256,6 +253,12 @@ export default function AdminPage() {
                   fontSize: 14,
                 }}
               />
+              <div style={{ fontSize: 11, color: "#777", marginTop: 4 }}>
+                - For a brand new email, this will create a credits record even if
+                they’ve never logged in. <br />
+                - For an existing client, this amount will be added on top of their
+                current balance.
+              </div>
             </div>
 
             <button
