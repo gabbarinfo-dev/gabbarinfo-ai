@@ -1,5 +1,4 @@
-// pages/api/admin/user.js
-
+// pages/api/admin/add-user.js
 import { getServerSession } from "next-auth/next";
 import { authOptions } from "../auth/[...nextauth]";
 import { createClient } from "@supabase/supabase-js";
@@ -11,120 +10,96 @@ const supabase = createClient(
 
 export default async function handler(req, res) {
   if (req.method !== "POST") {
-    return res.status(405).json({ error: "Method not allowed" });
+    res.setHeader("Allow", "POST");
+    return res.status(405).json({ error: "Method not allowed. Use POST." });
   }
 
   try {
-    // 1️⃣ Check that caller is logged in and is an OWNER
+    // 1️⃣ Must be owner
     const session = await getServerSession(req, res, authOptions);
-
     if (!session || session.user?.role !== "owner") {
-      return res.status(403).json({ error: "Not authorised" });
+      return res.status(403).json({
+        error: "Forbidden. Only owner can manage users.",
+      });
     }
 
-    const { email, role, creditsToAdd } = req.body || {};
+    const { email, role, addCredits } = req.body;
 
-    const normalizedEmail = (email || "").trim().toLowerCase();
-    if (!normalizedEmail) {
-      return res.status(400).json({ error: "Email is required" });
-    }
-
-    const normalizedRole =
-      role === "owner" || role === "Owner" ? "owner" : "client";
-
-    const creditsNumber = parseInt(creditsToAdd, 10) || 0;
-
-    // 2️⃣ Upsert into allowed_users (who can sign in + their role)
-    const { error: allowErr } = await supabase.from("allowed_users").upsert(
-      {
-        email: normalizedEmail,
-        role: normalizedRole,
-      },
-      { onConflict: "email" }
-    );
-
-    if (allowErr) {
-      console.error("Error upserting allowed_users:", allowErr);
+    if (!email || !role) {
       return res
-        .status(500)
-        .json({ error: "Failed to save allowed user", detail: allowErr.message });
+        .status(400)
+        .json({ error: "Email and role are required fields." });
     }
 
-    let finalCredits = null;
+    const cleanEmail = email.trim().toLowerCase();
 
-    // 3️⃣ Add credits (by email) — even if they have NEVER logged in
-    if (creditsNumber > 0) {
-      // Check if row exists
-      const { data: existing, error: selErr } = await supabase
+    // 2️⃣ Insert/update allowed_users table
+    const { error: upsertErr } = await supabase
+      .from("allowed_users")
+      .upsert(
+        { email: cleanEmail, role },
+        { onConflict: "email" }
+      );
+
+    if (upsertErr) {
+      console.error("Allowed users error:", upsertErr);
+      return res.status(500).json({
+        error: "Failed to update allowed users",
+        details: upsertErr.message,
+      });
+    }
+
+    // 3️⃣ Check if they already logged in (profile exists)
+    const { data: profile } = await supabase
+      .from("profiles")
+      .select("id")
+      .eq("email", cleanEmail)
+      .maybeSingle();
+
+    if (!profile) {
+      return res.status(200).json({
+        ok: true,
+        message:
+          "User added/updated, but they have never logged in yet. Credits will be set only after their first login.",
+      });
+    }
+
+    // 4️⃣ Add credits if profile exists
+    if (typeof addCredits === "number" && addCredits > 0) {
+      // Check if credits row exists
+      const { data: creditsRow } = await supabase
         .from("credits")
-        .select("id, credits_left")
-        .eq("email", normalizedEmail)
+        .select("credits_left")
+        .eq("user_id", profile.id)
         .maybeSingle();
 
-      if (selErr) {
-        console.error("Error selecting credits:", selErr);
-        return res.status(500).json({
-          error: "Failed to read credits",
-          detail: selErr.message,
+      if (!creditsRow) {
+        // Create credits row
+        await supabase.from("credits").insert({
+          user_id: profile.id,
+          credits_left: addCredits,
+          email: cleanEmail,
         });
-      }
-
-      if (existing) {
-        // Update: add to existing credits
-        const newAmount = (existing.credits_left || 0) + creditsNumber;
-
-        const { error: updErr } = await supabase
-          .from("credits")
-          .update({ credits_left: newAmount })
-          .eq("id", existing.id);
-
-        if (updErr) {
-          console.error("Error updating credits:", updErr);
-          return res.status(500).json({
-            error: "Failed to update credits",
-            detail: updErr.message,
-          });
-        }
-
-        finalCredits = newAmount;
       } else {
-        // Insert: first-time credits for this email
-        const { data: inserted, error: insErr } = await supabase
+        // Update credits
+        await supabase
           .from("credits")
-          .insert({
-            email: normalizedEmail,
-            credits_left: creditsNumber,
+          .update({
+            credits_left: creditsRow.credits_left + addCredits,
           })
-          .select("credits_left")
-          .single();
-
-        if (insErr) {
-          console.error("Error inserting credits:", insErr);
-          return res.status(500).json({
-            error: "Failed to create credits",
-            detail: insErr.message,
-          });
-        }
-
-        finalCredits = inserted.credits_left;
+          .eq("user_id", profile.id);
       }
     }
 
     return res.status(200).json({
       ok: true,
-      email: normalizedEmail,
-      role: normalizedRole,
-      credits: finalCredits, // may be null if creditsToAdd was 0
-      message:
-        creditsNumber > 0
-          ? `User saved. Total credits for ${normalizedEmail}: ${finalCredits}.`
-          : `User saved with role: ${normalizedRole}.`,
+      message: `User ${cleanEmail} saved. Role=${role}.`,
     });
   } catch (err) {
-    console.error("ADMIN USER ERROR:", err);
+    console.error("ADD-USER ERROR:", err);
     return res.status(500).json({
       error: "Server error",
-      detail: err?.message || String(err),
+      details: err?.message || String(err),
     });
   }
 }
