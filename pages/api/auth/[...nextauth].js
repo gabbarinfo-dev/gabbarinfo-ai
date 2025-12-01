@@ -6,7 +6,8 @@ import { createClient } from "@supabase/supabase-js";
 // Server-side Supabase client (for auth checks)
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL,
-  process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
+  // Use service role key here so we can ALWAYS read allowed_users
+  process.env.SUPABASE_SERVICE_ROLE_KEY
 );
 
 export const authOptions = {
@@ -60,7 +61,7 @@ export const authOptions = {
       return token;
     },
 
-    // 3️⃣ Expose role in session for frontend (index.js already uses this)
+    // 3️⃣ Expose role in session for frontend (admin/index.js uses this)
     async session({ session, token }) {
       if (token?.role) {
         session.user.role = token.role;
@@ -74,6 +75,7 @@ export const authOptions = {
   },
 
   pages: {
+    // Your custom sign-in page (/pages/auth/signin.js)
     signIn: "/auth/signin",
   },
 };
