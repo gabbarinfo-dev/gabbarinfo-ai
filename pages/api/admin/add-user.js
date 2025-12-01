@@ -15,91 +15,99 @@ export default async function handler(req, res) {
   }
 
   try {
-    // 1️⃣ Must be owner
     const session = await getServerSession(req, res, authOptions);
     if (!session || session.user?.role !== "owner") {
-      return res.status(403).json({
-        error: "Forbidden. Only owner can manage users.",
-      });
-    }
-
-    const { email, role, addCredits } = req.body;
-
-    if (!email || !role) {
       return res
-        .status(400)
-        .json({ error: "Email and role are required fields." });
+        .status(403)
+        .json({ error: "Forbidden. Only owner can manage users." });
     }
 
-    const cleanEmail = email.trim().toLowerCase();
+    const { email, role, creditsToAdd } = req.body || {};
+    const normalizedEmail = email?.toLowerCase().trim();
 
-    // 2️⃣ Insert/update allowed_users table
-    const { error: upsertErr } = await supabase
-      .from("allowed_users")
-      .upsert(
-        { email: cleanEmail, role },
-        { onConflict: "email" }
-      );
-
-    if (upsertErr) {
-      console.error("Allowed users error:", upsertErr);
-      return res.status(500).json({
-        error: "Failed to update allowed users",
-        details: upsertErr.message,
-      });
+    if (!normalizedEmail) {
+      return res.status(400).json({ error: "Email is required." });
     }
 
-    // 3️⃣ Check if they already logged in (profile exists)
-    const { data: profile } = await supabase
-      .from("profiles")
-      .select("id")
-      .eq("email", cleanEmail)
-      .maybeSingle();
+    const normalizedRole =
+      (role || "").toLowerCase() === "owner" ? "Owner" : "client";
 
-    if (!profile) {
-      return res.status(200).json({
-        ok: true,
-        message:
-          "User added/updated, but they have never logged in yet. Credits will be set only after their first login.",
-      });
+    // 1) Upsert into allowed_users
+    const { error: upsertError } = await supabase.from("allowed_users").upsert(
+      {
+        email: normalizedEmail,
+        role: normalizedRole,
+      },
+      { onConflict: "email" }
+    );
+
+    if (upsertError) {
+      console.error("add-user allowed_users upsert error:", upsertError);
+      return res
+        .status(500)
+        .json({ error: "Failed to upsert allowed_users entry." });
     }
 
-    // 4️⃣ Add credits if profile exists
-    if (typeof addCredits === "number" && addCredits > 0) {
-      // Check if credits row exists
-      const { data: creditsRow } = await supabase
+    let creditsInfo = null;
+
+    // 2) If creditsToAdd > 0 → call topup logic directly
+    if (typeof creditsToAdd === "number" && creditsToAdd > 0) {
+      const { data, error: selErr } = await supabase
         .from("credits")
         .select("credits_left")
-        .eq("user_id", profile.id)
+        .eq("email", normalizedEmail)
         .maybeSingle();
 
-      if (!creditsRow) {
-        // Create credits row
-        await supabase.from("credits").insert({
-          user_id: profile.id,
-          credits_left: addCredits,
-          email: cleanEmail,
-        });
-      } else {
-        // Update credits
-        await supabase
+      if (selErr) {
+        console.error("add-user credits select error:", selErr);
+        return res
+          .status(500)
+          .json({ error: "User saved, but failed to read credits." });
+      }
+
+      const current = data?.credits_left ?? 0;
+      const newCredits = current + creditsToAdd;
+
+      let upErr;
+      if (data) {
+        const { error } = await supabase
           .from("credits")
           .update({
-            credits_left: creditsRow.credits_left + addCredits,
+            credits_left: newCredits,
+            updated_at: new Date().toISOString(),
           })
-          .eq("user_id", profile.id);
+          .eq("email", normalizedEmail);
+        upErr = error;
+      } else {
+        const { error } = await supabase.from("credits").insert({
+          email: normalizedEmail,
+          credits_left: newCredits,
+        });
+        upErr = error;
       }
+
+      if (upErr) {
+        console.error("add-user credits upsert error:", upErr);
+        return res.status(500).json({
+          error: "User saved, but failed to update credits.",
+        });
+      }
+
+      creditsInfo = { credits: newCredits };
     }
 
     return res.status(200).json({
       ok: true,
-      message: `User ${cleanEmail} saved. Role=${role}.`,
+      email: normalizedEmail,
+      role: normalizedRole,
+      credits: creditsInfo?.credits ?? null,
+      message:
+        creditsInfo?.credits != null
+          ? `User saved. Credits now: ${creditsInfo.credits}.`
+          : "User saved/updated.",
     });
   } catch (err) {
-    console.error("ADD-USER ERROR:", err);
-    return res.status(500).json({
-      error: "Server error",
-      details: err?.message || String(err),
-    });
+    console.error("add-user exception:", err);
+    return res.status(500).json({ error: "Server error" });
   }
 }
