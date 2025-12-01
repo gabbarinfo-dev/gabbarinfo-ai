@@ -343,16 +343,17 @@ Now respond as GabbarInfo AI.
   }
 
   return (
-    <div
-      style={{
-        fontFamily: "Inter, Arial",
-        position: "fixed",   // ⬅ pin whole app to viewport
-        inset: 0,
-        display: "flex",
-        flexDirection: "column",
-      }}
-    >
-      <header
+  <div
+    style={{
+      fontFamily: "Inter, Arial",
+      height: "100vh",
+      maxHeight: "100vh",
+      display: "flex",
+      flexDirection: "column",
+      overflow: "hidden",     // ⬅️ important: stop whole page from scrolling
+    }}
+  >
+    <header
         style={{
           flexShrink: 0,
           display: "flex",
@@ -412,11 +413,11 @@ Now respond as GabbarInfo AI.
         </div>
       </header>
 
-      <main
+       <main
         style={{
-          flex: "1 1 auto",
-          minHeight: 0, // ⬅ allow children to scroll
           display: "flex",
+          flex: 1,
+          minHeight: 0,        // ⬅️ allow inner flex items to scroll instead
         }}
       >
         <aside
@@ -511,19 +512,18 @@ Now respond as GabbarInfo AI.
 
         <section
           style={{
-            flex: "1 1 auto",
-            minHeight: 0, // ⬅ important for inner scroll
+            flex: 1,
             display: "flex",
             flexDirection: "column",
+            minHeight: 0,       // ⬅️ this + chat-area flex:1 makes only messages scroll
           }}
         >
           <div
             id="chat-area"
             style={{
-              flex: "1 1 auto",
-              minHeight: 0,
+              flex: 1,
               padding: 20,
-              overflowY: "auto", // ⬅ only this scrolls
+              overflowY: "auto", // ⬅️ vertical scroll only here
               background: "#fafafa",
             }}
           >
