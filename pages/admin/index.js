@@ -14,12 +14,11 @@ export default function AdminPage() {
   const [message, setMessage] = useState("");
   const [messageType, setMessageType] = useState("info"); // "success" | "error" | "info"
 
-  // While NextAuth is still checking session
   if (status === "loading") {
     return <div style={{ padding: 40 }}>Checking session…</div>;
   }
 
-  // Not logged in at all
+  // Not logged in
   if (!session) {
     return (
       <div style={{ fontFamily: "Inter, Arial", padding: 40 }}>
@@ -71,7 +70,6 @@ export default function AdminPage() {
     setMessageType("info");
 
     try {
-      // IMPORTANT: match your API file: pages/api/admin/add-user.js
       const res = await fetch("/api/admin/add-user", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -92,14 +90,13 @@ export default function AdminPage() {
         return;
       }
 
-      // Success
       setMessage(
         data.message ||
           `User ${data.email} saved as ${data.role}${
             typeof data.credits === "number"
-              ? ` · Credits: ${data.credits}`
+              ? ` · Credits now: ${data.credits}`
               : ""
-          }.`
+          }`
       );
       setMessageType("success");
     } catch (err) {
@@ -171,7 +168,7 @@ export default function AdminPage() {
           <h2 style={{ marginTop: 0, marginBottom: 8 }}>Add / Update User</h2>
           <p style={{ fontSize: 13, color: "#666", marginBottom: 16 }}>
             Use this form to allow a new client to sign in, set their role, and
-            optionally add credits. You no longer need to touch Supabase or URLs.
+            optionally add credits.
           </p>
 
           <form
@@ -259,12 +256,6 @@ export default function AdminPage() {
                   fontSize: 14,
                 }}
               />
-              <div style={{ fontSize: 11, color: "#777", marginTop: 4 }}>
-                - For a brand new email, this will create a credits record even if
-                they’ve never logged in. <br />
-                - For an existing client, this amount will be added on top of their
-                current balance.
-              </div>
             </div>
 
             <button
