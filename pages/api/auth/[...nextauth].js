@@ -8,6 +8,9 @@ const supabase = createClient(
   process.env.SUPABASE_SERVICE_ROLE_KEY
 );
 
+const OWNER_EMAIL =
+  process.env.OWNER_EMAIL && process.env.OWNER_EMAIL.toLowerCase();
+
 export const authOptions = {
   providers: [
     GoogleProvider({
@@ -19,30 +22,47 @@ export const authOptions = {
   secret: process.env.NEXTAUTH_SECRET,
 
   callbacks: {
-    // 1️⃣ On sign-in: check allowed_users, ensure profile & credits exist
+    // 1️⃣ On sign-in: detect owner, then handle normal clients
     async signIn({ user }) {
       const email = user?.email?.toLowerCase();
       if (!email) return false;
 
       try {
-        // Check allowed_users
-        const { data: allowed, error: allowedErr } = await supabase
-          .from("allowed_users")
-          .select("role")
-          .eq("email", email)
-          .maybeSingle();
+        let role = "client";
 
-        if (allowedErr) {
-          console.error("allowed_users lookup error:", allowedErr);
-          return false;
+        // 🔹 If this is the OWNER email, force role = "owner"
+        if (OWNER_EMAIL && email === OWNER_EMAIL) {
+          role = "owner";
+
+          // Make sure there's an allowed_users row with role "owner"
+          const { error: ownerUpsertErr } = await supabase
+            .from("allowed_users")
+            .upsert({ email, role: "owner" }, { onConflict: "email" });
+
+          if (ownerUpsertErr) {
+            console.error("Owner upsert error:", ownerUpsertErr);
+            return false;
+          }
+        } else {
+          // Normal user: look up allowed_users
+          const { data: allowed, error: allowedErr } = await supabase
+            .from("allowed_users")
+            .select("role")
+            .eq("email", email)
+            .maybeSingle();
+
+          if (allowedErr) {
+            console.error("allowed_users lookup error:", allowedErr);
+            return false;
+          }
+
+          if (!allowed) {
+            console.warn("Sign-in blocked, not in allowed_users:", email);
+            return false;
+          }
+
+          role = allowed.role || "client";
         }
-
-        if (!allowed) {
-          console.warn("Sign-in blocked, not in allowed_users:", email);
-          return false;
-        }
-
-        const role = allowed.role || "client";
 
         // Ensure profile exists
         let userId;
@@ -75,7 +95,7 @@ export const authOptions = {
           userId = profile.id;
         }
 
-        // Ensure credits row exists (default 30 for clients, 0 for owner)
+        // Ensure credits row exists
         const { data: creditsRow, error: creditsErr } = await supabase
           .from("credits")
           .select("credits_left")
@@ -90,6 +110,7 @@ export const authOptions = {
         }
 
         if (!creditsRow) {
+          // Default 30 for client, 0 for owner
           const initialCredits = role === "client" ? 30 : 0;
 
           const { data: insertedCredits, error: insertCreditsErr } =
@@ -153,7 +174,7 @@ export const authOptions = {
   },
 
   pages: {
-    signIn: "/auth/signin", // if you have a custom page
+    signIn: "/auth/signin",
   },
 };
 
