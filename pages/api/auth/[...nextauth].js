@@ -1,18 +1,13 @@
 // pages/api/auth/[...nextauth].js
 import NextAuth from "next-auth";
 import GoogleProvider from "next-auth/providers/google";
+import { createClient } from "@supabase/supabase-js";
 
-// Define owners and clients separately
-const ownerEmails = ["ndantare@gmail.com"].map((e) => e.toLowerCase());
-
-const clientEmails = [
-  "aniketakki17@gmail.com",
-  "ankitakasundra92@gmail.com",
-  "doctorsdantare@gmail.com",
-].map((e) => e.toLowerCase());
-
-// All emails allowed to log in
-const allowedEmails = [...ownerEmails, ...clientEmails];
+// Server-side Supabase client (for auth checks)
+const supabase = createClient(
+  process.env.NEXT_PUBLIC_SUPABASE_URL,
+  process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
+);
 
 export const authOptions = {
   providers: [
@@ -25,34 +20,51 @@ export const authOptions = {
   secret: process.env.NEXTAUTH_SECRET,
 
   callbacks: {
+    // 1️⃣ Check if email is allowed, and get role from allowed_users
     async signIn({ user }) {
       const email = user?.email?.toLowerCase();
       if (!email) return false;
 
-      // Only allow defined emails
-      if (!allowedEmails.includes(email)) {
-        return false; // AccessDenied
-      }
+      try {
+        const { data, error } = await supabase
+          .from("allowed_users")
+          .select("role")
+          .eq("email", email)
+          .maybeSingle();
 
-      return true;
+        if (error) {
+          console.error("allowed_users lookup error:", error);
+          return false;
+        }
+
+        // No row => not allowed to sign in
+        if (!data) {
+          console.warn("Sign-in blocked, email not in allowed_users:", email);
+          return false;
+        }
+
+        // Attach role to user object so jwt() can read it
+        user.role = data.role || "client";
+        return true;
+      } catch (err) {
+        console.error("signIn callback error:", err);
+        return false;
+      }
     },
 
+    // 2️⃣ Put role into JWT token
     async jwt({ token, user }) {
-      const email = (user?.email || token?.email || "").toLowerCase();
-
-      if (ownerEmails.includes(email)) {
-        token.role = "owner"; // you
-      } else if (clientEmails.includes(email)) {
-        token.role = "client"; // your clients
-      } else {
-        token.role = "guest";
+      if (user?.role) {
+        token.role = user.role;
       }
-
       return token;
     },
 
+    // 3️⃣ Expose role in session for frontend (index.js already uses this)
     async session({ session, token }) {
-      session.user.role = token.role || "guest";
+      if (token?.role) {
+        session.user.role = token.role;
+      }
       return session;
     },
   },
