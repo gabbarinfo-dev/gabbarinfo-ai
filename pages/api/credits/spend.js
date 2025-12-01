@@ -9,6 +9,8 @@ const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
 );
 
+const DEFAULT_CREDITS = 30;
+
 export default async function handler(req, res) {
   if (req.method !== "POST") {
     return res.status(405).json({ error: "Method not allowed" });
@@ -32,7 +34,7 @@ export default async function handler(req, res) {
       return res.status(400).json({ error: "Invalid amount" });
     }
 
-    // 🔓 Owners never pay credits
+    // Owners have unlimited credits, never decremented
     if (role === "owner") {
       return res.status(200).json({
         ok: true,
@@ -41,7 +43,7 @@ export default async function handler(req, res) {
       });
     }
 
-    // 🔍 Get credit row by email
+    // Fetch credits row by email
     const { data: creditRow, error } = await supabase
       .from("credits")
       .select("*")
@@ -53,30 +55,49 @@ export default async function handler(req, res) {
       return res.status(500).json({ error: "Database error" });
     }
 
+    let currentCredits;
+    let rowId;
+
     if (!creditRow) {
-      // No row for this user – treat as 0 credits
-      return res.status(402).json({
-        error: "No credits for this user",
-        creditsLeft: 0,
-      });
+      // No row yet → create one with DEFAULT_CREDITS first
+      currentCredits = DEFAULT_CREDITS;
+      const { data: inserted, error: insertError } = await supabase
+        .from("credits")
+        .insert({
+          email,
+          credits_left: DEFAULT_CREDITS,
+        })
+        .select()
+        .single();
+
+      if (insertError) {
+        console.error(
+          "Supabase insert error in /credits/spend (auto-create):",
+          insertError
+        );
+        return res.status(500).json({ error: "Failed to create credits row" });
+      }
+
+      rowId = inserted.id;
+    } else {
+      currentCredits = creditRow.credits_left ?? 0;
+      rowId = creditRow.id;
     }
 
-    const current = creditRow.credits_left ?? 0;
-
-    if (current < amount) {
+    if (currentCredits < amount) {
       // Not enough credits
       return res.status(402).json({
         error: "Not enough credits",
-        creditsLeft: current,
+        creditsLeft: currentCredits,
       });
     }
 
-    const newCredits = current - amount;
+    const newCredits = currentCredits - amount;
 
     const { error: updateError } = await supabase
       .from("credits")
       .update({ credits_left: newCredits })
-      .eq("id", creditRow.id);
+      .eq("id", rowId);
 
     if (updateError) {
       console.error("Supabase update error in /credits/spend:", updateError);
