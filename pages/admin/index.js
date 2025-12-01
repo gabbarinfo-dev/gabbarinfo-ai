@@ -9,22 +9,19 @@ export default function AdminPage() {
 
   const [email, setEmail] = useState("");
   const [role, setRole] = useState("client");
-  const [creditsToAdd, setCreditsToAdd] = useState("0");
+  const [credits, setCredits] = useState(0);
   const [loading, setLoading] = useState(false);
-  const [message, setMessage] = useState("");
-  const [messageType, setMessageType] = useState("info"); // "success" | "error" | "info"
+  const [message, setMessage] = useState(null); // { type: "success" | "error", text: string }
 
-  // Loading state
   if (status === "loading") {
     return <div style={{ padding: 40 }}>Checking session…</div>;
   }
 
-  // Not logged in at all
   if (!session) {
     return (
-      <div style={{ fontFamily: "Inter, Arial", padding: 40 }}>
-        <h1>GabbarInfo AI – Admin</h1>
-        <p>You must sign in as the owner to access the admin panel.</p>
+      <div style={{ padding: 40, fontFamily: "Inter, Arial" }}>
+        <h1>GabbarInfo AI — Admin</h1>
+        <p>You must sign in as the owner to use this page.</p>
         <button
           onClick={() => signIn("google")}
           style={{
@@ -41,21 +38,17 @@ export default function AdminPage() {
     );
   }
 
-  // Logged in but not owner
   if (session.user?.role !== "owner") {
     return (
-      <div style={{ fontFamily: "Inter, Arial", padding: 40 }}>
-        <h1>GabbarInfo AI – Admin</h1>
+      <div style={{ padding: 40, fontFamily: "Inter, Arial" }}>
+        <h1>GabbarInfo AI — Admin</h1>
         <p>Access denied. Only owner accounts can use this page.</p>
         <button
           onClick={() => signOut()}
           style={{
+            marginTop: 12,
             padding: "8px 14px",
             borderRadius: 6,
-            border: "1px solid #ddd",
-            background: "#fff",
-            cursor: "pointer",
-            marginTop: 12,
           }}
         >
           Sign out
@@ -66,45 +59,49 @@ export default function AdminPage() {
 
   async function handleSubmit(e) {
     e.preventDefault();
-    setLoading(true);
-    setMessage("");
-    setMessageType("info");
+    setMessage(null);
 
+    const trimmedEmail = email.trim().toLowerCase();
+    if (!trimmedEmail) {
+      setMessage({ type: "error", text: "Please enter an email." });
+      return;
+    }
+
+    setLoading(true);
     try {
-      const res = await fetch("/api/admin/user", {
+      const res = await fetch("/api/admin/add-user", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          email,
+          email: trimmedEmail,
           role,
-          creditsToAdd,
+          creditsToAdd: Number(credits) || 0,
         }),
       });
 
-      const data = await res.json().catch(() => ({}));
+      const data = await res.json();
 
       if (!res.ok) {
-        setMessage(
-          data.error || "Something went wrong while saving the user."
-        );
-        setMessageType("error");
-        return;
+        setMessage({
+          type: "error",
+          text: data.error || "Failed to save user.",
+        });
+      } else {
+        setMessage({
+          type: "success",
+          text:
+            data.message ||
+            `User ${trimmedEmail} saved as ${data.role}. Credits: ${
+              data.credits ?? "unchanged"
+            }.`,
+        });
       }
-
-      // Success
-      setMessage(
-        data.message ||
-          `User ${data.email} saved as ${data.role}${
-            typeof data.credits === "number"
-              ? ` · Credits: ${data.credits}`
-              : ""
-          }.`
-      );
-      setMessageType("success");
     } catch (err) {
-      console.error("ADMIN SUBMIT ERROR:", err);
-      setMessage("Unexpected error while saving user.");
-      setMessageType("error");
+      console.error(err);
+      setMessage({
+        type: "error",
+        text: "Unexpected error while saving user.",
+      });
     } finally {
       setLoading(false);
     }
@@ -115,22 +112,21 @@ export default function AdminPage() {
       style={{
         fontFamily: "Inter, Arial",
         minHeight: "100vh",
-        background: "#f5f5f5",
+        padding: 32,
+        background: "#fafafa",
       }}
     >
       <header
         style={{
-          padding: "16px 24px",
-          borderBottom: "1px solid #ddd",
           display: "flex",
-          alignItems: "center",
           justifyContent: "space-between",
-          background: "#fff",
+          alignItems: "center",
+          marginBottom: 24,
         }}
       >
         <div>
-          <div style={{ fontSize: 20, fontWeight: 600 }}>GabbarInfo AI — Admin</div>
-          <div style={{ fontSize: 12, color: "#666", marginTop: 4 }}>
+          <h1 style={{ margin: 0 }}>GabbarInfo AI — Admin</h1>
+          <div style={{ fontSize: 13, color: "#555" }}>
             Logged in as {session.user?.email} (Owner)
           </div>
         </div>
@@ -148,130 +144,94 @@ export default function AdminPage() {
         </button>
       </header>
 
-      <main
-        style={{
-          padding: 24,
-          display: "flex",
-          justifyContent: "center",
-        }}
-      >
-        <div
+      <main style={{ maxWidth: 520, margin: "0 auto" }}>
+        <section
           style={{
-            width: "100%",
-            maxWidth: 520,
-            background: "#fff",
-            borderRadius: 12,
-            boxShadow: "0 2px 8px rgba(0,0,0,0.05)",
             padding: 24,
+            borderRadius: 12,
+            background: "#fff",
+            boxShadow: "0 1px 3px rgba(0,0,0,0.04)",
           }}
         >
-          <h2 style={{ marginTop: 0, marginBottom: 8 }}>Add / Update User</h2>
-          <p style={{ fontSize: 13, color: "#666", marginBottom: 16 }}>
+          <h2 style={{ marginTop: 0 }}>Add / Update User</h2>
+          <p style={{ fontSize: 13, color: "#555" }}>
             Use this form to allow a new client to sign in, set their role, and
-            optionally add credits. You no longer need to touch Supabase or URLs.
+            optionally add credits. You no longer need to touch Supabase or
+            URLs.
           </p>
 
-          <form onSubmit={handleSubmit} style={{ display: "flex", flexDirection: "column", gap: 14 }}>
-            {/* Email */}
-            <div>
-              <label
-                style={{
-                  display: "block",
-                  fontSize: 13,
-                  marginBottom: 4,
-                  fontWeight: 500,
-                }}
-              >
-                Email (Google account)
-              </label>
-              <input
-                type="email"
-                required
-                value={email}
-                onChange={(e) => setEmail(e.target.value)}
-                placeholder="client@example.com"
-                style={{
-                  width: "100%",
-                  padding: "8px 10px",
-                  borderRadius: 6,
-                  border: "1px solid #ddd",
-                  fontSize: 14,
-                }}
-              />
-            </div>
+          <form onSubmit={handleSubmit} style={{ marginTop: 16 }}>
+            <label style={{ display: "block", fontSize: 13, marginBottom: 4 }}>
+              Email (Google account)
+            </label>
+            <input
+              type="email"
+              value={email}
+              onChange={(e) => setEmail(e.target.value)}
+              placeholder="client@example.com"
+              style={{
+                width: "100%",
+                padding: 10,
+                borderRadius: 6,
+                border: "1px solid #ddd",
+                marginBottom: 12,
+              }}
+              required
+            />
 
-            {/* Role */}
-            <div>
-              <label
-                style={{
-                  display: "block",
-                  fontSize: 13,
-                  marginBottom: 4,
-                  fontWeight: 500,
-                }}
-              >
-                Role
-              </label>
-              <select
-                value={role}
-                onChange={(e) => setRole(e.target.value)}
-                style={{
-                  width: "100%",
-                  padding: "8px 10px",
-                  borderRadius: 6,
-                  border: "1px solid #ddd",
-                  fontSize: 14,
-                }}
-              >
-                <option value="client">Client</option>
-                <option value="owner">Owner</option>
-              </select>
-            </div>
+            <label style={{ display: "block", fontSize: 13, marginBottom: 4 }}>
+              Role
+            </label>
+            <select
+              value={role}
+              onChange={(e) => setRole(e.target.value)}
+              style={{
+                width: "100%",
+                padding: 10,
+                borderRadius: 6,
+                border: "1px solid #ddd",
+                marginBottom: 12,
+              }}
+            >
+              <option value="client">Client</option>
+              <option value="owner">Owner</option>
+            </select>
 
-            {/* Credits */}
-            <div>
-              <label
-                style={{
-                  display: "block",
-                  fontSize: 13,
-                  marginBottom: 4,
-                  fontWeight: 500,
-                }}
-              >
-                Credits to add now
-              </label>
-              <input
-                type="number"
-                min="0"
-                value={creditsToAdd}
-                onChange={(e) => setCreditsToAdd(e.target.value)}
-                style={{
-                  width: "100%",
-                  padding: "8px 10px",
-                  borderRadius: 6,
-                  border: "1px solid #ddd",
-                  fontSize: 14,
-                }}
-              />
-              <div style={{ fontSize: 11, color: "#777", marginTop: 4 }}>
-                - For a brand new email, this will create a credits record even if
-                they’ve never logged in. <br />
-                - For an existing client, this amount will be added on top of their
-                current balance.
-              </div>
+            <label style={{ display: "block", fontSize: 13, marginBottom: 4 }}>
+              Credits to add now
+            </label>
+            <input
+              type="number"
+              min="0"
+              value={credits}
+              onChange={(e) => setCredits(e.target.value)}
+              style={{
+                width: "100%",
+                padding: 10,
+                borderRadius: 6,
+                border: "1px solid #ddd",
+                marginBottom: 16,
+              }}
+            />
+
+            <div style={{ fontSize: 11, color: "#777", marginBottom: 16 }}>
+              – If this is a brand new email that has never logged into
+              GabbarInfo AI, they will be allowed to sign in, and credits will
+              be created immediately.
+              <br />
+              – You can always run this again later to top up.
             </div>
 
             <button
               type="submit"
               disabled={loading}
               style={{
-                marginTop: 8,
-                padding: "10px 14px",
+                width: "100%",
+                padding: "10px 16px",
                 borderRadius: 8,
                 border: "none",
                 background: "#111827",
                 color: "#fff",
-                fontSize: 14,
                 cursor: loading ? "default" : "pointer",
               }}
             >
@@ -283,33 +243,22 @@ export default function AdminPage() {
             <div
               style={{
                 marginTop: 16,
-                padding: "10px 12px",
-                borderRadius: 8,
+                padding: 12,
+                borderRadius: 6,
                 fontSize: 13,
                 background:
-                  messageType === "success"
-                    ? "#ecfdf3"
-                    : messageType === "error"
-                    ? "#fef2f2"
-                    : "#f3f4f6",
-                color:
-                  messageType === "success"
-                    ? "#166534"
-                    : messageType === "error"
-                    ? "#b91c1c"
-                    : "#111827",
+                  message.type === "success" ? "#ecfdf3" : "#fef2f2",
+                color: message.type === "success" ? "#166534" : "#b91c1c",
                 border:
-                  messageType === "success"
+                  message.type === "success"
                     ? "1px solid #bbf7d0"
-                    : messageType === "error"
-                    ? "1px solid #fecaca"
-                    : "1px solid #e5e7eb",
+                    : "1px solid #fecaca",
               }}
             >
-              {message}
+              {message.text}
             </div>
           )}
-        </div>
+        </section>
       </main>
     </div>
   );
