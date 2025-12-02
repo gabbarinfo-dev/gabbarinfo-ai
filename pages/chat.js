@@ -1,3 +1,4 @@
+// pages/chat.js
 "use client";
 
 import { useEffect, useState } from "react";
@@ -63,9 +64,8 @@ export default function ChatPage() {
   const [unlimited, setUnlimited] = useState(false);
   const [creditsLoading, setCreditsLoading] = useState(true);
 
+  // 🔹 simple responsive flag
   const [isMobile, setIsMobile] = useState(false);
-
-  // Detect mobile width
   useEffect(() => {
     if (typeof window === "undefined") return;
     const check = () => setIsMobile(window.innerWidth <= 768);
@@ -363,15 +363,15 @@ Now respond as GabbarInfo AI.
     <div
       style={{
         fontFamily: "Inter, Arial",
-        height: "100vh",
+        height: "100vh",      // 👈 full viewport height
         maxHeight: "100vh",
+        overflow: "hidden",   // 👈 prevents page/body scrolling
         display: "flex",
         flexDirection: "column",
         background: "#fafafa",
-        overflow: "hidden", // page itself never scrolls
       }}
     >
-      {/* HEADER (fixed at top) */}
+      {/* HEADER (always at top) */}
       <header
         style={{
           flexShrink: 0,
@@ -383,6 +383,8 @@ Now respond as GabbarInfo AI.
           paddingRight: isMobile ? 12 : 18,
           borderBottom: "1px solid #eee",
           background: "#fff",
+          position: "sticky",
+          top: 0,
           zIndex: 20,
         }}
       >
@@ -457,17 +459,16 @@ Now respond as GabbarInfo AI.
         </div>
       </header>
 
-      {/* BODY – fills rest of screen, no scroll here */}
+      {/* BODY */}
       <main
         style={{
           flex: 1,
           display: "flex",
           flexDirection: isMobile ? "column" : "row",
-          minHeight: 0,
-          overflow: "hidden",
+          minHeight: 0, // important for inner scrolls
         }}
       >
-        {/* SIDEBAR / CONVERSATIONS (fixed band on mobile, column on desktop) */}
+        {/* SIDEBAR */}
         <aside
           style={{
             width: isMobile ? "100%" : 260,
@@ -566,17 +567,17 @@ Now respond as GabbarInfo AI.
             flex: 1,
             display: "flex",
             flexDirection: "column",
-            minHeight: 0,
+            minHeight: 0, // so the messages area can flex+scroll
           }}
         >
-          {/* MESSAGES AREA (only thing that scrolls) */}
+          {/* MESSAGES AREA (ONLY THING THAT SCROLLS) */}
           <div
             id="chat-area"
             style={{
               flex: 1,
               padding: 12,
               paddingBottom: 8,
-              overflowY: "auto",
+              overflowY: "auto", // 👈 scroll lives here
               background: "#fafafa",
             }}
           >
@@ -607,7 +608,7 @@ Now respond as GabbarInfo AI.
             ))}
           </div>
 
-          {/* INPUT BAR (fixed at bottom of viewport) */}
+          {/* INPUT BAR (FIXED AT BOTTOM) */}
           <form
             onSubmit={sendMessage}
             style={{
@@ -622,7 +623,9 @@ Now respond as GabbarInfo AI.
             <input
               value={input}
               onChange={(e) => setInput(e.target.value)}
-              placeholder={loading ? "Waiting for response..." : "Ask anything..."}
+              placeholder={
+                loading ? "Waiting for response..." : "Ask anything..."
+              }
               style={{
                 flex: 1,
                 padding: 10,
