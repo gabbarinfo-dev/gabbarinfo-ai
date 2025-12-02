@@ -63,6 +63,10 @@ export default function ChatPage() {
   const [unlimited, setUnlimited] = useState(false);
   const [creditsLoading, setCreditsLoading] = useState(true);
 
+  // NEW: track mobile vs desktop for layout
+  const [isMobile, setIsMobile] = useState(false);
+
+  // Load chats from localStorage
   useEffect(() => {
     try {
       const storedChats = localStorage.getItem(STORAGE_KEY_CHATS);
@@ -99,6 +103,7 @@ export default function ChatPage() {
     }
   }, []);
 
+  // Save chats to localStorage
   useEffect(() => {
     try {
       localStorage.setItem(STORAGE_KEY_CHATS, JSON.stringify(chats));
@@ -110,6 +115,7 @@ export default function ChatPage() {
     }
   }, [chats, activeChatId]);
 
+  // Load credits
   useEffect(() => {
     async function fetchCredits() {
       try {
@@ -129,6 +135,19 @@ export default function ChatPage() {
     }
 
     fetchCredits();
+  }, []);
+
+  // NEW: handle mobile layout (stack sidebar + chat on small screens)
+  useEffect(() => {
+    function updateIsMobile() {
+      if (typeof window !== "undefined") {
+        setIsMobile(window.innerWidth < 768);
+      }
+    }
+
+    updateIsMobile();
+    window.addEventListener("resize", updateIsMobile);
+    return () => window.removeEventListener("resize", updateIsMobile);
   }, []);
 
   const activeChat = chats.find((c) => c.id === activeChatId) || null;
@@ -317,6 +336,7 @@ Now respond as GabbarInfo AI.
     }
   }
 
+  // Auth states
   if (status === "loading") {
     return <div style={{ padding: 40 }}>Checking session…</div>;
   }
@@ -342,18 +362,20 @@ Now respond as GabbarInfo AI.
     );
   }
 
+  // MAIN UI
   return (
-  <div
-    style={{
-      fontFamily: "Inter, Arial",
-      height: "100vh",
-      maxHeight: "100vh",
-      display: "flex",
-      flexDirection: "column",
-      overflow: "hidden",     // ⬅️ important: stop whole page from scrolling
-    }}
-  >
-    <header
+    <div
+      style={{
+        fontFamily: "Inter, Arial",
+        height: "100vh",
+        maxHeight: "100vh",
+        display: "flex",
+        flexDirection: "column",
+        overflow: "hidden", // page itself doesn't scroll
+      }}
+    >
+      {/* HEADER (fixed at top) */}
+      <header
         style={{
           flexShrink: 0,
           display: "flex",
@@ -382,7 +404,15 @@ Now respond as GabbarInfo AI.
           </button>
         </div>
 
-        <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+        <div
+          style={{
+            display: "flex",
+            gap: 8,
+            alignItems: "center",
+            flexWrap: "wrap",
+            justifyContent: "flex-end",
+          }}
+        >
           <span
             style={{
               fontSize: 11,
@@ -391,6 +421,7 @@ Now respond as GabbarInfo AI.
               border: "1px solid #ddd",
               background: role === "owner" ? "#ffe8cc" : "#e8f0fe",
               color: role === "owner" ? "#8a3c00" : "#174ea6",
+              whiteSpace: "nowrap",
             }}
           >
             {role === "owner"
@@ -400,30 +431,40 @@ Now respond as GabbarInfo AI.
               : `Client · Credits: ${credits ?? 0}`}
           </span>
 
-          <div style={{ fontSize: 13, color: "#333" }}>
+          <div style={{ fontSize: 13, color: "#333", whiteSpace: "nowrap" }}>
             {session.user?.email}
           </div>
 
           <button
             onClick={() => signOut()}
-            style={{ padding: "6px 10px", borderRadius: 6 }}
+            style={{
+              padding: "6px 10px",
+              borderRadius: 6,
+              border: "1px solid #ddd",
+              background: "#fff",
+              cursor: "pointer",
+            }}
           >
             Sign out
           </button>
         </div>
       </header>
 
-       <main
+      {/* BODY */}
+      <main
         style={{
           display: "flex",
           flex: 1,
-          minHeight: 0,        // ⬅️ allow inner flex items to scroll instead
+          minHeight: 0,
+          flexDirection: isMobile ? "column" : "row",
         }}
       >
+        {/* SIDEBAR */}
         <aside
           style={{
-            width: 260,
-            borderRight: "1px solid #eee",
+            width: isMobile ? "100%" : 260,
+            borderRight: isMobile ? "none" : "1px solid #eee",
+            borderBottom: isMobile ? "1px solid #eee" : "none",
             padding: 12,
             display: "flex",
             flexDirection: "column",
@@ -467,7 +508,7 @@ Now respond as GabbarInfo AI.
               flexDirection: "column",
               gap: 6,
               overflowY: "auto",
-              maxHeight: "60vh",
+              maxHeight: isMobile ? "30vh" : "60vh",
             }}
           >
             {chats.map((chat) => (
@@ -483,8 +524,7 @@ Now respond as GabbarInfo AI.
                     chat.id === activeChatId
                       ? "1px solid #d2e3fc"
                       : "1px solid #eee",
-                  background:
-                    chat.id === activeChatId ? "#e8f0fe" : "#ffffff",
+                  background: chat.id === activeChatId ? "#e8f0fe" : "#ffffff",
                   fontSize: 13,
                   color: "#174ea6",
                   cursor: "pointer",
@@ -510,12 +550,13 @@ Now respond as GabbarInfo AI.
           </div>
         </aside>
 
+        {/* MAIN CHAT AREA */}
         <section
           style={{
             flex: 1,
             display: "flex",
             flexDirection: "column",
-            minHeight: 0,       // ⬅️ this + chat-area flex:1 makes only messages scroll
+            minHeight: 0,
           }}
         >
           <div
@@ -523,7 +564,7 @@ Now respond as GabbarInfo AI.
             style={{
               flex: 1,
               padding: 20,
-              overflowY: "auto", // ⬅️ vertical scroll only here
+              overflowY: "auto",
               background: "#fafafa",
             }}
           >
@@ -581,7 +622,13 @@ Now respond as GabbarInfo AI.
             <button
               type="submit"
               disabled={loading}
-              style={{ padding: "10px 14px", borderRadius: 8 }}
+              style={{
+                padding: "10px 14px",
+                borderRadius: 8,
+                border: "1px solid #ddd",
+                background: "#fff",
+                cursor: "pointer",
+              }}
             >
               {loading ? "Thinking…" : "Send"}
             </button>
