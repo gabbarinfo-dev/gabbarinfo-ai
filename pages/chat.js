@@ -1,3 +1,4 @@
+// pages/chat.js
 "use client";
 
 import { useEffect, useState } from "react";
@@ -62,21 +63,6 @@ export default function ChatPage() {
   const [credits, setCredits] = useState(null);
   const [unlimited, setUnlimited] = useState(false);
   const [creditsLoading, setCreditsLoading] = useState(true);
-
-  // simple mobile flag
-  const [isMobile, setIsMobile] = useState(false);
-
-  useEffect(() => {
-    if (typeof window === "undefined") return;
-
-    const updateIsMobile = () => {
-      setIsMobile(window.innerWidth < 768);
-    };
-
-    updateIsMobile();
-    window.addEventListener("resize", updateIsMobile);
-    return () => window.removeEventListener("resize", updateIsMobile);
-  }, []);
 
   // Load chats from localStorage
   useEffect(() => {
@@ -174,7 +160,6 @@ export default function ChatPage() {
     const userText = input.trim();
     if (!userText || !activeChatId) return;
 
-    // no credits for clients
     if (role !== "owner" && !unlimited && credits !== null && credits <= 0) {
       setChats((prev) =>
         prev.map((chat) => {
@@ -200,7 +185,7 @@ export default function ChatPage() {
     setLoading(true);
 
     try {
-      // consume credit (non-owner)
+      // Consume credit for clients
       if (role !== "owner" && !unlimited) {
         try {
           const consumeRes = await fetch("/api/credits/consume", {
@@ -244,7 +229,6 @@ export default function ChatPage() {
         }
       }
 
-      // build prompt with history
       const history = updatedMessages
         .slice(-30)
         .map((m) => `${m.role === "user" ? "User" : "Assistant"}: ${m.text}`)
@@ -338,7 +322,7 @@ Now respond as GabbarInfo AI.
     }
   }
 
-  // auth states
+  // Auth states
   if (status === "loading") {
     return <div style={{ padding: 40 }}>Checking session…</div>;
   }
@@ -355,8 +339,6 @@ Now respond as GabbarInfo AI.
             borderRadius: 6,
             border: "1px solid #ddd",
             background: "#fff",
-            cursor: "pointer",
-            fontSize: 16,
           }}
         >
           Sign in with Google
@@ -365,7 +347,7 @@ Now respond as GabbarInfo AI.
     );
   }
 
-  // main UI
+  // MAIN CHAT UI
   return (
     <div
       style={{
@@ -375,15 +357,19 @@ Now respond as GabbarInfo AI.
         display: "flex",
         flexDirection: "column",
         overflow: "hidden",
+        background: "#fafafa",
       }}
     >
+      {/* Header */}
       <header
         style={{
           flexShrink: 0,
           display: "flex",
           justifyContent: "space-between",
           alignItems: "center",
-          padding: 18,
+          flexWrap: "wrap",
+          gap: 8,
+          padding: 12,
           borderBottom: "1px solid #eee",
           background: "#fff",
           zIndex: 10,
@@ -398,7 +384,6 @@ Now respond as GabbarInfo AI.
               borderRadius: 6,
               border: "1px solid #ddd",
               fontSize: 12,
-              cursor: "pointer",
               background: "#fafafa",
             }}
           >
@@ -406,7 +391,15 @@ Now respond as GabbarInfo AI.
           </button>
         </div>
 
-        <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+        <div
+          style={{
+            display: "flex",
+            gap: 8,
+            alignItems: "center",
+            flexWrap: "wrap",
+            justifyContent: "flex-end",
+          }}
+        >
           <span
             style={{
               fontSize: 11,
@@ -430,34 +423,34 @@ Now respond as GabbarInfo AI.
 
           <button
             onClick={() => signOut()}
-            style={{ padding: "6px 10px", borderRadius: 6, fontSize: 14 }}
+            style={{ padding: "6px 10px", borderRadius: 6 }}
           >
             Sign out
           </button>
         </div>
       </header>
 
+      {/* Main layout */}
       <main
         style={{
           display: "flex",
           flex: 1,
           minHeight: 0,
-          flexDirection: isMobile ? "column" : "row",
+          overflow: "hidden",
+          width: "100%",
         }}
       >
         {/* Sidebar */}
         <aside
           style={{
-            width: isMobile ? "100%" : 260,
-            borderRight: isMobile ? "none" : "1px solid #eee",
-            borderBottom: isMobile ? "1px solid #eee" : "none",
+            width: 260,
+            maxWidth: "40%",
+            borderRight: "1px solid #eee",
             padding: 12,
             display: "flex",
             flexDirection: "column",
             gap: 10,
             flexShrink: 0,
-            maxHeight: isMobile ? 180 : "none",
-            overflowY: isMobile ? "auto" : "visible",
             background: "#fff",
           }}
         >
@@ -472,7 +465,6 @@ Now respond as GabbarInfo AI.
               borderRadius: 8,
               border: "1px solid #ddd",
               background: "#f5f5f5",
-              cursor: "pointer",
               fontSize: 14,
             }}
           >
@@ -497,7 +489,7 @@ Now respond as GabbarInfo AI.
               flexDirection: "column",
               gap: 6,
               overflowY: "auto",
-              maxHeight: isMobile ? 100 : "60vh",
+              maxHeight: "60vh",
             }}
           >
             {chats.map((chat) => (
@@ -517,7 +509,6 @@ Now respond as GabbarInfo AI.
                     chat.id === activeChatId ? "#e8f0fe" : "#ffffff",
                   fontSize: 13,
                   color: "#174ea6",
-                  cursor: "pointer",
                 }}
               >
                 {chat.title}
@@ -540,12 +531,13 @@ Now respond as GabbarInfo AI.
           </div>
         </aside>
 
-        {/* Main chat area */}
+        {/* Chat area */}
         <section
           style={{
             flex: 1,
             display: "flex",
             flexDirection: "column",
+            minWidth: 0,
             minHeight: 0,
           }}
         >
@@ -598,24 +590,21 @@ Now respond as GabbarInfo AI.
             <input
               value={input}
               onChange={(e) => setInput(e.target.value)}
-              placeholder={loading ? "Waiting for response..." : "Ask anything..."}
+              placeholder={
+                loading ? "Waiting for response..." : "Ask anything..."
+              }
               style={{
                 flex: 1,
                 padding: 12,
                 borderRadius: 8,
-                border: "1px solid #ddd",
-                fontSize: 16, // important for iOS to avoid zoom
+                border: "1px solid "#ddd",
               }}
               disabled={loading}
             />
             <button
               type="submit"
               disabled={loading}
-              style={{
-                padding: "10px 14px",
-                borderRadius: 8,
-                fontSize: 16, // match input size
-              }}
+              style={{ padding: "10px 14px", borderRadius: 8 }}
             >
               {loading ? "Thinking…" : "Send"}
             </button>
