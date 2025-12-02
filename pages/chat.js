@@ -419,7 +419,7 @@ Now respond as GabbarInfo AI.
               fontSize: 11,
               padding: "4px 8px",
               borderRadius: 999,
-              border: "1px solid "#ddd",
+              border: "1px solid #ddd",
               background: role === "owner" ? "#ffe8cc" : "#e8f0fe",
               color: role === "owner" ? "#8a3c00" : "#174ea6",
               whiteSpace: "nowrap",
