@@ -1,4 +1,3 @@
-// pages/chat.js
 "use client";
 
 import { useEffect, useState } from "react";
@@ -63,6 +62,16 @@ export default function ChatPage() {
   const [credits, setCredits] = useState(null);
   const [unlimited, setUnlimited] = useState(false);
   const [creditsLoading, setCreditsLoading] = useState(true);
+
+  // 🔹 simple responsive flag
+  const [isMobile, setIsMobile] = useState(false);
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const check = () => setIsMobile(window.innerWidth <= 768);
+    check();
+    window.addEventListener("resize", check);
+    return () => window.removeEventListener("resize", check);
+  }, []);
 
   // Load chats from localStorage
   useEffect(() => {
@@ -185,7 +194,6 @@ export default function ChatPage() {
     setLoading(true);
 
     try {
-      // Consume credit for clients
       if (role !== "owner" && !unlimited) {
         try {
           const consumeRes = await fetch("/api/credits/consume", {
@@ -322,7 +330,7 @@ Now respond as GabbarInfo AI.
     }
   }
 
-  // Auth states
+  // ---------- AUTH STATES ----------
   if (status === "loading") {
     return <div style={{ padding: 40 }}>Checking session…</div>;
   }
@@ -330,15 +338,17 @@ Now respond as GabbarInfo AI.
   if (!session) {
     return (
       <div style={{ fontFamily: "Inter, Arial", padding: 40 }}>
-        <h1>Sign in to continue</h1>
-        <p>Sign in with Google to use the chat interface.</p>
+        <h1>GabbarInfo AI</h1>
+        <p>Please sign in with Google to use GabbarInfo AI.</p>
         <button
           onClick={() => signIn("google")}
           style={{
+            marginTop: 16,
             padding: "10px 16px",
             borderRadius: 6,
             border: "1px solid #ddd",
             background: "#fff",
+            cursor: "pointer",
           }}
         >
           Sign in with Google
@@ -347,36 +357,37 @@ Now respond as GabbarInfo AI.
     );
   }
 
-  // MAIN CHAT UI
+  // ---------- MAIN CHAT UI ----------
   return (
     <div
       style={{
         fontFamily: "Inter, Arial",
-        height: "100vh",
-        maxHeight: "100vh",
+        minHeight: "100vh",
         display: "flex",
         flexDirection: "column",
-        overflow: "hidden",
         background: "#fafafa",
       }}
     >
-      {/* Header */}
+      {/* HEADER (always at top) */}
       <header
         style={{
           flexShrink: 0,
           display: "flex",
           justifyContent: "space-between",
           alignItems: "center",
-          flexWrap: "wrap",
-          gap: 8,
           padding: 12,
+          paddingLeft: isMobile ? 12 : 18,
+          paddingRight: isMobile ? 12 : 18,
           borderBottom: "1px solid #eee",
           background: "#fff",
-          zIndex: 10,
+          position: "sticky",
+          top: 0,
+          zIndex: 20,
         }}
       >
-        <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
-          <strong>GabbarInfo AI</strong> — Chat
+        <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+          <strong>GabbarInfo AI</strong>
+          <span>— Chat</span>
           <button
             onClick={handleNewChat}
             style={{
@@ -384,6 +395,7 @@ Now respond as GabbarInfo AI.
               borderRadius: 6,
               border: "1px solid #ddd",
               fontSize: 12,
+              cursor: "pointer",
               background: "#fafafa",
             }}
           >
@@ -396,7 +408,7 @@ Now respond as GabbarInfo AI.
             display: "flex",
             gap: 8,
             alignItems: "center",
-            flexWrap: "wrap",
+            maxWidth: isMobile ? "55%" : "none",
             justifyContent: "flex-end",
           }}
         >
@@ -408,6 +420,7 @@ Now respond as GabbarInfo AI.
               border: "1px solid #ddd",
               background: role === "owner" ? "#ffe8cc" : "#e8f0fe",
               color: role === "owner" ? "#8a3c00" : "#174ea6",
+              whiteSpace: "nowrap",
             }}
           >
             {role === "owner"
@@ -417,35 +430,47 @@ Now respond as GabbarInfo AI.
               : `Client · Credits: ${credits ?? 0}`}
           </span>
 
-          <div style={{ fontSize: 13, color: "#333" }}>
+          <div
+            style={{
+              fontSize: 12,
+              color: "#333",
+              overflow: "hidden",
+              textOverflow: "ellipsis",
+              whiteSpace: "nowrap",
+            }}
+          >
             {session.user?.email}
           </div>
 
           <button
             onClick={() => signOut()}
-            style={{ padding: "6px 10px", borderRadius: 6 }}
+            style={{
+              padding: "6px 8px",
+              borderRadius: 6,
+              fontSize: 12,
+              whiteSpace: "nowrap",
+            }}
           >
             Sign out
           </button>
         </div>
       </header>
 
-      {/* Main layout */}
+      {/* BODY */}
       <main
         style={{
-          display: "flex",
           flex: 1,
+          display: "flex",
+          flexDirection: isMobile ? "column" : "row",
           minHeight: 0,
-          overflow: "hidden",
-          width: "100%",
         }}
       >
-        {/* Sidebar */}
+        {/* SIDEBAR */}
         <aside
           style={{
-            width: 260,
-            maxWidth: "40%",
-            borderRight: "1px solid #eee",
+            width: isMobile ? "100%" : 260,
+            borderRight: isMobile ? "none" : "1px solid #eee",
+            borderBottom: isMobile ? "1px solid #eee" : "none",
             padding: 12,
             display: "flex",
             flexDirection: "column",
@@ -465,6 +490,7 @@ Now respond as GabbarInfo AI.
               borderRadius: 8,
               border: "1px solid #ddd",
               background: "#f5f5f5",
+              cursor: "pointer",
               fontSize: 14,
             }}
           >
@@ -489,7 +515,7 @@ Now respond as GabbarInfo AI.
               flexDirection: "column",
               gap: 6,
               overflowY: "auto",
-              maxHeight: "60vh",
+              maxHeight: isMobile ? 160 : "60vh",
             }}
           >
             {chats.map((chat) => (
@@ -509,6 +535,7 @@ Now respond as GabbarInfo AI.
                     chat.id === activeChatId ? "#e8f0fe" : "#ffffff",
                   fontSize: 13,
                   color: "#174ea6",
+                  cursor: "pointer",
                 }}
               >
                 {chat.title}
@@ -531,21 +558,22 @@ Now respond as GabbarInfo AI.
           </div>
         </aside>
 
-        {/* Chat area */}
+        {/* CHAT COLUMN */}
         <section
           style={{
             flex: 1,
             display: "flex",
             flexDirection: "column",
-            minWidth: 0,
             minHeight: 0,
           }}
         >
+          {/* MESSAGES AREA */}
           <div
             id="chat-area"
             style={{
               flex: 1,
-              padding: 20,
+              padding: 12,
+              paddingBottom: 8,
               overflowY: "auto",
               background: "#fafafa",
             }}
@@ -554,34 +582,36 @@ Now respond as GabbarInfo AI.
               <div
                 key={i}
                 style={{
-                  marginBottom: 12,
+                  marginBottom: 10,
                   display: "flex",
                   flexDirection: m.role === "user" ? "row-reverse" : "row",
                 }}
               >
                 <div
                   style={{
-                    maxWidth: "75%",
+                    maxWidth: "80%",
                     background: m.role === "user" ? "#DCF8C6" : "#fff",
-                    padding: 12,
+                    padding: 10,
                     borderRadius: 8,
                     border: "1px solid #e6e6e6",
+                    fontSize: 14,
+                    whiteSpace: "pre-wrap",
+                    wordWrap: "break-word",
                   }}
                 >
-                  <div style={{ fontSize: 14, whiteSpace: "pre-wrap" }}>
-                    {m.text}
-                  </div>
+                  {m.text}
                 </div>
               </div>
             ))}
           </div>
 
+          {/* INPUT BAR */}
           <form
             onSubmit={sendMessage}
             style={{
               flexShrink: 0,
               display: "flex",
-              padding: 12,
+              padding: 10,
               gap: 8,
               borderTop: "1px solid #eee",
               background: "#fff",
@@ -595,16 +625,21 @@ Now respond as GabbarInfo AI.
               }
               style={{
                 flex: 1,
-                padding: 12,
+                padding: 10,
                 borderRadius: 8,
                 border: "1px solid #ddd",
+                fontSize: 14,
               }}
               disabled={loading}
             />
             <button
               type="submit"
               disabled={loading}
-              style={{ padding: "10px 14px", borderRadius: 8 }}
+              style={{
+                padding: "10px 14px",
+                borderRadius: 8,
+                fontSize: 14,
+              }}
             >
               {loading ? "Thinking…" : "Send"}
             </button>
