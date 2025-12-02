@@ -63,8 +63,20 @@ export default function ChatPage() {
   const [unlimited, setUnlimited] = useState(false);
   const [creditsLoading, setCreditsLoading] = useState(true);
 
-  // NEW: track mobile vs desktop for layout
+  // simple mobile flag
   const [isMobile, setIsMobile] = useState(false);
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+
+    const updateIsMobile = () => {
+      setIsMobile(window.innerWidth < 768);
+    };
+
+    updateIsMobile();
+    window.addEventListener("resize", updateIsMobile);
+    return () => window.removeEventListener("resize", updateIsMobile);
+  }, []);
 
   // Load chats from localStorage
   useEffect(() => {
@@ -103,7 +115,7 @@ export default function ChatPage() {
     }
   }, []);
 
-  // Save chats to localStorage
+  // Save chats + active chat
   useEffect(() => {
     try {
       localStorage.setItem(STORAGE_KEY_CHATS, JSON.stringify(chats));
@@ -137,19 +149,6 @@ export default function ChatPage() {
     fetchCredits();
   }, []);
 
-  // NEW: handle mobile layout (stack sidebar + chat on small screens)
-  useEffect(() => {
-    function updateIsMobile() {
-      if (typeof window !== "undefined") {
-        setIsMobile(window.innerWidth < 768);
-      }
-    }
-
-    updateIsMobile();
-    window.addEventListener("resize", updateIsMobile);
-    return () => window.removeEventListener("resize", updateIsMobile);
-  }, []);
-
   const activeChat = chats.find((c) => c.id === activeChatId) || null;
   const messages = activeChat?.messages || DEFAULT_MESSAGES;
 
@@ -175,6 +174,7 @@ export default function ChatPage() {
     const userText = input.trim();
     if (!userText || !activeChatId) return;
 
+    // no credits for clients
     if (role !== "owner" && !unlimited && credits !== null && credits <= 0) {
       setChats((prev) =>
         prev.map((chat) => {
@@ -200,6 +200,7 @@ export default function ChatPage() {
     setLoading(true);
 
     try {
+      // consume credit (non-owner)
       if (role !== "owner" && !unlimited) {
         try {
           const consumeRes = await fetch("/api/credits/consume", {
@@ -243,6 +244,7 @@ export default function ChatPage() {
         }
       }
 
+      // build prompt with history
       const history = updatedMessages
         .slice(-30)
         .map((m) => `${m.role === "user" ? "User" : "Assistant"}: ${m.text}`)
@@ -336,7 +338,7 @@ Now respond as GabbarInfo AI.
     }
   }
 
-  // Auth states
+  // auth states
   if (status === "loading") {
     return <div style={{ padding: 40 }}>Checking session…</div>;
   }
@@ -354,6 +356,7 @@ Now respond as GabbarInfo AI.
             border: "1px solid #ddd",
             background: "#fff",
             cursor: "pointer",
+            fontSize: 16,
           }}
         >
           Sign in with Google
@@ -362,7 +365,7 @@ Now respond as GabbarInfo AI.
     );
   }
 
-  // MAIN UI
+  // main UI
   return (
     <div
       style={{
@@ -371,10 +374,9 @@ Now respond as GabbarInfo AI.
         maxHeight: "100vh",
         display: "flex",
         flexDirection: "column",
-        overflow: "hidden", // page itself doesn't scroll
+        overflow: "hidden",
       }}
     >
-      {/* HEADER (fixed at top) */}
       <header
         style={{
           flexShrink: 0,
@@ -404,15 +406,7 @@ Now respond as GabbarInfo AI.
           </button>
         </div>
 
-        <div
-          style={{
-            display: "flex",
-            gap: 8,
-            alignItems: "center",
-            flexWrap: "wrap",
-            justifyContent: "flex-end",
-          }}
-        >
+        <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
           <span
             style={{
               fontSize: 11,
@@ -421,7 +415,6 @@ Now respond as GabbarInfo AI.
               border: "1px solid #ddd",
               background: role === "owner" ? "#ffe8cc" : "#e8f0fe",
               color: role === "owner" ? "#8a3c00" : "#174ea6",
-              whiteSpace: "nowrap",
             }}
           >
             {role === "owner"
@@ -431,26 +424,19 @@ Now respond as GabbarInfo AI.
               : `Client · Credits: ${credits ?? 0}`}
           </span>
 
-          <div style={{ fontSize: 13, color: "#333", whiteSpace: "nowrap" }}>
+          <div style={{ fontSize: 13, color: "#333" }}>
             {session.user?.email}
           </div>
 
           <button
             onClick={() => signOut()}
-            style={{
-              padding: "6px 10px",
-              borderRadius: 6,
-              border: "1px solid #ddd",
-              background: "#fff",
-              cursor: "pointer",
-            }}
+            style={{ padding: "6px 10px", borderRadius: 6, fontSize: 14 }}
           >
             Sign out
           </button>
         </div>
       </header>
 
-      {/* BODY */}
       <main
         style={{
           display: "flex",
@@ -459,7 +445,7 @@ Now respond as GabbarInfo AI.
           flexDirection: isMobile ? "column" : "row",
         }}
       >
-        {/* SIDEBAR */}
+        {/* Sidebar */}
         <aside
           style={{
             width: isMobile ? "100%" : 260,
@@ -470,6 +456,9 @@ Now respond as GabbarInfo AI.
             flexDirection: "column",
             gap: 10,
             flexShrink: 0,
+            maxHeight: isMobile ? 180 : "none",
+            overflowY: isMobile ? "auto" : "visible",
+            background: "#fff",
           }}
         >
           <div style={{ fontWeight: 600, fontSize: 15 }}>Conversations</div>
@@ -508,7 +497,7 @@ Now respond as GabbarInfo AI.
               flexDirection: "column",
               gap: 6,
               overflowY: "auto",
-              maxHeight: isMobile ? "30vh" : "60vh",
+              maxHeight: isMobile ? 100 : "60vh",
             }}
           >
             {chats.map((chat) => (
@@ -524,7 +513,8 @@ Now respond as GabbarInfo AI.
                     chat.id === activeChatId
                       ? "1px solid #d2e3fc"
                       : "1px solid #eee",
-                  background: chat.id === activeChatId ? "#e8f0fe" : "#ffffff",
+                  background:
+                    chat.id === activeChatId ? "#e8f0fe" : "#ffffff",
                   fontSize: 13,
                   color: "#174ea6",
                   cursor: "pointer",
@@ -550,7 +540,7 @@ Now respond as GabbarInfo AI.
           </div>
         </aside>
 
-        {/* MAIN CHAT AREA */}
+        {/* Main chat area */}
         <section
           style={{
             flex: 1,
@@ -608,14 +598,13 @@ Now respond as GabbarInfo AI.
             <input
               value={input}
               onChange={(e) => setInput(e.target.value)}
-              placeholder={
-                loading ? "Waiting for response..." : "Ask anything..."
-              }
+              placeholder={loading ? "Waiting for response..." : "Ask anything..."}
               style={{
                 flex: 1,
                 padding: 12,
                 borderRadius: 8,
                 border: "1px solid #ddd",
+                fontSize: 16, // important for iOS to avoid zoom
               }}
               disabled={loading}
             />
@@ -625,9 +614,7 @@ Now respond as GabbarInfo AI.
               style={{
                 padding: "10px 14px",
                 borderRadius: 8,
-                border: "1px solid #ddd",
-                background: "#fff",
-                cursor: "pointer",
+                fontSize: 16, // match input size
               }}
             >
               {loading ? "Thinking…" : "Send"}
