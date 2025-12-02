@@ -597,7 +597,7 @@ Now respond as GabbarInfo AI.
                 flex: 1,
                 padding: 12,
                 borderRadius: 8,
-                border: "1px solid "#ddd",
+                border: "1px solid #ddd",
               }}
               disabled={loading}
             />
