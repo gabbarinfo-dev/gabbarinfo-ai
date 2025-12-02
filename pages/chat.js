@@ -64,8 +64,9 @@ export default function ChatPage() {
   const [unlimited, setUnlimited] = useState(false);
   const [creditsLoading, setCreditsLoading] = useState(true);
 
-  // 🔹 simple responsive flag
   const [isMobile, setIsMobile] = useState(false);
+
+  // Detect mobile based on width
   useEffect(() => {
     if (typeof window === "undefined") return;
     const check = () => setIsMobile(window.innerWidth <= 768);
@@ -363,15 +364,15 @@ Now respond as GabbarInfo AI.
     <div
       style={{
         fontFamily: "Inter, Arial",
-        height: "100vh",      // 👈 full viewport height
+        height: "100vh",
         maxHeight: "100vh",
-        overflow: "hidden",   // 👈 prevents page/body scrolling
+        overflow: "hidden", // stop body scroll
         display: "flex",
         flexDirection: "column",
         background: "#fafafa",
       }}
     >
-      {/* HEADER (always at top) */}
+      {/* HEADER */}
       <header
         style={{
           flexShrink: 0,
@@ -383,8 +384,6 @@ Now respond as GabbarInfo AI.
           paddingRight: isMobile ? 12 : 18,
           borderBottom: "1px solid #eee",
           background: "#fff",
-          position: "sticky",
-          top: 0,
           zIndex: 20,
         }}
       >
@@ -420,7 +419,7 @@ Now respond as GabbarInfo AI.
               fontSize: 11,
               padding: "4px 8px",
               borderRadius: 999,
-              border: "1px solid #ddd",
+              border: "1px solid "#ddd",
               background: role === "owner" ? "#ffe8cc" : "#e8f0fe",
               color: role === "owner" ? "#8a3c00" : "#174ea6",
               whiteSpace: "nowrap",
@@ -459,13 +458,13 @@ Now respond as GabbarInfo AI.
         </div>
       </header>
 
-      {/* BODY */}
+      {/* BODY LAYOUT */}
       <main
         style={{
           flex: 1,
           display: "flex",
           flexDirection: isMobile ? "column" : "row",
-          minHeight: 0, // important for inner scrolls
+          minHeight: 0, // allow children to flex & scroll
         }}
       >
         {/* SIDEBAR */}
@@ -480,13 +479,8 @@ Now respond as GabbarInfo AI.
             gap: 10,
             flexShrink: 0,
             background: "#fff",
-            position: isMobile ? "absolute" : "relative",
-            top: isMobile ? "56px" : "initial", // offset for header
-            left: 0,
-            right: 0,
-            zIndex: 10,
-            height: isMobile ? "calc(100vh - 56px)" : "auto", // full height on mobile
-            overflowY: "auto", // scrollable sidebar
+            maxHeight: isMobile ? 180 : "100%", // fixed-ish height on mobile, full on desktop
+            overflow: "hidden",
           }}
         >
           <div style={{ fontWeight: 600, fontSize: 15 }}>Conversations</div>
@@ -519,13 +513,14 @@ Now respond as GabbarInfo AI.
             Recent (max 5)
           </div>
 
+          {/* inner scroll only for conversation list */}
           <div
             style={{
               display: "flex",
               flexDirection: "column",
               gap: 6,
               overflowY: "auto",
-              maxHeight: isMobile ? 160 : "60vh",
+              flex: 1,
             }}
           >
             {chats.map((chat) => (
@@ -553,14 +548,14 @@ Now respond as GabbarInfo AI.
             ))}
           </div>
 
-          <div style={{ flex: 1 }} />
-
           <div
             style={{
               fontSize: 11,
               color: "#aaa",
               borderTop: "1px solid #f0f0f0",
               paddingTop: 8,
+              marginTop: 8,
+              flexShrink: 0,
             }}
           >
             Chats are stored only in your browser. <br />
@@ -574,8 +569,88 @@ Now respond as GabbarInfo AI.
             flex: 1,
             display: "flex",
             flexDirection: "column",
-            minHeight: 0, // so the messages area can flex+scroll
+            minHeight: 0,
           }}
         >
-          {/* MESSAGES AREA (ONLY THING THAT SCROLLS) */}
-         
+          {/* MESSAGES AREA (ONLY SCROLLS AREA) */}
+          <div
+            id="chat-area"
+            style={{
+              flex: 1,
+              padding: 12,
+              paddingBottom: 8,
+              overflowY: "auto",
+              background: "#fafafa",
+            }}
+          >
+            {messages.map((m, i) => (
+              <div
+                key={i}
+                style={{
+                  marginBottom: 10,
+                  display: "flex",
+                  flexDirection: m.role === "user" ? "row-reverse" : "row",
+                }}
+              >
+                <div
+                  style={{
+                    maxWidth: "80%",
+                    background: m.role === "user" ? "#DCF8C6" : "#fff",
+                    padding: 10,
+                    borderRadius: 8,
+                    border: "1px solid #e6e6e6",
+                    fontSize: 14,
+                    whiteSpace: "pre-wrap",
+                    wordWrap: "break-word",
+                  }}
+                >
+                  {m.text}
+                </div>
+              </div>
+            ))}
+          </div>
+
+          {/* INPUT BAR (FIXED AT BOTTOM OF CHAT COLUMN) */}
+          <form
+            onSubmit={sendMessage}
+            style={{
+              flexShrink: 0,
+              display: "flex",
+              padding: 10,
+              gap: 8,
+              borderTop: "1px solid #eee",
+              background: "#fff",
+            }}
+          >
+            <input
+              value={input}
+              onChange={(e) => setInput(e.target.value)}
+              placeholder={
+                loading ? "Waiting for response..." : "Ask anything..."
+              }
+              style={{
+                flex: 1,
+                padding: 10,
+                borderRadius: 8,
+                border: "1px solid #ddd",
+                fontSize: 14,
+              }}
+              disabled={loading}
+            />
+            <button
+              type="submit"
+              disabled={loading}
+              style={{
+                padding: "10px 14px",
+                borderRadius: 8,
+                fontSize: 14,
+              }}
+            >
+              {loading ? "Thinking…" : "Send"}
+            </button>
+          </form>
+        </section>
+      </main>
+    </div>
+  );
+}
