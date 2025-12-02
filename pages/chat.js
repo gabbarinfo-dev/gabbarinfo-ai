@@ -480,6 +480,13 @@ Now respond as GabbarInfo AI.
             gap: 10,
             flexShrink: 0,
             background: "#fff",
+            position: isMobile ? "absolute" : "relative",
+            top: isMobile ? "56px" : "initial", // offset for header
+            left: 0,
+            right: 0,
+            zIndex: 10,
+            height: isMobile ? "calc(100vh - 56px)" : "auto", // full height on mobile
+            overflowY: "auto", // scrollable sidebar
           }}
         >
           <div style={{ fontWeight: 600, fontSize: 15 }}>Conversations</div>
@@ -571,84 +578,4 @@ Now respond as GabbarInfo AI.
           }}
         >
           {/* MESSAGES AREA (ONLY THING THAT SCROLLS) */}
-          <div
-            id="chat-area"
-            style={{
-              flex: 1,
-              padding: 12,
-              paddingBottom: 8,
-              overflowY: "auto", // 👈 scroll lives here
-              background: "#fafafa",
-            }}
-          >
-            {messages.map((m, i) => (
-              <div
-                key={i}
-                style={{
-                  marginBottom: 10,
-                  display: "flex",
-                  flexDirection: m.role === "user" ? "row-reverse" : "row",
-                }}
-              >
-                <div
-                  style={{
-                    maxWidth: "80%",
-                    background: m.role === "user" ? "#DCF8C6" : "#fff",
-                    padding: 10,
-                    borderRadius: 8,
-                    border: "1px solid #e6e6e6",
-                    fontSize: 14,
-                    whiteSpace: "pre-wrap",
-                    wordWrap: "break-word",
-                  }}
-                >
-                  {m.text}
-                </div>
-              </div>
-            ))}
-          </div>
-
-          {/* INPUT BAR (FIXED AT BOTTOM) */}
-          <form
-            onSubmit={sendMessage}
-            style={{
-              flexShrink: 0,
-              display: "flex",
-              padding: 10,
-              gap: 8,
-              borderTop: "1px solid #eee",
-              background: "#fff",
-            }}
-          >
-            <input
-              value={input}
-              onChange={(e) => setInput(e.target.value)}
-              placeholder={
-                loading ? "Waiting for response..." : "Ask anything..."
-              }
-              style={{
-                flex: 1,
-                padding: 10,
-                borderRadius: 8,
-                border: "1px solid #ddd",
-                fontSize: 14,
-              }}
-              disabled={loading}
-            />
-            <button
-              type="submit"
-              disabled={loading}
-              style={{
-                padding: "10px 14px",
-                borderRadius: 8,
-                fontSize: 14,
-              }}
-            >
-              {loading ? "Thinking…" : "Send"}
-            </button>
-          </form>
-        </section>
-      </main>
-    </div>
-  );
-}
+         
