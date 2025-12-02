@@ -64,7 +64,7 @@ export default function ChatPage() {
   const [unlimited, setUnlimited] = useState(false);
   const [creditsLoading, setCreditsLoading] = useState(true);
 
-  // 🔹 simple responsive flag
+  // simple responsive flag – ONLY used for layout decisions (column vs row)
   const [isMobile, setIsMobile] = useState(false);
   useEffect(() => {
     if (typeof window === "undefined") return;
@@ -363,15 +363,18 @@ Now respond as GabbarInfo AI.
     <div
       style={{
         fontFamily: "Inter, Arial",
-        height: "100vh",      // 👈 full viewport height
+        height: "100vh",      // lock to viewport
         maxHeight: "100vh",
-        overflow: "hidden",   // 👈 prevents page/body scrolling
+        width: "100vw",
+        maxWidth: "100vw",
+        overflow: "hidden",   // page/body never scrolls
         display: "flex",
         flexDirection: "column",
         background: "#fafafa",
+        boxSizing: "border-box",
       }}
     >
-      {/* HEADER (always at top) */}
+      {/* HEADER (fixed at top within this container) */}
       <header
         style={{
           flexShrink: 0,
@@ -383,8 +386,6 @@ Now respond as GabbarInfo AI.
           paddingRight: isMobile ? 12 : 18,
           borderBottom: "1px solid #eee",
           background: "#fff",
-          position: "sticky",
-          top: 0,
           zIndex: 20,
         }}
       >
@@ -459,27 +460,31 @@ Now respond as GabbarInfo AI.
         </div>
       </header>
 
-      {/* BODY */}
+      {/* BODY – fills the rest of the viewport; it does NOT scroll */}
       <main
         style={{
           flex: 1,
           display: "flex",
           flexDirection: isMobile ? "column" : "row",
-          minHeight: 0, // important for inner scrolls
+          minHeight: 0,      // so children can flex and scroll
+          overflow: "hidden",
         }}
       >
-        {/* SIDEBAR */}
+        {/* SIDEBAR – fixed in place; internal list scrolls if needed */}
         <aside
           style={{
             width: isMobile ? "100%" : 260,
             borderRight: isMobile ? "none" : "1px solid #eee",
             borderBottom: isMobile ? "1px solid #eee" : "none",
             padding: 12,
+            paddingTop: 10,
+            paddingBottom: 10,
             display: "flex",
             flexDirection: "column",
             gap: 10,
             flexShrink: 0,
             background: "#fff",
+            boxSizing: "border-box",
           }}
         >
           <div style={{ fontWeight: 600, fontSize: 15 }}>Conversations</div>
@@ -518,7 +523,7 @@ Now respond as GabbarInfo AI.
               flexDirection: "column",
               gap: 6,
               overflowY: "auto",
-              maxHeight: isMobile ? 160 : "60vh",
+              maxHeight: isMobile ? 150 : "60vh",
             }}
           >
             {chats.map((chat) => (
@@ -567,17 +572,18 @@ Now respond as GabbarInfo AI.
             flex: 1,
             display: "flex",
             flexDirection: "column",
-            minHeight: 0, // so the messages area can flex+scroll
+            minHeight: 0,
+            boxSizing: "border-box",
           }}
         >
-          {/* MESSAGES AREA (ONLY THING THAT SCROLLS) */}
+          {/* MESSAGES AREA – the ONLY thing that scrolls */}
           <div
             id="chat-area"
             style={{
               flex: 1,
               padding: 12,
               paddingBottom: 8,
-              overflowY: "auto", // 👈 scroll lives here
+              overflowY: "auto",
               background: "#fafafa",
             }}
           >
@@ -608,7 +614,7 @@ Now respond as GabbarInfo AI.
             ))}
           </div>
 
-          {/* INPUT BAR (FIXED AT BOTTOM) */}
+          {/* INPUT BAR – fixed at bottom of the viewport container */}
           <form
             onSubmit={sendMessage}
             style={{
@@ -618,6 +624,7 @@ Now respond as GabbarInfo AI.
               gap: 8,
               borderTop: "1px solid #eee",
               background: "#fff",
+              boxSizing: "border-box",
             }}
           >
             <input
