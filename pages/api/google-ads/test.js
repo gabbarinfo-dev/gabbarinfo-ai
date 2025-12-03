@@ -1,27 +1,25 @@
 // pages/api/google-ads/test.js
 
 export default async function handler(req, res) {
-  if (req.method !== "GET") {
-    return res.status(405).json({ ok: false, error: "Only GET is allowed" });
-  }
-
   try {
     const {
+      GOOGLE_ADS_DEVELOPER_TOKEN,
+      GOOGLE_ADS_LOGIN_CUSTOMER_ID,
+      GOOGLE_ADS_REFRESH_TOKEN,
       GOOGLE_CLIENT_ID,
       GOOGLE_CLIENT_SECRET,
-      GOOGLE_ADS_REFRESH_TOKEN,
-      GOOGLE_ADS_DEVELOPER_TOKEN,
     } = process.env;
 
-    // 1) Check that all env vars are present
+    // 1) Check env vars
     const missing = [];
+    if (!GOOGLE_ADS_DEVELOPER_TOKEN) missing.push("GOOGLE_ADS_DEVELOPER_TOKEN");
+    if (!GOOGLE_ADS_LOGIN_CUSTOMER_ID) missing.push("GOOGLE_ADS_LOGIN_CUSTOMER_ID");
+    if (!GOOGLE_ADS_REFRESH_TOKEN) missing.push("GOOGLE_ADS_REFRESH_TOKEN");
     if (!GOOGLE_CLIENT_ID) missing.push("GOOGLE_CLIENT_ID");
     if (!GOOGLE_CLIENT_SECRET) missing.push("GOOGLE_CLIENT_SECRET");
-    if (!GOOGLE_ADS_REFRESH_TOKEN) missing.push("GOOGLE_ADS_REFRESH_TOKEN");
-    if (!GOOGLE_ADS_DEVELOPER_TOKEN) missing.push("GOOGLE_ADS_DEVELOPER_TOKEN");
 
     if (missing.length > 0) {
-      return res.status(200).json({
+      return res.status(500).json({
         ok: false,
         step: "env_check",
         message: "Some required env vars are missing.",
@@ -29,55 +27,77 @@ export default async function handler(req, res) {
       });
     }
 
-    // 2) Try to exchange the refresh token for an access token
-    const body = new URLSearchParams({
-      client_id: GOOGLE_CLIENT_ID,
-      client_secret: GOOGLE_CLIENT_SECRET,
-      refresh_token: GOOGLE_ADS_REFRESH_TOKEN,
-      grant_type: "refresh_token",
-    });
-
-    const tokenRes = await fetch("https://oauth2.googleapis.com/token", {
+    // 2) Exchange refresh token -> access token
+    const tokenResp = await fetch("https://oauth2.googleapis.com/token", {
       method: "POST",
-      headers: {
-        "Content-Type": "application/x-www-form-urlencoded",
-      },
-      body: body.toString(),
+      headers: { "Content-Type": "application/x-www-form-urlencoded" },
+      body: new URLSearchParams({
+        client_id: GOOGLE_CLIENT_ID,
+        client_secret: GOOGLE_CLIENT_SECRET,
+        refresh_token: GOOGLE_ADS_REFRESH_TOKEN,
+        grant_type: "refresh_token",
+      }),
     });
 
-    const tokenJson = await tokenRes.json();
+    const tokenJson = await tokenResp.json();
 
-    if (!tokenRes.ok) {
-      // Google returned an OAuth error
-      return res.status(200).json({
+    if (!tokenResp.ok) {
+      return res.status(500).json({
         ok: false,
         step: "oauth_exchange",
-        httpStatus: tokenRes.status,
-        googleResponse: tokenJson,
+        message: "Failed to exchange refresh token for access token.",
+        details: tokenJson,
       });
     }
 
-    // 3) Success – we got an access token using your refresh token
+    const accessToken = tokenJson.access_token;
+
+    // 3) Call a SIMPLE Google Ads endpoint:
+    //    GET https://googleads.googleapis.com/v18/customers/{loginCustomerId}
+    const url = `https://googleads.googleapis.com/v18/customers/${GOOGLE_ADS_LOGIN_CUSTOMER_ID}`;
+
+    const adsResp = await fetch(url, {
+      method: "GET",
+      headers: {
+        Authorization: `Bearer ${accessToken}`,
+        "developer-token": GOOGLE_ADS_DEVELOPER_TOKEN,
+        "Content-Type": "application/json",
+      },
+    });
+
+    const rawText = await adsResp.text();
+    let parsed;
+    try {
+      parsed = JSON.parse(rawText);
+    } catch {
+      parsed = rawText;
+    }
+
+    if (!adsResp.ok) {
+      return res.status(500).json({
+        ok: false,
+        step: "google_ads_call",
+        message: "Google Ads API returned an error",
+        status: adsResp.status,
+        body: parsed,
+      });
+    }
+
+    // 4) Success – return what Google Ads sent back
     return res.status(200).json({
       ok: true,
-      step: "oauth_exchange",
-      message: "Successfully exchanged refresh token for access token.",
-      hasDeveloperToken: !!GOOGLE_ADS_DEVELOPER_TOKEN,
-      accessTokenSnippet: tokenJson.access_token
-        ? tokenJson.access_token.slice(0, 15) + "... (hidden)"
-        : null,
-      expiresInSeconds: tokenJson.expires_in,
-      tokenType: tokenJson.token_type,
+      step: "google_ads_call",
+      message: "Successfully called Google Ads API (customers.get).",
+      status: adsResp.status,
+      customer: parsed,
     });
   } catch (err) {
-    console.error("Google Ads test error:", err);
-    return res.status(200).json({
+    console.error("Unexpected error in /api/google-ads/test:", err);
+    return res.status(500).json({
       ok: false,
-      step: "unexpected_error",
-      errorName: err.name,
-      errorMessage: err.message,
-      // stack is useful for debugging but harmless here
-      errorStack: err.stack,
+      step: "unexpected",
+      message: "Unexpected server error",
+      error: String(err?.message || err),
     });
   }
 }
