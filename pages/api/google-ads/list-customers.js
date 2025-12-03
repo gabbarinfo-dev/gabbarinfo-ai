@@ -7,7 +7,7 @@ export default async function handler(req, res) {
     GOOGLE_CLIENT_SECRET,
     GOOGLE_ADS_REFRESH_TOKEN,
     GOOGLE_ADS_DEVELOPER_TOKEN,
-    GOOGLE_ADS_LOGIN_CUSTOMER_ID,
+    // GOOGLE_ADS_LOGIN_CUSTOMER_ID, // NOT needed for this particular call
   } = process.env;
 
   const missing = [];
@@ -15,8 +15,6 @@ export default async function handler(req, res) {
   if (!GOOGLE_CLIENT_SECRET) missing.push("GOOGLE_CLIENT_SECRET");
   if (!GOOGLE_ADS_REFRESH_TOKEN) missing.push("GOOGLE_ADS_REFRESH_TOKEN");
   if (!GOOGLE_ADS_DEVELOPER_TOKEN) missing.push("GOOGLE_ADS_DEVELOPER_TOKEN");
-  // LOGIN_CUSTOMER_ID is recommended but not absolutely required
-  if (!GOOGLE_ADS_LOGIN_CUSTOMER_ID) missing.push("GOOGLE_ADS_LOGIN_CUSTOMER_ID");
 
   if (missing.length > 0) {
     return res.status(500).json({
@@ -64,7 +62,7 @@ export default async function handler(req, res) {
         headers: {
           Authorization: `Bearer ${accessToken}`,
           "developer-token": GOOGLE_ADS_DEVELOPER_TOKEN,
-          "login-customer-id": GOOGLE_ADS_LOGIN_CUSTOMER_ID, // without dashes
+          // IMPORTANT: no login-customer-id / customer-id headers for this method
         },
       }
     );
@@ -81,7 +79,6 @@ export default async function handler(req, res) {
       });
     }
 
-    // 4) Return just the useful bit
     return res.status(200).json({
       ok: true,
       step: "list_customers",
