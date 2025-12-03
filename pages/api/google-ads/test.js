@@ -1,103 +1,74 @@
 // pages/api/google-ads/test.js
 
+import { GoogleAdsApi } from "google-ads-api";
+
 export default async function handler(req, res) {
   try {
     const {
-      GOOGLE_ADS_DEVELOPER_TOKEN,
-      GOOGLE_ADS_LOGIN_CUSTOMER_ID,
-      GOOGLE_ADS_REFRESH_TOKEN,
       GOOGLE_CLIENT_ID,
       GOOGLE_CLIENT_SECRET,
+      GOOGLE_ADS_DEVELOPER_TOKEN,
+      GOOGLE_ADS_REFRESH_TOKEN,
+      GOOGLE_ADS_LOGIN_CUSTOMER_ID,
     } = process.env;
 
-    // 1) Check env vars
     const missing = [];
-    if (!GOOGLE_ADS_DEVELOPER_TOKEN) missing.push("GOOGLE_ADS_DEVELOPER_TOKEN");
-    if (!GOOGLE_ADS_LOGIN_CUSTOMER_ID) missing.push("GOOGLE_ADS_LOGIN_CUSTOMER_ID");
-    if (!GOOGLE_ADS_REFRESH_TOKEN) missing.push("GOOGLE_ADS_REFRESH_TOKEN");
     if (!GOOGLE_CLIENT_ID) missing.push("GOOGLE_CLIENT_ID");
     if (!GOOGLE_CLIENT_SECRET) missing.push("GOOGLE_CLIENT_SECRET");
+    if (!GOOGLE_ADS_DEVELOPER_TOKEN) missing.push("GOOGLE_ADS_DEVELOPER_TOKEN");
+    if (!GOOGLE_ADS_REFRESH_TOKEN) missing.push("GOOGLE_ADS_REFRESH_TOKEN");
+    if (!GOOGLE_ADS_LOGIN_CUSTOMER_ID) missing.push("GOOGLE_ADS_LOGIN_CUSTOMER_ID");
 
     if (missing.length > 0) {
       return res.status(500).json({
         ok: false,
         step: "env_check",
-        message: "Some required env vars are missing.",
+        message: "Missing env vars",
         missing,
       });
     }
 
-    // 2) Exchange refresh token -> access token
-    const tokenResp = await fetch("https://oauth2.googleapis.com/token", {
-      method: "POST",
-      headers: { "Content-Type": "application/x-www-form-urlencoded" },
-      body: new URLSearchParams({
-        client_id: GOOGLE_CLIENT_ID,
-        client_secret: GOOGLE_CLIENT_SECRET,
-        refresh_token: GOOGLE_ADS_REFRESH_TOKEN,
-        grant_type: "refresh_token",
-      }),
+    // 1) Init Google Ads API client
+    const client = new GoogleAdsApi({
+      client_id: GOOGLE_CLIENT_ID,
+      client_secret: GOOGLE_CLIENT_SECRET,
+      developer_token: GOOGLE_ADS_DEVELOPER_TOKEN,
     });
 
-    const tokenJson = await tokenResp.json();
-
-    if (!tokenResp.ok) {
-      return res.status(500).json({
-        ok: false,
-        step: "oauth_exchange",
-        message: "Failed to exchange refresh token for access token.",
-        details: tokenJson,
-      });
-    }
-
-    const accessToken = tokenJson.access_token;
-
-    // 3) Call a SIMPLE Google Ads endpoint:
-    //    GET https://googleads.googleapis.com/v18/customers/{loginCustomerId}
-    const url = `https://googleads.googleapis.com/v18/customers/${GOOGLE_ADS_LOGIN_CUSTOMER_ID}`;
-
-    const adsResp = await fetch(url, {
-      method: "GET",
-      headers: {
-        Authorization: `Bearer ${accessToken}`,
-        "developer-token": GOOGLE_ADS_DEVELOPER_TOKEN,
-        "Content-Type": "application/json",
-      },
+    // 2) Create a Customer instance using your MCC as both login & target
+    const customer = client.Customer({
+      customer_id: GOOGLE_ADS_LOGIN_CUSTOMER_ID,        // "8060320443"
+      login_customer_id: GOOGLE_ADS_LOGIN_CUSTOMER_ID, // same MCC
+      refresh_token: GOOGLE_ADS_REFRESH_TOKEN,
     });
 
-    const rawText = await adsResp.text();
-    let parsed;
-    try {
-      parsed = JSON.parse(rawText);
-    } catch {
-      parsed = rawText;
-    }
+    // 3) Run a very simple GAQL query
+    const query = `
+      SELECT
+        customer.id,
+        customer.descriptive_name,
+        customer.currency_code,
+        customer.time_zone
+      FROM customer
+      LIMIT 1
+    `;
 
-    if (!adsResp.ok) {
-      return res.status(500).json({
-        ok: false,
-        step: "google_ads_call",
-        message: "Google Ads API returned an error",
-        status: adsResp.status,
-        body: parsed,
-      });
-    }
+    const rows = await customer.query(query);
 
-    // 4) Success – return what Google Ads sent back
     return res.status(200).json({
       ok: true,
-      step: "google_ads_call",
-      message: "Successfully called Google Ads API (customers.get).",
-      status: adsResp.status,
-      customer: parsed,
+      step: "gaql_query",
+      message: "Successfully queried Google Ads API via google-ads-api client.",
+      rowCount: rows.length,
+      rows,
     });
   } catch (err) {
-    console.error("Unexpected error in /api/google-ads/test:", err);
+    console.error("Google Ads test error:", err);
     return res.status(500).json({
       ok: false,
-      step: "unexpected",
-      message: "Unexpected server error",
-      error: String(err?.message || err),
+      step: "exception",
+      message: "Unexpected error when calling Google Ads API",
+      error: err.message || String(err),
     });
   }
 }
