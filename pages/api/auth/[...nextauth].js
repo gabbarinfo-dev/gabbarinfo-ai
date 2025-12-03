@@ -13,6 +13,16 @@ export const authOptions = {
     GoogleProvider({
       clientId: process.env.GOOGLE_CLIENT_ID,
       clientSecret: process.env.GOOGLE_CLIENT_SECRET,
+      // 🔹 IMPORTANT: Ask Google for Ads permission + offline tokens
+      authorization: {
+        params: {
+          prompt: "consent",              // always show consent once → get refresh token
+          access_type: "offline",
+          response_type: "code",
+          scope:
+            "openid email profile https://www.googleapis.com/auth/adwords",
+        },
+      },
     }),
   ],
 
@@ -43,9 +53,18 @@ export const authOptions = {
       return true;
     },
 
-    // 2) Put role into the JWT
-    async jwt({ token, user }) {
-      // When the user logs in for the first time in a session
+    // 2) Put role into the JWT + store Google Ads tokens
+    async jwt({ token, user, account }) {
+      // 🔹 When Google sends us tokens (on login/refresh), store them
+      if (account) {
+        token.accessToken = account.access_token || token.accessToken;
+        // refresh_token only comes the first time user grants consent
+        if (account.refresh_token) {
+          token.refreshToken = account.refresh_token;
+        }
+      }
+
+      // 🔹 Existing role logic – unchanged
       if (user?.email) {
         const email = user.email.toLowerCase().trim();
 
@@ -70,13 +89,23 @@ export const authOptions = {
       return token;
     },
 
-    // 3) Expose role on session.user.role
+    // 3) Expose role on session.user.role + expose tokens on session
     async session({ session, token }) {
+      // role (existing behaviour)
       if (token?.role) {
         session.user.role = token.role;
       } else {
         session.user.role = "client";
       }
+
+      // 🔹 Make tokens available to our API routes later
+      if (token?.accessToken) {
+        session.accessToken = token.accessToken;
+      }
+      if (token?.refreshToken) {
+        session.refreshToken = token.refreshToken;
+      }
+
       return session;
     },
   },
