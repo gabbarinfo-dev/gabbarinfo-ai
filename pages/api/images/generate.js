@@ -24,11 +24,11 @@ export default async function handler(req, res) {
         Authorization: `Bearer ${apiKey}`,
       },
       body: JSON.stringify({
-        model: "gpt-image-1",   // DALL·E model
+         model: "gpt-image-1",   // DALL·E model
         prompt,
         n: 1,
         size: "1024x1024",      // you can change to 512x512 if you want
-        response_format: "b64_json",
+        // ⚠️ removed response_format, let API choose default (b64_json)
       }),
     });
 
