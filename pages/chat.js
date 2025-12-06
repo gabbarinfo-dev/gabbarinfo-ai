@@ -400,11 +400,44 @@ export default function ChatPage() {
     setInput("");
   }
 
+  // helper: update active chat with a new assistant message
+  function updateChatWithAssistantMessage(userText, updatedMessages, assistantMsg) {
+    setChats((prev) =>
+      prev.map((chat) => {
+        if (chat.id !== activeChatId) return chat;
+
+        const hadUserBefore = (chat.messages || []).some(
+          (m) => m.role === "user"
+        );
+        let newTitle = chat.title;
+        if (!hadUserBefore) {
+          const snippet =
+            userText.length > 40
+              ? userText.slice(0, 40) + "…"
+              : userText || "New conversation";
+          newTitle = snippet;
+        }
+
+        const finalMessages = [...updatedMessages, assistantMsg];
+
+        return {
+          ...chat,
+          title: newTitle,
+          messages: finalMessages,
+        };
+      })
+    );
+  }
+
   async function sendMessage(e) {
     e?.preventDefault();
 
     const userText = input.trim();
     if (!userText || !activeChatId) return;
+
+    // detect /image commands
+    const isImagePrompt = userText.toLowerCase().startsWith("/image ");
+    const imagePrompt = isImagePrompt ? userText.slice(7).trim() : "";
 
     if (role !== "owner" && !unlimited && credits !== null && credits <= 0) {
       setChats((prev) =>
@@ -431,6 +464,7 @@ export default function ChatPage() {
     setLoading(true);
 
     try {
+      // credit consumption (unchanged)
       if (role !== "owner" && !unlimited) {
         try {
           const consumeRes = await fetch("/api/credits/consume", {
@@ -474,6 +508,61 @@ export default function ChatPage() {
         }
       }
 
+      // 🔹 IMAGE BRANCH: handle /image prompts via /api/images/generate
+      if (isImagePrompt) {
+        try {
+          const res = await fetch("/api/images/generate", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              prompt: imagePrompt || userText,
+            }),
+          });
+
+          const data = await res.json().catch(() => ({}));
+          console.log("IMAGE API response:", data);
+
+          if (!res.ok || !data.ok || !data.imageBase64) {
+            const errorText =
+              data.error || "Failed to generate image. Please try again.";
+            const errMsg = {
+              role: "assistant",
+              text: errorText,
+            };
+            updateChatWithAssistantMessage(userText, updatedMessages, errMsg);
+          } else {
+            const imageUrl = "data:image/jpeg;base64," + data.imageBase64;
+            const assistantMsg = {
+              role: "assistant",
+              text: "[Image generated]",
+              imageUrl,
+            };
+            updateChatWithAssistantMessage(
+              userText,
+              updatedMessages,
+              assistantMsg
+            );
+          }
+        } catch (err) {
+          console.error("IMAGE GENERATION ERROR:", err);
+          const errMsg = {
+            role: "assistant",
+            text: "Error while generating image. Please try again.",
+          };
+          updateChatWithAssistantMessage(userText, updatedMessages, errMsg);
+        } finally {
+          setLoading(false);
+          setTimeout(() => {
+            const el = document.getElementById("chat-area");
+            if (el) el.scrollTop = el.scrollHeight;
+          }, 50);
+        }
+
+        // IMPORTANT: stop here, do not call Gemini for /image messages
+        return;
+      }
+
+      // 🔹 TEXT BRANCH (Gemini) – unchanged logic
       const history = updatedMessages
         .slice(-30)
         .map((m) => `${m.role === "user" ? "User" : "Assistant"}: ${m.text}`)
@@ -517,31 +606,7 @@ Now respond as GabbarInfo AI.
 
       const assistantMsg = { role: "assistant", text: assistantText };
 
-      setChats((prev) =>
-        prev.map((chat) => {
-          if (chat.id !== activeChatId) return chat;
-
-          const hadUserBefore = (chat.messages || []).some(
-            (m) => m.role === "user"
-          );
-          let newTitle = chat.title;
-          if (!hadUserBefore) {
-            const snippet =
-              userText.length > 40
-                ? userText.slice(0, 40) + "…"
-                : userText || "New conversation";
-            newTitle = snippet;
-          }
-
-          const finalMessages = [...updatedMessages, assistantMsg];
-
-          return {
-            ...chat,
-            title: newTitle,
-            messages: finalMessages,
-          };
-        })
-      );
+      updateChatWithAssistantMessage(userText, updatedMessages, assistantMsg);
     } catch (err) {
       console.error(err);
       const errMsg = {
@@ -599,11 +664,11 @@ Now respond as GabbarInfo AI.
     <div
       style={{
         fontFamily: "Inter, Arial",
-        height: "100vh",      // lock to viewport
+        height: "100vh", // lock to viewport
         maxHeight: "100vh",
         width: "100vw",
         maxWidth: "100vw",
-        overflow: "hidden",   // page/body never scrolls
+        overflow: "hidden", // page/body never scrolls
         display: "flex",
         flexDirection: "column",
         background: "#fafafa",
@@ -702,7 +767,7 @@ Now respond as GabbarInfo AI.
           flex: 1,
           display: "flex",
           flexDirection: isMobile ? "column" : "row",
-          minHeight: 0,      // so children can flex and scroll
+          minHeight: 0, // so children can flex and scroll
           overflow: "hidden",
         }}
       >
@@ -844,7 +909,24 @@ Now respond as GabbarInfo AI.
                     wordWrap: "break-word",
                   }}
                 >
-                  {m.text}
+                  {m.imageUrl ? (
+                    <>
+                      <img
+                        src={m.imageUrl}
+                        alt="Generated creative"
+                        style={{
+                          maxWidth: "100%",
+                          borderRadius: 6,
+                          display: "block",
+                        }}
+                      />
+                      {m.text && (
+                        <div style={{ marginTop: 6 }}>{m.text}</div>
+                      )}
+                    </>
+                  ) : (
+                    m.text
+                  )}
                 </div>
               </div>
             ))}
