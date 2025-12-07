@@ -287,6 +287,14 @@ function createEmptyChat() {
   };
 }
 
+const AGENT_MODE_LABELS = {
+  generic: "Generic strategy",
+  google_ads_plan: "Google Ads – Campaign planner",
+  meta_ads_plan: "Meta Ads – Creative planner",
+  social_plan: "Social media calendar",
+  seo_blog: "SEO / Blog planner",
+};
+
 export default function ChatPage() {
   const { data: session, status } = useSession();
   const role = session?.user?.role || "client";
@@ -306,6 +314,13 @@ export default function ChatPage() {
   // image modal state
   const [isImageModalOpen, setIsImageModalOpen] = useState(false);
   const [imagePrompt, setImagePrompt] = useState("");
+
+  // AGENT PANEL STATE
+  const [isAgentPanelOpen, setIsAgentPanelOpen] = useState(false);
+  const [agentMode, setAgentMode] = useState("generic");
+  const [agentInstruction, setAgentInstruction] = useState("");
+  const [agentLoading, setAgentLoading] = useState(false);
+  const [agentError, setAgentError] = useState("");
 
   useEffect(() => {
     if (typeof window === "undefined") return;
@@ -406,7 +421,11 @@ export default function ChatPage() {
   }
 
   // helper: update active chat with a new assistant message
-  function updateChatWithAssistantMessage(userText, updatedMessages, assistantMsg) {
+  function updateChatWithAssistantMessage(
+    userText,
+    updatedMessages,
+    assistantMsg
+  ) {
     setChats((prev) =>
       prev.map((chat) => {
         if (chat.id !== activeChatId) return chat;
@@ -459,7 +478,7 @@ export default function ChatPage() {
 
     // detect /image commands
     const isImagePrompt = userText.toLowerCase().startsWith("/image ");
-    const imagePrompt = isImagePrompt ? userText.slice(7).trim() : "";
+    const imagePromptLocal = isImagePrompt ? userText.slice(7).trim() : "";
 
     if (role !== "owner" && !unlimited && credits !== null && credits <= 0) {
       setChats((prev) =>
@@ -508,7 +527,11 @@ export default function ChatPage() {
                 const errMsg = { role: "assistant", text: msg };
                 return {
                   ...chat,
-                  messages: [...(chat.messages || DEFAULT_MESSAGES), userMsg, errMsg],
+                  messages: [
+                    ...(chat.messages || DEFAULT_MESSAGES),
+                    userMsg,
+                    errMsg,
+                  ],
                 };
               })
             );
@@ -537,7 +560,7 @@ export default function ChatPage() {
             method: "POST",
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({
-              prompt: imagePrompt || userText,
+              prompt: imagePromptLocal || userText,
             }),
           });
 
@@ -641,7 +664,11 @@ Now respond as GabbarInfo AI.
           if (chat.id !== activeChatId) return chat;
           return {
             ...chat,
-            messages: [...(chat.messages || DEFAULT_MESSAGES), userMsg, errMsg],
+            messages: [
+              ...(chat.messages || DEFAULT_MESSAGES),
+              userMsg,
+              errMsg,
+            ],
           };
         })
       );
@@ -651,6 +678,108 @@ Now respond as GabbarInfo AI.
         const el = document.getElementById("chat-area");
         if (el) el.scrollTop = el.scrollHeight;
       }, 50);
+    }
+  }
+
+  // ---------- AGENT RUNNER ----------
+  async function runAgent(e) {
+    e?.preventDefault();
+    setAgentError("");
+
+    const instruction = agentInstruction.trim();
+    if (!instruction || !activeChatId) return;
+
+    if (role !== "owner" && !unlimited && credits !== null && credits <= 0) {
+      setAgentError(
+        "You’ve run out of credits. Please contact GabbarInfo to top up."
+      );
+      return;
+    }
+
+    const modeLabel = AGENT_MODE_LABELS[agentMode] || "Agent request";
+
+    // Log the agent request as a user-style message for context
+    const agentUserText = `[Agent • ${modeLabel}] ${instruction}`;
+    const userMsg = { role: "user", text: agentUserText };
+    const baseMessages = messages || DEFAULT_MESSAGES;
+    const updatedMessages = [...baseMessages, userMsg];
+
+    setAgentLoading(true);
+
+    try {
+      // we do NOT consume separate credits here yet (to keep logic simple),
+      // since your main chat already has credit control. You can add it later if needed.
+
+      const historyForAgent = baseMessages
+        .slice(-20)
+        .map((m) => ({ role: m.role, text: m.text }));
+
+      const res = await fetch("/api/agent/execute", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          instruction,
+          mode: agentMode,
+          includeJson: false,
+          chatHistory: historyForAgent,
+          extraContext: "",
+        }),
+      });
+
+      if (!res.ok) {
+        const txt = await res.text();
+        throw new Error(txt || "Agent server error");
+      }
+
+      const data = await res.json();
+
+      let assistantText = data.text || "";
+      if (!assistantText) {
+        assistantText =
+          "Agent did not return any text. Please try again with a clearer instruction.";
+      }
+
+      const assistantMsg = {
+        role: "assistant",
+        text: assistantText,
+      };
+
+      // Push both the agent "user" message and assistant reply into the chat
+      setChats((prev) =>
+        prev.map((chat) => {
+          if (chat.id !== activeChatId) return chat;
+
+          const hadUserBefore = (chat.messages || []).some(
+            (m) => m.role === "user"
+          );
+          let newTitle = chat.title;
+          if (!hadUserBefore) {
+            const snippet =
+              agentUserText.length > 40
+                ? agentUserText.slice(0, 40) + "…"
+                : agentUserText || "New conversation";
+            newTitle = snippet;
+          }
+
+          return {
+            ...chat,
+            title: newTitle,
+            messages: [...(chat.messages || DEFAULT_MESSAGES), userMsg, assistantMsg],
+          };
+        })
+      );
+
+      setAgentInstruction("");
+      setIsAgentPanelOpen(true);
+      setTimeout(() => {
+        const el = document.getElementById("chat-area");
+        if (el) el.scrollTop = el.scrollHeight;
+      }, 50);
+    } catch (err) {
+      console.error("Agent error:", err);
+      setAgentError(err.message || "Agent execution failed.");
+    } finally {
+      setAgentLoading(false);
     }
   }
 
@@ -695,6 +824,7 @@ Now respond as GabbarInfo AI.
         flexDirection: "column",
         background: "#fafafa",
         boxSizing: "border-box",
+        position: "relative",
       }}
     >
       {/* HEADER (fixed at top within this container) */}
@@ -983,6 +1113,24 @@ Now respond as GabbarInfo AI.
               disabled={loading}
             />
 
+            {/* Agent button */}
+            <button
+              type="button"
+              disabled={loading}
+              onClick={() => setIsAgentPanelOpen((prev) => !prev)}
+              style={{
+                padding: "10px 10px",
+                borderRadius: 8,
+                fontSize: 14,
+                border: "1px solid #ddd",
+                background: isAgentPanelOpen ? "#e8f0fe" : "#f5f5f5",
+                cursor: loading ? "default" : "pointer",
+                whiteSpace: "nowrap",
+              }}
+            >
+              🧠 Agent
+            </button>
+
             {/* Create Image button */}
             <button
               type="button"
@@ -1018,6 +1166,171 @@ Now respond as GabbarInfo AI.
           </form>
         </section>
       </main>
+
+      {/* RIGHT-SIDE AGENT PANEL (drawer style) */}
+      {isAgentPanelOpen && (
+        <div
+          style={{
+            position: "fixed",
+            top: 60,
+            // header height approx
+            right: 0,
+            bottom: 0,
+            width: isMobile ? "100%" : 320,
+            background: "#ffffff",
+            borderLeft: "1px solid #e0e0e0",
+            boxShadow: "0 0 12px rgba(0,0,0,0.08)",
+            zIndex: 40,
+            display: "flex",
+            flexDirection: "column",
+            padding: 12,
+            boxSizing: "border-box",
+          }}
+        >
+          <div
+            style={{
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "space-between",
+              marginBottom: 8,
+            }}
+          >
+            <div>
+              <div style={{ fontWeight: 600, fontSize: 14 }}>Agent panel</div>
+              <div
+                style={{ fontSize: 11, color: "#777", marginTop: 2 }}
+              >
+                Plan campaigns, creatives, SEO & more.
+              </div>
+            </div>
+            <button
+              type="button"
+              onClick={() => setIsAgentPanelOpen(false)}
+              style={{
+                border: "1px solid #ddd",
+                borderRadius: 999,
+                padding: "4px 8px",
+                fontSize: 12,
+                cursor: "pointer",
+                background: "#f5f5f5",
+              }}
+            >
+              ✕
+            </button>
+          </div>
+
+          {/* Mode selector */}
+          <label
+            style={{
+              fontSize: 12,
+              fontWeight: 500,
+              marginBottom: 4,
+              display: "block",
+            }}
+          >
+            Mode
+          </label>
+          <select
+            value={agentMode}
+            onChange={(e) => setAgentMode(e.target.value)}
+            style={{
+              width: "100%",
+              padding: 8,
+              borderRadius: 8,
+              border: "1px solid #ddd",
+              fontSize: 13,
+              marginBottom: 8,
+            }}
+          >
+            <option value="generic">Generic strategy (mixed)</option>
+            <option value="google_ads_plan">
+              Google Ads – Campaign planner
+            </option>
+            <option value="meta_ads_plan">
+              Meta Ads – Creative planner
+            </option>
+            <option value="social_plan">Social Media calendar</option>
+            <option value="seo_blog">SEO / Blog planner</option>
+          </select>
+
+          {/* Instruction textarea */}
+          <label
+            style={{
+              fontSize: 12,
+              fontWeight: 500,
+              marginBottom: 4,
+              marginTop: 4,
+              display: "block",
+            }}
+          >
+            Instruction for Agent
+          </label>
+          <textarea
+            value={agentInstruction}
+            onChange={(e) => setAgentInstruction(e.target.value)}
+            rows={5}
+            placeholder="Example: Create a full Google Search campaign plan for a dentist in Ahmedabad with Rs 700/day budget, including suggested keywords, ad groups and example ad copies."
+            style={{
+              flexShrink: 0,
+              resize: "vertical",
+              padding: 8,
+              borderRadius: 8,
+              border: "1px solid #ddd",
+              fontSize: 13,
+              minHeight: 90,
+            }}
+          />
+
+          {agentError && (
+            <div
+              style={{
+                marginTop: 6,
+                fontSize: 11,
+                color: "#b3261e",
+                background: "#fdecea",
+                borderRadius: 6,
+                padding: "6px 8px",
+              }}
+            >
+              {agentError}
+            </div>
+          )}
+
+          <div style={{ flex: 1 }} />
+
+          <button
+            type="button"
+            onClick={runAgent}
+            disabled={agentLoading}
+            style={{
+              marginTop: 10,
+              width: "100%",
+              padding: "10px 12px",
+              borderRadius: 8,
+              fontSize: 14,
+              border: "none",
+              background: "#174ea6",
+              color: "#fff",
+              cursor: agentLoading ? "default" : "pointer",
+            }}
+          >
+            {agentLoading ? "Running Agent…" : "Run Agent"}
+          </button>
+
+          <div
+            style={{
+              marginTop: 6,
+              fontSize: 11,
+              color: "#777",
+              lineHeight: 1.4,
+            }}
+          >
+            Tip: Use Agent for bigger tasks like full campaign plans, JSON
+            payloads, social calendars or SEO briefs. The answer will appear in
+            the main chat.
+          </div>
+        </div>
+      )}
 
       {/* IMAGE PROMPT MODAL */}
       {isImageModalOpen && (
@@ -1056,7 +1369,8 @@ Now respond as GabbarInfo AI.
                 color: "#555",
               }}
             >
-              Describe the image you want. I’ll generate a DALL·E creative for you.
+              Describe the image you want. I’ll generate a DALL·E creative for
+              you.
             </p>
 
             <form
