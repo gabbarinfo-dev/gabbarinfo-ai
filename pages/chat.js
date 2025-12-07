@@ -797,7 +797,7 @@ Now respond as GabbarInfo AI.
         <aside
           style={{
             width: isMobile ? "100%" : 260,
-            borderRight: isMobile ? "none" : "1px solid "#eee",
+            borderRight: isMobile ? "none" : "1px solid #eee",
             borderBottom: isMobile ? "1px solid #eee" : "none",
             padding: 12,
             paddingTop: 10,
