@@ -287,14 +287,6 @@ function createEmptyChat() {
   };
 }
 
-const AGENT_MODE_LABELS = {
-  generic: "Generic strategy",
-  google_ads_plan: "Google Ads – Campaign planner",
-  meta_ads_plan: "Meta Ads – Creative planner",
-  social_plan: "Social media calendar",
-  seo_blog: "SEO / Blog planner",
-};
-
 export default function ChatPage() {
   const { data: session, status } = useSession();
   const role = session?.user?.role || "client";
@@ -315,7 +307,7 @@ export default function ChatPage() {
   const [isImageModalOpen, setIsImageModalOpen] = useState(false);
   const [imagePrompt, setImagePrompt] = useState("");
 
-  // AGENT PANEL STATE
+  // Agent panel state
   const [isAgentPanelOpen, setIsAgentPanelOpen] = useState(false);
   const [agentMode, setAgentMode] = useState("generic");
   const [agentInstruction, setAgentInstruction] = useState("");
@@ -401,7 +393,8 @@ export default function ChatPage() {
     fetchCredits();
   }, []);
 
-  const activeChat = chats.find((c) => c.id === activeChatId) || null;
+  const activeChat =
+    chats.find((c) => c.id === activeChatId) || null;
   const messages = activeChat?.messages || DEFAULT_MESSAGES;
 
   function handleNewChat() {
@@ -418,6 +411,13 @@ export default function ChatPage() {
     });
     setActiveChatId(newChat.id);
     setInput("");
+  }
+
+  function scrollChatToBottom() {
+    setTimeout(() => {
+      const el = document.getElementById("chat-area");
+      if (el) el.scrollTop = el.scrollHeight;
+    }, 50);
   }
 
   // helper: update active chat with a new assistant message
@@ -453,7 +453,7 @@ export default function ChatPage() {
     );
   }
 
-  // modal submit handler – uses the same sendMessage logic with "/image" prefix
+  // IMAGE MODAL submit handler – uses the same sendMessage logic with "/image" prefix
   async function handleImageModalSubmit(e) {
     e.preventDefault();
     const prompt = imagePrompt.trim();
@@ -466,10 +466,10 @@ export default function ChatPage() {
     await sendMessage(null, `/image ${prompt}`);
   }
 
+  // MAIN sendMessage (text + /image)
   async function sendMessage(e, overrideText) {
     e?.preventDefault();
 
-    // allow overriding the input text (used by the image modal)
     const userTextRaw =
       typeof overrideText === "string" ? overrideText : input;
     const userText = userTextRaw.trim();
@@ -478,7 +478,7 @@ export default function ChatPage() {
 
     // detect /image commands
     const isImagePrompt = userText.toLowerCase().startsWith("/image ");
-    const imagePromptLocal = isImagePrompt ? userText.slice(7).trim() : "";
+    const imagePromptValue = isImagePrompt ? userText.slice(7).trim() : "";
 
     if (role !== "owner" && !unlimited && credits !== null && credits <= 0) {
       setChats((prev) =>
@@ -505,7 +505,7 @@ export default function ChatPage() {
     setLoading(true);
 
     try {
-      // credit consumption (unchanged)
+      // credit consumption (for non-owner)
       if (role !== "owner" && !unlimited) {
         try {
           const consumeRes = await fetch("/api/credits/consume", {
@@ -553,14 +553,14 @@ export default function ChatPage() {
         }
       }
 
-      // 🔹 IMAGE BRANCH: handle /image prompts via /api/images/generate
+      // IMAGE BRANCH
       if (isImagePrompt) {
         try {
           const res = await fetch("/api/images/generate", {
             method: "POST",
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({
-              prompt: imagePromptLocal || userText,
+              prompt: imagePromptValue || userText,
             }),
           });
 
@@ -574,7 +574,11 @@ export default function ChatPage() {
               role: "assistant",
               text: errorText,
             };
-            updateChatWithAssistantMessage(userText, updatedMessages, errMsg);
+            updateChatWithAssistantMessage(
+              userText,
+              updatedMessages,
+              errMsg
+            );
           } else {
             const imageUrl = "data:image/jpeg;base64," + data.imageBase64;
             const assistantMsg = {
@@ -594,20 +598,21 @@ export default function ChatPage() {
             role: "assistant",
             text: "Error while generating image. Please try again.",
           };
-          updateChatWithAssistantMessage(userText, updatedMessages, errMsg);
+          updateChatWithAssistantMessage(
+            userText,
+            updatedMessages,
+            errMsg
+          );
         } finally {
           setLoading(false);
-          setTimeout(() => {
-            const el = document.getElementById("chat-area");
-            if (el) el.scrollTop = el.scrollHeight;
-          }, 50);
+          scrollChatToBottom();
         }
 
-        // IMPORTANT: stop here, do not call Gemini for /image messages
+        // stop here, do not call Gemini for /image
         return;
       }
 
-      // 🔹 TEXT BRANCH (Gemini) – unchanged logic
+      // TEXT BRANCH (Gemini)
       const history = updatedMessages
         .slice(-30)
         .map((m) => `${m.role === "user" ? "User" : "Assistant"}: ${m.text}`)
@@ -674,43 +679,76 @@ Now respond as GabbarInfo AI.
       );
     } finally {
       setLoading(false);
-      setTimeout(() => {
-        const el = document.getElementById("chat-area");
-        if (el) el.scrollTop = el.scrollHeight;
-      }, 50);
+      scrollChatToBottom();
     }
   }
 
-  // ---------- AGENT RUNNER ----------
-  async function runAgent(e) {
-    e?.preventDefault();
-    setAgentError("");
-
+  // ---------- AGENT EXECUTION ----------
+  async function handleRunAgent() {
     const instruction = agentInstruction.trim();
     if (!instruction || !activeChatId) return;
 
+    setAgentError("");
+
+    // check credits (simple version)
     if (role !== "owner" && !unlimited && credits !== null && credits <= 0) {
-      setAgentError(
-        "You’ve run out of credits. Please contact GabbarInfo to top up."
-      );
+      setAgentError("You’ve run out of credits. Please contact GabbarInfo to top up.");
       return;
     }
 
-    const modeLabel = AGENT_MODE_LABELS[agentMode] || "Agent request";
+    const modeLabels = {
+      generic: "Generic strategy",
+      google_ads_plan: "Google Ads – Campaign planner",
+      meta_ads_plan: "Meta Ads – Creative planner",
+      social_plan: "Social media calendar",
+      seo_blog: "SEO / Blog planner",
+    };
 
-    // Log the agent request as a user-style message for context
-    const agentUserText = `[Agent • ${modeLabel}] ${instruction}`;
-    const userMsg = { role: "user", text: agentUserText };
+    const label = modeLabels[agentMode] || "Agent";
+
+    const pseudoUserText = `[Agent • ${label}] ${instruction}`;
+    const pseudoUserMsg = { role: "user", text: pseudoUserText };
+
     const baseMessages = messages || DEFAULT_MESSAGES;
-    const updatedMessages = [...baseMessages, userMsg];
+    const updatedMessages = [...baseMessages, pseudoUserMsg];
 
     setAgentLoading(true);
 
     try {
-      // we do NOT consume separate credits here yet (to keep logic simple),
-      // since your main chat already has credit control. You can add it later if needed.
+      // consume a credit for agent as well (non-owner)
+      if (role !== "owner" && !unlimited) {
+        try {
+          const consumeRes = await fetch("/api/credits/consume", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+          });
 
-      const historyForAgent = baseMessages
+          if (consumeRes.status === 402) {
+            const data = await consumeRes.json().catch(() => ({}));
+            const msg =
+              data.error ||
+              "You’ve run out of credits. Please contact GabbarInfo to top up.";
+
+            setCredits(0);
+            setAgentError(msg);
+            setAgentLoading(false);
+            return;
+          }
+
+          if (!consumeRes.ok) {
+            console.error("Failed to consume credit (agent):", await consumeRes.text());
+          } else {
+            const data = await consumeRes.json().catch(() => ({}));
+            if (typeof data.credits === "number") {
+              setCredits(data.credits);
+            }
+          }
+        } catch (err) {
+          console.error("Error calling /api/credits/consume for Agent:", err);
+        }
+      }
+
+      const chatHistory = baseMessages
         .slice(-20)
         .map((m) => ({ role: m.role, text: m.text }));
 
@@ -720,64 +758,38 @@ Now respond as GabbarInfo AI.
         body: JSON.stringify({
           instruction,
           mode: agentMode,
-          includeJson: false,
-          chatHistory: historyForAgent,
-          extraContext: "",
+          includeJson: true,
+          chatHistory,
         }),
       });
 
       if (!res.ok) {
-        const txt = await res.text();
-        throw new Error(txt || "Agent server error");
+        const errText = await res.text();
+        setAgentError("Agent error: " + (errText || "Unknown server error"));
+        setAgentLoading(false);
+        return;
       }
 
       const data = await res.json();
-
-      let assistantText = data.text || "";
-      if (!assistantText) {
-        assistantText =
-          "Agent did not return any text. Please try again with a clearer instruction.";
-      }
+      const rawText = data.text || data.response || JSON.stringify(data, null, 2);
+      const assistantText = `GabbarInfo Agent:\n\n${rawText}`;
 
       const assistantMsg = {
         role: "assistant",
         text: assistantText,
       };
 
-      // Push both the agent "user" message and assistant reply into the chat
-      setChats((prev) =>
-        prev.map((chat) => {
-          if (chat.id !== activeChatId) return chat;
-
-          const hadUserBefore = (chat.messages || []).some(
-            (m) => m.role === "user"
-          );
-          let newTitle = chat.title;
-          if (!hadUserBefore) {
-            const snippet =
-              agentUserText.length > 40
-                ? agentUserText.slice(0, 40) + "…"
-                : agentUserText || "New conversation";
-            newTitle = snippet;
-          }
-
-          return {
-            ...chat,
-            title: newTitle,
-            messages: [...(chat.messages || DEFAULT_MESSAGES), userMsg, assistantMsg],
-          };
-        })
+      updateChatWithAssistantMessage(
+        pseudoUserText,
+        updatedMessages,
+        assistantMsg
       );
 
       setAgentInstruction("");
-      setIsAgentPanelOpen(true);
-      setTimeout(() => {
-        const el = document.getElementById("chat-area");
-        if (el) el.scrollTop = el.scrollHeight;
-      }, 50);
+      scrollChatToBottom();
     } catch (err) {
-      console.error("Agent error:", err);
-      setAgentError(err.message || "Agent execution failed.");
+      console.error("Agent execution error:", err);
+      setAgentError("Agent error: " + (err.message || "Unknown"));
     } finally {
       setAgentLoading(false);
     }
@@ -815,19 +827,18 @@ Now respond as GabbarInfo AI.
     <div
       style={{
         fontFamily: "Inter, Arial",
-        height: "100vh", // lock to viewport
+        height: "100vh",
         maxHeight: "100vh",
         width: "100vw",
         maxWidth: "100vw",
-        overflow: "hidden", // page/body never scrolls
+        overflow: "hidden",
         display: "flex",
         flexDirection: "column",
         background: "#fafafa",
         boxSizing: "border-box",
-        position: "relative",
       }}
     >
-      {/* HEADER (fixed at top within this container) */}
+      {/* HEADER */}
       <header
         style={{
           flexShrink: 0,
@@ -913,17 +924,17 @@ Now respond as GabbarInfo AI.
         </div>
       </header>
 
-      {/* BODY – fills the rest of the viewport; it does NOT scroll */}
+      {/* BODY */}
       <main
         style={{
           flex: 1,
           display: "flex",
           flexDirection: isMobile ? "column" : "row",
-          minHeight: 0, // so children can flex and scroll
+          minHeight: 0,
           overflow: "hidden",
         }}
       >
-        {/* SIDEBAR – fixed in place; internal list scrolls if needed */}
+        {/* SIDEBAR */}
         <aside
           style={{
             width: isMobile ? "100%" : 260,
@@ -1027,9 +1038,10 @@ Now respond as GabbarInfo AI.
             flexDirection: "column",
             minHeight: 0,
             boxSizing: "border-box",
+            position: "relative",
           }}
         >
-          {/* MESSAGES AREA – the ONLY thing that scrolls */}
+          {/* MESSAGES AREA */}
           <div
             id="chat-area"
             style={{
@@ -1084,7 +1096,7 @@ Now respond as GabbarInfo AI.
             ))}
           </div>
 
-          {/* INPUT BAR – fixed at bottom of the viewport container */}
+          {/* INPUT BAR */}
           <form
             onSubmit={sendMessage}
             style={{
@@ -1117,13 +1129,13 @@ Now respond as GabbarInfo AI.
             <button
               type="button"
               disabled={loading}
-              onClick={() => setIsAgentPanelOpen((prev) => !prev)}
+              onClick={() => setIsAgentPanelOpen(true)}
               style={{
                 padding: "10px 10px",
                 borderRadius: 8,
                 fontSize: 14,
                 border: "1px solid #ddd",
-                background: isAgentPanelOpen ? "#e8f0fe" : "#f5f5f5",
+                background: "#f5f5f5",
                 cursor: loading ? "default" : "pointer",
                 whiteSpace: "nowrap",
               }}
@@ -1164,279 +1176,286 @@ Now respond as GabbarInfo AI.
               {loading ? "Thinking…" : "Send"}
             </button>
           </form>
-        </section>
-      </main>
 
-      {/* RIGHT-SIDE AGENT PANEL (drawer style) */}
-      {isAgentPanelOpen && (
-        <div
-          style={{
-            position: "fixed",
-            top: 60,
-            // header height approx
-            right: 0,
-            bottom: 0,
-            width: isMobile ? "100%" : 320,
-            background: "#ffffff",
-            borderLeft: "1px solid #e0e0e0",
-            boxShadow: "0 0 12px rgba(0,0,0,0.08)",
-            zIndex: 40,
-            display: "flex",
-            flexDirection: "column",
-            padding: 12,
-            boxSizing: "border-box",
-          }}
-        >
-          <div
-            style={{
-              display: "flex",
-              alignItems: "center",
-              justifyContent: "space-between",
-              marginBottom: 8,
-            }}
-          >
-            <div>
-              <div style={{ fontWeight: 600, fontSize: 14 }}>Agent panel</div>
-              <div
-                style={{ fontSize: 11, color: "#777", marginTop: 2 }}
-              >
-                Plan campaigns, creatives, SEO & more.
-              </div>
-            </div>
-            <button
-              type="button"
-              onClick={() => setIsAgentPanelOpen(false)}
-              style={{
-                border: "1px solid #ddd",
-                borderRadius: 999,
-                padding: "4px 8px",
-                fontSize: 12,
-                cursor: "pointer",
-                background: "#f5f5f5",
-              }}
-            >
-              ✕
-            </button>
-          </div>
-
-          {/* Mode selector */}
-          <label
-            style={{
-              fontSize: 12,
-              fontWeight: 500,
-              marginBottom: 4,
-              display: "block",
-            }}
-          >
-            Mode
-          </label>
-          <select
-            value={agentMode}
-            onChange={(e) => setAgentMode(e.target.value)}
-            style={{
-              width: "100%",
-              padding: 8,
-              borderRadius: 8,
-              border: "1px solid #ddd",
-              fontSize: 13,
-              marginBottom: 8,
-            }}
-          >
-            <option value="generic">Generic strategy (mixed)</option>
-            <option value="google_ads_plan">
-              Google Ads – Campaign planner
-            </option>
-            <option value="meta_ads_plan">
-              Meta Ads – Creative planner
-            </option>
-            <option value="social_plan">Social Media calendar</option>
-            <option value="seo_blog">SEO / Blog planner</option>
-          </select>
-
-          {/* Instruction textarea */}
-          <label
-            style={{
-              fontSize: 12,
-              fontWeight: 500,
-              marginBottom: 4,
-              marginTop: 4,
-              display: "block",
-            }}
-          >
-            Instruction for Agent
-          </label>
-          <textarea
-            value={agentInstruction}
-            onChange={(e) => setAgentInstruction(e.target.value)}
-            rows={5}
-            placeholder="Example: Create a full Google Search campaign plan for a dentist in Ahmedabad with Rs 700/day budget, including suggested keywords, ad groups and example ad copies."
-            style={{
-              flexShrink: 0,
-              resize: "vertical",
-              padding: 8,
-              borderRadius: 8,
-              border: "1px solid #ddd",
-              fontSize: 13,
-              minHeight: 90,
-            }}
-          />
-
-          {agentError && (
+          {/* AGENT PANEL (right-side drawer) */}
+          {isAgentPanelOpen && (
             <div
               style={{
-                marginTop: 6,
-                fontSize: 11,
-                color: "#b3261e",
-                background: "#fdecea",
-                borderRadius: 6,
-                padding: "6px 8px",
-              }}
-            >
-              {agentError}
-            </div>
-          )}
-
-          <div style={{ flex: 1 }} />
-
-          <button
-            type="button"
-            onClick={runAgent}
-            disabled={agentLoading}
-            style={{
-              marginTop: 10,
-              width: "100%",
-              padding: "10px 12px",
-              borderRadius: 8,
-              fontSize: 14,
-              border: "none",
-              background: "#174ea6",
-              color: "#fff",
-              cursor: agentLoading ? "default" : "pointer",
-            }}
-          >
-            {agentLoading ? "Running Agent…" : "Run Agent"}
-          </button>
-
-          <div
-            style={{
-              marginTop: 6,
-              fontSize: 11,
-              color: "#777",
-              lineHeight: 1.4,
-            }}
-          >
-            Tip: Use Agent for bigger tasks like full campaign plans, JSON
-            payloads, social calendars or SEO briefs. The answer will appear in
-            the main chat.
-          </div>
-        </div>
-      )}
-
-      {/* IMAGE PROMPT MODAL */}
-      {isImageModalOpen && (
-        <div
-          style={{
-            position: "fixed",
-            top: 0,
-            left: 0,
-            right: 0,
-            bottom: 0,
-            background: "rgba(0,0,0,0.35)",
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "center",
-            zIndex: 50,
-          }}
-        >
-          <div
-            style={{
-              width: isMobile ? "90%" : 420,
-              background: "#fff",
-              borderRadius: 12,
-              boxShadow: "0 8px 20px rgba(0,0,0,0.15)",
-              padding: 16,
-              boxSizing: "border-box",
-            }}
-          >
-            <h3 style={{ margin: 0, marginBottom: 8, fontSize: 16 }}>
-              Generate ad creative
-            </h3>
-            <p
-              style={{
-                margin: 0,
-                marginBottom: 8,
-                fontSize: 13,
-                color: "#555",
-              }}
-            >
-              Describe the image you want. I’ll generate a DALL·E creative for
-              you.
-            </p>
-
-            <form
-              onSubmit={handleImageModalSubmit}
-              style={{
+                position: "fixed",
+                top: 0,
+                right: 0,
+                bottom: 0,
+                width: isMobile ? "100%" : 360,
+                background: "#ffffff",
+                boxShadow: "-4px 0 12px rgba(0,0,0,0.12)",
+                zIndex: 40,
                 display: "flex",
                 flexDirection: "column",
-                gap: 8,
-                marginTop: 4,
+                boxSizing: "border-box",
               }}
             >
-              <textarea
-                value={imagePrompt}
-                onChange={(e) => setImagePrompt(e.target.value)}
-                rows={4}
-                autoFocus
-                placeholder="Example: Close-up of gold Kundan necklace on black background, soft spotlight, high contrast, for Instagram ad…"
-                style={{
-                  resize: "vertical",
-                  padding: 8,
-                  borderRadius: 8,
-                  border: "1px solid #ddd",
-                  fontSize: 14,
-                }}
-              />
               <div
                 style={{
+                  padding: 16,
+                  borderBottom: "1px solid #eee",
                   display: "flex",
-                  justifyContent: "flex-end",
-                  gap: 8,
-                  marginTop: 4,
+                  alignItems: "center",
+                  justifyContent: "space-between",
                 }}
               >
+                <div>
+                  <div style={{ fontWeight: 600, fontSize: 15 }}>
+                    Agent panel
+                  </div>
+                  <div
+                    style={{
+                      fontSize: 12,
+                      color: "#666",
+                      marginTop: 2,
+                    }}
+                  >
+                    Plan campaigns, creatives, SEO & more.
+                  </div>
+                </div>
                 <button
-                  type="button"
-                  onClick={() => {
-                    setIsImageModalOpen(false);
-                    setImagePrompt("");
-                  }}
+                  onClick={() => setIsAgentPanelOpen(false)}
                   style={{
-                    padding: "8px 12px",
-                    borderRadius: 8,
-                    fontSize: 13,
-                    border: "1px solid #ddd",
-                    background: "#f5f5f5",
+                    border: "none",
+                    background: "transparent",
+                    fontSize: 18,
                     cursor: "pointer",
                   }}
                 >
-                  Cancel
+                  ×
                 </button>
-                <button
-                  type="submit"
-                  disabled={loading}
+              </div>
+
+              <div
+                style={{
+                  padding: 16,
+                  display: "flex",
+                  flexDirection: "column",
+                  gap: 10,
+                  flex: 1,
+                  overflowY: "auto",
+                }}
+              >
+                <label
                   style={{
-                    padding: "8px 12px",
+                    fontSize: 12,
+                    fontWeight: 600,
+                    textTransform: "uppercase",
+                    letterSpacing: 0.4,
+                    color: "#555",
+                  }}
+                >
+                  Mode
+                </label>
+                <select
+                  value={agentMode}
+                  onChange={(e) => setAgentMode(e.target.value)}
+                  style={{
+                    padding: 8,
                     borderRadius: 8,
+                    border: "1px solid #ddd",
                     fontSize: 13,
                   }}
                 >
-                  {loading ? "Generating…" : "Generate"}
+                  <option value="generic">Generic strategy (mixed)</option>
+                  <option value="google_ads_plan">
+                    Google Ads – Campaign planner
+                  </option>
+                  <option value="meta_ads_plan">
+                    Meta Ads – Creative planner
+                  </option>
+                  <option value="social_plan">Social Media calendar</option>
+                  <option value="seo_blog">SEO / Blog planner</option>
+                </select>
+
+                <label
+                  style={{
+                    fontSize: 12,
+                    fontWeight: 600,
+                    textTransform: "uppercase",
+                    letterSpacing: 0.4,
+                    color: "#555",
+                    marginTop: 8,
+                  }}
+                >
+                  Instruction
+                </label>
+                <textarea
+                  value={agentInstruction}
+                  onChange={(e) => setAgentInstruction(e.target.value)}
+                  rows={6}
+                  placeholder="Example: Create a Google Search campaign for my dental clinic in Ahmedabad with ₹700/day budget, JSON only. Or plan a 30-day Instagram calendar for Bella & Diva Jewellery UK."
+                  style={{
+                    resize: "vertical",
+                    padding: 8,
+                    borderRadius: 8,
+                    border: "1px solid #ddd",
+                    fontSize: 13,
+                    minHeight: 120,
+                  }}
+                />
+
+                {agentError && (
+                  <div
+                    style={{
+                      fontSize: 12,
+                      color: "#b00020",
+                      background: "#fde7e9",
+                      borderRadius: 6,
+                      padding: 8,
+                    }}
+                  >
+                    {agentError}
+                  </div>
+                )}
+
+                <div style={{ flex: 1 }} />
+
+                <button
+                  type="button"
+                  onClick={handleRunAgent}
+                  disabled={agentLoading}
+                  style={{
+                    width: "100%",
+                    padding: "10px 14px",
+                    borderRadius: 8,
+                    fontSize: 14,
+                    border: "none",
+                    background: "#1a73e8",
+                    color: "#fff",
+                    cursor: agentLoading ? "default" : "pointer",
+                    marginTop: 8,
+                  }}
+                >
+                  {agentLoading ? "Running Agent…" : "Run Agent"}
                 </button>
+
+                <div
+                  style={{
+                    fontSize: 11,
+                    color: "#777",
+                    marginTop: 6,
+                  }}
+                >
+                  Tip: Use Agent for bigger tasks like full campaign plans,
+                  JSON payloads, social calendars or SEO briefs. The answer will
+                  appear in the main chat as a <b>GabbarInfo Agent</b> message.
+                </div>
               </div>
-            </form>
-          </div>
-        </div>
-      )}
+            </div>
+          )}
+
+          {/* IMAGE PROMPT MODAL */}
+          {isImageModalOpen && (
+            <div
+              style={{
+                position: "fixed",
+                top: 0,
+                left: 0,
+                right: 0,
+                bottom: 0,
+                background: "rgba(0,0,0,0.35)",
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
+                zIndex: 50,
+              }}
+            >
+              <div
+                style={{
+                  width: isMobile ? "90%" : 420,
+                  background: "#fff",
+                  borderRadius: 12,
+                  boxShadow: "0 8px 20px rgba(0,0,0,0.15)",
+                  padding: 16,
+                  boxSizing: "border-box",
+                }}
+              >
+                <h3 style={{ margin: 0, marginBottom: 8, fontSize: 16 }}>
+                  Generate ad creative
+                </h3>
+                <p
+                  style={{
+                    margin: 0,
+                    marginBottom: 8,
+                    fontSize: 13,
+                    color: "#555",
+                  }}
+                >
+                  Describe the image you want. I’ll generate a DALL·E creative
+                  for you.
+                </p>
+
+                <form
+                  onSubmit={handleImageModalSubmit}
+                  style={{
+                    display: "flex",
+                    flexDirection: "column",
+                    gap: 8,
+                    marginTop: 4,
+                  }}
+                >
+                  <textarea
+                    value={imagePrompt}
+                    onChange={(e) => setImagePrompt(e.target.value)}
+                    rows={4}
+                    autoFocus
+                    placeholder="Example: Close-up of gold Kundan necklace on black background, soft spotlight, high contrast, for Instagram ad…"
+                    style={{
+                      resize: "vertical",
+                      padding: 8,
+                      borderRadius: 8,
+                      border: "1px solid #ddd",
+                      fontSize: 14,
+                    }}
+                  />
+                  <div
+                    style={{
+                      display: "flex",
+                      justifyContent: "flex-end",
+                      gap: 8,
+                      marginTop: 4,
+                    }}
+                  >
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setIsImageModalOpen(false);
+                        setImagePrompt("");
+                      }}
+                      style={{
+                        padding: "8px 12px",
+                        borderRadius: 8,
+                        fontSize: 13,
+                        border: "1px solid #ddd",
+                        background: "#f5f5f5",
+                        cursor: "pointer",
+                      }}
+                    >
+                      Cancel
+                    </button>
+                    <button
+                      type="submit"
+                      disabled={loading}
+                      style={{
+                        padding: "8px 12px",
+                        borderRadius: 8,
+                        fontSize: 13,
+                      }}
+                    >
+                      {loading ? "Generating…" : "Generate"}
+                    </button>
+                  </div>
+                </form>
+              </div>
+            </div>
+          )}
+        </section>
+      </main>
     </div>
   );
 }
