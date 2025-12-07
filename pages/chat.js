@@ -91,7 +91,22 @@ You help with **all areas of digital marketing**, including:
 
 ---
 
-## GOOGLE ADS CAMPAIGN JSON FORMAT (CRITICAL WHEN ASKED)
+## JSON OUTPUT RULES (CRITICAL)
+
+- By default, **do NOT output any JSON** in your answers.
+- Only output JSON when the user explicitly asks for it with phrases like:
+  - “JSON only”
+  - “give me the backend JSON”
+  - “output in JSON format”
+  - “return the Google Ads JSON”
+  - “creative JSON only”
+- If the user does **not** clearly ask for JSON, you must explain everything in normal text (bullets/steps) even if the topic is Google Ads / Meta / campaigns.
+- Never add “Implementation Example (Backend JSON…)” or any other JSON example automatically.
+- When the user asks for both explanation **and** JSON, first give a short explanation, then the JSON.
+
+---
+
+## GOOGLE ADS CAMPAIGN JSON FORMAT (ONLY WHEN EXPLICITLY ASKED)
 
 When the user explicitly asks for **backend JSON** for a Google Ads campaign  
 (e.g. “give me the JSON for this campaign”, “output only the campaign JSON”, “backend JSON only”),
@@ -136,7 +151,7 @@ you must output a JSON object in **exactly** this structure:
 
 ### GOOGLE ADS JSON RULES
 
-- Always return **valid JSON** (no comments, no trailing commas).
+- Always return **valid JSON** (no comments, no trailing commas) when JSON is requested.
 - When the user says “JSON only”, you output **only the JSON** (no extra text, no explanation, no backticks).
 - \`customerId\`:
   - If the user provides a specific Google Ads customer ID, use it.
@@ -159,7 +174,7 @@ you must output a JSON object in **exactly** this structure:
 
 ---
 
-## CREATIVE / META / SOCIAL AD JSON FORMAT (CRITICAL WHEN ASKED)
+## CREATIVE / META / SOCIAL AD JSON FORMAT (ONLY WHEN EXPLICITLY ASKED)
 
 When the user explicitly asks for a **creative JSON** for ads or social posts  
 (e.g. “give me the creative JSON”, “JSON only for the Meta ad creative”, “backend creative JSON only”),
@@ -189,7 +204,7 @@ you must output a JSON object in this structure:
 
 ### CREATIVE JSON RULES
 
-- Again, **valid JSON only** when user says “JSON only” (no extra text, no backticks).
+- Again, **valid JSON only** when user says they want JSON (no extra text, no backticks when they say “JSON only”).
 - \`channel\`:
   - \`"meta_ads"\` for Facebook/Instagram ads,
   - \`"social_post"\` for organic posts,
@@ -300,14 +315,14 @@ export default function ChatPage() {
   const [unlimited, setUnlimited] = useState(false);
   const [creditsLoading, setCreditsLoading] = useState(true);
 
-  // simple responsive flag – ONLY used for layout decisions (column vs row)
+  // layout
   const [isMobile, setIsMobile] = useState(false);
 
-  // image modal state
+  // image modal
   const [isImageModalOpen, setIsImageModalOpen] = useState(false);
   const [imagePrompt, setImagePrompt] = useState("");
 
-  // Agent panel state
+  // agent panel
   const [isAgentPanelOpen, setIsAgentPanelOpen] = useState(false);
   const [agentMode, setAgentMode] = useState("generic");
   const [agentInstruction, setAgentInstruction] = useState("");
@@ -322,7 +337,7 @@ export default function ChatPage() {
     return () => window.removeEventListener("resize", check);
   }, []);
 
-  // Load chats from localStorage
+  // Load chats
   useEffect(() => {
     try {
       const storedChats = localStorage.getItem(STORAGE_KEY_CHATS);
@@ -359,7 +374,7 @@ export default function ChatPage() {
     }
   }, []);
 
-  // Save chats + active chat
+  // Save chats
   useEffect(() => {
     try {
       localStorage.setItem(STORAGE_KEY_CHATS, JSON.stringify(chats));
@@ -420,7 +435,6 @@ export default function ChatPage() {
     }, 50);
   }
 
-  // helper: update active chat with a new assistant message
   function updateChatWithAssistantMessage(
     userText,
     updatedMessages,
@@ -453,7 +467,7 @@ export default function ChatPage() {
     );
   }
 
-  // IMAGE MODAL submit handler – uses the same sendMessage logic with "/image" prefix
+  // IMAGE MODAL submit
   async function handleImageModalSubmit(e) {
     e.preventDefault();
     const prompt = imagePrompt.trim();
@@ -462,11 +476,10 @@ export default function ChatPage() {
     setIsImageModalOpen(false);
     setImagePrompt("");
 
-    // Reuse sendMessage with an overrideText that starts with "/image"
     await sendMessage(null, `/image ${prompt}`);
   }
 
-  // MAIN sendMessage (text + /image)
+  // MAIN sendMessage
   async function sendMessage(e, overrideText) {
     e?.preventDefault();
 
@@ -476,7 +489,6 @@ export default function ChatPage() {
 
     if (!userText || !activeChatId) return;
 
-    // detect /image commands
     const isImagePrompt = userText.toLowerCase().startsWith("/image ");
     const imagePromptValue = isImagePrompt ? userText.slice(7).trim() : "";
 
@@ -505,7 +517,7 @@ export default function ChatPage() {
     setLoading(true);
 
     try {
-      // credit consumption (for non-owner)
+      // consume credit
       if (role !== "owner" && !unlimited) {
         try {
           const consumeRes = await fetch("/api/credits/consume", {
@@ -608,7 +620,6 @@ export default function ChatPage() {
           scrollChatToBottom();
         }
 
-        // stop here, do not call Gemini for /image
         return;
       }
 
@@ -683,16 +694,17 @@ Now respond as GabbarInfo AI.
     }
   }
 
-  // ---------- AGENT EXECUTION ----------
+  // ---------- AGENT ----------
   async function handleRunAgent() {
     const instruction = agentInstruction.trim();
     if (!instruction || !activeChatId) return;
 
     setAgentError("");
 
-    // check credits (simple version)
     if (role !== "owner" && !unlimited && credits !== null && credits <= 0) {
-      setAgentError("You’ve run out of credits. Please contact GabbarInfo to top up.");
+      setAgentError(
+        "You’ve run out of credits. Please contact GabbarInfo to top up."
+      );
       return;
     }
 
@@ -715,7 +727,6 @@ Now respond as GabbarInfo AI.
     setAgentLoading(true);
 
     try {
-      // consume a credit for agent as well (non-owner)
       if (role !== "owner" && !unlimited) {
         try {
           const consumeRes = await fetch("/api/credits/consume", {
@@ -736,7 +747,10 @@ Now respond as GabbarInfo AI.
           }
 
           if (!consumeRes.ok) {
-            console.error("Failed to consume credit (agent):", await consumeRes.text());
+            console.error(
+              "Failed to consume credit (agent):",
+              await consumeRes.text()
+            );
           } else {
             const data = await consumeRes.json().catch(() => ({}));
             if (typeof data.credits === "number") {
@@ -771,7 +785,8 @@ Now respond as GabbarInfo AI.
       }
 
       const data = await res.json();
-      const rawText = data.text || data.response || JSON.stringify(data, null, 2);
+      const rawText =
+        data.text || data.response || JSON.stringify(data, null, 2);
       const assistantText = `GabbarInfo Agent:\n\n${rawText}`;
 
       const assistantMsg = {
@@ -1041,7 +1056,7 @@ Now respond as GabbarInfo AI.
             position: "relative",
           }}
         >
-          {/* MESSAGES AREA */}
+          {/* MESSAGES */}
           <div
             id="chat-area"
             style={{
@@ -1177,7 +1192,7 @@ Now respond as GabbarInfo AI.
             </button>
           </form>
 
-          {/* AGENT PANEL (right-side drawer) */}
+          {/* AGENT PANEL */}
           {isAgentPanelOpen && (
             <div
               style={{
