@@ -1100,7 +1100,7 @@ Now respond as GabbarInfo AI.
                     padding: "8px 12px",
                     borderRadius: 8,
                     fontSize: 13,
-                    border: "1px solid "#ddd",
+                    border: "1px solid #ddd",
                     background: "#f5f5f5",
                     cursor: "pointer",
                   }}
