@@ -302,6 +302,11 @@ export default function ChatPage() {
 
   // simple responsive flag – ONLY used for layout decisions (column vs row)
   const [isMobile, setIsMobile] = useState(false);
+
+  // image modal state
+  const [isImageModalOpen, setIsImageModalOpen] = useState(false);
+  const [imagePrompt, setImagePrompt] = useState("");
+
   useEffect(() => {
     if (typeof window === "undefined") return;
     const check = () => setIsMobile(window.innerWidth <= 768);
@@ -429,10 +434,27 @@ export default function ChatPage() {
     );
   }
 
-  async function sendMessage(e) {
+  // modal submit handler – uses the same sendMessage logic with "/image" prefix
+  async function handleImageModalSubmit(e) {
+    e.preventDefault();
+    const prompt = imagePrompt.trim();
+    if (!prompt || !activeChatId) return;
+
+    setIsImageModalOpen(false);
+    setImagePrompt("");
+
+    // Reuse sendMessage with an overrideText that starts with "/image"
+    await sendMessage(null, `/image ${prompt}`);
+  }
+
+  async function sendMessage(e, overrideText) {
     e?.preventDefault();
 
-    const userText = input.trim();
+    // allow overriding the input text (used by the image modal)
+    const userTextRaw =
+      typeof overrideText === "string" ? overrideText : input;
+    const userText = userTextRaw.trim();
+
     if (!userText || !activeChatId) return;
 
     // detect /image commands
@@ -960,6 +982,28 @@ Now respond as GabbarInfo AI.
               }}
               disabled={loading}
             />
+
+            {/* Create Image button */}
+            <button
+              type="button"
+              disabled={loading}
+              onClick={() => {
+                setIsImageModalOpen(true);
+                setImagePrompt("");
+              }}
+              style({
+                padding: "10px 12px",
+                borderRadius: 8,
+                fontSize: 14,
+                border: "1px solid #ddd",
+                background: "#f5f5f5",
+                cursor: loading ? "default" : "pointer",
+                whiteSpace: "nowrap",
+              }}
+            >
+              ✨ Create image
+            </button>
+
             <button
               type="submit"
               disabled={loading}
@@ -974,6 +1018,111 @@ Now respond as GabbarInfo AI.
           </form>
         </section>
       </main>
+
+      {/* IMAGE PROMPT MODAL */}
+      {isImageModalOpen && (
+        <div
+          style={{
+            position: "fixed",
+            top: 0,
+            left: 0,
+            right: 0,
+            bottom: 0,
+            background: "rgba(0,0,0,0.35)",
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            zIndex: 50,
+          }}
+        >
+          <div
+            style={{
+              width: isMobile ? "90%" : 420,
+              background: "#fff",
+              borderRadius: 12,
+              boxShadow: "0 8px 20px rgba(0,0,0,0.15)",
+              padding: 16,
+              boxSizing: "border-box",
+            }}
+          >
+            <h3 style={{ margin: 0, marginBottom: 8, fontSize: 16 }}>
+              Generate ad creative
+            </h3>
+            <p
+              style={{
+                margin: 0,
+                marginBottom: 8,
+                fontSize: 13,
+                color: "#555",
+              }}
+            >
+              Describe the image you want. I’ll generate a DALL·E creative for you.
+            </p>
+
+            <form
+              onSubmit={handleImageModalSubmit}
+              style={{
+                display: "flex",
+                flexDirection: "column",
+                gap: 8,
+                marginTop: 4,
+              }}
+            >
+              <textarea
+                value={imagePrompt}
+                onChange={(e) => setImagePrompt(e.target.value)}
+                rows={4}
+                autoFocus
+                placeholder="Example: Close-up of gold Kundan necklace on black background, soft spotlight, high contrast, for Instagram ad…"
+                style={{
+                  resize: "vertical",
+                  padding: 8,
+                  borderRadius: 8,
+                  border: "1px solid #ddd",
+                  fontSize: 14,
+                }}
+              />
+              <div
+                style={{
+                  display: "flex",
+                  justifyContent: "flex-end",
+                  gap: 8,
+                  marginTop: 4,
+                }}
+              >
+                <button
+                  type="button"
+                  onClick={() => {
+                    setIsImageModalOpen(false);
+                    setImagePrompt("");
+                  }}
+                  style={{
+                    padding: "8px 12px",
+                    borderRadius: 8,
+                    fontSize: 13,
+                    border: "1px solid #ddd",
+                    background: "#f5f5f5",
+                    cursor: "pointer",
+                  }}
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  disabled={loading}
+                  style={{
+                    padding: "8px 12px",
+                    borderRadius: 8,
+                    fontSize: 13,
+                  }}
+                >
+                  {loading ? "Generating…" : "Generate"}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
