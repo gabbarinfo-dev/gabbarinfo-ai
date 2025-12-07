@@ -797,7 +797,7 @@ Now respond as GabbarInfo AI.
         <aside
           style={{
             width: isMobile ? "100%" : 260,
-            borderRight: isMobile ? "none" : "1px solid #eee",
+            borderRight: isMobile ? "none" : "1px solid "#eee",
             borderBottom: isMobile ? "1px solid #eee" : "none",
             padding: 12,
             paddingTop: 10,
@@ -991,7 +991,7 @@ Now respond as GabbarInfo AI.
                 setIsImageModalOpen(true);
                 setImagePrompt("");
               }}
-              style({
+              style={{
                 padding: "10px 12px",
                 borderRadius: 8,
                 fontSize: 14,
@@ -1100,7 +1100,7 @@ Now respond as GabbarInfo AI.
                     padding: "8px 12px",
                     borderRadius: 8,
                     fontSize: 13,
-                    border: "1px solid #ddd",
+                    border: "1px solid "#ddd",
                     background: "#f5f5f5",
                     cursor: "pointer",
                   }}
