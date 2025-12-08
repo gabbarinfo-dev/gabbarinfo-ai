@@ -827,8 +827,8 @@ Now respond as GabbarInfo AI.
     <div
       style={{
         fontFamily: "Inter, Arial",
-        height: "100vh",
-        maxHeight: "100vh",
+        height: "100dvh",
+        maxHeight: "100dvh",
         width: "100vw",
         maxWidth: "100vw",
         overflow: "hidden",
@@ -1100,13 +1100,15 @@ Now respond as GabbarInfo AI.
           <form
             onSubmit={sendMessage}
             style={{
-              flexShrink: 0,
-              display: "flex",
-              padding: 10,
-              gap: 8,
-              borderTop: "1px solid #eee",
-              background: "#fff",
-              boxSizing: "border-box",
+             flexShrink: 0,
+             display: "flex",
+             padding: 10,
+             gap: 8,
+             borderTop: "1px solid #eee",
+             background: "#fff",
+             boxSizing: "border-box",
+           // extra bottom padding so buttons don't hide behind mobile nav bar
+             paddingBottom: "calc(10px + env(safe-area-inset-bottom, 0px))",
             }}
           >
             <input
@@ -1117,6 +1119,7 @@ Now respond as GabbarInfo AI.
               }
               style={{
                 flex: 1,
+                minWidth: 0,
                 padding: 10,
                 borderRadius: 8,
                 border: "1px solid #ddd",
