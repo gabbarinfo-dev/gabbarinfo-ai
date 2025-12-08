@@ -1146,26 +1146,26 @@ Now respond as GabbarInfo AI.
               🧠 Agent
             </button>
 
-            {/* Create Image button */}
-            <button
-              type="button"
-              disabled={loading}
-              onClick={() => {
-                setIsImageModalOpen(true);
-                setImagePrompt("");
-              }}
-              style={{
-                padding: "10px 12px",
-                borderRadius: 8,
-                fontSize: 14,
-                border: "1px solid #ddd",
-                background: "#f5f5f5",
-                cursor: loading ? "default" : "pointer",
-                whiteSpace: "nowrap",
-              }}
-            >
-              ✨ Create image
-            </button>
+            {/* Image button (short label) */}
+<button
+  type="button"
+  disabled={loading}
+  onClick={() => {
+    setIsImageModalOpen(true);
+    setImagePrompt("");
+  }}
+  style={{
+    padding: "8px 10px",          // a bit slimmer
+    borderRadius: 8,
+    fontSize: 13,                 // slightly smaller text
+    border: "1px solid #ddd",
+    background: "#f5f5f5",
+    cursor: loading ? "default" : "pointer",
+    whiteSpace: "nowrap",
+  }}
+>
+  ✨ Image
+</button>
 
             <button
               type="submit"
