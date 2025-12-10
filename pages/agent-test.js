@@ -5,92 +5,104 @@ export default function AgentTest() {
   const [result, setResult] = useState(null);
   const [loading, setLoading] = useState(false);
 
-  async function runGoogleTest() {
+  async function callAgent(body) {
     setLoading(true);
     setResult(null);
 
-    const res = await fetch("/api/agent/run", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        platform: "google",
-        action: "create_google_campaign",
-        payload: {
-          customerId: "8060320443",
-          campaign: {
-            name: "Test AI Campaign",
-            network: "SEARCH",
-            dailyBudgetMicros: 5000000,
-            finalUrl: "https://gabbarinfo.com",
-          },
-          adGroups: [
-            {
-              name: "AG 1",
-              cpcBidMicros: 2000000,
-              keywords: ["digital marketing", "google ads"],
-              ads: [
-                {
-                  headline1: "GabbarInfo AI",
-                  headline2: "Smart Campaigns",
-                  description1: "We optimise your ads automatically.",
-                },
-              ],
-            },
-          ],
+    try {
+      const res = await fetch("/api/agent/run", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
         },
-      }),
-    });
+        body: JSON.stringify(body),
+      });
 
-    const json = await res.json();
-    setResult(json);
-    setLoading(false);
+      const json = await res.json();
+      setResult(json);
+    } catch (err) {
+      setResult({
+        ok: false,
+        message: "Request failed",
+        error: err.message,
+      });
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  async function runGoogleTest() {
+    await callAgent({
+      platform: "google",
+      action: "create_simple_campaign",
+      payload: {
+        customerId: "8060320443", // your MCC / test account
+        campaign: {
+          name: "Test AI Agent Campaign",
+          network: "SEARCH",
+          dailyBudgetMicros: 5000000, // 5 INR (just dummy)
+          finalUrl: "https://www.gabbarinfo.com/",
+        },
+        adGroups: [
+          {
+            name: "Test Ad Group 1",
+            cpcBidMicros: 1000000,
+            keywords: ["digital marketing agency", "google ads expert"],
+            ads: [
+              {
+                headline1: "Gabbarinfo Digital Solutions",
+                headline2: "Google Ads & Meta Ads",
+                description: "This is a stub test from AI agent.",
+              },
+            ],
+          },
+        ],
+      },
+    });
   }
 
   async function runMetaTest() {
-    setLoading(true);
-    setResult(null);
-
-    const res = await fetch("/api/agent/run", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        platform: "meta",
-        action: "create_meta_campaign",
-        payload: {
-          adAccountId: "act_1587806431828953",
-          pageId: "100857708465879",
-          instagramActorId: "17841446447612686",
-          objective: "LINK_CLICKS",
-          campaignName: "AI Meta Test",
-          adsetName: "AI Adset",
-          dailyBudget: 200,
-          websiteUrl: "https://gabbarinfo.com",
-          message: "Test caption from GabbarInfo AI",
-          imageHash: "442b13a9f677f13c20018c6155f2f20e",
-        },
-      }),
+    await callAgent({
+      platform: "meta",
+      action: "create_simple_campaign",
+      payload: {
+        objective: "AWARENESS",
+        testNote: "Stub call from /agent-test on meta",
+      },
     });
-
-    const json = await res.json();
-    setResult(json);
-    setLoading(false);
   }
 
   return (
-    <div style={{ padding: 24 }}>
-      <h1>Agent Test Panel</h1>
-      <button disabled={loading} onClick={runGoogleTest}>
-        Test Google Campaign (stub)
-      </button>
-      <button disabled={loading} onClick={runMetaTest} style={{ marginLeft: 12 }}>
-        Test Meta Campaign (stub)
-      </button>
+    <div style={{ padding: "2rem", fontFamily: "system-ui" }}>
+      <h1>Agent Test Console</h1>
 
-      {loading && <p>Running…</p>}
+      <p>
+        This page calls <code>/api/agent/run</code> with a stub payload for
+        Google Ads and Meta. Right now the server just logs and returns a stub
+        response.
+      </p>
+
+      <div style={{ display: "flex", gap: "1rem", marginBottom: "1rem" }}>
+        <button onClick={runGoogleTest} disabled={loading}>
+          {loading ? "Running…" : "Run Google Test"}
+        </button>
+        <button onClick={runMetaTest} disabled={loading}>
+          {loading ? "Running…" : "Run Meta Test"}
+        </button>
+      </div>
 
       {result && (
-        <pre style={{ marginTop: 20, background: "#111", color: "#0f0", padding: 16 }}>
-          {JSON.stringify(result, null, 2)}
+        <pre
+          style={{
+            background: "#111",
+            color: "#0f0",
+            padding: "1rem",
+            borderRadius: "8px",
+            maxHeight: "400px",
+            overflow: "auto",
+          }}
+        >
+{JSON.stringify(result, null, 2)}
         </pre>
       )}
     </div>
