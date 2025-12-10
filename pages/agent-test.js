@@ -46,38 +46,47 @@ export default function AgentTest() {
     setLoading(false);
   }
 
-  async function runMetaTest() {
-    setLoading(true);
-    setResult(null);
+ async function runMetaTest() {
+  setLoading(true);
+  setResult(null);
 
-    const res = await fetch("/api/agent/run", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        platform: "meta",
-        action: "create_simple_campaign",
-        payload: {
-          adAccountId: "act_1587806431828953",   // your ad account
-          pageId: "100857708465879",             // your FB page ID
-          dailyBudget: 500,                      // INR 500 per day (stub)
-          currency: "INR",
-          targeting: {
-            geo_locations: { countries: ["IN"] },
-            age_min: 25,
-            age_max: 45,
-          },
-          creative: {
-            message: "Stub Meta ad from Gabbarinfo AI agent.",
-            link: "https://www.gabbarinfo.com/",
-          },
+  const res = await fetch("/api/agent/run", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      platform: "meta",
+      action: "create_simple_campaign",
+      payload: {
+        adAccountId: "act_1587806431828953",   // your ad account
+        pageId: "100857708465879",             // your FB page ID
+        dailyBudget: 500,                      // INR 500 per day (stub)
+        currency: "INR",
+        objective: "OUTCOME_TRAFFIC",          // ✅ NEW: required by stub
+
+        targeting: {
+          geo_locations: { countries: ["IN"] },
+          age_min: 25,
+          age_max: 45,
         },
-      }),
-    });
 
-    const json = await res.json();
-    setResult({ source: "meta", json });
-    setLoading(false);
-  }
+        creative: {
+          imageHash: "TEST_IMAGE_HASH_123",    // ✅ NEW: any non-empty string
+          primaryText: "Stub Meta ad from Gabbarinfo AI agent.", // ✅ NEW
+          headline: "Gabbarinfo Digital Solutions",              // ✅ NEW
+          landingPage: "https://www.gabbarinfo.com/",            // ✅ NEW
+
+          // old fields can stay if you want, they’re ignored by validator:
+          message: "Stub Meta ad from Gabbarinfo AI agent.",
+          link: "https://www.gabbarinfo.com/",
+        },
+      },
+    }),
+  });
+
+  const json = await res.json();
+  setResult({ source: "meta", json });
+  setLoading(false);
+}
 
   return (
     <div style={{ padding: "20px", fontFamily: "monospace", background: "#000", color: "#0f0", minHeight: "100vh" }}>
