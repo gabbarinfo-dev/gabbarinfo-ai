@@ -1,7 +1,16 @@
 // pages/api/google-ads/create-simple-campaign.js
-// For now this is a stub: it just validates the payload shape and echoes it back.
-// Later, once Google Ads Basic Access is approved, we'll replace the "TODO" part
-// with real Google Ads API calls to create a campaign, ad groups, keywords, and ads.
+// Replaceable file — safe to paste over your existing file.
+// Behavior:
+// - Validates incoming payload (same validation you had).
+// - If GOOGLE_ADS_BASIC_ACCESS !== "true" -> returns stub (echo).
+// - If GOOGLE_ADS_BASIC_ACCESS === "true" -> attempts a lightweight verification
+//   call to Google Ads (listAccessibleCustomers) using lib/googleAdsHelper.js.
+//   It DOES NOT attempt destructive/mutate campaign creation yet (we'll add that
+//   once Basic Access is fully approved and you confirm).
+//
+// Optional: provide { refreshToken } in request body to use a user-specific refresh token.
+
+import { listAccessibleCustomers, callGoogleAdsApi } from "../../../lib/googleAdsHelper";
 
 export default async function handler(req, res) {
   if (req.method !== "POST") {
@@ -20,9 +29,9 @@ export default async function handler(req, res) {
       });
     }
 
-    const { customerId, campaign, adGroups } = body;
+    const { customerId, campaign, adGroups, refreshToken } = body;
 
-    // Basic validation – we can expand this later if needed
+    // Basic validation – keep your previous rules
     const errors = [];
 
     if (!customerId || typeof customerId !== "string") {
@@ -65,22 +74,59 @@ export default async function handler(req, res) {
       });
     }
 
-    // 🚧 TODO (later):
-    // - Use customerId + your GOOGLE_ADS_* env vars to:
-    //   1) Create a campaign (status = PAUSED)
-    //   2) Create ad groups under that campaign
-    //   3) Attach keywords to each ad group
-    //   4) Create responsive search ads in each ad group
-    //
-    // For now, we just echo back what we got so we can test the flow
-    // safely while Google Ads Basic Access is pending.
+    // If basic access flag isn't turned on, keep acting as the safe stub (echo)
+    const basicAccessFlag = String(process.env.GOOGLE_ADS_BASIC_ACCESS || "false").toLowerCase();
+    if (basicAccessFlag !== "true") {
+      return res.status(200).json({
+        ok: true,
+        stub: true,
+        message:
+          "Stub only: campaign payload received. Set GOOGLE_ADS_BASIC_ACCESS=true to run verification checks.",
+        received: body,
+      });
+    }
 
-    return res.status(200).json({
-      ok: true,
-      message:
-        "Stub only: campaign payload received. Once Basic Access is approved, this endpoint will actually create the campaign in Google Ads.",
-      received: body,
-    });
+    // ---------------------------
+    // GOOGLE ADS BASIC ACCESS FLOW
+    // ---------------------------
+    // We will attempt a safe verification call to Google Ads to confirm credentials.
+    // Use refreshToken from request body if provided (per-user token in Supabase).
+    try {
+      // Lightweight verification: listAccessibleCustomers to confirm auth + developer token
+      const listResp = await listAccessibleCustomers({
+        refreshToken: refreshToken || undefined,
+        // optionally you can pass developerToken or loginCustomerId here as well
+      });
+
+      if (!listResp.ok) {
+        // Google returned an error — surface it
+        return res.status(500).json({
+          ok: false,
+          step: "google_verification",
+          message: "Google Ads verification call failed.",
+          details: listResp.json || null,
+          status: listResp.status,
+        });
+      }
+
+      // If verification succeeded, return helpful info and the original payload.
+      return res.status(200).json({
+        ok: true,
+        stub: false,
+        message:
+          "Basic Access flag is ON and Google verification passed. Campaign creation logic is not yet executed (safe mode).",
+        googleVerification: listResp.json || null,
+        received: body,
+      });
+    } catch (err) {
+      console.error("Error during Google Ads verification:", err);
+      return res.status(500).json({
+        ok: false,
+        step: "exception",
+        message: "Unexpected error while verifying Google Ads credentials.",
+        error: err.message || String(err),
+      });
+    }
   } catch (err) {
     console.error("Error in /api/google-ads/create-simple-campaign:", err);
     return res.status(500).json({
