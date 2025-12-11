@@ -1,39 +1,48 @@
 // pages/api/google-ads/create-simple-campaign.js
-// Replaceable file — safe to paste over your existing file.
-// Behavior:
-// - Validates incoming payload (same validation you had).
-// - If GOOGLE_ADS_BASIC_ACCESS !== "true" -> returns stub (echo).
-// - If GOOGLE_ADS_BASIC_ACCESS === "true" -> attempts a lightweight verification
-//   call to Google Ads (listAccessibleCustomers) using lib/googleAdsHelper.js.
-//   It DOES NOT attempt destructive/mutate campaign creation yet (we'll add that
-//   once Basic Access is fully approved and you confirm).
+// Replaceable — server route that validates payload, and (optionally)
+// verifies Google Ads credentials using a per-user refresh token stored
+// in Supabase (public.google_connections).
 //
-// Optional: provide { refreshToken } in request body to use a user-specific refresh token.
+// Requirements (env):
+// - SUPABASE_URL
+// - SUPABASE_SERVICE_ROLE_KEY
+// - GOOGLE_ADS_BASIC_ACCESS (set to "true" to enable verification branch)
+//
+// NOTE: this file expects you already created lib/googleAdsHelper.js which
+// exports listAccessibleCustomers({ refreshToken }) -> { ok, status, json }
+// (the earlier helper you added).
 
-import { listAccessibleCustomers, callGoogleAdsApi } from "../../../lib/googleAdsHelper";
+import { getServerSession } from "next-auth/next";
+import { authOptions } from "../auth/[...nextauth]"; // path relative to this file
+import { createClient } from "@supabase/supabase-js";
+import { listAccessibleCustomers } from "../../../lib/googleAdsHelper";
+
+const SUPABASE_URL = process.env.NEXT_PUBLIC_SUPABASE_URL;
+const SUPABASE_SERVICE_ROLE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY;
+
+if (!SUPABASE_URL || !SUPABASE_SERVICE_ROLE_KEY) {
+  console.warn(
+    "Warning: SUPABASE_URL or SUPABASE_SERVICE_ROLE_KEY not set. Supabase access will fail for server-side token lookup."
+  );
+}
+
+const supabaseServer = createClient(SUPABASE_URL || "", SUPABASE_SERVICE_ROLE_KEY || "");
 
 export default async function handler(req, res) {
   if (req.method !== "POST") {
-    return res
-      .status(405)
-      .json({ ok: false, message: "Only POST is allowed on this endpoint." });
+    return res.status(405).json({ ok: false, message: "Only POST is allowed." });
   }
 
   try {
     const body = req.body;
-
     if (!body || typeof body !== "object") {
-      return res.status(400).json({
-        ok: false,
-        message: "Missing or invalid JSON body.",
-      });
+      return res.status(400).json({ ok: false, message: "Missing or invalid JSON body." });
     }
 
-    const { customerId, campaign, adGroups, refreshToken } = body;
+    const { customerId, campaign, adGroups, refreshToken: incomingRefreshToken } = body;
 
-    // Basic validation – keep your previous rules
+    // --- validation (same rules you had) ---
     const errors = [];
-
     if (!customerId || typeof customerId !== "string") {
       errors.push("customerId (string) is required.");
     }
@@ -67,11 +76,7 @@ export default async function handler(req, res) {
     }
 
     if (errors.length > 0) {
-      return res.status(400).json({
-        ok: false,
-        message: "Validation failed.",
-        errors,
-      });
+      return res.status(400).json({ ok: false, message: "Validation failed.", errors });
     }
 
     // If basic access flag isn't turned on, keep acting as the safe stub (echo)
@@ -89,33 +94,87 @@ export default async function handler(req, res) {
     // ---------------------------
     // GOOGLE ADS BASIC ACCESS FLOW
     // ---------------------------
-    // We will attempt a safe verification call to Google Ads to confirm credentials.
-    // Use refreshToken from request body if provided (per-user token in Supabase).
-    try {
-      // Lightweight verification: listAccessibleCustomers to confirm auth + developer token
-      const listResp = await listAccessibleCustomers({
-        refreshToken: refreshToken || undefined,
-        // optionally you can pass developerToken or loginCustomerId here as well
-      });
+    // 1) Determine refresh token to use:
+    //    - incomingRefreshToken (body) has highest priority
+    //    - otherwise read from Supabase table public.google_connections by user email
+    let refreshTokenToUse = incomingRefreshToken || null;
 
-      if (!listResp.ok) {
-        // Google returned an error — surface it
+    if (!refreshTokenToUse) {
+      // get server session to find the user's email
+      const session = await getServerSession(req, res, authOptions);
+      const email = session?.user?.email?.toLowerCase?.().trim?.();
+
+      if (!email) {
+        return res.status(401).json({
+          ok: false,
+          step: "auth",
+          message:
+            "No valid session / email found. Provide refreshToken in body or ensure you are signed in.",
+        });
+      }
+
+      // fetch from supabase
+      try {
+        const { data, error } = await supabaseServer
+          .from("google_connections")
+          .select("refresh_token, access_token, customer_id, expires_at")
+          .eq("email", email)
+          .maybeSingle();
+
+        if (error) {
+          console.error("Supabase error fetching google_connections:", error);
+          // continue to let user know
+          return res.status(500).json({
+            ok: false,
+            step: "supabase_fetch",
+            message: "Failed to read Google connection from Supabase.",
+            error: error.message || error,
+          });
+        }
+
+        if (!data || !data.refresh_token) {
+          return res.status(404).json({
+            ok: false,
+            step: "no_refresh_token",
+            message:
+              "No refresh_token found for your account in Supabase. Provide refreshToken in body or insert it into google_connections table.",
+          });
+        }
+
+        refreshTokenToUse = data.refresh_token;
+      } catch (err) {
+        console.error("Unexpected Supabase error:", err);
+        return res.status(500).json({
+          ok: false,
+          step: "supabase_exception",
+          message: "Unexpected error reading Supabase google_connections.",
+          error: String(err.message || err),
+        });
+      }
+    }
+
+    // 2) Call Google Ads lightweight verification using the refresh token
+    try {
+      const googleResp = await listAccessibleCustomers({ refreshToken: refreshTokenToUse });
+
+      // listAccessibleCustomers should return an object like { ok, status, json }
+      if (!googleResp || !googleResp.ok) {
         return res.status(500).json({
           ok: false,
           step: "google_verification",
           message: "Google Ads verification call failed.",
-          details: listResp.json || null,
-          status: listResp.status,
+          details: googleResp?.json || null,
+          status: googleResp?.status || null,
         });
       }
 
-      // If verification succeeded, return helpful info and the original payload.
+      // Success -> return the verification result + original payload
       return res.status(200).json({
         ok: true,
         stub: false,
         message:
-          "Basic Access flag is ON and Google verification passed. Campaign creation logic is not yet executed (safe mode).",
-        googleVerification: listResp.json || null,
+          "Basic Access flag is ON and Google verification passed. Campaign creation logic is not executed yet (safe mode).",
+        googleVerification: googleResp.json || null,
         received: body,
       });
     } catch (err) {
@@ -128,11 +187,11 @@ export default async function handler(req, res) {
       });
     }
   } catch (err) {
-    console.error("Error in /api/google-ads/create-simple-campaign:", err);
+    console.error("Unhandled error in create-simple-campaign:", err);
     return res.status(500).json({
       ok: false,
-      message: "Server error while handling campaign creation stub.",
-      error: err.message || String(err),
+      message: "Server error while handling campaign creation.",
+      error: String(err.message || err),
     });
   }
 }
