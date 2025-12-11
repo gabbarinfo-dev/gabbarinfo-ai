@@ -3,24 +3,31 @@ import NextAuth from "next-auth";
 import GoogleProvider from "next-auth/providers/google";
 import { createClient } from "@supabase/supabase-js";
 
-const supabase = createClient(
-  process.env.NEXT_PUBLIC_SUPABASE_URL,
-  process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
-);
+const SUPABASE_URL = process.env.NEXT_PUBLIC_SUPABASE_URL;
+const SUPABASE_ANON_KEY = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
+const SUPABASE_SERVICE_ROLE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY;
+
+// Minimal server-side supabase client using service role (for secure writes)
+const supabaseServer =
+  SUPABASE_URL && SUPABASE_SERVICE_ROLE_KEY
+    ? createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY)
+    : null;
+
+// Optional client (unused for writes) - kept for backwards compatibility
+const supabaseClient =
+  SUPABASE_URL && SUPABASE_ANON_KEY ? createClient(SUPABASE_URL, SUPABASE_ANON_KEY) : null;
 
 export const authOptions = {
   providers: [
     GoogleProvider({
       clientId: process.env.GOOGLE_CLIENT_ID,
       clientSecret: process.env.GOOGLE_CLIENT_SECRET,
-      // 🔹 IMPORTANT: Ask Google for Ads permission + offline tokens
       authorization: {
         params: {
-          prompt: "consent", // always show consent once → get refresh token
+          prompt: "consent",
           access_type: "offline",
           response_type: "code",
-          scope:
-            "openid email profile https://www.googleapis.com/auth/adwords",
+          scope: "openid email profile https://www.googleapis.com/auth/adwords",
         },
       },
     }),
@@ -29,12 +36,17 @@ export const authOptions = {
   secret: process.env.NEXTAUTH_SECRET,
 
   callbacks: {
-    // 1) Only allow emails that exist in allowed_users
+    // Allow only emails in allowed_users
     async signIn({ user }) {
       const email = user?.email?.toLowerCase().trim();
       if (!email) return false;
 
-      const { data, error } = await supabase
+      if (!supabaseClient) {
+        console.error("Supabase anon client not configured.");
+        return false;
+      }
+
+      const { data, error } = await supabaseClient
         .from("allowed_users")
         .select("role")
         .eq("email", email)
@@ -46,78 +58,34 @@ export const authOptions = {
       }
 
       if (!data) {
-        // not in allowed_users: hard deny
         return false;
       }
 
       return true;
     },
 
-    // 2) Put role into the JWT + store Google Ads tokens
+    // Store tokens into the JWT token object
     async jwt({ token, user, account }) {
-      // ----------------------------------------------------
-      // A. Handle Google tokens (only when Google sends them)
-      // ----------------------------------------------------
       if (account) {
-        // Access token (short-lived)
         token.accessToken = account.access_token || token.accessToken;
-
-        // Refresh token only comes the first time user grants consent
+        // refresh_token only comes the first time user grants consent
         if (account.refresh_token) {
           token.refreshToken = account.refresh_token;
         }
-
-        // 🧠 Persist tokens in Supabase so backend / agent can use them later
-        try {
-          const email =
-            (user?.email || token?.email || "").toLowerCase().trim() || null;
-
-          if (email) {
-            const expiresAt =
-              account.expires_at != null
-                ? new Date(account.expires_at * 1000).toISOString()
-                : null;
-
-            // You should have a table like:
-            // google_connections(email text primary key, access_token text, refresh_token text, expires_at timestamptz, updated_at timestamptz)
-            const { error: upsertError } = await supabase
-              .from("google_connections")
-              .upsert(
-                {
-                  email,
-                  access_token: account.access_token || null,
-                  refresh_token: account.refresh_token || null,
-                  expires_at: expiresAt,
-                  updated_at: new Date().toISOString(),
-                },
-                { onConflict: "email" }
-              );
-
-            if (upsertError) {
-              console.error("Supabase upsert error (google_connections):", upsertError);
-            }
-          }
-        } catch (e) {
-          console.error("Error while persisting Google tokens:", e);
-        }
       }
 
-      // ----------------------------------------------------
-      // B. Existing role logic – unchanged
-      // ----------------------------------------------------
+      // Existing role logic from DB
       if (user?.email) {
         const email = user.email.toLowerCase().trim();
 
         try {
-          const { data, error } = await supabase
+          const { data, error } = await supabaseClient
             .from("allowed_users")
             .select("role")
             .eq("email", email)
             .maybeSingle();
 
-          if (error) {
-            console.error("Supabase error in jwt:", error);
-          }
+          if (error) console.error("Supabase error in jwt callback:", error);
 
           if (data?.role) {
             const r = data.role.toLowerCase();
@@ -125,30 +93,21 @@ export const authOptions = {
           } else {
             token.role = "client";
           }
-        } catch (e) {
-          console.error("Unexpected error in jwt role fetch:", e);
+        } catch (err) {
+          console.error("Unexpected error in jwt callback:", err);
+          token.role = token.role || "client";
         }
       }
 
       return token;
     },
 
-    // 3) Expose role on session.user.role + expose tokens on session
+    // Expose role and tokens on session
     async session({ session, token }) {
-      // role (existing behaviour)
-      if (token?.role) {
-        session.user.role = token.role;
-      } else {
-        session.user.role = "client";
-      }
+      session.user.role = token?.role || "client";
 
-      // 🔹 Make tokens available to our API routes later (if you need them from client side)
-      if (token?.accessToken) {
-        session.accessToken = token.accessToken;
-      }
-      if (token?.refreshToken) {
-        session.refreshToken = token.refreshToken;
-      }
+      if (token?.accessToken) session.accessToken = token.accessToken;
+      if (token?.refreshToken) session.refreshToken = token.refreshToken;
 
       return session;
     },
@@ -160,7 +119,56 @@ export const authOptions = {
 
   pages: {
     signIn: "/auth/signin",
-    // error page can stay default
+  },
+};
+
+// Additional NOTE:
+// We also want to save the Google refresh token into Supabase securely when a user signs in.
+// NextAuth's `signIn` callback doesn't receive `account`. To reliably persist refresh_token
+// we implement an additional event handler in NextAuth's `events` below. The 'signIn' event
+// receives `user` and `account` data server-side — we'll use that to upsert into Supabase.
+
+authOptions.events = {
+  async signIn(message) {
+    // message = { user, account, profile, isNewUser }
+    try {
+      const { user, account } = message || {};
+      if (!user?.email) return;
+
+      // account.refresh_token is only present the first time the user consented
+      const refreshToken = account?.refresh_token || null;
+
+      // If we have a refresh token, upsert into public.google_connections
+      if (refreshToken && supabaseServer) {
+        const email = user.email.toLowerCase().trim();
+
+        // Optionally try to fetch customerId if account.provider === 'google' and account.id_token exists
+        // But we will only upsert what we have: refresh_token and timestamp
+        const upsertObj = {
+          email,
+          refresh_token: refreshToken,
+          access_token: null,
+          customer_id: null,
+          updated_at: new Date().toISOString(),
+        };
+
+        try {
+          const { error } = await supabaseServer
+            .from("google_connections")
+            .upsert(upsertObj, { onConflict: ["email"] });
+
+          if (error) {
+            console.error("Failed to upsert google_connections:", error);
+          } else {
+            console.log("Saved Google refresh token for", email);
+          }
+        } catch (err) {
+          console.error("Exception upserting google_connections:", err);
+        }
+      }
+    } catch (err) {
+      console.error("Error in NextAuth signIn event:", err);
+    }
   },
 };
 
