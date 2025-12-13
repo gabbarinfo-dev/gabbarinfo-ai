@@ -67,6 +67,38 @@ if (finalClientEmail) {
       .sort((a, b) => b.similarity - a.similarity) // sort by highest similarity
       .slice(0, 5); // Take top 5 relevant chunks
   }
+}   ← END of PART 3
+
+// Paste PART 4 HERE
+// --- PART 4: Global memory fallback search ---
+let globalResults = [];
+
+const { data: globalRows, error: globalErr } = await supabaseServer
+  .from("global_memory")
+  .select("content, embedding");
+
+if (!globalErr && globalRows && globalRows.length > 0) {
+  globalResults = globalRows
+    .map((row) => {
+      let dot = 0;
+      let normA = 0;
+      let normB = 0;
+
+      for (let i = 0; i < row.embedding.length; i++) {
+        dot += userEmbedding[i] * row.embedding[i];
+        normA += userEmbedding[i] ** 2;
+        normB += row.embedding[i] ** 2;
+      }
+
+      const similarity = dot / (Math.sqrt(normA) * Math.sqrt(normB));
+
+      return {
+        content: row.content,
+        similarity,
+      };
+    })
+    .sort((a, b) => b.similarity - a.similarity)
+    .slice(0, 5); // top 5 global matches
 }
 
     // Placeholder (we fill in Parts 2–7)
