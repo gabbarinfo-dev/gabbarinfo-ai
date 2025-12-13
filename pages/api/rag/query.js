@@ -40,4 +40,14 @@ const userEmbedding = embedResponse.embedding.values;
       ok: true,
       message: "RAG engine base is working.",
       client_email: finalClientEmail,
- 
+      });
+
+  } catch (err) {
+    return res.status(500).json({
+      ok: false,
+      message: "Server error in RAG query engine",
+      error: err.message,
+    });
+  }
+}
+
