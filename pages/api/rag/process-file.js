@@ -108,4 +108,13 @@ export default async function handler(req, res) {
       ok: true,
       message: "File processed successfully",
       type: fileType,
-  
+    });
+
+  } catch (err) {
+    return res.status(500).json({
+      ok: false,
+      message: "Server error",
+      error: err.message,
+    });
+  }
+}
