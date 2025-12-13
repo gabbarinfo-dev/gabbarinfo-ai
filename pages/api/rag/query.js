@@ -67,9 +67,7 @@ if (finalClientEmail) {
       .sort((a, b) => b.similarity - a.similarity) // sort by highest similarity
       .slice(0, 5); // Take top 5 relevant chunks
   }
-}   ← END of PART 3
-
-// Paste PART 4 HERE
+}
 // --- PART 4: Global memory fallback search ---
 let globalResults = [];
 
