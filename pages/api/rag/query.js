@@ -8,7 +8,7 @@ import { authOptions } from "../auth/[...nextauth]";
 // Initialize Gemini client (text + embeddings)
 const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
 const textModel = genAI.getGenerativeModel({ model: process.env.GEMINI_MODEL });
-const embedModel = genAI.getGenerativeModel({ model: process.env.GEMINI_MODEL });
+const embedModel = genAI.getGenerativeModel({ model: "models/text-embedding-004" });
 
 export default async function handler(req, res) {
   if (req.method !== "POST") {
