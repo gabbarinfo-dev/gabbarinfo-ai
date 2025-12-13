@@ -31,6 +31,9 @@ export default async function handler(req, res) {
     // 2) Session email → second priority
     // 3) No email → global-only mode
     const finalClientEmail = client_email || sessionEmail || null;
+    // --- PART 2: Embed the user query ---
+const embedResponse = await embedModel.embedContent(user_input);
+const userEmbedding = embedResponse.embedding.values;
 
     // Placeholder (we fill in Parts 2–7)
     return res.status(200).json({
