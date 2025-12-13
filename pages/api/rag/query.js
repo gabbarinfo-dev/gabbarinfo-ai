@@ -98,6 +98,22 @@ if (!globalErr && globalRows && globalRows.length > 0) {
     .sort((a, b) => b.similarity - a.similarity)
     .slice(0, 5); // top 5 global matches
 }
+// --- PART 5: Merge memory results with priority rules ---
+
+let finalMemory = [];
+
+// 🥇 Priority 1: Client memory
+if (clientResults.length > 0) {
+  finalMemory = clientResults;
+} 
+// 🥈 Priority 2: fallback to global if client empty
+else if (globalResults.length > 0) {
+  finalMemory = globalResults;
+} 
+// 🥉 If no memory found at all
+else {
+  finalMemory = [];
+}
 
     // Placeholder (we fill in Parts 2–7)
     return res.status(200).json({
