@@ -34,6 +34,40 @@ export default async function handler(req, res) {
     // --- PART 2: Embed the user query ---
 const embedResponse = await embedModel.embedContent(user_input);
 const userEmbedding = embedResponse.embedding.values;
+// --- PART 3: Client-first memory search ---
+let clientResults = [];
+
+if (finalClientEmail) {
+  const { data: clientRows, error: clientErr } = await supabaseServer
+    .from("client_memory")
+    .select("content, embedding")
+    .eq("client_email", finalClientEmail);
+
+  if (!clientErr && clientRows && clientRows.length > 0) {
+    clientResults = clientRows
+      .map((row) => {
+        // Compute cosine similarity manually
+        let dot = 0;
+        let normA = 0;
+        let normB = 0;
+
+        for (let i = 0; i < row.embedding.length; i++) {
+          dot += userEmbedding[i] * row.embedding[i];
+          normA += userEmbedding[i] ** 2;
+          normB += row.embedding[i] ** 2;
+        }
+
+        const similarity = dot / (Math.sqrt(normA) * Math.sqrt(normB));
+
+        return {
+          content: row.content,
+          similarity,
+        };
+      })
+      .sort((a, b) => b.similarity - a.similarity) // sort by highest similarity
+      .slice(0, 5); // Take top 5 relevant chunks
+  }
+}
 
     // Placeholder (we fill in Parts 2–7)
     return res.status(200).json({
