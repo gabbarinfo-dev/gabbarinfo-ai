@@ -114,6 +114,56 @@ else if (globalResults.length > 0) {
 else {
   finalMemory = [];
 }
+// --- PART 6: Build final prompt for Gemini ---
+
+// Convert memory rows into readable text
+let memoryText = "";
+if (finalMemory.length > 0) {
+  memoryText = finalMemory
+    .map((m, idx) => `Memory #${idx + 1}:\n${m.content}`)
+    .join("\n\n");
+} else {
+  memoryText = "No memory available.";
+}
+
+// SYSTEM INSTRUCTIONS FOR YOUR AI
+const systemInstructions = `
+You are GabbarInfo AI — a professional digital marketing strategist.
+
+YOUR RULES:
+- Think like Nishant (owner of GabbarInfo Digital Solutions) 
+- Always follow Indian + Ahmedabad business mindset  
+- Be practical, not theoretical  
+- Use simple Indian-English, not fancy western English  
+- Give direct strategies, steps, numbers, target audience, budgets  
+- If user provided memory exists, YOU MUST use it  
+- If memory is not relevant, mention better practical advice  
+- Never say “I am AI”, “I am a language model”, etc.  
+- If user asks about ads, give performance-driven strategies  
+- If user asks for copy, give the BEST ad copy possible  
+- If question is unclear, ask 1 clarification question  
+- If memory contradicts user input → prefer the latest memory  
+`;
+
+// BUILD THE FINAL PROMPT
+const finalPrompt = `
+${systemInstructions}
+
+USER QUESTION:
+${user_input}
+
+RELEVANT MEMORY:
+${memoryText}
+
+TASK:
+Using the above memory + your intelligence, give the best possible marketing answer with clear steps and examples.
+Provide:
+- Strategy
+- Targeting
+- Ad copy (if relevant)
+- Budget suggestions
+- 1–2 optimisation ideas
+`;
 
     // Placeholder (we fill in Parts 2–7)
     return res.status(200).json({
