@@ -1,5 +1,12 @@
 // pages/api/rag/upload-file.js
 
+// ⬇ MUST BE FIRST — disable Next.js body parser for file uploads
+export const config = {
+  api: {
+    bodyParser: false,
+  },
+};
+
 import formidable from "formidable";
 import fs from "fs";
 import { supabaseServer } from "../../../lib/supabaseServer";
