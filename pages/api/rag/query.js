@@ -164,6 +164,25 @@ Provide:
 - Budget suggestions
 - 1–2 optimisation ideas
 `;
+// --- PART 7: Generate answer using Gemini ---
+
+let aiResponse = "";
+
+try {
+  const result = await genModel.generateContent(finalPrompt);
+  aiResponse = result.response.text();
+} catch (err) {
+  console.error("Gemini error:", err);
+  aiResponse = "Sorry, I couldn't generate the answer due to a system issue.";
+}
+
+// FINAL RETURN TO FRONTEND
+return res.status(200).json({
+  success: true,
+  answer: aiResponse,
+  used_client_email: finalClientEmail || null,
+  memory_used: finalMemory.length,
+});
 
     // Placeholder (we fill in Parts 2–7)
     return res.status(200).json({
