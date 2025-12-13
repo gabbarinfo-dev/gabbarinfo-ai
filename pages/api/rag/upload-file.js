@@ -11,15 +11,16 @@ import formidable from "formidable";
 import fs from "fs";
 import { supabaseServer } from "../../../lib/supabaseServer";
 
-const form = formidable({ multiples: false });
-
 export default async function handler(req, res) {
   if (req.method !== "POST") {
     return res.status(405).json({ ok: false, message: "Only POST allowed" });
   }
 
   try {
+    // Parse file + fields
     const { fields, files } = await new Promise((resolve, reject) => {
+      const form = formidable({ multiples: false });
+
       form.parse(req, (err, fields, files) => {
         if (err) reject(err);
         else resolve({ fields, files });
@@ -36,9 +37,13 @@ export default async function handler(req, res) {
     const filePath = file.filepath;
     const fileName = file.originalFilename;
 
+    // Path inside Supabase storage bucket
     const storagePath = `client_${clientId}/${fileName}`;
+
+    // Read the raw file buffer
     const fileBuffer = fs.readFileSync(filePath);
 
+    // Upload to storage
     const { error: uploadErr } = await supabaseServer.storage
       .from("knowledge-base")
       .upload(storagePath, fileBuffer, {
@@ -50,6 +55,7 @@ export default async function handler(req, res) {
       return res.status(500).json({ ok: false, message: "Storage error", error: uploadErr });
     }
 
+    // Save in memory_links table
     const { error: linkErr } = await supabaseServer
       .from("memory_links")
       .insert({
@@ -66,6 +72,7 @@ export default async function handler(req, res) {
       message: "File uploaded + memory link created",
       path: storagePath,
     });
+
   } catch (err) {
     return res.status(500).json({
       ok: false,
