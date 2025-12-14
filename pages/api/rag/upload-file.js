@@ -1,9 +1,7 @@
 // pages/api/rag/upload-file.js
 
 export const config = {
-  api: {
-    bodyParser: false,
-  },
+  api: { bodyParser: false },
 };
 
 import formidable from "formidable";
@@ -17,7 +15,7 @@ export default async function handler(req, res) {
   try {
     const form = formidable({
       multiples: false,
-      keepExtensions: true,
+      fileWriteStreamHandler: () => null, // ⛔ prevent disk write
     });
 
     const { fields, files } = await new Promise((resolve, reject) => {
@@ -27,21 +25,21 @@ export default async function handler(req, res) {
       });
     });
 
-    const file = files.file;
-    const memoryType = fields.memory_type;
+    const memoryType = String(fields.memory_type || "").toLowerCase();
     const clientEmail = fields.client_email || null;
-    const saveFile = fields.save_file || "no";
+    const saveFile = fields.save_file === "yes" ? "yes" : "no";
 
-    if (!file || !memoryType) {
+    const uploadedFile = files.file;
+
+    if (!uploadedFile) {
       return res.status(400).json({
         ok: false,
-        message: "Missing file or memory_type",
+        message: "No file received",
       });
     }
 
-    // 🔥 IMPORTANT FIX
-    // Vercel-safe way to read file
-    const buffer = file.buffer;
+    // ✅ Buffer is HERE (this fixes everything)
+    const buffer = uploadedFile.toBuffer?.();
 
     if (!buffer) {
       return res.status(400).json({
@@ -50,27 +48,30 @@ export default async function handler(req, res) {
       });
     }
 
-    // -------------------------
-    // If NOT saving physical file
-    // -------------------------
+    // ------------------------------
+    // Case: DO NOT SAVE FILE
+    // ------------------------------
     if (saveFile === "no") {
       return res.status(200).json({
         ok: true,
-        message: "File received (not stored). Ready for processing.",
+        message: "File received (buffer only, not stored)",
         file_path: null,
       });
     }
 
-    // -------------------------
-    // Save to Supabase Storage
-    // -------------------------
-    const cleanName = file.originalFilename.replace(/[^a-zA-Z0-9._-]/g, "_");
-    const storagePath = `${Date.now()}_${cleanName}`;
+    // ------------------------------
+    // Case: SAVE TO SUPABASE
+    // ------------------------------
+    const safeName =
+      uploadedFile.originalFilename?.replace(/\s+/g, "_") ||
+      `upload_${Date.now()}`;
+
+    const filePath = `${Date.now()}_${safeName}`;
 
     const { error } = await supabaseServer.storage
       .from("knowledge-base")
-      .upload(storagePath, buffer, {
-        contentType: file.mimetype,
+      .upload(filePath, buffer, {
+        contentType: uploadedFile.mimetype || "application/octet-stream",
         upsert: true,
       });
 
@@ -78,16 +79,15 @@ export default async function handler(req, res) {
       return res.status(500).json({
         ok: false,
         message: "Supabase upload failed",
-        error,
+        error: error.message,
       });
     }
 
     return res.status(200).json({
       ok: true,
       message: "File uploaded successfully",
-      file_path: storagePath,
+      file_path: filePath,
     });
-
   } catch (err) {
     console.error("UPLOAD API CRASH:", err);
     return res.status(500).json({
