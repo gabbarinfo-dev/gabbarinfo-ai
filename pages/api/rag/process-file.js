@@ -7,43 +7,46 @@ export default async function handler(req, res) {
 
   try {
     const {
-      original_name,
-      mime_type,
       memory_type,
       client_email,
       save_file,
+      file_path,
+      original_name,
+      mime_type,
       buffer_base64,
     } = req.body || {};
 
-    if (!buffer_base64) {
+    // ---- STRICT VALIDATION ----
+    if (save_file === "yes" && !file_path) {
       return res.status(400).json({
         ok: false,
-        message: "File buffer missing",
+        message: "file_path missing while save_file = yes",
       });
     }
 
-    // Decode buffer (NO fs, NO streams, NO paths)
-    const buffer = Buffer.from(buffer_base64, "base64");
+    if (save_file === "no" && !buffer_base64) {
+      return res.status(400).json({
+        ok: false,
+        message: "buffer missing while save_file = no",
+      });
+    }
 
-    // 🔒 Minimal safe extraction (no pdf/docx libs = no crash)
-    const extractedText = `
-FILE: ${original_name}
-TYPE: ${mime_type}
-SIZE: ${buffer.length} bytes
-MEMORY: ${memory_type}
-CLIENT: ${client_email || "GLOBAL"}
-UPLOADED_AT: ${new Date().toISOString()}
-`;
-
-    // ⛔️ No embeddings, no storage, no helpers
-    // ✅ Just simulate successful processing
+    // ---- NO PROCESSING YET (SAFE STUB) ----
+    // This endpoint ONLY confirms payload correctness.
+    // Actual embedding / extraction can be added later.
 
     return res.status(200).json({
       ok: true,
-      message: "File processed successfully",
-      preview: extractedText.slice(0, 200),
+      message: "Process-file executed successfully",
+      meta: {
+        memory_type,
+        client_email,
+        save_file,
+        file_path,
+        original_name,
+        mime_type,
+      },
     });
-
   } catch (err) {
     console.error("PROCESS FILE ERROR:", err);
     return res.status(500).json({
