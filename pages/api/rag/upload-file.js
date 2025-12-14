@@ -1,9 +1,5 @@
 // pages/api/rag/upload-file.js
 
-// ✅ VERY IMPORTANT — force Node.js runtime
-export const runtime = "nodejs";
-
-// Disable Next.js body parser (required for formidable)
 export const config = {
   api: {
     bodyParser: false,
@@ -12,6 +8,7 @@ export const config = {
 
 import formidable from "formidable";
 import fs from "fs";
+import path from "path";
 import { supabaseServer } from "../../../lib/supabaseServer";
 
 export default async function handler(req, res) {
@@ -20,20 +17,21 @@ export default async function handler(req, res) {
   }
 
   try {
-    // --------------------------
-    // Parse form data
-    // --------------------------
     const { fields, files } = await new Promise((resolve, reject) => {
-      const form = formidable({ multiples: false });
+      const form = formidable({
+        multiples: false,
+        keepExtensions: true,
+      });
+
       form.parse(req, (err, fields, files) => {
         if (err) reject(err);
         else resolve({ fields, files });
       });
     });
 
-    const memoryType = fields.memory_type; // "global" | "client"
+    const memoryType = fields.memory_type;
     const clientEmail = fields.client_email || null;
-    const saveFile = fields.save_file || "no"; // "yes" | "no"
+    const saveFile = fields.save_file || "no";
     const file = files.file;
 
     if (!memoryType || !file) {
@@ -46,44 +44,53 @@ export default async function handler(req, res) {
     if (memoryType === "client" && !clientEmail) {
       return res.status(400).json({
         ok: false,
-        message: "client_email is required for client memory",
+        message: "client_email required for client memory",
       });
     }
 
+    // ------------------------------
+    // SAFE filename handling (FIX)
+    // ------------------------------
+    const safeOriginalName =
+      file.originalFilename ||
+      file.newFilename ||
+      `upload_${Date.now()}`;
+
+    const cleanName = safeOriginalName
+      .toString()
+      .replace(/[^a-zA-Z0-9.\-_]/g, "_");
+
+    const bucketPath = `${Date.now()}_${cleanName}`;
+
     // --------------------------------
-    // CASE 1: DO NOT SAVE PHYSICAL FILE
+    // If NOT saving physical file
     // --------------------------------
     if (saveFile === "no") {
       return res.status(200).json({
         ok: true,
-        message: "File received. Ready for processing (not stored).",
+        message: "File received. Ready for processing.",
         file_path: null,
         save_file: "no",
       });
     }
 
     // --------------------------------
-    // CASE 2: SAVE FILE TO SUPABASE
+    // Save file to Supabase
     // --------------------------------
-    const localPath = file.filepath;
-    const originalName = file.originalFilename;
-    const safeName = originalName.replace(/\s+/g, "_");
-    const bucketPath = `${Date.now()}_${safeName}`;
-
-    const buffer = fs.readFileSync(localPath);
+    const buffer = fs.readFileSync(file.filepath);
 
     const { error: uploadErr } = await supabaseServer.storage
       .from("knowledge-base")
       .upload(bucketPath, buffer, {
-        contentType: file.mimetype,
+        contentType: file.mimetype || "application/octet-stream",
         upsert: true,
       });
 
     if (uploadErr) {
-      console.error("SUPABASE UPLOAD ERROR:", uploadErr);
       return res.status(500).json({
         ok: false,
-        message: "Failed to upload file to Supabase",
+        message: "Supabase upload failed",
+        error: uploadErr.message,
       });
     }
 
@@ -93,12 +100,12 @@ export default async function handler(req, res) {
       file_path: bucketPath,
       save_file: "yes",
     });
-
   } catch (err) {
-    console.error("UPLOAD API CRASH:", err);
+    console.error("UPLOAD ERROR:", err);
     return res.status(500).json({
       ok: false,
       message: "Server error",
+      error: err.message,
     });
   }
 }
