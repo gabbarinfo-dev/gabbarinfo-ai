@@ -1,22 +1,21 @@
 // pages/api/rag/process-file.js
 
-// ✅ VERY IMPORTANT — force Node.js runtime
-export const runtime = "nodejs";
-
 import { supabaseServer } from "../../../lib/supabaseServer";
 import { GoogleGenerativeAI } from "@google/generative-ai";
 import pdfParse from "pdf-parse";
 import mammoth from "mammoth";
 
-// ---------------- GEMINI SETUP ----------------
+// -------------------------------
+// Gemini setup
+// -------------------------------
 const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
 
-// For OCR (images)
-const visionModel = genAI.getGenerativeModel({
-  model: "gemini-pro-vision",
+// Text model (for OCR / image text)
+const textModel = genAI.getGenerativeModel({
+  model: "gemini-pro",
 });
 
-// For embeddings
+// Embedding model
 const embedModel = genAI.getGenerativeModel({
   model: "models/text-embedding-004",
 });
@@ -27,19 +26,27 @@ export default async function handler(req, res) {
   }
 
   try {
-    const { file_path, memory_type, client_email, save_file, title } = req.body;
+    const {
+      mode,                 // GLOBAL | CLIENT
+      client_email,         // email or null
+      save_file,            // yes | no
+      file_path,            // path in bucket OR null
+      original_name,        // original filename
+      buffer,               // base64 buffer (only when save_file === "no")
+      mime_type,            // mimetype
+    } = req.body;
 
-    if (!memory_type) {
+    if (!mode) {
       return res.status(400).json({
         ok: false,
-        message: "memory_type missing",
+        message: "Missing mode",
       });
     }
 
-    // ------------------------------------------------
-    // 1️⃣ DOWNLOAD FILE ONLY IF save_file === "yes"
-    // ------------------------------------------------
-    let buffer = null;
+    // ---------------------------------------
+    // 1. Prepare file buffer
+    // ---------------------------------------
+    let fileBuffer = null;
 
     if (save_file === "yes") {
       if (!file_path) {
@@ -54,69 +61,71 @@ export default async function handler(req, res) {
         .download(file_path);
 
       if (error) {
-        console.error("DOWNLOAD ERROR:", error);
         return res.status(500).json({
           ok: false,
           message: "Failed to download file",
+          error: error.message,
         });
       }
 
       const arrayBuffer = await data.arrayBuffer();
-      buffer = Buffer.from(arrayBuffer);
+      fileBuffer = Buffer.from(arrayBuffer);
+
+    } else {
+      // save_file === "no"
+      if (!buffer) {
+        return res.status(400).json({
+          ok: false,
+          message: "Buffer missing for non-saved file",
+        });
+      }
+      fileBuffer = Buffer.from(buffer, "base64");
     }
 
-    // ------------------------------------------------
-    // 2️⃣ EXTRACT TEXT
-    // ------------------------------------------------
+    // ---------------------------------------
+    // 2. Extract text
+    // ---------------------------------------
     let extractedText = "";
     let fileType = "text";
 
-    if (save_file === "yes" && file_path) {
-      const lower = file_path.toLowerCase();
+    const name = original_name || file_path || "";
+    const lowerName = name.toLowerCase();
 
-      if (lower.endsWith(".pdf")) {
-        fileType = "pdf";
-        const parsed = await pdfParse(buffer);
-        extractedText = parsed.text;
+    if (lowerName.endsWith(".pdf")) {
+      fileType = "pdf";
+      const parsed = await pdfParse(fileBuffer);
+      extractedText = parsed.text;
 
-      } else if (lower.endsWith(".docx")) {
-        fileType = "docx";
-        const result = await mammoth.extractRawText({ buffer });
-        extractedText = result.value;
+    } else if (lowerName.endsWith(".docx")) {
+      fileType = "docx";
+      const result = await mammoth.extractRawText({ buffer: fileBuffer });
+      extractedText = result.value;
 
-      } else if (
-        lower.endsWith(".png") ||
-        lower.endsWith(".jpg") ||
-        lower.endsWith(".jpeg")
-      ) {
-        fileType = "image";
+    } else if (
+      mime_type?.startsWith("image/") ||
+      lowerName.endsWith(".png") ||
+      lowerName.endsWith(".jpg") ||
+      lowerName.endsWith(".jpeg")
+    ) {
+      fileType = "image";
 
-        const base64 = buffer.toString("base64");
-
-        const visionResult = await visionModel.generateContent([
-          {
-            inlineData: {
-              data: base64,
-              mimeType: "image/png",
-            },
+      const base64Img = fileBuffer.toString("base64");
+      const result = await textModel.generateContent([
+        {
+          inlineData: {
+            data: base64Img,
+            mimeType: mime_type || "image/png",
           },
-          "Extract all readable text clearly.",
-        ]);
+        },
+        "Extract all readable text from this image clearly.",
+      ]);
 
-        extractedText = visionResult.response.text();
-      } else {
-        return res.status(400).json({
-          ok: false,
-          message: "Unsupported file type",
-        });
-      }
+      extractedText = result.response.text();
+
     } else {
-      // ⚠️ If file not saved, we DO NOT process binary files
-      return res.status(400).json({
-        ok: false,
-        message:
-          "When save_file=no, text extraction is not possible for binary files",
-      });
+      // fallback: treat as plain text
+      fileType = "text";
+      extractedText = fileBuffer.toString("utf-8");
     }
 
     if (!extractedText || extractedText.trim().length < 5) {
@@ -126,57 +135,71 @@ export default async function handler(req, res) {
       });
     }
 
-    // ------------------------------------------------
-    // 3️⃣ CREATE EMBEDDING
-    // ------------------------------------------------
-    const embedRes = await embedModel.embedContent(extractedText);
-    const embedding = embedRes.embedding.values;
+    // ---------------------------------------
+    // 3. Generate embedding
+    // ---------------------------------------
+    const embedResponse = await embedModel.embedContent(extractedText);
+    const embedding = embedResponse.embedding.values;
 
-    // ------------------------------------------------
-    // 4️⃣ DECIDE TABLE
-    // ------------------------------------------------
-    let table = "global_memory";
+    // ---------------------------------------
+    // 4. Decide table
+    // ---------------------------------------
+    let tableName = "";
 
-    if (memory_type === "client") {
+    if (mode === "GLOBAL") {
+      tableName = "global_memory";
+    } else if (mode === "CLIENT") {
       if (!client_email) {
         return res.status(400).json({
           ok: false,
-          message: "client_email required for client memory",
+          message: "client_email required for CLIENT mode",
         });
       }
-      table = "client_memory";
-    }
-
-    // ------------------------------------------------
-    // 5️⃣ INSERT INTO DB
-    // ------------------------------------------------
-    const { error: insertErr } = await supabaseServer.from(table).insert({
-      client_email: memory_type === "client" ? client_email : null,
-      title: title || file_path || "Untitled",
-      type: fileType,
-      content: extractedText,
-      embedding,
-    });
-
-    if (insertErr) {
-      console.error("DB INSERT ERROR:", insertErr);
-      return res.status(500).json({
+      tableName = "client_memory";
+    } else {
+      return res.status(400).json({
         ok: false,
-        message: "Failed to save memory",
+        message: "Invalid mode",
       });
     }
 
+    // ---------------------------------------
+    // 5. Insert memory
+    // ---------------------------------------
+    const { error: insertErr } = await supabaseServer
+      .from(tableName)
+      .insert({
+        client_email: mode === "CLIENT" ? client_email : null,
+        type: fileType,
+        title: original_name || file_path || "Uploaded file",
+        content: extractedText,
+        embedding,
+      });
+
+    if (insertErr) {
+      return res.status(500).json({
+        ok: false,
+        message: "Database insert failed",
+        error: insertErr.message,
+      });
+    }
+
+    // ---------------------------------------
+    // 6. Success
+    // ---------------------------------------
     return res.status(200).json({
       ok: true,
-      message: "Memory processed & stored successfully",
+      message: "File processed and stored successfully",
       type: fileType,
+      saved_file: save_file === "yes",
     });
 
   } catch (err) {
-    console.error("PROCESS FILE CRASH:", err);
+    console.error("PROCESS FILE ERROR:", err);
     return res.status(500).json({
       ok: false,
-      message: "Server error",
+      message: "Server error in process-file",
+      error: err.message,
     });
   }
 }
