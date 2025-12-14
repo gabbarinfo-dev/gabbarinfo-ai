@@ -23,6 +23,11 @@ export default function AdminPage() {
 
   const [uploading, setUploading] = useState(false);
   const [progress, setProgress] = useState(0);
+  const [uploadMessage, setUploadMessage] = useState(null);
+
+  // ---------------- MEMORY LIST STATES ----------------
+  const [memoryList, setMemoryList] = useState([]);
+  const [loadingMemory, setLoadingMemory] = useState(false);
 
   // ---------------- LOAD CLIENT LIST ----------------
   useEffect(() => {
@@ -30,10 +35,26 @@ export default function AdminPage() {
       const res = await fetch("/api/admin/list-users");
       const data = await res.json();
       if (data.success) {
-        setClients(data.users.filter(u => u.role === "client"));
+        setClients(data.users.filter((u) => u.role === "client"));
       }
     }
     loadClients();
+  }, []);
+
+  // ---------------- LOAD MEMORY LIST ----------------
+  async function loadMemory() {
+    setLoadingMemory(true);
+    const res = await fetch("/api/rag/list-memory");
+    const data = await res.json();
+    setLoadingMemory(false);
+
+    if (data.success) {
+      setMemoryList(data.items);
+    }
+  }
+
+  useEffect(() => {
+    loadMemory();
   }, []);
 
   // ---------------- AUTH PROTECTION ----------------
@@ -96,6 +117,26 @@ export default function AdminPage() {
     }
   }
 
+  // ---------------- DELETE MEMORY HANDLER ----------------
+  async function deleteMemory(id) {
+    const confirmDelete = confirm("Are you sure you want to delete this memory?");
+    if (!confirmDelete) return;
+
+    const res = await fetch("/api/rag/delete-memory", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ id }),
+    });
+
+    const data = await res.json();
+    if (data.success) {
+      alert("Memory deleted.");
+      loadMemory();
+    } else {
+      alert("Delete failed.");
+    }
+  }
+
   // ---------------- FILE UPLOAD HANDLER ----------------
   async function handleUpload() {
     if (!file) {
@@ -110,6 +151,7 @@ export default function AdminPage() {
 
     setUploading(true);
     setProgress(10);
+    setUploadMessage(null);
 
     const formData = new FormData();
     formData.append("file", file);
@@ -127,9 +169,14 @@ export default function AdminPage() {
     const data = await res.json();
 
     setProgress(100);
-    setTimeout(() => setUploading(false), 1000);
+    setTimeout(() => setUploading(false), 800);
 
-    alert(data.message || "Upload complete.");
+    setUploadMessage({
+      type: data.ok ? "success" : "error",
+      text: data.message,
+    });
+
+    loadMemory();
   }
 
   // ====================================================
@@ -191,11 +238,11 @@ export default function AdminPage() {
           borderRadius: 12,
           background: "#fff",
           maxWidth: 600,
+          marginBottom: 40,
         }}
       >
         <h2>Upload Knowledge Files</h2>
 
-        {/* file picker */}
         <label>Choose File</label>
         <input
           type="file"
@@ -203,7 +250,6 @@ export default function AdminPage() {
           style={{ marginBottom: 16 }}
         />
 
-        {/* memory type */}
         <label>Memory Type</label>
         <select
           value={memoryType}
@@ -214,7 +260,6 @@ export default function AdminPage() {
           <option value="client">Client Memory</option>
         </select>
 
-        {/* client dropdown */}
         {memoryType === "client" && (
           <>
             <label>Select Client Email</label>
@@ -233,18 +278,16 @@ export default function AdminPage() {
           </>
         )}
 
-        {/* save file ? */}
-        <label>Save physical file into Supabase?</label>
+        <label>Save physical file?</label>
         <select
           value={saveFile}
           onChange={(e) => setSaveFile(e.target.value)}
           style={{ width: "100%", marginBottom: 16 }}
         >
           <option value="yes">Yes — Save File</option>
-          <option value="no">No — Only Extract & Embed</option>
+          <option value="no">No — Only Extract + Embed</option>
         </select>
 
-        {/* progress bar */}
         {uploading && (
           <div
             style={{
@@ -267,6 +310,25 @@ export default function AdminPage() {
           </div>
         )}
 
+        {uploadMessage && (
+          <div
+            style={{
+              padding: 12,
+              marginBottom: 16,
+              borderRadius: 6,
+              background:
+                uploadMessage.type === "success" ? "#ecfdf3" : "#fef2f2",
+              color: uploadMessage.type === "success" ? "#166534" : "#b91c1c",
+              border:
+                uploadMessage.type === "success"
+                  ? "1px solid #bbf7d0"
+                  : "1px solid #fecaca",
+            }}
+          >
+            {uploadMessage.text}
+          </div>
+        )}
+
         <button
           onClick={handleUpload}
           style={{ width: "100%", padding: 12 }}
@@ -274,6 +336,69 @@ export default function AdminPage() {
         >
           {uploading ? "Uploading…" : "Upload File"}
         </button>
+      </section>
+
+      {/* ---------------- MEMORY LIST SECTION ---------------- */}
+      <section
+        style={{
+          padding: 24,
+          border: "1px solid #ddd",
+          borderRadius: 12,
+          background: "#fff",
+          maxWidth: 800,
+        }}
+      >
+        <h2>Manage Memory</h2>
+
+        {loadingMemory ? (
+          <p>Loading memory…</p>
+        ) : (
+          <table style={{ width: "100%", marginTop: 12 }}>
+            <thead>
+              <tr style={{ textAlign: "left" }}>
+                <th>Icon</th>
+                <th>Title</th>
+                <th>Client</th>
+                <th>Action</th>
+              </tr>
+            </thead>
+            <tbody>
+              {memoryList.map((item) => (
+                <tr key={item.id}>
+                  <td>
+                    {item.type === "pdf" && "📄"}
+                    {item.type === "docx" && "📝"}
+                    {item.type === "image" && "🖼️"}
+                  </td>
+                  <td>{item.title}</td>
+                  <td>{item.client_email || "GLOBAL"}</td>
+                  <td>
+                    <button
+                      onClick={() => deleteMemory(item.id)}
+                      style={{
+                        padding: "4px 10px",
+                        background: "#fee2e2",
+                        border: "1px solid #fecaca",
+                        borderRadius: 6,
+                        cursor: "pointer",
+                      }}
+                    >
+                      Delete
+                    </button>
+                  </td>
+                </tr>
+              ))}
+
+              {memoryList.length === 0 && (
+                <tr>
+                  <td colSpan={4} style={{ padding: 12, textAlign: "center" }}>
+                    No memory uploaded yet.
+                  </td>
+                </tr>
+              )}
+            </tbody>
+          </table>
+        )}
       </section>
     </div>
   );
