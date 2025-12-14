@@ -1,48 +1,58 @@
 // pages/api/rag/list-memory.js
 
+export const runtime = "nodejs";
+
 import { supabaseServer } from "../../../lib/supabaseServer";
 
 export default async function handler(req, res) {
+  if (req.method !== "GET") {
+    return res.status(405).json({ success: false, message: "Only GET allowed" });
+  }
+
   try {
-    const page = parseInt(req.query.page || "1", 10) || 1;
-    const pageSize = parseInt(req.query.page_size || "10", 10) || 10;
-    const offset = (page - 1) * pageSize;
+    // ---------------- GLOBAL MEMORY ----------------
+    const { data: globalData, error: globalErr } = await supabaseServer
+      .from("global_memory")
+      .select("id, title, type, created_at")
+      .order("created_at", { ascending: false });
 
-    // fetch global and client memories separately (we'll combine)
-    const [{ data: gdata, error: gerr }, { data: cdata, error: cerr }] = await Promise.all([
-      supabaseServer
-        .from("global_memory")
-        .select("*")
-        .order("id", { ascending: false })
-        .range(offset, offset + pageSize - 1),
-      supabaseServer
-        .from("client_memory")
-        .select("*")
-        .order("id", { ascending: false })
-        .range(offset, offset + pageSize - 1),
-    ]);
+    if (globalErr) throw globalErr;
 
-    if (gerr && cerr) {
-      return res.status(500).json({ success: false, message: "DB error", error: { gerr, cerr } });
-    }
+    // ---------------- CLIENT MEMORY ----------------
+    const { data: clientData, error: clientErr } = await supabaseServer
+      .from("client_memory")
+      .select("id, title, type, client_email, created_at")
+      .order("created_at", { ascending: false });
 
-    // combine - simple approach: merge arrays (caller can paginate UI-side)
+    if (clientErr) throw clientErr;
+
+    // ---------------- MERGE + NORMALIZE ----------------
     const items = [
-      ...(gdata || []).map((r) => ({ ...r, table: "global" })),
-      ...(cdata || []).map((r) => ({ ...r, table: "client" })),
-    ];
+      ...(globalData || []).map((m) => ({
+        id: m.id,
+        title: m.title,
+        type: m.type,
+        client_email: "GLOBAL",
+        created_at: m.created_at,
+      })),
+      ...(clientData || []).map((m) => ({
+        id: m.id,
+        title: m.title,
+        type: m.type,
+        client_email: m.client_email,
+        created_at: m.created_at,
+      })),
+    ].sort((a, b) => new Date(b.created_at) - new Date(a.created_at));
 
-    // get total counts for both tables
-    const [{ count: gc }, { count: cc }] = await Promise.all([
-      supabaseServer.from("global_memory").select("id", { count: "exact", head: true }),
-      supabaseServer.from("client_memory").select("id", { count: "exact", head: true }),
-    ]);
-
-    const total = (gc || 0) + (cc || 0);
-
-    return res.status(200).json({ success: true, items, total });
+    return res.status(200).json({
+      success: true,
+      items,
+    });
   } catch (err) {
-    console.error("list-memory error", err);
-    return res.status(500).json({ success: false, message: "Server error", error: err.message });
+    console.error("LIST MEMORY ERROR:", err);
+    return res.status(500).json({
+      success: false,
+      message: "Server error",
+    });
   }
 }
