@@ -10,11 +10,10 @@ import { supabaseServer } from "../../../lib/supabaseServer";
 
 export default async function handler(req, res) {
   if (req.method !== "POST") {
-    return res.status(405).json({ ok: false, message: "POST only" });
+    return res.status(405).json({ ok: false, message: "Only POST allowed" });
   }
 
   try {
-    // 1. Parse form
     const { fields, files } = await new Promise((resolve, reject) => {
       const form = formidable({ multiples: false });
       form.parse(req, (err, fields, files) => {
@@ -24,75 +23,87 @@ export default async function handler(req, res) {
     });
 
     const file = files.file;
-    const memoryType = String(fields.memory_type || "").toLowerCase();
-    const clientEmail = fields.client_email || null;
-
     if (!file) {
       return res.status(400).json({ ok: false, message: "No file received" });
     }
 
-    if (!["global", "client"].includes(memoryType)) {
-      return res.status(400).json({ ok: false, message: "Invalid memory_type" });
+    const memoryType = String(fields.memory_type || "").toUpperCase(); // GLOBAL | CLIENT
+    const clientEmail = fields.client_email || null;
+    const saveFile = String(fields.save_file || "yes"); // yes | no
+
+    if (!["GLOBAL", "CLIENT"].includes(memoryType)) {
+      return res.status(400).json({ ok: false, message: "Invalid memory type" });
     }
 
-    if (memoryType === "client" && !clientEmail) {
-      return res.status(400).json({ ok: false, message: "client_email required" });
+    if (memoryType === "CLIENT" && !clientEmail) {
+      return res.status(400).json({ ok: false, message: "Client email required" });
     }
 
-    // 2. Upload directly to Supabase (STREAM — no buffer)
-    const originalName = file.originalFilename || "file";
+    // ✅ ALWAYS read buffer safely
+    const buffer = fs.readFileSync(file.filepath);
+    const originalName = file.originalFilename || "uploaded_file";
     const mimeType = file.mimetype || "application/octet-stream";
-    const safeName = originalName.replace(/\s+/g, "_");
-    const filePath = `kb/${Date.now()}_${safeName}`;
 
-    const stream = fs.createReadStream(file.filepath);
+    // -------------------------
+    // OPTIONAL: Upload to Supabase
+    // -------------------------
+    let filePath = null;
 
-    const { error: uploadErr } = await supabaseServer.storage
-      .from("knowledge-base")
-      .upload(filePath, stream, {
-        contentType: mimeType,
-        upsert: true,
-      });
+    if (saveFile === "yes") {
+      const safeName = originalName.replace(/\s+/g, "_");
+      filePath = `kb/${Date.now()}_${safeName}`;
 
-    if (uploadErr) {
-      return res.status(500).json({
-        ok: false,
-        message: "Supabase upload failed",
-        error: uploadErr.message,
-      });
+      const { error } = await supabaseServer.storage
+        .from("knowledge-base")
+        .upload(filePath, buffer, {
+          contentType: mimeType,
+          upsert: true,
+        });
+
+      if (error) {
+        return res.status(500).json({
+          ok: false,
+          message: "Supabase upload failed",
+          error: error.message,
+        });
+      }
     }
 
-    // 3. Call process-file
+    // -------------------------
+    // CALL PROCESS FILE
+    // -------------------------
     const processRes = await fetch(
       `${process.env.NEXTAUTH_URL}/api/rag/process-file`,
       {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          mode: memoryType.toUpperCase(), // GLOBAL | CLIENT
-          client_email: memoryType === "client" ? clientEmail : null,
-          file_path: filePath,
+          mode: memoryType,
+          client_email: memoryType === "CLIENT" ? clientEmail : null,
+          save_file: saveFile,
+          file_path: filePath, // null if save=no
           original_name: originalName,
           mime_type: mimeType,
+          buffer: buffer.toString("base64"), // ✅ ALWAYS send buffer
         }),
       }
     );
 
-    const processData = await processRes.json();
+    const result = await processRes.json();
 
     if (!processRes.ok) {
       return res.status(500).json({
         ok: false,
         message: "Processing failed",
-        error: processData,
+        error: result,
       });
     }
 
     return res.status(200).json({
       ok: true,
       message: "File uploaded & processed successfully",
-      file_path: filePath,
     });
+
   } catch (err) {
     console.error("UPLOAD ERROR:", err);
     return res.status(500).json({
