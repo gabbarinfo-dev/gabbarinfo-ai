@@ -1,83 +1,58 @@
 // pages/api/rag/upload-file.js
 
-// MUST BE FIRST — disable Next.js body parser for uploads
-export const config = {
-  api: {
-    bodyParser: false,
-  },
-};
-
 import formidable from "formidable";
 import fs from "fs";
 import { supabaseServer } from "../../../lib/supabaseServer";
+import { GoogleGenerativeAI } from "@google/generative-ai";
+
+export const config = {
+  api: { bodyParser: false },
+};
+
+const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
+const embedModel = genAI.getGenerativeModel({
+  model: "models/text-embedding-004",
+});
 
 export default async function handler(req, res) {
-  if (req.method !== "POST") {
-    return res.status(405).json({ ok: false, message: "Only POST allowed" });
-  }
+  if (req.method !== "POST")
+    return res.status(405).json({ success: false, message: "Method not allowed" });
 
-  try {
-    // Parse file + fields
-    const { fields, files } = await new Promise((resolve, reject) => {
-      const form = formidable({ multiples: false });
+  const form = formidable({ multiples: false });
 
-      form.parse(req, (err, fields, files) => {
-        if (err) reject(err);
-        else resolve({ fields, files });
+  form.parse(req, async (err, fields, files) => {
+    if (err) return res.status(500).json({ success: false, message: "Upload error" });
+
+    const memoryType = fields.memory_type;
+    const clientEmail = fields.client_email || null;
+
+    if (memoryType === "client" && !clientEmail) {
+      return res.status(400).json({
+        success: false,
+        message: "Client email required for client memory.",
       });
-    });
+    }
 
-    const clientId = fields.clientId;
     const file = files.file;
+    const raw = fs.readFileSync(file.filepath, "utf8");
 
-    if (!clientId || !file) {
-      return res.status(400).json({ ok: false, message: "Missing clientId or file" });
-    }
+    // EMBED
+    const embed = await embedModel.embedContent(raw);
+    const vector = embed.embedding.values;
 
-    const filePath = file.filepath;
-    const fileName = file.originalFilename;
-
-    // Path inside Supabase storage bucket
-    const storagePath = `client_${clientId}/${fileName}`;
-
-    // Read the raw file buffer
-    const fileBuffer = fs.readFileSync(filePath);
-
-    // Upload to storage
-    const { error: uploadErr } = await supabaseServer.storage
-      .from("knowledge-base")
-      .upload(storagePath, fileBuffer, {
-        contentType: file.mimetype,
-        upsert: true,
-      });
-
-    if (uploadErr) {
-      return res.status(500).json({ ok: false, message: "Storage error", error: uploadErr });
-    }
-
-    // Save in memory_links table
-    const { error: linkErr } = await supabaseServer
-      .from("memory_links")
+    // SAVE
+    const { error } = await supabaseServer
+      .from("knowledge_base")
       .insert({
-        client_id: clientId,
-        storage_path: storagePath,
+        content: raw,
+        embedding: vector,
+        memory_type: memoryType,
+        client_email: clientEmail,
       });
 
-    if (linkErr) {
-      return res.status(500).json({ ok: false, message: "DB insert error", error: linkErr });
-    }
+    if (error)
+      return res.status(500).json({ success: false, message: "DB insert failed", error });
 
-    return res.status(200).json({
-      ok: true,
-      message: "File uploaded + memory link created",
-      path: storagePath,
-    });
-
-  } catch (err) {
-    return res.status(500).json({
-      ok: false,
-      message: "Server error",
-      error: err.message,
-    });
-  }
+    return res.json({ success: true, message: "File uploaded & stored." });
+  });
 }
