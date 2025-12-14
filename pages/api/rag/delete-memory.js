@@ -4,59 +4,34 @@ import { supabaseServer } from "../../../lib/supabaseServer";
 
 export default async function handler(req, res) {
   if (req.method !== "POST") {
-    return res.status(405).json({
-      success: false,
-      message: "Only POST allowed",
-    });
+    return res.status(405).json({ success: false, message: "Only POST allowed" });
   }
 
   try {
-    const { id, mode } = req.body;
+    const { id } = req.body || {};
+    if (!id) return res.status(400).json({ success: false, message: "Missing id" });
 
-    if (!id || !mode) {
-      return res.status(400).json({
-        success: false,
-        message: "Missing id or mode (GLOBAL | CLIENT)",
-      });
+    // Try delete from client_memory first
+    let { error: delErr } = await supabaseServer.from("client_memory").delete().eq("id", id);
+    if (!delErr) {
+      // find if any row was deleted (supabase returns success even if 0 rows - we can verify by selecting)
+      const { data } = await supabaseServer.from("client_memory").select("id").eq("id", id);
+      if (!data || data.length === 0) {
+        // successfully deleted or model returned no row
+        return res.status(200).json({ success: true, message: "Deleted from client_memory (if existed)" });
+      }
     }
 
-    let tableName = "";
-
-    if (mode === "GLOBAL") {
-      tableName = "global_memory";
-    } else if (mode === "CLIENT") {
-      tableName = "client_memory";
-    } else {
-      return res.status(400).json({
-        success: false,
-        message: "Invalid mode",
-      });
+    // Attempt delete from global_memory
+    const { error: delErr2 } = await supabaseServer.from("global_memory").delete().eq("id", id);
+    if (!delErr2) {
+      return res.status(200).json({ success: true, message: "Deleted from global_memory (if existed)" });
     }
 
-    // DELETE ROW
-    const { error: deleteErr } = await supabaseServer
-      .from(tableName)
-      .delete()
-      .eq("id", id);
-
-    if (deleteErr) {
-      return res.status(500).json({
-        success: false,
-        message: "Failed to delete",
-        error: deleteErr,
-      });
-    }
-
-    return res.status(200).json({
-      success: true,
-      message: "Memory deleted successfully.",
-      id,
-    });
+    // If both had errors
+    return res.status(500).json({ success: false, message: "Delete failed", error: { delErr, delErr2 } });
   } catch (err) {
-    return res.status(500).json({
-      success: false,
-      message: "Server error",
-      error: err.message,
-    });
+    console.error("delete-memory error", err);
+    return res.status(500).json({ success: false, message: "Server error", error: err.message });
   }
 }
