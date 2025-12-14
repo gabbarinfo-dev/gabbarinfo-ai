@@ -7,21 +7,24 @@ import { useSession, signOut, signIn } from "next-auth/react";
 export default function AdminPage() {
   const { data: session, status } = useSession();
 
+  // ---------------- USER FORM STATES ----------------
   const [email, setEmail] = useState("");
   const [role, setRole] = useState("client");
   const [credits, setCredits] = useState(0);
   const [loading, setLoading] = useState(false);
   const [message, setMessage] = useState(null);
 
-  // Upload section states
+  // ---------------- FILE UPLOAD STATES ----------------
   const [file, setFile] = useState(null);
   const [memoryType, setMemoryType] = useState("global");
   const [clients, setClients] = useState([]);
   const [selectedClient, setSelectedClient] = useState("");
+  const [saveFile, setSaveFile] = useState("yes");
 
-  // -------------------------------
-  // FETCH CLIENT LIST FOR DROPDOWN
-  // -------------------------------
+  const [uploading, setUploading] = useState(false);
+  const [progress, setProgress] = useState(0);
+
+  // ---------------- LOAD CLIENT LIST ----------------
   useEffect(() => {
     async function loadClients() {
       const res = await fetch("/api/admin/list-users");
@@ -33,9 +36,7 @@ export default function AdminPage() {
     loadClients();
   }, []);
 
-  // -------------------------------
-  // EXISTING CODE — DO NOT TOUCH
-  // -------------------------------
+  // ---------------- AUTH PROTECTION ----------------
   if (status === "loading") {
     return <div style={{ padding: 40 }}>Checking session…</div>;
   }
@@ -44,7 +45,7 @@ export default function AdminPage() {
     return (
       <div style={{ padding: 40 }}>
         <h1>GabbarInfo AI — Admin</h1>
-        <p>You must sign in as the owner to use this page.</p>
+        <p>You must sign in as the owner.</p>
         <button onClick={() => signIn("google")}>Sign in with Google</button>
       </div>
     );
@@ -54,15 +55,13 @@ export default function AdminPage() {
     return (
       <div style={{ padding: 40 }}>
         <h1>GabbarInfo AI — Admin</h1>
-        <p>Access denied. Only owner accounts can use this page.</p>
+        <p>Access denied.</p>
         <button onClick={() => signOut()}>Sign out</button>
       </div>
     );
   }
 
-  // -------------------------------
-  // SAVE USER (existing code)
-  // -------------------------------
+  // ---------------- SAVE USER HANDLER ----------------
   async function handleSubmit(e) {
     e.preventDefault();
     setMessage(null);
@@ -86,22 +85,18 @@ export default function AdminPage() {
       });
 
       const data = await res.json();
+
       if (!res.ok) {
         setMessage({ type: "error", text: data.error });
       } else {
-        setMessage({
-          type: "success",
-          text: data.message,
-        });
+        setMessage({ type: "success", text: data.message });
       }
     } finally {
       setLoading(false);
     }
   }
 
-  // -------------------------------
-  // FILE UPLOAD HANDLER
-  // -------------------------------
+  // ---------------- FILE UPLOAD HANDLER ----------------
   async function handleUpload() {
     if (!file) {
       alert("Please select a file.");
@@ -109,26 +104,41 @@ export default function AdminPage() {
     }
 
     if (memoryType === "client" && !selectedClient) {
-      alert("Please select a client email.");
+      alert("Select a client email.");
       return;
     }
+
+    setUploading(true);
+    setProgress(10);
 
     const formData = new FormData();
     formData.append("file", file);
     formData.append("memory_type", memoryType);
     formData.append("client_email", selectedClient);
+    formData.append("save_file", saveFile);
 
     const res = await fetch("/api/rag/upload-file", {
       method: "POST",
       body: formData,
     });
 
+    setProgress(80);
+
     const data = await res.json();
+
+    setProgress(100);
+    setTimeout(() => setUploading(false), 1000);
+
     alert(data.message || "Upload complete.");
   }
 
+  // ====================================================
+  //                    UI STARTS HERE
+  // ====================================================
+
   return (
     <div style={{ padding: 32 }}>
+      {/* HEADER */}
       <header style={{ marginBottom: 24 }}>
         <h1>GabbarInfo AI — Admin</h1>
         <p>Logged in as {session.user?.email} (Owner)</p>
@@ -185,6 +195,7 @@ export default function AdminPage() {
       >
         <h2>Upload Knowledge Files</h2>
 
+        {/* file picker */}
         <label>Choose File</label>
         <input
           type="file"
@@ -192,6 +203,7 @@ export default function AdminPage() {
           style={{ marginBottom: 16 }}
         />
 
+        {/* memory type */}
         <label>Memory Type</label>
         <select
           value={memoryType}
@@ -202,6 +214,7 @@ export default function AdminPage() {
           <option value="client">Client Memory</option>
         </select>
 
+        {/* client dropdown */}
         {memoryType === "client" && (
           <>
             <label>Select Client Email</label>
@@ -220,8 +233,46 @@ export default function AdminPage() {
           </>
         )}
 
-        <button onClick={handleUpload} style={{ width: "100%", padding: 12 }}>
-          Upload File
+        {/* save file ? */}
+        <label>Save physical file into Supabase?</label>
+        <select
+          value={saveFile}
+          onChange={(e) => setSaveFile(e.target.value)}
+          style={{ width: "100%", marginBottom: 16 }}
+        >
+          <option value="yes">Yes — Save File</option>
+          <option value="no">No — Only Extract & Embed</option>
+        </select>
+
+        {/* progress bar */}
+        {uploading && (
+          <div
+            style={{
+              width: "100%",
+              height: 10,
+              background: "#eee",
+              borderRadius: 6,
+              overflow: "hidden",
+              marginBottom: 16,
+            }}
+          >
+            <div
+              style={{
+                width: `${progress}%`,
+                height: "100%",
+                background: "#2563eb",
+                transition: "0.3s",
+              }}
+            ></div>
+          </div>
+        )}
+
+        <button
+          onClick={handleUpload}
+          style={{ width: "100%", padding: 12 }}
+          disabled={uploading}
+        >
+          {uploading ? "Uploading…" : "Upload File"}
         </button>
       </section>
     </div>
