@@ -1,10 +1,8 @@
 // pages/api/rag/upload-file.js
 
-// Disable Next.js default body parser (required for formidable)
+// Disable body parser (required for formidable)
 export const config = {
-  api: {
-    bodyParser: false,
-  },
+  api: { bodyParser: false },
 };
 
 import formidable from "formidable";
@@ -17,23 +15,25 @@ export default async function handler(req, res) {
   }
 
   try {
-    // --------------------------
-    // Parse form data (file + fields)
-    // --------------------------
+    // -----------------------------------------
+    // Parse file + fields using formidable
+    // -----------------------------------------
     const { fields, files } = await new Promise((resolve, reject) => {
       const form = formidable({ multiples: false });
-
       form.parse(req, (err, fields, files) => {
         if (err) reject(err);
         else resolve({ fields, files });
       });
     });
 
-    const memoryType = fields.memory_type; // "GLOBAL" or "CLIENT"
+    const memoryType = (fields.memory_type || "").toLowerCase(); // "global" or "client"
     const clientEmail = fields.client_email || null;
-    const saveFile = fields.save_file || "no"; // "yes" | "no"
+    const saveFile = fields.save_file === "yes" ? "yes" : "no";
     const file = files.file;
 
+    // ------------------------------
+    // Validate
+    // ------------------------------
     if (!memoryType || !file) {
       return res.status(400).json({
         ok: false,
@@ -44,29 +44,30 @@ export default async function handler(req, res) {
     if (memoryType === "client" && !clientEmail) {
       return res.status(400).json({
         ok: false,
-        message: "client_email is required for client memory.",
+        message: "client_email is required for CLIENT memory.",
       });
     }
 
-    // --------------------------------
-    // Case 1: Do NOT save physical file
-    // --------------------------------
+    // ---------------------------------------------------------
+    // CASE A: Do NOT save physical file (only send for extract)
+    // ---------------------------------------------------------
     if (saveFile === "no") {
       return res.status(200).json({
         ok: true,
-        message: "File received (NOT stored). Ready for text extraction.",
-        file_path: null, // Important → tells process-file.js to skip download
+        message: "File received (NOT saved). Proceed with processing.",
+        file_path: null, // tells process-file.js that bucket download is NOT needed
       });
     }
 
-    // --------------------------------
-    // Case 2: Save file in Supabase
-    // --------------------------------
+    // ---------------------------------------------------------
+    // CASE B: Save physical file into Supabase Storage
+    // ---------------------------------------------------------
     const localPath = file.filepath;
     const originalName = file.originalFilename;
-    const bucketPath = `${Date.now()}_${originalName}`;
-
     const buffer = fs.readFileSync(localPath);
+
+    // Create a clean safe storage path
+    const bucketPath = `${Date.now()}_${originalName}`;
 
     const { error: uploadErr } = await supabaseServer.storage
       .from("knowledge-base")
@@ -88,7 +89,6 @@ export default async function handler(req, res) {
       message: "File uploaded successfully.",
       file_path: bucketPath,
     });
-
   } catch (err) {
     return res.status(500).json({
       ok: false,
