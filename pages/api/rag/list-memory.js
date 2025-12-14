@@ -4,58 +4,45 @@ import { supabaseServer } from "../../../lib/supabaseServer";
 
 export default async function handler(req, res) {
   try {
-    // ---------------------------
-    // FETCH GLOBAL MEMORY
-    // ---------------------------
-    const { data: globalData, error: globalErr } = await supabaseServer
-      .from("global_memory")
-      .select("*")
-      .order("id", { ascending: false });
+    const page = parseInt(req.query.page || "1", 10) || 1;
+    const pageSize = parseInt(req.query.page_size || "10", 10) || 10;
+    const offset = (page - 1) * pageSize;
 
-    if (globalErr) {
-      return res.status(500).json({
-        success: false,
-        message: "Failed to load global memory.",
-        error: globalErr,
-      });
+    // fetch global and client memories separately (we'll combine)
+    const [{ data: gdata, error: gerr }, { data: cdata, error: cerr }] = await Promise.all([
+      supabaseServer
+        .from("global_memory")
+        .select("*")
+        .order("id", { ascending: false })
+        .range(offset, offset + pageSize - 1),
+      supabaseServer
+        .from("client_memory")
+        .select("*")
+        .order("id", { ascending: false })
+        .range(offset, offset + pageSize - 1),
+    ]);
+
+    if (gerr && cerr) {
+      return res.status(500).json({ success: false, message: "DB error", error: { gerr, cerr } });
     }
 
-    // ---------------------------
-    // FETCH CLIENT MEMORY
-    // ---------------------------
-    const { data: clientData, error: clientErr } = await supabaseServer
-      .from("client_memory")
-      .select("*")
-      .order("id", { ascending: false });
-
-    if (clientErr) {
-      return res.status(500).json({
-        success: false,
-        message: "Failed to load client memory.",
-        error: clientErr,
-      });
-    }
-
-    // ---------------------------
-    // COMBINE BOTH
-    // ---------------------------
-    const combined = [
-      ...globalData.map((item) => ({
-        ...item,
-        client_email: null, // Mark as GLOBAL
-      })),
-      ...clientData,
+    // combine - simple approach: merge arrays (caller can paginate UI-side)
+    const items = [
+      ...(gdata || []).map((r) => ({ ...r, table: "global" })),
+      ...(cdata || []).map((r) => ({ ...r, table: "client" })),
     ];
 
-    return res.status(200).json({
-      success: true,
-      items: combined,
-    });
+    // get total counts for both tables
+    const [{ count: gc }, { count: cc }] = await Promise.all([
+      supabaseServer.from("global_memory").select("id", { count: "exact", head: true }),
+      supabaseServer.from("client_memory").select("id", { count: "exact", head: true }),
+    ]);
+
+    const total = (gc || 0) + (cc || 0);
+
+    return res.status(200).json({ success: true, items, total });
   } catch (err) {
-    return res.status(500).json({
-      success: false,
-      message: "Server error loading memory.",
-      error: err.message,
-    });
+    console.error("list-memory error", err);
+    return res.status(500).json({ success: false, message: "Server error", error: err.message });
   }
 }
