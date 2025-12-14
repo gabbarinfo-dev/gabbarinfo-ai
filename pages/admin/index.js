@@ -306,7 +306,7 @@ export default function AdminPage() {
                 background: "#2563eb",
                 transition: "0.3s",
               }}
-            ></div>
+            />
           </div>
         )}
 
