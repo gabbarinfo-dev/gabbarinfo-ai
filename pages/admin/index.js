@@ -11,7 +11,12 @@ export default function AdminPage() {
   const [role, setRole] = useState("client");
   const [credits, setCredits] = useState(0);
   const [loading, setLoading] = useState(false);
-  const [message, setMessage] = useState(null); // { type: "success" | "error", text: string }
+  const [message, setMessage] = useState(null);
+
+  // NEW STATES FOR FILE UPLOAD
+  const [file, setFile] = useState(null);
+  const [uploading, setUploading] = useState(false);
+  const [uploadMsg, setUploadMsg] = useState(null);
 
   if (status === "loading") {
     return <div style={{ padding: 40 }}>Checking session…</div>;
@@ -57,6 +62,9 @@ export default function AdminPage() {
     );
   }
 
+  // ---------------------------------------------
+  // HANDLE USER CREATION / UPDATE
+  // ---------------------------------------------
   async function handleSubmit(e) {
     e.preventDefault();
     setMessage(null);
@@ -107,6 +115,56 @@ export default function AdminPage() {
     }
   }
 
+  // ---------------------------------------------
+  // NEW: HANDLE FILE UPLOAD
+  // ---------------------------------------------
+  async function handleFileUpload(e) {
+    e.preventDefault();
+    setUploadMsg(null);
+
+    if (!file) {
+      setUploadMsg({ type: "error", text: "Please select a file first." });
+      return;
+    }
+
+    const formData = new FormData();
+    formData.append("file", file);
+    formData.append("clientId", session.user.email);
+
+    setUploading(true);
+
+    try {
+      const res = await fetch("/api/rag/upload-file", {
+        method: "POST",
+        body: formData,
+      });
+
+      const data = await res.json();
+
+      if (!res.ok) {
+        setUploadMsg({
+          type: "error",
+          text: data.error || "Upload failed",
+        });
+      } else {
+        setUploadMsg({
+          type: "success",
+          text: data.message || "File uploaded successfully!",
+        });
+      }
+    } catch (err) {
+      setUploadMsg({
+        type: "error",
+        text: "Unexpected error during upload.",
+      });
+    } finally {
+      setUploading(false);
+    }
+  }
+
+  // ---------------------------------------------
+  // RENDER PAGE
+  // ---------------------------------------------
   return (
     <div
       style={{
@@ -145,19 +203,23 @@ export default function AdminPage() {
       </header>
 
       <main style={{ maxWidth: 520, margin: "0 auto" }}>
+
+        {/* ----------------------------------- */}
+        {/* SECTION 1: Add / Update Users */}
+        {/* ----------------------------------- */}
         <section
           style={{
             padding: 24,
             borderRadius: 12,
             background: "#fff",
             boxShadow: "0 1px 3px rgba(0,0,0,0.04)",
+            marginBottom: 30,
           }}
         >
           <h2 style={{ marginTop: 0 }}>Add / Update User</h2>
           <p style={{ fontSize: 13, color: "#555" }}>
             Use this form to allow a new client to sign in, set their role, and
-            optionally add credits. You no longer need to touch Supabase or
-            URLs.
+            optionally add credits.
           </p>
 
           <form onSubmit={handleSubmit} style={{ marginTop: 16 }}>
@@ -214,14 +276,6 @@ export default function AdminPage() {
               }}
             />
 
-            <div style={{ fontSize: 11, color: "#777", marginBottom: 16 }}>
-              – If this is a brand new email that has never logged into
-              GabbarInfo AI, they will be allowed to sign in, and credits will
-              be created immediately.
-              <br />
-              – You can always run this again later to top up.
-            </div>
-
             <button
               type="submit"
               disabled={loading}
@@ -256,6 +310,70 @@ export default function AdminPage() {
               }}
             >
               {message.text}
+            </div>
+          )}
+        </section>
+
+        {/* ----------------------------------- */}
+        {/* SECTION 2: FILE UPLOAD */}
+        {/* ----------------------------------- */}
+        <section
+          style={{
+            padding: 24,
+            borderRadius: 12,
+            background: "#fff",
+            boxShadow: "0 1px 3px rgba(0,0,0,0.04)",
+          }}
+        >
+          <h2 style={{ marginTop: 0 }}>Upload Knowledge Files</h2>
+          <p style={{ fontSize: 13, color: "#555" }}>
+            Supported formats: <b>PDF, DOCX, Images (PNG/JPG)</b>.
+            <br />
+            Files will be stored in your Supabase Knowledge Base.
+          </p>
+
+          <form onSubmit={handleFileUpload} style={{ marginTop: 16 }}>
+            <input
+              type="file"
+              onChange={(e) => setFile(e.target.files[0])}
+              style={{ marginBottom: 16 }}
+              accept=".pdf,.docx,.jpg,.jpeg,.png"
+            />
+
+            <button
+              type="submit"
+              disabled={uploading}
+              style={{
+                width: "100%",
+                padding: "10px 16px",
+                borderRadius: 8,
+                border: "none",
+                background: "#2563eb",
+                color: "#fff",
+                cursor: uploading ? "default" : "pointer",
+              }}
+            >
+              {uploading ? "Uploading…" : "Upload File"}
+            </button>
+          </form>
+
+          {uploadMsg && (
+            <div
+              style={{
+                marginTop: 16,
+                padding: 12,
+                borderRadius: 6,
+                fontSize: 13,
+                background:
+                  uploadMsg.type === "success" ? "#ecfdf3" : "#fef2f2",
+                color: uploadMsg.type === "success" ? "#166534" : "#b91c1c",
+                border:
+                  uploadMsg.type === "success"
+                    ? "1px solid #bbf7d0"
+                    : "1px solid #fecaca",
+              }}
+            >
+              {uploadMsg.text}
             </div>
           )}
         </section>
