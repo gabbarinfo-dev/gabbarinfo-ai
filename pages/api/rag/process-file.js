@@ -5,17 +5,9 @@ import { GoogleGenerativeAI } from "@google/generative-ai";
 import pdfParse from "pdf-parse";
 import mammoth from "mammoth";
 
-// -------------------------------
-// Gemini setup
-// -------------------------------
 const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
 
-// Text model (for OCR / image text)
-const textModel = genAI.getGenerativeModel({
-  model: "gemini-pro",
-});
-
-// Embedding model
+const textModel = genAI.getGenerativeModel({ model: "gemini-pro" });
 const embedModel = genAI.getGenerativeModel({
   model: "models/text-embedding-004",
 });
@@ -27,35 +19,23 @@ export default async function handler(req, res) {
 
   try {
     const {
-      mode,                 // GLOBAL | CLIENT
-      client_email,         // email or null
-      save_file,            // yes | no
-      file_path,            // path in bucket OR null
-      original_name,        // original filename
-      buffer,               // base64 buffer (only when save_file === "no")
-      mime_type,            // mimetype
+      mode,
+      client_email,
+      save_file,
+      file_path,
+      original_name,
+      buffer_base64,
+      mime_type,
     } = req.body;
 
     if (!mode) {
-      return res.status(400).json({
-        ok: false,
-        message: "Missing mode",
-      });
+      return res.status(400).json({ ok: false, message: "mode missing" });
     }
 
-    // ---------------------------------------
-    // 1. Prepare file buffer
-    // ---------------------------------------
-    let fileBuffer = null;
+    let buffer;
 
+    // 1. Get buffer
     if (save_file === "yes") {
-      if (!file_path) {
-        return res.status(400).json({
-          ok: false,
-          message: "file_path required when save_file=yes",
-        });
-      }
-
       const { data, error } = await supabaseServer.storage
         .from("knowledge-base")
         .download(file_path);
@@ -63,142 +43,89 @@ export default async function handler(req, res) {
       if (error) {
         return res.status(500).json({
           ok: false,
-          message: "Failed to download file",
+          message: "File download failed",
           error: error.message,
         });
       }
 
-      const arrayBuffer = await data.arrayBuffer();
-      fileBuffer = Buffer.from(arrayBuffer);
-
+      const arr = await data.arrayBuffer();
+      buffer = Buffer.from(arr);
     } else {
-      // save_file === "no"
-      if (!buffer) {
-        return res.status(400).json({
-          ok: false,
-          message: "Buffer missing for non-saved file",
-        });
-      }
-      fileBuffer = Buffer.from(buffer, "base64");
+      buffer = Buffer.from(buffer_base64, "base64");
     }
 
-    // ---------------------------------------
     // 2. Extract text
-    // ---------------------------------------
     let extractedText = "";
-    let fileType = "text";
+    let type = "";
 
-    const name = original_name || file_path || "";
-    const lowerName = name.toLowerCase();
-
-    if (lowerName.endsWith(".pdf")) {
-      fileType = "pdf";
-      const parsed = await pdfParse(fileBuffer);
+    if (mime_type.includes("pdf")) {
+      type = "pdf";
+      const parsed = await pdfParse(buffer);
       extractedText = parsed.text;
-
-    } else if (lowerName.endsWith(".docx")) {
-      fileType = "docx";
-      const result = await mammoth.extractRawText({ buffer: fileBuffer });
+    } else if (mime_type.includes("word")) {
+      type = "docx";
+      const result = await mammoth.extractRawText({ buffer });
       extractedText = result.value;
-
-    } else if (
-      mime_type?.startsWith("image/") ||
-      lowerName.endsWith(".png") ||
-      lowerName.endsWith(".jpg") ||
-      lowerName.endsWith(".jpeg")
-    ) {
-      fileType = "image";
-
-      const base64Img = fileBuffer.toString("base64");
+    } else if (mime_type.startsWith("image/")) {
+      type = "image";
+      const base64img = buffer.toString("base64");
       const result = await textModel.generateContent([
         {
           inlineData: {
-            data: base64Img,
-            mimeType: mime_type || "image/png",
+            data: base64img,
+            mimeType: mime_type,
           },
         },
-        "Extract all readable text from this image clearly.",
+        "Extract all readable text clearly.",
       ]);
-
       extractedText = result.response.text();
-
     } else {
-      // fallback: treat as plain text
-      fileType = "text";
-      extractedText = fileBuffer.toString("utf-8");
+      return res.status(400).json({
+        ok: false,
+        message: "Unsupported file type",
+      });
     }
 
-    if (!extractedText || extractedText.trim().length < 5) {
+    if (!extractedText || extractedText.length < 10) {
       return res.status(400).json({
         ok: false,
         message: "No meaningful text extracted",
       });
     }
 
-    // ---------------------------------------
-    // 3. Generate embedding
-    // ---------------------------------------
-    const embedResponse = await embedModel.embedContent(extractedText);
-    const embedding = embedResponse.embedding.values;
+    // 3. Embedding
+    const embed = await embedModel.embedContent(extractedText);
 
-    // ---------------------------------------
     // 4. Decide table
-    // ---------------------------------------
-    let tableName = "";
+    const table =
+      mode === "GLOBAL" ? "global_memory" : "client_memory";
 
-    if (mode === "GLOBAL") {
-      tableName = "global_memory";
-    } else if (mode === "CLIENT") {
-      if (!client_email) {
-        return res.status(400).json({
-          ok: false,
-          message: "client_email required for CLIENT mode",
-        });
-      }
-      tableName = "client_memory";
-    } else {
-      return res.status(400).json({
-        ok: false,
-        message: "Invalid mode",
-      });
-    }
-
-    // ---------------------------------------
-    // 5. Insert memory
-    // ---------------------------------------
-    const { error: insertErr } = await supabaseServer
-      .from(tableName)
-      .insert({
-        client_email: mode === "CLIENT" ? client_email : null,
-        type: fileType,
-        title: original_name || file_path || "Uploaded file",
-        content: extractedText,
-        embedding,
-      });
-
-    if (insertErr) {
-      return res.status(500).json({
-        ok: false,
-        message: "Database insert failed",
-        error: insertErr.message,
-      });
-    }
-
-    // ---------------------------------------
-    // 6. Success
-    // ---------------------------------------
-    return res.status(200).json({
-      ok: true,
-      message: "File processed and stored successfully",
-      type: fileType,
-      saved_file: save_file === "yes",
+    // 5. Insert
+    const { error } = await supabaseServer.from(table).insert({
+      client_email: mode === "CLIENT" ? client_email : null,
+      title: original_name,
+      type,
+      content: extractedText,
+      embedding: embed.embedding.values,
     });
 
+    if (error) {
+      return res.status(500).json({
+        ok: false,
+        message: "DB insert failed",
+        error: error.message,
+      });
+    }
+
+    return res.status(200).json({
+      ok: true,
+      message: "Memory stored successfully",
+    });
   } catch (err) {
     console.error("PROCESS FILE ERROR:", err);
     return res.status(500).json({
       ok: false,
-      message: "Server error in process-file",
+      message: "Process server error",
       error: err.message,
     });
   }
