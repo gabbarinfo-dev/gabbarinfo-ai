@@ -1,10 +1,7 @@
 // pages/api/rag/upload-file.js
 
-// IMPORTANT: disable body parser for file uploads
 export const config = {
-  api: {
-    bodyParser: false,
-  },
+  api: { bodyParser: false },
 };
 
 import formidable from "formidable";
@@ -17,12 +14,9 @@ export default async function handler(req, res) {
   }
 
   try {
-    // -------------------------------
-    // 1. Parse multipart form
-    // -------------------------------
+    // 1. Parse form
     const { fields, files } = await new Promise((resolve, reject) => {
       const form = formidable({ multiples: false });
-
       form.parse(req, (err, fields, files) => {
         if (err) reject(err);
         else resolve({ fields, files });
@@ -35,17 +29,11 @@ export default async function handler(req, res) {
     const file = files.file;
 
     if (!file) {
-      return res.status(400).json({
-        ok: false,
-        message: "No file received",
-      });
+      return res.status(400).json({ ok: false, message: "No file received" });
     }
 
     if (!["global", "client"].includes(memoryType)) {
-      return res.status(400).json({
-        ok: false,
-        message: "Invalid memory_type",
-      });
+      return res.status(400).json({ ok: false, message: "Invalid memory_type" });
     }
 
     if (memoryType === "client" && !clientEmail) {
@@ -55,50 +43,41 @@ export default async function handler(req, res) {
       });
     }
 
-    // --------------------------------
-    // 2. Read file buffer (ALWAYS)
-    // --------------------------------
+    // 2. Read file buffer
     const localPath = file.filepath;
-    const originalName = file.originalFilename || "uploaded_file";
+    const originalName = file.originalFilename || "upload";
     const mimeType = file.mimetype || "application/octet-stream";
 
     if (!localPath) {
-      return res.status(500).json({
-        ok: false,
-        message: "File path missing from upload",
-      });
+      return res.status(500).json({ ok: false, message: "File path missing" });
     }
 
     const buffer = fs.readFileSync(localPath);
 
-    // --------------------------------
-    // 3. Optionally upload to Supabase
-    // --------------------------------
+    // 3. Optional Supabase upload
     let filePath = null;
 
     if (saveFile === "yes") {
       const safeName = originalName.replace(/\s+/g, "_");
       filePath = `kb/${Date.now()}_${safeName}`;
 
-      const { error: uploadErr } = await supabaseServer.storage
+      const { error } = await supabaseServer.storage
         .from("knowledge-base")
         .upload(filePath, buffer, {
           contentType: mimeType,
           upsert: true,
         });
 
-      if (uploadErr) {
+      if (error) {
         return res.status(500).json({
           ok: false,
           message: "Supabase upload failed",
-          error: uploadErr.message,
+          error: error.message,
         });
       }
     }
 
-    // --------------------------------
-    // 4. Call process-file API
-    // --------------------------------
+    // 4. Call process-file
     const processRes = await fetch(
       `${process.env.NEXTAUTH_URL}/api/rag/process-file`,
       {
@@ -108,9 +87,9 @@ export default async function handler(req, res) {
           mode: memoryType.toUpperCase(), // GLOBAL | CLIENT
           client_email: memoryType === "client" ? clientEmail : null,
           save_file: saveFile,
-          file_path: filePath, // null if save=no
+          file_path: filePath,
           original_name: originalName,
-          buffer: saveFile === "no" ? buffer.toString("base64") : null,
+          buffer_base64: saveFile === "no" ? buffer.toString("base64") : null,
           mime_type: mimeType,
         }),
       }
@@ -126,21 +105,16 @@ export default async function handler(req, res) {
       });
     }
 
-    // --------------------------------
-    // 5. Final success response
-    // --------------------------------
     return res.status(200).json({
       ok: true,
       message: "File uploaded & processed successfully",
       saved_file: saveFile === "yes",
-      file_path: filePath,
     });
-
   } catch (err) {
     console.error("UPLOAD API CRASH:", err);
     return res.status(500).json({
       ok: false,
-      message: "Server error in upload-file",
+      message: "Upload server error",
       error: err.message,
     });
   }
