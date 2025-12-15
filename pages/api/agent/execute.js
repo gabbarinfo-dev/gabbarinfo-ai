@@ -286,8 +286,6 @@ You are in GENERIC DIGITAL MARKETING AGENT MODE.
 // ===============================
 // 🔗 RAG FETCH (CLIENT MEMORY)
 // ===============================
-let ragContext = "";
-
 try {
   const baseUrl = process.env.NEXT_PUBLIC_BASE_URL;
   if (baseUrl) {
