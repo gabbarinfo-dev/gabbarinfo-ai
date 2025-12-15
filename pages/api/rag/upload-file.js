@@ -9,6 +9,7 @@ export const config = {
   api: { bodyParser: false },
 };
 
+/* ------------------ CLIENTS ------------------ */
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL,
   process.env.SUPABASE_SERVICE_ROLE_KEY
@@ -19,44 +20,41 @@ const embedModel = genAI.getGenerativeModel({
   model: "models/text-embedding-004",
 });
 
-/* ---------------- HELPERS ---------------- */
-
-async function extractText(filePath, mime) {
+/* ------------------ HELPERS ------------------ */
+async function extractText(filepath, mimetype) {
   try {
-    if (mime === "application/pdf") {
-      const buffer = fs.readFileSync(filePath);
+    if (mimetype === "application/pdf") {
+      const buffer = fs.readFileSync(filepath);
       const data = await pdf(buffer);
       return data.text || "";
     }
 
     if (
-      mime ===
+      mimetype ===
       "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
     ) {
-      const result = await mammoth.extractRawText({ path: filePath });
+      const result = await mammoth.extractRawText({ path: filepath });
       return result.value || "";
     }
 
     throw new Error("Unsupported file type");
   } catch (err) {
-    // IMPORTANT: do not crash app
-    return "";
+    throw new Error("PDF parse failed (corrupt or unsupported PDF)");
   }
 }
 
-async function embed(text) {
-  const result = await embedModel.embedContent(text);
-  return result.embedding.values;
+async function embedText(text) {
+  const res = await embedModel.embedContent(text);
+  return res.embedding.values;
 }
 
-/* ---------------- API ---------------- */
-
+/* ------------------ API ------------------ */
 export default async function handler(req, res) {
   if (req.method !== "POST") {
     return res.status(405).json({ error: "Method not allowed" });
   }
 
-  const form = formidable({ multiples: false });
+  const form = formidable({ keepExtensions: true, multiples: false });
 
   try {
     const { fields, files } = await new Promise((resolve, reject) => {
@@ -66,36 +64,37 @@ export default async function handler(req, res) {
       });
     });
 
-    const uploaded = files.file;
-    const file = Array.isArray(uploaded) ? uploaded[0] : uploaded;
+    /* ---- FIX: formidable returns array ---- */
+    const uploaded = Array.isArray(files.file)
+      ? files.file[0]
+      : files.file;
 
-    if (!file || !file.filepath) {
+    if (!uploaded?.filepath) {
       return res.status(400).json({ error: "Invalid uploaded file" });
     }
 
-    const memoryType = String(fields.memoryType || "").toLowerCase();
+    const memoryType = fields.memoryType; // "global" | "client"
     const clientEmail = fields.clientEmail || null;
 
     if (memoryType === "client" && !clientEmail) {
       return res.status(400).json({ error: "Client email required" });
     }
 
-    /* -------- TEXT EXTRACTION -------- */
-    const extractedText = await extractText(file.filepath, file.mimetype);
+    /* ---------- EXTRACT ---------- */
+    const text = await extractText(uploaded.filepath, uploaded.mimetype);
 
-    if (!extractedText || extractedText.trim().length < 20) {
-      return res.status(400).json({
-        error: "PDF parse failed (corrupt or scanned PDF)",
-      });
+    if (!text || text.trim().length < 30) {
+      return res.status(400).json({ error: "Empty or unreadable document" });
     }
 
-    /* -------- EMBEDDING -------- */
-    const embedding = await embed(extractedText);
+    /* ---------- EMBED ---------- */
+    const embedding = await embedText(text);
 
-    /* -------- INSERT MEMORY -------- */
+    /* ---------- INSERT MEMORY ---------- */
     if (memoryType === "global") {
       const { error } = await supabase.from("global_memory").insert({
-        content: extractedText,
+        title: uploaded.originalFilename,
+        content: text,
         embedding,
         created_by: "admin",
       });
@@ -105,11 +104,19 @@ export default async function handler(req, res) {
     if (memoryType === "client") {
       const { error } = await supabase.from("client_memory").insert({
         client_email: clientEmail,
-        content: extractedText,
+        title: uploaded.originalFilename,
+        content: text,
         embedding,
       });
       if (error) throw error;
     }
+
+    /* ---------- META LOG ---------- */
+    await supabase.from("file_uploads").insert({
+      file_name: uploaded.originalFilename,
+      memory_type: memoryType,
+      client_email: clientEmail,
+    });
 
     return res.json({ success: true });
   } catch (err) {
