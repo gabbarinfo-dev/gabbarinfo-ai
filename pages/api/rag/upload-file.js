@@ -10,12 +10,13 @@ export const config = {
   api: { bodyParser: false },
 };
 
-// ---------- CLIENTS ----------
+// ---------- SUPABASE ----------
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL,
   process.env.SUPABASE_SERVICE_ROLE_KEY
 );
 
+// ---------- GEMINI ----------
 const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
 const embedModel = genAI.getGenerativeModel({
   model: "models/text-embedding-004",
@@ -27,25 +28,33 @@ async function extractTextSafe(filePath, ext) {
     throw new Error("Invalid uploaded file");
   }
 
+  // PDF
   if (ext === ".pdf") {
     try {
       const buffer = fs.readFileSync(filePath);
       const data = await pdf(buffer);
-      return data.text || "";
-    } catch (err) {
+      if (!data.text || data.text.trim().length < 10) {
+        throw new Error("Empty PDF");
+      }
+      return data.text;
+    } catch (e) {
       throw new Error("PDF parse failed (corrupt or unsupported PDF)");
     }
   }
 
+  // DOCX
   if (ext === ".docx") {
     const result = await mammoth.extractRawText({ path: filePath });
-    return result.value || "";
+    if (!result.value || result.value.trim().length < 10) {
+      throw new Error("Empty DOCX");
+    }
+    return result.value;
   }
 
   throw new Error("Unsupported file type");
 }
 
-async function embedText(text) {
+async function embed(text) {
   const result = await embedModel.embedContent(text);
   return result.embedding.values;
 }
@@ -57,8 +66,8 @@ export default async function handler(req, res) {
   }
 
   const form = formidable({
-    keepExtensions: true,
     multiples: false,
+    keepExtensions: true,
   });
 
   try {
@@ -69,24 +78,26 @@ export default async function handler(req, res) {
       });
     });
 
-    // ---- FILE NORMALIZATION (IMPORTANT FIX)
+    // ---------- FILE NORMALIZE ----------
     let file = files.file;
     if (Array.isArray(file)) file = file[0];
-
-    if (!file || !file.filepath) {
-      return res.status(400).json({ error: "Invalid uploaded file" });
-    }
+    if (!file) return res.status(400).json({ error: "No file uploaded" });
 
     const filePath = file.filepath;
-    const originalName = file.originalFilename || "";
+    const originalName = file.originalFilename || "uploaded_file";
     const ext = path.extname(originalName).toLowerCase();
 
     if (![".pdf", ".docx"].includes(ext)) {
       return res.status(400).json({ error: "Unsupported file type" });
     }
 
-    const memoryType = fields.memoryType; // "global" | "client"
-    const clientEmail = fields.clientEmail || null;
+    // ---------- MEMORY TYPE ----------
+    const rawMemoryType = String(fields.memoryType || "").toLowerCase();
+    const memoryType =
+      rawMemoryType.includes("global") ? "global" : "client";
+
+    const clientEmail =
+      memoryType === "client" ? fields.clientEmail : null;
 
     if (memoryType === "client" && !clientEmail) {
       return res.status(400).json({ error: "Client email required" });
@@ -95,12 +106,8 @@ export default async function handler(req, res) {
     // ---------- EXTRACT ----------
     const extractedText = await extractTextSafe(filePath, ext);
 
-    if (!extractedText || extractedText.trim().length < 20) {
-      return res.status(400).json({ error: "Empty or unreadable document" });
-    }
-
     // ---------- EMBED ----------
-    const embedding = await embedText(extractedText);
+    const embedding = await embed(extractedText);
 
     // ---------- INSERT MEMORY ----------
     if (memoryType === "global") {
@@ -119,10 +126,10 @@ export default async function handler(req, res) {
       if (error) throw error;
     }
 
-    // ---------- META LOG (optional but safe)
+    // ---------- FILE META ----------
     await supabase.from("file_uploads").insert({
       file_path: originalName,
-      extracted_text_length: extractedText.length,
+      extracted_text: extractedText,
     });
 
     return res.json({ success: true });
