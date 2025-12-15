@@ -103,7 +103,12 @@ const file = Array.isArray(uploaded) ? uploaded[0] : uploaded;
       });
     }
 
-    const memoryType = fields.memory_type;
+    const rawMemoryType = String(fields.memory_type || "").toLowerCase();
+
+let memoryType = null;
+if (rawMemoryType.includes("global")) memoryType = "global";
+if (rawMemoryType.includes("client")) memoryType = "client";
+
     const clientEmail = fields.client_email || null;
     const saveFile = fields.save_file === "yes";
 
