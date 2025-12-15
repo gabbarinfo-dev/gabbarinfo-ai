@@ -1,6 +1,7 @@
 import { createClient } from "@supabase/supabase-js";
 import formidable from "formidable";
 import fs from "fs";
+import path from "path";
 import pdf from "pdf-parse";
 import mammoth from "mammoth";
 import { GoogleGenerativeAI } from "@google/generative-ai";
@@ -21,33 +22,32 @@ const embedModel = genAI.getGenerativeModel({
   model: "models/text-embedding-004",
 });
 
-// ---------- HELPERS ----------
-async function extractText(file) {
-  const filepath = file.filepath;
-  const mimetype = file.mimetype;
-
-  if (!filepath || !mimetype) {
+// ---------- TEXT EXTRACTION ----------
+async function extractTextSafe(file) {
+  const filePath = file.filepath || file.path;
+  if (!filePath || !fs.existsSync(filePath)) {
     throw new Error("Invalid uploaded file");
   }
 
-  if (mimetype === "application/pdf") {
-    const buffer = fs.readFileSync(filepath);
-    const data = await pdf(buffer);
+  const ext = path.extname(file.originalFilename || file.name || "")
+    .toLowerCase()
+    .trim();
+
+  if (ext === ".pdf") {
+    const data = await pdf(fs.readFileSync(filePath));
     return data.text;
   }
 
-  if (
-    mimetype ===
-    "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
-  ) {
-    const result = await mammoth.extractRawText({ path: filepath });
+  if (ext === ".docx") {
+    const result = await mammoth.extractRawText({ path: filePath });
     return result.value;
   }
 
-  throw new Error(`Unsupported file type: ${mimetype}`);
+  throw new Error("Unsupported file type");
 }
 
-async function embed(text) {
+// ---------- EMBEDDING ----------
+async function embedText(text) {
   const result = await embedModel.embedContent(text);
   return result.embedding.values;
 }
@@ -59,8 +59,8 @@ export default async function handler(req, res) {
   }
 
   const form = formidable({
-    multiples: false,
     keepExtensions: true,
+    multiples: false,
   });
 
   try {
@@ -71,29 +71,29 @@ export default async function handler(req, res) {
       });
     });
 
-    const file = files.file;
-    if (!file) {
-      return res.status(400).json({ error: "No file uploaded" });
-    }
+    // -------- FILE NORMALIZATION --------
+    let file = files.file;
+    if (Array.isArray(file)) file = file[0];
+    if (!file) throw new Error("No file uploaded");
 
-    const memoryType = fields.memoryType; // "global" | "client"
+    const memoryType = String(fields.memoryType || "").toLowerCase();
     const clientEmail = fields.clientEmail || null;
 
     if (memoryType === "client" && !clientEmail) {
-      return res.status(400).json({ error: "Client email required" });
+      throw new Error("Client email required");
     }
 
-    // ---------- EXTRACT ----------
-    const extractedText = await extractText(file);
+    // -------- EXTRACT --------
+    const extractedText = await extractTextSafe(file);
 
-    if (!extractedText || extractedText.length < 20) {
-      return res.status(400).json({ error: "Empty or invalid content" });
+    if (!extractedText || extractedText.trim().length < 30) {
+      throw new Error("Empty or unreadable document");
     }
 
-    // ---------- EMBEDDING ----------
-    const embedding = await embed(extractedText);
+    // -------- EMBED --------
+    const embedding = await embedText(extractedText);
 
-    // ---------- INSERT MEMORY ----------
+    // -------- INSERT MEMORY --------
     if (memoryType === "global") {
       const { error } = await supabase.from("global_memory").insert({
         content: extractedText,
@@ -101,7 +101,9 @@ export default async function handler(req, res) {
         created_by: "admin",
       });
       if (error) throw error;
-    } else {
+    }
+
+    if (memoryType === "client") {
       const { error } = await supabase.from("client_memory").insert({
         client_email: clientEmail,
         content: extractedText,
@@ -110,16 +112,16 @@ export default async function handler(req, res) {
       if (error) throw error;
     }
 
-    // ---------- FILE META ----------
+    // -------- FILE META --------
     await supabase.from("file_uploads").insert({
-      file_path: file.originalFilename,
+      file_path: file.originalFilename || file.name,
       extracted_text: extractedText,
     });
 
     return res.json({ success: true });
   } catch (err) {
     console.error("UPLOAD ERROR:", err);
-    return res.status(500).json({
+    return res.status(400).json({
       error: err.message || "Upload failed",
     });
   }
