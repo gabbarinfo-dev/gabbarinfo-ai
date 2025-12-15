@@ -4,6 +4,7 @@ import fs from "fs";
 import pdf from "pdf-parse";
 import mammoth from "mammoth";
 import { GoogleGenerativeAI } from "@google/generative-ai";
+import path from "path";
 
 export const config = {
   api: { bodyParser: false },
@@ -21,16 +22,15 @@ const embedModel = genAI.getGenerativeModel({
 });
 
 // ---------- HELPERS ----------
-async function extractText(filePath, mime) {
-  if (mime === "application/pdf") {
+async function extractText(filePath, originalName) {
+  const ext = path.extname(originalName).toLowerCase();
+
+  if (ext === ".pdf") {
     const data = await pdf(fs.readFileSync(filePath));
     return data.text;
   }
 
-  if (
-    mime ===
-    "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
-  ) {
+  if (ext === ".docx") {
     const result = await mammoth.extractRawText({ path: filePath });
     return result.value;
   }
@@ -69,10 +69,10 @@ export default async function handler(req, res) {
       return res.status(400).json({ error: "Client email required" });
     }
 
-    // ---------- EXTRACT ----------
+    // ---------- EXTRACT (FIXED) ----------
     const extractedText = await extractText(
       file.filepath,
-      file.mimetype
+      file.originalFilename
     );
 
     if (!extractedText || extractedText.length < 20) {
