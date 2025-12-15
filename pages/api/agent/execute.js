@@ -327,6 +327,15 @@ Rules:
 - When you give JSON, strictly follow the schemas described.
 - When you give a plan, be complete and practical (no half-finished steps).
 - Assume the user is in India by default unless location is specified.
+CRITICAL RULE — CLIENT CONTEXT OVERRIDE:
+- If CLIENT CONTEXT is present and not "(none)", you MUST assume:
+  - the business identity
+  - the industry
+  - the geography
+- You are STRICTLY FORBIDDEN from asking:
+  - “What is your business?”
+  - “Where do you operate?”
+- If budget or conversion goal is missing, make a reasonable industry-standard assumption and clearly state it.
 
 ${modeFocus}
 
