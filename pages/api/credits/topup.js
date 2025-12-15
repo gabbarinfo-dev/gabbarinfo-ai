@@ -73,6 +73,4 @@ export default async function handler(req, res) {
       .json({ ok: true, credits: newCredits, email: normalizedEmail });
   } catch (err) {
     console.error("credits/topup exception:", err);
-    return res.status(500).json({ error: "Server error" });
-  }
-}
+
