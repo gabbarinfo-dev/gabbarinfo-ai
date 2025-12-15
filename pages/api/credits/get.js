@@ -46,6 +46,4 @@ export default async function handler(req, res) {
     });
   } catch (err) {
     console.error("credits/get exception:", err);
-    return res.status(500).json({ error: "Server error" });
-  }
-}
+
