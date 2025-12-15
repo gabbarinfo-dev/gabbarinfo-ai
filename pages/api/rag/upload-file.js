@@ -4,38 +4,47 @@ import fs from "fs";
 import pdf from "pdf-parse";
 import mammoth from "mammoth";
 import { GoogleGenerativeAI } from "@google/generative-ai";
-import path from "path";
 
 export const config = {
   api: { bodyParser: false },
 };
 
-// ---------- CLIENTS ----------
+// ---------- SUPABASE ----------
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL,
   process.env.SUPABASE_SERVICE_ROLE_KEY
 );
 
+// ---------- GEMINI ----------
 const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
 const embedModel = genAI.getGenerativeModel({
   model: "models/text-embedding-004",
 });
 
 // ---------- HELPERS ----------
-async function extractText(filePath, originalName) {
-  const ext = path.extname(originalName).toLowerCase();
+async function extractText(file) {
+  const filepath = file.filepath;
+  const mimetype = file.mimetype;
 
-  if (ext === ".pdf") {
-    const data = await pdf(fs.readFileSync(filePath));
+  if (!filepath || !mimetype) {
+    throw new Error("Invalid uploaded file");
+  }
+
+  if (mimetype === "application/pdf") {
+    const buffer = fs.readFileSync(filepath);
+    const data = await pdf(buffer);
     return data.text;
   }
 
-  if (ext === ".docx") {
-    const result = await mammoth.extractRawText({ path: filePath });
+  if (
+    mimetype ===
+    "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+  ) {
+    const result = await mammoth.extractRawText({ path: filepath });
     return result.value;
   }
 
-  throw new Error("Unsupported file type");
+  throw new Error(`Unsupported file type: ${mimetype}`);
 }
 
 async function embed(text) {
@@ -49,7 +58,10 @@ export default async function handler(req, res) {
     return res.status(405).json({ error: "Method not allowed" });
   }
 
-  const form = formidable({ keepExtensions: true });
+  const form = formidable({
+    multiples: false,
+    keepExtensions: true,
+  });
 
   try {
     const { fields, files } = await new Promise((resolve, reject) => {
@@ -60,26 +72,25 @@ export default async function handler(req, res) {
     });
 
     const file = files.file;
-    if (!file) return res.status(400).json({ error: "No file uploaded" });
+    if (!file) {
+      return res.status(400).json({ error: "No file uploaded" });
+    }
 
-    const memoryType = fields.memoryType;
+    const memoryType = fields.memoryType; // "global" | "client"
     const clientEmail = fields.clientEmail || null;
 
     if (memoryType === "client" && !clientEmail) {
       return res.status(400).json({ error: "Client email required" });
     }
 
-    // ---------- EXTRACT (FIXED) ----------
-    const extractedText = await extractText(
-      file.filepath,
-      file.originalFilename
-    );
+    // ---------- EXTRACT ----------
+    const extractedText = await extractText(file);
 
     if (!extractedText || extractedText.length < 20) {
-      return res.status(400).json({ error: "Empty content" });
+      return res.status(400).json({ error: "Empty or invalid content" });
     }
 
-    // ---------- EMBED ----------
+    // ---------- EMBEDDING ----------
     const embedding = await embed(extractedText);
 
     // ---------- INSERT MEMORY ----------
@@ -99,7 +110,7 @@ export default async function handler(req, res) {
       if (error) throw error;
     }
 
-    // ---------- STORE FILE META ----------
+    // ---------- FILE META ----------
     await supabase.from("file_uploads").insert({
       file_path: file.originalFilename,
       extracted_text: extractedText,
