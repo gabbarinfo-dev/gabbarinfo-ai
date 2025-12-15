@@ -80,7 +80,8 @@ export default async function handler(req, res) {
       });
     });
 
-    const file = files.file;
+   const uploaded = files.file;
+const file = Array.isArray(uploaded) ? uploaded[0] : uploaded;
     if (!file) {
       return res.status(400).json({ ok: false, message: "No file uploaded" });
     }
