@@ -1,69 +1,58 @@
-// pages/api/rag/upload-file.js
+import { createClient } from "@supabase/supabase-js";
+import formidable from "formidable";
+import fs from "fs";
+import pdf from "pdf-parse";
+import mammoth from "mammoth";
+import { GoogleGenerativeAI } from "@google/generative-ai";
 
 export const config = {
   api: { bodyParser: false },
 };
 
-import formidable from "formidable";
-import fs from "fs";
-import pdfParse from "pdf-parse";
-import mammoth from "mammoth";
-import { createClient } from "@supabase/supabase-js";
-import { GoogleGenerativeAI } from "@google/generative-ai";
-
-/* =========================
-   INIT CLIENTS
-========================= */
-
+// ---------- CLIENTS ----------
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL,
   process.env.SUPABASE_SERVICE_ROLE_KEY
 );
 
-const genAI = new GoogleGenerativeAI(process.env.GOOGLE_API_KEY);
-const embeddingModel = genAI.getGenerativeModel({
-  model: "text-embedding-004",
+const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
+const embedModel = genAI.getGenerativeModel({
+  model: "models/text-embedding-004",
 });
 
-/* =========================
-   TEXT EXTRACTION
-========================= */
-
+// ---------- HELPERS ----------
 async function extractText(filePath, mime) {
-  if (mime.includes("pdf")) {
-    const buffer = fs.readFileSync(filePath);
-    const data = await pdfParse(buffer);
+  if (mime === "application/pdf") {
+    const data = await pdf(fs.readFileSync(filePath));
     return data.text;
   }
 
   if (
-    mime.includes("word") ||
-    mime.includes("docx")
+    mime ===
+    "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
   ) {
     const result = await mammoth.extractRawText({ path: filePath });
     return result.value;
   }
 
-  if (mime.includes("text")) {
-    return fs.readFileSync(filePath, "utf8");
-  }
-
   throw new Error("Unsupported file type");
 }
 
-/* =========================
-   MAIN HANDLER
-========================= */
+async function embed(text) {
+  const result = await embedModel.embedContent(text);
+  return result.embedding.values;
+}
 
+// ---------- API ----------
 export default async function handler(req, res) {
   if (req.method !== "POST") {
-    return res.status(405).json({ ok: false, message: "POST only" });
+    return res.status(405).json({ error: "Method not allowed" });
   }
 
+  const form = formidable({ keepExtensions: true });
+
   try {
-    /* ---------- PARSE FORM ---------- */
     const { fields, files } = await new Promise((resolve, reject) => {
-      const form = formidable({ multiples: false });
       form.parse(req, (err, fields, files) => {
         if (err) reject(err);
         else resolve({ fields, files });
@@ -71,64 +60,56 @@ export default async function handler(req, res) {
     });
 
     const file = files.file;
-    if (!file || !file.filepath) {
-      return res.status(400).json({
-        ok: false,
-        message: "File path missing",
-      });
+    if (!file) return res.status(400).json({ error: "No file uploaded" });
+
+    const memoryType = fields.memoryType;
+    const clientEmail = fields.clientEmail || null;
+
+    if (memoryType === "client" && !clientEmail) {
+      return res.status(400).json({ error: "Client email required" });
     }
 
-    const memoryType = String(fields.memory_type || "global").toUpperCase();
-    const clientEmail =
-      memoryType === "CLIENT"
-        ? String(fields.client_email || "")
-        : null;
-
-    /* ---------- EXTRACT TEXT ---------- */
+    // ---------- EXTRACT ----------
     const extractedText = await extractText(
       file.filepath,
-      file.mimetype || ""
+      file.mimetype
     );
 
     if (!extractedText || extractedText.length < 20) {
-      return res.status(400).json({
-        ok: false,
-        message: "No readable text found",
-      });
+      return res.status(400).json({ error: "Empty content" });
     }
 
-    /* ---------- EMBEDDING ---------- */
-    const embeddingResult = await embeddingModel.embedContent(extractedText);
-    const embedding = embeddingResult.embedding.values;
+    // ---------- EMBED ----------
+    const embedding = await embed(extractedText);
 
-    /* ---------- SAVE TO SUPABASE ---------- */
-    const { error } = await supabase.from("knowledge-base").insert({
-      title: file.originalFilename || "Uploaded File",
-      content: extractedText,
-      embedding,
-      memory_type: memoryType,
-      client_email: clientEmail,
-    });
-
-    if (error) {
-      console.error("SUPABASE INSERT ERROR:", error);
-      return res.status(500).json({
-        ok: false,
-        message: "Supabase insert failed",
+    // ---------- INSERT MEMORY ----------
+    if (memoryType === "global") {
+      const { error } = await supabase.from("global_memory").insert({
+        content: extractedText,
+        embedding,
+        created_by: "admin",
       });
+      if (error) throw error;
+    } else {
+      const { error } = await supabase.from("client_memory").insert({
+        client_email: clientEmail,
+        content: extractedText,
+        embedding,
+      });
+      if (error) throw error;
     }
 
-    /* ---------- DONE ---------- */
-    return res.status(200).json({
-      ok: true,
-      message: "File uploaded, processed & stored",
+    // ---------- STORE FILE META ----------
+    await supabase.from("file_uploads").insert({
+      file_path: file.originalFilename,
+      extracted_text: extractedText,
     });
 
+    return res.json({ success: true });
   } catch (err) {
-    console.error("UPLOAD FINAL ERROR:", err);
+    console.error("UPLOAD ERROR:", err);
     return res.status(500).json({
-      ok: false,
-      message: "Processing failed",
+      error: err.message || "Upload failed",
     });
   }
 }
