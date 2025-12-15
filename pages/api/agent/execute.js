@@ -330,8 +330,8 @@ Rules:
 
 ${modeFocus}
 
-Extra context (may be empty, can be used later for RAG / client profile):
-${ragContext || finalExtraContext || "(none)"}
+CLIENT CONTEXT (authoritative, from saved client knowledge — MUST be used if present):
+${ragContext || "(none)"}
 `.trim();
 
     const finalPrompt = `
