@@ -283,6 +283,36 @@ You are in GENERIC DIGITAL MARKETING AGENT MODE.
   - Creative JSON for Meta/social creatives.
 `;
     }
+// ===============================
+// 🔗 RAG FETCH (CLIENT MEMORY)
+// ===============================
+let ragContext = "";
+
+try {
+  const baseUrl = process.env.NEXT_PUBLIC_BASE_URL;
+  if (baseUrl) {
+    const ragRes = await fetch(`${baseUrl}/api/rag/query`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        query: instruction,
+        memory_type: session.user?.role === "client" ? "client" : "global",
+        client_email: session.user?.email || null,
+        top_k: 5,
+      }),
+    });
+
+    const ragJson = await ragRes.json();
+
+    if (ragJson?.chunks?.length) {
+      ragContext = ragJson.chunks
+        .map((c, i) => `(${i + 1}) ${c.content}`)
+        .join("\n\n");
+    }
+  }
+} catch (e) {
+  console.warn("RAG fetch failed:", e.message);
+}
 
     const systemPrompt = `
 You are GabbarInfo AI – a senior digital marketing strategist and backend AGENT.
@@ -303,7 +333,7 @@ Rules:
 ${modeFocus}
 
 Extra context (may be empty, can be used later for RAG / client profile):
-${finalExtraContext || "(none)"}
+${ragContext || finalExtraContext || "(none)"}
 `.trim();
 
     const finalPrompt = `
