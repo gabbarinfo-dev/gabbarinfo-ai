@@ -102,7 +102,7 @@ export default async function handler(req, res) {
     const embedding = embeddingResult.embedding.values;
 
     /* ---------- SAVE TO SUPABASE ---------- */
-    const { error } = await supabase.from("rag_memory").insert({
+    const { error } = await supabase.from("knowledge-base").insert({
       title: file.originalFilename || "Uploaded File",
       content: extractedText,
       embedding,
