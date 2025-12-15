@@ -10,43 +10,41 @@ export const config = {
   api: { bodyParser: false },
 };
 
-// ---------- SUPABASE ----------
+// ---------- CLIENTS ----------
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL,
   process.env.SUPABASE_SERVICE_ROLE_KEY
 );
 
-// ---------- GEMINI ----------
 const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
 const embedModel = genAI.getGenerativeModel({
   model: "models/text-embedding-004",
 });
 
-// ---------- TEXT EXTRACTION ----------
-async function extractTextSafe(file) {
-  const filePath = file.filepath || file.path;
+// ---------- HELPERS ----------
+async function extractTextSafe(filePath, ext) {
   if (!filePath || !fs.existsSync(filePath)) {
     throw new Error("Invalid uploaded file");
   }
 
-  const ext = path.extname(file.originalFilename || file.name || "")
-    .toLowerCase()
-    .trim();
-
   if (ext === ".pdf") {
-    const data = await pdf(fs.readFileSync(filePath));
-    return data.text;
+    try {
+      const buffer = fs.readFileSync(filePath);
+      const data = await pdf(buffer);
+      return data.text || "";
+    } catch (err) {
+      throw new Error("PDF parse failed (corrupt or unsupported PDF)");
+    }
   }
 
   if (ext === ".docx") {
     const result = await mammoth.extractRawText({ path: filePath });
-    return result.value;
+    return result.value || "";
   }
 
   throw new Error("Unsupported file type");
 }
 
-// ---------- EMBEDDING ----------
 async function embedText(text) {
   const result = await embedModel.embedContent(text);
   return result.embedding.values;
@@ -71,29 +69,40 @@ export default async function handler(req, res) {
       });
     });
 
-    // -------- FILE NORMALIZATION --------
+    // ---- FILE NORMALIZATION (IMPORTANT FIX)
     let file = files.file;
     if (Array.isArray(file)) file = file[0];
-    if (!file) throw new Error("No file uploaded");
 
-    const memoryType = String(fields.memoryType || "").toLowerCase();
+    if (!file || !file.filepath) {
+      return res.status(400).json({ error: "Invalid uploaded file" });
+    }
+
+    const filePath = file.filepath;
+    const originalName = file.originalFilename || "";
+    const ext = path.extname(originalName).toLowerCase();
+
+    if (![".pdf", ".docx"].includes(ext)) {
+      return res.status(400).json({ error: "Unsupported file type" });
+    }
+
+    const memoryType = fields.memoryType; // "global" | "client"
     const clientEmail = fields.clientEmail || null;
 
     if (memoryType === "client" && !clientEmail) {
-      throw new Error("Client email required");
+      return res.status(400).json({ error: "Client email required" });
     }
 
-    // -------- EXTRACT --------
-    const extractedText = await extractTextSafe(file);
+    // ---------- EXTRACT ----------
+    const extractedText = await extractTextSafe(filePath, ext);
 
-    if (!extractedText || extractedText.trim().length < 30) {
-      throw new Error("Empty or unreadable document");
+    if (!extractedText || extractedText.trim().length < 20) {
+      return res.status(400).json({ error: "Empty or unreadable document" });
     }
 
-    // -------- EMBED --------
+    // ---------- EMBED ----------
     const embedding = await embedText(extractedText);
 
-    // -------- INSERT MEMORY --------
+    // ---------- INSERT MEMORY ----------
     if (memoryType === "global") {
       const { error } = await supabase.from("global_memory").insert({
         content: extractedText,
@@ -101,9 +110,7 @@ export default async function handler(req, res) {
         created_by: "admin",
       });
       if (error) throw error;
-    }
-
-    if (memoryType === "client") {
+    } else {
       const { error } = await supabase.from("client_memory").insert({
         client_email: clientEmail,
         content: extractedText,
@@ -112,16 +119,16 @@ export default async function handler(req, res) {
       if (error) throw error;
     }
 
-    // -------- FILE META --------
+    // ---------- META LOG (optional but safe)
     await supabase.from("file_uploads").insert({
-      file_path: file.originalFilename || file.name,
-      extracted_text: extractedText,
+      file_path: originalName,
+      extracted_text_length: extractedText.length,
     });
 
     return res.json({ success: true });
   } catch (err) {
     console.error("UPLOAD ERROR:", err);
-    return res.status(400).json({
+    return res.status(500).json({
       error: err.message || "Upload failed",
     });
   }
