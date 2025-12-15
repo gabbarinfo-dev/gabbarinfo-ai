@@ -149,6 +149,36 @@ export default async function handler(req, res) {
           .map((m) => `${m.role === "user" ? "User" : "Assistant"}: ${m.text}`)
           .join("\n\n")
       : "";
+// ===============================
+// RAG CONTEXT INJECTION (ADD ONLY)
+// ===============================
+let ragContext = "";
+
+try {
+  const baseUrl = process.env.NEXT_PUBLIC_BASE_URL;
+  if (baseUrl) {
+    const ragRes = await fetch(`${baseUrl}/api/rag/query`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        user_input: instruction,
+        client_email: session.user.email,
+      }),
+    });
+
+    const ragJson = await ragRes.json();
+    if (ragJson?.answer) {
+      ragContext = ragJson.answer;
+    }
+  }
+} catch (e) {
+  console.warn("RAG fetch failed:", e.message);
+}
+
+// Merge RAG into existing extraContext (DO NOT overwrite user-sent context)
+const finalExtraContext = [extraContext, ragContext]
+  .filter(Boolean)
+  .join("\n\n");
 
     // ---------- MODE-SPECIFIC FOCUS ----------
     let modeFocus = "";
@@ -273,7 +303,7 @@ Rules:
 ${modeFocus}
 
 Extra context (may be empty, can be used later for RAG / client profile):
-${extraContext || "(none)"}
+${finalExtraContext || "(none)"}
 `.trim();
 
     const finalPrompt = `
