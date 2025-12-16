@@ -1,196 +1,137 @@
-// META APP REVIEW — FULL‑PROOF UI FLOW (ALL 8 PERMISSIONS)
-// FINAL, DEPLOY‑SAFE VERSION
-// PURPOSE: Meta App Review screen‑recording ONLY
-// IMPORTANT:
-// • Matches your real flow: Google login → Dashboard → Facebook connection
-// • NO Facebook Login
-// • NO real APIs
-// • NO "demo" wording
-// • ALL 8 permissions visually covered
+// META APP REVIEW — RECORDING 1 UI DEMO
+// Permissions covered:
+// business_management
+// pages_show_list
+// pages_read_engagement
+// PURPOSE: Meta App Review screen recording ONLY
+// NOTE: User is already signed in via Google (pre-condition)
 
 import { useState } from "react";
 
 export default function MetaReviewFlow() {
-  // NOTE:
-  // This page is INTENTIONALLY UI‑ONLY.
-  // It does NOT read your real Google session.
-  // That is WHY you see Google sign‑in again here.
-
-  const [step, setStep] = useState(0);
+  const [stage, setStage] = useState("start");
+  const [business, setBusiness] = useState("");
+  const [page, setPage] = useState("");
 
   return (
-    <div style={styles.container}>
-      <h1>Gabbarinfo AI</h1>
+    <div style={styles.app}>
+      {/* Top Bar */}
+      <header style={styles.topbar}>
+        <div style={styles.logo}>Gabbarinfo AI</div>
+        <div style={styles.user}>Signed in via Google</div>
+      </header>
 
-      {/* STEP 0 — GOOGLE SIGN‑IN (UI REPRESENTATION ONLY) */}
-      {step === 0 && (
-        <div style={styles.card}>
-          <p>Please sign in with Google to use Gabbarinfo AI.</p>
-          <button style={styles.googleBtn} onClick={() => setStep(1)}>
-            Sign in with Google
-          </button>
-        </div>
-      )}
+      {/* MAIN ONLY — no sidebar until page selected */}
+      <main style={styles.fullContent}>
 
-      {/* STEP 1 — DASHBOARD */}
-      {step === 1 && (
-        <div style={styles.card}>
-          <h2>Dashboard</h2>
-          <p>Manage your marketing activities from one place.</p>
-          <button style={styles.button} onClick={() => setStep(2)}>
-            Connect Facebook Business
-          </button>
-        </div>
-      )}
+        {/* STEP 1 — CONNECT */}
+        {stage === "start" && (
+          <section style={styles.card}>
+            <h2>Connect Facebook Business Account</h2>
+            <p>Connect your Facebook business to manage pages and view insights.</p>
+            <button style={styles.primaryBtn} onClick={() => setStage("business")}>Connect Facebook Business Account</button>
+          </section>
+        )}
 
-      {/* STEP 2 — pages_show_list */}
-      {step === 2 && (
-        <div style={styles.card}>
-          <h2>Select a Facebook Page</h2>
-          <label>
-            <input type="radio" name="page" defaultChecked /> Bella & Diva Jewellery
-          </label>
-          <br />
-          <label>
-            <input type="radio" name="page" /> Gabbarinfo Digital Solutions
-          </label>
-          <br /><br />
-          <button style={styles.button} onClick={() => setStep(3)}>Continue</button>
-        </div>
-      )}
+        {/* STEP 2 — SELECT BUSINESS */}
+        {stage === "business" && (
+          <section style={styles.card}>
+            <h2>Select Business</h2>
+            <select style={styles.select} value={business} onChange={(e) => setBusiness(e.target.value)}>
+              <option value="">-- Select Business --</option>
+              <option value="gabbar">Gabbarinfo Digital Solutions</option>
+              <option value="bella">Bella & Diva Jewellery</option>
+            </select>
+            <button disabled={!business} style={styles.primaryBtn} onClick={() => setStage("page")}>Continue</button>
+          </section>
+        )}
 
-      {/* STEP 3 — business_management */}
-      {step === 3 && (
-        <div style={styles.card}>
-          <h2>Select Ad Account</h2>
-          <label>
-            <input type="radio" name="ad" defaultChecked /> Ad Account – 1587806431828953
-          </label>
-          <br /><br />
-          <button style={styles.button} onClick={() => setStep(4)}>Continue</button>
-        </div>
-      )}
+        {/* STEP 3 — SELECT PAGE */}
+        {stage === "page" && (
+          <section style={styles.card}>
+            <h2>Select Business Page</h2>
+            <select style={styles.select} value={page} onChange={(e) => setPage(e.target.value)}>
+              <option value="">-- Select Page --</option>
+              <option value="fb">GABBARinfo (Facebook Page)</option>
+              <option value="ig">@gabbarinfo (Instagram Business)</option>
+            </select>
+            <button disabled={!page} style={styles.primaryBtn} onClick={() => setStage("dashboard")}>Continue</button>
+          </section>
+        )}
 
-      {/* STEP 4 — instagram_basic */}
-      {step === 4 && (
-        <div style={styles.card}>
-          <h2>Connected Instagram Business Account</h2>
-          <div style={styles.igHeader}>
-            <div style={styles.igAvatar}></div>
-            <div>
-              <strong>@bellandivajewellery</strong>
-              <p style={{ margin: 0, fontSize: 12 }}>Instagram Business Profile</p>
-            </div>
+        {/* STEP 4 — DASHBOARD */}
+        {stage === "dashboard" && (
+          <div style={styles.dashboardWrap}>
+            <aside style={styles.sidebar}>
+              <div style={styles.navTitle}>GABBARinfo</div>
+              <div style={styles.navItem}>Insights</div>
+              <div style={styles.navItem}>Create Post</div>
+              <div style={styles.navItemMuted}>Ads Manager</div>
+              <div style={styles.navItemMuted}>Instagram Tools</div>
+            </aside>
+
+            <section style={styles.card}>
+              <div style={styles.switchRow}>
+                <strong>Insights</strong>
+                <select style={styles.smallSelect} value={page} onChange={(e) => setPage(e.target.value)}>
+                  <option value="fb">Facebook</option>
+                  <option value="ig">Instagram</option>
+                </select>
+              </div>
+
+              <div style={styles.metrics}>
+                <div style={styles.metricBox}><strong>Views</strong><span>{page === "fb" ? "849" : "16.1K"}</span></div>
+                <div style={styles.metricBox}><strong>Reach</strong><span>{page === "fb" ? "1.3K" : "20.3K"}</span></div>
+                <div style={styles.metricBox}><strong>Engagement</strong><span>{page === "fb" ? "1,240" : "2.4K"}</span></div>
+                <div style={styles.metricBox}><strong>Followers</strong><span>{page === "fb" ? "1.1K" : "4.8K"}</span></div>
+              </div>
+
+              <button style={styles.secondaryBtn} onClick={() => setStage("post")}>Create Post</button>
+              <div style={styles.note}>All insights are read-only and manually triggered by the user.</div>
+            </section>
           </div>
-          <button style={styles.button} onClick={() => setStep(5)}>
-            Create Instagram Post
-          </button>
-        </div>
-      )}
+        )}
 
-      {/* STEP 5 — instagram_content_publish */}
-      {step === 5 && (
-        <div style={styles.card}>
-          <h2>Create Instagram Post</h2>
-          <div style={styles.imageBox}>Post Image Preview</div>
-          <textarea
-            style={styles.textarea}
-            defaultValue="New arrivals now live! ✨"
-          />
-          <br />
-          <button style={styles.button} onClick={() => setStep(6)}>
-            Publish Post
-          </button>
-        </div>
-      )}
+        {/* STEP 5 — CREATE POST */}
+        {stage === "post" && (
+          <section style={styles.card}>
+            <h2>Create Post</h2>
+            <div style={styles.uploadBox}>Insert Image or Video</div>
+            <textarea style={styles.textarea} placeholder="Write a caption…" />
+            <div style={styles.postRow}>
+              <button style={styles.primaryBtn}>Post to Facebook</button>
+              <button style={styles.outlineBtn}>Post to Facebook & Instagram</button>
+            </div>
+          </section>
+        )}
 
-      {/* STEP 6 — Publish confirmation */}
-      {step === 6 && (
-        <div style={styles.card}>
-          <h2>Post Published Successfully</h2>
-          <p>This action was manually triggered by the user.</p>
-          <button style={styles.button} onClick={() => setStep(7)}>
-            View Ads & Insights
-          </button>
-        </div>
-      )}
-
-      {/* STEP 7 — ads_read + pages_read_engagement + ads_management + pages_manage_ads */}
-      {step === 7 && (
-        <div style={styles.card}>
-          <h2>Facebook Page Ads & Insights</h2>
-          <p><strong>Page:</strong> Bella & Diva Jewellery</p>
-          <ul>
-            <li>Impressions: 12,450</li>
-            <li>Clicks: 312</li>
-            <li>Spend: ₹4,560</li>
-            <li>Post Engagement: 1,240</li>
-          </ul>
-          <p><strong>Manage Page Ads</strong></p>
-          <button style={styles.button}>Pause Page Ad</button>
-          <button style={{ ...styles.button, background: "#16a34a" }}>Resume Page Ad</button>
-          <p style={{ marginTop: 12 }}>
-            All Page ad management and insight actions are manually triggered by the user.
-          </p>
-        </div>
-      )}
+      </main>
     </div>
   );
 }
 
 const styles = {
-  container: {
-    maxWidth: 640,
-    margin: "40px auto",
-    fontFamily: "Arial, sans-serif",
-  },
-  card: {
-    border: "1px solid #ddd",
-    borderRadius: 8,
-    padding: 20,
-    marginTop: 20,
-  },
-  button: {
-    padding: "10px 16px",
-    background: "#2563eb",
-    color: "#fff",
-    border: "none",
-    borderRadius: 6,
-    cursor: "pointer",
-    marginRight: 8,
-  },
-  googleBtn: {
-    padding: "10px 16px",
-    background: "#fff",
-    color: "#000",
-    border: "1px solid #ccc",
-    borderRadius: 6,
-    cursor: "pointer",
-  },
-  textarea: {
-    width: "100%",
-    height: 80,
-    marginTop: 10,
-  },
-  imageBox: {
-    width: "100%",
-    height: 150,
-    background: "#eee",
-    display: "flex",
-    alignItems: "center",
-    justifyContent: "center",
-    marginBottom: 10,
-  },
-  igHeader: {
-    display: "flex",
-    alignItems: "center",
-    gap: 12,
-    marginBottom: 10,
-  },
-  igAvatar: {
-    width: 48,
-    height: 48,
-    borderRadius: "50%",
-    background: "linear-gradient(45deg, #f58529, #dd2a7b, #8134af)",
-  },
+  app: { height: "100vh", fontFamily: "system-ui, Arial" },
+  topbar: { height: 60, background: "#1877F2", color: "#fff", display: "flex", justifyContent: "space-between", alignItems: "center", padding: "0 24px" },
+  logo: { fontSize: 18, fontWeight: 600 },
+  user: { fontSize: 14 },
+  fullContent: { padding: 40 },
+  dashboardWrap: { display: "flex", gap: 24 },
+  sidebar: { width: 220, background: "#F0F2F5", padding: 16, borderRadius: 12 },
+  navTitle: { fontWeight: 600, marginBottom: 12 },
+  navItem: { marginBottom: 8, cursor: "pointer" },
+  navItemMuted: { marginBottom: 8, color: "#8A8D91" },
+  card: { maxWidth: 640, background: "#fff", padding: 24, borderRadius: 12, boxShadow: "0 2px 12px rgba(0,0,0,0.08)" },
+  primaryBtn: { marginTop: 16, background: "#1877F2", color: "#fff", padding: "10px 16px", borderRadius: 6, border: "none" },
+  secondaryBtn: { marginTop: 20, background: "#E4E6EB", padding: "10px 16px", borderRadius: 6, border: "none" },
+  outlineBtn: { background: "#fff", border: "1px solid #1877F2", color: "#1877F2", padding: "10px 16px", borderRadius: 6 },
+  select: { width: "100%", padding: 10, marginTop: 12 },
+  smallSelect: { padding: 6 },
+  switchRow: { display: "flex", justifyContent: "space-between", alignItems: "center" },
+  metrics: { display: "grid", gridTemplateColumns: "repeat(2, 1fr)", gap: 16, marginTop: 20 },
+  metricBox: { background: "#F0F2F5", padding: 16, borderRadius: 8, display: "flex", justifyContent: "space-between" },
+  uploadBox: { height: 120, border: "2px dashed #CCD0D5", borderRadius: 8, display: "flex", alignItems: "center", justifyContent: "center", marginBottom: 12 },
+  textarea: { width: "100%", minHeight: 80, padding: 10, marginBottom: 12 },
+  postRow: { display: "flex", gap: 12 },
+  note: { marginTop: 16, fontSize: 13, color: "#65676B" },
 };
