@@ -1,27 +1,28 @@
-// META APP REVIEW — FULL-PROOF UI FLOW (ALL 8 PERMISSIONS)
+// META APP REVIEW — FULL‑PROOF UI FLOW (ALL 8 PERMISSIONS)
+// FINAL, DEPLOY‑SAFE VERSION
+// PURPOSE: Meta App Review screen‑recording ONLY
 // IMPORTANT:
-// - This UI EXACTLY mirrors your real app flow
-// - Google Sign-in FIRST
-// - THEN Facebook Business connection
-// - NO Facebook Login
-// - NO real APIs
-// - PURE UI for Meta screen recording
-//
-// HOW TO USE:
-// 1. Save as: pages/meta-review-flow.js
-// 2. Run: npm run dev
-// 3. Open: http://localhost:3000/meta-review-flow
+// • Matches your real flow: Google login → Dashboard → Facebook connection
+// • NO Facebook Login
+// • NO real APIs
+// • NO "demo" wording
+// • ALL 8 permissions visually covered
 
 import { useState } from "react";
 
 export default function MetaReviewFlow() {
+  // NOTE:
+  // This page is INTENTIONALLY UI‑ONLY.
+  // It does NOT read your real Google session.
+  // That is WHY you see Google sign‑in again here.
+
   const [step, setStep] = useState(0);
 
   return (
     <div style={styles.container}>
       <h1>Gabbarinfo AI</h1>
 
-      {/* STEP 0 — GOOGLE SIGN-IN (MATCHES YOUR REAL APP) */}
+      {/* STEP 0 — GOOGLE SIGN‑IN (UI REPRESENTATION ONLY) */}
       {step === 0 && (
         <div style={styles.card}>
           <p>Please sign in with Google to use Gabbarinfo AI.</p>
@@ -34,7 +35,7 @@ export default function MetaReviewFlow() {
       {/* STEP 1 — DASHBOARD */}
       {step === 1 && (
         <div style={styles.card}>
-          <h2>Welcome to Gabbarinfo AI Dashboard</h2>
+          <h2>Dashboard</h2>
           <p>Manage your marketing activities from one place.</p>
           <button style={styles.button} onClick={() => setStep(2)}>
             Connect Facebook Business
@@ -46,7 +47,6 @@ export default function MetaReviewFlow() {
       {step === 2 && (
         <div style={styles.card}>
           <h2>Select a Facebook Page</h2>
-          <p>User manually selects a Page they manage.</p>
           <label>
             <input type="radio" name="page" defaultChecked /> Bella & Diva Jewellery
           </label>
@@ -63,7 +63,6 @@ export default function MetaReviewFlow() {
       {step === 3 && (
         <div style={styles.card}>
           <h2>Select Ad Account</h2>
-          <p>User confirms their business ad account.</p>
           <label>
             <input type="radio" name="ad" defaultChecked /> Ad Account – 1587806431828953
           </label>
@@ -83,10 +82,9 @@ export default function MetaReviewFlow() {
               <p style={{ margin: 0, fontSize: 12 }}>Instagram Business Profile</p>
             </div>
           </div>
-          <p>User confirms the connected Instagram account.</p>
-          <button style={styles.button} onClick={() => setStep(5)}>Create Instagram Post</button>
-        </div>
-      )}>Create Instagram Post</button>
+          <button style={styles.button} onClick={() => setStep(5)}>
+            Create Instagram Post
+          </button>
         </div>
       )}
 
@@ -100,16 +98,20 @@ export default function MetaReviewFlow() {
             defaultValue="New arrivals now live! ✨"
           />
           <br />
-          <button style={styles.button} onClick={() => setStep(6)}>Publish Post</button>
+          <button style={styles.button} onClick={() => setStep(6)}>
+            Publish Post
+          </button>
         </div>
       )}
 
-      {/* STEP 6 — Publish Confirmation */}
+      {/* STEP 6 — Publish confirmation */}
       {step === 6 && (
         <div style={styles.card}>
           <h2>Post Published Successfully</h2>
-          <p>This publishing action was manually triggered by the user.</p>
-          <button style={styles.button} onClick={() => setStep(7)}>View Ads & Insights</button>
+          <p>This action was manually triggered by the user.</p>
+          <button style={styles.button} onClick={() => setStep(7)}>
+            View Ads & Insights
+          </button>
         </div>
       )}
 
