@@ -27,9 +27,9 @@ export default function MetaReviewFlow() {
         {/* STEP 1 — CONNECT */}
         {stage === "start" && (
           <section style={styles.card}>
-            <h2>Connect Facebook Business Account</h2>
-            <p>Connect your Facebook business to manage pages and view insights.</p>
-            <button style={styles.primaryBtn} onClick={() => setStage("business")}>Connect Facebook Business Account</button>
+            <h2>Connect Facebook Business </h2>
+            <p>Connect your Facebook Business to select a business you manage.</p>
+            <button style={styles.primaryBtn} onClick={() => setStage("business")}>Continue with Facebook</button>
           </section>
         )}
 
@@ -52,8 +52,8 @@ export default function MetaReviewFlow() {
             <h2>Select Business Page</h2>
             <select style={styles.select} value={page} onChange={(e) => setPage(e.target.value)}>
               <option value="">-- Select Page --</option>
-              <option value="fb">GABBARinfo (Facebook Page)</option>
-              <option value="ig">@gabbarinfo (Instagram Business)</option>
+              <option value="fb">GABBARinfo (Facebook Page)
+        
             </select>
             <button disabled={!page} style={styles.primaryBtn} onClick={() => setStage("dashboard")}>Continue</button>
           </section>
