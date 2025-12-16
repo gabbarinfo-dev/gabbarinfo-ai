@@ -102,6 +102,13 @@ export default function MetaReviewFlow() {
               <button style={styles.primaryBtn}>Post to Facebook</button>
               <button style={styles.outlineBtn}>Post to Facebook & Instagram</button>
             </div>
+          <button
+  style={{ marginBottom: 12, background: "none", border: "none", color: "#1877F2", cursor: "pointer" }}
+  onClick={() => setStage("dashboard")}
+>
+  ← Back to Insights
+</button>
+
           </section>
         )}
 
