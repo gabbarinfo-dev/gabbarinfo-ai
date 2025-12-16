@@ -46,14 +46,14 @@ export default function MetaReviewFlow() {
           </section>
         )}
 
-        {/* STEP 3 — SELECT PAGE */}
+          {/* STEP 3 — SELECT PAGE */}
         {stage === "page" && (
           <section style={styles.card}>
             <h2>Select Business Page</h2>
             <select style={styles.select} value={page} onChange={(e) => setPage(e.target.value)}>
               <option value="">-- Select Page --</option>
-              <option value="fb">GABBARinfo (Facebook Page)
-        
+              <option value="fb">GABBARinfo (Facebook Page)</option>
+              <option value="ig">@gabbarinfo (Instagram Business)</option>
             </select>
             <button disabled={!page} style={styles.primaryBtn} onClick={() => setStage("dashboard")}>Continue</button>
           </section>
