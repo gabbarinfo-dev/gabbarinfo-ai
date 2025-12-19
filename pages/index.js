@@ -62,6 +62,23 @@ export default function HomePage() {
         >
           Sign in with Google
         </button>
+
+            {/* Facebook */}
+      <button
+        onClick={() => signIn("facebook")}
+        style={{
+          marginTop: 12,
+          padding: "10px 16px",
+          borderRadius: 6,
+          border: "1px solid #1877F2",
+          background: "#1877F2",
+          color: "#fff",
+          cursor: "pointer",
+          display: "block",
+        }}
+      >
+        Continue with Facebook (Test)
+      </button>
       </div>
     );
   }
