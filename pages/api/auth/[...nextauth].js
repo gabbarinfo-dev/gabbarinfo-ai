@@ -32,10 +32,10 @@ export const authOptions = {
         },
       },
     }),
-     FacebookProvider({
-    clientId: process.env.FACEBOOK_CLIENT_ID,
-    clientSecret: process.env.FACEBOOK_CLIENT_SECRET,
-  }),
+    FacebookProvider({
+  clientId: process.env.FB_APP_ID,
+  clientSecret: process.env.FB_APP_SECRET,
+}),
 ],
 
   secret: process.env.NEXTAUTH_SECRET,
