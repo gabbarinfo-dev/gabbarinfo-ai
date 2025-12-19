@@ -48,7 +48,7 @@ export default function HomePage() {
     return (
       <div style={{ padding: 40, fontFamily: "Inter, Arial" }}>
         <h1>GabbarInfo AI</h1>
-        <p>Please sign in with Google to use GabbarInfo AI.</p>
+        <p>Please sign in to use GabbarInfo AI.</p>
         <button
           onClick={() => signIn("google")}
           style={{
