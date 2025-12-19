@@ -85,6 +85,7 @@ export default function AdminPage() {
         <h1>GabbarInfo AI — Admin</h1>
         <p>You must sign in as the owner.</p>
         <button onClick={() => signIn("google")}>Sign in with Google</button>
+    <button onClick={() => signIn("facebook")}>Continue with Facebook (Test)</button>
       </div>
     );
   }
