@@ -46,76 +46,55 @@ export const authOptions = {
   secret: process.env.NEXTAUTH_SECRET,
 
   callbacks: {
-    // Allow only emails in allowed_users
-    async signIn({ user, account }) {
-  // ✅ Allow Facebook login WITHOUT email
-  if (account?.provider === "facebook") {
+  async signIn({ user, account }) {
+    // ✅ Allow Facebook login WITHOUT email
+    if (account?.provider === "facebook") {
+      return true;
+    }
+
+    // 🔒 Google login still requires email whitelist
+    const email = user?.email?.toLowerCase().trim();
+    if (!email) return false;
+
+    const { data, error } = await supabaseClient
+      .from("allowed_users")
+      .select("role")
+      .eq("email", email)
+      .maybeSingle();
+
+    if (error || !data) return false;
+
     return true;
-  }
-
-  // 🔒 Google login still requires email whitelist
-  const email = user?.email?.toLowerCase().trim();
-  if (!email) return false;
-
-  const { data, error } = await supabaseClient
-    .from("allowed_users")
-    .select("role")
-    .eq("email", email)
-    .maybeSingle();
-
-  if (error || !data) return false;
-
-  return true;
-},
-
-    // Store tokens into the JWT token object
-    async jwt({ token, user, account }) {
-      if (account) {
-        token.accessToken = account.access_token || token.accessToken;
-        // refresh_token only comes the first time user grants consent
-        if (account.refresh_token) {
-          token.refreshToken = account.refresh_token;
-        }
-      }
-
-      // Existing role logic from DB
-      if (user?.email) {
-        const email = user.email.toLowerCase().trim();
-
-        try {
-          const { data, error } = await supabaseClient
-            .from("allowed_users")
-            .select("role")
-            .eq("email", email)
-            .maybeSingle();
-
-          if (error) console.error("Supabase error in jwt callback:", error);
-
-          if (data?.role) {
-            const r = data.role.toLowerCase();
-            token.role = r === "owner" ? "owner" : "client";
-          } else {
-            token.role = "client";
-          }
-        } catch (err) {
-          console.error("Unexpected error in jwt callback:", err);
-          token.role = token.role || "client";
-        }
-      }
-
-      return token;
-    },
-
-    // Expose role and tokens on session
-    async session({ session, token }) {
-      session.user.role = token?.role || "client";
-
-      if (token?.accessToken) session.accessToken = token.accessToken;
-      if (token?.refreshToken) session.refreshToken = token.refreshToken;
-
-      return session;
-    },
   },
+
+  async jwt({ token, user, account }) {
+    if (account) {
+      token.accessToken = account.access_token || token.accessToken;
+      if (account.refresh_token) {
+        token.refreshToken = account.refresh_token;
+      }
+    }
+
+    if (user?.email) {
+      const { data } = await supabaseClient
+        .from("allowed_users")
+        .select("role")
+        .eq("email", user.email.toLowerCase().trim())
+        .maybeSingle();
+
+      token.role = data?.role || "client";
+    }
+
+    return token;
+  },
+
+  async session({ session, token }) {
+    session.user.role = token?.role || "client";
+    session.accessToken = token?.accessToken;
+    session.refreshToken = token?.refreshToken;
+    return session;
+  },
+},
 
   session: {
     strategy: "jwt",
