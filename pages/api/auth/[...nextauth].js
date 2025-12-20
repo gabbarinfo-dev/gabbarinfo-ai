@@ -35,6 +35,11 @@ export const authOptions = {
     FacebookProvider({
   clientId: process.env.FB_APP_ID,
   clientSecret: process.env.FB_APP_SECRET,
+  authorization: {
+    params: {
+      scope: "", // <-- IMPORTANT: EMPTY SCOPE
+    },
+  },
 }),
 ],
 
