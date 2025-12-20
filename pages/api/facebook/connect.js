@@ -23,9 +23,9 @@ export default async function handler(req, res) {
       "instagram_basic",
       "instagram_content_publish"
     ].join(","),
-    state: Buffer.from(
-      JSON.stringify({ email: session.user.email })
-    ).toString("base64"),
+    state: JSON.stringify({
+      email: session.user.email
+    }),
   });
 
   res.redirect(`https://www.facebook.com/v19.0/dialog/oauth?${params}`);
