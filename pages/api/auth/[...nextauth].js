@@ -48,19 +48,14 @@ export const authOptions = {
   callbacks: {
     // Allow only emails in allowed_users
     async signIn({ user, account }) {
-  // Allow Facebook login even without email
+  // ✅ Allow Facebook login WITHOUT email
   if (account?.provider === "facebook") {
     return true;
   }
 
-  // Google login still requires email
+  // 🔒 Google login still requires email whitelist
   const email = user?.email?.toLowerCase().trim();
   if (!email) return false;
-
-  if (!supabaseClient) {
-    console.error("Supabase anon client not configured.");
-    return false;
-  }
 
   const { data, error } = await supabaseClient
     .from("allowed_users")
@@ -68,9 +63,7 @@ export const authOptions = {
     .eq("email", email)
     .maybeSingle();
 
-  if (error || !data) {
-    return false;
-  }
+  if (error || !data) return false;
 
   return true;
 },
