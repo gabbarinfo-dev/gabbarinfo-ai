@@ -37,7 +37,7 @@ export const authOptions = {
   clientSecret: process.env.FB_APP_SECRET,
   authorization: {
     params: {
-      scope: "", // <-- IMPORTANT: EMPTY SCOPE
+      scope: "public_profile", // <-- IMPORTANT: EMPTY SCOPE
     },
   },
 }),
