@@ -42,32 +42,33 @@ export const authOptions = {
 
   callbacks: {
     // Allow only emails in allowed_users
-    async signIn({ user }) {
-      const email = user?.email?.toLowerCase().trim();
-      if (!email) return false;
+    async signIn({ user, account }) {
+  // Allow Facebook login even without email
+  if (account?.provider === "facebook") {
+    return true;
+  }
 
-      if (!supabaseClient) {
-        console.error("Supabase anon client not configured.");
-        return false;
-      }
+  // Google login still requires email
+  const email = user?.email?.toLowerCase().trim();
+  if (!email) return false;
 
-      const { data, error } = await supabaseClient
-        .from("allowed_users")
-        .select("role")
-        .eq("email", email)
-        .maybeSingle();
+  if (!supabaseClient) {
+    console.error("Supabase anon client not configured.");
+    return false;
+  }
 
-      if (error) {
-        console.error("Supabase error in signIn:", error);
-        return false;
-      }
+  const { data, error } = await supabaseClient
+    .from("allowed_users")
+    .select("role")
+    .eq("email", email)
+    .maybeSingle();
 
-      if (!data) {
-        return false;
-      }
+  if (error || !data) {
+    return false;
+  }
 
-      return true;
-    },
+  return true;
+}
 
     // Store tokens into the JWT token object
     async jwt({ token, user, account }) {
