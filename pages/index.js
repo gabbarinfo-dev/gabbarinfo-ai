@@ -186,62 +186,65 @@ export default function HomePage() {
           )}
         </section>
 
-        <section
-          style={{
-            display: "flex",
-            gap: 12,
-            flexWrap: "wrap",
-            maxWidth: 640,
-          }}
-        >
-          <a
-            href="/chat"
-            style={{
-              padding: "10px 16px",
-              borderRadius: 8,
-              border: "1px solid #ddd",
-              background: "#fff",
-              textDecoration: "none",
-              fontSize: 14,
-            }}
-          >
-            Open Chat
-          </a>
-
-{/* ✅ ADD THIS BELOW */}
-<button
-  onClick={() => {
-    window.location.href = "/api/facebook/connect";
-  }}
+{/* ACTION BUTTONS */}
+<section
   style={{
-    padding: "10px 16px",
-    borderRadius: 8,
-    border: "1px solid #ddd",
-    background: "#1877F2",
-    color: "#fff",
-    fontSize: 14,
-    cursor: "pointer",
+    display: "flex",
+    gap: 12,
+    flexWrap: "wrap",
+    maxWidth: 640,
   }}
 >
-  Connect Facebook Business
-</button>
+  <a
+    href="/chat"
+    style={{
+      padding: "10px 16px",
+      borderRadius: 8,
+      border: "1px solid #ddd",
+      background: "#fff",
+      textDecoration: "none",
+      fontSize: 14,
+    }}
+  >
+    Open Chat
+  </a>
 
-          {role === "owner" && (
-            <a
-              href="/admin"
-              style={{
-                padding: "10px 16px",
-                borderRadius: 8,
-                border: "1px solid #ddd",
-                background: "#fff",
-                textDecoration: "none",
-                fontSize: 14,
-              }}
-            >
-              Open Admin (add clients & credits)
-            </a>
-          )}
-        </section>
+  {/* ✅ Facebook BUSINESS connect – SAFE */}
+  {session?.user?.email && (
+    <button
+      onClick={() => {
+        window.location.href = "/api/facebook/connect";
+      }}
+      style={{
+        padding: "10px 16px",
+        borderRadius: 8,
+        border: "1px solid #ddd",
+        background: "#1877F2",
+        color: "#fff",
+        fontSize: 14,
+        cursor: "pointer",
+      }}
+    >
+      Connect Facebook Business
+    </button>
+  )}
+
+  {role === "owner" && (
+    <a
+      href="/admin"
+      style={{
+        padding: "10px 16px",
+        borderRadius: 8,
+        border: "1px solid #ddd",
+        background: "#fff",
+        textDecoration: "none",
+        fontSize: 14,
+      }}
+    >
+      Open Admin (add clients & credits)
+    </a>
+  )}
+</section>
       </main>
     </div>
   );
