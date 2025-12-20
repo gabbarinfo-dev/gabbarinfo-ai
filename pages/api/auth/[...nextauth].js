@@ -68,7 +68,7 @@ export const authOptions = {
   }
 
   return true;
-}
+},
 
     // Store tokens into the JWT token object
     async jwt({ token, user, account }) {
