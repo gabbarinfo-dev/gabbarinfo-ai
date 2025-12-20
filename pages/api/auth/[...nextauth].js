@@ -40,8 +40,8 @@ export const authOptions = {
 
     // ✅ FACEBOOK (fixed + clean)
     FacebookProvider({
-      clientId: process.env.FB_APP_ID,
-      clientSecret: process.env.FB_APP_SECRET,
+      clientId: process.env.FACEBOOK_CLIENT_ID,
+      clientSecret: process.env.FACEBOOK_CLIENT_SECRET,
       authorization: {
         params: {
           scope: "email,public_profile",
