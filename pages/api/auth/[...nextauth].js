@@ -1,4 +1,4 @@
-// pages/api/auth/[...nextauth].js
+l// pages/api/auth/[...nextauth].js
 import NextAuth from "next-auth";
 import GoogleProvider from "next-auth/providers/google";
 import FacebookProvider from "next-auth/providers/facebook";
@@ -37,7 +37,7 @@ export const authOptions = {
   clientSecret: process.env.FB_APP_SECRET,
   authorization: {
     params: {
-      scope: "public_profile", // <-- IMPORTANT: EMPTY SCOPE
+      scope: "email,public_profile", 
     },
   },
 }),
