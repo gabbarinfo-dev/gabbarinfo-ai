@@ -226,6 +226,10 @@ export default function HomePage() {
     </a>
   )}
 </section>
+    {/* FACEBOOK BUSINESS CONNECT */}
+<div style={{ marginTop: 16, maxWidth: 640 }}>
+  <FacebookBusinessConnect />
+</div>
       </main>
     </div>
   );
