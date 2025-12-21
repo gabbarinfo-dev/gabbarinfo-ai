@@ -6,16 +6,16 @@ export default function FacebookBusinessConnect() {
   const [status, setStatus] = useState("idle"); // idle | connected | loading
 
   useEffect(() => {
-    fetch("/api/me/connections")
-      .then(res => res.json())
-      .then(data => {
-        if (data?.facebook_business === true) {
-          setStatus("connected");
-        }
-      })
-      .catch(() => {});
-  }, []);
-
+  fetch("/api/me/connections")
+    .then(res => res.json())
+    .then(data => {
+      if (data?.meta) {
+        setStatus("connected");
+      }
+    })
+    .catch(() => {});
+}, []);
+  
   const handleConnect = () => {
     setStatus("loading");
     window.location.href = "/api/facebook/connect";
