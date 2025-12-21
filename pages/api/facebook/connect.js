@@ -12,8 +12,8 @@ export default async function handler(req, res) {
   }
 
   const params = new URLSearchParams({
-    client_id: process.env.FB_APP_ID,
-    redirect_uri: "https://ai.gabbarinfo.com/api/facebook/business-callback",
+    client_id: process.env.FB_CLIENT_APP_ID,
+    redirect_uri: "https://ai.gabbarinfo.com/api/facebook/callback",
     response_type: "code",
     scope: [
       "business_management",
@@ -21,7 +21,9 @@ export default async function handler(req, res) {
       "ads_read",
       "pages_show_list",
       "pages_read_engagement",
-      "instagram_basic"
+      "instagram_basic",
+      "instagram_content_publish",
+      "pages_manage_ads"
     ].join(","),
     state: Buffer.from(
       JSON.stringify({
