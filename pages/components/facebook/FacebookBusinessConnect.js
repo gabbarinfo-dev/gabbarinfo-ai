@@ -22,43 +22,68 @@ export default function FacebookBusinessConnect() {
   };
 
   return (
-    <div
-      style={{
-        marginTop: "20px",
-        padding: "16px",
-        border: "1px solid #e5e7eb",
-        borderRadius: "8px",
-        maxWidth: "520px"
-      }}
-    >
-      <h3 style={{ marginBottom: "6px" }}>Facebook Business</h3>
+  <div
+    style={{
+      marginTop: 16,
+      padding: 16,
+      borderRadius: 10,
+      border: "1px solid #e5e7eb",
+      maxWidth: 480,
+      background: "#fff",
+    }}
+  >
+    <h3 style={{ marginBottom: 6 }}>Facebook Business</h3>
 
-      <p style={{ fontSize: "14px", color: "#555", marginBottom: "12px" }}>
-        Required to manage Facebook Pages, Instagram accounts, and ad campaigns.
-      </p>
-
-      {status === "connected" ? (
-        <p style={{ color: "green", fontWeight: "500" }}>
-          ✅ Facebook Business connected
+    {status === "connected" ? (
+      <>
+        <p style={{ color: "green", marginBottom: 8 }}>
+          Status: Connected ✅
         </p>
-      ) : (
+
+        <div style={{ fontSize: 14, marginBottom: 10 }}>
+          <strong>Connected assets:</strong>
+          <ul style={{ marginTop: 6 }}>
+            <li>Business</li>
+            <li>Ad Account</li>
+            <li>Facebook Page</li>
+            <li>Instagram Account</li>
+          </ul>
+        </div>
+
         <button
-          onClick={handleConnect}
-          disabled={status === "loading"}
+          disabled
           style={{
             padding: "10px 14px",
-            backgroundColor: "#1877F2",
-            color: "#fff",
-            border: "none",
-            borderRadius: "6px",
-            cursor: "pointer"
+            borderRadius: 8,
+            border: "1px solid #ddd",
+            background: "#f5f5f5",
+            cursor: "not-allowed",
           }}
         >
-          {status === "loading"
-            ? "Redirecting…"
-            : "Connect Facebook Business"}
+          Manage Access (coming soon)
         </button>
-      )}
-    </div>
-  );
+      </>
+    ) : (
+      <>
+        <p style={{ fontSize: 14, marginBottom: 10 }}>
+          Required to manage Facebook Pages, Instagram accounts, and ad campaigns.
+        </p>
+
+        <button
+          onClick={handleConnect}
+          style={{
+            padding: "10px 14px",
+            borderRadius: 8,
+            border: "none",
+            background: "#1877f2",
+            color: "#fff",
+            cursor: "pointer",
+          }}
+        >
+          Connect Facebook Business
+        </button>
+      </>
+    )}
+  </div>
+);
 }
