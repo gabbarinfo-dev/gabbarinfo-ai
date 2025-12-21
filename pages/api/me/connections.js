@@ -31,8 +31,9 @@ export default async function handler(req, res) {
   ]);
 
   return res.status(200).json({
-    email,
-    google,
-    meta,
-  });
+  email,
+  google,
+  meta,
+  facebook_business: !!meta,
+});
 }
