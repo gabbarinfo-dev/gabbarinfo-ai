@@ -9,9 +9,11 @@ export default async function handler(req, res) {
   }
 
   const params = new URLSearchParams({
-    client_id: process.env.FACEBOOK_CLIENT_ID,
+    app_id: process.env.FACEBOOK_CLIENT_ID,
     redirect_uri: `${process.env.NEXTAUTH_URL}/api/facebook/callback`,
-    response_type: "code",
+    state: JSON.stringify({
+      email: session.user.email,
+    }),
     scope: [
       "business_management",
       "ads_management",
@@ -21,12 +23,11 @@ export default async function handler(req, res) {
       "pages_manage_metadata",
       "pages_manage_ads",
       "instagram_basic",
-      "instagram_content_publish"
+      "instagram_content_publish",
     ].join(","),
-    state: JSON.stringify({
-      email: session.user.email
-    }),
   });
 
-  res.redirect(`https://www.facebook.com/v19.0/dialog/oauth?${params}`);
+  res.redirect(
+    `https://www.facebook.com/dialog/business/login/?${params}`
+  );
 }
