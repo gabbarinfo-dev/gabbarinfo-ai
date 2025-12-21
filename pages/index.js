@@ -209,26 +209,6 @@ export default function HomePage() {
     Open Chat
   </a>
 
-  {/* ✅ Facebook BUSINESS connect – SAFE */}
-  {session?.user?.email && (
-    <button
-      onClick={() => {
-        window.location.href = "/api/facebook/connect";
-      }}
-      style={{
-        padding: "10px 16px",
-        borderRadius: 8,
-        border: "1px solid #ddd",
-        background: "#1877F2",
-        color: "#fff",
-        fontSize: 14,
-        cursor: "pointer",
-      }}
-    >
-      Connect Facebook Business
-    </button>
-  )}
-
   {role === "owner" && (
     <a
       href="/admin"
