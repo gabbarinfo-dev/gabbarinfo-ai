@@ -40,6 +40,30 @@ export default async function handler(req, res) {
     if (!session) {
       return res.status(401).json({ ok: false, message: "Not authenticated" });
     }
+    // ============================================================
+// 🔗 META CONNECTION CHECK (Supabase)
+// ============================================================
+let metaConnected = false;
+let activeBusinessId = null;
+
+try {
+  const { data: metaRow } = await supabase
+    .from("meta_connections")
+    .select("*")
+    .eq("email", session.user.email.toLowerCase())
+    .single();
+
+  if (metaRow && metaRow.system_user_token) {
+    metaConnected = true;
+    activeBusinessId =
+      metaRow.fb_business_id ||
+      metaRow.fb_page_id ||
+      metaRow.ig_business_id ||
+      null;
+  }
+} catch (e) {
+  console.warn("Meta connection lookup failed:", e.message);
+}
  // ✅ ADD HERE (THIS IS THE RIGHT PLACE)
     const ADMIN_EMAILS = ["ndantare@gmail.com"];
     const isAdmin = ADMIN_EMAILS.includes(
@@ -329,11 +353,11 @@ try {
       })
       .filter(Boolean);
 
-    // 🚫 No business at all
-    if (!profiles.length) {
-      safetyGateMessage =
-        "I cannot proceed because no business is connected yet. Please connect a Facebook Business or Page first.";
-    }
+  // 🚫 No business at all (RAG OR META)
+if (!profiles.length && !metaConnected) {
+  safetyGateMessage =
+    "I cannot proceed because no business is connected yet. Please connect a Facebook Business or Page first.";
+}
 
     // ⚠️ Multiple businesses detected
     if (profiles.length > 1 && !instruction.toLowerCase().includes("use")) {
@@ -343,13 +367,14 @@ try {
 
     // 🛑 Budget / approval guard
     if (
-      instruction.toLowerCase().includes("run") &&
-      !instruction.toLowerCase().includes("approve") &&
-      !instruction.toLowerCase().includes("yes")
-    ) {
-      safetyGateMessage =
-        "Before I can prepare execution-ready campaign steps, I need your explicit confirmation (YES) after budget, duration, and business selection are finalized.";
-    }
+  instruction.toLowerCase().includes("run") &&
+  !instruction.toLowerCase().includes("approve") &&
+  !instruction.toLowerCase().includes("yes") &&
+  !instruction.toLowerCase().includes("paused")
+) {
+  safetyGateMessage =
+    "Before I can prepare execution-ready campaign steps, I need your explicit confirmation...";
+}
   }
 } catch (e) {
   console.warn("Safety gate check skipped:", e.message);
