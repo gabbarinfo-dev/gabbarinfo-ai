@@ -54,6 +54,21 @@ const [meta, setMeta] = useState(null);
           {meta.fb_page_id && <li>Facebook Page ID: {meta.fb_page_id}</li>}
           {meta.ig_business_id && <li>Instagram Business ID: {meta.ig_business_id}</li>}
         </ul>
+            <a
+  href="https://www.facebook.com/settings/business_integrations"
+  target="_blank"
+  rel="noopener noreferrer"
+  style={{
+    display: "inline-block",
+    marginTop: "10px",
+    fontSize: "14px",
+    color: "#1877F2",
+    textDecoration: "none",
+    fontWeight: 500
+  }}
+>
+  Manage Access →
+</a>
       </>
     ) : (
       <>
