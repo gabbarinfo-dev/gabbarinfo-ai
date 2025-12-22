@@ -10,24 +10,29 @@ export default function HomePage() {
   const [credits, setCredits] = useState(null);
   const [unlimited, setUnlimited] = useState(false);
   const [loadingCredits, setLoadingCredits] = useState(true);
+
+  const [metaConnected, setMetaConnected] = useState(false);
+  const [metaLoading, setMetaLoading] = useState(true);
+  const [metaDetails, setMetaDetails] = useState(null);
+
   const role = session?.user?.role || "client";
 
-  // Load credits when user is logged in
+  /* -------------------------
+     LOAD CREDITS
+  ------------------------- */
   useEffect(() => {
     if (!session) return;
 
     async function fetchCredits() {
       try {
         const res = await fetch("/api/credits/get");
-        if (!res.ok) {
-          console.error("Failed to load credits:", await res.text());
-          return;
-        }
+        if (!res.ok) return;
+
         const data = await res.json();
         setCredits(typeof data.credits === "number" ? data.credits : null);
         setUnlimited(Boolean(data.unlimited));
       } catch (err) {
-        console.error("Error loading credits:", err);
+        console.error(err);
       } finally {
         setLoadingCredits(false);
       }
@@ -36,7 +41,43 @@ export default function HomePage() {
     fetchCredits();
   }, [session]);
 
-  // ---- Auth loading states ----
+  /* -------------------------
+     CHECK META CONNECTION
+     (meta_connections table)
+  ------------------------- */
+  useEffect(() => {
+    if (!session?.user?.email) return;
+
+    async function checkMetaConnection() {
+      try {
+        const res = await fetch("/api/meta/connection-status");
+        if (!res.ok) {
+          setMetaConnected(false);
+          return;
+        }
+
+        const data = await res.json();
+
+        if (data?.connected) {
+          setMetaConnected(true);
+          setMetaDetails(data.connection);
+        } else {
+          setMetaConnected(false);
+        }
+      } catch (err) {
+        console.error(err);
+        setMetaConnected(false);
+      } finally {
+        setMetaLoading(false);
+      }
+    }
+
+    checkMetaConnection();
+  }, [session]);
+
+  /* -------------------------
+     AUTH LOADING
+  ------------------------- */
   if (status === "loading") {
     return (
       <div style={{ padding: 40, fontFamily: "Inter, Arial" }}>
@@ -45,11 +86,15 @@ export default function HomePage() {
     );
   }
 
+  /* -------------------------
+     NOT LOGGED IN
+  ------------------------- */
   if (!session) {
     return (
       <div style={{ padding: 40, fontFamily: "Inter, Arial" }}>
         <h1>GabbarInfo AI</h1>
         <p>Please sign in to use GabbarInfo AI.</p>
+
         <button
           onClick={() => signIn("google")}
           style={{
@@ -63,28 +108,13 @@ export default function HomePage() {
         >
           Sign in with Google
         </button>
-
-            {/* Facebook */}
-      <button
-        onClick={() => signIn("facebook")}
-        style={{
-          marginTop: 12,
-          padding: "10px 16px",
-          borderRadius: 6,
-          border: "1px solid #1877F2",
-          background: "#1877F2",
-          color: "#fff",
-          cursor: "pointer",
-          display: "block",
-        }}
-      >
-        Continue with Facebook (Test)
-      </button>
       </div>
     );
   }
 
-  // ---- Logged-in view ----
+  /* -------------------------
+     LOGGED IN VIEW
+  ------------------------- */
   return (
     <div
       style={{
@@ -94,6 +124,7 @@ export default function HomePage() {
         background: "#fafafa",
       }}
     >
+      {/* HEADER */}
       <header
         style={{
           display: "flex",
@@ -105,7 +136,7 @@ export default function HomePage() {
         <div>
           <h1 style={{ margin: 0 }}>GabbarInfo AI</h1>
           <div style={{ fontSize: 13, color: "#555", marginTop: 4 }}>
-            Logged in as {session.user?.email} ({role})
+            Logged in as {session.user.email} ({role})
           </div>
         </div>
 
@@ -150,6 +181,7 @@ export default function HomePage() {
       </header>
 
       <main>
+        {/* CREDITS */}
         <section
           style={{
             padding: 20,
@@ -162,74 +194,91 @@ export default function HomePage() {
         >
           <h2 style={{ marginTop: 0 }}>Your Credits</h2>
 
-          {role === "owner" && (
-            <p style={{ marginBottom: 8 }}>
-              You have <strong>unlimited</strong> access. Credits are not
-              deducted for your account.
+          {role === "owner" ? (
+            <p>You have <strong>unlimited</strong> access.</p>
+          ) : loadingCredits ? (
+            <p>Loading credits…</p>
+          ) : (
+            <p>
+              You currently have <strong>{credits ?? 0}</strong> credits left.
             </p>
-          )}
-
-          {role !== "owner" && (
-            <>
-              {loadingCredits ? (
-                <p>Loading your credits…</p>
-              ) : (
-                <p>
-                  You currently have{" "}
-                  <strong>{credits == null ? 0 : credits}</strong> credits left.
-                </p>
-              )}
-              <p style={{ fontSize: 13, color: "#666" }}>
-                1 credit = 1 AI answer. When credits hit 0, GabbarInfo AI will
-                stop responding until you are topped up.
-              </p>
-            </>
           )}
         </section>
 
-{/* ACTION BUTTONS */}
-<section
-  style={{
-    display: "flex",
-    gap: 12,
-    flexWrap: "wrap",
-    maxWidth: 640,
-  }}
->
-  <a
-    href="/chat"
-    style={{
-      padding: "10px 16px",
-      borderRadius: 8,
-      border: "1px solid #ddd",
-      background: "#fff",
-      textDecoration: "none",
-      fontSize: 14,
-    }}
-  >
-    Open Chat
-  </a>
+        {/* ACTIONS */}
+        <section
+          style={{
+            display: "flex",
+            gap: 12,
+            flexWrap: "wrap",
+            maxWidth: 640,
+            marginBottom: 24,
+          }}
+        >
+          <a
+            href="/chat"
+            style={{
+              padding: "10px 16px",
+              borderRadius: 8,
+              border: "1px solid #ddd",
+              background: "#fff",
+              textDecoration: "none",
+              fontSize: 14,
+            }}
+          >
+            Open Chat
+          </a>
 
-  {role === "owner" && (
-    <a
-      href="/admin"
-      style={{
-        padding: "10px 16px",
-        borderRadius: 8,
-        border: "1px solid #ddd",
-        background: "#fff",
-        textDecoration: "none",
-        fontSize: 14,
-      }}
-    >
-      Open Admin (add clients & credits)
-    </a>
-  )}
-</section>
-    {/* FACEBOOK BUSINESS CONNECT */}
-<div style={{ marginTop: 16, maxWidth: 640 }}>
-  <FacebookBusinessConnect />
-</div>
+          {role === "owner" && (
+            <a
+              href="/admin"
+              style={{
+                padding: "10px 16px",
+                borderRadius: 8,
+                border: "1px solid #ddd",
+                background: "#fff",
+                textDecoration: "none",
+                fontSize: 14,
+              }}
+            >
+              Open Admin
+            </a>
+          )}
+        </section>
+
+        {/* META CONNECTION STATUS */}
+        <section
+          style={{
+            padding: 20,
+            borderRadius: 12,
+            background: "#fff",
+            border: "1px solid #eee",
+            maxWidth: 640,
+          }}
+        >
+          <h2 style={{ marginTop: 0 }}>Facebook Business</h2>
+
+          {metaLoading ? (
+            <p>Checking connection…</p>
+          ) : metaConnected ? (
+            <div style={{ color: "green" }}>
+              ✅ Facebook Business Connected
+              {metaDetails?.fb_ad_account_id && (
+                <div style={{ fontSize: 13, marginTop: 6 }}>
+                  Ad Account: {metaDetails.fb_ad_account_id}
+                </div>
+              )}
+            </div>
+          ) : (
+            <>
+              <p>
+                Required to manage Facebook Pages, Instagram accounts, and ad
+                campaigns.
+              </p>
+              <FacebookBusinessConnect />
+            </>
+          )}
+        </section>
       </main>
     </div>
   );
