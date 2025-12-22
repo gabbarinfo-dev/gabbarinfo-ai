@@ -282,6 +282,72 @@ try {
 } catch (e) {
   console.warn("RAG fetch failed:", e.message);
 }
+// ===============================
+// 🔐 SAFETY GATE — BUSINESS + BUDGET CONFIRMATION
+// ===============================
+let safetyGateMessage = null;
+
+try {
+  const baseUrl = process.env.NEXT_PUBLIC_BASE_URL;
+
+  if (baseUrl) {
+    const memRes = await fetch(`${baseUrl}/api/rag/query`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        query: "business_profile",
+        memory_type: "client",
+        client_email: session.user.email,
+        top_k: 3,
+      }),
+    });
+
+    const memJson = await memRes.json();
+
+    const profiles = (memJson?.chunks || [])
+      .map((c) => {
+        try {
+          return JSON.parse(c.content)?.business_profile;
+        } catch {
+          return null;
+        }
+      })
+      .filter(Boolean);
+
+    // 🚫 No business at all
+    if (!profiles.length) {
+      safetyGateMessage =
+        "I cannot proceed because no business is connected yet. Please connect a Facebook Business or Page first.";
+    }
+
+    // ⚠️ Multiple businesses detected
+    if (profiles.length > 1 && !instruction.toLowerCase().includes("use")) {
+      safetyGateMessage =
+        "You have multiple businesses/pages connected. Please explicitly tell me which ONE business or page to use before I proceed.";
+    }
+
+    // 🛑 Budget / approval guard
+    if (
+      instruction.toLowerCase().includes("run") &&
+      !instruction.toLowerCase().includes("approve") &&
+      !instruction.toLowerCase().includes("yes")
+    ) {
+      safetyGateMessage =
+        "Before I can prepare execution-ready campaign steps, I need your explicit confirmation (YES) after budget, duration, and business selection are finalized.";
+    }
+  }
+} catch (e) {
+  console.warn("Safety gate check skipped:", e.message);
+}
+
+if (safetyGateMessage) {
+  return res.status(200).json({
+    ok: true,
+    mode,
+    gated: true,
+    text: safetyGateMessage,
+  });
+}
 
     const systemPrompt = `
 You are GabbarInfo AI – a senior digital marketing strategist and backend AGENT.
