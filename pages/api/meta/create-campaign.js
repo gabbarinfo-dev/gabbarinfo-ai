@@ -1,60 +1,96 @@
 // pages/api/meta/create-campaign.js
+// ADMIN-ONLY • PAUSED CAMPAIGN • REAL META API
+// Uses stored Meta system user token + ad account from Supabase
+
+import { getServerSession } from "next-auth/next";
+import { authOptions } from "../auth/[...nextauth]";
+import { createClient } from "@supabase/supabase-js";
+
+const supabase = createClient(
+  process.env.NEXT_PUBLIC_SUPABASE_URL,
+  process.env.SUPABASE_SERVICE_ROLE_KEY
+);
 
 export default async function handler(req, res) {
   if (req.method !== "POST") {
-    return res.status(405).json({ ok: false, message: "Method not allowed" });
-  }
-
-  const AD_ACCOUNT_ID = process.env.FB_AD_ACCOUNT_ID;
-  const ACCESS_TOKEN =
-    process.env.FB_AD_ACCESS_TOKEN || process.env.FB_PAGE_ACCESS_TOKEN;
-
-  if (!AD_ACCOUNT_ID || !ACCESS_TOKEN) {
-    return res.status(500).json({
-      ok: false,
-      message:
-        "Missing FB_AD_ACCOUNT_ID or FB_AD_ACCESS_TOKEN env vars. Set them in Vercel first.",
-    });
+    return res.status(405).json({ ok: false, message: "Only POST allowed." });
   }
 
   try {
+    // ---------------------------
+    // 1) AUTH + ADMIN CHECK
+    // ---------------------------
+    const session = await getServerSession(req, res, authOptions);
+    if (!session) {
+      return res.status(401).json({ ok: false, message: "Not authenticated" });
+    }
+
+    const ADMIN_EMAILS = ["ndantare@gmail.com"];
+    const isAdmin = ADMIN_EMAILS.includes(
+      (session.user.email || "").toLowerCase()
+    );
+
+    if (!isAdmin) {
+      return res.status(403).json({
+        ok: false,
+        message: "Only admin can execute Meta campaigns",
+      });
+    }
+
+    // ---------------------------
+    // 2) FETCH META CONNECTION
+    // ---------------------------
+    const { data: conn, error } = await supabase
+      .from("meta_connections")
+      .select("system_user_token, fb_ad_account_id")
+      .eq("email", session.user.email.toLowerCase())
+      .single();
+
+    if (error || !conn) {
+      return res.status(400).json({
+        ok: false,
+        message: "Meta account not connected for this user",
+      });
+    }
+
+    const ACCESS_TOKEN = conn.system_user_token;
+    const AD_ACCOUNT_ID = conn.fb_ad_account_id;
+
+    // ---------------------------
+    // 3) INPUT
+    // ---------------------------
     const {
       name,
       objective,
       dailyBudget,
-      status,
       specialAdCategories,
     } = req.body || {};
 
-    // Very basic validation
     if (!name) {
       return res.status(400).json({
         ok: false,
-        message: "Campaign name is required.",
+        message: "Campaign name is required",
       });
     }
 
-    // Meta objectives examples: "CONVERSIONS", "TRAFFIC", "AWARENESS", etc.
-    const finalObjective = objective || "CONVERSIONS";
+    const finalObjective = objective || "TRAFFIC";
+    const finalStatus = "PAUSED"; // 🔒 HARD LOCK
 
-    // Status: "PAUSED" or "ACTIVE". Default to PAUSED for safety.
-    const finalStatus = status || "PAUSED";
-
-    // Meta expects budget in minor units (e.g. 100 INR -> 10000).
-    // Here we accept a number like 500 (meaning 500 currency units) and multiply.
     let dailyBudgetMinor = null;
-    if (dailyBudget != null) {
+    if (dailyBudget !== undefined && dailyBudget !== null) {
       const num = Number(dailyBudget);
       if (!Number.isFinite(num) || num <= 0) {
         return res.status(400).json({
           ok: false,
-          message:
-            "dailyBudget must be a positive number (e.g. 500 for ₹500 or £500).",
+          message: "dailyBudget must be a positive number",
         });
       }
       dailyBudgetMinor = Math.round(num * 100);
     }
 
+    // ---------------------------
+    // 4) META API CALL
+    // ---------------------------
     const url = `https://graph.facebook.com/v21.0/act_${AD_ACCOUNT_ID}/campaigns`;
 
     const params = new URLSearchParams();
@@ -63,10 +99,10 @@ export default async function handler(req, res) {
     params.append("status", finalStatus);
     params.append(
       "special_ad_categories",
-      JSON.stringify(specialAdCategories || []) // usually []
+      JSON.stringify(specialAdCategories || [])
     );
 
-    if (dailyBudgetMinor != null) {
+    if (dailyBudgetMinor !== null) {
       params.append("daily_budget", String(dailyBudgetMinor));
     }
 
@@ -82,24 +118,27 @@ export default async function handler(req, res) {
     if (!fbRes.ok || fbJson.error) {
       return res.status(400).json({
         ok: false,
-        message: "Meta Marketing API returned an error.",
+        message: "Meta API error while creating campaign",
         fbStatus: fbRes.status,
         fbResponse: fbJson,
       });
     }
 
+    // ---------------------------
+    // 5) SUCCESS
+    // ---------------------------
     return res.status(200).json({
       ok: true,
-      message: "Campaign created (or Meta accepted the request).",
+      message: "Paused Meta campaign created (admin test)",
       campaignId: fbJson.id,
       fbResponse: fbJson,
     });
   } catch (err) {
-    console.error("META CAMPAIGN ERROR:", err);
+    console.error("META CREATE CAMPAIGN ERROR:", err);
     return res.status(500).json({
       ok: false,
-      message: "Server error while creating campaign.",
-      error: err?.message || String(err),
+      message: "Server error while creating Meta campaign",
+      error: err.message || String(err),
     });
   }
 }
