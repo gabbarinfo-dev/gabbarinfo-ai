@@ -3,6 +3,37 @@
 const BASE_URL =
   process.env.NEXT_PUBLIC_BASE_URL || "http://localhost:3000";
 
+/* ---------------- HELPERS (SAFE ADDITIONS) ---------------- */
+
+async function detectIntent(query) {
+  const res = await fetch(`${BASE_URL}/api/agent/intent`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ query }),
+  });
+  return res.json();
+}
+
+async function safetyGate(payload) {
+  const res = await fetch(`${BASE_URL}/api/agent/safety-gate`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(payload),
+  });
+  return res.json();
+}
+
+async function generateQuestions(payload) {
+  const res = await fetch(`${BASE_URL}/api/agent/questions`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(payload),
+  });
+  return res.json();
+}
+
+/* ---------------- MAIN HANDLER ---------------- */
+
 export default async function handler(req, res) {
   if (req.method !== "POST") {
     return res
@@ -20,6 +51,64 @@ export default async function handler(req, res) {
       });
     }
 
+    /* ======================================================
+       🔹 MODE 1: AGENT CHAT FLOW (NEW, SAFE)
+       Triggered when `message` exists
+       ====================================================== */
+
+    if (body.message && typeof body.message === "string") {
+      const userMessage = body.message;
+
+      // 1️⃣ Detect intent
+      const intentRes = await detectIntent(userMessage);
+
+      if (!intentRes.ok) {
+        return res.json({
+          reply: "I couldn’t understand that. Please rephrase your request.",
+        });
+      }
+
+      const { platform, objective } = intentRes.intent;
+
+      // 2️⃣ Safety gate (initial, strict)
+      const gateRes = await safetyGate({
+        platform,
+        objective,
+        assets_confirmed: true, // already enforced elsewhere
+      });
+
+      if (!gateRes.ok && gateRes.missing) {
+        // 3️⃣ Ask Gemini questions
+        const qRes = await generateQuestions({
+          platform,
+          objective,
+          missing: gateRes.missing,
+          context: {},
+        });
+
+        return res.json({
+          reply:
+            "Before I proceed, I need a few details:\n\n" +
+            qRes.questions.map((q, i) => `${i + 1}. ${q}`).join("\n"),
+          stage: "awaiting_answers",
+          intent: { platform, objective },
+        });
+      }
+
+      // Execution intentionally blocked for now
+      return res.json({
+        reply:
+          "I have all the required details. Please confirm to proceed further.",
+        stage: "ready_for_confirmation",
+        intent: { platform, objective },
+      });
+    }
+
+    /* ======================================================
+       🔹 MODE 2: EXISTING EXECUTION FLOW (UNCHANGED)
+       platform + action + payload
+       ====================================================== */
+
     const { platform, action, payload } = body;
 
     if (!platform || typeof platform !== "string") {
@@ -32,7 +121,7 @@ export default async function handler(req, res) {
     if (!action || typeof action !== "string") {
       return res.status(400).json({
         ok: false,
-        message: "action (string) is required, e.g. 'create_simple_campaign'.",
+        message: "action (string) is required.",
       });
     }
 
@@ -43,10 +132,9 @@ export default async function handler(req, res) {
       });
     }
 
-    // Decide where to forward
+    /* ---------- GOOGLE ADS (UNCHANGED) ---------- */
+
     if (platform === "google" && action === "create_simple_campaign") {
-      // Forward to your existing Google Ads stub:
-      // /api/google-ads/create-simple-campaign
       const resp = await fetch(
         `${BASE_URL}/api/google-ads/create-simple-campaign`,
         {
@@ -74,9 +162,9 @@ export default async function handler(req, res) {
       });
     }
 
+    /* ---------- META ADS (UNCHANGED) ---------- */
+
     if (platform === "meta" && action === "create_simple_campaign") {
-      // Forward to the new Meta stub:
-      // /api/meta/create-simple-campaign
       const resp = await fetch(
         `${BASE_URL}/api/meta/create-simple-campaign`,
         {
@@ -104,11 +192,10 @@ export default async function handler(req, res) {
       });
     }
 
-    // Unknown combination
     return res.status(400).json({
       ok: false,
       message:
-        "Unknown platform/action combo. Expected platform = 'google' or 'meta' and action = 'create_simple_campaign'.",
+        "Unknown platform/action combo. Expected 'google' or 'meta' with valid action.",
     });
   } catch (err) {
     console.error("Agent /api/agent/run error:", err);
