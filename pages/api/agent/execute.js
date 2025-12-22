@@ -253,6 +253,7 @@ You are in GENERIC DIGITAL MARKETING AGENT MODE.
   - Creative JSON for Meta/social creatives.
 `;
     }
+    let ragContext = "";
 // ===============================
 // 🔗 RAG FETCH (CLIENT MEMORY)
 // ===============================
