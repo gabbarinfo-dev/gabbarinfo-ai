@@ -4,16 +4,26 @@ import { useEffect, useState } from "react";
 
 export default function FacebookBusinessConnect() {
   const [status, setStatus] = useState("idle"); // idle | connected | loading
-
+const [meta, setMeta] = useState(null);
   useEffect(() => {
-  const check = () =>
-    fetch("/api/me/connections")
-      .then(res => res.json())
-      .then(data => {
-        if (data?.meta) {
-          setStatus("connected");
-        }
-      });
+  fetch("/api/me/connections")
+    .then(res => res.json())
+    .then(data => {
+      if (
+        data?.meta &&
+        (
+          data.meta.fb_business_id ||
+          data.meta.fb_ad_account_id ||
+          data.meta.fb_page_id ||
+          data.meta.ig_business_id
+        )
+      ) {
+        setStatus("connected");
+        setMeta(data.meta);
+      }
+    })
+    .catch(() => {});
+}, []);
 
   check();
   const t = setTimeout(check, 1500); // re-check once after redirect
@@ -28,48 +38,31 @@ export default function FacebookBusinessConnect() {
   return (
   <div
     style={{
-      marginTop: 16,
-      padding: 16,
-      borderRadius: 10,
+      marginTop: "20px",
+      padding: "16px",
       border: "1px solid #e5e7eb",
-      maxWidth: 480,
-      background: "#fff",
+      borderRadius: "8px",
+      maxWidth: "520px"
     }}
   >
-    <h3 style={{ marginBottom: 6 }}>Facebook Business</h3>
+    <h3 style={{ marginBottom: "6px" }}>Facebook Business</h3>
 
     {status === "connected" ? (
       <>
-        <p style={{ color: "green", marginBottom: 8 }}>
-          Status: Connected ✅
+        <p style={{ color: "green", fontWeight: 500, marginBottom: 8 }}>
+          ✅ Facebook Business Connected
         </p>
 
-        <div style={{ fontSize: 14, marginBottom: 10 }}>
-          <strong>Connected assets:</strong>
-          <ul style={{ marginTop: 6 }}>
-            <li>Business</li>
-            <li>Ad Account</li>
-            <li>Facebook Page</li>
-            <li>Instagram Account</li>
-          </ul>
-        </div>
-
-        <button
-          disabled
-          style={{
-            padding: "10px 14px",
-            borderRadius: 8,
-            border: "1px solid #ddd",
-            background: "#f5f5f5",
-            cursor: "not-allowed",
-          }}
-        >
-          Manage Access (coming soon)
-        </button>
+        <ul style={{ fontSize: 14, color: "#333", paddingLeft: 18 }}>
+          {meta.fb_business_id && <li>Business ID: {meta.fb_business_id}</li>}
+          {meta.fb_ad_account_id && <li>Ad Account ID: {meta.fb_ad_account_id}</li>}
+          {meta.fb_page_id && <li>Facebook Page ID: {meta.fb_page_id}</li>}
+          {meta.ig_business_id && <li>Instagram Business ID: {meta.ig_business_id}</li>}
+        </ul>
       </>
     ) : (
       <>
-        <p style={{ fontSize: 14, marginBottom: 10 }}>
+        <p style={{ fontSize: 14, color: "#555", marginBottom: 12 }}>
           Required to manage Facebook Pages, Instagram accounts, and ad campaigns.
         </p>
 
@@ -77,11 +70,11 @@ export default function FacebookBusinessConnect() {
           onClick={handleConnect}
           style={{
             padding: "10px 14px",
-            borderRadius: 8,
-            border: "none",
-            background: "#1877f2",
+            backgroundColor: "#1877F2",
             color: "#fff",
-            cursor: "pointer",
+            border: "none",
+            borderRadius: "6px",
+            cursor: "pointer"
           }}
         >
           Connect Facebook Business
