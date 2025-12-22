@@ -14,6 +14,17 @@ if (GEMINI_API_KEY) {
   console.warn("⚠ GEMINI_API_KEY is not set. /api/agent/execute will not work for agent mode.");
 }
 
+async function saveAnswerMemory(baseUrl, business_id, answers) {
+  await fetch(`${baseUrl}/api/agent/answer-memory`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      business_id,
+      answers,
+    }),
+  });
+}
+
 export default async function handler(req, res) {
   if (req.method !== "POST") {
     return res.status(405).json({ ok: false, message: "Only POST allowed." });
@@ -347,6 +358,31 @@ if (safetyGateMessage) {
     gated: true,
     text: safetyGateMessage,
   });
+}
+// ===============================
+// 💾 ANSWER MEMORY WIRING
+// ===============================
+const baseUrl = process.env.NEXT_PUBLIC_BASE_URL;
+
+const detectedAnswers = {};
+
+// Simple extraction (safe, heuristic — Gemini already guided the question)
+if (instruction.match(/₹|\d+/)) {
+  detectedAnswers.budget_per_day = instruction;
+}
+if (instruction.toLowerCase().includes("day")) {
+  detectedAnswers.total_days = instruction;
+}
+if (
+  instruction.toLowerCase().includes("yes") ||
+  instruction.toLowerCase().includes("confirm")
+) {
+  detectedAnswers.approval = "YES";
+}
+
+// business_id should already be known from intake or selection
+if (activeBusinessId && Object.keys(detectedAnswers).length > 0) {
+  await saveAnswerMemory(baseUrl, activeBusinessId, detectedAnswers);
 }
 
     const systemPrompt = `
