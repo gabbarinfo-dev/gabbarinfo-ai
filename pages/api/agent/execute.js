@@ -354,11 +354,11 @@ try {
       .filter(Boolean);
 
   // 🚫 No business at all (RAG OR META)
-if (!profiles.length && !metaConnected) {
+// Admin / Owner bypass
+if (!isAdmin && !metaConnected && !profiles.length) {
   safetyGateMessage =
     "I cannot proceed because no business is connected yet. Please connect a Facebook Business or Page first.";
 }
-
     // ⚠️ Multiple businesses detected
     if (profiles.length > 1 && !instruction.toLowerCase().includes("use")) {
       safetyGateMessage =
