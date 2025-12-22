@@ -43,14 +43,14 @@ export default function HomePage() {
 
   /* -------------------------
      CHECK META CONNECTION
-     (meta_connections table)
+     (FIXED — uses real data)
   ------------------------- */
   useEffect(() => {
     if (!session?.user?.email) return;
 
     async function checkMetaConnection() {
       try {
-        const res = await fetch("/api/meta/connection-status");
+        const res = await fetch("/api/me/connections");
         if (!res.ok) {
           setMetaConnected(false);
           return;
@@ -58,9 +58,9 @@ export default function HomePage() {
 
         const data = await res.json();
 
-        if (data?.connected) {
+        if (data?.meta) {
           setMetaConnected(true);
-          setMetaDetails(data.connection);
+          setMetaDetails(data.meta);
         } else {
           setMetaConnected(false);
         }
@@ -195,7 +195,9 @@ export default function HomePage() {
           <h2 style={{ marginTop: 0 }}>Your Credits</h2>
 
           {role === "owner" ? (
-            <p>You have <strong>unlimited</strong> access.</p>
+            <p>
+              You have <strong>unlimited</strong> access.
+            </p>
           ) : loadingCredits ? (
             <p>Loading credits…</p>
           ) : (
