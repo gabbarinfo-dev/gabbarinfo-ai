@@ -40,7 +40,11 @@ export default async function handler(req, res) {
     if (!session) {
       return res.status(401).json({ ok: false, message: "Not authenticated" });
     }
-
+ // ✅ ADD HERE (THIS IS THE RIGHT PLACE)
+    const ADMIN_EMAILS = ["ndantare@gmail.com"];
+    const isAdmin = ADMIN_EMAILS.includes(
+      (session.user.email || "").toLowerCase()
+    );
     // ============================================================
     // 1) LEGACY ROUTER MODE (your existing behaviour)
     // ============================================================
