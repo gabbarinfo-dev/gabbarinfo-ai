@@ -24,11 +24,6 @@ const [meta, setMeta] = useState(null);
     })
     .catch(() => {});
 }, []);
-
-  check();
-  const t = setTimeout(check, 1500); // re-check once after redirect
-  return () => clearTimeout(t);
-}, []);
   
   const handleConnect = () => {
     setStatus("loading");
