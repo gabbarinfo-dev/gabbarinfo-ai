@@ -7,17 +7,19 @@ export default function FacebookBusinessConnect() {
 const [meta, setMeta] = useState(null);
   const isLocked = status === "connected";
  useEffect(() => {
-  fetch("/api/meta/status")
-    .then(res => res.json())
-    .then(data => {
-      if (data.connected === true) {
-        setStatus("connected");
-        setMeta(data.meta);
-      } else {
-        setStatus("idle");
-      }
-    })
-    .catch(() => setStatus("idle"));
+  const interval = setInterval(() => {
+    fetch("/api/meta/status")
+      .then(res => res.json())
+      .then(data => {
+        if (data.connected) {
+          setStatus("connected");
+          setMeta(data.meta);
+          clearInterval(interval);
+        }
+      });
+  }, 1000);
+
+  return () => clearInterval(interval);
 }, []);
   
   const handleConnect = () => {
