@@ -10,9 +10,9 @@ const [meta, setMeta] = useState(null);
   fetch("/api/meta/status")
     .then(res => res.json())
     .then(data => {
-      if (data?.connected && data?.adAccountId) {
+      if (data?.meta?.updated_at) {
         setStatus("connected");
-        setMeta({ fb_ad_account_id: data.adAccountId });
+        setMeta(data.meta);
       } else {
         setStatus("idle");
       }
