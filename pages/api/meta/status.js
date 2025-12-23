@@ -1,6 +1,6 @@
 import { getServerSession } from "next-auth/next";
 import { authOptions } from "../auth/[...nextauth]";
-import { supabase } from "../../../lib/supabaseServer";
+import { supabaseServer } from "../../../lib/supabaseServer";
 
 export default async function handler(req, res) {
   const session = await getServerSession(req, res, authOptions);
@@ -9,7 +9,7 @@ export default async function handler(req, res) {
     return res.json({ connected: false });
   }
 
-  const { data, error } = await supabase
+  const { data, error } = await supabaseServer
     .from("meta_connections")
     .select("*")
     .eq("email", session.user.email)
