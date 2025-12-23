@@ -2,14 +2,39 @@
 // Upload a publicly-hosted image (imageUrl) to the Facebook Ad Account
 // and return the image_hash that can be used in ad creatives.
 //
-// Required env vars (set in Vercel):
-// - FB_AD_ACCOUNT_ID (e.g. "1587806431828953")
-// - FB_AD_ACCESS_TOKEN (system user / permanent page token or system user token)
+
+import { getServerSession } from "next-auth/next";
+import { authOptions } from "../auth/[...nextauth]";
+import { createClient } from "@supabase/supabase-js";
+const supabase = createClient(
+  process.env.NEXT_PUBLIC_SUPABASE_URL,
+  process.env.SUPABASE_SERVICE_ROLE_KEY
+);
 
 export default async function handler(req, res) {
   if (req.method !== "POST") {
     return res.status(405).json({ ok: false, message: "Only POST allowed" });
   }
+const session = await getServerSession(req, res, authOptions);
+if (!session?.user?.email) {
+  return res.status(401).json({ ok: false, message: "Unauthorized" });
+}
+
+const { data: meta, error } = await supabase
+  .from("meta_connections")
+  .select("fb_ad_account_id, system_user_token")
+  .eq("email", session.user.email.toLowerCase())
+  .single();
+
+if (error || !meta?.fb_ad_account_id || !meta?.system_user_token) {
+  return res.status(400).json({
+    ok: false,
+    message: "Meta ad account not connected for this user.",
+  });
+}
+
+const AD_ACCOUNT_ID = meta.fb_ad_account_id;
+const ACCESS_TOKEN = meta.system_user_token;
 
   try {
     const { imageUrl } = req.body || {};
@@ -18,17 +43,6 @@ export default async function handler(req, res) {
       return res
         .status(400)
         .json({ ok: false, message: "imageUrl (public URL) is required in JSON body." });
-    }
-
-    const AD_ACCOUNT_ID = process.env.FB_AD_ACCOUNT_ID;
-    const ACCESS_TOKEN = process.env.FB_AD_ACCESS_TOKEN;
-
-    if (!AD_ACCOUNT_ID || !ACCESS_TOKEN) {
-      return res.status(500).json({
-        ok: false,
-        message:
-          "Missing environment variables. Ensure FB_AD_ACCOUNT_ID and FB_AD_ACCESS_TOKEN are set.",
-      });
     }
 
     // POST to: https://graph.facebook.com/v16.0/act_{ad_account_id}/adimages
