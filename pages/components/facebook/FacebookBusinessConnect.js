@@ -6,11 +6,11 @@ export default function FacebookBusinessConnect() {
   const [status, setStatus] = useState("idle"); // idle | connected | loading
 const [meta, setMeta] = useState(null);
   const isLocked = status === "connected";
-  useEffect(() => {
+ useEffect(() => {
   fetch("/api/meta/status")
     .then(res => res.json())
     .then(data => {
-      if (data?.meta?.updated_at) {
+      if (data.connected === true) {
         setStatus("connected");
         setMeta(data.meta);
       } else {
