@@ -7,23 +7,19 @@ export default function FacebookBusinessConnect() {
 const [meta, setMeta] = useState(null);
   const isLocked = status === "connected";
   useEffect(() => {
-  fetch("/api/me/connections")
+  fetch("/api/meta/status")
     .then(res => res.json())
     .then(data => {
-      if (
-        data?.meta &&
-        (
-          data.meta.fb_business_id ||
-          data.meta.fb_ad_account_id ||
-          data.meta.fb_page_id ||
-          data.meta.ig_business_id
-        )
-      ) {
+      if (data?.connected && data?.adAccountId) {
         setStatus("connected");
-        setMeta(data.meta);
+        setMeta({ fb_ad_account_id: data.adAccountId });
+      } else {
+        setStatus("idle");
       }
     })
-    .catch(() => {});
+    .catch(() => {
+      setStatus("idle");
+    });
 }, []);
   
   const handleConnect = () => {
@@ -50,11 +46,8 @@ const [meta, setMeta] = useState(null);
         </p>
 
         <ul style={{ fontSize: 14, color: "#333", paddingLeft: 18 }}>
-          {meta.fb_business_id && <li>Business ID: {meta.fb_business_id}</li>}
-          {meta.fb_ad_account_id && <li>Ad Account ID: {meta.fb_ad_account_id}</li>}
-          {meta.fb_page_id && <li>Facebook Page ID: {meta.fb_page_id}</li>}
-          {meta.ig_business_id && <li>Instagram Business ID: {meta.ig_business_id}</li>}
-        </ul>
+  <li>Ad Account ID: {meta.fb_ad_account_id}</li>
+</ul>
             <a
   href="https://www.facebook.com/settings/business_integrations"
   target="_blank"
