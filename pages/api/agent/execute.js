@@ -540,23 +540,22 @@ Otherwise, respond with a full, clear explanation, and include example JSON only
         result.response.text()) ||
       "";
 
-  // ============================================================
-// 🚀 FINAL META EXECUTION (SAFE + CORRECT)
+// ============================================================
+// 🚀 FORCE EXECUTION USING STORED PLAN
 // ============================================================
 
-let parsed;
-try {
-  parsed = JSON.parse(text);
-} catch (e) {
+// The plan is already available from earlier step
+// Do NOT rely on Gemini response again
+
+if (!plan || !plan.campaign_settings || !plan.ad_sets) {
   return res.status(400).json({
     ok: false,
-    message: "Agent output is not valid JSON",
-    raw: text,
+    message: "No confirmed campaign plan available for execution",
   });
 }
 
-const campaign_settings = parsed.campaign_settings;
-const ad_sets = parsed.ad_sets;
+const campaign_settings = plan.campaign_settings;
+const ad_sets = plan.ad_sets;
 
 if (!campaign_settings || !ad_sets) {
   return res.status(400).json({
