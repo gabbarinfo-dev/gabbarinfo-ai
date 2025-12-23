@@ -540,7 +540,33 @@ Otherwise, respond with a full, clear explanation, and include example JSON only
         result.response.text()) ||
       "";
 
-   const execRes = await fetch(
+  // ============================================================
+// 🚀 FINAL META EXECUTION (SAFE + CORRECT)
+// ============================================================
+
+let parsed;
+try {
+  parsed = JSON.parse(text);
+} catch (e) {
+  return res.status(400).json({
+    ok: false,
+    message: "Agent output is not valid JSON",
+    raw: text,
+  });
+}
+
+const campaign_settings = parsed.campaign_settings;
+const ad_sets = parsed.ad_sets;
+
+if (!campaign_settings || !ad_sets) {
+  return res.status(400).json({
+    ok: false,
+    message: "campaign_settings or ad_sets missing from agent output",
+    parsed,
+  });
+}
+
+const execRes = await fetch(
   `${process.env.NEXT_PUBLIC_BASE_URL}/api/meta/execute-campaign`,
   {
     method: "POST",
@@ -548,8 +574,6 @@ Otherwise, respond with a full, clear explanation, and include example JSON only
     body: JSON.stringify({
       campaign_settings,
       ad_sets,
-      creative,
-      imageHash,
     }),
   }
 );
