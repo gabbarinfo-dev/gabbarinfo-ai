@@ -570,7 +570,10 @@ const execRes = await fetch(
   `${process.env.NEXT_PUBLIC_BASE_URL}/api/meta/execute-campaign`,
   {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
+    headers: {
+      "Content-Type": "application/json",
+      "x-agent-secret": process.env.INTERNAL_AGENT_SECRET, // 👈 ADD THIS
+    },
     body: JSON.stringify({
       campaign_settings,
       ad_sets,
