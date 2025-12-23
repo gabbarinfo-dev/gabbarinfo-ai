@@ -259,27 +259,7 @@ export default function HomePage() {
           }}
         >
           <h2 style={{ marginTop: 0 }}>Facebook Business</h2>
-
-          {metaLoading ? (
-            <p>Checking connection…</p>
-          ) : metaConnected ? (
-            <div style={{ color: "green" }}>
-              ✅ Facebook Business Connected
-              {metaDetails?.fb_ad_account_id && (
-                <div style={{ fontSize: 13, marginTop: 6 }}>
-                  Ad Account: {metaDetails.fb_ad_account_id}
-                </div>
-              )}
-            </div>
-          ) : (
-            <>
-              <p>
-                Required to manage Facebook Pages, Instagram accounts, and ad
-                campaigns.
-              </p>
-              <FacebookBusinessConnect />
-            </>
-          )}
+<FacebookBusinessConnect />
         </section>
       </main>
     </div>
