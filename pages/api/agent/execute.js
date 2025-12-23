@@ -157,7 +157,6 @@ try {
         prompt: body.data?.creative?.imagePrompt,
       }),
     }
-  );
 
   const imageJson = await imageResp.json();
   if (!imageJson?.ok || !imageJson.imageBase64) {
