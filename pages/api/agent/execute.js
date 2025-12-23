@@ -146,47 +146,42 @@ try {
 
 let imageHash = null;
 
-try {
-  // 1️⃣ Generate image via OpenAI (in memory)
-  const imageResp = await fetch(
-    `${process.env.NEXT_PUBLIC_BASE_URL}/api/images/generate`,
-    {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        prompt: body.data?.creative?.imagePrompt,
-      }),
-    }
-
-  const imageJson = await imageResp.json();
-  if (!imageJson?.ok || !imageJson.imageBase64) {
-    throw new Error("Image generation failed");
+// 1️⃣ Generate image via OpenAI
+const imageResp = await fetch(
+  `${process.env.NEXT_PUBLIC_BASE_URL}/api/images/generate`,
+  {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      prompt: body.data?.creative?.imagePrompt,
+    }),
   }
+);
 
-  // 2️⃣ Upload image directly to Meta
-  const uploadResp = await fetch(
-    `${process.env.NEXT_PUBLIC_BASE_URL}/api/meta/upload-image`,
-    {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        imageBase64: imageJson.imageBase64,
-      }),
-    }
-
-  const uploadJson = await uploadResp.json();
-  if (!uploadJson?.ok || !uploadJson.image_hash) {
-    throw new Error("Meta image upload failed");
-  }
-
-  imageHash = uploadJson.image_hash;
-} catch (err) {
-  console.error("Creative image pipeline failed:", err);
-  return res.status(500).json({
-    ok: false,
-    message: "Failed to generate or upload creative image.",
-  });
+const imageJson = await imageResp.json();
+if (!imageJson?.ok || !imageJson.imageBase64) {
+  throw new Error("Image generation failed");
 }
+
+// 2️⃣ Upload image directly to Meta
+const uploadResp = await fetch(
+  `${process.env.NEXT_PUBLIC_BASE_URL}/api/meta/upload-image`,
+  {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      imageBase64: imageJson.imageBase64,
+    }),
+  }
+);
+
+const uploadJson = await uploadResp.json();
+if (!uploadJson?.ok || !uploadJson.image_hash) {
+  throw new Error("Meta image upload failed");
+}
+
+imageHash = uploadJson.image_hash;
+
         const metaRes = await fetch(`${baseUrl}/api/ads/create-creative`, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
@@ -197,7 +192,7 @@ try {
     imageHash, // 👈 THIS IS WHERE IT GOES
   },
 }),
-
+}); // ✅ THIS WAS MISSING
         let metaJson = {};
         try {
           metaJson = await metaRes.json();
