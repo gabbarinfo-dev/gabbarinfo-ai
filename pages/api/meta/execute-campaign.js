@@ -14,10 +14,12 @@ export default async function handler(req, res) {
     return res.status(405).json({ ok: false, message: "POST only" });
   }
 
-  const session = await getServerSession(req, res, authOptions);
-  if (!session?.user?.email) {
-    return res.status(401).json({ ok: false, message: "Unauthorized" });
-  }
+  // 🔓 Internal agent call — bypass NextAuth
+const INTERNAL_SECRET = process.env.INTERNAL_AGENT_SECRET;
+
+if (req.headers["x-agent-secret"] !== INTERNAL_SECRET) {
+  return res.status(401).json({ ok: false, message: "Unauthorized" });
+}
 
   const {
     campaign_settings,
