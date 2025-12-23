@@ -540,11 +540,23 @@ Otherwise, respond with a full, clear explanation, and include example JSON only
         result.response.text()) ||
       "";
 
-    return res.status(200).json({
-      ok: true,
-      mode,
-      text,
-    });
+   const execRes = await fetch(
+  `${process.env.NEXT_PUBLIC_BASE_URL}/api/meta/execute-campaign`,
+  {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      campaign_settings,
+      ad_sets,
+      creative,
+      imageHash,
+    }),
+  }
+);
+
+const execJson = await execRes.json();
+return res.status(200).json(execJson);
+
   } catch (err) {
     console.error("Agent execution error:", err);
     return res.status(500).json({
