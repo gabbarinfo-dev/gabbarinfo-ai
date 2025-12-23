@@ -64,6 +64,21 @@ try {
 } catch (e) {
   console.warn("Meta connection lookup failed:", e.message);
 }
+    // ============================================================
+// 🧠 AUTO BUSINESS INTAKE (RUN EVERY TIME)
+// ============================================================
+try {
+  const baseUrl = process.env.NEXT_PUBLIC_BASE_URL;
+  if (baseUrl) {
+    await fetch(`${baseUrl}/api/agent/intake-business`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+    });
+  }
+} catch (e) {
+  console.warn("Auto business intake failed:", e.message);
+}
+
  // ✅ ADD HERE (THIS IS THE RIGHT PLACE)
     const ADMIN_EMAILS = ["ndantare@gmail.com"];
     const isAdmin = ADMIN_EMAILS.includes(
