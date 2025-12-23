@@ -173,7 +173,6 @@ try {
         imageBase64: imageJson.imageBase64,
       }),
     }
-  );
 
   const uploadJson = await uploadResp.json();
   if (!uploadJson?.ok || !uploadJson.image_hash) {
