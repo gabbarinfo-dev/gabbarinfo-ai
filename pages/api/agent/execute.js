@@ -542,7 +542,14 @@ Otherwise, respond with a full, clear explanation, and include example JSON only
 
 let parsed;
 try {
-  parsed = JSON.parse(text);
+  const jsonStart = text.indexOf("{");
+  const jsonEnd = text.lastIndexOf("}");
+  if (jsonStart === -1 || jsonEnd === -1) {
+    throw new Error("No JSON object found in agent output");
+  }
+
+  const cleanJson = text.slice(jsonStart, jsonEnd + 1);
+  parsed = JSON.parse(cleanJson);
 } catch (e) {
   return res.status(400).json({
     ok: false,
