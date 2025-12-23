@@ -7,12 +7,17 @@ export default function FacebookBusinessConnect() {
 const [meta, setMeta] = useState(null);
   const isLocked = status === "connected";
   useEffect(() => {
-  fetch("/api/meta/status")
+  fetch("/api/me/connections")
     .then(res => res.json())
     .then(data => {
-      if (data?.connected && data?.adAccountId) {
+      const meta =
+        data?.meta ||
+        data?.meta_connections ||
+        data?.connections?.meta;
+
+      if (meta?.fb_ad_account_id) {
         setStatus("connected");
-        setMeta({ fb_ad_account_id: data.adAccountId });
+        setMeta(meta);
       } else {
         setStatus("idle");
       }
