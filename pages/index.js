@@ -11,10 +11,6 @@ export default function HomePage() {
   const [unlimited, setUnlimited] = useState(false);
   const [loadingCredits, setLoadingCredits] = useState(true);
 
-  const [metaConnected, setMetaConnected] = useState(false);
-  const [metaLoading, setMetaLoading] = useState(true);
-  const [metaDetails, setMetaDetails] = useState(null);
-
   const role = session?.user?.role || "client";
 
   /* -------------------------
@@ -39,40 +35,6 @@ export default function HomePage() {
     }
 
     fetchCredits();
-  }, [session]);
-
-  /* -------------------------
-     CHECK META CONNECTION
-     (FIXED — uses real data)
-  ------------------------- */
-  useEffect(() => {
-    if (!session?.user?.email) return;
-
-    async function checkMetaConnection() {
-      try {
-        const res = await fetch("/api/me/connections");
-        if (!res.ok) {
-          setMetaConnected(false);
-          return;
-        }
-
-        const data = await res.json();
-
-        if (data?.meta) {
-          setMetaConnected(true);
-          setMetaDetails(data.meta);
-        } else {
-          setMetaConnected(false);
-        }
-      } catch (err) {
-        console.error(err);
-        setMetaConnected(false);
-      } finally {
-        setMetaLoading(false);
-      }
-    }
-
-    checkMetaConnection();
   }, [session]);
 
   /* -------------------------
