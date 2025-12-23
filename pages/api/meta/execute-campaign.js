@@ -1,8 +1,7 @@
-// pages/api/meta/execute-campaign.js
-
 import { getServerSession } from "next-auth/next";
 import { authOptions } from "../auth/[...nextauth]";
 import { createClient } from "@supabase/supabase-js";
+import fetch from "node-fetch";
 
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL,
@@ -11,174 +10,136 @@ const supabase = createClient(
 
 export default async function handler(req, res) {
   if (req.method !== "POST") {
-    return res.status(405).json({ ok: false, message: "POST only" });
+    return res.status(405).json({ ok: false, message: "Only POST allowed" });
   }
 
-  // 🔓 Internal agent call — bypass NextAuth
-const INTERNAL_SECRET = process.env.INTERNAL_AGENT_SECRET;
+  const session = await getServerSession(req, res, authOptions);
+  if (!session?.user?.email) {
+    return res.status(401).json({ ok: false, message: "Unauthorized" });
+  }
 
-if (req.headers["x-agent-secret"] !== INTERNAL_SECRET) {
-  return res.status(401).json({ ok: false, message: "Unauthorized" });
-}
-
-  const {
-    campaign_settings,
-    ad_sets,
-    creative,
-    imageHash,
-  } = req.body || {};
-
-  if (
-    !campaign_settings ||
-    !ad_sets?.length ||
-    !creative ||
-    !imageHash
-  ) {
+  const { campaign, adset, creative } = req.body || {};
+  if (!campaign || !adset || !creative) {
     return res.status(400).json({
       ok: false,
-      message: "Missing campaign execution payload",
+      message: "campaign, adset and creative payload required",
     });
   }
 
   const { data: meta, error } = await supabase
     .from("meta_connections")
-    .select("fb_ad_account_id, system_user_token, fb_page_id")
+    .select("fb_ad_account_id, system_user_token")
     .eq("email", session.user.email.toLowerCase())
     .single();
 
-  if (
-    error ||
-    !meta?.fb_ad_account_id ||
-    !meta?.system_user_token ||
-    !meta?.fb_page_id
-  ) {
+  if (error || !meta) {
     return res.status(400).json({
       ok: false,
-      message: "Meta connection incomplete",
+      message: "Meta connection not found",
     });
   }
 
   const AD_ACCOUNT_ID = meta.fb_ad_account_id;
   const ACCESS_TOKEN = meta.system_user_token;
-  const PAGE_ID = meta.fb_page_id;
+
+  const base = `https://graph.facebook.com/v19.0/act_${AD_ACCOUNT_ID}`;
+
+  let campaignId, adsetId, creativeId, adId;
 
   try {
-    // =====================
-    // 1️⃣ CREATE CAMPAIGN
-    // =====================
-    const campaignRes = await fetch(
-      `https://graph.facebook.com/v19.0/act_${AD_ACCOUNT_ID}/campaigns`,
-      {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          name: campaign_settings.campaign_name,
-          objective: campaign_settings.objective,
-          status: "PAUSED",
-          special_ad_categories: [],
-          access_token: ACCESS_TOKEN,
-        }),
-      }
-    );
+    // 1️⃣ Campaign (PAUSED)
+    const campaignRes = await fetch(`${base}/campaigns`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        ...campaign,
+        status: "PAUSED",
+        access_token: ACCESS_TOKEN,
+      }),
+    });
 
-    const campaign = await campaignRes.json();
-    if (!campaign.id) throw campaign;
+    const campaignJson = await campaignRes.json();
+    if (!campaignRes.ok) throw campaignJson;
+    campaignId = campaignJson.id;
 
-    // =====================
-    // 2️⃣ CREATE AD SET
-    // =====================
-    const adSetConfig = ad_sets[0];
+    // 2️⃣ Ad Set (PAUSED)
+    const adsetRes = await fetch(`${base}/adsets`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        ...adset,
+        campaign_id: campaignId,
+        status: "PAUSED",
+        access_token: ACCESS_TOKEN,
+      }),
+    });
 
-    const adSetRes = await fetch(
-      `https://graph.facebook.com/v19.0/act_${AD_ACCOUNT_ID}/adsets`,
-      {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          name: adSetConfig.ad_set_name,
-          campaign_id: campaign.id,
-          daily_budget: campaign_settings.budget.amount * 100,
-          billing_event: "IMPRESSIONS",
-          optimization_goal: "LINK_CLICKS",
-          targeting: {
-            geo_locations: {
-              countries: adSetConfig.targeting.geo_location.country,
-            },
-          },
-          status: "PAUSED",
-          access_token: ACCESS_TOKEN,
-        }),
-      }
-    );
+    const adsetJson = await adsetRes.json();
+    if (!adsetRes.ok) throw adsetJson;
+    adsetId = adsetJson.id;
 
-    const adset = await adSetRes.json();
-    if (!adset.id) throw adset;
+    // 3️⃣ Creative
+    const creativeRes = await fetch(`${base}/adcreatives`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        ...creative,
+        access_token: ACCESS_TOKEN,
+      }),
+    });
 
-    // =====================
-    // 3️⃣ CREATE CREATIVE
-    // =====================
-    const creativeRes = await fetch(
-      `https://graph.facebook.com/v19.0/act_${AD_ACCOUNT_ID}/adcreatives`,
-      {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          name: "GabbarInfo Creative",
-          object_story_spec: {
-            page_id: PAGE_ID,
-            link_data: {
-              image_hash: imageHash,
-              link: creative.destination_url,
-              message: creative.body_text,
-              name: creative.headline,
-              call_to_action: {
-                type: creative.call_to_action,
-                value: {
-                  link: creative.destination_url,
-                },
-              },
-            },
-          },
-          access_token: ACCESS_TOKEN,
-        }),
-      }
-    );
+    const creativeJson = await creativeRes.json();
+    if (!creativeRes.ok) throw creativeJson;
+    creativeId = creativeJson.id;
 
-    const creativeObj = await creativeRes.json();
-    if (!creativeObj.id) throw creativeObj;
+    // 4️⃣ Ad (PAUSED)
+    const adRes = await fetch(`${base}/ads`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        name: "Gabbarinfo AI Ad",
+        adset_id: adsetId,
+        creative: { creative_id: creativeId },
+        status: "PAUSED",
+        access_token: ACCESS_TOKEN,
+      }),
+    });
 
-    // =====================
-    // 4️⃣ CREATE AD
-    // =====================
-    const adRes = await fetch(
-      `https://graph.facebook.com/v19.0/act_${AD_ACCOUNT_ID}/ads`,
-      {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          name: "GabbarInfo Ad",
-          adset_id: adset.id,
-          creative: { creative_id: creativeObj.id },
-          status: "PAUSED",
-          access_token: ACCESS_TOKEN,
-        }),
-      }
-    );
+    const adJson = await adRes.json();
+    if (!adRes.ok) throw adJson;
+    adId = adJson.id;
 
-    const ad = await adRes.json();
-    if (!ad.id) throw ad;
-
-    return res.status(200).json({
+    return res.json({
       ok: true,
-      campaign_id: campaign.id,
-      adset_id: adset.id,
-      ad_id: ad.id,
+      campaignId,
+      adsetId,
+      creativeId,
+      adId,
     });
   } catch (err) {
-    console.error("META EXECUTION ERROR:", err);
+    // 🔄 ROLLBACK (BEST EFFORT)
+    const rollback = async (endpoint, id) => {
+      if (!id) return;
+      try {
+        await fetch(`https://graph.facebook.com/v19.0/${id}`, {
+          method: "DELETE",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ access_token: ACCESS_TOKEN }),
+        });
+      } catch (_) {}
+    };
+
+    await rollback("ads", adId);
+    await rollback("adcreatives", creativeId);
+    await rollback("adsets", adsetId);
+    await rollback("campaigns", campaignId);
+
+    console.error("META EXECUTION FAILED:", err);
+
     return res.status(500).json({
       ok: false,
-      error: err,
+      message: "Meta execution failed. All created assets rolled back.",
+      details: err,
     });
   }
 }
