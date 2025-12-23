@@ -562,23 +562,12 @@ if (!campaign_settings || !ad_sets) {
   });
 }
 
-const execRes = await fetch(
-  `${process.env.NEXT_PUBLIC_BASE_URL}/api/meta/execute-campaign`,
-  {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      "x-agent-secret": process.env.INTERNAL_AGENT_SECRET, // 👈 ADD THIS
-    },
-    body: JSON.stringify({
-      campaign_settings,
-      ad_sets,
-    }),
-  }
-);
+return res.status(200).json({
+  ok: true,
+  campaign_settings,
+  ad_sets,
+});
 
-const execJson = await execRes.json();
-return res.status(200).json(execJson);
 
   } catch (err) {
     console.error("Agent execution error:", err);
