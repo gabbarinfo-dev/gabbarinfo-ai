@@ -449,6 +449,38 @@ if (safetyGateMessage) {
     text: safetyGateMessage,
   });
 }
+    // ===============================
+// 🚀 FINAL META EXECUTION (MANUAL CONFIRMATION)
+// ===============================
+if (
+  mode === "meta_ads_plan" &&
+  instruction.toLowerCase().includes("yes")
+) {
+  const baseUrl = process.env.NEXT_PUBLIC_BASE_URL;
+
+  const execRes = await fetch(
+    `${baseUrl}/api/meta/execute-campaign`,
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        campaign: body.campaign,
+        adset: body.adset,
+        creative: body.creative,
+      }),
+    }
+  );
+
+  const execJson = await execRes.json();
+
+  return res.status(200).json({
+    ok: true,
+    executed: true,
+    platform: "meta",
+    paused: true,
+    result: execJson,
+  });
+}
 // ===============================
 // 💾 ANSWER MEMORY WIRING
 // ===============================
