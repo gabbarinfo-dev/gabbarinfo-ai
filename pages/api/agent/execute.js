@@ -682,34 +682,6 @@ Otherwise, respond with a full, clear explanation, and include example JSON only
         result.response.text()) ||
       "";
 
-let parsed;
-try {
-  const jsonStart = text.indexOf("{");
-  const jsonEnd = text.lastIndexOf("}");
-  if (jsonStart === -1 || jsonEnd === -1) {
-    throw new Error("No JSON object found in agent output");
-  }
-
-  const cleanJson = text.slice(jsonStart, jsonEnd + 1);
-  parsed = JSON.parse(cleanJson);
-} catch (e) {
-  return res.status(400).json({
-    ok: false,
-    message: "Agent output is not valid JSON",
-    raw: text,
-  });
-}
-
-const campaign_settings = parsed.campaign_settings;
-const ad_sets = parsed.ad_sets;
-
-if (!campaign_settings || !ad_sets) {
-  return res.status(400).json({
-    ok: false,
-    message: "campaign_settings or ad_sets missing from agent output",
-    parsed,
-  });
-}
 
 return res.status(200).json({
   ok: true,
