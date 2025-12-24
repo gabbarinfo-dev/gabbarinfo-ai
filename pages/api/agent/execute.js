@@ -651,11 +651,11 @@ Your job:
 
 CRITICAL AGENT SAFETY RULE — ACTIVE BUSINESS CONTEXT:
 
-- Client memory may contain multiple businesses.
-- You MUST NOT assume which business is active.
+- If Forced Meta Business Context exists, you MUST treat it as the ACTIVE business.
+- You are NOT allowed to ask the user to define or select a business when Forced Meta Business Context is present.
 - If more than one business exists in CLIENT CONTEXT:
-  - You MUST ask the user to explicitly choose ONE business
-  - OR ask them to set the “active company” for this session.
+- You MUST ask the user to explicitly choose ONE business
+- OR ask them to set the “active company” for this session.
 - You are STRICTLY FORBIDDEN from designing campaigns, accessing ad accounts,
   publishing content, or generating execution JSON until ONE business is confirmed.
 
@@ -678,8 +678,14 @@ RAG Memory Context:
 ${ragContext || "(none)"}
 
 `.trim();
+    IMPORTANT:
+If "Forced Meta Business Context" is present above,
+then:
+- The business is already selected
+- The assets are already connected
+- You MUST proceed without asking for business name or active company
 
-    const finalPrompt = `
+const finalPrompt = `
 SYSTEM:
 ${systemPrompt}
 
