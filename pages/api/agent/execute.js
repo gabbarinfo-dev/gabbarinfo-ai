@@ -666,16 +666,17 @@ Rules:
 - Assume the user is in India by default unless location is specified.
 ${modeFocus}
 
-CLIENT CONTEXT (authoritative):
+CLIENT CONTEXT (authoritative, from connected assets + intake — MUST be used if present):
 
+Forced Meta Business Context:
+${forcedBusinessContext ? JSON.stringify(forcedBusinessContext, null, 2) : "(none)"}
+
+Auto-Detected Business Intake:
+${autoBusinessContext ? JSON.stringify(autoBusinessContext, null, 2) : "(none)"}
+
+RAG Memory Context:
 ${ragContext || "(none)"}
 
-CONNECTED BUSINESS DATA (AUTO-DETECTED FROM META — MUST USE THIS IF PRESENT):
-${autoBusinessContext ? JSON.stringify(autoBusinessContext, null, 2) : "(no connected business found)"}
-
-
-Additional Knowledge (RAG):
-${ragContext || "(none)"}
 `.trim();
 
     const finalPrompt = `
