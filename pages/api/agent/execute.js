@@ -474,14 +474,30 @@ if (!isAdmin && !metaConnected && !profiles.length) {
 }
 
 if (safetyGateMessage) {
+  const baseUrl = process.env.NEXT_PUBLIC_BASE_URL;
+
+  const qRes = await fetch(`${baseUrl}/api/agent/questions`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      platform: mode === "meta_ads_plan" ? "meta" : mode,
+      objective: "campaign_creation",
+      missing: ["budget", "location", "objective"],
+      context: autoBusinessContext || forcedBusinessContext || {},
+    }),
+  });
+
+  const qJson = await qRes.json();
+
   return res.status(200).json({
     ok: true,
     mode,
     gated: true,
-    text: safetyGateMessage,
+    text:
+      "Before I proceed, I need a few quick details:\n\n" +
+      qJson.questions.map((q, i) => `${i + 1}. ${q}`).join("\n"),
   });
 }
-
     // ============================================================
 // 🎯 META ADS FULL FLOW (AUTO → CONFIRM → CREATE PAUSED)
 // ============================================================
