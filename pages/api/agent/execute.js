@@ -676,14 +676,15 @@ ${autoBusinessContext ? JSON.stringify(autoBusinessContext, null, 2) : "(none)"}
 
 RAG Memory Context:
 ${ragContext || "(none)"}
-
-`.trim();
+    
     IMPORTANT:
 If "Forced Meta Business Context" is present above,
 then:
 - The business is already selected
 - The assets are already connected
 - You MUST proceed without asking for business name or active company
+`.trim();
+
 
 const finalPrompt = `
 SYSTEM:
