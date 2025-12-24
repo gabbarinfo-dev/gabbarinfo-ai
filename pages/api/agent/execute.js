@@ -346,13 +346,16 @@ if (
       });
     }
 
-    // Build compact history string
-    const historyText = Array.isArray(chatHistory)
-      ? chatHistory
-          .slice(-20)
-          .map((m) => `${m.role === "user" ? "User" : "Assistant"}: ${m.text}`)
-          .join("\n\n")
-      : "";
+   // 🔒 Do NOT allow old chat history to override verified Meta assets
+const historyText =
+  mode === "meta_ads_plan"
+    ? ""
+    : Array.isArray(chatHistory)
+    ? chatHistory
+        .slice(-20)
+        .map((m) => `${m.role === "user" ? "User" : "Assistant"}: ${m.text}`)
+        .join("\n\n")
+    : "";
 
     // ---------- MODE-SPECIFIC FOCUS ----------
     let modeFocus = "";
