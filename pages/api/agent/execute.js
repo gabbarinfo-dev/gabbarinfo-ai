@@ -449,6 +449,116 @@ if (safetyGateMessage) {
     text: safetyGateMessage,
   });
 }
+
+    // ============================================================
+// 🎯 META ADS FULL FLOW (AUTO → CONFIRM → CREATE PAUSED)
+// ============================================================
+
+if (
+  mode === "meta_ads_plan" &&
+  instruction.trim().toLowerCase() === "yes"
+) {
+  const baseUrl = process.env.NEXT_PUBLIC_BASE_URL;
+
+  // 1️⃣ Get business intake from memory
+  const intakeRes = await fetch(`${baseUrl}/api/agent/intake-business`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+  });
+
+  const intakeJson = await intakeRes.json();
+  if (!intakeJson?.ok || !intakeJson.intake) {
+    return res.json({
+      ok: false,
+      message: "Business intake not found.",
+    });
+  }
+
+  // 2️⃣ Generate creative via Gemini
+  const creativeRes = await fetch(
+    `${baseUrl}/api/agent/generate-creative`,
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        intake: intakeJson.intake,
+        objective: "Traffic",
+      }),
+    }
+  );
+
+  const creativeJson = await creativeRes.json();
+  if (!creativeJson?.ok) {
+    return res.json({
+      ok: false,
+      message: "Creative generation failed",
+    });
+  }
+
+  const { image_prompt, headlines, primary_texts, cta } =
+    creativeJson.creative;
+
+  // 3️⃣ Generate image (OpenAI)
+  const imgGen = await fetch(`${baseUrl}/api/images/generate`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ prompt: image_prompt }),
+  });
+
+  const imgJson = await imgGen.json();
+  if (!imgJson?.ok || !imgJson.imageBase64) {
+    return res.json({ ok: false, message: "Image generation failed" });
+  }
+
+  // 4️⃣ Upload image to Meta
+  const upload = await fetch(`${baseUrl}/api/meta/upload-image`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ imageBase64: imgJson.imageBase64 }),
+  });
+
+  const uploadJson = await upload.json();
+  if (!uploadJson?.ok || !uploadJson.image_hash) {
+    return res.json({ ok: false, message: "Image upload failed" });
+  }
+
+  // 5️⃣ Execute paused campaign
+  const execRes = await fetch(
+    `${baseUrl}/api/meta/execute-campaign`,
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        campaign: {
+          objective: "TRAFFIC",
+          status: "PAUSED",
+          daily_budget: 200,
+        },
+        adset: {
+          optimization_goal: "LINK_CLICKS",
+          targeting_country: "IN",
+        },
+        creative: {
+          headline: headlines[0],
+          body_text: primary_texts[0],
+          call_to_action: cta,
+          image_hash: uploadJson.image_hash,
+          destination_url: intakeJson.intake.website || intakeJson.intake.page_url,
+        },
+      }),
+    }
+  );
+
+  const execJson = await execRes.json();
+
+  return res.json({
+    ok: true,
+    message: "Paused Meta campaign created successfully.",
+    meta_response: execJson,
+  });
+}
+
+    
     // ===============================
 // 🚀 FINAL META EXECUTION (MANUAL CONFIRMATION)
 // ===============================
