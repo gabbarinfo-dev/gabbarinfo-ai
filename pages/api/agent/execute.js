@@ -683,10 +683,13 @@ Otherwise, respond with a full, clear explanation, and include example JSON only
       "";
 
 
+// ===============================
+// 🧠 STEP-1 / STEP-2 NORMAL AGENT RESPONSE
+// ===============================
 return res.status(200).json({
   ok: true,
-  campaign_settings,
-  ad_sets,
+  mode,
+  text, // 👈 plain English reply allowed
 });
 
 
