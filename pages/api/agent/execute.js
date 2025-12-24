@@ -249,13 +249,22 @@ imageHash = uploadJson.image_hash;
       });
     }
 
-    const {
-      instruction,          // main natural language instruction
-      mode = "generic",     // "google_ads_plan" | "meta_ads_plan" | "social_plan" | "seo_blog" | "generic"
-      includeJson = false,  // whether caller expects clean JSON-only when asked
-      chatHistory = [],     // optional history from chat.js (array of { role, text })
-      extraContext = "",    // place for RAG / client profile later
-    } = body;
+   let {
+  instruction,
+  mode = "generic",
+  includeJson = false,
+  chatHistory = [],
+  extraContext = "",
+} = body;
+
+// 🔁 AUTO-ROUTE TO META MODE
+if (
+  mode === "generic" &&
+  instruction &&
+  /(meta|facebook|instagram|fb|ig)/i.test(instruction)
+) {
+  mode = "meta_ads_plan";
+}
 
     if (!instruction || typeof instruction !== "string") {
       return res.status(400).json({
@@ -726,6 +735,13 @@ ${autoBusinessContext ? JSON.stringify(autoBusinessContext, null, 2) : "(none)"}
 
 RAG / Memory Context:
 ${ragContext || "(none)"}
+
+====================================================
+QUESTION GENERATION CONTEXT (MUST BE USED)
+====================================================
+
+context:
+${JSON.stringify(autoBusinessContext || forcedBusinessContext || {}, null, 2)}
 
 ====================================================
 FINAL OVERRIDE RULE
