@@ -67,16 +67,24 @@ try {
     // ============================================================
 // 🧠 AUTO BUSINESS INTAKE (RUN EVERY TIME)
 // ============================================================
+let businessContext = "";
+
 try {
   const baseUrl = process.env.NEXT_PUBLIC_BASE_URL;
   if (baseUrl) {
-    await fetch(`${baseUrl}/api/agent/intake-business`, {
+    const intakeRes = await fetch(`${baseUrl}/api/agent/intake-business`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
     });
+
+    const intakeJson = await intakeRes.json();
+
+    if (intakeJson?.business_profile) {
+      businessContext = JSON.stringify(intakeJson.business_profile, null, 2);
+    }
   }
 } catch (e) {
-  console.warn("Auto business intake failed:", e.message);
+  console.warn("Business intake failed:", e.message);
 }
 
  // ✅ ADD HERE (THIS IS THE RIGHT PLACE)
@@ -643,7 +651,12 @@ Rules:
 - Assume the user is in India by default unless location is specified.
 ${modeFocus}
 
-CLIENT CONTEXT (authoritative, from saved client knowledge — MUST be used if present):
+CLIENT CONTEXT (authoritative — MUST be used):
+
+Business Profile (from connected Meta assets):
+${businessContext || "(no business data found)"}
+
+Additional Knowledge (RAG):
 ${ragContext || "(none)"}
 `.trim();
 
