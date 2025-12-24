@@ -92,11 +92,9 @@ try {
     const intakeJson = await intakeRes.json();
 
     if (intakeJson?.ok && intakeJson?.intake) {
-      autoBusinessContext = {
-    source: "auto_intake",
-    data: intakeJson.intake,
-  };
-}
+      autoBusinessContext = intakeJson.intake;
+    }
+  }
 
 } catch (e) {
   console.warn("Auto business intake failed:", e.message);
