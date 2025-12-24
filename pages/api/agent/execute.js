@@ -199,6 +199,47 @@ if (
       "Please choose ONE option.",
   });
 }
+// ============================================================
+// 🧭 HUMAN GOAL → DESTINATION CONFIRMATION (NO ASSUMPTIONS)
+// ============================================================
+
+const userGoal = body.selected_goal || null;
+
+// If user has selected a goal
+if (userGoal === "visit_website") {
+  // Try to find website from business intake
+  const detectedWebsite =
+    autoBusinessContext?.facebook?.contact?.website ||
+    autoBusinessContext?.instagram?.website ||
+    null;
+
+  // If website exists, ask for confirmation
+  if (detectedWebsite && !body.website_confirmed) {
+    return res.status(200).json({
+      ok: true,
+      stage: "confirm_website",
+      text:
+        `I found this website linked to your business:\n\n` +
+        `${detectedWebsite}\n\n` +
+        `Is this the website you want people to visit?`,
+      options: [
+        "Yes, use this website",
+        "No, I want to share a different one"
+      ]
+    });
+  }
+
+  // If no website found, ask user to provide one
+  if (!detectedWebsite && !body.provided_website) {
+    return res.status(200).json({
+      ok: true,
+      stage: "ask_website",
+      text:
+        "I couldn’t find a website linked to your business.\n\n" +
+        "Please share the website or page you want people to visit."
+    });
+  }
+}
 
 
  // ✅ ADD HERE (THIS IS THE RIGHT PLACE)
