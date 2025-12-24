@@ -64,28 +64,32 @@ try {
 } catch (e) {
   console.warn("Meta connection lookup failed:", e.message);
 }
-    // ============================================================
-// 🧠 AUTO BUSINESS INTAKE (RUN EVERY TIME)
+ 
 // ============================================================
-let businessContext = "";
+// 🧠 AUTO BUSINESS INTAKE (READ + INJECT CONTEXT)
+let autoBusinessContext = null;
 
 try {
   const baseUrl = process.env.NEXT_PUBLIC_BASE_URL;
   if (baseUrl) {
-    const intakeRes = await fetch(`${baseUrl}/api/agent/intake-business`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-    });
+    const intakeRes = await fetch(
+      `${baseUrl}/api/agent/intake-business`,
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+      }
+    );
 
     const intakeJson = await intakeRes.json();
 
-    if (intakeJson?.business_profile) {
-      businessContext = JSON.stringify(intakeJson.business_profile, null, 2);
+    if (intakeJson?.ok && intakeJson?.intake) {
+      autoBusinessContext = intakeJson.intake;
     }
   }
 } catch (e) {
-  console.warn("Business intake failed:", e.message);
+  console.warn("Auto business intake failed:", e.message);
 }
+
 
  // ✅ ADD HERE (THIS IS THE RIGHT PLACE)
     const ADMIN_EMAILS = ["ndantare@gmail.com"];
@@ -651,10 +655,13 @@ Rules:
 - Assume the user is in India by default unless location is specified.
 ${modeFocus}
 
-CLIENT CONTEXT (authoritative — MUST be used):
+CLIENT CONTEXT (authoritative):
 
-Business Profile (from connected Meta assets):
-${businessContext || "(no business data found)"}
+${ragContext || "(none)"}
+
+CONNECTED BUSINESS DATA (AUTO-DETECTED FROM META — MUST USE THIS IF PRESENT):
+${autoBusinessContext ? JSON.stringify(autoBusinessContext, null, 2) : "(no connected business found)"}
+
 
 Additional Knowledge (RAG):
 ${ragContext || "(none)"}
