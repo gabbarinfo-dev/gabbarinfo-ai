@@ -41,6 +41,72 @@ export default async function handler(req, res) {
       return res.status(401).json({ ok: false, message: "Not authenticated" });
     }
     // ============================================================
+// 🔍 STEP 1: AGENT META ASSET DISCOVERY (CACHED)
+// ============================================================
+
+let verifiedMetaAssets = null;
+
+// 1️⃣ Check cache first
+const { data: cachedAssets } = await supabase
+  .from("agent_meta_assets")
+  .select("*")
+  .eq("email", session.user.email.toLowerCase())
+  .maybeSingle();
+
+if (cachedAssets) {
+  verifiedMetaAssets = cachedAssets;
+} else {
+  // 2️⃣ No cache → verify using Meta Graph API
+  const { data: meta } = await supabase
+    .from("meta_connections")
+    .select("*")
+    .eq("email", session.user.email.toLowerCase())
+    .single();
+
+  if (!meta?.system_user_token || !meta?.fb_ad_account_id) {
+    return res.json({
+      ok: true,
+      gated: true,
+      text:
+        "I don’t have access to your Meta ad account yet. Please connect your Facebook Business first.",
+    });
+  }
+
+  const token = meta.system_user_token;
+
+  // Facebook Page
+  const fbPageRes = await fetch(
+    `https://graph.facebook.com/v19.0/${meta.fb_page_id}?fields=name,category,about&access_token=${token}`
+  );
+  const fbPage = await fbPageRes.json();
+
+  // Instagram
+  let igAccount = null;
+  if (meta.ig_business_id) {
+    const igRes = await fetch(
+      `https://graph.facebook.com/v19.0/${meta.ig_business_id}?fields=name,biography,category&access_token=${token}`
+    );
+    igAccount = await igRes.json();
+  }
+
+  // Ad Account
+  const adRes = await fetch(
+    `https://graph.facebook.com/v19.0/act_${meta.fb_ad_account_id}?fields=account_status,currency,timezone_name&access_token=${token}`
+  );
+  const adAccount = await adRes.json();
+
+  verifiedMetaAssets = {
+    email: session.user.email.toLowerCase(),
+    fb_page: fbPage,
+    ig_account: igAccount,
+    ad_account: adAccount,
+    verified_at: new Date().toISOString(),
+  };
+
+  // 3️⃣ Save to cache
+  await supabase.from("agent_meta_assets").upsert(verifiedMetaAssets);
+}
+    // ============================================================
 // 🔗 META CONNECTION CHECK (Supabase)
 // ============================================================
 let metaConnected = false;
@@ -742,6 +808,8 @@ ${modeFocus}
 ====================================================
 CLIENT CONTEXT (AUTHORITATIVE — MUST BE USED)
 ====================================================
+Verified Meta Assets:
+${verifiedMetaAssets ? JSON.stringify(verifiedMetaAssets, null, 2) : "(none)"}
 
 Forced Meta Business Context:
 ${forcedBusinessContext ? JSON.stringify(forcedBusinessContext, null, 2) : "(none)"}
