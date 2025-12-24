@@ -172,6 +172,33 @@ try {
 } catch (e) {
   console.warn("Auto business intake failed:", e.message);
 }
+// ============================================================
+// 🧭 PHASE 3 — PLAIN-LANGUAGE GOAL SELECTION (NO ASSUMPTIONS)
+// ============================================================
+
+// If Meta assets are connected and business intake exists,
+// but user has NOT selected what they want people to do,
+// we MUST STOP and ask in simple language.
+
+if (
+  metaConnected &&
+  (autoBusinessContext || forcedBusinessContext) &&
+  !body.selected_goal // 👈 nothing selected yet
+) {
+  return res.status(200).json({
+    ok: true,
+    stage: "awaiting_primary_goal",
+    text:
+      "What do you want people to do after seeing your ad?\n\n" +
+      "• Visit your website\n" +
+      "• Visit your Instagram profile\n" +
+      "• Visit your Facebook page\n" +
+      "• Call you\n" +
+      "• WhatsApp you\n" +
+      "• Send you messages on Facebook or Instagram\n\n" +
+      "Please choose ONE option.",
+  });
+}
 
 
  // ✅ ADD HERE (THIS IS THE RIGHT PLACE)
