@@ -64,6 +64,15 @@ try {
 } catch (e) {
   console.warn("Meta connection lookup failed:", e.message);
 }
+let forcedBusinessContext = null;
+
+if (metaConnected && activeBusinessId) {
+  forcedBusinessContext = {
+    source: "meta_connection",
+    business_id: activeBusinessId,
+    note: "User has exactly ONE Meta business connected. This is the active business.",
+  };
+}
  
 // ============================================================
 // 🧠 AUTO BUSINESS INTAKE (READ + INJECT CONTEXT)
@@ -433,10 +442,11 @@ if (!isAdmin && !metaConnected && !profiles.length) {
     "I cannot proceed because no business is connected yet. Please connect a Facebook Business or Page first.";
 }
     // ⚠️ Multiple businesses detected
-    if (profiles.length > 1 && !instruction.toLowerCase().includes("use")) {
-      safetyGateMessage =
-        "You have multiple businesses/pages connected. Please explicitly tell me which ONE business or page to use before I proceed.";
-    }
+   if (!forcedBusinessContext && profiles.length > 1) {
+  safetyGateMessage =
+    "You have multiple businesses connected. Please tell me which one to use.";
+}
+
 
     // 🛑 Budget / approval guard
     if (
