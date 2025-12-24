@@ -818,6 +818,9 @@ CLIENT CONTEXT (AUTHORITATIVE — MUST BE USED)
 Verified Meta Assets:
 ${verifiedMetaAssets ? JSON.stringify(verifiedMetaAssets, null, 2) : "(none)"}
 
+Verified Meta Ad Account ID (MUST be used in all Meta JSON):
+${verifiedMetaAssets?.ad_account?.id || verifiedMetaAssets?.ad_account?.account_id || "(missing)"}
+
 Forced Meta Business Context:
 ${forcedBusinessContext ? JSON.stringify(forcedBusinessContext, null, 2) : "(none)"}
 
