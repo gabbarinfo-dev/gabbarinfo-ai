@@ -1,13 +1,34 @@
 import { getServerSession } from "next-auth/next";
 import { authOptions } from "../auth/[...nextauth]";
 import { supabaseServer } from "../../../lib/supabaseServer";
-import fetch from "node-fetch";
-import { JSDOM } from "jsdom";
 
-async function fetchJSON(url) {
-  const res = await fetch(url);
-  if (!res.ok) throw new Error("Meta API error");
-  return res.json();
+async function fetchText(url) {
+  const res = await fetch(url, { timeout: 8000 });
+  if (!res.ok) throw new Error("Failed to fetch " + url);
+  return res.text();
+}
+
+function extractText(html) {
+  return html
+    .replace(/<script[\s\S]*?>[\s\S]*?<\/script>/gi, "")
+    .replace(/<style[\s\S]*?>[\s\S]*?<\/style>/gi, "")
+    .replace(/<[^>]+>/g, " ")
+    .replace(/\s+/g, " ")
+    .trim()
+    .slice(0, 5000);
+}
+
+function extractLinks(html, baseUrl) {
+  const links = [];
+  const regex = /href=["']([^"']+)["']/gi;
+  let match;
+
+  while ((match = regex.exec(html)) !== null) {
+    let link = match[1];
+    if (link.startsWith("/")) link = baseUrl + link;
+    if (link.startsWith(baseUrl)) links.push(link.split("#")[0]);
+  }
+  return [...new Set(links)];
 }
 
 async function crawlWebsite(startUrl) {
@@ -21,28 +42,25 @@ async function crawlWebsite(startUrl) {
     visited.add(url);
 
     try {
-      const html = await fetch(url, { timeout: 8000 }).then(r => r.text());
-      const dom = new JSDOM(html);
-      const doc = dom.window.document;
+      const html = await fetchText(url);
+      const text = extractText(html);
 
-      pages.push({
-        url,
-        title: doc.title || "",
-        text: doc.body?.textContent?.slice(0, 5000) || ""
-      });
+      pages.push({ url, text });
 
-      const links = [...doc.querySelectorAll("a")]
-        .map(a => a.href)
-        .filter(h => h.startsWith(startUrl));
-
+      const links = extractLinks(html, startUrl);
       links.forEach(l => {
         if (!visited.has(l)) queue.push(l);
       });
-
     } catch (_) {}
   }
 
   return pages;
+}
+
+async function fetchJSON(url) {
+  const res = await fetch(url);
+  if (!res.ok) throw new Error("Meta API error");
+  return res.json();
 }
 
 export default async function handler(req, res) {
@@ -62,54 +80,41 @@ export default async function handler(req, res) {
       return res.json({ ok: false, reason: "META_NOT_CONNECTED" });
     }
 
-    const accessToken = meta.access_token;
+    const token = meta.access_token;
 
-    /* =============================
-       FACEBOOK PAGE DATA
-    ============================== */
+    // Facebook Page
     const fbPage = await fetchJSON(
-      `https://graph.facebook.com/v19.0/${meta.fb_page_id}?fields=name,about,category,description,phone,emails,website&access_token=${accessToken}`
+      `https://graph.facebook.com/v19.0/${meta.fb_page_id}?fields=name,about,category,description,phone,emails,website&access_token=${token}`
     );
 
     const fbPosts = await fetchJSON(
-      `https://graph.facebook.com/v19.0/${meta.fb_page_id}/posts?fields=message,created_time,is_published&limit=10&access_token=${accessToken}`
+      `https://graph.facebook.com/v19.0/${meta.fb_page_id}/posts?fields=message,created_time&limit=10&access_token=${token}`
     );
 
-    /* =============================
-       INSTAGRAM BUSINESS DATA
-    ============================== */
+    // Instagram
     let igData = null;
     let igPosts = [];
 
     if (meta.ig_business_id) {
       igData = await fetchJSON(
-        `https://graph.facebook.com/v19.0/${meta.ig_business_id}?fields=name,biography,category,website&access_token=${accessToken}`
+        `https://graph.facebook.com/v19.0/${meta.ig_business_id}?fields=name,biography,category,website&access_token=${token}`
       );
 
       const igMedia = await fetchJSON(
-        `https://graph.facebook.com/v19.0/${meta.ig_business_id}/media?fields=caption,timestamp,media_type&limit=10&access_token=${accessToken}`
+        `https://graph.facebook.com/v19.0/${meta.ig_business_id}/media?fields=caption,timestamp&limit=10&access_token=${token}`
       );
 
       igPosts = igMedia.data || [];
     }
 
-    /* =============================
-       WEBSITE AUTO-DETECTION
-    ============================== */
-    const websiteUrl =
-      fbPage.website ||
-      igData?.website ||
-      null;
-
+    // Website auto-detect
+    const websiteUrl = fbPage.website || igData?.website || null;
     let websitePages = [];
 
     if (websiteUrl) {
       websitePages = await crawlWebsite(websiteUrl);
     }
 
-    /* =============================
-       FINAL RAW PAYLOAD
-    ============================== */
     return res.json({
       ok: true,
       intake: {
