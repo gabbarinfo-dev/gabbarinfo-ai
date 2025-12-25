@@ -741,9 +741,9 @@ if (mode === "meta_ads_plan" && wantsObjectiveChange) {
 
 let detectedPhoneNumber = null;
 
-// 1️⃣ Facebook Page phone (highest priority)
-if (autoBusinessContext?.facebook?.contact?.phone) {
-  detectedPhoneNumber = autoBusinessContext.facebook.contact.phone;
+// 1️⃣ Synced business phone (AUTHORITATIVE)
+if (autoBusinessContext?.business_phone) {
+  detectedPhoneNumber = autoBusinessContext.business_phone;
 }
 
 // 2️⃣ RAG fallback (only if FB phone not found)
