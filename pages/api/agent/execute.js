@@ -834,6 +834,26 @@ if (
       `Reply YES to confirm, or paste a different URL.`,
   });
 }
+    // ============================================================
+// 🔘 META CTA RESOLUTION — FORCED MODE
+// ============================================================
+
+let resolvedCTA = null;
+
+// FORCE CTA based on destination
+if (selectedDestination === "call") {
+  resolvedCTA = "CALL_NOW";
+}
+
+if (
+  selectedDestination === "whatsapp" ||
+  selectedDestination === "messages"
+) {
+  resolvedCTA = "SEND_MESSAGE";
+}
+
+// Traffic / profile visits handled separately (NOT forced)
+
 // ============================================================
 // 💬 MESSAGE DESTINATION SELECTION (USER MUST CHOOSE)
 // ============================================================
