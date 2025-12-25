@@ -51,6 +51,7 @@ export default async function handler(req, res) {
     );
 
     const system_user_token = tokenRes.data.access_token;
+    const fb_user_access_token = tokenRes.data.access_token;
     if (!system_user_token) {
       throw new Error("No system_user_token returned by Meta");
     }
@@ -101,6 +102,7 @@ export default async function handler(req, res) {
         {
           email,
           system_user_token,
+           fb_user_access_token,       // used ONCE for sync
           fb_business_id,
           fb_page_id,
           ig_business_id,
