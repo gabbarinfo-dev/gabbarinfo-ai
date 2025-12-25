@@ -146,59 +146,7 @@ if (metaConnected && activeBusinessId) {
     note: "User has exactly ONE Meta business connected. This is the active business.",
   };
 }
-// ============================================================
-// 📣 META PLATFORM RESOLUTION (DEFAULT = FB + IG, NO CRASH)
-// ============================================================
 
-// Default: both platforms
-let resolvedPlatforms = ["facebook", "instagram"];
-
-// Detect connected assets SAFELY (from existing context)
-const hasFB =
-  !!autoBusinessContext?.facebook ||
-  !!forcedBusinessContext?.business_id;
-
-const hasIG =
-  !!autoBusinessContext?.instagram;
-
-// Narrow down ONLY if one is missing
-if (hasFB && !hasIG) resolvedPlatforms = ["facebook"];
-if (!hasFB && hasIG) resolvedPlatforms = ["instagram"];
-if (!hasFB && !hasIG) resolvedPlatforms = [];
-
-// Hard stop if nothing usable
-if (!resolvedPlatforms.length) {
-  return res.status(200).json({
-    ok: false,
-    message:
-      "No Facebook or Instagram page is connected. Please connect at least one.",
-  });
-}
-
-// ============================================================
-// 🧑 USER PLATFORM OVERRIDE (ONLY IF USER EXPLICITLY SAYS)
-// ============================================================
-
-if (instruction && typeof instruction === "string") {
-  const text = instruction.toLowerCase();
-
-  if (text.includes("only instagram") || text.includes("run on instagram")) {
-    resolvedPlatforms = ["instagram"];
-  }
-
-  if (text.includes("only facebook") || text.includes("run on facebook")) {
-    resolvedPlatforms = ["facebook"];
-  }
-
-  if (
-    text.includes("facebook and instagram") ||
-    text.includes("both facebook and instagram")
-  ) {
-    resolvedPlatforms = ["facebook", "instagram"];
-  }
-}
-
- 
 // ============================================================
 // 🧠 AUTO BUSINESS INTAKE (READ + INJECT CONTEXT)
 let autoBusinessContext = null;
@@ -467,7 +415,7 @@ You are in META ADS / CREATIVE AGENT MODE.
 
 {
   "channel": "meta_ads",
-  "platforms": resolvedPlatforms,
+  "platform": "facebook",
   "format": "feed_image",
   "objective": "LEAD_GENERATION",
   "creative": {
