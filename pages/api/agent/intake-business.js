@@ -76,11 +76,11 @@ export default async function handler(req, res) {
       .eq("email", session.user.email)
       .single();
 
-    if (!meta?.access_token || !meta?.fb_page_id) {
-      return res.json({ ok: false, reason: "META_NOT_CONNECTED" });
-    }
+    if (!meta?.system_user_token || !meta?.fb_page_id) {
+  return res.json({ ok: false, reason: "META_NOT_CONNECTED" });
+}
 
-    const token = meta.access_token;
+const token = meta.system_user_token;
 
     // Facebook Page
     const fbPage = await fetchJSON(
