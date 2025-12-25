@@ -649,10 +649,18 @@ if (!isAdmin && !metaConnected && !profiles.length) {
 }
 
 // ============================================================
-// 🎯 META OBJECTIVE SELECTION — HARD BLOCK (NO REPEAT)
+// 🎯 META OBJECTIVE SELECTION — HARD BLOCK (NO GUESSING)
 // ============================================================
 
-if (mode === "meta_ads_plan" && !selectedMetaObjective) {
+if (
+  mode === "meta_ads_plan" &&
+  !instruction.toLowerCase().includes("visit") &&
+  !instruction.toLowerCase().includes("traffic") &&
+  !instruction.toLowerCase().includes("lead") &&
+  !instruction.toLowerCase().includes("call") &&
+  !instruction.toLowerCase().includes("whatsapp") &&
+  !instruction.toLowerCase().includes("message")
+) {
   return res.status(200).json({
     ok: true,
     mode,
@@ -668,6 +676,7 @@ if (mode === "meta_ads_plan" && !selectedMetaObjective) {
       "6. Send you messages on Facebook or Instagram",
   });
 }
+
 // ============================================================
 // 🎯 META OBJECTIVE PARSING (USER SELECTION)
 // ============================================================
