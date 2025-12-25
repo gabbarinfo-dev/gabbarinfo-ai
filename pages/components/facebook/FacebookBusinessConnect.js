@@ -41,6 +41,32 @@ const [meta, setMeta] = useState(null);
     setMeta(null);
     setStatus("idle");
   };
+  const handleSyncBusinessInfo = async () => {
+  const confirmSync = confirm(
+    "This will sync your Facebook Page & Instagram business details once. Continue?"
+  );
+
+  if (!confirmSync) return;
+
+  const res = await fetch("/api/meta/sync-business-info", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      // backend will fetch token internally later
+      // for now we just trigger sync
+    }),
+  });
+
+  const data = await res.json();
+
+  if (!data.ok) {
+    alert("Sync failed: " + (data.error || data.message));
+    return;
+  }
+
+  alert("Business info synced successfully.");
+};
+
   // 👆 ADD THIS FUNCTION EXACTLY HERE
   return (
   <div
@@ -66,6 +92,21 @@ const [meta, setMeta] = useState(null);
       {meta?.ig_business_id && <li>Instagram Business Connected</li>}
       {meta?.fb_ad_account_id && <li>Ad Account Connected</li>}
     </ul>
+<button
+  onClick={handleSyncBusinessInfo}
+  style={{
+    marginTop: "10px",
+    marginRight: "10px",
+    padding: "8px 12px",
+    background: "#1877F2",
+    color: "#fff",
+    border: "none",
+    borderRadius: "6px",
+    cursor: "pointer",
+  }}
+>
+  Sync Business Info
+</button>
 
     <button
       onClick={handleDisconnect}
