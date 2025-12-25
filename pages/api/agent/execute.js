@@ -603,6 +603,32 @@ if (!isAdmin && !metaConnected && !profiles.length) {
 } catch (e) {
   console.warn("Safety gate check skipped:", e.message);
 }
+    if (safetyGateMessage) {
+  const baseUrl = process.env.NEXT_PUBLIC_BASE_URL;
+
+  const qRes = await fetch(`${baseUrl}/api/agent/questions`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      platform: mode === "meta_ads_plan" ? "meta" : mode,
+      objective: "campaign_creation",
+      missing: ["budget", "location", "objective"],
+      context: autoBusinessContext || forcedBusinessContext || {},
+    }),
+  });
+
+  const qJson = await qRes.json();
+
+  return res.status(200).json({
+    ok: true,
+    mode,
+    gated: true,
+    text:
+      "Before I proceed, I need a few quick details:\n\n" +
+      qJson.questions.map((q, i) => `${i + 1}. ${q}`).join("\n"),
+  });
+}
+
 // ============================================================
 // 🎯 META OBJECTIVE SELECTION — HARD BLOCK (NO GUESSING)
 // ============================================================
@@ -684,32 +710,72 @@ if (
   selectedMetaObjective = "LEAD_GENERATION";
   selectedDestination = "messages";
 }
+// ============================================================
+// 🔘 META CTA SELECTION — OBJECTIVE AWARE (HARD BLOCK)
+// ============================================================
 
-if (safetyGateMessage) {
-  const baseUrl = process.env.NEXT_PUBLIC_BASE_URL;
+// Meta-approved CTA options per objective
+const META_CTA_MAP = {
+  TRAFFIC: {
+    options: ["LEARN_MORE", "SIGN_UP", "VIEW_MORE"],
+    recommended: "LEARN_MORE",
+  },
+  LEAD_GENERATION: {
+    options: ["SIGN_UP", "APPLY_NOW", "GET_QUOTE"],
+    recommended: "SIGN_UP",
+  },
+  MESSAGES: {
+    options: ["SEND_MESSAGE"],
+    recommended: "SEND_MESSAGE",
+  },
+  CALLS: {
+    options: ["CALL_NOW"],
+    recommended: "CALL_NOW",
+  },
+  WHATSAPP: {
+    options: ["WHATSAPP"],
+    recommended: "WHATSAPP",
+  },
+};
 
-  const qRes = await fetch(`${baseUrl}/api/agent/questions`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({
-      platform: mode === "meta_ads_plan" ? "meta" : mode,
-      objective: "campaign_creation",
-      missing: ["budget", "location", "objective"],
-      context: autoBusinessContext || forcedBusinessContext || {},
-    }),
-  });
+// Check if CTA already stored in memory (simple heuristic)
+const lowerText = instruction.toLowerCase();
+const ctaKeywords = [
+  "learn more",
+  "sign up",
+  "apply",
+  "call",
+  "message",
+  "whatsapp",
+];
 
-  const qJson = await qRes.json();
+const hasCTA =
+  ctaKeywords.some((k) => lowerText.includes(k)) ||
+  lowerText.includes("cta");
+
+if (
+  mode === "meta_ads_plan" &&
+  selectedMetaObjective &&
+  !hasCTA
+) {
+  const ctaConfig =
+    META_CTA_MAP[selectedMetaObjective] ||
+    META_CTA_MAP.TRAFFIC;
 
   return res.status(200).json({
     ok: true,
     mode,
     gated: true,
     text:
-      "Before I proceed, I need a few quick details:\n\n" +
-      qJson.questions.map((q, i) => `${i + 1}. ${q}`).join("\n"),
+      `Which Call-To-Action button do you want on your ad?\n\n` +
+      `Based on your objective, Meta allows these options:\n\n` +
+      ctaConfig.options.map((c, i) => `${i + 1}. ${c}`).join("\n") +
+      `\n\nRecommended: ${ctaConfig.recommended}\n\n` +
+      `Reply with the option number or CTA name.`,
   });
 }
+
+
     // ============================================================
 // 🎯 META ADS FULL FLOW (AUTO → CONFIRM → CREATE PAUSED)
 // ============================================================
