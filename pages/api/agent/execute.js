@@ -465,7 +465,7 @@ You are in META ADS / CREATIVE AGENT MODE.
 
 {
   "channel": "meta_ads",
-  "platform": "facebook",
+  "platforms": resolvedPlatforms,
   "format": "feed_image",
   "objective": "LEAD_GENERATION",
   "creative": {
