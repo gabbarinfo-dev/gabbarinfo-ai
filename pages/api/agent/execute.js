@@ -1123,6 +1123,25 @@ If Forced Meta Business Context is present:
 - You MUST proceed
 - You MUST NOT ask for business name or active company
 `.trim();
+// ============================================================
+// 🚫 HARD STOP — PREVENT URL HALLUCINATION (META TRAFFIC)
+// ============================================================
+
+let finalLandingPage = null;
+
+if (selectedDestination === "website") {
+  if (!detectedLandingPage) {
+    return res.status(200).json({
+      ok: true,
+      gated: true,
+      text:
+        "I could not find a website URL from your connected assets.\n\n" +
+        "Please paste the exact URL you want people to visit.",
+    });
+  }
+
+  finalLandingPage = detectedLandingPage;
+}
 
 const finalPrompt = `
 SYSTEM:
