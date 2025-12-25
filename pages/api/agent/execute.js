@@ -172,62 +172,7 @@ try {
 } catch (e) {
   console.warn("Auto business intake failed:", e.message);
 }
-    // ============================================================
-// 📣 META PLATFORM RESOLUTION (NO GUESSING)
-// ============================================================
 
-// Default: run on BOTH Facebook + Instagram
-let metaPlatforms = ["facebook", "instagram"];
-
-// metaConnected + metaRow already available earlier
-if (metaConnected && metaRow) {
-  const hasFB = !!metaRow.fb_page_id;
-  const hasIG = !!metaRow.ig_business_id;
-
-  // Only Facebook connected
-  if (hasFB && !hasIG) {
-    metaPlatforms = ["facebook"];
-  }
-
-  // Only Instagram connected
-  if (!hasFB && hasIG) {
-    metaPlatforms = ["instagram"];
-  }
-
-  // Neither connected (safety)
-  if (!hasFB && !hasIG) {
-    metaPlatforms = [];
-  }
-}
-
-// USER OVERRIDE — if user explicitly says platform
-if (instruction) {
-  const text = instruction.toLowerCase();
-
-  if (text.includes("only instagram") || text.includes("run on instagram")) {
-    metaPlatforms = ["instagram"];
-  }
-
-  if (text.includes("only facebook") || text.includes("run on facebook")) {
-    metaPlatforms = ["facebook"];
-  }
-
-  if (
-    text.includes("facebook and instagram") ||
-    text.includes("both facebook and instagram")
-  ) {
-    metaPlatforms = ["facebook", "instagram"];
-  }
-}
-
-// HARD FAIL if nothing valid
-if (!metaPlatforms.length) {
-  return res.status(200).json({
-    ok: false,
-    message:
-      "No valid Facebook or Instagram asset is connected. Please connect at least one.",
-  });
-}
 
  // ✅ ADD HERE (THIS IS THE RIGHT PLACE)
     const ADMIN_EMAILS = ["ndantare@gmail.com"];
