@@ -561,6 +561,38 @@ try {
 } catch (e) {
   console.warn("RAG fetch failed:", e.message);
 }
+    // ============================================================
+// 🌐 LANDING PAGE CONFIRMATION GATE (TRAFFIC ONLY)
+// ============================================================
+
+let landingPageConfirmed = false;
+
+// Detect confirmation from user reply
+if (
+  instruction.toLowerCase().includes("yes") ||
+  instruction.toLowerCase().includes("use this") ||
+  instruction.toLowerCase().includes("correct")
+) {
+  landingPageConfirmed = true;
+}
+
+// If objective is website traffic and landing page exists but not confirmed
+if (
+  selectedDestination === "website" &&
+  detectedLandingPage &&
+  !landingPageConfirmed
+) {
+  return res.status(200).json({
+    ok: true,
+    gated: true,
+    text:
+      `I found this website from your connected assets:\n\n` +
+      `${detectedLandingPage}\n\n` +
+      `Is this the page you want people to visit?\n\n` +
+      `Reply YES to confirm, or paste a different URL.`,
+  });
+}
+
 // ===============================
 // 🔐 SAFETY GATE — BUSINESS + BUDGET CONFIRMATION
 // ===============================
