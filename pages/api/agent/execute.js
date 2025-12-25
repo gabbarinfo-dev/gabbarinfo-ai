@@ -227,9 +227,26 @@ try {
 } catch (e) {
   console.warn("Auto business intake failed:", e.message);
 }
+// ============================================================
+// 🌐 LANDING PAGE DETECTION (NO ASSUMPTIONS)
+// ============================================================
 
+let detectedLandingPage = null;
 
- // ✅ ADD HERE (THIS IS THE RIGHT PLACE)
+// Priority order:
+// 1) Website from intake
+// 2) Facebook page website
+// 3) Instagram bio website
+
+if (autoBusinessContext?.website?.url) {
+  detectedLandingPage = autoBusinessContext.website.url;
+} else if (autoBusinessContext?.facebook?.contact?.website) {
+  detectedLandingPage = autoBusinessContext.facebook.contact.website;
+} else if (autoBusinessContext?.instagram?.website) {
+  detectedLandingPage = autoBusinessContext.instagram.website;
+}
+
+ // ============================================================
     const ADMIN_EMAILS = ["ndantare@gmail.com"];
     const isAdmin = ADMIN_EMAILS.includes(
       (session.user.email || "").toLowerCase()
