@@ -80,30 +80,16 @@ export default async function handler(req, res) {
   return res.json({ ok: false, reason: "META_NOT_CONNECTED" });
 }
 
-// 🔑 Fetch Page Access Token using System User Token (CORRECT METHOD)
-const pageTokenRes = await fetch(
-  `https://graph.facebook.com/v19.0/${meta.fb_page_id}?fields=access_token&access_token=${meta.system_user_token}`
-);
-
-const pageTokenJson = await pageTokenRes.json();
-
-if (!pageTokenJson?.access_token) {
-  return res.status(500).json({
-    ok: false,
-    error: "Unable to fetch Page access token from Meta",
-  });
-}
-
-const pageAccessToken = pageTokenJson.access_token;
+const token = meta.system_user_token;
 
 
     // Facebook Page
     const fbPage = await fetchJSON(
-      `https://graph.facebook.com/v19.0/${meta.fb_page_id}?fields=name,about,category,description,phone,emails,website&access_token=${pageAccessToken}`
+      `https://graph.facebook.com/v19.0/${meta.fb_page_id}?fields=name,about,category,description,phone,emails,website&access_token=${token}`
     );
 
     const fbPosts = await fetchJSON(
-      `https://graph.facebook.com/v19.0/${meta.fb_page_id}/posts?fields=message,created_time&limit=10&access_token=${pageAccessToken}`
+      `https://graph.facebook.com/v19.0/${meta.fb_page_id}/posts?fields=message,created_time&limit=10&access_token=${token}`
     );
 
     // Instagram
@@ -112,11 +98,11 @@ const pageAccessToken = pageTokenJson.access_token;
 
     if (meta.ig_business_id) {
       igData = await fetchJSON(
-        `https://graph.facebook.com/v19.0/${meta.ig_business_id}?fields=name,biography,category,website&access_token=${pageAccessToken}`
+        `https://graph.facebook.com/v19.0/${meta.ig_business_id}?fields=name,biography,category,website&access_token=${token}`
       );
 
       const igMedia = await fetchJSON(
-        `https://graph.facebook.com/v19.0/${meta.ig_business_id}/media?fields=caption,timestamp&limit=10&access_token=${pageAccessToken}`
+        `https://graph.facebook.com/v19.0/${meta.ig_business_id}/media?fields=caption,timestamp&limit=10&access_token=${token}`
       );
 
       igPosts = igMedia.data || [];
