@@ -760,6 +760,51 @@ if (
       `Reply YES to confirm, or paste a different URL.`,
   });
 }
+// ============================================================
+// 💬 MESSAGE DESTINATION SELECTION (USER MUST CHOOSE)
+// ============================================================
+
+let selectedMessageChannel = null;
+
+// If user chose "messages", we must ask WHERE
+if (selectedDestination === "messages") {
+  const msg = `
+Where do you want people to message you?
+
+Please choose ONE option:
+
+1. Instagram messages
+2. Facebook Messenger
+3. WhatsApp
+4. All available
+`.trim();
+
+  return res.status(200).json({
+    ok: true,
+    mode,
+    gated: true,
+    text: msg,
+  });
+}
+
+// Handle follow-up selection
+if (selectedDestination === "messages") {
+  if (lowerInstruction === "1" || lowerInstruction.includes("instagram")) {
+    selectedMessageChannel = ["instagram"];
+  }
+
+  if (lowerInstruction === "2" || lowerInstruction.includes("facebook")) {
+    selectedMessageChannel = ["facebook"];
+  }
+
+  if (lowerInstruction === "3" || lowerInstruction.includes("whatsapp")) {
+    selectedMessageChannel = ["whatsapp"];
+  }
+
+  if (lowerInstruction === "4" || lowerInstruction.includes("all")) {
+    selectedMessageChannel = ["instagram", "facebook", "whatsapp"];
+  }
+}
 
 // ============================================================
 // 🔘 META CTA SELECTION — OBJECTIVE AWARE (HARD BLOCK)
