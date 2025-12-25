@@ -714,6 +714,52 @@ if (lowerInstruction === "4" || lowerInstruction.includes("call")) {
   selectedMetaObjective = "LEAD_GENERATION";
   selectedDestination = "call";
 }
+// ============================================================
+// 📞 CALL DESTINATION CONFIRMATION (NO ASSUMPTIONS)
+// ============================================================
+
+let detectedPhoneNumber = null;
+
+// 1️⃣ Facebook Page phone (highest priority)
+if (autoBusinessContext?.facebook?.contact?.phone) {
+  detectedPhoneNumber = autoBusinessContext.facebook.contact.phone;
+}
+
+// 2️⃣ RAG fallback (only if FB phone not found)
+if (!detectedPhoneNumber && ragContext) {
+  const phoneMatch = ragContext.match(/(\+?\d[\d\s-]{8,15})/);
+  if (phoneMatch) {
+    detectedPhoneNumber = phoneMatch[1];
+  }
+}
+
+// 3️⃣ If CALL objective selected but no number → STOP & ASK
+if (selectedDestination === "call" && !detectedPhoneNumber) {
+  return res.status(200).json({
+    ok: true,
+    mode,
+    gated: true,
+    text:
+      "I couldn’t find a phone number on your Facebook Page or saved business memory.\n\n" +
+      "Please type the exact phone number you want people to call (with country code).",
+  });
+}
+
+// 4️⃣ Ask confirmation if number found
+if (
+  selectedDestination === "call" &&
+  detectedPhoneNumber &&
+  !lowerInstruction.includes("yes")
+) {
+  return res.status(200).json({
+    ok: true,
+    mode,
+    gated: true,
+    text:
+      `I found this phone number:\n\n📞 ${detectedPhoneNumber}\n\n` +
+      "Should I use this number for your Call Ads?\n\nReply YES to confirm or paste a different number.",
+  });
+}
 
 // Option 5 — WhatsApp
 if (lowerInstruction === "5" || lowerInstruction.includes("whatsapp")) {
