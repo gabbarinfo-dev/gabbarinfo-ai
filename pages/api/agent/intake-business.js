@@ -118,36 +118,25 @@ export default async function handler(req, res) {
       }
     }
 
-    // 🧠 FINAL INTAKE OBJECT (AUTHORITATIVE)
-    const intake = {
-      business: {
-        name: meta.business_name || null,
-        category: meta.business_category || null,
-        about: meta.business_about || null,
-      },
-      contact: {
-        phone: detectedPhone,
-        website: websiteUrl,
-      },
-      instagram: meta.instagram_bio
-        ? {
-            bio: meta.instagram_bio,
-            website: meta.instagram_website || null,
-          }
-        : null,
-      website: websiteUrl
-        ? {
-            url: websiteUrl,
-            pages: websitePages,
-          }
-        : null,
-      services: detectedServices.slice(0, 5),
-    };
+   // 🧠 FINAL INTAKE OBJECT (AUTHORITATIVE — AGENT READABLE)
+return res.json({
+  ok: true,
+  intake: {
+    // 🔑 FLAT KEYS — THIS IS WHAT execute.js EXPECTS
+    business_name: meta.business_name || null,
+    business_category: meta.business_category || null,
+    business_about: meta.business_about || null,
 
-    return res.json({
-      ok: true,
-      intake,
-    });
+    business_phone: meta.business_phone || detectedPhone || null,
+    business_website: meta.business_website || websiteUrl || null,
+
+    instagram_bio: meta.instagram_bio || null,
+    instagram_website: meta.instagram_website || null,
+
+    source: "supabase_synced",
+    synced_at: meta.updated_at || null,
+  },
+});
 
   } catch (err) {
     return res.status(500).json({
