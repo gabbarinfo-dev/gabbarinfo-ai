@@ -211,12 +211,15 @@ try {
   const baseUrl = process.env.NEXT_PUBLIC_BASE_URL;
   if (baseUrl) {
     const intakeRes = await fetch(
-      `${baseUrl}/api/agent/intake-business`,
-      {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-      }
-    );
+  `${baseUrl}/api/agent/intake-business`,
+  {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      cookie: req.headers.cookie || "",
+    },
+  }
+);
 
     const intakeJson = await intakeRes.json();
 
