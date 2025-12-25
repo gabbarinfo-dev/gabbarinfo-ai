@@ -899,6 +899,30 @@ if (selectedDestination === "messages") {
     selectedMessageChannel = ["instagram", "facebook", "whatsapp"];
   }
 }
+// ============================================================
+// ✏️ CTA OVERRIDE (USER CORRECTION MODE)
+// ============================================================
+
+let overriddenCTA = null;
+
+if (lowerInstruction.includes("change cta")) {
+  if (lowerInstruction.includes("sign up")) {
+    overriddenCTA = "SIGN_UP";
+  }
+  if (lowerInstruction.includes("learn more")) {
+    overriddenCTA = "LEARN_MORE";
+  }
+  if (lowerInstruction.includes("call")) {
+    overriddenCTA = "CALL_NOW";
+  }
+  if (lowerInstruction.includes("message")) {
+    overriddenCTA = "SEND_MESSAGE";
+  }
+}
+
+if (overriddenCTA) {
+  resolvedCTA = overriddenCTA;
+}
 
 // ============================================================
 // 🔘 META CTA SELECTION — OBJECTIVE AWARE (HARD BLOCK)
@@ -946,8 +970,14 @@ const hasCTA =
 if (
   mode === "meta_ads_plan" &&
   selectedMetaObjective &&
+  (
+    selectedMetaObjective !== "TRAFFIC" ||
+    (selectedMetaObjective === "TRAFFIC" && detectedLandingPage)
+  ) &&
+  !resolvedCTA &&
   !hasCTA
 ) {
+
   const ctaConfig =
     META_CTA_MAP[selectedMetaObjective] ||
     META_CTA_MAP.TRAFFIC;
