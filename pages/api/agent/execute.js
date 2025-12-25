@@ -168,6 +168,34 @@ if (!resolvedPlatforms.length) {
       "No Facebook or Instagram page is connected. Please connect at least one.",
   });
 }
+// ============================================================
+// 🧑 USER PLATFORM OVERRIDE (ONLY IF EXPLICITLY SAID)
+// ============================================================
+
+if (instruction && typeof instruction === "string") {
+  const text = instruction.toLowerCase();
+
+  if (
+    text.includes("only instagram") ||
+    text.includes("run on instagram")
+  ) {
+    resolvedPlatforms = ["instagram"];
+  }
+
+  if (
+    text.includes("only facebook") ||
+    text.includes("run on facebook")
+  ) {
+    resolvedPlatforms = ["facebook"];
+  }
+
+  if (
+    text.includes("facebook and instagram") ||
+    text.includes("both facebook and instagram")
+  ) {
+    resolvedPlatforms = ["facebook", "instagram"];
+  }
+}
  
 // ============================================================
 // 🧠 AUTO BUSINESS INTAKE (READ + INJECT CONTEXT)
