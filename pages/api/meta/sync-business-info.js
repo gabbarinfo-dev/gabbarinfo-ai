@@ -9,14 +9,21 @@ export default async function handler(req, res) {
       return res.status(401).json({ ok: false });
     }
 
-    const { user_access_token } = req.body;
+   const { data: meta } = await supabaseServer
+  .from("meta_connections")
+  .select("fb_user_access_token")
+  .eq("email", session.user.email)
+  .single();
 
-    if (!user_access_token) {
-      return res.status(400).json({
-        ok: false,
-        message: "Missing user access token",
-      });
-    }
+if (!meta?.fb_user_access_token) {
+  return res.status(400).json({
+    ok: false,
+    message: "Missing user access token",
+  });
+}
+
+const user_access_token = meta.fb_user_access_token;
+
 
     // 1️⃣ Get Pages user manages
     const pagesRes = await fetch(
