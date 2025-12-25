@@ -80,15 +80,41 @@ export default async function handler(req, res) {
   return res.json({ ok: false, reason: "META_NOT_CONNECTED" });
 }
 
-const token = meta.system_user_token;
+// 🔑 Get Facebook Page Access Token using System User Token
+const pageTokenRes = await fetch(
+  `https://graph.facebook.com/v19.0/me/accounts?access_token=${meta.system_user_token}`
+);
+
+const pageTokenJson = await pageTokenRes.json();
+
+if (!pageTokenJson?.data?.length) {
+  return res.status(500).json({
+    ok: false,
+    error: "Unable to fetch Facebook Page access token",
+  });
+}
+
+const matchedPage = pageTokenJson.data.find(
+  (p) => p.id === meta.fb_page_id
+);
+
+if (!matchedPage?.access_token) {
+  return res.status(500).json({
+    ok: false,
+    error: "Facebook Page access token not found",
+  });
+}
+
+const pageAccessToken = matchedPage.access_token;
+
 
     // Facebook Page
     const fbPage = await fetchJSON(
-      `https://graph.facebook.com/v19.0/${meta.fb_page_id}?fields=name,about,category,description,phone,emails,website&access_token=${token}`
+      `https://graph.facebook.com/v19.0/${meta.fb_page_id}?fields=name,about,category,description,phone,emails,website&access_token=${pageAccessToken}`
     );
 
     const fbPosts = await fetchJSON(
-      `https://graph.facebook.com/v19.0/${meta.fb_page_id}/posts?fields=message,created_time&limit=10&access_token=${token}`
+      `https://graph.facebook.com/v19.0/${meta.fb_page_id}/posts?fields=message,created_time&limit=10&access_token=${pageAccessToken}`
     );
 
     // Instagram
@@ -97,11 +123,11 @@ const token = meta.system_user_token;
 
     if (meta.ig_business_id) {
       igData = await fetchJSON(
-        `https://graph.facebook.com/v19.0/${meta.ig_business_id}?fields=name,biography,category,website&access_token=${token}`
+        `https://graph.facebook.com/v19.0/${meta.ig_business_id}?fields=name,biography,category,website&access_token=${pageAccessToken}`
       );
 
       const igMedia = await fetchJSON(
-        `https://graph.facebook.com/v19.0/${meta.ig_business_id}/media?fields=caption,timestamp&limit=10&access_token=${token}`
+        `https://graph.facebook.com/v19.0/${meta.ig_business_id}/media?fields=caption,timestamp&limit=10&access_token=${pageAccessToken}`
       );
 
       igPosts = igMedia.data || [];
