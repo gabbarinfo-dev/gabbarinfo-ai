@@ -603,6 +603,87 @@ if (!isAdmin && !metaConnected && !profiles.length) {
 } catch (e) {
   console.warn("Safety gate check skipped:", e.message);
 }
+// ============================================================
+// 🎯 META OBJECTIVE SELECTION — HARD BLOCK (NO GUESSING)
+// ============================================================
+
+if (
+  mode === "meta_ads_plan" &&
+  !instruction.toLowerCase().includes("visit") &&
+  !instruction.toLowerCase().includes("traffic") &&
+  !instruction.toLowerCase().includes("lead") &&
+  !instruction.toLowerCase().includes("call") &&
+  !instruction.toLowerCase().includes("whatsapp") &&
+  !instruction.toLowerCase().includes("message")
+) {
+  return res.status(200).json({
+    ok: true,
+    mode,
+    gated: true,
+    text:
+      "What do you want people to do after seeing your ad?\n\n" +
+      "Please choose ONE option:\n\n" +
+      "1. Visit your website\n" +
+      "2. Visit your Instagram profile\n" +
+      "3. Visit your Facebook page\n" +
+      "4. Call you\n" +
+      "5. WhatsApp you\n" +
+      "6. Send you messages on Facebook or Instagram",
+  });
+}
+// ============================================================
+// 🎯 META OBJECTIVE PARSING (USER SELECTION)
+// ============================================================
+
+let selectedMetaObjective = null;
+let selectedDestination = null;
+
+const lowerInstruction = instruction.toLowerCase().trim();
+
+// Option 1 — Website traffic
+if (lowerInstruction === "1" || lowerInstruction.includes("website")) {
+  selectedMetaObjective = "TRAFFIC";
+  selectedDestination = "website";
+}
+
+// Option 2 — Instagram profile
+if (
+  lowerInstruction === "2" ||
+  lowerInstruction.includes("instagram profile")
+) {
+  selectedMetaObjective = "TRAFFIC";
+  selectedDestination = "instagram_profile";
+}
+
+// Option 3 — Facebook page
+if (
+  lowerInstruction === "3" ||
+  lowerInstruction.includes("facebook page")
+) {
+  selectedMetaObjective = "TRAFFIC";
+  selectedDestination = "facebook_page";
+}
+
+// Option 4 — Call
+if (lowerInstruction === "4" || lowerInstruction.includes("call")) {
+  selectedMetaObjective = "LEAD_GENERATION";
+  selectedDestination = "call";
+}
+
+// Option 5 — WhatsApp
+if (lowerInstruction === "5" || lowerInstruction.includes("whatsapp")) {
+  selectedMetaObjective = "LEAD_GENERATION";
+  selectedDestination = "whatsapp";
+}
+
+// Option 6 — Messages
+if (
+  lowerInstruction === "6" ||
+  lowerInstruction.includes("message")
+) {
+  selectedMetaObjective = "LEAD_GENERATION";
+  selectedDestination = "messages";
+}
 
 if (safetyGateMessage) {
   const baseUrl = process.env.NEXT_PUBLIC_BASE_URL;
@@ -770,6 +851,24 @@ if (
     result: execJson,
   });
 }
+    // ============================================================
+// 💾 STORE META OBJECTIVE IN MEMORY (ONCE USER SELECTS)
+// ============================================================
+
+if (
+  mode === "meta_ads_plan" &&
+  selectedMetaObjective &&
+  selectedDestination &&
+  activeBusinessId
+) {
+  const baseUrl = process.env.NEXT_PUBLIC_BASE_URL;
+
+  await saveAnswerMemory(baseUrl, activeBusinessId, {
+    meta_objective: selectedMetaObjective,
+    meta_destination: selectedDestination,
+  });
+}
+
 // ===============================
 // 💾 ANSWER MEMORY WIRING
 // ===============================
