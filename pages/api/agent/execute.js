@@ -766,6 +766,34 @@ if (lowerInstruction === "5" || lowerInstruction.includes("whatsapp")) {
   selectedMetaObjective = "LEAD_GENERATION";
   selectedDestination = "whatsapp";
 }
+// ============================================================
+// 💬 WHATSAPP DESTINATION CONFIRMATION (ALWAYS ASK)
+// ============================================================
+
+let detectedWhatsappNumber = null;
+
+// 1️⃣ Try Facebook Page phone ONLY as a suggestion (not auto-use)
+if (autoBusinessContext?.facebook?.contact?.phone) {
+  detectedWhatsappNumber = autoBusinessContext.facebook.contact.phone;
+}
+
+// 2️⃣ If WhatsApp selected → ALWAYS confirm
+if (selectedDestination === "whatsapp") {
+  const suggestionText = detectedWhatsappNumber
+    ? `\n\nI found this number on your Facebook Page:\n📱 ${detectedWhatsappNumber}`
+    : "";
+
+  return res.status(200).json({
+    ok: true,
+    mode,
+    gated: true,
+    text:
+      "WhatsApp ads require an explicit WhatsApp-enabled number." +
+      suggestionText +
+      "\n\nPlease reply with the exact WhatsApp number you want to use (with country code).\n" +
+      "Example: +91XXXXXXXXXX",
+  });
+}
 
 // Option 6 — Messages
 if (
