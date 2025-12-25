@@ -793,10 +793,11 @@ if (lowerInstruction === "5" || lowerInstruction.includes("whatsapp")) {
 
 let detectedWhatsappNumber = null;
 
-// 1️⃣ Try Facebook Page phone ONLY as a suggestion (not auto-use)
-if (autoBusinessContext?.facebook?.contact?.phone) {
-  detectedWhatsappNumber = autoBusinessContext.facebook.contact.phone;
+// 1️⃣ Suggest synced business phone (DO NOT auto-use)
+if (autoBusinessContext?.business_phone) {
+  detectedWhatsappNumber = autoBusinessContext.business_phone;
 }
+
 
 // 2️⃣ If WhatsApp selected → ALWAYS confirm
 if (selectedDestination === "whatsapp") {
