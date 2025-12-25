@@ -84,9 +84,18 @@ const token = meta.system_user_token;
 
 
     // Facebook Page
-    const fbPage = await fetchJSON(
-      `https://graph.facebook.com/v19.0/${meta.fb_page_id}?fields=name,about,category,description,phone,emails,website&access_token=${token}`
-    );
+  // ✅ Fetch Page info via Business-owned endpoint (system token safe)
+const fbPage = await fetchJSON(
+  `https://graph.facebook.com/v19.0/${meta.fb_business_id}/owned_pages?fields=name,category,about,description,phone,emails,website&access_token=${token}`
+);
+
+// pick the correct page
+const pageData =
+  fbPage.data?.find(p => p.id === meta.fb_page_id) || fbPage.data?.[0];
+
+if (!pageData) {
+  throw new Error("Page data not accessible via business");
+}
 
     const fbPosts = await fetchJSON(
       `https://graph.facebook.com/v19.0/${meta.fb_page_id}/posts?fields=message,created_time&limit=10&access_token=${token}`
@@ -120,15 +129,15 @@ const token = meta.system_user_token;
       ok: true,
       intake: {
         facebook: {
-          name: fbPage.name,
-          category: fbPage.category,
-          about: fbPage.about || fbPage.description,
+          name: pageData.name,
+          category: pageData.category,
+          about: pageData.about || pageData.description,
           contact: {
-            phone: fbPage.phone,
-            emails: fbPage.emails,
-            website: fbPage.website
+            phone: pageData.phone,
+            emails: pageData.emails,
+            website: pageData.website
           },
-          posts: fbPosts.data || []
+          posts: pagePosts.data || []
         },
         instagram: igData
           ? {
