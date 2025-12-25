@@ -147,20 +147,26 @@ if (metaConnected && activeBusinessId) {
   };
 }
 // ============================================================
-// 📣 META PLATFORM RESOLUTION (DEFAULT = FB + IG)
+// 📣 META PLATFORM RESOLUTION (DEFAULT = FB + IG, NO CRASH)
 // ============================================================
 
+// Default: both platforms
 let resolvedPlatforms = ["facebook", "instagram"];
 
-if (metaConnected) {
-  const hasFB = !!metaRow?.fb_page_id;
-  const hasIG = !!metaRow?.ig_business_id;
+// Detect connected assets SAFELY (from existing context)
+const hasFB =
+  !!autoBusinessContext?.facebook ||
+  !!forcedBusinessContext?.business_id;
 
-  if (hasFB && !hasIG) resolvedPlatforms = ["facebook"];
-  if (!hasFB && hasIG) resolvedPlatforms = ["instagram"];
-  if (!hasFB && !hasIG) resolvedPlatforms = [];
-}
+const hasIG =
+  !!autoBusinessContext?.instagram;
 
+// Narrow down ONLY if one is missing
+if (hasFB && !hasIG) resolvedPlatforms = ["facebook"];
+if (!hasFB && hasIG) resolvedPlatforms = ["instagram"];
+if (!hasFB && !hasIG) resolvedPlatforms = [];
+
+// Hard stop if nothing usable
 if (!resolvedPlatforms.length) {
   return res.status(200).json({
     ok: false,
@@ -168,24 +174,19 @@ if (!resolvedPlatforms.length) {
       "No Facebook or Instagram page is connected. Please connect at least one.",
   });
 }
+
 // ============================================================
-// 🧑 USER PLATFORM OVERRIDE (ONLY IF EXPLICITLY SAID)
+// 🧑 USER PLATFORM OVERRIDE (ONLY IF USER EXPLICITLY SAYS)
 // ============================================================
 
 if (instruction && typeof instruction === "string") {
   const text = instruction.toLowerCase();
 
-  if (
-    text.includes("only instagram") ||
-    text.includes("run on instagram")
-  ) {
+  if (text.includes("only instagram") || text.includes("run on instagram")) {
     resolvedPlatforms = ["instagram"];
   }
 
-  if (
-    text.includes("only facebook") ||
-    text.includes("run on facebook")
-  ) {
+  if (text.includes("only facebook") || text.includes("run on facebook")) {
     resolvedPlatforms = ["facebook"];
   }
 
@@ -196,6 +197,7 @@ if (instruction && typeof instruction === "string") {
     resolvedPlatforms = ["facebook", "instagram"];
   }
 }
+
  
 // ============================================================
 // 🧠 AUTO BUSINESS INTAKE (READ + INJECT CONTEXT)
