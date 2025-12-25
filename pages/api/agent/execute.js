@@ -649,31 +649,6 @@ if (!isAdmin && !metaConnected && !profiles.length) {
 }
 
 // ============================================================
-// 🎯 META OBJECTIVE SELECTION — HARD BLOCK (STATE AWARE)
-// ============================================================
-
-if (
-  mode === "meta_ads_plan" &&
-  !selectedMetaObjective
-) {
-  return res.status(200).json({
-    ok: true,
-    mode,
-    gated: true,
-    text:
-      "What do you want people to do after seeing your ad?\n\n" +
-      "Please choose ONE option:\n\n" +
-      "1. Visit your website\n" +
-      "2. Visit your Instagram profile\n" +
-      "3. Visit your Facebook page\n" +
-      "4. Call you\n" +
-      "5. WhatsApp you\n" +
-      "6. Send you messages on Facebook or Instagram",
-  });
-}
-
-
-// ============================================================
 // 🎯 META OBJECTIVE PARSING (USER SELECTION)
 // ============================================================
 
@@ -710,6 +685,29 @@ if (
 if (lowerInstruction === "4" || lowerInstruction.includes("call")) {
   selectedMetaObjective = "LEAD_GENERATION";
   selectedDestination = "call";
+}
+    // ============================================================
+// 🎯 META OBJECTIVE SELECTION — HARD BLOCK (STATE AWARE)
+// ============================================================
+
+if (
+  mode === "meta_ads_plan" &&
+  !selectedMetaObjective
+) {
+  return res.status(200).json({
+    ok: true,
+    mode,
+    gated: true,
+    text:
+      "What do you want people to do after seeing your ad?\n\n" +
+      "Please choose ONE option:\n\n" +
+      "1. Visit your website\n" +
+      "2. Visit your Instagram profile\n" +
+      "3. Visit your Facebook page\n" +
+      "4. Call you\n" +
+      "5. WhatsApp you\n" +
+      "6. Send you messages on Facebook or Instagram",
+  });
 }
 // ============================================================
 // 📞 CALL DESTINATION CONFIRMATION (NO ASSUMPTIONS)
