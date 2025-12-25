@@ -709,6 +709,35 @@ if (
       "6. Send you messages on Facebook or Instagram",
   });
 }
+    // ============================================================
+// 🔁 OBJECTIVE OVERRIDE (EXPLICIT USER INTENT ONLY)
+// ============================================================
+
+const objectiveOverrideKeywords = [
+  "change objective",
+  "switch objective",
+  "use objective",
+  "make it",
+  "instead of",
+];
+
+const wantsObjectiveChange =
+  objectiveOverrideKeywords.some((k) =>
+    instruction.toLowerCase().includes(k)
+  ) &&
+  (
+    instruction.toLowerCase().includes("website") ||
+    instruction.toLowerCase().includes("call") ||
+    instruction.toLowerCase().includes("whatsapp") ||
+    instruction.toLowerCase().includes("message") ||
+    instruction.toLowerCase().includes("traffic")
+  );
+
+if (mode === "meta_ads_plan" && wantsObjectiveChange) {
+  selectedMetaObjective = null;
+  selectedDestination = null;
+}
+
 // ============================================================
 // 📞 CALL DESTINATION CONFIRMATION (NO ASSUMPTIONS)
 // ============================================================
