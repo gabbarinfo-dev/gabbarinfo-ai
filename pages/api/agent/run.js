@@ -70,21 +70,36 @@ export default async function handler(req, res) {
 
       const { platform, objective } = intentRes.intent;
 
+      // 1.5️⃣ Load business intake (VERY IMPORTANT)
+const intakeRes = await fetch(`${BASE_URL}/api/agent/intake-business`, {
+  method: "GET",
+  headers: {
+    Cookie: req.headers.cookie || "",
+  },
+});
+
+const intakeJson = await intakeRes.json();
+const intake = intakeJson?.intake || {};
+
+
       // 2️⃣ Safety gate (initial, strict)
-      const gateRes = await safetyGate({
-        platform,
-        objective,
-        assets_confirmed: true, // already enforced elsewhere
-      });
+     const gateRes = await safetyGate({
+  platform,
+  objective,
+  assets_confirmed: true,
+  context: intake,
+});
+
 
       if (!gateRes.ok && gateRes.missing) {
         // 3️⃣ Ask Gemini questions
-        const qRes = await generateQuestions({
-          platform,
-          objective,
-          missing: gateRes.missing,
-          context: {},
-        });
+       const qRes = await generateQuestions({
+  platform,
+  objective,
+  missing: gateRes.missing,
+  context: intake,
+});
+
 
         return res.json({
           reply:
