@@ -2,6 +2,8 @@ import { getServerSession } from "next-auth/next";
 import { authOptions } from "../auth/[...nextauth]";
 import { supabaseServer } from "../../../lib/supabaseServer";
 
+/* ---------------- WEBSITE HELPERS ---------------- */
+
 async function fetchText(url) {
   const res = await fetch(url, { timeout: 8000 });
   if (!res.ok) throw new Error("Failed to fetch " + url);
@@ -28,6 +30,7 @@ function extractLinks(html, baseUrl) {
     if (link.startsWith("/")) link = baseUrl + link;
     if (link.startsWith(baseUrl)) links.push(link.split("#")[0]);
   }
+
   return [...new Set(links)];
 }
 
@@ -48,7 +51,7 @@ async function crawlWebsite(startUrl) {
       pages.push({ url, text });
 
       const links = extractLinks(html, startUrl);
-      links.forEach(l => {
+      links.forEach((l) => {
         if (!visited.has(l)) queue.push(l);
       });
     } catch (_) {}
@@ -57,11 +60,7 @@ async function crawlWebsite(startUrl) {
   return pages;
 }
 
-async function fetchJSON(url) {
-  const res = await fetch(url);
-  if (!res.ok) throw new Error("Meta API error");
-  return res.json();
-}
+/* ---------------- MAIN HANDLER ---------------- */
 
 export default async function handler(req, res) {
   try {
@@ -70,87 +69,90 @@ export default async function handler(req, res) {
       return res.status(401).json({ ok: false });
     }
 
+    // 🔹 Read stored business info (SYNCED ONCE VIA USER CONSENT)
     const { data: meta } = await supabaseServer
       .from("meta_connections")
       .select("*")
       .eq("email", session.user.email)
       .single();
 
-    if (!meta?.system_user_token || !meta?.fb_page_id) {
-  return res.json({ ok: false, reason: "META_NOT_CONNECTED" });
-}
-
-const pageAccessToken = meta.system_user_token;
-
-const fbPage = await fetchJSON(
-  `https://graph.facebook.com/v19.0/${meta.fb_page_id}?fields=name,about,category,description,phone,emails,website&access_token=${token}`
-);
-
-
-    const fbPosts = await fetchJSON(
-      `https://graph.facebook.com/v19.0/${meta.fb_page_id}/posts?fields=message,created_time&limit=10&access_token=${token}`
-    );
-
-    // Instagram
-    let igData = null;
-    let igPosts = [];
-
-    if (meta.ig_business_id) {
-      igData = await fetchJSON(
-        `https://graph.facebook.com/v19.0/${meta.ig_business_id}?fields=name,biography,category,website&access_token=${token}`
-      );
-
-      const igMedia = await fetchJSON(
-        `https://graph.facebook.com/v19.0/${meta.ig_business_id}/media?fields=caption,timestamp&limit=10&access_token=${token}`
-      );
-
-      igPosts = igMedia.data || [];
+    if (!meta) {
+      return res.json({
+        ok: false,
+        reason: "BUSINESS_NOT_CONNECTED",
+      });
     }
 
-    // Website auto-detect
-    const websiteUrl = fbPage.website || igData?.website || null;
-    let websitePages = [];
+    const websiteUrl =
+      meta.business_website || meta.instagram_website || null;
 
+    let websitePages = [];
+    let detectedPhone = meta.business_phone || null;
+    let detectedServices = [];
+
+    // 🌐 Crawl website if available
     if (websiteUrl) {
       websitePages = await crawlWebsite(websiteUrl);
+
+      // 📞 Phone detection fallback
+      if (!detectedPhone) {
+        for (const page of websitePages) {
+          const match = page.text.match(/(\+?\d[\d\s\-]{8,15})/);
+          if (match) {
+            detectedPhone = match[1];
+            break;
+          }
+        }
+      }
+
+      // 🧾 Simple service detection
+      for (const page of websitePages) {
+        const text = page.text.toLowerCase();
+        if (
+          text.includes("service") ||
+          text.includes("we offer") ||
+          text.includes("our services")
+        ) {
+          detectedServices.push(page.url);
+        }
+      }
     }
+
+    // 🧠 FINAL INTAKE OBJECT (AUTHORITATIVE)
+    const intake = {
+      business: {
+        name: meta.business_name || null,
+        category: meta.business_category || null,
+        about: meta.business_about || null,
+      },
+      contact: {
+        phone: detectedPhone,
+        website: websiteUrl,
+      },
+      instagram: meta.instagram_bio
+        ? {
+            bio: meta.instagram_bio,
+            website: meta.instagram_website || null,
+          }
+        : null,
+      website: websiteUrl
+        ? {
+            url: websiteUrl,
+            pages: websitePages,
+          }
+        : null,
+      services: detectedServices.slice(0, 5),
+    };
 
     return res.json({
       ok: true,
-      intake: {
-        facebook: {
-          name: fbPage.name,
-          category: fbPage.category,
-          about: fbPage.about || fbPage.description,
-          contact: {
-            phone: fbPage.phone,
-            emails: fbPage.emails,
-            website: fbPage.website
-          },
-          posts: fbPosts.data || []
-        },
-        instagram: igData
-          ? {
-              name: igData.name,
-              category: igData.category,
-              bio: igData.biography,
-              website: igData.website,
-              posts: igPosts
-            }
-          : null,
-        website: websiteUrl
-          ? {
-              url: websiteUrl,
-              pages: websitePages
-            }
-          : null
-      }
+      intake,
     });
 
   } catch (err) {
     return res.status(500).json({
       ok: false,
-      error: err.message
+      error: err.message,
     });
   }
 }
