@@ -228,23 +228,17 @@ try {
 } catch (e) {
   console.warn("Auto business intake failed:", e.message);
 }
-// ============================================================
-// 🌐 LANDING PAGE DETECTION (NO ASSUMPTIONS)
-// ============================================================
-
+// 🌐 LANDING PAGE DETECTION (AUTHORITATIVE — SYNCED DATA)
 let detectedLandingPage = null;
 
-// Priority order:
-// 1) Website from intake
-// 2) Facebook page website
-// 3) Instagram bio website
+// Priority 1: Synced business website
+if (autoBusinessContext?.business_website) {
+  detectedLandingPage = autoBusinessContext.business_website;
+}
 
-if (autoBusinessContext?.website?.url) {
-  detectedLandingPage = autoBusinessContext.website.url;
-} else if (autoBusinessContext?.facebook?.contact?.website) {
-  detectedLandingPage = autoBusinessContext.facebook.contact.website;
-} else if (autoBusinessContext?.instagram?.website) {
-  detectedLandingPage = autoBusinessContext.instagram.website;
+// Priority 2: Instagram website (synced)
+else if (autoBusinessContext?.instagram_website) {
+  detectedLandingPage = autoBusinessContext.instagram_website;
 }
 
  // ============================================================
