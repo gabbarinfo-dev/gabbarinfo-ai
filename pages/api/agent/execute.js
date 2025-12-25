@@ -146,6 +146,61 @@ if (metaConnected && activeBusinessId) {
     note: "User has exactly ONE Meta business connected. This is the active business.",
   };
 }
+// ============================================================
+// 📣 PLATFORM RESOLUTION (FACEBOOK / INSTAGRAM) — SOURCE OF TRUTH
+// ============================================================
+
+// Step 1: Detect connected platforms from VERIFIED assets
+const hasFacebook =
+  !!verifiedMetaAssets?.fb_page;
+
+const hasInstagram =
+  !!verifiedMetaAssets?.ig_account;
+
+// Step 2: Decide default platforms
+let resolvedPlatforms = [];
+
+if (hasFacebook && hasInstagram) {
+  resolvedPlatforms = ["facebook", "instagram"];
+} else if (hasFacebook) {
+  resolvedPlatforms = ["facebook"];
+} else if (hasInstagram) {
+  resolvedPlatforms = ["instagram"];
+}
+
+// Step 3: If nothing is connected, hard stop
+if (resolvedPlatforms.length === 0) {
+  return res.status(200).json({
+    ok: false,
+    message:
+      "No Facebook Page or Instagram Business is connected. Please connect at least one platform.",
+  });
+}
+
+// Step 4: User override (ONLY if explicitly mentioned)
+const instructionText = (body.instruction || "").toLowerCase();
+
+if (instructionText.includes("only instagram")) {
+  if (!hasInstagram) {
+    return res.status(200).json({
+      ok: false,
+      message:
+        "Instagram is not connected. Please connect your Instagram Business account or run ads on Facebook.",
+    });
+  }
+  resolvedPlatforms = ["instagram"];
+}
+
+if (instructionText.includes("only facebook")) {
+  if (!hasFacebook) {
+    return res.status(200).json({
+      ok: false,
+      message:
+        "Facebook Page is not connected. Please connect your Facebook Page or run ads on Instagram.",
+    });
+  }
+  resolvedPlatforms = ["facebook"];
+}
 
 // ============================================================
 // 🧠 AUTO BUSINESS INTAKE (READ + INJECT CONTEXT)
@@ -415,7 +470,7 @@ You are in META ADS / CREATIVE AGENT MODE.
 
 {
   "channel": "meta_ads",
-  "platform": "facebook",
+  "platform": [],
   "format": "feed_image",
   "objective": "LEAD_GENERATION",
   "creative": {
@@ -832,6 +887,9 @@ ${autoBusinessContext ? JSON.stringify(autoBusinessContext, null, 2) : "(none)"}
 
 RAG / Memory Context:
 ${ragContext || "(none)"}
+
+Resolved Platforms (AUTHORITATIVE — MUST BE USED EXACTLY IN JSON):
+${JSON.stringify(resolvedPlatforms)}
 
 ====================================================
 QUESTION GENERATION CONTEXT (MUST BE USED)
