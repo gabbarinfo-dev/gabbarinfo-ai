@@ -146,6 +146,28 @@ if (metaConnected && activeBusinessId) {
     note: "User has exactly ONE Meta business connected. This is the active business.",
   };
 }
+// ============================================================
+// 📣 META PLATFORM RESOLUTION (DEFAULT = FB + IG)
+// ============================================================
+
+let resolvedPlatforms = ["facebook", "instagram"];
+
+if (metaConnected) {
+  const hasFB = !!metaRow?.fb_page_id;
+  const hasIG = !!metaRow?.ig_business_id;
+
+  if (hasFB && !hasIG) resolvedPlatforms = ["facebook"];
+  if (!hasFB && hasIG) resolvedPlatforms = ["instagram"];
+  if (!hasFB && !hasIG) resolvedPlatforms = [];
+}
+
+if (!resolvedPlatforms.length) {
+  return res.status(200).json({
+    ok: false,
+    message:
+      "No Facebook or Instagram page is connected. Please connect at least one.",
+  });
+}
  
 // ============================================================
 // 🧠 AUTO BUSINESS INTAKE (READ + INJECT CONTEXT)
