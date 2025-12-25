@@ -1055,6 +1055,12 @@ META (FACEBOOK / INSTAGRAM) BUSINESS RULES
   - objective
   - budget
   - location (if not inferable)
+- You are STRICTLY FORBIDDEN from inventing or guessing URLs.
+  - For website traffic campaigns:
+  - Use ONLY the confirmed landing page provided in CONTEXT.
+  - If no landing page is provided, STOP and ask the user.
+- NEVER use example.com, placeholder URLs, or assumed paths.
+
 
 ----------------------------------------------------
 GOOGLE ADS BUSINESS RULES
