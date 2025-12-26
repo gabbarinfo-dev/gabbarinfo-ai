@@ -933,8 +933,6 @@ if (
 // 🔒 LOCK SELECTED SERVICE
 // ============================================================
 
-let selectedService = null;
-
 const serviceIndex = parseInt(lowerInstruction, 10);
 
 if (
