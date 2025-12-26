@@ -36,22 +36,36 @@ if (error || !meta?.fb_ad_account_id || !meta?.system_user_token) {
 const AD_ACCOUNT_ID = meta.fb_ad_account_id;
 const ACCESS_TOKEN = meta.system_user_token;
 
-  try {
-    const { imageUrl } = req.body || {};
+ const AD_ACCOUNT_ID = meta.fb_ad_account_id;
+const ACCESS_TOKEN = meta.system_user_token;
 
-    if (!imageUrl || typeof imageUrl !== "string") {
-      return res
-        .status(400)
-        .json({ ok: false, message: "imageUrl (public URL) is required in JSON body." });
-    }
+try {
+  const { imageUrl, imageBase64 } = req.body || {};
 
-    // POST to: https://graph.facebook.com/v16.0/act_{ad_account_id}/adimages
-    // send body as application/x-www-form-urlencoded with `url` param (public image)
-    const graphUrl = `https://graph.facebook.com/v16.0/act_${AD_ACCOUNT_ID}/adimages`;
+  if (!imageUrl && !imageBase64) {
+    return res.status(400).json({
+      ok: false,
+      message: "Either imageUrl or imageBase64 is required in JSON body.",
+    });
+  }
+
+  // Facebook image upload endpoint
+  const graphUrl = `https://graph.facebook.com/v16.0/act_${AD_ACCOUNT_ID}/adimages`;
 
     const params = new URLSearchParams();
-    params.append("url", imageUrl);
-    params.append("access_token", ACCESS_TOKEN);
+
+// If client provided a public image URL
+if (imageUrl) {
+  params.append("url", imageUrl);
+}
+
+// If AI generated image (base64)
+if (imageBase64) {
+  params.append("bytes", imageBase64);
+}
+
+params.append("access_token", ACCESS_TOKEN);
+
 
     const resp = await fetch(graphUrl, {
       method: "POST",
