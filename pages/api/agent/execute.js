@@ -426,27 +426,6 @@ const historyText =
         .map((m) => `${m.role === "user" ? "User" : "Assistant"}: ${m.text}`)
         .join("\n\n")
     : "";
-// ============================================================
-// 🛑 HARD GATE — SERVICE & LOCATION MUST BE CONFIRMED BEFORE GEMINI
-// ============================================================
-
-if (
-  mode === "meta_ads_plan" &&
-  (
-    !lockedCampaignState?.service ||
-    !lockedCampaignState?.location
-  )
-) {
-  return res.status(200).json({
-    ok: true,
-    mode,
-    gated: true,
-    text:
-      !lockedCampaignState?.service
-        ? "Before we proceed, please confirm which service you want to promote."
-        : "Before we proceed, please confirm the location for this campaign.",
-  });
-}
 
     // ---------- MODE-SPECIFIC FOCUS ----------
     let modeFocus = "";
@@ -699,6 +678,9 @@ if (mode === "meta_ads_plan" && activeBusinessId) {
     console.warn("Campaign state read failed:", e.message);
   }
 }
+
+    let selectedService = null;
+let selectedLocation = null;
 
 
 // ============================================================
