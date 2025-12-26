@@ -922,6 +922,69 @@ if (mode === "meta_ads_plan" && selectedMetaObjective && activeBusinessId) {
 }
 
     // ============================================================
+// 🧾 SERVICE CONFIRMATION (FROM BUSINESS INTAKE ONLY)
+// ============================================================
+
+let selectedService = null;
+
+// If already stored in campaign_state, reuse it
+if (lockedCampaignState?.service) {
+  selectedService = lockedCampaignState.service;
+}
+
+// Otherwise, ask user to confirm
+if (
+  mode === "meta_ads_plan" &&
+  !selectedService &&
+  autoBusinessContext?.detected_services?.length
+) {
+  const servicesList = autoBusinessContext.detected_services
+    .map((s, i) => `${i + 1}. ${s}`)
+    .join("\n");
+
+  return res.status(200).json({
+    ok: true,
+    mode,
+    gated: true,
+    text:
+      "Which service do you want to promote in this campaign?\n\n" +
+      servicesList +
+      "\n\nReply with the option number or paste the service name.",
+  });
+}
+
+// Capture user selection
+if (
+  mode === "meta_ads_plan" &&
+  !selectedService &&
+  autoBusinessContext?.detected_services?.length
+) {
+  const index = parseInt(lowerInstruction, 10);
+  if (!isNaN(index)) {
+    selectedService =
+      autoBusinessContext.detected_services[index - 1] || null;
+  } else {
+    selectedService = lowerInstruction;
+  }
+}
+
+// Save service in campaign_state
+if (
+  mode === "meta_ads_plan" &&
+  selectedService &&
+  activeBusinessId
+) {
+  const baseUrl = process.env.NEXT_PUBLIC_BASE_URL;
+
+  await saveAnswerMemory(baseUrl, activeBusinessId, {
+    campaign_state: {
+      ...(lockedCampaignState || {}),
+      service: selectedService,
+    },
+  });
+}
+
+    // ============================================================
 // 🔘 META CTA RESOLUTION — FORCED MODE
 // ============================================================
 
