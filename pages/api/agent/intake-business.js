@@ -122,7 +122,6 @@ export default async function handler(req, res) {
 return res.json({
   ok: true,
   intake: {
-    // 🔑 FLAT KEYS — THIS IS WHAT execute.js EXPECTS
     business_name: meta.business_name || null,
     business_category: meta.business_category || null,
     business_about: meta.business_about || null,
@@ -132,6 +131,11 @@ return res.json({
 
     instagram_bio: meta.instagram_bio || null,
     instagram_website: meta.instagram_website || null,
+
+    // ✅ ADD THIS
+    detected_services: detectedServices.length
+      ? detectedServices
+      : null,
 
     source: "supabase_synced",
     synced_at: meta.updated_at || null,
