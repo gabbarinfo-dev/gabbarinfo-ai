@@ -1154,7 +1154,7 @@ else {
           headline: headlines[0],
           body_text: primary_texts[0],
           call_to_action: cta,
-          image_hash: uploadJson.image_hash,
+          image_hash: imageHash,
           destination_url: intakeJson.intake.website || intakeJson.intake.page_url,
         },
       }),
