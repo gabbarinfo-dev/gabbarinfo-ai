@@ -683,30 +683,23 @@ if (lowerInstruction === "4" || lowerInstruction.includes("call")) {
   selectedMetaObjective = "LEAD_GENERATION";
   selectedDestination = "call";
 }
-    // ============================================================
-// 🎯 META OBJECTIVE SELECTION — HARD BLOCK (STATE AWARE)
-// ============================================================
 
-if (
-  mode === "meta_ads_plan" &&
-  !selectedMetaObjective
-) {
-  return res.status(200).json({
-    ok: true,
-    mode,
-    gated: true,
-    text:
-      "What do you want people to do after seeing your ad?\n\n" +
-      "Please choose ONE option:\n\n" +
-      "1. Visit your website\n" +
-      "2. Visit your Instagram profile\n" +
-      "3. Visit your Facebook page\n" +
-      "4. Call you\n" +
-      "5. WhatsApp you\n" +
-      "6. Send you messages on Facebook or Instagram",
-  });
+// Option 5 — WhatsApp
+if (lowerInstruction === "5" || lowerInstruction.includes("whatsapp")) {
+  selectedMetaObjective = "LEAD_GENERATION";
+  selectedDestination = "whatsapp";
 }
-    // ============================================================
+
+// Option 6 — Messages
+if (
+  lowerInstruction === "6" ||
+  lowerInstruction.includes("message")
+) {
+  selectedMetaObjective = "LEAD_GENERATION";
+  selectedDestination = "messages";
+}
+
+// ============================================================
 // 🔁 OBJECTIVE OVERRIDE (EXPLICIT USER INTENT ONLY)
 // ============================================================
 
@@ -733,6 +726,30 @@ const wantsObjectiveChange =
 if (mode === "meta_ads_plan" && wantsObjectiveChange) {
   selectedMetaObjective = null;
   selectedDestination = null;
+}
+
+// ============================================================
+// 🎯 META OBJECTIVE SELECTION — HARD BLOCK (STATE AWARE)
+// ============================================================
+
+if (
+  mode === "meta_ads_plan" &&
+  !selectedMetaObjective
+) {
+  return res.status(200).json({
+    ok: true,
+    mode,
+    gated: true,
+    text:
+      "What do you want people to do after seeing your ad?\n\n" +
+      "Please choose ONE option:\n\n" +
+      "1. Visit your website\n" +
+      "2. Visit your Instagram profile\n" +
+      "3. Visit your Facebook page\n" +
+      "4. Call you\n" +
+      "5. WhatsApp you\n" +
+      "6. Send you messages on Facebook or Instagram",
+  });
 }
 
 // ============================================================
@@ -782,11 +799,6 @@ if (
   });
 }
 
-// Option 5 — WhatsApp
-if (lowerInstruction === "5" || lowerInstruction.includes("whatsapp")) {
-  selectedMetaObjective = "LEAD_GENERATION";
-  selectedDestination = "whatsapp";
-}
 // ============================================================
 // 💬 WHATSAPP DESTINATION CONFIRMATION (ALWAYS ASK)
 // ============================================================
@@ -797,7 +809,6 @@ let detectedWhatsappNumber = null;
 if (autoBusinessContext?.business_phone) {
   detectedWhatsappNumber = autoBusinessContext.business_phone;
 }
-
 
 // 2️⃣ If WhatsApp selected → ALWAYS confirm
 if (selectedDestination === "whatsapp") {
@@ -817,15 +828,7 @@ if (selectedDestination === "whatsapp") {
   });
 }
 
-// Option 6 — Messages
-if (
-  lowerInstruction === "6" ||
-  lowerInstruction.includes("message")
-) {
-  selectedMetaObjective = "LEAD_GENERATION";
-  selectedDestination = "messages";
-}
-        // ============================================================
+// ============================================================
 // 🌐 LANDING PAGE CONFIRMATION GATE (TRAFFIC ONLY)
 // ============================================================
 
@@ -856,6 +859,24 @@ if (
       `Reply YES to confirm, or paste a different URL.`,
   });
 }
+
+// ============================================================
+// 🔒 LOCK CAMPAIGN STATE — OBJECTIVE & DESTINATION FINAL
+// ============================================================
+
+if (mode === "meta_ads_plan" && selectedMetaObjective && activeBusinessId) {
+  const baseUrl = process.env.NEXT_PUBLIC_BASE_URL;
+
+  await saveAnswerMemory(baseUrl, activeBusinessId, {
+    campaign_state: {
+      stage: "objective_selected",
+      objective: selectedMetaObjective,
+      destination: selectedDestination,
+      locked_at: new Date().toISOString(),
+    },
+  });
+}
+
     // ============================================================
 // 🔘 META CTA RESOLUTION — FORCED MODE
 // ============================================================
