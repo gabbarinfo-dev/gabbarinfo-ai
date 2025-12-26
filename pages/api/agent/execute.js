@@ -1435,6 +1435,24 @@ if (
 if (activeBusinessId && Object.keys(detectedAnswers).length > 0) {
   await saveAnswerMemory(baseUrl, activeBusinessId, detectedAnswers);
 }
+// ============================================================
+// 🔒 INJECT LOCKED CAMPAIGN STATE INTO GEMINI CONTEXT (AUTHORITATIVE)
+// ============================================================
+
+const lockedContext = lockedCampaignState
+  ? `
+LOCKED CAMPAIGN STATE (DO NOT CHANGE OR RE-ASK):
+- Objective: ${lockedCampaignState.objective || "N/A"}
+- Destination: ${lockedCampaignState.destination || "N/A"}
+- Service: ${lockedCampaignState.service || "N/A"}
+- Location: ${lockedCampaignState.location || "N/A"}
+
+RULES:
+- You MUST NOT ask again for objective, destination, service, or location.
+- You MUST use these as FINAL.
+- Only suggest: budget, targeting, creatives, duration.
+`
+  : "";
 
 const systemPrompt = `
 You are GabbarInfo AI – a senior digital marketing strategist and backend AGENT.
@@ -1515,7 +1533,7 @@ MULTIPLE BUSINESS SAFETY
 PLATFORM MODE GUIDANCE
 ====================================================
 ${modeFocus}
-
+${lockedContext}
 ====================================================
 CLIENT CONTEXT (AUTHORITATIVE — MUST BE USED)
 ====================================================
