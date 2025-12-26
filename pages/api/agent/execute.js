@@ -727,6 +727,38 @@ if (mode === "meta_ads_plan" && wantsObjectiveChange) {
   selectedMetaObjective = null;
   selectedDestination = null;
 }
+// ============================================================
+// 🔁 READ LOCKED CAMPAIGN STATE (OBJECTIVE)
+// ============================================================
+
+let lockedCampaignState = null;
+
+if (mode === "meta_ads_plan" && activeBusinessId) {
+  const baseUrl = process.env.NEXT_PUBLIC_BASE_URL;
+
+  try {
+    const memRes = await fetch(`${baseUrl}/api/agent/answer-memory`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        business_id: activeBusinessId,
+        read: true,
+      }),
+    });
+
+    const memJson = await memRes.json();
+
+    if (memJson?.campaign_state?.objective) {
+      lockedCampaignState = memJson.campaign_state;
+
+      // 🔒 Rehydrate locked values
+      selectedMetaObjective = memJson.campaign_state.objective;
+      selectedDestination = memJson.campaign_state.destination;
+    }
+  } catch (e) {
+    console.warn("Campaign state read failed:", e.message);
+  }
+}
 
 // ============================================================
 // 🎯 META OBJECTIVE SELECTION — HARD BLOCK (STATE AWARE)
