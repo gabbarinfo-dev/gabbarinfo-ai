@@ -645,31 +645,37 @@ if (!isAdmin && !metaConnected && !profiles.length) {
   });
 }
 // ============================================================
-// 🔍 READ LOCKED CAMPAIGN STATE (AUTHORITATIVE)
+// 🔍 READ LOCKED CAMPAIGN STATE (AUTHORITATIVE — SINGLE SOURCE)
 // ============================================================
 
 let lockedCampaignState = null;
 
-if (activeBusinessId) {
+if (mode === "meta_ads_plan" && activeBusinessId) {
   const baseUrl = process.env.NEXT_PUBLIC_BASE_URL;
 
-  const memRes = await fetch(`${baseUrl}/api/rag/query`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({
-      query: "campaign_state",
-      memory_type: "client",
-      client_email: session.user.email,
-      top_k: 1,
-    }),
-  });
+  try {
+    const memRes = await fetch(`${baseUrl}/api/rag/query`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        query: "campaign_state",
+        memory_type: "client",
+        client_email: session.user.email,
+        top_k: 1,
+      }),
+    });
 
-  const memJson = await memRes.json();
+    const memJson = await memRes.json();
 
-  if (memJson?.chunks?.length) {
-    try {
-      lockedCampaignState = JSON.parse(memJson.chunks[0].content)?.campaign_state;
-    } catch (_) {}
+    if (memJson?.chunks?.length) {
+      try {
+        lockedCampaignState = JSON.parse(
+          memJson.chunks[0].content
+        )?.campaign_state;
+      } catch (_) {}
+    }
+  } catch (e) {
+    console.warn("Campaign state read failed:", e.message);
   }
 }
 
@@ -682,54 +688,7 @@ let selectedDestination = null;
 
 const lowerInstruction = instruction.toLowerCase().trim();
 
-// Option 1 — Website traffic
-if (lowerInstruction === "1" || lowerInstruction.includes("website")) {
-  selectedMetaObjective = "TRAFFIC";
-  selectedDestination = "website";
-}
-
-// Option 2 — Instagram profile
-if (
-  lowerInstruction === "2" ||
-  lowerInstruction.includes("instagram profile")
-) {
-  selectedMetaObjective = "TRAFFIC";
-  selectedDestination = "instagram_profile";
-}
-
-// Option 3 — Facebook page
-if (
-  lowerInstruction === "3" ||
-  lowerInstruction.includes("facebook page")
-) {
-  selectedMetaObjective = "TRAFFIC";
-  selectedDestination = "facebook_page";
-}
-
-// Option 4 — Call
-if (lowerInstruction === "4" || lowerInstruction.includes("call")) {
-  selectedMetaObjective = "LEAD_GENERATION";
-  selectedDestination = "call";
-}
-
-// Option 5 — WhatsApp
-if (lowerInstruction === "5" || lowerInstruction.includes("whatsapp")) {
-  selectedMetaObjective = "LEAD_GENERATION";
-  selectedDestination = "whatsapp";
-}
-
-// Option 6 — Messages
-if (
-  lowerInstruction === "6" ||
-  lowerInstruction.includes("message")
-) {
-  selectedMetaObjective = "LEAD_GENERATION";
-  selectedDestination = "messages";
-}
-// ============================================================
-// 🔐 APPLY LOCKED OBJECTIVE (IF EXISTS)
-// ============================================================
-
+// 🔐 APPLY LOCKED OBJECTIVE FIRST (IF EXISTS)
 if (
   mode === "meta_ads_plan" &&
   lockedCampaignState?.objective &&
@@ -737,6 +696,51 @@ if (
 ) {
   selectedMetaObjective = lockedCampaignState.objective;
   selectedDestination = lockedCampaignState.destination;
+}
+
+// 🧑‍💬 Parse ONLY if not already locked
+if (!selectedMetaObjective) {
+  // Option 1 — Website traffic
+  if (lowerInstruction === "1" || lowerInstruction.includes("website")) {
+    selectedMetaObjective = "TRAFFIC";
+    selectedDestination = "website";
+  }
+
+  // Option 2 — Instagram profile
+  if (
+    lowerInstruction === "2" ||
+    lowerInstruction.includes("instagram profile")
+  ) {
+    selectedMetaObjective = "TRAFFIC";
+    selectedDestination = "instagram_profile";
+  }
+
+  // Option 3 — Facebook page
+  if (
+    lowerInstruction === "3" ||
+    lowerInstruction.includes("facebook page")
+  ) {
+    selectedMetaObjective = "TRAFFIC";
+    selectedDestination = "facebook_page";
+  }
+
+  // Option 4 — Call
+  if (lowerInstruction === "4" || lowerInstruction.includes("call")) {
+    selectedMetaObjective = "LEAD_GENERATION";
+    selectedDestination = "call";
+  }
+
+  // Option 5 — WhatsApp
+  if (lowerInstruction === "5" || lowerInstruction.includes("whatsapp")) {
+    selectedMetaObjective = "LEAD_GENERATION";
+    selectedDestination = "whatsapp";
+  }
+
+  // Option 6 — Messages
+  if (lowerInstruction === "6" || lowerInstruction.includes("message")) {
+    selectedMetaObjective = "LEAD_GENERATION";
+    selectedDestination = "messages";
+  }
 }
 
 // ============================================================
@@ -766,38 +770,6 @@ const wantsObjectiveChange =
 if (mode === "meta_ads_plan" && wantsObjectiveChange) {
   selectedMetaObjective = null;
   selectedDestination = null;
-}
-// ============================================================
-// 🔁 READ LOCKED CAMPAIGN STATE (OBJECTIVE)
-// ============================================================
-
-let lockedCampaignState = null;
-
-if (mode === "meta_ads_plan" && activeBusinessId) {
-  const baseUrl = process.env.NEXT_PUBLIC_BASE_URL;
-
-  try {
-    const memRes = await fetch(`${baseUrl}/api/agent/answer-memory`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        business_id: activeBusinessId,
-        read: true,
-      }),
-    });
-
-    const memJson = await memRes.json();
-
-    if (memJson?.campaign_state?.objective) {
-      lockedCampaignState = memJson.campaign_state;
-
-      // 🔒 Rehydrate locked values
-      selectedMetaObjective = memJson.campaign_state.objective;
-      selectedDestination = memJson.campaign_state.destination;
-    }
-  } catch (e) {
-    console.warn("Campaign state read failed:", e.message);
-  }
 }
 
 // ============================================================
