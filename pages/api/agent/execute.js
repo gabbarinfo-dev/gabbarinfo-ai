@@ -903,6 +903,62 @@ if (
       `Reply YES to confirm, or paste a different URL.`,
   });
 }
+// ============================================================
+// 🧾 SERVICE DETECTION (FROM BUSINESS INTAKE)
+// ============================================================
+
+const availableServices =
+  autoBusinessContext?.detected_services || [];
+// ============================================================
+// ❓ SERVICE CONFIRMATION (BEFORE BUDGET / LOCATION)
+// ============================================================
+
+if (
+  mode === "meta_ads_plan" &&
+  !lockedCampaignState?.service &&
+  availableServices.length
+) {
+  return res.status(200).json({
+    ok: true,
+    gated: true,
+    text:
+      "Which service do you want to promote in this campaign?\n\n" +
+      availableServices
+        .map((s, i) => `${i + 1}. ${s}`)
+        .join("\n") +
+      "\n\nReply with the option number.",
+  });
+}
+// ============================================================
+// 🔒 LOCK SELECTED SERVICE
+// ============================================================
+
+let selectedService = null;
+
+const serviceIndex = parseInt(lowerInstruction, 10);
+
+if (
+  !isNaN(serviceIndex) &&
+  availableServices[serviceIndex - 1]
+) {
+  selectedService = availableServices[serviceIndex - 1];
+}
+
+if (
+  selectedService &&
+  activeBusinessId
+) {
+  const baseUrl = process.env.NEXT_PUBLIC_BASE_URL;
+
+  await saveAnswerMemory(baseUrl, activeBusinessId, {
+    campaign_state: {
+      ...lockedCampaignState,
+      service: selectedService,
+      stage: "service_selected",
+      locked_at: new Date().toISOString(),
+    },
+  });
+}
 
 // ============================================================
 // 🔒 LOCK CAMPAIGN STATE — OBJECTIVE & DESTINATION FINAL
