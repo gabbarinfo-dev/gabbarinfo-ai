@@ -644,6 +644,34 @@ if (!isAdmin && !metaConnected && !profiles.length) {
       qJson.questions.map((q, i) => `${i + 1}. ${q}`).join("\n"),
   });
 }
+// ============================================================
+// 🔍 READ LOCKED CAMPAIGN STATE (AUTHORITATIVE)
+// ============================================================
+
+let lockedCampaignState = null;
+
+if (activeBusinessId) {
+  const baseUrl = process.env.NEXT_PUBLIC_BASE_URL;
+
+  const memRes = await fetch(`${baseUrl}/api/rag/query`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      query: "campaign_state",
+      memory_type: "client",
+      client_email: session.user.email,
+      top_k: 1,
+    }),
+  });
+
+  const memJson = await memRes.json();
+
+  if (memJson?.chunks?.length) {
+    try {
+      lockedCampaignState = JSON.parse(memJson.chunks[0].content)?.campaign_state;
+    } catch (_) {}
+  }
+}
 
 // ============================================================
 // 🎯 META OBJECTIVE PARSING (USER SELECTION)
@@ -697,6 +725,18 @@ if (
 ) {
   selectedMetaObjective = "LEAD_GENERATION";
   selectedDestination = "messages";
+}
+// ============================================================
+// 🔐 APPLY LOCKED OBJECTIVE (IF EXISTS)
+// ============================================================
+
+if (
+  mode === "meta_ads_plan" &&
+  lockedCampaignState?.objective &&
+  lockedCampaignState?.destination
+) {
+  selectedMetaObjective = lockedCampaignState.objective;
+  selectedDestination = lockedCampaignState.destination;
 }
 
 // ============================================================
