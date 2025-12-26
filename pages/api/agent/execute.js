@@ -1066,7 +1066,37 @@ if (
   const { image_prompt, headlines, primary_texts, cta } =
     creativeJson.creative;
 
-  // 3️⃣ Generate image (OpenAI)
+ // ===============================
+// 🖼️ IMAGE SOURCE DECISION (SAFE)
+// ===============================
+
+let imageHash = null;
+
+// CASE 1️⃣: Client provided an image URL
+if (body.image_url) {
+  const upload = await fetch(`${baseUrl}/api/meta/upload-image`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      imageUrl: body.image_url,
+    }),
+  });
+
+  const uploadJson = await upload.json();
+
+  if (!uploadJson?.ok || !uploadJson.imageHash) {
+    return res.json({
+      ok: false,
+      message: "Image upload failed (client image).",
+    });
+  }
+
+  imageHash = uploadJson.imageHash;
+}
+
+// CASE 2️⃣: No image given → generate using AI
+else {
+  // Generate image using OpenAI
   const imgGen = await fetch(`${baseUrl}/api/images/generate`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
@@ -1074,21 +1104,35 @@ if (
   });
 
   const imgJson = await imgGen.json();
+
   if (!imgJson?.ok || !imgJson.imageBase64) {
-    return res.json({ ok: false, message: "Image generation failed" });
+    return res.json({
+      ok: false,
+      message: "Image generation failed",
+    });
   }
 
-  // 4️⃣ Upload image to Meta
+  // Upload AI image to Meta
   const upload = await fetch(`${baseUrl}/api/meta/upload-image`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ imageBase64: imgJson.imageBase64 }),
+    body: JSON.stringify({
+      imageBase64: imgJson.imageBase64,
+    }),
   });
 
   const uploadJson = await upload.json();
-  if (!uploadJson?.ok || !uploadJson.image_hash) {
-    return res.json({ ok: false, message: "Image upload failed" });
+
+  if (!uploadJson?.ok || !uploadJson.imageHash) {
+    return res.json({
+      ok: false,
+      message: "Image upload failed",
+    });
   }
+
+  imageHash = uploadJson.imageHash;
+}
+
 
   // 5️⃣ Execute paused campaign
   const execRes = await fetch(
