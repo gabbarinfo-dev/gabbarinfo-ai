@@ -958,6 +958,72 @@ if (
   });
 }
 
+    // ============================================================
+// 📍 LOCATION DETECTION (FROM BUSINESS INTAKE ONLY)
+// ============================================================
+
+let detectedLocation =
+  autoBusinessContext?.business_city ||
+  autoBusinessContext?.business_location ||
+  null;
+
+// ============================================================
+// ❓ LOCATION CONFIRMATION (ONCE ONLY)
+// ============================================================
+
+if (
+  mode === "meta_ads_plan" &&
+  !lockedCampaignState?.location &&
+  detectedLocation
+) {
+  return res.status(200).json({
+    ok: true,
+    gated: true,
+    text:
+      `I detected this location for your business:\n\n📍 ${detectedLocation}\n\n` +
+      `Should I run ads for this location?\n\n` +
+      `Reply YES to confirm, or type a different city / area.`,
+  });
+}
+
+// ============================================================
+// 🔒 LOCK LOCATION (CONFIRMED OR USER-PROVIDED)
+// ============================================================
+
+// Case 1️⃣ User confirmed detected location
+if (
+  detectedLocation &&
+  instruction.toLowerCase().includes("yes")
+) {
+  selectedLocation = detectedLocation;
+}
+
+// Case 2️⃣ User typed a new location
+if (
+  !instruction.toLowerCase().includes("yes") &&
+  instruction.length > 2 &&
+  !instruction.match(/^\d+$/)
+) {
+  selectedLocation = instruction.trim();
+}
+
+if (
+  selectedLocation &&
+  activeBusinessId
+) {
+  const baseUrl = process.env.NEXT_PUBLIC_BASE_URL;
+
+  await saveAnswerMemory(baseUrl, activeBusinessId, {
+    campaign_state: {
+      ...lockedCampaignState,
+      location: selectedLocation,
+      stage: "location_selected",
+      locked_at: new Date().toISOString(),
+    },
+  });
+}
+
+
 // ============================================================
 // 🔒 LOCK CAMPAIGN STATE — OBJECTIVE & DESTINATION FINAL
 // ============================================================
