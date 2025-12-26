@@ -699,8 +699,7 @@ if (mode === "meta_ads_plan" && activeBusinessId) {
     console.warn("Campaign state read failed:", e.message);
   }
 }
-let selectedService = null;
-let selectedLocation = null;
+
 
 // ============================================================
 // 🎯 META OBJECTIVE PARSING (USER SELECTION)
