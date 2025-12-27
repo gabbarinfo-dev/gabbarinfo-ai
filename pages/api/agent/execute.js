@@ -1016,15 +1016,28 @@ You are in GENERIC DIGITAL MARKETING AGENT MODE.
     // 🌐 LANDING PAGE CONFIRMATION GATE (TRAFFIC ONLY)
     // ============================================================
 
-    let landingPageConfirmed = false;
+    let landingPageConfirmed = !!lockedCampaignState?.landing_page;
 
     // Detect confirmation from user reply
     if (
-      instruction.toLowerCase().includes("yes") ||
-      instruction.toLowerCase().includes("use this") ||
-      instruction.toLowerCase().includes("correct")
+      !landingPageConfirmed &&
+      (instruction.toLowerCase().includes("yes") ||
+        instruction.toLowerCase().includes("use this") ||
+        instruction.toLowerCase().includes("correct"))
     ) {
       landingPageConfirmed = true;
+      // 💾 Save to state immediately
+      if (activeBusinessId && detectedLandingPage) {
+        lockedCampaignState = {
+          ...lockedCampaignState,
+          landing_page: detectedLandingPage,
+          locked_at: new Date().toISOString()
+        };
+        const baseUrl = process.env.NEXT_PUBLIC_BASE_URL;
+        await saveAnswerMemory(baseUrl, activeBusinessId, {
+          campaign_state: lockedCampaignState
+        });
+      }
     }
 
     // If objective is website traffic and landing page exists but not confirmed
@@ -1806,12 +1819,14 @@ Otherwise, respond with a full, clear explanation, and include example JSON only
       ],
     });
 
-    let text =
+    const rawText =
       (result &&
         result.response &&
         typeof result.response.text === "function" &&
         result.response.text()) ||
       "";
+
+    let text = rawText;
 
     // 🧹 CLEANUP: If Gemini outputs JSON, hide it from the user flow (User complaint: "Jumps to JSON").
     // We only want to show the JSON *Summary* text if passing a proposed plan.
@@ -1820,16 +1835,12 @@ Otherwise, respond with a full, clear explanation, and include example JSON only
       text = text.replace(/```json[\s\S]*?```/g, "").trim();
       if (!text) text = "I have drafted a plan based on your requirements. Please check it internally.";
     }
-    (result &&
-      result.response &&
-      typeof result.response.text === "function" &&
-      result.response.text()) ||
-      "";
 
     // 🕵️ DETECT AND SAVE JSON PLAN (FROM GEMINI)
     // If Gemini outputs a JSON block that looks like a campaign plan, save it to memory.
     if (activeBusinessId) {
-      const jsonMatch = text.match(/```json\n([\s\S]*?)\n```/);
+      // USE rawText HERE because 'text' might be cleaned
+      const jsonMatch = rawText.match(/```json\n([\s\S]*?)\n```/);
       if (jsonMatch && jsonMatch[1]) {
         try {
           const planJson = JSON.parse(jsonMatch[1]);
