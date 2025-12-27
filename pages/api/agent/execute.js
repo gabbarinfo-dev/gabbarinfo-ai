@@ -689,51 +689,59 @@ You are in GENERIC DIGITAL MARKETING AGENT MODE.
         instruction.toLowerCase().includes("yes") ||
         instruction.toLowerCase().includes("approve") ||
         instruction.toLowerCase().includes("confirm") ||
-        instruction.toLowerCase().includes("proceed");
+        instruction.toLowerCase().includes("proceed") ||
+        instruction.toLowerCase().includes("launch"); // Added LAUNCH
 
       // 1️⃣ TRANSITION: PLAN_PROPOSED -> IMAGE_GENERATION
       if (stage === "PLAN_PROPOSED" && userSaysYes) {
         // User accepted the JSON plan. Now generate image.
         const plan = lockedCampaignState.plan;
+        
+        // Safety check: Is plan valid?
+        if (!plan || !plan.campaign_name) {
+             console.warn("Invalid plan in state, resetting...");
+             // Allow fall-through to re-generate plan
+        } else {
 
-        // Synthesize a prompt for the image generator (based on plan)
-        const creative = plan.ad_sets?.[0]?.ad_creative || {};
-        const imagePrompt =
-          creative.imagePrompt ||
-          creative.primary_text ||
-          `${plan.campaign_name} ad image`;
+            // Synthesize a prompt for the image generator (based on plan)
+            const creative = plan.ad_sets?.[0]?.ad_creative || {};
+            const imagePrompt =
+            creative.imagePrompt ||
+            creative.primary_text ||
+            `${plan.campaign_name} ad image`;
 
-        // Call Image Gen API
-        const imgRes = await fetch(`${process.env.NEXT_PUBLIC_BASE_URL}/api/images/generate`, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ prompt: imagePrompt }),
-        });
-        const imgJson = await imgRes.json();
+            // Call Image Gen API
+            const imgRes = await fetch(`${process.env.NEXT_PUBLIC_BASE_URL}/api/images/generate`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ prompt: imagePrompt }),
+            });
+            const imgJson = await imgRes.json();
 
-        if (imgJson.imageBase64) {
-          const newCreative = {
-            ...creative,
-            imageBase64: imgJson.imageBase64,
-            imageUrl: `data:image/png;base64,${imgJson.imageBase64}` // For UI display
-          };
+            if (imgJson.imageBase64) {
+            const newCreative = {
+                ...creative,
+                imageBase64: imgJson.imageBase64,
+                imageUrl: `data:image/png;base64,${imgJson.imageBase64}` // For UI display
+            };
 
-          // Update State
-          const newState = {
-            ...lockedCampaignState,
-            stage: "IMAGE_GENERATED",
-            creative: newCreative
-          };
+            // Update State
+            const newState = {
+                ...lockedCampaignState,
+                stage: "IMAGE_GENERATED",
+                creative: newCreative
+            };
 
-          await saveAnswerMemory(process.env.NEXT_PUBLIC_BASE_URL, activeBusinessId, {
-            campaign_state: newState
-          });
+            await saveAnswerMemory(process.env.NEXT_PUBLIC_BASE_URL, activeBusinessId, {
+                campaign_state: newState
+            });
 
-          return res.status(200).json({
-            ok: true,
-            text: `I've generated an image for your ad based on the plan.\n\nHere it is:\n\n[Image Generated]\n\nDo you want to use this image and launch the campaign? Reply YES to confirm.`,
-            imageUrl: newCreative.imageUrl
-          });
+            return res.status(200).json({
+                ok: true,
+                text: `I've generated an image for your ad based on the plan.\n\nHere it is:\n\n[Image Generated]\n\nDo you want to use this image and launch the campaign? Reply YES to confirm.`,
+                imageUrl: newCreative.imageUrl
+            });
+            }
         }
       }
 
