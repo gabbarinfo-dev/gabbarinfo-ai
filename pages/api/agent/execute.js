@@ -693,10 +693,16 @@ You are in GENERIC DIGITAL MARKETING AGENT MODE.
         instruction.toLowerCase().includes("launch"); // Added LAUNCH
 
       // 1️⃣ TRANSITION: PLAN_PROPOSED -> IMAGE_GENERATION
-      if (stage === "PLAN_PROPOSED" && userSaysYes) {
+      // Relaxed condition: If we have a plan but no image yet, and user says YES/LAUNCH
+      const hasPlan = lockedCampaignState.plan && lockedCampaignState.plan.campaign_name;
+      const hasImage = lockedCampaignState.creative && lockedCampaignState.creative.imageBase64;
+
+      if ((stage === "PLAN_PROPOSED" || (hasPlan && !hasImage)) && userSaysYes) {
         // User accepted the JSON plan. Now generate image.
         const plan = lockedCampaignState.plan;
         
+        console.log("🚀 Starting Image Generation...");
+
         // Safety check: Is plan valid?
         if (!plan || !plan.campaign_name) {
              console.warn("Invalid plan in state, resetting...");
@@ -741,12 +747,20 @@ You are in GENERIC DIGITAL MARKETING AGENT MODE.
                 text: `I've generated an image for your ad based on the plan.\n\nHere it is:\n\n[Image Generated]\n\nDo you want to use this image and launch the campaign? Reply YES to confirm.`,
                 imageUrl: newCreative.imageUrl
             });
+            } else {
+               // Image gen failed
+               return res.status(200).json({
+                   ok: true,
+                   text: "I tried to generate the image, but the image service is not responding. Please try again."
+               });
             }
         }
       }
 
       // 2️⃣ TRANSITION: IMAGE_GENERATED -> READY_TO_LAUNCH
-      if (stage === "IMAGE_GENERATED" && userSaysYes) {
+      const hasImageHash = lockedCampaignState.image_hash;
+      
+      if ((stage === "IMAGE_GENERATED" || (hasImage && !hasImageHash)) && userSaysYes) {
         // Upload image to Meta
         const creative = lockedCampaignState.creative;
 
@@ -1663,14 +1677,22 @@ Otherwise, respond with a full, clear explanation, and include example JSON only
     if (activeBusinessId) {
       let jsonString = null;
 
-      // Try specific code block (More permissive regex)
+      // 1. Try code blocks
       const strictMatch = rawText.match(/```(?:json)?\s*([\s\S]*?)\s*```/);
       if (strictMatch) {
         jsonString = strictMatch[1];
-      }
-      // Try raw JSON (fallback)
-      else if (rawText.trim().startsWith("{") && rawText.trim().endsWith("}")) {
-        jsonString = rawText.trim();
+      } else {
+        // 2. Try finding the outermost JSON object (Robust Fallback)
+        // Look for the first '{' and the last '}'
+        const start = rawText.indexOf('{');
+        const end = rawText.lastIndexOf('}');
+        if (start !== -1 && end !== -1 && end > start) {
+             // Verify it looks like our JSON (has campaign_name or EXECUTE)
+             const candidate = rawText.substring(start, end + 1);
+             if (candidate.includes("campaign_") || candidate.includes("EXECUTE")) {
+                 jsonString = candidate;
+             }
+        }
       }
 
       if (jsonString) {
