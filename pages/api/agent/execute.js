@@ -22,7 +22,7 @@ if (GEMINI_API_KEY) {
 }
 
 async function saveAnswerMemory(baseUrl, business_id, answers) {
-  await fetch(`${baseUrl}/api/agent/answer-memory`, {
+  await fetch(${baseUrl}/api/agent/answer-memory, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({
