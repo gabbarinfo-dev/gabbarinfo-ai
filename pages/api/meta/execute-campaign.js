@@ -18,17 +18,20 @@ export default async function handler(req, res) {
     return res.status(401).json({ ok: false, message: "Unauthorized" });
   }
 
-  const { campaign, adset, creative } = req.body || {};
-  if (!campaign || !adset || !creative) {
+  // 1. Parse Payload
+  const { platform, payload } = req.body || {};
+  
+  if (!payload || !payload.campaign_name) {
     return res.status(400).json({
       ok: false,
-      message: "campaign, adset and creative payload required",
+      message: "Invalid payload. 'campaign_name' is required.",
     });
   }
 
+  // 2. Get Meta Connection
   const { data: meta, error } = await supabase
     .from("meta_connections")
-    .select("fb_ad_account_id, system_user_token")
+    .select("fb_ad_account_id, system_user_token, fb_page_id")
     .eq("email", session.user.email.toLowerCase())
     .single();
 
@@ -41,105 +44,177 @@ export default async function handler(req, res) {
 
   const AD_ACCOUNT_ID = meta.fb_ad_account_id;
   const ACCESS_TOKEN = meta.system_user_token;
-
+  const PAGE_ID = meta.fb_page_id;
   const base = `https://graph.facebook.com/v19.0/act_${AD_ACCOUNT_ID}`;
 
-  let campaignId, adsetId, creativeId, adId;
+  // Track created assets for rollback/reporting
+  const createdAssets = {
+    campaign_id: null,
+    ad_sets: [],
+    ads: []
+  };
 
   try {
-    // 1️⃣ Campaign (PAUSED)
-    const campaignRes = await fetch(`${base}/campaigns`, {
+    // =================================================================
+    // STEP 1: CREATE CAMPAIGN
+    // =================================================================
+    const campaignBody = {
+      name: payload.campaign_name,
+      objective: payload.objective || "OUTCOME_TRAFFIC",
+      status: "PAUSED",
+      special_ad_categories: [], // Required field
+      access_token: ACCESS_TOKEN,
+    };
+
+    const campRes = await fetch(`${base}/campaigns`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        ...campaign,
-        status: "PAUSED",
-        access_token: ACCESS_TOKEN,
-      }),
+      body: JSON.stringify(campaignBody),
     });
 
-    const campaignJson = await campaignRes.json();
-    if (!campaignRes.ok) throw campaignJson;
-    campaignId = campaignJson.id;
+    const campJson = await campRes.json();
+    if (!campRes.ok) {
+      throw new Error(`Campaign Create Failed: ${campJson.error?.message || JSON.stringify(campJson)}`);
+    }
+    
+    const campaignId = campJson.id;
+    createdAssets.campaign_id = campaignId;
 
-    // 2️⃣ Ad Set (PAUSED)
-    const adsetRes = await fetch(`${base}/adsets`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        ...adset,
+    // =================================================================
+    // STEP 2: CREATE AD SETS & ADS
+    // =================================================================
+    const adSets = payload.ad_sets || [];
+    
+    for (const adSet of adSets) {
+      // --- A. Create Ad Set ---
+      const budgetAmount = payload.budget?.amount || 500; // Default 500
+      
+      const adSetBody = {
+        name: adSet.name || "Ad Set 1",
         campaign_id: campaignId,
+        daily_budget: Math.floor(Number(budgetAmount) * 100), // Convert to cents/paise
+        billing_event: "IMPRESSIONS",
+        optimization_goal: "LINK_CLICKS", // Default for traffic
+        bid_strategy: "LOWEST_COST_WITHOUT_CAP",
         status: "PAUSED",
+        targeting: payload.targeting || { "geo_locations": { "countries": ["IN"] } },
         access_token: ACCESS_TOKEN,
-      }),
-    });
+      };
 
-    const adsetJson = await adsetRes.json();
-    if (!adsetRes.ok) throw adsetJson;
-    adsetId = adsetJson.id;
+      // Adjust Optimization Goal based on Objective
+      if (payload.objective === "OUTCOME_LEADS") {
+        adSetBody.optimization_goal = "LEAD_GENERATION";
+      }
 
-    // 3️⃣ Creative
-    const creativeRes = await fetch(`${base}/adcreatives`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        ...creative,
+      // Safe fallback for targeting if cities provided without keys (common AI error)
+      // If targeting has cities with names but no keys, we might strip them to avoid errors
+      // For now, we try as-is. If it fails, we could retry, but let's keep it simple.
+      
+      const adSetRes = await fetch(`${base}/adsets`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(adSetBody),
+      });
+
+      const adSetJson = await adSetRes.json();
+      if (!adSetRes.ok) {
+        // Retry with safe targeting if likely targeting error
+        if (JSON.stringify(adSetJson).includes("targeting")) {
+            console.warn("Targeting failed, retrying with Country only.");
+            adSetBody.targeting = { "geo_locations": { "countries": ["IN"] } };
+            const retryRes = await fetch(`${base}/adsets`, {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify(adSetBody),
+            });
+            const retryJson = await retryRes.json();
+            if (!retryRes.ok) throw new Error(`AdSet Create Failed (Retry): ${retryJson.error?.message}`);
+            
+            adSetJson.id = retryJson.id; // Update ID
+        } else {
+            throw new Error(`AdSet Create Failed: ${adSetJson.error?.message}`);
+        }
+      }
+
+      const adSetId = adSetJson.id;
+      createdAssets.ad_sets.push(adSetId);
+
+      // --- B. Create Creative ---
+      const creative = adSet.ad_creative || {};
+      const imageHash = creative.image_hash;
+      
+      if (!imageHash) {
+        console.warn(`Skipping Ad Creation for AdSet ${adSetId}: No image_hash provided.`);
+        continue;
+      }
+
+      const creativeBody = {
+        name: creative.headline || "Creative 1",
+        object_story_spec: {
+          page_id: PAGE_ID,
+          link_data: {
+            image_hash: imageHash,
+            link: creative.destination_url || "https://facebook.com",
+            message: creative.primary_text || "",
+            name: creative.headline || "",
+            call_to_action: {
+              type: creative.call_to_action || "LEARN_MORE"
+            }
+          }
+        },
         access_token: ACCESS_TOKEN,
-      }),
-    });
+      };
 
-    const creativeJson = await creativeRes.json();
-    if (!creativeRes.ok) throw creativeJson;
-    creativeId = creativeJson.id;
+      const creativeRes = await fetch(`${base}/adcreatives`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(creativeBody),
+      });
 
-    // 4️⃣ Ad (PAUSED)
-    const adRes = await fetch(`${base}/ads`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        name: "Gabbarinfo AI Ad",
-        adset_id: adsetId,
+      const creativeJson = await creativeRes.json();
+      if (!creativeRes.ok) {
+        throw new Error(`Creative Create Failed: ${creativeJson.error?.message}`);
+      }
+
+      const creativeId = creativeJson.id;
+
+      // --- C. Create Ad ---
+      const adBody = {
+        name: creative.headline || "Ad 1",
+        adset_id: adSetId,
         creative: { creative_id: creativeId },
         status: "PAUSED",
         access_token: ACCESS_TOKEN,
-      }),
-    });
+      };
 
-    const adJson = await adRes.json();
-    if (!adRes.ok) throw adJson;
-    adId = adJson.id;
+      const adRes = await fetch(`${base}/ads`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(adBody),
+      });
 
-    return res.json({
+      const adJson = await adRes.json();
+      if (!adRes.ok) {
+        throw new Error(`Ad Create Failed: ${adJson.error?.message}`);
+      }
+
+      createdAssets.ads.push(adJson.id);
+    }
+
+    return res.status(200).json({
       ok: true,
-      campaignId,
-      adsetId,
-      creativeId,
-      adId,
+      message: "Campaign executed successfully",
+      id: createdAssets.campaign_id,
+      status: "PAUSED",
+      details: createdAssets
     });
+
   } catch (err) {
-    // 🔄 ROLLBACK (BEST EFFORT)
-    const rollback = async (endpoint, id) => {
-      if (!id) return;
-      try {
-        await fetch(`https://graph.facebook.com/v19.0/${id}`, {
-          method: "DELETE",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ access_token: ACCESS_TOKEN }),
-        });
-      } catch (_) {}
-    };
-
-    await rollback("ads", adId);
-    await rollback("adcreatives", creativeId);
-    await rollback("adsets", adsetId);
-    await rollback("campaigns", campaignId);
-
-    console.error("META EXECUTION FAILED:", err);
-
+    console.error("EXECUTION ERROR:", err.message);
     return res.status(500).json({
       ok: false,
-      message: "Meta execution failed. All created assets rolled back.",
-      details: err,
+      message: err.message,
+      created_partial: createdAssets
     });
   }
 }
