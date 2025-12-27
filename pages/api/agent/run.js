@@ -15,7 +15,7 @@ async function detectIntent(query) {
 }
 
 async function safetyGate(payload) {
-  const res = await fetch(${BASE_URL}/api/agent/safety-gate, {
+  const res = await fetch(`${BASE_URL}/api/agent/safety-gate`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(payload),
@@ -24,7 +24,7 @@ async function safetyGate(payload) {
 }
 
 async function generateQuestions(payload) {
-  const res = await fetch(${BASE_URL}/api/agent/questions, {
+  const res = await fetch(`${BASE_URL}/api/agent/questions`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(payload),
@@ -71,7 +71,7 @@ export default async function handler(req, res) {
       const { platform, objective } = intentRes.intent;
 
       // 1.5️⃣ Load business intake (VERY IMPORTANT)
-const intakeRes = await fetch(${BASE_URL}/api/agent/intake-business, {
+const intakeRes = await fetch(`${BASE_URL}/api/agent/intake-business`, {
   method: "GET",
   headers: {
     Cookie: req.headers.cookie || "",
@@ -128,8 +128,7 @@ if (
   body.intent?.objective
 ) {
   // 🔹 Step 1: Generate creative automatically
-  const creativeRes = await fetch(
-    ${BASE_URL}/api/agent/generate-creative,
+  const creativeRes = await fetch(`${BASE_URL}/api/agent/generate-creative`,
     {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -195,8 +194,7 @@ if (
     /* ---------- GOOGLE ADS (UNCHANGED) ---------- */
 
     if (platform === "google" && action === "create_simple_campaign") {
-      const resp = await fetch(
-        ${BASE_URL}/api/google-ads/create-simple-campaign,
+      const resp = await fetch(`${BASE_URL}/api/google-ads/create-simple-campaign`,
         {
           method: "POST",
           headers: { "Content-Type": "application/json" },
@@ -225,8 +223,7 @@ if (
     /* ---------- META ADS (UNCHANGED) ---------- */
 
     if (platform === "meta" && action === "create_simple_campaign") {
-      const resp = await fetch(
-        ${BASE_URL}/api/meta/create-simple-campaign,
+      const resp = await fetch(`${BASE_URL}/api/meta/create-simple-campaign`,
         {
           method: "POST",
           headers: { "Content-Type": "application/json" },
