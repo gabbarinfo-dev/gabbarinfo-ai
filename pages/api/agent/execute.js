@@ -679,7 +679,140 @@ You are in GENERIC DIGITAL MARKETING AGENT MODE.
       }
     }
 
-    let selectedService = null;
+    // ============================================================
+    // 🤖 STATE MACHINE: EXECUTION FLOW (Plan -> Image -> Launch)
+    // ============================================================
+    if (lockedCampaignState) {
+      const stage = lockedCampaignState.stage || "PLANNING";
+      const userSaysYes =
+        instruction.toLowerCase().includes("yes") ||
+        instruction.toLowerCase().includes("approve") ||
+        instruction.toLowerCase().includes("confirm") ||
+        instruction.toLowerCase().includes("proceed");
+
+      // 1️⃣ TRANSITION: PLAN_PROPOSED -> IMAGE_GENERATION
+      if (stage === "PLAN_PROPOSED" && userSaysYes) {
+        // User accepted the JSON plan. Now generate image.
+        const plan = lockedCampaignState.plan;
+
+        // Synthesize a prompt for the image generator (based on plan)
+        const creative = plan.ad_sets?.[0]?.ad_creative || {};
+        const imagePrompt =
+          creative.imagePrompt ||
+          creative.primary_text ||
+          `${plan.campaign_name} ad image`;
+
+        // Call Image Gen API
+        const imgRes = await fetch(`${process.env.NEXT_PUBLIC_BASE_URL}/api/images/generate`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ prompt: imagePrompt }),
+        });
+        const imgJson = await imgRes.json();
+
+        if (imgJson.imageBase64) {
+          const newCreative = {
+            ...creative,
+            imageBase64: imgJson.imageBase64,
+            imageUrl: `data:image/png;base64,${imgJson.imageBase64}` // For UI display
+          };
+
+          // Update State
+          const newState = {
+            ...lockedCampaignState,
+            stage: "IMAGE_GENERATED",
+            creative: newCreative
+          };
+
+          await saveAnswerMemory(process.env.NEXT_PUBLIC_BASE_URL, activeBusinessId, {
+            campaign_state: newState
+          });
+
+          return res.status(200).json({
+            ok: true,
+            text: `I've generated an image for your ad based on the plan.\n\nHere it is:\n\n[Image Generated]\n\nDo you want to use this image and launch the campaign? Reply YES to confirm.`,
+            imageUrl: newCreative.imageUrl
+          });
+        }
+      }
+
+      // 2️⃣ TRANSITION: IMAGE_GENERATED -> READY_TO_LAUNCH
+      if (stage === "IMAGE_GENERATED" && userSaysYes) {
+        // Upload image to Meta
+        const creative = lockedCampaignState.creative;
+
+        const uploadRes = await fetch(`${process.env.NEXT_PUBLIC_BASE_URL}/api/meta/upload-image`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ imageBase64: creative.imageBase64 })
+        });
+
+        const uploadJson = await uploadRes.json();
+
+        if (uploadJson.ok && uploadJson.imageHash) {
+          // Ready to launch
+          const newState = {
+            ...lockedCampaignState,
+            stage: "READY_TO_LAUNCH",
+            image_hash: uploadJson.imageHash
+          };
+
+          await saveAnswerMemory(process.env.NEXT_PUBLIC_BASE_URL, activeBusinessId, {
+            campaign_state: newState
+          });
+
+          const plan = lockedCampaignState.plan;
+          return res.status(200).json({
+            ok: true,
+            text: `Image uploaded successfully (Hash: ${uploadJson.imageHash}).\n\n**Final Confirmation in a paused state**:\n- Campaign: ${plan.campaign_name}\n- Budget: ${plan.budget_amount} ${plan.budget_currency}\n\nReply YES to publish this campaign to Meta.`
+          });
+        }
+      }
+
+      // 3️⃣ TRANSITION: READY_TO_LAUNCH -> LAUNCHED
+      if (stage === "READY_TO_LAUNCH" && userSaysYes) {
+        // Execute!
+        const plan = lockedCampaignState.plan;
+        const finalPayload = {
+          ...plan,
+          ad_sets: plan.ad_sets.map(adset => ({
+            ...adset,
+            ad_creative: {
+              ...adset.ad_creative,
+              image_hash: lockedCampaignState.image_hash
+            }
+          }))
+        };
+
+        const execRes = await fetch(`${process.env.NEXT_PUBLIC_BASE_URL}/api/meta/execute-campaign`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            platform: "meta",  // or derive from plan
+            payload: finalPayload
+          })
+        });
+
+        const execJson = await execRes.json();
+
+        if (execJson.ok) {
+          // Clear State (or mark complete)
+          await saveAnswerMemory(process.env.NEXT_PUBLIC_BASE_URL, activeBusinessId, {
+            campaign_state: { stage: "COMPLETED", final_result: execJson }
+          });
+
+          return res.status(200).json({
+            ok: true,
+            text: `🎉 Campaign Published Successfully!\n\nStatus: ${execJson.status || "PAUSED"}\nID: ${execJson.id || "N/A"}`
+          });
+        } else {
+          return res.status(200).json({
+            ok: true,
+            text: `❌ Execution Failed: ${execJson.message || "Unknown error"}`
+          });
+        }
+      }
+    }
     let selectedLocation = null;
 
 
@@ -1626,13 +1759,39 @@ Otherwise, respond with a full, clear explanation, and include example JSON only
         result.response.text()) ||
       "";
 
+    // 🕵️ DETECT AND SAVE JSON PLAN (FROM GEMINI)
+    // If Gemini outputs a JSON block that looks like a campaign plan, save it to memory.
+    if (activeBusinessId) {
+      const jsonMatch = text.match(/```json\n([\s\S]*?)\n```/);
+      if (jsonMatch && jsonMatch[1]) {
+        try {
+          const planJson = JSON.parse(jsonMatch[1]);
+          // Basic validation (is it a campaign plan?)
+          if (planJson.campaign_name && planJson.ad_sets) {
+            const newState = {
+              stage: "PLAN_PROPOSED",
+              plan: planJson,
+              objective: selectedMetaObjective, // keep context
+              destination: selectedDestination
+            };
+            const baseUrl = process.env.NEXT_PUBLIC_BASE_URL;
+            await saveAnswerMemory(baseUrl, activeBusinessId, {
+              campaign_state: newState
+            });
+            console.log("✅ Saved Proposed Plan to State");
+          }
+        } catch (e) {
+          console.warn("Failed to parse/save detected JSON plan:", e);
+        }
+      }
+    }
 
     // ===============================
     // 🧠 STEP-1 / STEP-2 NORMAL AGENT RESPONSE
     // ===============================
     return res.status(200).json({
       ok: true,
-      text, // 👈 plain English reply allowed
+      text,
     });
 
 
