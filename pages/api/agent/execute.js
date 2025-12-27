@@ -679,6 +679,9 @@ You are in GENERIC DIGITAL MARKETING AGENT MODE.
       }
     }
 
+    let selectedService = null;
+    let selectedLocation = null;
+
     // ============================================================
     // 🤖 STATE MACHINE: EXECUTION FLOW (Plan -> Image -> Launch)
     // ============================================================
@@ -813,7 +816,7 @@ You are in GENERIC DIGITAL MARKETING AGENT MODE.
         }
       }
     }
-    let selectedLocation = null;
+
 
 
     // ============================================================
