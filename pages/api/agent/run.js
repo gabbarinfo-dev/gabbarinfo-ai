@@ -6,7 +6,7 @@ const BASE_URL =
 /* ---------------- HELPERS (SAFE ADDITIONS) ---------------- */
 
 async function detectIntent(query) {
-  const res = await fetch(`${BASE_URL}/api/agent/intent`, {
+  const res = await fetch(${BASE_URL}/api/agent/intent, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ query }),
@@ -15,7 +15,7 @@ async function detectIntent(query) {
 }
 
 async function safetyGate(payload) {
-  const res = await fetch(`${BASE_URL}/api/agent/safety-gate`, {
+  const res = await fetch(${BASE_URL}/api/agent/safety-gate, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(payload),
@@ -24,7 +24,7 @@ async function safetyGate(payload) {
 }
 
 async function generateQuestions(payload) {
-  const res = await fetch(`${BASE_URL}/api/agent/questions`, {
+  const res = await fetch(${BASE_URL}/api/agent/questions, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(payload),
@@ -53,7 +53,7 @@ export default async function handler(req, res) {
 
     /* ======================================================
        🔹 MODE 1: AGENT CHAT FLOW (NEW, SAFE)
-       Triggered when `message` exists
+       Triggered when message exists
        ====================================================== */
 
     if (body.message && typeof body.message === "string") {
@@ -71,7 +71,7 @@ export default async function handler(req, res) {
       const { platform, objective } = intentRes.intent;
 
       // 1.5️⃣ Load business intake (VERY IMPORTANT)
-const intakeRes = await fetch(`${BASE_URL}/api/agent/intake-business`, {
+const intakeRes = await fetch(${BASE_URL}/api/agent/intake-business, {
   method: "GET",
   headers: {
     Cookie: req.headers.cookie || "",
@@ -104,7 +104,7 @@ const intake = intakeJson?.intake || {};
         return res.json({
           reply:
             "Before I proceed, I need a few details:\n\n" +
-            qRes.questions.map((q, i) => `${i + 1}. ${q}`).join("\n"),
+            qRes.questions.map((q, i) => ${i + 1}. ${q}).join("\n"),
           stage: "awaiting_answers",
           intent: { platform, objective },
         });
@@ -118,7 +118,7 @@ const intake = intakeJson?.intake || {};
         intent: { platform, objective },
       });
     }
-   /* ======================================================
+/* ======================================================
    🔹 CONFIRMATION HANDLER (YES)
    ====================================================== */
 
@@ -129,7 +129,7 @@ if (
 ) {
   // 🔹 Step 1: Generate creative automatically
   const creativeRes = await fetch(
-    `${BASE_URL}/api/agent/generate-creative`,
+    ${BASE_URL}/api/agent/generate-creative,
     {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -196,7 +196,7 @@ if (
 
     if (platform === "google" && action === "create_simple_campaign") {
       const resp = await fetch(
-        `${BASE_URL}/api/google-ads/create-simple-campaign`,
+        ${BASE_URL}/api/google-ads/create-simple-campaign,
         {
           method: "POST",
           headers: { "Content-Type": "application/json" },
@@ -226,7 +226,7 @@ if (
 
     if (platform === "meta" && action === "create_simple_campaign") {
       const resp = await fetch(
-        `${BASE_URL}/api/meta/create-simple-campaign`,
+        ${BASE_URL}/api/meta/create-simple-campaign,
         {
           method: "POST",
           headers: { "Content-Type": "application/json" },
