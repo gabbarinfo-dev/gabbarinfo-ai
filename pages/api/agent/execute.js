@@ -1837,19 +1837,34 @@ Otherwise, respond with a full, clear explanation, and include example JSON only
     }
 
     // 🕵️ DETECT AND SAVE JSON PLAN (FROM GEMINI)
-    // If Gemini outputs a JSON block that looks like a campaign plan, save it to memory.
+    // Supports: ```json ... ```, ``` ... ```, or plain JSON starting with {
     if (activeBusinessId) {
-      // USE rawText HERE because 'text' might be cleaned
-      const jsonMatch = rawText.match(/```json\n([\s\S]*?)\n```/);
-      if (jsonMatch && jsonMatch[1]) {
+      let jsonString = null;
+
+      // Try specific code block
+      const strictMatch = rawText.match(/```json\n([\s\S]*?)\n```/);
+      if (strictMatch) {
+        jsonString = strictMatch[1];
+      }
+      // Try generic code block
+      else if (rawText.includes("```")) {
+        const genericMatch = rawText.match(/```\n([\s\S]*?)\n```/);
+        if (genericMatch) jsonString = genericMatch[1];
+      }
+      // Try raw JSON (fallback)
+      else if (rawText.trim().startsWith("{") && rawText.trim().endsWith("}")) {
+        jsonString = rawText.trim();
+      }
+
+      if (jsonString) {
         try {
-          const planJson = JSON.parse(jsonMatch[1]);
+          const planJson = JSON.parse(jsonString);
           // Basic validation (is it a campaign plan?)
           if (planJson.campaign_name && planJson.ad_sets) {
             const newState = {
               stage: "PLAN_PROPOSED",
               plan: planJson,
-              objective: selectedMetaObjective, // keep context
+              objective: selectedMetaObjective,
               destination: selectedDestination
             };
             const baseUrl = process.env.NEXT_PUBLIC_BASE_URL;
@@ -1860,17 +1875,23 @@ Otherwise, respond with a full, clear explanation, and include example JSON only
 
             // 📝 Overwrite the response text with a clean summary
             const creative = planJson.ad_sets?.[0]?.ads?.[0]?.creative || {};
-            const budget = planJson.budget || {};
+            // Handle Budget Variance (Object vs Flat)
+            const bAmount = planJson.budget?.amount || planJson.budget_value || "N/A";
+            const bCurrency = planJson.budget?.currency || "INR";
+            const bType = planJson.budget?.type || planJson.budget_type || "DAILY";
+
+            const creativeTitle = creative.title || creative.headline || "Headline";
+            const creativeBody = creative.body || creative.primary_text || "Body Text";
 
             text = `
 **Plan Proposed: ${planJson.campaign_name}**
 
 **Targeting**: ${planJson.targeting?.geo_locations?.countries?.join(", ") || "India"} (${planJson.targeting?.age_min || 18}-${planJson.targeting?.age_max || 65}+)
-**Budget**: ${budget.amount} ${budget.currency || "INR"} per ${budget.type === "DAILY" ? "day" : "lifetime"}
+**Budget**: ${bAmount} ${bCurrency} (${bType})
 
 **Creative Idea**: 
-"${creative.title || "Headline"}"
-_${creative.body || "Body Text"}_
+"${creativeTitle}"
+_${creativeBody}_
 
 **Call to Action**: ${creative.call_to_action || "Learn More"}
 
