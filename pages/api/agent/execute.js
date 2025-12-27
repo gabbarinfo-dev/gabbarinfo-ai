@@ -392,13 +392,18 @@ imageHash = uploadJson.image_hash;
       });
     }
 
-   let {
+ let {
   instruction,
   mode = "generic",
   includeJson = false,
   chatHistory = [],
   extraContext = "",
 } = body;
+
+// 🔒 HARD LOCK: JSON ONLY WHEN USER EXPLICITLY ASKS
+if (!/json|backend|payload|schema/i.test(instruction || "")) {
+  includeJson = false;
+}
 
 // 🔁 AUTO-ROUTE TO META MODE
 if (
