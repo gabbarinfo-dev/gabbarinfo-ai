@@ -118,6 +118,52 @@ const intake = intakeJson?.intake || {};
         intent: { platform, objective },
       });
     }
+   /* ======================================================
+   🔹 CONFIRMATION HANDLER (YES)
+   ====================================================== */
+
+if (
+  body.confirm === true &&
+  body.intent?.platform === "meta" &&
+  body.intent?.objective
+) {
+  // 🔹 Step 1: Generate creative automatically
+  const creativeRes = await fetch(
+    `${BASE_URL}/api/agent/generate-creative`,
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        intake: body.intake, // collected business data
+        objective: body.intent.objective,
+      }),
+    }
+  );
+
+  const creativeData = await creativeRes.json();
+
+  if (!creativeData.ok) {
+    return res.json({
+      reply: "I couldn’t generate ad creatives. Please try again.",
+    });
+  }
+
+  return res.json({
+    reply:
+      "Here’s what I’ve prepared for your ad:\n\n" +
+      "Headlines:\n- " +
+      creativeData.creative.headlines.join("\n- ") +
+      "\n\nPrimary Texts:\n- " +
+      creativeData.creative.primary_texts.join("\n- ") +
+      "\n\nCTA: " +
+      creativeData.creative.cta +
+      "\n\nReply YES to generate the image and create the paused campaign.",
+    stage: "creative_ready",
+    creative: creativeData.creative,
+    intent: body.intent,
+  });
+}
+
     /* ======================================================
        🔹 MODE 2: EXISTING EXECUTION FLOW (UNCHANGED)
        platform + action + payload
