@@ -1649,26 +1649,23 @@ Otherwise, respond with a full, clear explanation, and include example JSON only
 
     // 🧹 CLEANUP: If Gemini outputs JSON, hide it from the user flow (User complaint: "Jumps to JSON").
     // We only want to show the JSON *Summary* text if passing a proposed plan.
+    /*
     if (activeBusinessId && text.includes("```json")) {
       // We will strip the JSON block for the display text
       text = text.replace(/```json[\s\S]*?```/g, "").trim();
       if (!text) text = "I have drafted a plan based on your requirements. Please check it internally.";
     }
+    */
 
     // 🕵️ DETECT AND SAVE JSON PLAN (FROM GEMINI)
     // Supports: ```json ... ```, ``` ... ```, or plain JSON starting with {
     if (activeBusinessId) {
       let jsonString = null;
 
-      // Try specific code block
-      const strictMatch = rawText.match(/```json\n([\s\S]*?)\n```/);
+      // Try specific code block (More permissive regex)
+      const strictMatch = rawText.match(/```(?:json)?\s*([\s\S]*?)\s*```/);
       if (strictMatch) {
         jsonString = strictMatch[1];
-      }
-      // Try generic code block
-      else if (rawText.includes("```")) {
-        const genericMatch = rawText.match(/```\n([\s\S]*?)\n```/);
-        if (genericMatch) jsonString = genericMatch[1];
       }
       // Try raw JSON (fallback)
       else if (rawText.trim().startsWith("{") && rawText.trim().endsWith("}")) {
@@ -1718,9 +1715,14 @@ _${creativeBody}_
 
 Reply **YES** to generate this image and launch the campaign.
 `.trim();
+          } else {
+             // It's JSON, but not a plan we recognize. 
+             // Maybe it's just normal JSON output. Let's keep the raw text so user can see it.
           }
         } catch (e) {
           console.warn("Failed to parse/save detected JSON plan:", e);
+          // Fallback: If we thought it was JSON but failed to parse,
+          // we should probably leave 'text' as 'rawText' so the user sees the error or content.
         }
       }
     }
