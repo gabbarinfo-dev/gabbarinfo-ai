@@ -22,7 +22,7 @@ if (GEMINI_API_KEY) {
 }
 
 async function saveAnswerMemory(baseUrl, business_id, answers) {
-  await fetch(`${baseUrl}/api/agent/answer-memory`, {
+  await fetch(${baseUrl}/api/agent/answer-memory, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({
@@ -83,7 +83,7 @@ if (cachedAssets) {
 
   // Facebook Page
   const fbPageRes = await fetch(
-    `https://graph.facebook.com/v19.0/${meta.fb_page_id}?fields=name,category,about&access_token=${token}`
+    https://graph.facebook.com/v19.0/${meta.fb_page_id}?fields=name,category,about&access_token=${token}
   );
   const fbPage = await fbPageRes.json();
 
@@ -91,14 +91,14 @@ if (cachedAssets) {
   let igAccount = null;
   if (meta.ig_business_id) {
     const igRes = await fetch(
-      `https://graph.facebook.com/v19.0/${meta.ig_business_id}?fields=name,biography,category&access_token=${token}`
+      https://graph.facebook.com/v19.0/${meta.ig_business_id}?fields=name,biography,category&access_token=${token}
     );
     igAccount = await igRes.json();
   }
 
   // Ad Account
   const adRes = await fetch(
-    `https://graph.facebook.com/v19.0/act_${meta.fb_ad_account_id}?fields=account_status,currency,timezone_name&access_token=${token}`
+    https://graph.facebook.com/v19.0/act_${meta.fb_ad_account_id}?fields=account_status,currency,timezone_name&access_token=${token}
   );
   const adAccount = await adRes.json();
 
@@ -211,7 +211,7 @@ try {
   const baseUrl = process.env.NEXT_PUBLIC_BASE_URL;
   if (baseUrl) {
     const intakeRes = await fetch(
-  `${baseUrl}/api/agent/intake-business`,
+  ${baseUrl}/api/agent/intake-business,
   {
     method: "POST",
     headers: {
@@ -272,7 +272,7 @@ else if (autoBusinessContext?.instagram_website) {
         }
 
         const gaRes = await fetch(
-          `${baseUrl}/api/google-ads/create-simple-campaign`,
+          ${baseUrl}/api/google-ads/create-simple-campaign,
           {
             method: "POST",
             headers: { "Content-Type": "application/json" },
@@ -313,7 +313,7 @@ let imageHash = null;
 
 // 1️⃣ Generate image via OpenAI
 const imageResp = await fetch(
-  `${process.env.NEXT_PUBLIC_BASE_URL}/api/images/generate`,
+  ${process.env.NEXT_PUBLIC_BASE_URL}/api/images/generate,
   {
     method: "POST",
     headers: { "Content-Type": "application/json" },
@@ -330,7 +330,7 @@ if (!imageJson?.ok || !imageJson.imageBase64) {
 
 // 2️⃣ Upload image directly to Meta
 const uploadResp = await fetch(
-  `${process.env.NEXT_PUBLIC_BASE_URL}/api/meta/upload-image`,
+  ${process.env.NEXT_PUBLIC_BASE_URL}/api/meta/upload-image,
   {
     method: "POST",
     headers: { "Content-Type": "application/json" },
@@ -347,7 +347,7 @@ if (!uploadJson?.ok || !uploadJson.image_hash) {
 
 imageHash = uploadJson.image_hash;
 
-        const metaRes = await fetch(`${baseUrl}/api/ads/create-creative`, {
+        const metaRes = await fetch(${baseUrl}/api/ads/create-creative, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
          body: JSON.stringify({
@@ -392,7 +392,7 @@ imageHash = uploadJson.image_hash;
       });
     }
 
- let {
+   let {
   instruction,
   mode = "generic",
   includeJson = false,
@@ -423,7 +423,7 @@ const historyText =
     : Array.isArray(chatHistory)
     ? chatHistory
         .slice(-20)
-        .map((m) => `${m.role === "user" ? "User" : "Assistant"}: ${m.text}`)
+        .map((m) => ${m.role === "user" ? "User" : "Assistant"}: ${m.text})
         .join("\n\n")
     : "";
 
@@ -431,7 +431,7 @@ const historyText =
     let modeFocus = "";
 
     if (mode === "google_ads_plan") {
-      modeFocus = `
+      modeFocus = 
 You are in GOOGLE ADS AGENT MODE.
 
 - Focus on campaign structures, ad groups, keywords, match types, budgets.
@@ -474,9 +474,9 @@ You are in GOOGLE ADS AGENT MODE.
 }
 
 - When you output JSON-only, do NOT wrap it in backticks, and add no extra text.
-`;
+;
     } else if (mode === "meta_ads_plan") {
-      modeFocus = `
+      modeFocus = 
 You are in META ADS / CREATIVE AGENT MODE.
 
 - Focus on Meta (Facebook + Instagram) campaign structure and creatives.
@@ -504,31 +504,31 @@ You are in META ADS / CREATIVE AGENT MODE.
 }
 
 - When you output JSON-only, do NOT wrap it in backticks, and add no extra text.
-`;
+;
     } else if (mode === "social_plan") {
-      modeFocus = `
+      modeFocus = 
 You are in SOCIAL MEDIA PLANNER MODE.
 
 - Focus on Instagram, Facebook, LinkedIn, YouTube content calendars.
 - Give hooks, caption ideas, posting frequency and content pillars.
 - Tie everything back to leads, sales or brand-building.
-`;
+;
     } else if (mode === "seo_blog") {
-      modeFocus = `
+      modeFocus = 
 You are in SEO / BLOG AGENT MODE.
 
 - Focus on keyword ideas, blog topics, outlines and SEO-optimised articles.
 - Use simple, clear language and structure the blog logically for humans + Google.
-`;
+;
     } else {
-      modeFocus = `
+      modeFocus = 
 You are in GENERIC DIGITAL MARKETING AGENT MODE.
 
 - You can combine Google Ads, Meta Ads, SEO, content and social together.
 - If the user explicitly asks for backend JSON, follow the exact schemas:
   - Google Ads JSON for campaigns.
   - Creative JSON for Meta/social creatives.
-`;
+;
     }
     let ragContext = "";
 // ===============================
@@ -537,7 +537,7 @@ You are in GENERIC DIGITAL MARKETING AGENT MODE.
 try {
   const baseUrl = process.env.NEXT_PUBLIC_BASE_URL;
   if (baseUrl) {
-    const ragRes = await fetch(`${baseUrl}/api/rag/query`, {
+    const ragRes = await fetch(${baseUrl}/api/rag/query, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
@@ -552,7 +552,7 @@ try {
 
     if (ragJson?.chunks?.length) {
       ragContext = ragJson.chunks
-        .map((c, i) => `(${i + 1}) ${c.content}`)
+        .map((c, i) => (${i + 1}) ${c.content})
         .join("\n\n");
     }
   }
@@ -569,7 +569,7 @@ try {
   const baseUrl = process.env.NEXT_PUBLIC_BASE_URL;
 
   if (baseUrl) {
-    const memRes = await fetch(`${baseUrl}/api/rag/query`, {
+    const memRes = await fetch(${baseUrl}/api/rag/query, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
@@ -622,7 +622,7 @@ if (!isAdmin && !metaConnected && !profiles.length) {
     if (safetyGateMessage) {
   const baseUrl = process.env.NEXT_PUBLIC_BASE_URL;
 
-  const qRes = await fetch(`${baseUrl}/api/agent/questions`, {
+  const qRes = await fetch(${baseUrl}/api/agent/questions, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({
@@ -641,7 +641,7 @@ if (!isAdmin && !metaConnected && !profiles.length) {
     gated: true,
     text:
       "Before I proceed, I need a few quick details:\n\n" +
-      qJson.questions.map((q, i) => `${i + 1}. ${q}`).join("\n"),
+      qJson.questions.map((q, i) => ${i + 1}. ${q}).join("\n"),
   });
 }
 // ============================================================
@@ -654,7 +654,7 @@ if (mode === "meta_ads_plan" && activeBusinessId) {
   const baseUrl = process.env.NEXT_PUBLIC_BASE_URL;
 
   try {
-    const memRes = await fetch(`${baseUrl}/api/rag/query`, {
+    const memRes = await fetch(${baseUrl}/api/rag/query, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
@@ -784,7 +784,6 @@ if (
   mode === "meta_ads_plan" &&
   !selectedMetaObjective
 ) {
-
   return res.status(200).json({
     ok: true,
     mode,
@@ -838,16 +837,14 @@ if (
   detectedPhoneNumber &&
   !lowerInstruction.includes("yes")
 ) {
- 
   return res.status(200).json({
     ok: true,
     mode,
     gated: true,
     text:
-      `I found this phone number:\n\n📞 ${detectedPhoneNumber}\n\n` +
+      I found this phone number:\n\n📞 ${detectedPhoneNumber}\n\n +
       "Should I use this number for your Call Ads?\n\nReply YES to confirm or paste a different number.",
   });
-}
 }
 
 // ============================================================
@@ -864,10 +861,9 @@ if (autoBusinessContext?.business_phone) {
 // 2️⃣ If WhatsApp selected → ALWAYS confirm
 if (selectedDestination === "whatsapp") {
   const suggestionText = detectedWhatsappNumber
-    ? `\n\nI found this number on your Facebook Page:\n📱 ${detectedWhatsappNumber}`
+    ? \n\nI found this number on your Facebook Page:\n📱 ${detectedWhatsappNumber}
     : "";
 
- 
   return res.status(200).json({
     ok: true,
     mode,
@@ -905,10 +901,10 @@ if (
     ok: true,
     gated: true,
     text:
-      `I found this website from your connected assets:\n\n` +
-      `${detectedLandingPage}\n\n` +
-      `Is this the page you want people to visit?\n\n` +
-      `Reply YES to confirm, or paste a different URL.`,
+      I found this website from your connected assets:\n\n +
+      ${detectedLandingPage}\n\n +
+      Is this the page you want people to visit?\n\n +
+      Reply YES to confirm, or paste a different URL.,
   });
 }
 // ============================================================
@@ -926,14 +922,13 @@ if (
   !lockedCampaignState?.service &&
   availableServices.length
 ) {
- 
   return res.status(200).json({
     ok: true,
     gated: true,
     text:
       "Which service do you want to promote in this campaign?\n\n" +
       availableServices
-        .map((s, i) => `${i + 1}. ${s}`)
+        .map((s, i) => ${i + 1}. ${s})
         .join("\n") +
       "\n\nReply with the option number.",
   });
@@ -985,14 +980,13 @@ if (
   !lockedCampaignState?.location &&
   detectedLocation
 ) {
-
   return res.status(200).json({
     ok: true,
     gated: true,
     text:
-      `I detected this location for your business:\n\n📍 ${detectedLocation}\n\n` +
-      `Should I run ads for this location?\n\n` +
-      `Reply YES to confirm, or type a different city / area.`,
+      I detected this location for your business:\n\n📍 ${detectedLocation}\n\n +
+      Should I run ads for this location?\n\n +
+      Reply YES to confirm, or type a different city / area.,
   });
 }
 
@@ -1079,7 +1073,7 @@ let selectedMessageChannel = null;
 
 // If user chose "messages", we must ask WHERE
 if (selectedDestination === "messages") {
-  const msg = `
+  const msg = 
 Where do you want people to message you?
 
 Please choose ONE option:
@@ -1088,8 +1082,7 @@ Please choose ONE option:
 2. Facebook Messenger
 3. WhatsApp
 4. All available
-`.trim();
-
+.trim();
 
   return res.status(200).json({
     ok: true,
@@ -1200,17 +1193,16 @@ if (
     META_CTA_MAP[selectedMetaObjective] ||
     META_CTA_MAP.TRAFFIC;
 
-
   return res.status(200).json({
     ok: true,
     mode,
     gated: true,
     text:
-      `Which Call-To-Action button do you want on your ad?\n\n` +
-      `Based on your objective, Meta allows these options:\n\n` +
-      ctaConfig.options.map((c, i) => `${i + 1}. ${c}`).join("\n") +
-      `\n\nRecommended: ${ctaConfig.recommended}\n\n` +
-      `Reply with the option number or CTA name.`,
+      Which Call-To-Action button do you want on your ad?\n\n +
+      Based on your objective, Meta allows these options:\n\n +
+      ctaConfig.options.map((c, i) => ${i + 1}. ${c}).join("\n") +
+      \n\nRecommended: ${ctaConfig.recommended}\n\n +
+      Reply with the option number or CTA name.,
   });
 }
 
@@ -1226,7 +1218,7 @@ if (
   const baseUrl = process.env.NEXT_PUBLIC_BASE_URL;
 
   // 1️⃣ Get business intake from memory
-  const intakeRes = await fetch(`${baseUrl}/api/agent/intake-business`, {
+  const intakeRes = await fetch(${baseUrl}/api/agent/intake-business, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
   });
@@ -1241,7 +1233,7 @@ if (
 
   // 2️⃣ Generate creative via Gemini
   const creativeRes = await fetch(
-    `${baseUrl}/api/agent/generate-creative`,
+    ${baseUrl}/api/agent/generate-creative,
     {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -1271,7 +1263,7 @@ let imageHash = null;
 
 // CASE 1️⃣: Client provided an image URL
 if (body.image_url) {
-  const upload = await fetch(`${baseUrl}/api/meta/upload-image`, {
+  const upload = await fetch(${baseUrl}/api/meta/upload-image, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({
@@ -1294,7 +1286,7 @@ if (body.image_url) {
 // CASE 2️⃣: No image given → generate using AI
 else {
   // Generate image using OpenAI
-  const imgGen = await fetch(`${baseUrl}/api/images/generate`, {
+  const imgGen = await fetch(${baseUrl}/api/images/generate, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ prompt: image_prompt }),
@@ -1310,7 +1302,7 @@ else {
   }
 
   // Upload AI image to Meta
-  const upload = await fetch(`${baseUrl}/api/meta/upload-image`, {
+  const upload = await fetch(${baseUrl}/api/meta/upload-image, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({
@@ -1333,7 +1325,7 @@ else {
 
   // 5️⃣ Execute paused campaign
   const execRes = await fetch(
-    `${baseUrl}/api/meta/execute-campaign`,
+    ${baseUrl}/api/meta/execute-campaign,
     {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -1378,7 +1370,7 @@ if (
   const baseUrl = process.env.NEXT_PUBLIC_BASE_URL;
 
   const execRes = await fetch(
-    `${baseUrl}/api/meta/execute-campaign`,
+    ${baseUrl}/api/meta/execute-campaign,
     {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -1448,7 +1440,7 @@ if (activeBusinessId && Object.keys(detectedAnswers).length > 0) {
 // ============================================================
 
 const lockedContext = lockedCampaignState
-  ? `
+  ? 
 LOCKED CAMPAIGN STATE (DO NOT CHANGE OR RE-ASK):
 - Objective: ${lockedCampaignState.objective || "N/A"}
 - Destination: ${lockedCampaignState.destination || "N/A"}
@@ -1459,10 +1451,10 @@ RULES:
 - You MUST NOT ask again for objective, destination, service, or location.
 - You MUST use these as FINAL.
 - Only suggest: budget, targeting, creatives, duration.
-`
+
   : "";
 
-const systemPrompt = `
+const systemPrompt = 
 You are GabbarInfo AI – a senior digital marketing strategist and backend AGENT.
 
 YOUR CORE JOB:
@@ -1578,7 +1570,7 @@ If Forced Meta Business Context is present:
 - The assets are already connected
 - You MUST proceed
 - You MUST NOT ask for business name or active company
-`.trim();
+.trim();
 // ============================================================
 // 🚫 HARD STOP — PREVENT URL HALLUCINATION (META TRAFFIC)
 // ============================================================
@@ -1599,7 +1591,7 @@ if (selectedDestination === "website") {
   finalLandingPage = detectedLandingPage;
 }
 
-const finalPrompt = `
+const finalPrompt = 
 SYSTEM:
 ${systemPrompt}
 
@@ -1615,7 +1607,7 @@ Caller hint:
 If the user clearly asked for BACKEND JSON ONLY
 (and includeJson is true), respond with JSON only (no backticks, no explanation).
 Otherwise, respond with a full, clear explanation, and include example JSON only if helpful.
-`.trim();
+.trim();
 
     const model = genAI.getGenerativeModel({ model: GEMINI_MODEL });
     const result = await model.generateContent({
@@ -1654,3 +1646,4 @@ return res.status(200).json({
     });
   }
 }
+
