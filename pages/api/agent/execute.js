@@ -1706,6 +1706,45 @@ Otherwise, respond with a full, clear explanation, and include example JSON only
             };
           }
 
+          // 🔄 NORMALIZE JSON: Variation 2 (Step/Details structure)
+          if (planJson.campaign_details) {
+             console.log("🔄 Normalizing Gemini JSON Variation 2...");
+             const d = planJson.campaign_details;
+             const ads = planJson.ad_set_details || {};
+             const c = planJson.creative_details || {};
+
+             planJson = {
+               campaign_name: d.name || "New Campaign",
+               objective: d.objective || "OUTCOME_TRAFFIC",
+               budget: {
+                 amount: d.budget_daily_inr || 500,
+                 currency: "INR",
+                 type: "DAILY"
+               },
+               targeting: {
+                 geo_locations: { 
+                    countries: d.targeting?.location === "India" ? ["IN"] : ["IN"], 
+                    cities: [] 
+                 },
+                 age_min: d.targeting?.age_min || 18,
+                 age_max: d.targeting?.age_max || 65
+               },
+               ad_sets: [
+                 {
+                   name: ads.name || "Ad Set 1",
+                   status: "PAUSED",
+                   ad_creative: {
+                     imagePrompt: c.image_prompt || "Ad Image",
+                     primary_text: c.primary_text || "",
+                     headline: c.headline || "",
+                     call_to_action: c.call_to_action || "LEARN_MORE",
+                     destination_url: d.destination || c.landing_page || "https://gabbarinfo.com"
+                   }
+                 }
+               ]
+             };
+          }
+
           // Basic validation (is it a campaign plan?)
           if (planJson.campaign_name && planJson.ad_sets) {
             const newState = {
