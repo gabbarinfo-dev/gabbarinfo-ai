@@ -32,102 +32,102 @@ export default async function handler(req, res) {
     // 3) No email → global-only mode
     const finalClientEmail = client_email || sessionEmail || null;
     // --- PART 2: Embed the user query ---
-const embedResponse = await embedModel.embedContent(user_input);
-const userEmbedding = embedResponse.embedding.values;
-// --- PART 3: Client-first memory search ---
-let clientResults = [];
+    const embedResponse = await embedModel.embedContent(user_input);
+    const userEmbedding = embedResponse.embedding.values;
+    // --- PART 3: Client-first memory search ---
+    let clientResults = [];
 
-if (finalClientEmail) {
-  const { data: clientRows, error: clientErr } = await supabaseServer
-    .from("client_memory")
-    .select("content, embedding")
-    .eq("client_email", finalClientEmail);
+    if (finalClientEmail) {
+      const { data: clientRows, error: clientErr } = await supabaseServer
+        .from("client_memory")
+        .select("content, embedding")
+        .eq("client_email", finalClientEmail);
 
-  if (!clientErr && clientRows && clientRows.length > 0) {
-    clientResults = clientRows
-      .map((row) => {
-        // Compute cosine similarity manually
-        let dot = 0;
-        let normA = 0;
-        let normB = 0;
+      if (!clientErr && clientRows && clientRows.length > 0) {
+        clientResults = clientRows
+          .map((row) => {
+            // Compute cosine similarity manually
+            let dot = 0;
+            let normA = 0;
+            let normB = 0;
 
-        for (let i = 0; i < row.embedding.length; i++) {
-          dot += userEmbedding[i] * row.embedding[i];
-          normA += userEmbedding[i] ** 2;
-          normB += row.embedding[i] ** 2;
-        }
+            for (let i = 0; i < row.embedding.length; i++) {
+              dot += userEmbedding[i] * row.embedding[i];
+              normA += userEmbedding[i] ** 2;
+              normB += row.embedding[i] ** 2;
+            }
 
-        const similarity = dot / (Math.sqrt(normA) * Math.sqrt(normB));
+            const similarity = dot / (Math.sqrt(normA) * Math.sqrt(normB));
 
-        return {
-          content: row.content,
-          similarity,
-        };
-      })
-      .sort((a, b) => b.similarity - a.similarity) // sort by highest similarity
-      .slice(0, 5); // Take top 5 relevant chunks
-  }
-}
-// --- PART 4: Global memory fallback search ---
-let globalResults = [];
-
-const { data: globalRows, error: globalErr } = await supabaseServer
-  .from("global_memory")
-  .select("content, embedding");
-
-if (!globalErr && globalRows && globalRows.length > 0) {
-  globalResults = globalRows
-    .map((row) => {
-      let dot = 0;
-      let normA = 0;
-      let normB = 0;
-
-      for (let i = 0; i < row.embedding.length; i++) {
-        dot += userEmbedding[i] * row.embedding[i];
-        normA += userEmbedding[i] ** 2;
-        normB += row.embedding[i] ** 2;
+            return {
+              content: row.content,
+              similarity,
+            };
+          })
+          .sort((a, b) => b.similarity - a.similarity) // sort by highest similarity
+          .slice(0, 5); // Take top 5 relevant chunks
       }
+    }
+    // --- PART 4: Global memory fallback search ---
+    let globalResults = [];
 
-      const similarity = dot / (Math.sqrt(normA) * Math.sqrt(normB));
+    const { data: globalRows, error: globalErr } = await supabaseServer
+      .from("global_memory")
+      .select("content, embedding");
 
-      return {
-        content: row.content,
-        similarity,
-      };
-    })
-    .sort((a, b) => b.similarity - a.similarity)
-    .slice(0, 5); // top 5 global matches
-}
-// --- PART 5: Merge memory results with priority rules ---
+    if (!globalErr && globalRows && globalRows.length > 0) {
+      globalResults = globalRows
+        .map((row) => {
+          let dot = 0;
+          let normA = 0;
+          let normB = 0;
 
-let finalMemory = [];
+          for (let i = 0; i < row.embedding.length; i++) {
+            dot += userEmbedding[i] * row.embedding[i];
+            normA += userEmbedding[i] ** 2;
+            normB += row.embedding[i] ** 2;
+          }
 
-// 🥇 Priority 1: Client memory
-if (clientResults.length > 0) {
-  finalMemory = clientResults;
-} 
-// 🥈 Priority 2: fallback to global if client empty
-else if (globalResults.length > 0) {
-  finalMemory = globalResults;
-} 
-// 🥉 If no memory found at all
-else {
-  finalMemory = [];
-}
-// --- PART 6: Build final prompt for Gemini ---
+          const similarity = dot / (Math.sqrt(normA) * Math.sqrt(normB));
 
-// Convert memory rows into readable text
-let memoryText = "";
-if (finalMemory.length > 0) {
-  memoryText = finalMemory
-    .map((m, idx) => `Memory #${idx + 1}:\n${m.content}`)
-    .join("\n\n");
-} else {
-  memoryText = "No memory available.";
-}
+          return {
+            content: row.content,
+            similarity,
+          };
+        })
+        .sort((a, b) => b.similarity - a.similarity)
+        .slice(0, 5); // top 5 global matches
+    }
+    // --- PART 5: Merge memory results with priority rules ---
 
-// SYSTEM INSTRUCTIONS FOR YOUR AI
-const systemInstructions = `
+    let finalMemory = [];
+
+    // 🥇 Priority 1: Client memory
+    if (clientResults.length > 0) {
+      finalMemory = clientResults;
+    }
+    // 🥈 Priority 2: fallback to global if client empty
+    else if (globalResults.length > 0) {
+      finalMemory = globalResults;
+    }
+    // 🥉 If no memory found at all
+    else {
+      finalMemory = [];
+    }
+    // --- PART 6: Build final prompt for Gemini ---
+
+    // Convert memory rows into readable text
+    let memoryText = "";
+    if (finalMemory.length > 0) {
+      memoryText = finalMemory
+        .map((m, idx) => `Memory #${idx + 1}:\n${m.content}`)
+        .join("\n\n");
+    } else {
+      memoryText = "No memory available.";
+    }
+
+    // SYSTEM INSTRUCTIONS FOR YOUR AI
+    const systemInstructions = `
 You are GabbarInfo AI — a professional digital marketing strategist.
 
 YOUR RULES:
@@ -145,8 +145,8 @@ YOUR RULES:
 - If memory contradicts user input → prefer the latest memory  
 `;
 
-// BUILD THE FINAL PROMPT
-const finalPrompt = `
+    // BUILD THE FINAL PROMPT
+    const finalPrompt = `
 ${systemInstructions}
 
 USER QUESTION:
@@ -164,32 +164,26 @@ Provide:
 - Budget suggestions
 - 1–2 optimisation ideas
 `;
-// --- PART 7: Generate answer using Gemini ---
+    // --- PART 7: Generate answer using Gemini ---
 
-let aiResponse = "";
+    let aiResponse = "";
 
-try {
-  const result = await textModel.generateContent(finalPrompt);
-  aiResponse = result.response.text();
-} catch (err) {
-  console.error("Gemini error:", err);
-  aiResponse = "Sorry, I couldn't generate the answer due to a system issue.";
-}
+    try {
+      const result = await textModel.generateContent(finalPrompt);
+      aiResponse = result.response.text();
+    } catch (err) {
+      console.error("Gemini error:", err);
+      aiResponse = "Sorry, I couldn't generate the answer due to a system issue.";
+    }
 
-// FINAL RETURN TO FRONTEND
-return res.status(200).json({
-  success: true,
-  answer: aiResponse,
-  used_client_email: finalClientEmail || null,
-  memory_used: finalMemory.length,
-});
-
-    // Placeholder (we fill in Parts 2–7)
+    // FINAL RETURN TO FRONTEND
     return res.status(200).json({
-      ok: true,
-      message: "RAG engine base is working.",
-      client_email: finalClientEmail,
-      });
+      success: true,
+      answer: aiResponse,
+      used_client_email: finalClientEmail || null,
+      memory_used: finalMemory.length,
+    });
+
 
   } catch (err) {
     return res.status(500).json({
@@ -199,4 +193,3 @@ return res.status(200).json({
     });
   }
 }
-
