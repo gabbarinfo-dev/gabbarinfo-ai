@@ -6,7 +6,7 @@ const BASE_URL =
 /* ---------------- HELPERS (SAFE ADDITIONS) ---------------- */
 
 async function detectIntent(query) {
-  const res = await fetch(${BASE_URL}/api/agent/intent, {
+  const res = await fetch(`${BASE_URL}/api/agent/intent`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ query }),
