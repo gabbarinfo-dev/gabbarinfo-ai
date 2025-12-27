@@ -657,28 +657,20 @@ You are in GENERIC DIGITAL MARKETING AGENT MODE.
     let lockedCampaignState = null;
 
     if (mode === "meta_ads_plan" && activeBusinessId) {
-      const baseUrl = process.env.NEXT_PUBLIC_BASE_URL;
-
       try {
-        const memRes = await fetch(`${baseUrl}/api/rag/query`, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            query: "campaign_state",
-            memory_type: "client",
-            client_email: session.user.email,
-            top_k: 1,
-          }),
-        });
+        // DIRECT DB READ (Reliable State) instead of RAG
+        const { data: memData } = await supabase
+          .from("agent_memory")
+          .select("content")
+          .eq("email", session.user.email.toLowerCase())
+          .eq("memory_type", "client")
+          .maybeSingle();
 
-        const memJson = await memRes.json();
-
-        if (memJson?.chunks?.length) {
-          try {
-            lockedCampaignState = JSON.parse(
-              memJson.chunks[0].content
-            )?.campaign_state;
-          } catch (_) { }
+        if (memData?.content) {
+          const content = JSON.parse(memData.content);
+          if (content.business_answers?.[activeBusinessId]?.campaign_state) {
+            lockedCampaignState = content.business_answers[activeBusinessId].campaign_state;
+          }
         }
       } catch (e) {
         console.warn("Campaign state read failed:", e.message);
@@ -1531,7 +1523,7 @@ STRICT 12-STEP META CAMPAIGN FLOW
 9.  Image Generation (OpenAI) -> [AUTOMATED]
 10. Image Upload (Meta) -> [AUTOMATED]
 11. Final Confirmation (Paused Campaign)
-12. Execution (Create on Meta)
+12. Execution (Create on Meta) -> [SYSTEM AUTOMATED]
 
 ====================================================
 CURRENT STATUS & INSTRUCTIONS
@@ -1562,6 +1554,7 @@ CRITICAL BUSINESS RULES
 - NEVER invent URLs. Use verified landing pages only.
 - Assume India/INR defaults.
 - For Step 8 (Strategy), output JSON ONLY if you have all details.
+- For Step 12 (Execution), NEVER simulate the output. The system will detect your "YES" confirmation and run the API.
 
 ====================================================
 PLATFORM MODE GUIDANCE
@@ -1674,7 +1667,45 @@ Otherwise, respond with a full, clear explanation, and include example JSON only
 
       if (jsonString) {
         try {
-          const planJson = JSON.parse(jsonString);
+          let planJson = JSON.parse(jsonString);
+
+          // 🔄 NORMALIZE JSON: If Gemini gave the "Nested" structure, flatten it to our Standard Schema
+          if (planJson.campaign_data) {
+            console.log("🔄 Normalizing Gemini Nested JSON Plan...");
+            const d = planJson.campaign_data;
+            const s = d.campaign_settings || {};
+            const t = d.targeting_plan || {};
+            const c = d.creative_plan?.[0] || {};
+
+            planJson = {
+              campaign_name: s.campaign_name || "New Campaign",
+              objective: s.objective || "OUTCOME_TRAFFIC",
+              budget: {
+                amount: s.daily_budget_inr || 500,
+                currency: "INR",
+                type: "DAILY"
+              },
+              targeting: {
+                geo_locations: { countries: ["IN"], cities: t.locations?.map(l => ({ name: l })) || [] },
+                age_min: parseInt(t.age_range?.split("-")[0]) || 18,
+                age_max: parseInt(t.age_range?.split("-")[1]) || 65
+              },
+              ad_sets: [
+                {
+                  name: c.creative_set_name || "Ad Set 1",
+                  status: "PAUSED",
+                  ad_creative: {
+                    imagePrompt: c.image_prompt || "Ad Image",
+                    primary_text: c.primary_text || "",
+                    headline: c.headline || "",
+                    call_to_action: s.call_to_action || "LEARN_MORE",
+                    destination_url: s.destination_url || "https://gabbarinfo.com"
+                  }
+                }
+              ]
+            };
+          }
+
           // Basic validation (is it a campaign plan?)
           if (planJson.campaign_name && planJson.ad_sets) {
             const newState = {
