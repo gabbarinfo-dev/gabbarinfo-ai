@@ -6,7 +6,7 @@ const BASE_URL =
 /* ---------------- HELPERS (SAFE ADDITIONS) ---------------- */
 
 async function detectIntent(query) {
-  const res = await fetch(${BASE_URL}/api/agent/intent, {
+  const res = await fetch(`${BASE_URL}/api/agent/intent`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ query }),
@@ -15,7 +15,7 @@ async function detectIntent(query) {
 }
 
 async function safetyGate(payload) {
-  const res = await fetch(${BASE_URL}/api/agent/safety-gate, {
+  const res = await fetch(`${BASE_URL}/api/agent/safety-gate`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(payload),
@@ -24,7 +24,7 @@ async function safetyGate(payload) {
 }
 
 async function generateQuestions(payload) {
-  const res = await fetch(${BASE_URL}/api/agent/questions, {
+  const res = await fetch(`${BASE_URL}/api/agent/questions`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(payload),
@@ -71,40 +71,40 @@ export default async function handler(req, res) {
       const { platform, objective } = intentRes.intent;
 
       // 1.5️⃣ Load business intake (VERY IMPORTANT)
-const intakeRes = await fetch(${BASE_URL}/api/agent/intake-business, {
-  method: "GET",
-  headers: {
-    Cookie: req.headers.cookie || "",
-  },
-});
+      const intakeRes = await fetch(`${BASE_URL}/api/agent/intake-business`, {
+        method: "GET",
+        headers: {
+          Cookie: req.headers.cookie || "",
+        },
+      });
 
-const intakeJson = await intakeRes.json();
-const intake = intakeJson?.intake || {};
+      const intakeJson = await intakeRes.json();
+      const intake = intakeJson?.intake || {};
 
 
       // 2️⃣ Safety gate (initial, strict)
-     const gateRes = await safetyGate({
-  platform,
-  objective,
-  assets_confirmed: true,
-  context: intake,
-});
+      const gateRes = await safetyGate({
+        platform,
+        objective,
+        assets_confirmed: true,
+        context: intake,
+      });
 
 
       if (!gateRes.ok && gateRes.missing) {
         // 3️⃣ Ask Gemini questions
-       const qRes = await generateQuestions({
-  platform,
-  objective,
-  missing: gateRes.missing,
-  context: intake,
-});
+        const qRes = await generateQuestions({
+          platform,
+          objective,
+          missing: gateRes.missing,
+          context: intake,
+        });
 
 
         return res.json({
           reply:
             "Before I proceed, I need a few details:\n\n" +
-            qRes.questions.map((q, i) => ${i + 1}. ${q}).join("\n"),
+            qRes.questions.map((q, i) => `${i + 1}. ${q}`).join("\n"),
           stage: "awaiting_answers",
           intent: { platform, objective },
         });
@@ -118,51 +118,51 @@ const intake = intakeJson?.intake || {};
         intent: { platform, objective },
       });
     }
-/* ======================================================
-   🔹 CONFIRMATION HANDLER (YES)
-   ====================================================== */
+    /* ======================================================
+       🔹 CONFIRMATION HANDLER (YES)
+       ====================================================== */
 
-if (
-  body.confirm === true &&
-  body.intent?.platform === "meta" &&
-  body.intent?.objective
-) {
-  // 🔹 Step 1: Generate creative automatically
-  const creativeRes = await fetch(
-    ${BASE_URL}/api/agent/generate-creative,
-    {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        intake: body.intake, // collected business data
-        objective: body.intent.objective,
-      }),
+    if (
+      body.confirm === true &&
+      body.intent?.platform === "meta" &&
+      body.intent?.objective
+    ) {
+      // 🔹 Step 1: Generate creative automatically
+      const creativeRes = await fetch(
+        `${BASE_URL}/api/agent/generate-creative`,
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            intake: body.intake, // collected business data
+            objective: body.intent.objective,
+          }),
+        }
+      );
+
+      const creativeData = await creativeRes.json();
+
+      if (!creativeData.ok) {
+        return res.json({
+          reply: "I couldn’t generate ad creatives. Please try again.",
+        });
+      }
+
+      return res.json({
+        reply:
+          "Here’s what I’ve prepared for your ad:\n\n" +
+          "Headlines:\n- " +
+          creativeData.creative.headlines.join("\n- ") +
+          "\n\nPrimary Texts:\n- " +
+          creativeData.creative.primary_texts.join("\n- ") +
+          "\n\nCTA: " +
+          creativeData.creative.cta +
+          "\n\nReply YES to generate the image and create the paused campaign.",
+        stage: "creative_ready",
+        creative: creativeData.creative,
+        intent: body.intent,
+      });
     }
-  );
-
-  const creativeData = await creativeRes.json();
-
-  if (!creativeData.ok) {
-    return res.json({
-      reply: "I couldn’t generate ad creatives. Please try again.",
-    });
-  }
-
-  return res.json({
-    reply:
-      "Here’s what I’ve prepared for your ad:\n\n" +
-      "Headlines:\n- " +
-      creativeData.creative.headlines.join("\n- ") +
-      "\n\nPrimary Texts:\n- " +
-      creativeData.creative.primary_texts.join("\n- ") +
-      "\n\nCTA: " +
-      creativeData.creative.cta +
-      "\n\nReply YES to generate the image and create the paused campaign.",
-    stage: "creative_ready",
-    creative: creativeData.creative,
-    intent: body.intent,
-  });
-}
 
     /* ======================================================
        🔹 MODE 2: EXISTING EXECUTION FLOW (UNCHANGED)
@@ -196,7 +196,7 @@ if (
 
     if (platform === "google" && action === "create_simple_campaign") {
       const resp = await fetch(
-        ${BASE_URL}/api/google-ads/create-simple-campaign,
+        `${BASE_URL}/api/google-ads/create-simple-campaign`,
         {
           method: "POST",
           headers: { "Content-Type": "application/json" },
@@ -226,7 +226,7 @@ if (
 
     if (platform === "meta" && action === "create_simple_campaign") {
       const resp = await fetch(
-        ${BASE_URL}/api/meta/create-simple-campaign,
+        `${BASE_URL}/api/meta/create-simple-campaign`,
         {
           method: "POST",
           headers: { "Content-Type": "application/json" },
