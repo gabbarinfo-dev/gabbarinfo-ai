@@ -1849,6 +1849,46 @@ Otherwise, respond with a full, clear explanation, and include example JSON only
              };
           }
 
+          // 🔄 NORMALIZE JSON: Variation 4 (Flat META plan shape)
+          if (!planJson.campaign_name && (planJson.name || planJson.objective || planJson.ad_creative)) {
+             const d = planJson;
+             const tgt = d.targeting || {};
+             const dest = d.destination || {};
+             const cr = d.ad_creative || {};
+             const urlCandidate = (dest.url || cr.landing_page || "https://gabbarinfo.com").toString();
+             const cleanUrl = urlCandidate.replace(/[`]/g, "").trim();
+             const cities = Array.isArray(tgt.geo_locations)
+               ? tgt.geo_locations.map((g) => (g.location_name ? { name: g.location_name } : null)).filter(Boolean)
+               : [];
+             planJson = {
+               campaign_name: d.name || "New Campaign",
+               objective: (d.objective && d.objective.includes("CLICK")) ? "OUTCOME_TRAFFIC" : (d.objective || "OUTCOME_TRAFFIC"),
+               budget: {
+                 amount: d.budget?.daily_budget_inr || d.budget_daily_inr || 500,
+                 currency: "INR",
+                 type: "DAILY"
+               },
+               targeting: {
+                 geo_locations: { countries: ["IN"], cities },
+                 age_min: 18,
+                 age_max: 65
+               },
+               ad_sets: [
+                 {
+                   name: "Ad Set 1",
+                   status: "PAUSED",
+                   ad_creative: {
+                     imagePrompt: cr.image_prompt || "Ad Image",
+                     primary_text: cr.primary_text || "",
+                     headline: cr.headline || "",
+                     call_to_action: dest.call_to_action || cr.call_to_action || "LEARN_MORE",
+                     destination_url: cleanUrl || "https://gabbarinfo.com"
+                   }
+                 }
+               ]
+             };
+          }
+
           // Basic validation (is it a campaign plan?)
           if (planJson.campaign_name && planJson.ad_sets) {
             const newState = {
@@ -1863,6 +1903,7 @@ Otherwise, respond with a full, clear explanation, and include example JSON only
             await saveAnswerMemory(baseUrl, activeBusinessId, {
               campaign_state: newState
             });
+            lockedCampaignState = newState;
             console.log("✅ Saved Proposed Plan to State");
 
             // 📝 Overwrite the response text with a clean summary
