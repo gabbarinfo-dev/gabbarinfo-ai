@@ -789,7 +789,7 @@ if (
   mode === "meta_ads_plan" &&
   !selectedMetaObjective
 ) {
-if (false) {
+
   return res.status(200).json({
     ok: true,
     mode,
@@ -805,7 +805,7 @@ if (false) {
       "6. Send you messages on Facebook or Instagram",
   });
 }
-}
+
 // ============================================================
 // 📞 CALL DESTINATION CONFIRMATION (NO ASSUMPTIONS)
 // ============================================================
@@ -843,7 +843,7 @@ if (
   detectedPhoneNumber &&
   !lowerInstruction.includes("yes")
 ) {
-  if (false) {
+ 
   return res.status(200).json({
     ok: true,
     mode,
@@ -872,7 +872,7 @@ if (selectedDestination === "whatsapp") {
     ? `\n\nI found this number on your Facebook Page:\n📱 ${detectedWhatsappNumber}`
     : "";
 
- if (false) {
+ 
   return res.status(200).json({
     ok: true,
     mode,
@@ -931,7 +931,7 @@ if (
   !lockedCampaignState?.service &&
   availableServices.length
 ) {
- if (false) {
+ 
   return res.status(200).json({
     ok: true,
     gated: true,
@@ -990,7 +990,7 @@ if (
   !lockedCampaignState?.location &&
   detectedLocation
 ) {
- if (false) {
+
   return res.status(200).json({
     ok: true,
     gated: true,
@@ -1095,7 +1095,7 @@ Please choose ONE option:
 4. All available
 `.trim();
 
-if (false) {
+
   return res.status(200).json({
     ok: true,
     mode,
@@ -1205,7 +1205,7 @@ if (
     META_CTA_MAP[selectedMetaObjective] ||
     META_CTA_MAP.TRAFFIC;
 
- if (false) {
+
   return res.status(200).json({
     ok: true,
     mode,
