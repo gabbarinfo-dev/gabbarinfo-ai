@@ -1857,6 +1857,25 @@ Otherwise, respond with a full, clear explanation, and include example JSON only
               campaign_state: newState
             });
             console.log("✅ Saved Proposed Plan to State");
+
+            // 📝 Overwrite the response text with a clean summary
+            const creative = planJson.ad_sets?.[0]?.ads?.[0]?.creative || {};
+            const budget = planJson.budget || {};
+
+            text = `
+**Plan Proposed: ${planJson.campaign_name}**
+
+**Targeting**: ${planJson.targeting?.geo_locations?.countries?.join(", ") || "India"} (${planJson.targeting?.age_min || 18}-${planJson.targeting?.age_max || 65}+)
+**Budget**: ${budget.amount} ${budget.currency || "INR"} per ${budget.type === "DAILY" ? "day" : "lifetime"}
+
+**Creative Idea**: 
+"${creative.title || "Headline"}"
+_${creative.body || "Body Text"}_
+
+**Call to Action**: ${creative.call_to_action || "Learn More"}
+
+Reply **YES** to generate this image and launch the campaign.
+`.trim();
           }
         } catch (e) {
           console.warn("Failed to parse/save detected JSON plan:", e);
