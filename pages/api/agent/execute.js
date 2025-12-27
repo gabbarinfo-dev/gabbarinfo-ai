@@ -417,15 +417,13 @@ export default async function handler(req, res) {
     }
 
     // 🔒 Do NOT allow old chat history to override verified Meta assets
-    const historyText =
-      mode === "meta_ads_plan"
-        ? ""
-        : Array.isArray(chatHistory)
-          ? chatHistory
-            .slice(-20)
-            .map((m) => `${m.role === "user" ? "User" : "Assistant"}: ${m.text}`)
-            .join("\n\n")
-          : "";
+    // FIXED: We allow history but we instruct the model to prioritize verified assets.
+    const historyText = Array.isArray(chatHistory)
+      ? chatHistory
+          .slice(-20)
+          .map((m) => `${m.role === "user" ? "User" : "Assistant"}: ${m.text}`)
+          .join("\n\n")
+      : "";
 
     // ---------- MODE-SPECIFIC FOCUS ----------
     let modeFocus = "";
@@ -484,23 +482,31 @@ You are in META ADS / CREATIVE AGENT MODE.
   you MUST output ONLY the JSON using this exact schema:
 
 {
-  "channel": "meta_ads",
-  "platform": [],
-  "format": "feed_image",
-  "objective": "LEAD_GENERATION",
-  "creative": {
-    "imagePrompt": "a modern clinic exterior at dusk, vibrant lighting, professional photographer, high resolution",
-    "headline": "Best Dental Clinic in Mumbai – Book Now",
-    "primaryText": "Trusted by 5000+ patients. Painless treatments and easy online booking.",
-    "callToAction": "Book Now",
-    "landingPage": "https://client-website.com"
+  "campaign_name": "Dentist Clinic – Mumbai – Jan 2026",
+  "objective": "OUTCOME_TRAFFIC",
+  "budget": {
+    "amount": 500,
+    "currency": "INR",
+    "type": "DAILY"
   },
-  "metadata": {
-    "targetCountry": "IN",
-    "targetLanguages": ["en", "hi"],
-    "adAccountId": "1234567890",
-    "campaignName": "Dentist Clinic – Mumbai – Jan 2026"
-  }
+  "targeting": {
+    "geo_locations": { "countries": ["IN"], "cities": [{"name": "Mumbai"}] },
+    "age_min": 25,
+    "age_max": 55
+  },
+  "ad_sets": [
+    {
+      "name": "Ad Set 1",
+      "status": "PAUSED",
+      "ad_creative": {
+        "imagePrompt": "a modern clinic exterior at dusk, vibrant lighting, professional photographer",
+        "primary_text": "Trusted by 5000+ patients. Painless treatments.",
+        "headline": "Best Dental Clinic in Mumbai",
+        "call_to_action": "LEARN_MORE",
+        "destination_url": "https://client-website.com"
+      }
+    }
+  ]
 }
 
 - When you output JSON-only, do NOT wrap it in backticks, and add no extra text.
@@ -910,6 +916,21 @@ You are in GENERIC DIGITAL MARKETING AGENT MODE.
     if (mode === "meta_ads_plan" && wantsObjectiveChange) {
       selectedMetaObjective = null;
       selectedDestination = null;
+      
+      // 🛠️ CLEAR LOCKED OBJECTIVE IN DB
+      if (activeBusinessId && lockedCampaignState) {
+         const newState = {
+           ...lockedCampaignState,
+           objective: null,
+           destination: null,
+           stage: "reset_objective" 
+         };
+         const baseUrl = process.env.NEXT_PUBLIC_BASE_URL;
+         await saveAnswerMemory(baseUrl, activeBusinessId, {
+           campaign_state: newState
+         });
+         lockedCampaignState = newState; // Update local
+      }
     }
 
     // ============================================================
@@ -1114,14 +1135,19 @@ You are in GENERIC DIGITAL MARKETING AGENT MODE.
     ) {
       const baseUrl = process.env.NEXT_PUBLIC_BASE_URL;
 
+      const newState = {
+        ...lockedCampaignState,
+        service: selectedService,
+        stage: "service_selected",
+        locked_at: new Date().toISOString(),
+      };
+
       await saveAnswerMemory(baseUrl, activeBusinessId, {
-        campaign_state: {
-          ...lockedCampaignState,
-          service: selectedService,
-          stage: "service_selected",
-          locked_at: new Date().toISOString(),
-        },
+        campaign_state: newState,
       });
+
+      // Update local state so subsequent logic works in THIS turn
+      lockedCampaignState = newState;
     }
 
     // ============================================================
@@ -1186,14 +1212,19 @@ You are in GENERIC DIGITAL MARKETING AGENT MODE.
     ) {
       const baseUrl = process.env.NEXT_PUBLIC_BASE_URL;
 
+      const newState = {
+        ...lockedCampaignState,
+        location: selectedLocation,
+        stage: "location_selected",
+        locked_at: new Date().toISOString(),
+      };
+
       await saveAnswerMemory(baseUrl, activeBusinessId, {
-        campaign_state: {
-          ...lockedCampaignState,
-          location: selectedLocation,
-          stage: "location_selected",
-          locked_at: new Date().toISOString(),
-        },
+        campaign_state: newState,
       });
+
+      // Update local state so subsequent logic works in THIS turn
+      lockedCampaignState = newState;
 
       // OPTIONAL: immediate continue signal?
       // For now, let the user see the confirmation or next gate
@@ -1228,14 +1259,20 @@ You are in GENERIC DIGITAL MARKETING AGENT MODE.
     if (mode === "meta_ads_plan" && selectedMetaObjective && activeBusinessId) {
       const baseUrl = process.env.NEXT_PUBLIC_BASE_URL;
 
+      const newState = {
+        ...lockedCampaignState, // Preserve existing state (service/location if any)
+        stage: "objective_selected",
+        objective: selectedMetaObjective,
+        destination: selectedDestination,
+        locked_at: new Date().toISOString(),
+      };
+
       await saveAnswerMemory(baseUrl, activeBusinessId, {
-        campaign_state: {
-          stage: "objective_selected",
-          objective: selectedMetaObjective,
-          destination: selectedDestination,
-          locked_at: new Date().toISOString(),
-        },
+        campaign_state: newState,
       });
+
+      // Update local state
+      lockedCampaignState = newState;
     }
 
     // ============================================================
@@ -1371,6 +1408,10 @@ Please choose ONE option:
       ctaKeywords.some((k) => lowerText.includes(k)) ||
       lowerText.includes("cta");
 
+    // ============================================================
+    // 🔘 META CTA SELECTION — DISABLED (Let Gemini Propose Strategy)
+    // ============================================================
+    /*
     if (
       mode === "meta_ads_plan" &&
       selectedMetaObjective &&
@@ -1398,193 +1439,14 @@ Please choose ONE option:
           `Reply with the option number or CTA name.`,
       });
     }
+    */
 
 
     // ============================================================
     // 🎯 META ADS FULL FLOW (AUTO → CONFIRM → CREATE PAUSED)
+    // [REMOVED DUPLICATE LOGIC - NOW HANDLED BY STATE MACHINE ABOVE]
     // ============================================================
 
-    if (
-      mode === "meta_ads_plan" &&
-      instruction.trim().toLowerCase() === "yes"
-    ) {
-      const baseUrl = process.env.NEXT_PUBLIC_BASE_URL;
-
-      // 1️⃣ Get business intake from memory
-      const intakeRes = await fetch(`${baseUrl}/api/agent/intake-business`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-      });
-
-      const intakeJson = await intakeRes.json();
-      if (!intakeJson?.ok || !intakeJson.intake) {
-        return res.json({
-          ok: false,
-          message: "Business intake not found.",
-        });
-      }
-
-      // 2️⃣ Generate creative via Gemini
-      const creativeRes = await fetch(
-        `${baseUrl}/api/agent/generate-creative`,
-        {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            intake: intakeJson.intake,
-            objective: "Traffic",
-          }),
-        }
-      );
-
-      const creativeJson = await creativeRes.json();
-      if (!creativeJson?.ok) {
-        return res.json({
-          ok: false,
-          message: "Creative generation failed",
-        });
-      }
-
-      const { image_prompt, headlines, primary_texts, cta } =
-        creativeJson.creative;
-
-      // ===============================
-      // 🖼️ IMAGE SOURCE DECISION (SAFE)
-      // ===============================
-
-      let imageHash = null;
-
-      // CASE 1️⃣: Client provided an image URL
-      if (body.image_url) {
-        const upload = await fetch(`${baseUrl}/api/meta/upload-image`, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            imageUrl: body.image_url,
-          }),
-        });
-
-        const uploadJson = await upload.json();
-
-        if (!uploadJson?.ok || !uploadJson.imageHash) {
-          return res.json({
-            ok: false,
-            message: "Image upload failed (client image).",
-          });
-        }
-
-        imageHash = uploadJson.imageHash;
-      }
-
-      // CASE 2️⃣: No image given → generate using AI
-      else {
-        // Generate image using OpenAI
-        const imgGen = await fetch(`${baseUrl}/api/images/generate`, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ prompt: image_prompt }),
-        });
-
-        const imgJson = await imgGen.json();
-
-        if (!imgJson?.ok || !imgJson.imageBase64) {
-          return res.json({
-            ok: false,
-            message: "Image generation failed",
-          });
-        }
-
-        // Upload AI image to Meta
-        const upload = await fetch(`${baseUrl}/api/meta/upload-image`, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            imageBase64: imgJson.imageBase64,
-          }),
-        });
-
-        const uploadJson = await upload.json();
-
-        if (!uploadJson?.ok || !uploadJson.imageHash) {
-          return res.json({
-            ok: false,
-            message: "Image upload failed",
-          });
-        }
-
-        imageHash = uploadJson.imageHash;
-      }
-
-
-      // 5️⃣ Execute paused campaign
-      const execRes = await fetch(
-        `${baseUrl}/api/meta/execute-campaign`,
-        {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            campaign: {
-              objective: "TRAFFIC",
-              status: "PAUSED",
-              daily_budget: 200,
-            },
-            adset: {
-              optimization_goal: "LINK_CLICKS",
-              targeting_country: "IN",
-            },
-            creative: {
-              headline: headlines[0],
-              body_text: primary_texts[0],
-              call_to_action: cta,
-              image_hash: imageHash,
-              destination_url: intakeJson.intake.website || intakeJson.intake.page_url,
-            },
-          }),
-        }
-      );
-
-      const execJson = await execRes.json();
-
-      return res.json({
-        ok: true,
-        message: "Paused Meta campaign created successfully.",
-        meta_response: execJson,
-      });
-    }
-
-
-    // ===============================
-    // 🚀 FINAL META EXECUTION (MANUAL CONFIRMATION)
-    // ===============================
-    if (
-      mode === "meta_ads_plan" &&
-      instruction.toLowerCase().includes("yes")
-    ) {
-      const baseUrl = process.env.NEXT_PUBLIC_BASE_URL;
-
-      const execRes = await fetch(
-        `${baseUrl}/api/meta/execute-campaign`,
-        {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            campaign: body.campaign,
-            adset: body.adset,
-            creative: body.creative,
-          }),
-        }
-      );
-
-      const execJson = await execRes.json();
-
-      return res.status(200).json({
-        ok: true,
-        executed: true,
-        platform: "meta",
-        paused: true,
-        result: execJson,
-      });
-    }
     // ============================================================
     // 💾 STORE META OBJECTIVE IN MEMORY (ONCE USER SELECTS)
     // ============================================================
@@ -1651,76 +1513,55 @@ RULES:
 You are GabbarInfo AI – a senior digital marketing strategist and backend AGENT.
 
 YOUR CORE JOB:
-- Understand the user's instruction.
-- Decide what they actually need:
-  - Google Ads plan / campaign JSON
-  - Meta (Facebook/Instagram) ads plan / creative JSON
-  - Social media plan
-  - SEO / blog
-  - Or a mixed strategy
-- Produce either:
-  - A clear, step-by-step actionable plan, OR
-  - Valid backend JSON payloads (ONLY when the user explicitly asks for JSON).
+- Follow the STRICT 12-STEP CAMPAIGN CREATION FLOW.
+- Do NOT skip steps.
+- Do NOT hallucinate assets (images/URLs).
 
 ====================================================
-CRITICAL AGENT SAFETY & BUSINESS CONTEXT RULES
+STRICT 12-STEP META CAMPAIGN FLOW
+====================================================
+1.  User Request (Start)
+2.  Context Check (Business Intake / Meta Connection)
+3.  Objective Confirmation (Traffic/Leads etc.)
+4.  Objective Details (Destination URL / WhatsApp Number)
+5.  Safety Gate (Budget/Approval)
+6.  Service Confirmation (Product/Service to promote) -> [LOCKED]
+7.  Location Confirmation (City/Area) -> [LOCKED]
+8.  Strategy Proposal (Generate JSON Plan) -> [LOCKED]
+9.  Image Generation (OpenAI) -> [AUTOMATED]
+10. Image Upload (Meta) -> [AUTOMATED]
+11. Final Confirmation (Paused Campaign)
+12. Execution (Create on Meta)
+
+====================================================
+CURRENT STATUS & INSTRUCTIONS
 ====================================================
 
-GENERAL (APPLIES TO ALL PLATFORMS):
-- You MUST NEVER claim that you already executed actions in Google Ads, Meta, LinkedIn, or WordPress.
-- You MUST NOT publish, spend money, or activate campaigns without explicit confirmation.
-- When JSON is requested, follow the exact schemas provided.
-- Assume India as default geography unless specified otherwise.
+${lockedContext ? "✅ LOCKED CONTEXT DETECTED (Steps 3-7 Complete)" : "⚠️ NO LOCKED CONTEXT (Steps 1-7 In Progress)"}
 
-----------------------------------------------------
-META (FACEBOOK / INSTAGRAM) BUSINESS RULES
-----------------------------------------------------
-- If "Forced Meta Business Context" is present:
-  - That business is the ACTIVE business.
-  - Assets (Page / IG / Ad Account) are already connected and authorized.
-  - You are STRICTLY FORBIDDEN from asking:
-    - business name
-    - active company
-    - which page/account to use
-- Proceed directly with:
-  - campaign planning
-  - creative generation
-  - Meta JSON payloads
-- Ask ONLY campaign-level questions if genuinely missing:
-  - objective
-  - budget
-  - location (if not inferable)
-- You are STRICTLY FORBIDDEN from inventing or guessing URLs.
-  - For website traffic campaigns:
-  - Use ONLY the confirmed landing page provided in CONTEXT.
-  - If no landing page is provided, STOP and ask the user.
-- NEVER use example.com, placeholder URLs, or assumed paths.
+IF LOCKED CONTEXT EXISTS (Service + Location + Objective):
+- You are at STEP 8 (Strategy Proposal).
+- You MUST generate the "Backend JSON" for the campaign plan immediately.
+- Do NOT ask more questions.
+- Use the JSON schema defined in your Mode Focus.
+- The plan MUST include:
+  - Campaign Name (Creative & Descriptive)
+  - Budget (Daily, INR)
+  - Targeting (Location from Locked Context)
+  - Creative (Headline, Primary Text, Image Prompt)
 
+IF NO LOCKED CONTEXT:
+- You are likely in Steps 1-7.
+- Ask ONE clear question at a time to get the missing info (Objective, Service, Location).
+- Do NOT generate JSON yet.
 
-----------------------------------------------------
-GOOGLE ADS BUSINESS RULES
-----------------------------------------------------
-- Google Ads does NOT rely on Meta business context.
-- If the task is Google Ads:
-  - You may proceed even if Forced Meta Business Context exists.
-  - You MUST rely on:
-    - Client memory (RAG)
-    - Auto-detected business intake
-    - Or user-provided details
-- If NO business info exists at all:
-  - Ask ONLY the MINIMUM required Google Ads details:
-    - what is being advertised
-    - goal (leads / traffic / sales)
-    - landing page (if needed)
-- NEVER block Google Ads flow due to Meta business rules.
-
-----------------------------------------------------
-MULTIPLE BUSINESS SAFETY
-----------------------------------------------------
-- If MULTIPLE businesses are detected in CLIENT CONTEXT:
-  - You MUST ask the user to explicitly choose ONE business
-  - UNLESS Forced Meta Business Context is present
-- Forced Meta Business Context ALWAYS overrides ambiguity.
+====================================================
+CRITICAL BUSINESS RULES
+====================================================
+- If "Forced Meta Business Context" is present, use it.
+- NEVER invent URLs. Use verified landing pages only.
+- Assume India/INR defaults.
+- For Step 8 (Strategy), output JSON ONLY if you have all details.
 
 ====================================================
 PLATFORM MODE GUIDANCE
@@ -1728,41 +1569,19 @@ PLATFORM MODE GUIDANCE
 ${modeFocus}
 ${lockedContext}
 ====================================================
-CLIENT CONTEXT (AUTHORITATIVE — MUST BE USED)
+CLIENT CONTEXT
 ====================================================
 Verified Meta Assets:
 ${verifiedMetaAssets ? JSON.stringify(verifiedMetaAssets, null, 2) : "(none)"}
 
-Verified Meta Ad Account ID (MUST be used in all Meta JSON):
-${verifiedMetaAssets?.ad_account?.id || verifiedMetaAssets?.ad_account?.account_id || "(missing)"}
-
 Forced Meta Business Context:
 ${forcedBusinessContext ? JSON.stringify(forcedBusinessContext, null, 2) : "(none)"}
 
-Auto-Detected Business Intake (from connected assets):
+Auto-Detected Business Intake:
 ${autoBusinessContext ? JSON.stringify(autoBusinessContext, null, 2) : "(none)"}
 
 RAG / Memory Context:
 ${ragContext || "(none)"}
-
-Resolved Platforms (AUTHORITATIVE — MUST BE USED EXACTLY IN JSON):
-${JSON.stringify(resolvedPlatforms)}
-
-====================================================
-QUESTION GENERATION CONTEXT (MUST BE USED)
-====================================================
-
-context:
-${JSON.stringify(autoBusinessContext || forcedBusinessContext || {}, null, 2)}
-
-====================================================
-FINAL OVERRIDE RULE
-====================================================
-If Forced Meta Business Context is present:
-- The business is already selected
-- The assets are already connected
-- You MUST proceed
-- You MUST NOT ask for business name or active company
 `.trim();
     // ============================================================
     // 🚫 HARD STOP — PREVENT URL HALLUCINATION (META TRAFFIC)
@@ -1862,10 +1681,12 @@ Otherwise, respond with a full, clear explanation, and include example JSON only
           // Basic validation (is it a campaign plan?)
           if (planJson.campaign_name && planJson.ad_sets) {
             const newState = {
+              ...lockedCampaignState, // Preserve verified assets
               stage: "PLAN_PROPOSED",
               plan: planJson,
-              objective: selectedMetaObjective,
-              destination: selectedDestination
+              // Objective/Dest might be redundant if in lockedCampaignState, but safe to keep
+              objective: lockedCampaignState?.objective || selectedMetaObjective,
+              destination: lockedCampaignState?.destination || selectedDestination
             };
             const baseUrl = process.env.NEXT_PUBLIC_BASE_URL;
             await saveAnswerMemory(baseUrl, activeBusinessId, {
@@ -1874,14 +1695,14 @@ Otherwise, respond with a full, clear explanation, and include example JSON only
             console.log("✅ Saved Proposed Plan to State");
 
             // 📝 Overwrite the response text with a clean summary
-            const creative = planJson.ad_sets?.[0]?.ads?.[0]?.creative || {};
+            const creative = planJson.ad_sets?.[0]?.ad_creative || planJson.ad_sets?.[0]?.ads?.[0]?.creative || {};
             // Handle Budget Variance (Object vs Flat)
             const bAmount = planJson.budget?.amount || planJson.budget_value || "N/A";
             const bCurrency = planJson.budget?.currency || "INR";
             const bType = planJson.budget?.type || planJson.budget_type || "DAILY";
 
-            const creativeTitle = creative.title || creative.headline || "Headline";
-            const creativeBody = creative.body || creative.primary_text || "Body Text";
+            const creativeTitle = creative.headline || creative.title || "Headline";
+            const creativeBody = creative.primary_text || creative.body || "Body Text";
 
             text = `
 **Plan Proposed: ${planJson.campaign_name}**
