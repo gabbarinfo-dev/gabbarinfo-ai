@@ -1126,17 +1126,24 @@ You are in GENERIC DIGITAL MARKETING AGENT MODE.
 
     if (
       mode === "meta_ads_plan" &&
-      !lockedCampaignState?.location &&
-      detectedLocation
+      !lockedCampaignState?.location
     ) {
-      return res.status(200).json({
-        ok: true,
-        gated: true,
-        text:
-          `I detected this location for your business:\n\n📍 ${detectedLocation}\n\n` +
-          `Should I run ads for this location?\n\n` +
-          `Reply YES to confirm, or type a different city / area.`,
-      });
+      if (detectedLocation) {
+        return res.status(200).json({
+          ok: true,
+          gated: true,
+          text:
+            `I detected this location for your business:\n\n📍 ${detectedLocation}\n\n` +
+            `Should I run ads for this location?\n\n` +
+            `Reply YES to confirm, or type a different city / area.`,
+        });
+      } else {
+        return res.status(200).json({
+          ok: true,
+          gated: true,
+          text: `Where should this ad run? (e.g. Mumbai, New York, or 'Online')`
+        });
+      }
     }
 
     // ============================================================
@@ -1783,6 +1790,13 @@ Otherwise, respond with a full, clear explanation, and include example JSON only
 `.trim();
 
     const model = genAI.getGenerativeModel({ model: GEMINI_MODEL });
+
+    // 🛑 BLOCK GEMINI IF GATES ARE NOT PASSED (Double Safety)
+    if (mode === "meta_ads_plan" && (!lockedCampaignState?.service || !lockedCampaignState?.location)) {
+      // Technically unreachable if gates are working, but safe fallback
+      return res.status(200).json({ ok: true, text: "waiting for details..." });
+    }
+
     const result = await model.generateContent({
       contents: [
         {
@@ -1792,11 +1806,24 @@ Otherwise, respond with a full, clear explanation, and include example JSON only
       ],
     });
 
-    const text =
+    let text =
       (result &&
         result.response &&
         typeof result.response.text === "function" &&
         result.response.text()) ||
+      "";
+
+    // 🧹 CLEANUP: If Gemini outputs JSON, hide it from the user flow (User complaint: "Jumps to JSON").
+    // We only want to show the JSON *Summary* text if passing a proposed plan.
+    if (activeBusinessId && text.includes("```json")) {
+      // We will strip the JSON block for the display text
+      text = text.replace(/```json[\s\S]*?```/g, "").trim();
+      if (!text) text = "I have drafted a plan based on your requirements. Please check it internally.";
+    }
+    (result &&
+      result.response &&
+      typeof result.response.text === "function" &&
+      result.response.text()) ||
       "";
 
     // 🕵️ DETECT AND SAVE JSON PLAN (FROM GEMINI)
