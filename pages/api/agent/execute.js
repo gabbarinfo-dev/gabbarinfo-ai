@@ -15,6 +15,7 @@ const GEMINI_API_KEY = process.env.GEMINI_API_KEY;
 const GEMINI_MODEL = process.env.GEMINI_MODEL || "gemini-1.5-flash";
 
 let genAI = null;
+let __currentEmail = null;
 if (GEMINI_API_KEY) {
   genAI = new GoogleGenerativeAI(GEMINI_API_KEY);
 } else {
@@ -22,14 +23,47 @@ if (GEMINI_API_KEY) {
 }
 
 async function saveAnswerMemory(baseUrl, business_id, answers) {
-  await fetch(`${baseUrl}/api/agent/answer-memory`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({
-      business_id,
-      answers,
-    }),
-  });
+  try {
+    if (baseUrl) {
+      const resp = await fetch(`${baseUrl}/api/agent/answer-memory`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          business_id,
+          answers,
+        }),
+      });
+      if (resp.ok) return;
+    }
+  } catch {}
+  if (!__currentEmail) return;
+  const { data: existing } = await supabase
+    .from("agent_memory")
+    .select("content")
+    .eq("email", __currentEmail)
+    .eq("memory_type", "client")
+    .maybeSingle();
+  let content = {};
+  try {
+    content = existing?.content ? JSON.parse(existing.content) : {};
+  } catch {
+    content = {};
+  }
+  content.business_answers = content.business_answers || {};
+  content.business_answers[business_id] = {
+    ...(content.business_answers[business_id] || {}),
+    ...answers,
+    updated_at: new Date().toISOString(),
+  };
+  await supabase.from("agent_memory").upsert(
+    {
+      email: __currentEmail,
+      memory_type: "client",
+      content: JSON.stringify(content),
+      updated_at: new Date().toISOString(),
+    },
+    { onConflict: "email,memory_type" }
+  );
 }
 
 export default async function handler(req, res) {
@@ -47,6 +81,7 @@ export default async function handler(req, res) {
     if (!session) {
       return res.status(401).json({ ok: false, message: "Not authenticated" });
     }
+    __currentEmail = session.user.email.toLowerCase();
     // ============================================================
     // 🔍 STEP 1: AGENT META ASSET DISCOVERY (CACHED)
     // ============================================================
