@@ -1049,25 +1049,38 @@ You are in GENERIC DIGITAL MARKETING AGENT MODE.
 
     const availableServices =
       autoBusinessContext?.detected_services || [];
+
     // ============================================================
     // ❓ SERVICE CONFIRMATION (BEFORE BUDGET / LOCATION)
     // ============================================================
 
+    // Logic: If Service is NOT locked, preventing moving forward
     if (
       mode === "meta_ads_plan" &&
-      !lockedCampaignState?.service &&
-      availableServices.length
+      !lockedCampaignState?.service
     ) {
-      return res.status(200).json({
-        ok: true,
-        gated: true,
-        text:
-          "Which service do you want to promote in this campaign?\n\n" +
-          availableServices
-            .map((s, i) => `${i + 1}. ${s}`)
-            .join("\n") +
-          "\n\nReply with the option number.",
-      });
+      // Check if user is confirming a service just now
+      const serviceIndex = parseInt(lowerInstruction, 10);
+
+      if (
+        !isNaN(serviceIndex) &&
+        availableServices[serviceIndex - 1]
+      ) {
+        selectedService = availableServices[serviceIndex - 1];
+        // Will be saved by the lock logic below
+      } else {
+        // Gate is CLOSED -> Ask question
+        return res.status(200).json({
+          ok: true,
+          gated: true,
+          text:
+            "Which service do you want to promote in this campaign?\n\n" +
+            (availableServices.length
+              ? availableServices.map((s, i) => `${i + 1}. ${s}`).join("\n")
+              : "- General Business Promotion\n- Specific Offer") +
+            "\n\nReply with the option number or type the service name.",
+        });
+      }
     }
     // ============================================================
     // 🔒 LOCK SELECTED SERVICE
@@ -1161,6 +1174,30 @@ You are in GENERIC DIGITAL MARKETING AGENT MODE.
           locked_at: new Date().toISOString(),
         },
       });
+
+      // OPTIONAL: immediate continue signal?
+      // For now, let the user see the confirmation or next gate
+    }
+
+    // ============================================================
+    // 💰 BUDGET & TARGETING GATE (STRICT)
+    // ============================================================
+    if (
+      mode === "meta_ads_plan" &&
+      lockedCampaignState?.service &&
+      lockedCampaignState?.location
+    ) {
+      // If we are here, we have Service + Location locked.
+      // We must check if we have a PLAN proposed yet.
+
+      if (!lockedCampaignState.plan) {
+        // We need to propose a plan, BUT we want Gemini to have clear instructions
+        // The systemPrompt "should" handle it, but let's force a specific "Planning Phase" call
+        // The existing logic falls through to Gemini below.
+
+        // We add a specific instruction to the context:
+        // "User has confirmed Service + Location. NOW generating detailed plan."
+      }
     }
 
 
