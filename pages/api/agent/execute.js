@@ -814,6 +814,74 @@ You are in GENERIC DIGITAL MARKETING AGENT MODE.
               ]
             };
           }
+          // Normalize Variation B: { adAccountId, campaign, adSets: [{ adCreatives: [{ creative: {...} }]}] }
+          if (userPlan.campaign && Array.isArray(userPlan.adSets)) {
+            const c = userPlan.campaign || {};
+            const as0 = userPlan.adSets[0] || {};
+            const cr0 = Array.isArray(as0.adCreatives) ? as0.adCreatives[0] || {} : {};
+            const cr = cr0.creative || {};
+            const tgt = as0.targeting || {};
+            const geo = tgt.geo_locations || {};
+            const citiesArr = Array.isArray(geo.cities) ? geo.cities : [];
+            const cities = citiesArr
+              .map((city) => {
+                if (typeof city === "string") return { name: city };
+                if (city && city.name) return { name: city.name };
+                return null;
+              })
+              .filter(Boolean);
+            const objectiveRaw = (c.objective || "").toString().toUpperCase();
+            let normalizedObjective = "OUTCOME_TRAFFIC";
+            if (objectiveRaw.includes("LEAD")) normalizedObjective = "OUTCOME_LEADS";
+            else if (objectiveRaw.includes("CLICK") || objectiveRaw.includes("TRAFFIC") || objectiveRaw.includes("LINK_CLICKS")) normalizedObjective = "OUTCOME_TRAFFIC";
+            else if (objectiveRaw.includes("AWARENESS")) normalizedObjective = "OUTCOME_AWARENESS";
+            else if (objectiveRaw.includes("CONVERSION") || objectiveRaw.includes("SALES")) normalizedObjective = "OUTCOME_SALES";
+            else if (objectiveRaw.includes("ENGAGEMENT")) normalizedObjective = "OUTCOME_ENGAGEMENT";
+            else if (objectiveRaw.includes("APP")) normalizedObjective = "OUTCOME_APP_PROMOTION";
+            const amount = Number(as0.daily_budget || as0.budget?.amount) || 500;
+            const currency = as0.currency || as0.budget?.currency || "INR";
+            const primaryText = Array.isArray(cr.primaryText_options)
+              ? cr.primaryText_options[0]
+              : (cr.primary_text || "");
+            const headline = Array.isArray(cr.headline_options)
+              ? cr.headline_options[0]
+              : (cr.headline || "");
+            let destUrl = (cr.landingPage || cr.destination_url || "").toString().trim();
+            if (!/^https?:\/\//.test(destUrl)) {
+              destUrl = "https://gabbarinfo.com/";
+            }
+            const callToAction = cr.callToAction || cr.call_to_action || "LEARN_MORE";
+            userPlan = {
+              campaign_name: c.name || c.campaign_name || "New Campaign",
+              objective: normalizedObjective,
+              budget: {
+                amount,
+                currency,
+                type: ((as0.budget?.type || "DAILY")).toUpperCase()
+              },
+              targeting: {
+                geo_locations: {
+                  countries: geo.countries || ["IN"],
+                  cities
+                },
+                age_min: tgt.age_min || 18,
+                age_max: tgt.age_max || 65
+              },
+              ad_sets: [
+                {
+                  name: as0.name || "Ad Set 1",
+                  status: (c.status || "PAUSED").toUpperCase(),
+                  ad_creative: {
+                    imagePrompt: cr.imagePrompt || cr.image_prompt || "Ad Image",
+                    primary_text: primaryText || "",
+                    headline: headline || "",
+                    call_to_action: callToAction,
+                    destination_url: destUrl
+                  }
+                }
+              ]
+            };
+          }
           // Normalize Variation 5: { campaign_details, ad_sets: [{ ads: [{ creative: {...} }]}]}
           if (userPlan.campaign_details && Array.isArray(userPlan.ad_sets)) {
             const cd = userPlan.campaign_details;
@@ -1121,7 +1189,8 @@ You are in GENERIC DIGITAL MARKETING AGENT MODE.
       (instruction.includes("campaign_name") ||
        instruction.includes("\"campaign\"") ||
        instruction.includes("ad_set") ||
-       instruction.includes("ad_sets"));
+       instruction.includes("ad_sets") ||
+       instruction.includes("\"adSets\""));
 
     // 🔐 APPLY LOCKED OBJECTIVE FIRST (IF EXISTS)
     if (
@@ -1382,7 +1451,8 @@ You are in GENERIC DIGITAL MARKETING AGENT MODE.
     // Logic: If Service is NOT locked, preventing moving forward
     if (
       mode === "meta_ads_plan" &&
-      !lockedCampaignState?.service
+      !lockedCampaignState?.service &&
+      !containsPlanJson
     ) {
       // Check if user is confirming a service just now
       const serviceIndex = parseInt(lowerInstruction, 10);
