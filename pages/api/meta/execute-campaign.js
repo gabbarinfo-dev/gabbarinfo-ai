@@ -65,6 +65,7 @@ export default async function handler(req, res) {
     function mapObjective(obj) {
       const o = (obj || "").toUpperCase();
       if (o.includes("OUTCOME_TRAFFIC")) return "OUTCOME_TRAFFIC";
+      if (o === "TRAFFIC") return "TRAFFIC";
       if (o.includes("LINK_CLICKS")) return "LINK_CLICKS";
       if (o.includes("LEAD")) return "OUTCOME_LEADS";
       if (o.includes("CONVERSION")) return "CONVERSIONS";
@@ -78,7 +79,7 @@ export default async function handler(req, res) {
         name: payload.campaign_name,
         objective: mapObjective(objective),
         status: "PAUSED",
-        special_ad_categories: ["NONE"],
+        special_ad_categories: [],
         buying_type: "AUCTION",
       };
       const url = `${base}/campaigns?access_token=${ACCESS_TOKEN}`;
@@ -92,7 +93,7 @@ export default async function handler(req, res) {
       return { res, json };
     }
 
-    const objectiveCandidates = ["LINK_CLICKS", payload.objective || "OUTCOME_TRAFFIC", "OUTCOME_TRAFFIC"];
+    const objectiveCandidates = ["LINK_CLICKS", "TRAFFIC", payload.objective || "OUTCOME_TRAFFIC", "OUTCOME_TRAFFIC"];
 
     let campaignId = null;
     let lastErr = null;
