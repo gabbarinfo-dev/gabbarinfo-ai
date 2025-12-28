@@ -49,7 +49,7 @@ export default async function handler(req, res) {
   const AD_ACCOUNT_ID = (meta.fb_ad_account_id || "").toString().replace(/^act_/, "");
   const ACCESS_TOKEN = meta.system_user_token;
   const PAGE_ID = meta.fb_page_id;
-  const base = `https://graph.facebook.com/v19.0/act_${AD_ACCOUNT_ID}`;
+  const base = `https://graph.facebook.com/v24.0/act_${AD_ACCOUNT_ID}`;
 
   // Track created assets for rollback/reporting
   const createdAssets = {
@@ -62,13 +62,23 @@ export default async function handler(req, res) {
     // =================================================================
     // STEP 1: CREATE CAMPAIGN
     // =================================================================
+    function mapObjective(obj) {
+      const o = (obj || "").toUpperCase();
+      if (o.includes("OUTCOME_TRAFFIC")) return "OUTCOME_TRAFFIC";
+      if (o.includes("LINK_CLICKS")) return "LINK_CLICKS";
+      if (o.includes("LEAD")) return "OUTCOME_LEADS";
+      if (o.includes("CONVERSION")) return "CONVERSIONS";
+      if (o.includes("MESSAGES")) return "MESSAGES";
+      if (o.includes("REACH")) return "REACH";
+      return "OUTCOME_TRAFFIC";
+    }
+
     async function tryCreateCampaign(objective) {
       const body = {
         name: payload.campaign_name,
-        objective,
+        objective: mapObjective(objective),
         status: "PAUSED",
-        buying_type: "AUCTION",
-        special_ad_categories: [],
+        special_ad_categories: ["NONE"],
       };
       const url = `${base}/campaigns?access_token=${ACCESS_TOKEN}`;
       const res = await fetch(url, {
@@ -81,14 +91,11 @@ export default async function handler(req, res) {
       return { res, json };
     }
 
-    const objectiveCandidates = [
-      payload.objective || "OUTCOME_TRAFFIC",
-      "LINK_CLICKS",
-      "TRAFFIC"
-    ];
+    const objectiveCandidates = [payload.objective || "OUTCOME_TRAFFIC", "LINK_CLICKS", "OUTCOME_TRAFFIC"];
 
     let campaignId = null;
     let lastErr = null;
+    let lastTried = null;
     for (const obj of objectiveCandidates) {
       const attempt = await tryCreateCampaign(obj);
       if (attempt.res.ok && attempt.json?.id) {
@@ -96,11 +103,12 @@ export default async function handler(req, res) {
         break;
       } else {
         lastErr = attempt.json?.error?.message || JSON.stringify(attempt.json || {});
+        lastTried = obj;
       }
     }
 
     if (!campaignId) {
-      throw new Error(`Campaign Create Failed: ${lastErr || "Unknown error"}`);
+      throw new Error(`Campaign Create Failed: ${lastErr || "Unknown error"} (objective tried: ${lastTried})`);
     }
 
     createdAssets.campaign_id = campaignId;
