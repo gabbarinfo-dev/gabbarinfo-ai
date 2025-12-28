@@ -49,7 +49,8 @@ export default async function handler(req, res) {
   const AD_ACCOUNT_ID = (meta.fb_ad_account_id || "").toString().replace(/^act_/, "");
   const ACCESS_TOKEN = meta.system_user_token;
   const PAGE_ID = meta.fb_page_id;
-  const base = `https://graph.facebook.com/v24.0/act_${AD_ACCOUNT_ID}`;
+  const API_VERSIONS = ["v24.0", "v21.0"];
+  const baseFor = (ver) => `https://graph.facebook.com/${ver}/act_${AD_ACCOUNT_ID}`;
 
   // Track created assets for rollback/reporting
   const createdAssets = {
@@ -79,18 +80,27 @@ export default async function handler(req, res) {
       params.append("name", payload.campaign_name);
       params.append("objective", mapObjective(objective));
       params.append("status", "PAUSED");
+      params.append("buying_type", "AUCTION");
       params.append("special_ad_categories", JSON.stringify([]));
-      const url = `${base}/campaigns?access_token=${ACCESS_TOKEN}`;
-      const res = await fetch(url, {
-        method: "POST",
-        body: params,
-      });
+      let res, json, lastErr = null, lastVer = null;
+      for (const ver of API_VERSIONS) {
+        const url = `${baseFor(ver)}/campaigns?access_token=${ACCESS_TOKEN}`;
+        res = await fetch(url, { method: "POST", body: params });
+        try { json = await res.json(); } catch (_) { json = { raw: await res.text() }; }
+        if (res.ok && json?.id) {
+          return { res, json, ver };
+        } else {
+          lastErr = json?.error?.message || JSON.stringify(json || {});
+          lastVer = ver;
+        }
+      }
+      // Final return with last error
       let json;
       try { json = await res.json(); } catch (_) { json = { raw: await res.text() }; }
-      return { res, json };
+      return { res, json, lastErr, lastVer };
     }
 
-    const objectiveCandidates = ["OUTCOME_TRAFFIC", "TRAFFIC", "LINK_CLICKS"];
+    const objectiveCandidates = ["OUTCOME_TRAFFIC"];
 
     let campaignId = null;
     let lastErr = null;
@@ -101,7 +111,7 @@ export default async function handler(req, res) {
         campaignId = attempt.json.id;
         break;
       } else {
-        lastErr = attempt.json?.error?.message || JSON.stringify(attempt.json || {});
+        lastErr = attempt.lastErr || attempt.json?.error?.message || JSON.stringify(attempt.json || {});
         lastTried = obj;
       }
     }
