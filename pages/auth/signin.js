@@ -13,7 +13,7 @@ export default function SignInPage() {
   return (
     <div style={{ padding: 40, fontFamily: "Arial, sans-serif" }}>
       <h1>Sign in to GabbarInfo AI</h1>
-      <p>Sign in with Google to access the AI chat.</p>
+      <p>Choose a sign-in method to access the AI chat.</p>
 
       <button
         onClick={() => signIn("google", { callbackUrl: "/chat" })}
@@ -28,6 +28,21 @@ export default function SignInPage() {
         }}
       >
         Continue with Google
+      </button>
+      <div style={{ height: 12 }} />
+      <button
+        onClick={() => signIn("facebook", { callbackUrl: "/chat" })}
+        style={{
+          padding: "12px 18px",
+          borderRadius: 8,
+          border: "none",
+          background: "#1877F2",
+          color: "white",
+          fontSize: 16,
+          cursor: "pointer",
+        }}
+      >
+        Continue with Facebook
       </button>
     </div>
   );
