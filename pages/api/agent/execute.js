@@ -826,7 +826,7 @@ You are in GENERIC DIGITAL MARKETING AGENT MODE.
             // Upload image to Meta
             const uploadRes = await fetch(`${process.env.NEXT_PUBLIC_BASE_URL}/api/meta/upload-image`, {
               method: "POST",
-              headers: { "Content-Type": "application/json" },
+              headers: { "Content-Type": "application/json", "X-Client-Email": __currentEmail || "" },
               body: JSON.stringify({ imageBase64: newCreative.imageBase64 })
             });
             const uploadJson = await parseResponseSafe(uploadRes);
@@ -847,7 +847,7 @@ You are in GENERIC DIGITAL MARKETING AGENT MODE.
             };
             const execRes = await fetch(`${process.env.NEXT_PUBLIC_BASE_URL}/api/meta/execute-campaign`, {
               method: "POST",
-              headers: { "Content-Type": "application/json" },
+              headers: { "Content-Type": "application/json", "X-Client-Email": __currentEmail || "" },
               body: JSON.stringify({ platform: "meta", payload: finalPayload })
             });
             let execJson = {};
@@ -955,7 +955,7 @@ You are in GENERIC DIGITAL MARKETING AGENT MODE.
 
         const uploadRes = await fetch(`${process.env.NEXT_PUBLIC_BASE_URL}/api/meta/upload-image`, {
           method: "POST",
-          headers: { "Content-Type": "application/json" },
+          headers: { "Content-Type": "application/json", "X-Client-Email": __currentEmail || "" },
           body: JSON.stringify({ imageBase64: creative.imageBase64 })
         });
 
