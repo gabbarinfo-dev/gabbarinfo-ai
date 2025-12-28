@@ -144,9 +144,10 @@ export default async function handler(req, res) {
         igAccount = await igRes.json();
       }
 
-      // Ad Account
+      // Ad Account (normalize id to numeric for 'act_<id>' pattern)
+      const normalizedAdId = (meta.fb_ad_account_id || "").toString().replace(/^act_/, "");
       const adRes = await fetch(
-        `https://graph.facebook.com/v19.0/act_${meta.fb_ad_account_id}?fields=account_status,currency,timezone_name&access_token=${token}`
+        `https://graph.facebook.com/v19.0/act_${normalizedAdId}?fields=account_status,currency,timezone_name&access_token=${token}`
       );
       const adAccount = await adRes.json();
 
