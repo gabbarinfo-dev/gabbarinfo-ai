@@ -79,6 +79,26 @@ async function saveAnswerMemory(baseUrl, business_id, answers) {
   );
 }
 
+function gateStatus(metaConnected, lockedCampaignState) {
+  const parts = [];
+  if (!metaConnected) parts.push("Meta not connected: upload/publish skipped");
+  if (!lockedCampaignState) {
+    parts.push("Awaiting details");
+    return `[Status] ${parts.join(" · ")}`;
+  }
+  const s = lockedCampaignState.stage || "PLANNING";
+  if (!lockedCampaignState.service) parts.push("Service missing");
+  if (!lockedCampaignState.location) parts.push("Location missing");
+  if (!lockedCampaignState.objective) parts.push("Objective missing");
+  const hasImage = !!lockedCampaignState.creative?.imageBase64;
+  const hasHash = !!lockedCampaignState.image_hash;
+  if (s === "PLAN_PROPOSED" && !hasImage) parts.push("Generating image");
+  if (s === "IMAGE_GENERATED" && !hasHash && metaConnected) parts.push("Uploading image");
+  if (s === "READY_TO_LAUNCH") parts.push("Awaiting YES to publish");
+  if (s === "COMPLETED") parts.push("Published");
+  return `[Status] ${parts.length ? parts.join(" · ") : "Ready"}`;
+}
+
 export default async function handler(req, res) {
   if (req.method !== "POST") {
     return res.status(405).json({ ok: false, message: "Only POST allowed." });
@@ -195,6 +215,9 @@ export default async function handler(req, res) {
         business_id: activeBusinessId,
         note: "User has exactly ONE Meta business connected. This is the active business.",
       };
+    }
+    if (!activeBusinessId) {
+      activeBusinessId = `__default__`;
     }
     // ============================================================
     // 📣 PLATFORM RESOLUTION (FACEBOOK / INSTAGRAM) — SOURCE OF TRUTH
@@ -702,7 +725,9 @@ You are in GENERIC DIGITAL MARKETING AGENT MODE.
         gated: true,
         text:
           "Before I proceed, I need a few quick details:\n\n" +
-          qJson.questions.map((q, i) => `${i + 1}. ${q}`).join("\n"),
+          qJson.questions.map((q, i) => `${i + 1}. ${q}`).join("\n") +
+          "\n\n" +
+          gateStatus(metaConnected, null),
       });
     }
     // ============================================================
@@ -1040,7 +1065,7 @@ You are in GENERIC DIGITAL MARKETING AGENT MODE.
       const hasPlan = lockedCampaignState.plan && lockedCampaignState.plan.campaign_name;
       const hasImage = lockedCampaignState.creative && lockedCampaignState.creative.imageBase64;
 
-      if ((stage === "PLAN_PROPOSED" || (hasPlan && !hasImage)) && userSaysYes) {
+      if (stage === "PLAN_PROPOSED" && !hasImage) {
         // User accepted the JSON plan. Now generate image.
         const plan = lockedCampaignState.plan;
         
@@ -1087,14 +1112,14 @@ You are in GENERIC DIGITAL MARKETING AGENT MODE.
 
             return res.status(200).json({
                 ok: true,
-                text: `I've generated an image for your ad based on the plan.\n\nHere it is:\n\n[Image Generated]\n\nDo you want to use this image and launch the campaign? Reply YES to confirm.`,
+                text: `I've generated an image for your ad based on the plan.\n\nHere it is:\n\n[Image Generated]\n\nDo you want to use this image and launch the campaign? Reply YES to confirm.\n\n` + gateStatus(metaConnected, newState),
                 imageUrl: newCreative.imageUrl
             });
             } else {
                // Image gen failed
                return res.status(200).json({
                    ok: true,
-                   text: "I tried to generate the image, but the image service is not responding. Please try again."
+                   text: "I tried to generate the image, but the image service is not responding. Please try again.\n\n" + gateStatus(metaConnected, lockedCampaignState || null)
                });
             }
         }
@@ -1103,7 +1128,7 @@ You are in GENERIC DIGITAL MARKETING AGENT MODE.
       // 2️⃣ TRANSITION: IMAGE_GENERATED -> READY_TO_LAUNCH
       const hasImageHash = lockedCampaignState.image_hash;
       
-      if ((stage === "IMAGE_GENERATED" || (hasImage && !hasImageHash)) && userSaysYes) {
+      if (stage === "IMAGE_GENERATED" && !hasImageHash && metaConnected) {
         // Upload image to Meta
         const creative = lockedCampaignState.creative;
 
@@ -1130,7 +1155,7 @@ You are in GENERIC DIGITAL MARKETING AGENT MODE.
           const plan = lockedCampaignState.plan;
           return res.status(200).json({
             ok: true,
-            text: `Image uploaded successfully (Hash: ${uploadJson.imageHash}).\n\n**Final Confirmation in a paused state**:\n- Campaign: ${plan.campaign_name}\n- Budget: ${plan.budget_amount} ${plan.budget_currency}\n\nReply YES to publish this campaign to Meta.`
+            text: `Image uploaded successfully (Hash: ${uploadJson.imageHash}).\n\nFinal confirmation (paused state):\n- Campaign: ${plan.campaign_name}\nReply YES to publish this campaign to Meta.\n\n` + gateStatus(metaConnected, newState)
           });
         }
       }
@@ -1541,13 +1566,14 @@ You are in GENERIC DIGITAL MARKETING AGENT MODE.
           text:
             `I detected this location for your business:\n\n📍 ${detectedLocation}\n\n` +
             `Should I run ads for this location?\n\n` +
-            `Reply YES to confirm, or type a different city / area.`,
+            `Reply YES to confirm, or type a different city / area.` +
+            `\n\n` + gateStatus(metaConnected, lockedCampaignState || null),
         });
       } else {
         return res.status(200).json({
           ok: true,
           gated: true,
-          text: `Where should this ad run? (e.g. Mumbai, New York, or 'Online')`
+          text: `Where should this ad run? (e.g. Mumbai, New York, or 'Online')` + `\n\n` + gateStatus(metaConnected, lockedCampaignState || null)
         });
       }
     }
@@ -2334,7 +2360,7 @@ Reply **YES** to generate this image and launch the campaign.
     // ===============================
     return res.status(200).json({
       ok: true,
-      text,
+      text: `${text}\n\n${gateStatus(metaConnected, lockedCampaignState || null)}`,
     });
 
 
