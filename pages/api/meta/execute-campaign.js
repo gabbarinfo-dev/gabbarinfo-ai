@@ -62,26 +62,47 @@ export default async function handler(req, res) {
     // =================================================================
     // STEP 1: CREATE CAMPAIGN
     // =================================================================
-    const campaignBody = {
-      name: payload.campaign_name,
-      objective: payload.objective || "OUTCOME_TRAFFIC",
-      status: "PAUSED",
-      special_ad_categories: [], // Required field
-      access_token: ACCESS_TOKEN,
-    };
-
-    const campRes = await fetch(`${base}/campaigns`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(campaignBody),
-    });
-
-    const campJson = await campRes.json();
-    if (!campRes.ok) {
-      throw new Error(`Campaign Create Failed: ${campJson.error?.message || JSON.stringify(campJson)}`);
+    async function tryCreateCampaign(objective) {
+      const body = {
+        name: payload.campaign_name,
+        objective,
+        status: "PAUSED",
+        buying_type: "AUCTION",
+        special_ad_categories: [],
+      };
+      const url = `${base}/campaigns?access_token=${ACCESS_TOKEN}`;
+      const res = await fetch(url, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(body),
+      });
+      let json;
+      try { json = await res.json(); } catch (_) { json = { raw: await res.text() }; }
+      return { res, json };
     }
-    
-    const campaignId = campJson.id;
+
+    const objectiveCandidates = [
+      payload.objective || "OUTCOME_TRAFFIC",
+      "LINK_CLICKS",
+      "TRAFFIC"
+    ];
+
+    let campaignId = null;
+    let lastErr = null;
+    for (const obj of objectiveCandidates) {
+      const attempt = await tryCreateCampaign(obj);
+      if (attempt.res.ok && attempt.json?.id) {
+        campaignId = attempt.json.id;
+        break;
+      } else {
+        lastErr = attempt.json?.error?.message || JSON.stringify(attempt.json || {});
+      }
+    }
+
+    if (!campaignId) {
+      throw new Error(`Campaign Create Failed: ${lastErr || "Unknown error"}`);
+    }
+
     createdAssets.campaign_id = campaignId;
 
     // =================================================================
