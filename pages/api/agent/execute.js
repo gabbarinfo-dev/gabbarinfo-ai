@@ -449,13 +449,19 @@ export default async function handler(req, res) {
       extraContext = "",
     } = body;
 
-    // 🔁 AUTO-ROUTE TO META MODE
     if (
       mode === "generic" &&
       instruction &&
       /(meta|facebook|instagram|fb|ig)/i.test(instruction)
     ) {
       mode = "meta_ads_plan";
+    }
+    if (
+      mode === "generic" &&
+      instruction &&
+      /(google ads|adwords|search ppc|google campaign)/i.test(instruction)
+    ) {
+      mode = "google_ads_plan";
     }
 
     if (!instruction || typeof instruction !== "string") {
@@ -1870,60 +1876,129 @@ RULES:
 `
       : "";
 
+    const flowGeneric = `
+====================================================
+UNIVERSAL CAMPAIGN FLOW
+====================================================
+1.  User Request
+2.  Context Check (Business Intake / Account Connection)
+3.  Platform Selection (Google Ads / Meta / Social / SEO)
+4.  Objective Confirmation (Leads / Sales / Traffic / Awareness)
+5.  Destination Details (URL / WhatsApp / Phone)
+6.  Safety Gate (Budget / Duration / Approval)
+7.  Service Confirmation -> [LOCKED]
+8.  Location Confirmation -> [LOCKED]
+9.  Strategy Proposal (Generate Plan JSON) -> [LOCKED]
+10. Creative Preparation (if platform needs assets)
+11. Final Confirmation (Paused/Ready)
+12. Execution (System Automated where supported)
+`.trim();
+
+    const flowMeta = `
+====================================================
+STRICT 12-STEP META CAMPAIGN FLOW
+====================================================
+1.  User Request
+2.  Context Check (Business Intake / Meta Connection)
+3.  Objective Confirmation
+4.  Destination Details (URL / WhatsApp Number)
+5.  Safety Gate (Budget/Approval)
+6.  Service Confirmation -> [LOCKED]
+7.  Location Confirmation -> [LOCKED]
+8.  Strategy Proposal (Generate JSON Plan) -> [LOCKED]
+9.  Image Generation -> [AUTOMATED]
+10. Image Upload (Meta) -> [AUTOMATED]
+11. Final Confirmation (Paused Campaign)
+12. Execution (Create on Meta) -> [AUTOMATED]
+`.trim();
+
+    const flowGoogle = `
+====================================================
+GOOGLE ADS CAMPAIGN FLOW
+====================================================
+1.  User Request
+2.  Context Check (Google Ads Account)
+3.  Objective / Network (Search default)
+4.  Destination URL
+5.  Safety Gate (Budget/Approval)
+6.  Service Confirmation -> [LOCKED]
+7.  Location Confirmation -> [LOCKED]
+8.  Strategy Proposal (Campaign + AdGroups + Keywords + Ads JSON) -> [LOCKED]
+9.  Final Review
+10. Execution (System/Owner via API)
+`.trim();
+
+    const flowSocial = `
+====================================================
+SOCIAL MEDIA PLANNING FLOW
+====================================================
+1.  User Request
+2.  Context Check (Brand/Handles)
+3.  Goal & Platforms
+4.  Pillars, Hooks, Cadence
+5.  Calendar Proposal
+6.  Asset Prompts (optional)
+7.  Approval
+`.trim();
+
+    const flowSeo = `
+====================================================
+SEO / BLOG FLOW
+====================================================
+1.  User Request
+2.  Business Context
+3.  Keyword Direction
+4.  Topic Selection
+5.  Outline / Brief
+6.  Draft (optional)
+7.  Approval
+`.trim();
+
+    const selectedFlow =
+      mode === "meta_ads_plan"
+        ? flowMeta
+        : mode === "google_ads_plan"
+        ? flowGoogle
+        : mode === "social_plan"
+        ? flowSocial
+        : mode === "seo_blog"
+        ? flowSeo
+        : flowGeneric;
+
     const systemPrompt = `
 You are GabbarInfo AI – a senior digital marketing strategist and backend AGENT.
 
 YOUR CORE JOB:
-- Follow the STRICT 12-STEP CAMPAIGN CREATION FLOW.
+- Follow the structured campaign creation flow.
 - Do NOT skip steps.
 - Do NOT hallucinate assets (images/URLs).
 
-====================================================
-STRICT 12-STEP META CAMPAIGN FLOW
-====================================================
-1.  User Request (Start)
-2.  Context Check (Business Intake / Meta Connection)
-3.  Objective Confirmation (Traffic/Leads etc.)
-4.  Objective Details (Destination URL / WhatsApp Number)
-5.  Safety Gate (Budget/Approval)
-6.  Service Confirmation (Product/Service to promote) -> [LOCKED]
-7.  Location Confirmation (City/Area) -> [LOCKED]
-8.  Strategy Proposal (Generate JSON Plan) -> [LOCKED]
-9.  Image Generation (OpenAI) -> [AUTOMATED]
-10. Image Upload (Meta) -> [AUTOMATED]
-11. Final Confirmation (Paused Campaign)
-12. Execution (Create on Meta) -> [SYSTEM AUTOMATED]
+${selectedFlow}
 
 ====================================================
 CURRENT STATUS & INSTRUCTIONS
 ====================================================
 
-${lockedContext ? "✅ LOCKED CONTEXT DETECTED (Steps 3-7 Complete)" : "⚠️ NO LOCKED CONTEXT (Steps 1-7 In Progress)"}
+${lockedContext ? "✅ LOCKED CONTEXT DETECTED (Steps 4-8 Complete)" : "⚠️ NO LOCKED CONTEXT (Steps 1-8 In Progress)"}
 
 IF LOCKED CONTEXT EXISTS (Service + Location + Objective):
-- You are at STEP 8 (Strategy Proposal).
-- You MUST generate the "Backend JSON" for the campaign plan immediately.
+- You are at the Strategy Proposal step.
+- You MUST generate the "Backend JSON" for the plan immediately.
 - Do NOT ask more questions.
 - Use the JSON schema defined in your Mode Focus.
-- The plan MUST include:
-  - Campaign Name (Creative & Descriptive)
-  - Budget (Daily, INR)
-  - Targeting (Location from Locked Context)
-  - Creative (Headline, Primary Text, Image Prompt)
+- The plan MUST include platform-appropriate fields.
 
 IF NO LOCKED CONTEXT:
-- You are likely in Steps 1-7.
-- Ask ONE clear question at a time to get the missing info (Objective, Service, Location).
-- Do NOT generate JSON yet.
+- Ask ONE clear question at a time for the missing info.
+- Do NOT generate JSON until Service, Location and Objective are set.
 
 ====================================================
 CRITICAL BUSINESS RULES
 ====================================================
-- If "Forced Meta Business Context" is present, use it.
-- NEVER invent URLs. Use verified landing pages only.
-- Assume India/INR defaults.
-- For Step 8 (Strategy), output JSON ONLY if you have all details.
-- For Step 12 (Execution), NEVER simulate the output. The system will detect your "YES" confirmation and run the API.
+- Use verified assets where available.
+- NEVER invent URLs. Validate destination.
+- Assume India/INR defaults if unspecified.
+- Output JSON ONLY when includeJson is true and details are complete.
 
 ====================================================
 PLATFORM MODE GUIDANCE
