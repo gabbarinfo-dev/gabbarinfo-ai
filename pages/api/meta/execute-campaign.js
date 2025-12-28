@@ -82,7 +82,10 @@ export default async function handler(req, res) {
       params.append("status", "PAUSED");
       params.append("buying_type", "AUCTION");
       params.append("special_ad_categories", JSON.stringify([]));
-      let res, json, lastErr = null, lastVer = null;
+      let res = null;
+      let json = null;
+      let lastErr = null;
+      let lastVer = null;
       for (const ver of API_VERSIONS) {
         const url = `${baseFor(ver)}/campaigns?access_token=${ACCESS_TOKEN}`;
         res = await fetch(url, { method: "POST", body: params });
@@ -94,9 +97,7 @@ export default async function handler(req, res) {
           lastVer = ver;
         }
       }
-      // Final return with last error
-      let json;
-      try { json = await res.json(); } catch (_) { json = { raw: await res.text() }; }
+      // Final return with last error (return last response/json parsed above)
       return { res, json, lastErr, lastVer };
     }
 
