@@ -1049,6 +1049,12 @@ You are in GENERIC DIGITAL MARKETING AGENT MODE.
     let selectedDestination = null;
 
     const lowerInstruction = instruction.toLowerCase().trim();
+    const containsPlanJson =
+      /[\{\[][\s\S]*[\}\]]/.test(instruction) &&
+      (instruction.includes("campaign_name") ||
+       instruction.includes("\"campaign\"") ||
+       instruction.includes("ad_set") ||
+       instruction.includes("ad_sets"));
 
     // 🔐 APPLY LOCKED OBJECTIVE FIRST (IF EXISTS)
     if (
@@ -1193,7 +1199,7 @@ You are in GENERIC DIGITAL MARKETING AGENT MODE.
     }
 
     // 3️⃣ If CALL objective selected but no number → STOP & ASK
-    if (selectedDestination === "call" && !detectedPhoneNumber) {
+    if (selectedDestination === "call" && !detectedPhoneNumber && !containsPlanJson) {
       return res.status(200).json({
         ok: true,
         mode,
@@ -1208,7 +1214,8 @@ You are in GENERIC DIGITAL MARKETING AGENT MODE.
     if (
       selectedDestination === "call" &&
       detectedPhoneNumber &&
-      !lowerInstruction.includes("yes")
+      !lowerInstruction.includes("yes") &&
+      !containsPlanJson
     ) {
       return res.status(200).json({
         ok: true,
@@ -1232,7 +1239,7 @@ You are in GENERIC DIGITAL MARKETING AGENT MODE.
     }
 
     // 2️⃣ If WhatsApp selected → ALWAYS confirm
-    if (selectedDestination === "whatsapp") {
+    if (selectedDestination === "whatsapp" && !containsPlanJson) {
       const suggestionText = detectedWhatsappNumber
         ? `\n\nI found this number on your Facebook Page:\n📱 ${detectedWhatsappNumber}`
         : "";
@@ -1281,7 +1288,8 @@ You are in GENERIC DIGITAL MARKETING AGENT MODE.
     if (
       selectedDestination === "website" &&
       detectedLandingPage &&
-      !landingPageConfirmed
+      !landingPageConfirmed &&
+      !containsPlanJson
     ) {
       return res.status(200).json({
         ok: true,
