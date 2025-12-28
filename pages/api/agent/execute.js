@@ -716,6 +716,147 @@ You are in GENERIC DIGITAL MARKETING AGENT MODE.
     let selectedLocation = null;
 
     // ============================================================
+    // 🚀 DIRECT USER JSON → AUTO EXECUTE (Plan → Image → Launch)
+    // ============================================================
+    if (mode === "meta_ads_plan" && activeBusinessId && typeof instruction === "string") {
+      let userJsonString = null;
+      const cbMatch = instruction.match(/```(?:json)?\s*([\s\S]*?)\s*```/);
+      if (cbMatch) {
+        userJsonString = cbMatch[1];
+      } else {
+        const sIdx = instruction.indexOf("{");
+        const eIdx = instruction.lastIndexOf("}");
+        if (sIdx !== -1 && eIdx !== -1 && eIdx > sIdx) {
+          userJsonString = instruction.substring(sIdx, eIdx + 1);
+        }
+      }
+      if (userJsonString) {
+        try {
+          let userPlan = JSON.parse(userJsonString);
+          // Normalize Variation 5: { campaign_details, ad_sets: [{ ads: [{ creative: {...} }]}]}
+          if (userPlan.campaign_details && Array.isArray(userPlan.ad_sets)) {
+            const cd = userPlan.campaign_details;
+            const adset0 = userPlan.ad_sets[0] || {};
+            const ads0 = Array.isArray(adset0.ads) ? adset0.ads[0] || {} : {};
+            const creative = ads0.creative || {};
+            const tgt = adset0.targeting || {};
+            const geo = Array.isArray(tgt.geo_locations) ? tgt.geo_locations[0] || {} : {};
+            const countries = [];
+            const cities = [];
+            if (geo.country) countries.push(geo.country);
+            if (Array.isArray(geo.cities)) {
+              for (const c of geo.cities) {
+                if (typeof c === "string") cities.push({ name: c });
+                else if (c?.name) cities.push({ name: c.name });
+              }
+            }
+            const urlCandidate = (ads0.landing_page_url || creative.landing_page || creative.destination_url || "").toString();
+            const cleanUrl = urlCandidate.replace(/[`]/g, "").trim() || "https://gabbarinfo.com";
+            const primaryText = Array.isArray(creative.primaryText) ? creative.primaryText[0] : (creative.primary_text || "");
+            const headline = Array.isArray(creative.headlines) ? creative.headlines[0] : (creative.headline || "");
+            const call_to_action = ads0.call_to_action || creative.call_to_action || "LEARN_MORE";
+            const budgetAmount = adset0.daily_budget?.amount || userPlan.budget?.amount || 500;
+            userPlan = {
+              campaign_name: cd.name || "New Campaign",
+              objective: cd.objective && cd.objective.includes("CLICK") ? "OUTCOME_TRAFFIC" : (cd.objective || "OUTCOME_TRAFFIC"),
+              budget: {
+                amount: budgetAmount,
+                currency: adset0.daily_budget?.currency || "INR",
+                type: "DAILY"
+              },
+              targeting: {
+                geo_locations: { countries: countries.length ? countries : ["IN"], cities },
+                age_min: tgt.age_min || 18,
+                age_max: tgt.age_max || 65
+              },
+              ad_sets: [
+                {
+                  name: adset0.name || "Ad Set 1",
+                  status: cd.status || "PAUSED",
+                  ad_creative: {
+                    imagePrompt: creative.imagePrompt || creative.image_prompt || "Ad Image",
+                    primary_text: primaryText || "",
+                    headline: headline || "",
+                    call_to_action,
+                    destination_url: cleanUrl
+                  }
+                }
+              ]
+            };
+          }
+          // If normalized to our schema, auto-run the pipeline now
+          if (userPlan.campaign_name && userPlan.ad_sets?.length) {
+            const baseUrl = process.env.NEXT_PUBLIC_BASE_URL;
+            const proposedState = {
+              ...lockedCampaignState,
+              stage: "PLAN_PROPOSED",
+              plan: userPlan
+            };
+            await saveAnswerMemory(baseUrl, activeBusinessId, { campaign_state: proposedState });
+            lockedCampaignState = proposedState;
+            // Generate image
+            const creative = userPlan.ad_sets[0].ad_creative || {};
+            const imagePrompt = creative.imagePrompt || creative.primary_text || `${userPlan.campaign_name} ad image`;
+            const imgRes = await fetch(`${process.env.NEXT_PUBLIC_BASE_URL}/api/images/generate`, {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ prompt: imagePrompt })
+            });
+            const imgJson = await imgRes.json();
+            if (!imgJson?.imageBase64) {
+              return res.status(200).json({ ok: false, message: "Image generation failed for provided JSON." });
+            }
+            const newCreative = { ...creative, imageBase64: imgJson.imageBase64, imageUrl: `data:image/png;base64,${imgJson.imageBase64}` };
+            const imageState = { ...lockedCampaignState, stage: "IMAGE_GENERATED", creative: newCreative };
+            await saveAnswerMemory(baseUrl, activeBusinessId, { campaign_state: imageState });
+            lockedCampaignState = imageState;
+            // Upload image to Meta
+            const uploadRes = await fetch(`${process.env.NEXT_PUBLIC_BASE_URL}/api/meta/upload-image`, {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ imageBase64: newCreative.imageBase64 })
+            });
+            const uploadJson = await uploadRes.json();
+            const imageHash = uploadJson.imageHash || uploadJson.image_hash;
+            if (!uploadJson?.ok || !imageHash) {
+              return res.status(200).json({ ok: false, message: "Image upload failed for provided JSON.", details: uploadJson });
+            }
+            const readyState = { ...lockedCampaignState, stage: "READY_TO_LAUNCH", image_hash: imageHash };
+            await saveAnswerMemory(baseUrl, activeBusinessId, { campaign_state: readyState });
+            lockedCampaignState = readyState;
+            // Execute paused campaign
+            const finalPayload = {
+              ...userPlan,
+              ad_sets: userPlan.ad_sets.map((adset) => ({
+                ...adset,
+                ad_creative: { ...adset.ad_creative, image_hash: imageHash }
+              }))
+            };
+            const execRes = await fetch(`${process.env.NEXT_PUBLIC_BASE_URL}/api/meta/execute-campaign`, {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ platform: "meta", payload: finalPayload })
+            });
+            let execJson = {};
+            try { execJson = await execRes.json(); } catch (_) { execJson = { raw: await execRes.text() }; }
+            if (execJson?.ok) {
+              await saveAnswerMemory(baseUrl, activeBusinessId, { campaign_state: { stage: "COMPLETED", final_result: execJson } });
+              return res.status(200).json({
+                ok: true,
+                text: `Campaign created (PAUSED).\nCampaign: ${userPlan.campaign_name}\nImageHash: ${imageHash}\nStatus: ${execJson.status || "PAUSED"}\nID: ${execJson.id || "N/A"}`,
+                result: execJson
+              });
+            } else {
+              return res.status(200).json({ ok: false, message: `Execution failed: ${execJson?.message || "Unknown error"}`, details: execJson });
+            }
+          }
+        } catch (e) {
+          // If user JSON fails to parse, continue with normal agent flow.
+        }
+      }
+    }
+
+    // ============================================================
     // 🤖 STATE MACHINE: EXECUTION FLOW (Plan -> Image -> Launch)
     // ============================================================
     if (lockedCampaignState) {
