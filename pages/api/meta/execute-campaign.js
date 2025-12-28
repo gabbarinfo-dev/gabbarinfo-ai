@@ -65,35 +65,32 @@ export default async function handler(req, res) {
     function mapObjective(obj) {
       const o = (obj || "").toUpperCase();
       if (o.includes("OUTCOME_TRAFFIC")) return "OUTCOME_TRAFFIC";
-      if (o === "TRAFFIC") return "TRAFFIC";
-      if (o.includes("LINK_CLICKS")) return "LINK_CLICKS";
+      if (o === "TRAFFIC") return "OUTCOME_TRAFFIC";
+      if (o.includes("LINK_CLICKS")) return "OUTCOME_TRAFFIC";
       if (o.includes("LEAD")) return "OUTCOME_LEADS";
-      if (o.includes("CONVERSION")) return "CONVERSIONS";
+      if (o.includes("CONVERSION")) return "OUTCOME_SALES";
       if (o.includes("MESSAGES")) return "MESSAGES";
       if (o.includes("REACH")) return "REACH";
       return "OUTCOME_TRAFFIC";
     }
 
     async function tryCreateCampaign(objective) {
-      const body = {
-        name: payload.campaign_name,
-        objective: mapObjective(objective),
-        status: "PAUSED",
-        special_ad_categories: [],
-        buying_type: "AUCTION",
-      };
+      const params = new URLSearchParams();
+      params.append("name", payload.campaign_name);
+      params.append("objective", mapObjective(objective));
+      params.append("status", "PAUSED");
+      params.append("special_ad_categories", JSON.stringify([]));
       const url = `${base}/campaigns?access_token=${ACCESS_TOKEN}`;
       const res = await fetch(url, {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(body),
+        body: params,
       });
       let json;
       try { json = await res.json(); } catch (_) { json = { raw: await res.text() }; }
       return { res, json };
     }
 
-    const objectiveCandidates = ["LINK_CLICKS", "TRAFFIC", payload.objective || "OUTCOME_TRAFFIC", "OUTCOME_TRAFFIC"];
+    const objectiveCandidates = ["OUTCOME_TRAFFIC", "TRAFFIC", "LINK_CLICKS"];
 
     let campaignId = null;
     let lastErr = null;
@@ -124,43 +121,39 @@ export default async function handler(req, res) {
       // --- A. Create Ad Set ---
       const budgetAmount = payload.budget?.amount || 500; // Default 500
       
-      const adSetBody = {
-        name: adSet.name || "Ad Set 1",
-        campaign_id: campaignId,
-        daily_budget: Math.floor(Number(budgetAmount) * 100), // Convert to cents/paise
-        billing_event: "IMPRESSIONS",
-        optimization_goal: "LINK_CLICKS", // Default for traffic
-        bid_strategy: "LOWEST_COST_WITHOUT_CAP",
-        status: "PAUSED",
-        targeting: payload.targeting || { "geo_locations": { "countries": ["IN"] } },
-        access_token: ACCESS_TOKEN,
-      };
+      const defaultTargeting = payload.targeting || { geo_locations: { countries: ["IN"] } };
+      let optimizationGoal = "LINK_CLICKS";
 
       // Adjust Optimization Goal based on Objective
       if (payload.objective === "OUTCOME_LEADS") {
-        adSetBody.optimization_goal = "LEAD_GENERATION";
+        optimizationGoal = "LEAD_GENERATION";
       }
 
-      // Safe fallback for targeting if cities provided without keys (common AI error)
-      // If targeting has cities with names but no keys, we might strip them to avoid errors
-      // For now, we try as-is. If it fails, we could retry, but let's keep it simple.
-      
+      const adSetParams = new URLSearchParams();
+      adSetParams.append("name", adSet.name || "Ad Set 1");
+      adSetParams.append("campaign_id", campaignId);
+      adSetParams.append("daily_budget", String(Math.floor(Number(budgetAmount) * 100)));
+      adSetParams.append("billing_event", "IMPRESSIONS");
+      adSetParams.append("optimization_goal", optimizationGoal);
+      adSetParams.append("bid_strategy", "LOWEST_COST_WITHOUT_CAP");
+      adSetParams.append("status", "PAUSED");
+      adSetParams.append("targeting", JSON.stringify(defaultTargeting));
+      adSetParams.append("access_token", ACCESS_TOKEN);
+
       const adSetRes = await fetch(`${base}/adsets`, {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(adSetBody),
+        body: adSetParams,
       });
 
       const adSetJson = await adSetRes.json();
       if (!adSetRes.ok) {
         // Retry with safe targeting if likely targeting error
         if (JSON.stringify(adSetJson).includes("targeting")) {
-            console.warn("Targeting failed, retrying with Country only.");
-            adSetBody.targeting = { "geo_locations": { "countries": ["IN"] } };
+            const safeParams = new URLSearchParams(adSetParams);
+            safeParams.set("targeting", JSON.stringify({ geo_locations: { countries: ["IN"] } }));
             const retryRes = await fetch(`${base}/adsets`, {
                 method: "POST",
-                headers: { "Content-Type": "application/json" },
-                body: JSON.stringify(adSetBody),
+                body: safeParams,
             });
             const retryJson = await retryRes.json();
             if (!retryRes.ok) throw new Error(`AdSet Create Failed (Retry): ${retryJson.error?.message}`);
@@ -183,27 +176,27 @@ export default async function handler(req, res) {
         continue;
       }
 
-      const creativeBody = {
-        name: creative.headline || "Creative 1",
-        object_story_spec: {
-          page_id: PAGE_ID,
-          link_data: {
-            image_hash: imageHash,
-            link: creative.destination_url || "https://facebook.com",
-            message: creative.primary_text || "",
-            name: creative.headline || "",
-            call_to_action: {
-              type: creative.call_to_action || "LEARN_MORE"
-            }
+      const creativeSpec = {
+        page_id: PAGE_ID,
+        link_data: {
+          image_hash: imageHash,
+          link: creative.destination_url || "https://facebook.com",
+          message: creative.primary_text || "",
+          name: creative.headline || "",
+          call_to_action: {
+            type: creative.call_to_action || "LEARN_MORE"
           }
-        },
-        access_token: ACCESS_TOKEN,
+        }
       };
+
+      const creativeParams = new URLSearchParams();
+      creativeParams.append("name", creative.headline || "Creative 1");
+      creativeParams.append("object_story_spec", JSON.stringify(creativeSpec));
+      creativeParams.append("access_token", ACCESS_TOKEN);
 
       const creativeRes = await fetch(`${base}/adcreatives`, {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(creativeBody),
+        body: creativeParams,
       });
 
       const creativeJson = await creativeRes.json();
@@ -214,18 +207,16 @@ export default async function handler(req, res) {
       const creativeId = creativeJson.id;
 
       // --- C. Create Ad ---
-      const adBody = {
-        name: creative.headline || "Ad 1",
-        adset_id: adSetId,
-        creative: { creative_id: creativeId },
-        status: "PAUSED",
-        access_token: ACCESS_TOKEN,
-      };
+      const adParams = new URLSearchParams();
+      adParams.append("name", creative.headline || "Ad 1");
+      adParams.append("adset_id", adSetId);
+      adParams.append("creative", JSON.stringify({ creative_id: creativeId }));
+      adParams.append("status", "PAUSED");
+      adParams.append("access_token", ACCESS_TOKEN);
 
       const adRes = await fetch(`${base}/ads`, {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(adBody),
+        body: adParams,
       });
 
       const adJson = await adRes.json();
