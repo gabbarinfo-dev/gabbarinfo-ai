@@ -58,7 +58,7 @@ try {
     });
   }
 
-  const graphUrl = `https://graph.facebook.com/v19.0/act_${AD_ACCOUNT_ID}/adimages`;
+  const graphUrl = `https://graph.facebook.com/v24.0/act_${AD_ACCOUNT_ID}/adimages`;
  
   let resp;
   if (imageUrl) {
