@@ -810,6 +810,18 @@ You are in GENERIC DIGITAL MARKETING AGENT MODE.
             lockedCampaignState = proposedState;
             // Generate image
             const creative = userPlan.ad_sets[0].ad_creative || {};
+            let destUrl = creative.destination_url || "";
+            try {
+              if (destUrl) {
+                const head = await fetch(destUrl, { method: "HEAD" });
+                if (!head.ok) destUrl = "https://gabbarinfo.com/";
+              } else {
+                destUrl = "https://gabbarinfo.com/";
+              }
+            } catch {
+              destUrl = "https://gabbarinfo.com/";
+            }
+            creative.destination_url = destUrl;
             const imagePrompt = creative.imagePrompt || creative.primary_text || `${userPlan.campaign_name} ad image`;
             const imgRes = await fetch(`${process.env.NEXT_PUBLIC_BASE_URL}/api/images/generate`, {
               method: "POST",
