@@ -45,7 +45,7 @@ if (error || !meta?.fb_ad_account_id || !meta?.system_user_token) {
   });
 }
 
-const AD_ACCOUNT_ID = meta.fb_ad_account_id;
+const AD_ACCOUNT_ID = (meta.fb_ad_account_id || "").toString().replace(/^act_/, "");
 const ACCESS_TOKEN = meta.system_user_token;
 
 try {
