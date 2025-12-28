@@ -71,10 +71,22 @@ try {
       body: params.toString(),
     });
   } else {
-    const buffer = Buffer.from(imageBase64, "base64");
+    const cleaned = imageBase64
+      .toString()
+      .replace(/^data:image\/\w+;base64,/, "")
+      .replace(/\s+/g, "");
+    const buffer = Buffer.from(cleaned, "base64");
+    if (!buffer || buffer.length < 1024) {
+      return res.status(400).json({
+        ok: false,
+        message: "Generated image looks invalid or too small for upload.",
+        details: { size_bytes: buffer?.length || 0 },
+      });
+    }
     const blob = new Blob([buffer], { type: "image/png" });
     const form = new FormData();
-    form.append("bytes", blob, "image.png");
+    // Use 'source' for file uploads per Graph API conventions
+    form.append("source", blob, "creative.png");
     form.append("access_token", ACCESS_TOKEN);
     resp = await fetch(graphUrl, {
       method: "POST",
