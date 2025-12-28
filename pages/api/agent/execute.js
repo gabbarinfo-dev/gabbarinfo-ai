@@ -747,6 +747,70 @@ You are in GENERIC DIGITAL MARKETING AGENT MODE.
       if (userJsonString) {
         try {
           let userPlan = JSON.parse(userJsonString);
+          // Normalize Variation A: { campaign: {...}, ad_set: {...}, ad_creative: {...} }
+          if (userPlan.campaign && userPlan.ad_set && userPlan.ad_creative) {
+            const c = userPlan.campaign || {};
+            const as = userPlan.ad_set || {};
+            const cr = userPlan.ad_creative || {};
+            const tgt = as.targeting || {};
+            const geo = tgt.geo_locations || {};
+            const citiesArr = Array.isArray(geo.cities) ? geo.cities : [];
+            const cities = citiesArr
+              .map((city) => {
+                if (typeof city === "string") return { name: city };
+                if (city && city.name) return { name: city.name };
+                return null;
+              })
+              .filter(Boolean);
+            const objectiveRaw = (c.objective || "").toString().toUpperCase();
+            const normalizedObjective =
+              objectiveRaw.includes("CLICK") || objectiveRaw.includes("TRAFFIC")
+                ? "OUTCOME_TRAFFIC"
+                : "OUTCOME_TRAFFIC";
+            const budgetObj = as.budget || {};
+            const amount = Number(budgetObj.amount) || 500;
+            const currency = budgetObj.currency || "INR";
+            const primaryText = Array.isArray(cr.primary_texts)
+              ? cr.primary_texts[0]
+              : (cr.primary_text || "");
+            const headline = Array.isArray(cr.headlines)
+              ? cr.headlines[0]
+              : (cr.headline || "");
+            let destUrl = (cr.destination_url || "").toString().trim();
+            if (!/^https?:\/\//.test(destUrl)) {
+              destUrl = "https://gabbarinfo.com/";
+            }
+            userPlan = {
+              campaign_name: c.campaign_name || "New Campaign",
+              objective: normalizedObjective,
+              budget: {
+                amount,
+                currency,
+                type: (budgetObj.type || "DAILY").toUpperCase()
+              },
+              targeting: {
+                geo_locations: {
+                  countries: geo.countries || ["IN"],
+                  cities
+                },
+                age_min: tgt.age_min || 18,
+                age_max: tgt.age_max || 65
+              },
+              ad_sets: [
+                {
+                  name: as.ad_set_name || "Ad Set 1",
+                  status: (c.status || "PAUSED").toUpperCase(),
+                  ad_creative: {
+                    imagePrompt: cr.image_prompt || "Ad Image",
+                    primary_text: primaryText || "",
+                    headline: headline || "",
+                    call_to_action: cr.call_to_action || "LEARN_MORE",
+                    destination_url: destUrl
+                  }
+                }
+              ]
+            };
+          }
           // Normalize Variation 5: { campaign_details, ad_sets: [{ ads: [{ creative: {...} }]}]}
           if (userPlan.campaign_details && Array.isArray(userPlan.ad_sets)) {
             const cd = userPlan.campaign_details;
@@ -2135,4 +2199,3 @@ Reply **YES** to generate this image and launch the campaign.
     });
   }
 }
-
