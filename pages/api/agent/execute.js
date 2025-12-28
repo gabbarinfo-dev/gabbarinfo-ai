@@ -763,10 +763,13 @@ You are in GENERIC DIGITAL MARKETING AGENT MODE.
               })
               .filter(Boolean);
             const objectiveRaw = (c.objective || "").toString().toUpperCase();
-            const normalizedObjective =
-              objectiveRaw.includes("CLICK") || objectiveRaw.includes("TRAFFIC")
-                ? "OUTCOME_TRAFFIC"
-                : "OUTCOME_TRAFFIC";
+            let normalizedObjective = "OUTCOME_TRAFFIC";
+            if (objectiveRaw.includes("LEAD")) normalizedObjective = "OUTCOME_LEADS";
+            else if (objectiveRaw.includes("CLICK") || objectiveRaw.includes("TRAFFIC") || objectiveRaw.includes("LINK_CLICKS")) normalizedObjective = "OUTCOME_TRAFFIC";
+            else if (objectiveRaw.includes("AWARENESS")) normalizedObjective = "OUTCOME_AWARENESS";
+            else if (objectiveRaw.includes("CONVERSION") || objectiveRaw.includes("SALES")) normalizedObjective = "OUTCOME_SALES";
+            else if (objectiveRaw.includes("ENGAGEMENT")) normalizedObjective = "OUTCOME_ENGAGEMENT";
+            else if (objectiveRaw.includes("APP")) normalizedObjective = "OUTCOME_APP_PROMOTION";
             const budgetObj = as.budget || {};
             const amount = Number(budgetObj.amount) || 500;
             const currency = budgetObj.currency || "INR";
