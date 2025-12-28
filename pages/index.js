@@ -70,6 +70,20 @@ export default function HomePage() {
         >
           Sign in with Google
         </button>
+        <div style={{ height: 8 }} />
+        <button
+          onClick={() => signIn("facebook")}
+          style={{
+            padding: "10px 16px",
+            borderRadius: 6,
+            border: "1px solid #ddd",
+            background: "#1877F2",
+            color: "#fff",
+            cursor: "pointer",
+          }}
+        >
+          Continue with Facebook
+        </button>
       </div>
     );
   }
