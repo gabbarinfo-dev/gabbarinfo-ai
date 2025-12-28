@@ -2174,50 +2174,59 @@ Otherwise, respond with a full, clear explanation, and include example JSON only
             };
           }
 
-          // 🔄 NORMALIZE JSON: Variation 7 (Step 8 Flow - "ad_creatives" array)
-          if (planJson.step === 8 || (planJson.ad_creatives && Array.isArray(planJson.ad_creatives))) {
-            console.log("🔄 Normalizing Gemini JSON Variation 7 (Step 8 Flow)...");
-            const cName = planJson.campaign_name || "New Campaign";
-            // Map Objective
-            let obj = planJson.campaign_type || "TRAFFIC";
-            if (obj === "TRAFFIC") obj = "OUTCOME_TRAFFIC";
-            else if (obj === "LEADS" || obj === "LEAD_GENERATION") obj = "OUTCOME_LEADS";
-            else obj = "OUTCOME_TRAFFIC"; // fallback
+          // 🔄 NORMALIZE JSON: Variation 7 (Step 8 Flow - "campaign_plan" object)
+          if (planJson.campaign_plan || (planJson.step === 8)) {
+            console.log("🔄 Normalizing Gemini JSON Variation 7 (Campaign Plan / Step 8)...");
 
-            const budget = planJson.budget || {};
-            const adSet = planJson.ad_set || {};
-            const creatives = planJson.ad_creatives || [];
-            const creative = creatives[0] || {};
+            const cp = planJson.campaign_plan || planJson;
+            const adSetsStr = planJson.ad_set_strategy || planJson.ad_sets || [];
+            const creativesStr = planJson.creative_strategy || planJson.ad_creatives || [];
+
+            // Extract first items
+            const adSetItem = Array.isArray(adSetsStr) ? adSetsStr[0] : (adSetsStr || {});
+            const creativeItem = Array.isArray(creativesStr) ? creativesStr[0] : (creativesStr || {});
+
+            const cName = cp.campaign_name || "New Campaign";
+            // Map Objective
+            let obj = cp.objective || "TRAFFIC";
+            if (obj.includes("LINK") || obj.includes("TRAFFIC")) obj = "OUTCOME_TRAFFIC";
+            else if (obj.includes("LEAD")) obj = "OUTCOME_LEADS";
+            else obj = "OUTCOME_TRAFFIC";
+
+            const budgetAmount = cp.budget_daily_inr || cp.budget?.amount || 500;
 
             // Map Location
-            const locString = adSet.location || "India";
+            const geo = adSetItem.geo_targeting || {};
+            const cities = Array.isArray(geo.cities)
+              ? geo.cities.map(c => ({ name: c }))
+              : (geo.cities ? [{ name: geo.cities }] : [{ name: "India" }]);
 
             planJson = {
               campaign_name: cName,
               objective: obj,
               budget: {
-                amount: budget.daily_budget_inr || 500,
+                amount: budgetAmount,
                 currency: "INR",
                 type: "DAILY"
               },
               targeting: {
                 geo_locations: {
                   countries: ["IN"],
-                  cities: [{ name: locString }] // We pass the string, backend might need to refine, but good for now
+                  cities: cities
                 },
-                age_min: parseInt((adSet.age_range || "18").split("-")[0]) || 18,
-                age_max: parseInt((adSet.age_range || "65").split("-")[1]) || 65
+                age_min: 18,
+                age_max: 65
               },
               ad_sets: [
                 {
-                  name: "Ad Set 1",
+                  name: adSetItem.ad_set_name || "Ad Set 1",
                   status: "PAUSED",
                   ad_creative: {
-                    imagePrompt: creative.image_prompt || "Ad Image",
-                    primary_text: creative.primary_text || "",
-                    headline: creative.headline || "",
-                    call_to_action: creative.call_to_action || "LEARN_MORE",
-                    destination_url: creative.destination_url || "https://gabbarinfo.com"
+                    imagePrompt: creativeItem.image_prompt || "Ad Image",
+                    primary_text: creativeItem.primary_text || "",
+                    headline: creativeItem.headline || "",
+                    call_to_action: creativeItem.call_to_action || "LEARN_MORE",
+                    destination_url: creativeItem.destination_url || "https://gabbarinfo.com"
                   }
                 }
               ]
