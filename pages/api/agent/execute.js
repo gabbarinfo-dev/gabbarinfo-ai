@@ -22,6 +22,19 @@ if (GEMINI_API_KEY) {
   console.warn("⚠ GEMINI_API_KEY is not set. /api/agent/execute will not work for agent mode.");
 }
 
+async function parseResponseSafe(resp) {
+  try {
+    return await resp.json();
+  } catch (_) {
+    try {
+      const t = await resp.text();
+      return { ok: false, text: t };
+    } catch {
+      return { ok: false };
+    }
+  }
+}
+
 async function saveAnswerMemory(baseUrl, business_id, answers) {
   try {
     if (baseUrl) {
@@ -802,7 +815,7 @@ You are in GENERIC DIGITAL MARKETING AGENT MODE.
               headers: { "Content-Type": "application/json" },
               body: JSON.stringify({ prompt: imagePrompt })
             });
-            const imgJson = await imgRes.json();
+            const imgJson = await parseResponseSafe(imgRes);
             if (!imgJson?.imageBase64) {
               return res.status(200).json({ ok: false, message: "Image generation failed for provided JSON." });
             }
@@ -816,7 +829,7 @@ You are in GENERIC DIGITAL MARKETING AGENT MODE.
               headers: { "Content-Type": "application/json" },
               body: JSON.stringify({ imageBase64: newCreative.imageBase64 })
             });
-            const uploadJson = await uploadRes.json();
+            const uploadJson = await parseResponseSafe(uploadRes);
             const imageHash = uploadJson.imageHash || uploadJson.image_hash;
             if (!uploadJson?.ok || !imageHash) {
               return res.status(200).json({ ok: false, message: "Image upload failed for provided JSON.", details: uploadJson });
@@ -893,12 +906,12 @@ You are in GENERIC DIGITAL MARKETING AGENT MODE.
             `${plan.campaign_name} ad image`;
 
             // Call Image Gen API
-            const imgRes = await fetch(`${process.env.NEXT_PUBLIC_BASE_URL}/api/images/generate`, {
+        const imgRes = await fetch(`${process.env.NEXT_PUBLIC_BASE_URL}/api/images/generate`, {
             method: "POST",
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({ prompt: imagePrompt }),
             });
-            const imgJson = await imgRes.json();
+            const imgJson = await parseResponseSafe(imgRes);
 
             if (imgJson.imageBase64) {
             const newCreative = {
@@ -946,7 +959,7 @@ You are in GENERIC DIGITAL MARKETING AGENT MODE.
           body: JSON.stringify({ imageBase64: creative.imageBase64 })
         });
 
-        const uploadJson = await uploadRes.json();
+        const uploadJson = await parseResponseSafe(uploadRes);
 
         if (uploadJson.ok && uploadJson.imageHash) {
           // Ready to launch
