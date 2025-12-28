@@ -79,6 +79,7 @@ export default async function handler(req, res) {
         objective: mapObjective(objective),
         status: "PAUSED",
         special_ad_categories: ["NONE"],
+        buying_type: "AUCTION",
       };
       const url = `${base}/campaigns?access_token=${ACCESS_TOKEN}`;
       const res = await fetch(url, {
@@ -91,7 +92,7 @@ export default async function handler(req, res) {
       return { res, json };
     }
 
-    const objectiveCandidates = [payload.objective || "OUTCOME_TRAFFIC", "LINK_CLICKS", "OUTCOME_TRAFFIC"];
+    const objectiveCandidates = ["LINK_CLICKS", payload.objective || "OUTCOME_TRAFFIC", "OUTCOME_TRAFFIC"];
 
     let campaignId = null;
     let lastErr = null;
