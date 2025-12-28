@@ -11,6 +11,14 @@ const supabase = createClient(
   process.env.SUPABASE_SERVICE_ROLE_KEY
 );
 
+export const config = {
+  api: {
+    bodyParser: {
+      sizeLimit: "20mb",
+    },
+  },
+};
+
 export default async function handler(req, res) {
   if (req.method !== "POST") {
     return res.status(405).json({ ok: false, message: "Only POST allowed" });
@@ -46,33 +54,37 @@ try {
     });
   }
 
-  // Facebook image upload endpoint
-  const graphUrl = `https://graph.facebook.com/v16.0/act_${AD_ACCOUNT_ID}/adimages`;
-
+  const graphUrl = `https://graph.facebook.com/v19.0/act_${AD_ACCOUNT_ID}/adimages`;
+ 
+  let resp;
+  if (imageUrl) {
     const params = new URLSearchParams();
-
-// If client provided a public image URL
-if (imageUrl) {
-  params.append("url", imageUrl);
-}
-
-// If AI generated image (base64)
-if (imageBase64) {
-  params.append("bytes", imageBase64);
-}
-
-params.append("access_token", ACCESS_TOKEN);
-
-
-    const resp = await fetch(graphUrl, {
+    params.append("url", imageUrl);
+    params.append("access_token", ACCESS_TOKEN);
+    resp = await fetch(graphUrl, {
       method: "POST",
-      headers: {
-        "Content-Type": "application/x-www-form-urlencoded",
-      },
+      headers: { "Content-Type": "application/x-www-form-urlencoded" },
       body: params.toString(),
     });
+  } else {
+    const buffer = Buffer.from(imageBase64, "base64");
+    const blob = new Blob([buffer], { type: "image/png" });
+    const form = new FormData();
+    form.append("bytes", blob, "image.png");
+    form.append("access_token", ACCESS_TOKEN);
+    resp = await fetch(graphUrl, {
+      method: "POST",
+      body: form,
+    });
+  }
 
-    const json = await resp.json();
+    let json;
+    try {
+      json = await resp.json();
+    } catch (_) {
+      const txt = await resp.text();
+      json = { raw: txt };
+    }
 
     if (!resp.ok) {
       // Facebook returns 400/400-like errors in JSON. Forward them.
