@@ -24,14 +24,18 @@ export default async function handler(req, res) {
     return res.status(405).json({ ok: false, message: "Only POST allowed" });
   }
 const session = await getServerSession(req, res, authOptions);
-if (!session?.user?.email) {
+const headerEmail = req.headers["x-client-email"];
+const clientEmail =
+  (session?.user?.email && session.user.email.toLowerCase()) ||
+  (typeof headerEmail === "string" ? headerEmail.toLowerCase() : null);
+if (!clientEmail) {
   return res.status(401).json({ ok: false, message: "Unauthorized" });
 }
 
 const { data: meta, error } = await supabase
   .from("meta_connections")
   .select("fb_ad_account_id, system_user_token")
-  .eq("email", session.user.email.toLowerCase())
+  .eq("email", clientEmail)
   .single();
 
 if (error || !meta?.fb_ad_account_id || !meta?.system_user_token) {
