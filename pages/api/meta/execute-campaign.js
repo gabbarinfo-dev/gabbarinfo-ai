@@ -46,7 +46,7 @@ export default async function handler(req, res) {
     });
   }
 
-  const AD_ACCOUNT_ID = meta.fb_ad_account_id;
+  const AD_ACCOUNT_ID = (meta.fb_ad_account_id || "").toString().replace(/^act_/, "");
   const ACCESS_TOKEN = meta.system_user_token;
   const PAGE_ID = meta.fb_page_id;
   const base = `https://graph.facebook.com/v19.0/act_${AD_ACCOUNT_ID}`;
