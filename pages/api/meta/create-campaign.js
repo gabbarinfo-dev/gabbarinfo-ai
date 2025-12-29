@@ -29,11 +29,12 @@ export default async function handler(req, res) {
     const isAdmin = ADMIN_EMAILS.includes(
       (session.user.email || "").toLowerCase()
     );
+    const allowAll = process.env.ALLOW_META_CREATE_FOR_ALL === "true";
 
-    if (!isAdmin) {
+    if (!isAdmin && !allowAll) {
       return res.status(403).json({
         ok: false,
-        message: "Only admin can execute Meta campaigns",
+        message: "Only admin can execute Meta campaigns. Set ALLOW_META_CREATE_FOR_ALL=true to allow all authenticated users.",
       });
     }
 
@@ -131,6 +132,7 @@ export default async function handler(req, res) {
       ok: true,
       message: "Paused Meta campaign created (admin test)",
       campaignId: fbJson.id,
+      ad_account_id: `act_${AD_ACCOUNT_ID}`,
       fbResponse: fbJson,
     });
   } catch (err) {
