@@ -259,6 +259,7 @@ export default async function handler(req, res) {
       message: "Campaign executed successfully",
       id: createdAssets.campaign_id,
       status: "PAUSED",
+      ad_account_id: `act_${AD_ACCOUNT_ID}`,
       details: createdAssets
     });
 
@@ -267,6 +268,7 @@ export default async function handler(req, res) {
     return res.status(500).json({
       ok: false,
       message: err.message,
+      ad_account_id: `act_${AD_ACCOUNT_ID}`,
       created_partial: createdAssets
     });
   }
