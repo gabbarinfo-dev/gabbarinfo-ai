@@ -196,6 +196,29 @@ export default async function handler(req, res) {
         note: "User has exactly ONE Meta business connected. This is the active business.",
       };
     }
+
+    let lockedCampaignState = null;
+
+    // 🔍 READ LOCKED CAMPAIGN STATE (AUTHORITATIVE — SINGLE SOURCE)
+    if (activeBusinessId) {
+      try {
+        const { data: memData } = await supabase
+          .from("agent_memory")
+          .select("content")
+          .eq("email", session.user.email.toLowerCase())
+          .eq("memory_type", "client")
+          .maybeSingle();
+
+        if (memData?.content) {
+          const content = JSON.parse(memData.content);
+          if (content.business_answers?.[activeBusinessId]?.campaign_state) {
+            lockedCampaignState = content.business_answers[activeBusinessId].campaign_state;
+          }
+        }
+      } catch (e) {
+        console.warn("Campaign state read failed early:", e.message);
+      }
+    }
     // ============================================================
     // 📣 PLATFORM RESOLUTION (FACEBOOK / INSTAGRAM) — SOURCE OF TRUTH
     // ============================================================
@@ -453,7 +476,10 @@ export default async function handler(req, res) {
     if (
       mode === "generic" &&
       instruction &&
-      /(meta|facebook|instagram|fb|ig)/i.test(instruction)
+      (/(meta|facebook|instagram|fb|ig)/i.test(instruction) ||
+        lockedCampaignState?.stage === "PLAN_PROPOSED" ||
+        lockedCampaignState?.stage === "IMAGE_GENERATED" ||
+        lockedCampaignState?.stage === "READY_TO_LAUNCH")
     ) {
       mode = "meta_ads_plan";
     }
@@ -709,28 +735,6 @@ You are in GENERIC DIGITAL MARKETING AGENT MODE.
     // 🔍 READ LOCKED CAMPAIGN STATE (AUTHORITATIVE — SINGLE SOURCE)
     // ============================================================
 
-    let lockedCampaignState = null;
-
-    if (mode === "meta_ads_plan" && activeBusinessId) {
-      try {
-        // DIRECT DB READ (Reliable State) instead of RAG
-        const { data: memData } = await supabase
-          .from("agent_memory")
-          .select("content")
-          .eq("email", session.user.email.toLowerCase())
-          .eq("memory_type", "client")
-          .maybeSingle();
-
-        if (memData?.content) {
-          const content = JSON.parse(memData.content);
-          if (content.business_answers?.[activeBusinessId]?.campaign_state) {
-            lockedCampaignState = content.business_answers[activeBusinessId].campaign_state;
-          }
-        }
-      } catch (e) {
-        console.warn("Campaign state read failed:", e.message);
-      }
-    }
 
     let selectedService = null;
     let selectedLocation = null;
