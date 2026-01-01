@@ -165,12 +165,24 @@ export default async function handler(req, res) {
         // For this implementation, we assume locations are provided or default to India.
       }
 
+      let optimizationGoal = "LINK_CLICKS";
+      let billingEvent = "IMPRESSIONS";
+
+      const pg = (payload.performance_goal || "").toUpperCase();
+      if (pg.includes("LANDING_PAGE_VIEWS")) optimizationGoal = "LANDING_PAGE_VIEWS";
+      else if (pg.includes("LINK_CLICKS")) optimizationGoal = "LINK_CLICKS";
+      else if (pg.includes("CONVERSATIONS")) {
+        optimizationGoal = "CONVERSATIONS";
+        // billingEvent = "IMPRESSIONS"; // Still impressions for most objectives
+      } else if (pg.includes("REACH")) optimizationGoal = "REACH";
+      else if (pg.includes("CALLS")) optimizationGoal = "LINK_CLICKS"; // Meta often uses link clicks for calls unless it's a specific dialer ad
+
       const adSetParams = new URLSearchParams();
       adSetParams.append("name", adSet.name || "Ad Set 1");
       adSetParams.append("campaign_id", campaignId);
       adSetParams.append(budgetType, String(Math.floor(Number(budgetAmount) * 100)));
-      adSetParams.append("billing_event", "IMPRESSIONS");
-      adSetParams.append("optimization_goal", "LINK_CLICKS");
+      adSetParams.append("billing_event", billingEvent);
+      adSetParams.append("optimization_goal", optimizationGoal);
       adSetParams.append("bid_strategy", "LOWEST_COST_WITHOUT_CAP");
       adSetParams.append("status", "PAUSED");
       adSetParams.append("targeting", JSON.stringify(targeting));
