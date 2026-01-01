@@ -2278,6 +2278,9 @@ Otherwise, respond with a full, clear explanation, and include example JSON only
 "${creativeTitle}"
 _${creativeBody}_
 
+**Image Concept**: 
+_${creative.image_prompt || creative.imagePrompt || "Standard ad creative based on service"}_
+
 **Call to Action**: ${creative.call_to_action || "Learn More"}
 
 Reply **YES** to generate this image and launch the campaign.
@@ -2316,8 +2319,8 @@ Reply **YES** to generate this image and launch the campaign.
         let stopReason = null;
 
         // --- STEP 9: IMAGE GENERATION ---
-        const hasPlan = currentState.plan && currentState.plan.campaign_name;
-        const hasImage = currentState.creative && currentState.creative.imageBase64;
+        const hasPlan = currentState.plan && (currentState.plan.campaign_name || currentState.plan.name);
+        const hasImage = currentState.creative && (currentState.creative.imageBase64 || currentState.creative.imageUrl);
 
         if (hasPlan && !hasImage) {
           console.log("🚀 Waterfall: Starting Image Generation...");
@@ -2387,9 +2390,9 @@ Reply **YES** to generate this image and launch the campaign.
 
         // --- STEP 12: EXECUTION (Final Step) ---
         if (!errorOcurred) {
-          const isReady = currentState.stage === "READY_TO_LAUNCH" && currentState.image_hash;
+          const isReady = (currentState.stage === "READY_TO_LAUNCH" || currentState.stage === "IMAGE_UPLOADED") && currentState.image_hash;
           // For auto_run, we don't need explicit 'launch' keyword
-          const wantsLaunch = instruction.toLowerCase().includes("launch") || instruction.toLowerCase().includes("execute") || instruction.toLowerCase().includes("run") || instruction.toLowerCase().includes("publish") || currentState.auto_run;
+          const wantsLaunch = instruction.toLowerCase().includes("launch") || instruction.toLowerCase().includes("execute") || instruction.toLowerCase().includes("run") || instruction.toLowerCase().includes("publish") || instruction.toLowerCase().includes("yes") || instruction.toLowerCase().includes("ok") || currentState.auto_run;
 
           if (isReady && (wantsLaunch || currentState.objective === "TRAFFIC")) {
             console.log("🚀 Waterfall: Executing Campaign on Meta...");
