@@ -24,7 +24,7 @@ export default async function handler(req, res) {
 
   // 1. Parse Payload
   const { platform, payload } = req.body || {};
-  
+
   if (!payload || !payload.campaign_name) {
     return res.status(400).json({
       ok: false,
@@ -139,56 +139,60 @@ export default async function handler(req, res) {
     // =================================================================
     // STEP 2: CREATE AD SETS & ADS
     // =================================================================
+    // =================================================================
+    // STEP 2: CREATE AD SETS & ADS
+    // =================================================================
     const adSets = payload.ad_sets || [];
-    
+
     for (const adSet of adSets) {
       // --- A. Create Ad Set ---
-      const budgetAmount = payload.budget?.amount || 500; // Default 500
-      
-      const defaultTargeting = payload.targeting || { geo_locations: { countries: ["IN"] } };
-      let optimizationGoal = "LINK_CLICKS";
+      const budgetAmount = payload.budget?.amount || 500;
+      const budgetType = (payload.budget?.type || "daily").toLowerCase() === "daily" ? "daily_budget" : "lifetime_budget";
 
-      // Adjust Optimization Goal based on Objective
-      if (payload.objective === "OUTCOME_LEADS") {
-        optimizationGoal = "LEAD_GENERATION";
+      // Spec 6.2: Default targeting (18-60, ALL, Advantage+ Placements)
+      const targeting = {
+        geo_locations: {
+          countries: ["IN"]
+        },
+        age_min: 18,
+        age_max: 60,
+        publisher_platforms: ["facebook", "instagram", "audience_network", "messenger"] // Advantage+ equivalents
+      };
+
+      // Handle city locations if provided
+      if (payload.locations && Array.isArray(payload.locations)) {
+        // This is a simplified mapping. In a real app, you'd resolve city names to Meta IDs.
+        // For this implementation, we assume locations are provided or default to India.
       }
 
       const adSetParams = new URLSearchParams();
       adSetParams.append("name", adSet.name || "Ad Set 1");
       adSetParams.append("campaign_id", campaignId);
-      adSetParams.append("daily_budget", String(Math.floor(Number(budgetAmount) * 100)));
+      adSetParams.append(budgetType, String(Math.floor(Number(budgetAmount) * 100)));
       adSetParams.append("billing_event", "IMPRESSIONS");
-      adSetParams.append("optimization_goal", optimizationGoal);
-      if (optimizationGoal === "LEAD_GENERATION") {
-        adSetParams.append("destination_type", "ON_AD");
-      }
+      adSetParams.append("optimization_goal", "LINK_CLICKS");
       adSetParams.append("bid_strategy", "LOWEST_COST_WITHOUT_CAP");
       adSetParams.append("status", "PAUSED");
-      adSetParams.append("targeting", JSON.stringify(defaultTargeting));
+      adSetParams.append("targeting", JSON.stringify(targeting));
+
+      // Schedule: start now, end now + duration
+      if (payload.duration_days) {
+        const startTime = Math.floor(Date.now() / 1000);
+        const endTime = startTime + (payload.duration_days * 24 * 60 * 60);
+        adSetParams.append("start_time", startTime.toString());
+        adSetParams.append("end_time", endTime.toString());
+      }
+
       adSetParams.append("access_token", ACCESS_TOKEN);
 
-      const adSetRes = await fetch(`${base}/adsets`, {
+      const adSetRes = await fetch(`https://graph.facebook.com/v24.0/act_${AD_ACCOUNT_ID}/adsets`, {
         method: "POST",
         body: adSetParams,
       });
 
       const adSetJson = await adSetRes.json();
       if (!adSetRes.ok) {
-        // Retry with safe targeting if likely targeting error
-        if (JSON.stringify(adSetJson).includes("targeting")) {
-            const safeParams = new URLSearchParams(adSetParams);
-            safeParams.set("targeting", JSON.stringify({ geo_locations: { countries: ["IN"] } }));
-            const retryRes = await fetch(`${base}/adsets`, {
-                method: "POST",
-                body: safeParams,
-            });
-            const retryJson = await retryRes.json();
-            if (!retryRes.ok) throw new Error(`AdSet Create Failed (Retry): ${retryJson.error?.message}`);
-            
-            adSetJson.id = retryJson.id; // Update ID
-        } else {
-            throw new Error(`AdSet Create Failed: ${adSetJson.error?.message}`);
-        }
+        throw new Error(`AdSet Create Failed: ${adSetJson.error?.message}`);
       }
 
       const adSetId = adSetJson.id;
@@ -197,17 +201,18 @@ export default async function handler(req, res) {
       // --- B. Create Creative ---
       const creative = adSet.ad_creative || {};
       const imageHash = creative.image_hash;
-      
+
       if (!imageHash) {
         console.warn(`Skipping Ad Creation for AdSet ${adSetId}: No image_hash provided.`);
         continue;
       }
 
+      // Spec 6.3: SINGLE_IMAGE format
       const creativeSpec = {
         page_id: PAGE_ID,
         link_data: {
           image_hash: imageHash,
-          link: (creative.destination_url && /^https?:\/\//.test(creative.destination_url)) ? creative.destination_url : "https://facebook.com",
+          link: creative.destination_url || "https://gabbarinfo.com",
           message: creative.primary_text || "",
           name: creative.headline || "",
           call_to_action: {
@@ -221,7 +226,7 @@ export default async function handler(req, res) {
       creativeParams.append("object_story_spec", JSON.stringify(creativeSpec));
       creativeParams.append("access_token", ACCESS_TOKEN);
 
-      const creativeRes = await fetch(`${base}/adcreatives`, {
+      const creativeRes = await fetch(`https://graph.facebook.com/v24.0/act_${AD_ACCOUNT_ID}/adcreatives`, {
         method: "POST",
         body: creativeParams,
       });
@@ -241,7 +246,7 @@ export default async function handler(req, res) {
       adParams.append("status", "PAUSED");
       adParams.append("access_token", ACCESS_TOKEN);
 
-      const adRes = await fetch(`${base}/ads`, {
+      const adRes = await fetch(`https://graph.facebook.com/v24.0/act_${AD_ACCOUNT_ID}/ads`, {
         method: "POST",
         body: adParams,
       });
@@ -252,6 +257,26 @@ export default async function handler(req, res) {
       }
 
       createdAssets.ads.push(adJson.id);
+    }
+
+    // =================================================================
+    // STEP 7: PAUSE SAFETY LOGIC (CRITICAL)
+    // =================================================================
+    try {
+      // Re-verify campaign status
+      const verifyUrl = `https://graph.facebook.com/v24.0/${campaignId}?fields=status&access_token=${ACCESS_TOKEN}`;
+      const vRes = await fetch(verifyUrl);
+      const vJson = await vRes.json();
+
+      if (vJson.status !== "PAUSED") {
+        console.log("⚠️ Campaign status was not PAUSED. Forcing pause...");
+        await fetch(`https://graph.facebook.com/v24.0/${campaignId}?access_token=${ACCESS_TOKEN}`, {
+          method: "POST",
+          body: new URLSearchParams({ status: "PAUSED" })
+        });
+      }
+    } catch (pauseErr) {
+      console.error("Pause Safety Logic error:", pauseErr);
     }
 
     return res.status(200).json({
