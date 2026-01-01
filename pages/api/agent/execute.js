@@ -472,14 +472,18 @@ export default async function handler(req, res) {
       extraContext = "",
     } = body;
 
-    // 🔁 AUTO-ROUTE TO META MODE
-    if (
+    // 🔒 CRITICAL: FORCE MODE FROM LOCKED STATE (MUST BE FIRST)
+    // If a lockedCampaignState exists → mode MUST be meta_ads_plan
+    // This runs BEFORE any Gemini calls or waterfalls to ensure correct mode context
+    if (lockedCampaignState) {
+      mode = "meta_ads_plan";
+      console.log("🔒 MODE FORCED: meta_ads_plan (locked campaign state exists)");
+    }
+    // 🔁 AUTO-ROUTE TO META MODE (fallback for new campaigns)
+    else if (
       mode === "generic" &&
       instruction &&
-      (/(meta|facebook|instagram|fb|ig)/i.test(instruction) ||
-        lockedCampaignState?.stage === "PLAN_PROPOSED" ||
-        lockedCampaignState?.stage === "IMAGE_GENERATED" ||
-        lockedCampaignState?.stage === "READY_TO_LAUNCH")
+      /(meta|facebook|instagram|fb|ig)/i.test(instruction)
     ) {
       mode = "meta_ads_plan";
     }
@@ -2503,16 +2507,6 @@ Reply **YES** to generate this image and launch the campaign.
       }
     }
 
-    // ============================================================
-    // 🔒 FORCE MODE FROM LOCKED STATE (CRITICAL FIX)
-    // ============================================================
-    // If a lockedCampaignState exists → mode MUST be meta_ads_plan
-    // This ensures that when user says "YES" (which doesn't contain meta/facebook keywords),
-    // the execution waterfall still runs instead of falling back to generic mode
-    if (lockedCampaignState && mode !== "meta_ads_plan") {
-      console.log("🔒 FORCING MODE: generic → meta_ads_plan (locked state exists)");
-      mode = "meta_ads_plan";
-    }
 
     // ============================================================
     // 🤖 STATE MACHINE: EXECUTION FLOW (Plan -> Image -> Launch)
