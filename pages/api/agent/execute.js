@@ -2504,6 +2504,17 @@ Reply **YES** to generate this image and launch the campaign.
     }
 
     // ============================================================
+    // 🔒 FORCE MODE FROM LOCKED STATE (CRITICAL FIX)
+    // ============================================================
+    // If a lockedCampaignState exists → mode MUST be meta_ads_plan
+    // This ensures that when user says "YES" (which doesn't contain meta/facebook keywords),
+    // the execution waterfall still runs instead of falling back to generic mode
+    if (lockedCampaignState && mode !== "meta_ads_plan") {
+      console.log("🔒 FORCING MODE: generic → meta_ads_plan (locked state exists)");
+      mode = "meta_ads_plan";
+    }
+
+    // ============================================================
     // 🤖 STATE MACHINE: EXECUTION FLOW (Plan -> Image -> Launch)
     // ============================================================
     if (lockedCampaignState) {
