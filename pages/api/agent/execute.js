@@ -2100,7 +2100,7 @@ Otherwise, respond with a full, clear explanation, and include example JSON only
 
             planJson = {
               campaign_name: s.campaign_name || "New Campaign",
-              objective: s.objective || "OUTCOME_TRAFFIC",
+              objective: (s.objective && (s.objective.includes("LEAD") || s.objective.includes("PROSPECT"))) ? "OUTCOME_LEADS" : (s.objective?.includes("SALE") || s.objective?.includes("CONVERSION") ? "OUTCOME_SALES" : "OUTCOME_TRAFFIC"),
               performance_goal: s.performance_goal || d.performance_goal || lockedCampaignState?.performance_goal || "MAXIMIZE_LINK_CLICKS",
               budget: {
                 amount: s.daily_budget_inr || s.budget?.amount || 500,
@@ -2138,7 +2138,7 @@ Otherwise, respond with a full, clear explanation, and include example JSON only
 
             planJson = {
               campaign_name: d.name || "New Campaign",
-              objective: d.objective || "OUTCOME_TRAFFIC",
+              objective: (d.objective && (d.objective.includes("LEAD") || d.objective.includes("PROSPECT"))) ? "OUTCOME_LEADS" : (d.objective?.includes("SALE") || d.objective?.includes("CONVERSION") ? "OUTCOME_SALES" : "OUTCOME_TRAFFIC"),
               performance_goal: d.performance_goal || ads.performance_goal || lockedCampaignState?.performance_goal || "MAXIMIZE_LINK_CLICKS",
               budget: {
                 amount: d.budget_daily_inr || ads.daily_budget?.amount || 500,
@@ -2179,7 +2179,7 @@ Otherwise, respond with a full, clear explanation, and include example JSON only
 
             planJson = {
               campaign_name: d.name || d.campaign_name || "New Campaign",
-              objective: d.objective || "OUTCOME_TRAFFIC",
+              objective: (d.objective && (d.objective.includes("LEAD") || d.objective.includes("PROSPECT"))) ? "OUTCOME_LEADS" : (d.objective?.includes("SALE") || d.objective?.includes("CONVERSION") ? "OUTCOME_SALES" : "OUTCOME_TRAFFIC"),
               performance_goal: d.performance_goal || ads.performance_goal || lockedCampaignState?.performance_goal || "MAXIMIZE_LINK_CLICKS",
               budget: {
                 amount: d.budget_daily_inr || d.budget?.amount || 500,
