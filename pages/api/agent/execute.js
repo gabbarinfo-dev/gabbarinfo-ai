@@ -1856,6 +1856,157 @@ Otherwise, respond with a full, clear explanation, and include example JSON only
       return res.status(200).json({ ok: true, text: "waiting for details..." });
     }
 
+    // ⚡ CRITICAL SHORT-CIRCUIT: Skip Gemini if plan exists and user confirms
+    if (
+      lockedCampaignState?.stage === "PLAN_PROPOSED" &&
+      lockedCampaignState?.plan &&
+      (lowerInstruction.includes("yes") ||
+        lowerInstruction.includes("approve") ||
+        lowerInstruction.includes("confirm") ||
+        lowerInstruction.includes("proceed") ||
+        lowerInstruction.includes("launch") ||
+        lowerInstruction.includes("generate") ||
+        lowerInstruction.includes("image"))
+    ) {
+      console.log("🚀 SHORT-CIRCUIT: Executing waterfall directly without Gemini");
+      const stage = lockedCampaignState.stage;
+      const userSaysYes = true;
+      let currentState = { ...lockedCampaignState };
+      let waterfallLog = [];
+      let errorOcurred = false;
+      let stopReason = null;
+
+      // --- STEP 9: IMAGE GENERATION ---
+      const hasPlan = currentState.plan && (currentState.plan.campaign_name || currentState.plan.name);
+      const hasImage = currentState.creative && (currentState.creative.imageBase64 || currentState.creative.imageUrl);
+
+      if (hasPlan && !hasImage) {
+        console.log("🚀 Waterfall: Starting Image Generation...");
+        const plan = currentState.plan;
+        const creativeResult = plan.ad_sets?.[0]?.ad_creative || plan.ad_sets?.[0]?.ads?.[0]?.creative || {};
+        const imagePrompt = creativeResult.image_prompt || creativeResult.imagePrompt || creativeResult.primary_text || `${plan.campaign_name} ad image`;
+
+        try {
+          const imgRes = await fetch(`${process.env.NEXT_PUBLIC_BASE_URL}/api/images/generate`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ prompt: imagePrompt }),
+          });
+          const imgJson = await parseResponseSafe(imgRes);
+
+          if (imgJson.imageBase64) {
+            const newCreative = {
+              ...creativeResult,
+              imageBase64: imgJson.imageBase64,
+              imageUrl: `data:image/png;base64,${imgJson.imageBase64}`
+            };
+            currentState = { ...currentState, stage: "IMAGE_GENERATED", creative: newCreative };
+            waterfallLog.push("✅ Step 9: Image Generated");
+          } else {
+            errorOcurred = true;
+            stopReason = "Image Generation Failed (No Base64 returned)";
+          }
+        } catch (e) {
+          errorOcurred = true;
+          stopReason = `Image Generation Error: ${e.message}`;
+        }
+      } else if (hasImage) {
+        waterfallLog.push("⏭️ Step 9: Image Already Exists");
+      }
+
+      // --- STEP 10: IMAGE UPLOAD ---
+      if (!errorOcurred) {
+        const hasImageReady = currentState.creative && currentState.creative.imageBase64;
+        const hasHash = currentState.image_hash;
+
+        if (hasImageReady && !hasHash) {
+          console.log("🚀 Waterfall: Uploading Image to Meta...");
+          try {
+            const uploadRes = await fetch(`${process.env.NEXT_PUBLIC_BASE_URL}/api/meta/upload-image`, {
+              method: "POST",
+              headers: { "Content-Type": "application/json", "X-Client-Email": __currentEmail || "" },
+              body: JSON.stringify({ imageBase64: currentState.creative.imageBase64 })
+            });
+            const uploadJson = await parseResponseSafe(uploadRes);
+            const iHash = uploadJson.imageHash || uploadJson.image_hash;
+
+            if (uploadJson.ok && iHash) {
+              currentState = { ...currentState, stage: "READY_TO_LAUNCH", image_hash: iHash };
+              waterfallLog.push("✅ Step 10: Image Uploaded to Meta");
+            } else {
+              errorOcurred = true;
+              stopReason = `Meta Upload Failed: ${uploadJson.message || "Unknown error"}`;
+            }
+          } catch (e) {
+            errorOcurred = true;
+            stopReason = `Meta Upload Error: ${e.message}`;
+          }
+        } else if (hasHash) {
+          waterfallLog.push("⏭️ Step 10: Image Already Uploaded");
+        }
+      }
+
+      // --- STEP 12: EXECUTION (Final Step) ---
+      if (!errorOcurred) {
+        const isReady = (currentState.stage === "READY_TO_LAUNCH" || currentState.stage === "IMAGE_UPLOADED") && currentState.image_hash;
+        const wantsLaunch = lowerInstruction.includes("launch") || lowerInstruction.includes("execute") || lowerInstruction.includes("run") || lowerInstruction.includes("publish") || lowerInstruction.includes("yes") || lowerInstruction.includes("ok") || currentState.auto_run;
+
+        if (isReady && (wantsLaunch || currentState.objective === "TRAFFIC")) {
+          console.log("🚀 Waterfall: Executing Campaign on Meta...");
+          try {
+            const plan = currentState.plan;
+            const finalPayload = {
+              ...plan,
+              ad_sets: plan.ad_sets.map(adset => ({
+                ...adset,
+                ad_creative: { ...adset.ad_creative, image_hash: currentState.image_hash }
+              }))
+            };
+
+            const execRes = await fetch(`${process.env.NEXT_PUBLIC_BASE_URL}/api/meta/execute-campaign`, {
+              method: "POST",
+              headers: { "Content-Type": "application/json", "X-Client-Email": __currentEmail || "" },
+              body: JSON.stringify({ platform: "meta", payload: finalPayload })
+            });
+            const execJson = await execRes.json();
+
+            if (execJson.ok) {
+              await saveAnswerMemory(process.env.NEXT_PUBLIC_BASE_URL, activeBusinessId, {
+                campaign_state: { stage: "COMPLETED", final_result: execJson }
+              });
+              return res.status(200).json({
+                ok: true,
+                text: `🎉 **Campaign Published Successfully!**\n\n**Pipeline Status**:\n${waterfallLog.join("\n")}\n✅ Step 12: Campaign Created (PAUSED)\n\n**Meta Details**:\n- **Campaign Name**: ${plan.campaign_name}\n- **Campaign ID**: \`${execJson.id || "N/A"}\`\n- **Ad Account ID**: \`${verifiedMetaAssets?.ad_account?.id || "N/A"}\`\n- **Status**: PAUSED\n\nYour campaign is now waiting in your Meta Ads Manager for final review.`
+              });
+            } else {
+              errorOcurred = true;
+              stopReason = `Meta Execution Failed: ${execJson.message || "Unknown error"}`;
+            }
+          } catch (e) {
+            errorOcurred = true;
+            stopReason = `Meta Execution Error: ${e.message}`;
+          }
+        }
+      }
+
+      // Save progress reached
+      await saveAnswerMemory(process.env.NEXT_PUBLIC_BASE_URL, activeBusinessId, { campaign_state: currentState });
+
+      // If we stopped due to error or waiting
+      let feedbackText = "";
+      if (errorOcurred) {
+        feedbackText = `❌ **Automation Interrupted**:\n\n**Error**: ${stopReason}\n\n**Pipeline Progress**:\n${waterfallLog.join("\n")}\n\nI've saved the progress so far. Please check the error above and reply to try again.`;
+      } else if (currentState.stage === "IMAGE_GENERATED") {
+        feedbackText = `✅ **Image Generated Successfully**\n\n[Image Generated]\n\n**Next Steps**:\n1. Upload image to Meta Assets\n2. Create paused campaign on Facebook/Instagram\n\nReply **LAUNCH** to complete these steps automatically.`;
+      } else if (currentState.stage === "READY_TO_LAUNCH") {
+        feedbackText = `✅ **Image Uploaded & Ready**\n\nEverything is set for campaign launch.\n\n**Details**:\n- Campaign: ${currentState.plan.campaign_name}\n- Budget: ${currentState.plan.budget?.amount || "500"} INR\n\nReply **LAUNCH** to publish the campaign to Meta.`;
+      } else {
+        feedbackText = `**Current Pipeline Progress**:\n${waterfallLog.join("\n") || "No steps completed in this turn."}\n\nWaiting for your confirmation...`;
+      }
+
+      return res.status(200).json({ ok: true, text: feedbackText, imageUrl: currentState.creative?.imageUrl });
+    }
+
     const result = await model.generateContent({
       contents: [
         {
