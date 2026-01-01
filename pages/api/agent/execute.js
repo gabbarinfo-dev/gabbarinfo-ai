@@ -954,7 +954,8 @@ You are in GENERIC DIGITAL MARKETING AGENT MODE.
       phone: null,
       location: null,
       budget: null,
-      duration: null
+      duration: null,
+      whatsapp: null
     };
 
     // Objective & Destination Extraction
@@ -977,10 +978,16 @@ You are in GENERIC DIGITAL MARKETING AGENT MODE.
     else if (objLower.includes("call")) extractedData.performance_goal = "MAXIMIZE_CALLS";
 
     // Website & Phone Extraction
-    const urlMatch = instruction.match(/(https?:\/\/[^\s]+)/);
-    if (urlMatch) extractedData.website_url = urlMatch[1];
-    const phoneMatch = instruction.match(/(\+?\d[\d\s-]{8,15})/);
+    const urlMatch = instruction.match(/(?:https?:\/\/)?(?:www\.)[a-zA-Z0-9-]+\.[a-zA-Z0-9-.]+/i) || instruction.match(/https?:\/\/[^\s]+/i);
+    if (urlMatch) {
+      let url = urlMatch[0];
+      if (!url.startsWith("http")) url = "https://" + url;
+      extractedData.website_url = url;
+    }
+    const phoneMatch = instruction.match(/phone[^\d]*(\+?\d[\d\s-]{8,15})/i) || instruction.match(/(\+?\d[\d\s-]{8,15})/);
     if (phoneMatch) extractedData.phone = phoneMatch[1];
+    const waMatch = instruction.match(/whatsapp[^\d]*(\+?\d[\d\s-]{8,15})/i);
+    if (waMatch) extractedData.whatsapp = waMatch[1];
 
     // Budget & Duration
     const budgetMatch = instruction.match(/(?:budget|amount|day):\s*(\d+)/i) || instruction.match(/(?:₹|rs\.?)\s*(\d+)/i);
@@ -991,7 +998,7 @@ You are in GENERIC DIGITAL MARKETING AGENT MODE.
     // Service & Location (Simple heuristic for Pro Logic)
     const serviceMatch = instruction.match(/service[s]?:\s*([^\n,]+)/i);
     if (serviceMatch) extractedData.service = serviceMatch[1].trim();
-    const locationMatch = instruction.match(/location[s]?:\s*([^\n,]+)/i);
+    const locationMatch = instruction.match(/location[s]?:\s*([^\n]+)/i);
     if (locationMatch) extractedData.location = locationMatch[1].trim();
 
     // 🎯 Apply Extracted Data to State if not already locked
@@ -1011,6 +1018,10 @@ You are in GENERIC DIGITAL MARKETING AGENT MODE.
 
       if (stateChanged) {
         console.log("🧠 Pro Logic: Merged extracted data into state");
+        if (extractedData.website_url) nextState.landing_page_confirmed = true;
+        if (extractedData.location) nextState.location_confirmed = true;
+        if (extractedData.phone) nextState.phone_confirmed = true;
+        if (extractedData.whatsapp) { nextState.whatsapp = extractedData.whatsapp; nextState.whatsapp_confirmed = true; }
         nextState.locked_at = new Date().toISOString();
         await saveAnswerMemory(process.env.NEXT_PUBLIC_BASE_URL, activeBusinessId, { campaign_state: nextState });
         lockedCampaignState = nextState;
@@ -1210,7 +1221,8 @@ You are in GENERIC DIGITAL MARKETING AGENT MODE.
     if (
       selectedDestination === "call" &&
       detectedPhoneNumber &&
-      !lowerInstruction.includes("yes")
+      !lowerInstruction.includes("yes") &&
+      !lockedCampaignState?.phone_confirmed
     ) {
       return res.status(200).json({
         ok: true,
@@ -1233,8 +1245,8 @@ You are in GENERIC DIGITAL MARKETING AGENT MODE.
       detectedWhatsappNumber = autoBusinessContext.business_phone;
     }
 
-    // 2️⃣ If WhatsApp selected → ALWAYS confirm
-    if (selectedDestination === "whatsapp") {
+    // 2️⃣ If WhatsApp selected → ALWAYS confirm (unless already in state/confirmed)
+    if (selectedDestination === "whatsapp" && !lockedCampaignState?.whatsapp_confirmed) {
       const suggestionText = detectedWhatsappNumber
         ? `\n\nI found this number on your Facebook Page:\n📱 ${detectedWhatsappNumber}`
         : "";
@@ -1283,7 +1295,8 @@ You are in GENERIC DIGITAL MARKETING AGENT MODE.
     if (
       selectedDestination === "website" &&
       detectedLandingPage &&
-      !landingPageConfirmed
+      !landingPageConfirmed &&
+      !lockedCampaignState?.landing_page_confirmed
     ) {
       return res.status(200).json({
         ok: true,
@@ -1378,7 +1391,8 @@ You are in GENERIC DIGITAL MARKETING AGENT MODE.
 
     if (
       mode === "meta_ads_plan" &&
-      !lockedCampaignState?.location
+      !lockedCampaignState?.location &&
+      !lockedCampaignState?.location_confirmed
     ) {
       if (detectedLocation) {
         return res.status(200).json({
