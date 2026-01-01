@@ -598,6 +598,7 @@ You are in META ADS / CREATIVE AGENT MODE.
   ]
 }
 
+- Meta Objectives must be one of: OUTCOME_TRAFFIC (for Traffic), OUTCOME_LEADS (for Leads), OUTCOME_SALES (for Sales/Conversions).
 - When you output JSON-only, do NOT wrap it in backticks, and add no extra text.
 `;
     } else if (mode === "social_plan") {
@@ -791,7 +792,7 @@ You are in GENERIC DIGITAL MARKETING AGENT MODE.
             const performance_goal = adset0.performance_goal || userPlan.performance_goal || cd.performance_goal || null;
             userPlan = {
               campaign_name: cd.name || "New Campaign",
-              objective: cd.objective && cd.objective.includes("CLICK") ? "OUTCOME_TRAFFIC" : (cd.objective || "OUTCOME_TRAFFIC"),
+              objective: (cd.objective && (cd.objective.includes("CLICK") || cd.objective.includes("TRAFFIC"))) ? "OUTCOME_TRAFFIC" : (cd.objective?.includes("LEAD") ? "OUTCOME_LEADS" : (cd.objective || "OUTCOME_TRAFFIC")),
               performance_goal: performance_goal,
               budget: {
                 amount: budgetAmount,
@@ -972,8 +973,8 @@ You are in GENERIC DIGITAL MARKETING AGENT MODE.
 
     // Objective & Destination Extraction
     const objLower = lowerInstruction;
-    if (objLower.includes("traffic")) extractedData.objective = "TRAFFIC";
-    else if (objLower.includes("lead")) extractedData.objective = "LEAD_GENERATION";
+    if (objLower.includes("traffic")) extractedData.objective = "OUTCOME_TRAFFIC";
+    else if (objLower.includes("lead")) extractedData.objective = "OUTCOME_LEADS";
     else if (objLower.includes("sale") || objLower.includes("conversion")) extractedData.objective = "OUTCOME_SALES";
 
     if (objLower.includes("website")) extractedData.destination = "website";
@@ -1053,9 +1054,9 @@ You are in GENERIC DIGITAL MARKETING AGENT MODE.
     // Step 1: Objective
     if (!isPlanProposed && mode === "meta_ads_plan" && !selectedMetaObjective) {
       // (Keep existing interactive selection logic but refine it)
-      if (lowerInstruction.includes("traffic")) selectedMetaObjective = "TRAFFIC";
-      else if (lowerInstruction.includes("lead")) selectedMetaObjective = "LEAD_GENERATION";
-      else if (lowerInstruction.includes("sale")) selectedMetaObjective = "OUTCOME_SALES";
+      if (lowerInstruction.includes("traffic")) selectedMetaObjective = "OUTCOME_TRAFFIC";
+      else if (lowerInstruction.includes("lead")) selectedMetaObjective = "OUTCOME_LEADS";
+      else if (lowerInstruction.includes("sale") || lowerInstruction.includes("conversion")) selectedMetaObjective = "OUTCOME_SALES";
 
       if (selectedMetaObjective) {
         // Save and continue loop or wait? For now, we continue in this turn if possible
@@ -1072,9 +1073,9 @@ You are in GENERIC DIGITAL MARKETING AGENT MODE.
     // Step 2: Conversion Location
     if (!isPlanProposed && mode === "meta_ads_plan" && selectedMetaObjective && !selectedDestination) {
       let options = [];
-      if (selectedMetaObjective === "TRAFFIC") {
+      if (selectedMetaObjective === "OUTCOME_TRAFFIC") {
         options = ["Website", "Instagram Profile", "Facebook Page"];
-      } else if (selectedMetaObjective === "LEAD_GENERATION") {
+      } else if (selectedMetaObjective === "OUTCOME_LEADS") {
         options = ["WhatsApp", "Calls", "Messenger/Instagram Direct"];
       } else {
         options = ["Website"];
@@ -1083,8 +1084,8 @@ You are in GENERIC DIGITAL MARKETING AGENT MODE.
       // Detection
       const input = lowerInstruction;
       if (input.includes("1") || input.includes("website")) selectedDestination = "website";
-      else if (input.includes("2") || input.includes("instagram") || input.includes("call")) selectedDestination = selectedMetaObjective === "TRAFFIC" ? "instagram_profile" : "call";
-      else if (input.includes("3") || input.includes("facebook") || input.includes("whatsapp")) selectedDestination = selectedMetaObjective === "TRAFFIC" ? "facebook_page" : "whatsapp";
+      else if (input.includes("2") || input.includes("instagram") || input.includes("call")) selectedDestination = selectedMetaObjective === "OUTCOME_TRAFFIC" ? "instagram_profile" : "call";
+      else if (input.includes("3") || input.includes("facebook") || input.includes("whatsapp")) selectedDestination = selectedMetaObjective === "OUTCOME_TRAFFIC" ? "facebook_page" : "whatsapp";
       else if (input.includes("message")) selectedDestination = "messages";
 
       if (selectedDestination) {
@@ -1759,7 +1760,7 @@ STRICT 12-STEP META CAMPAIGN FLOW
 ====================================================
 1.  User Request (Start)
 2.  Context Check (Business Intake / Meta Connection)
-3.  Objective Confirmation (Traffic/Leads etc. -> Auction)
+3.  Objective Confirmation (OUTCOME_TRAFFIC/OUTCOME_LEADS etc. -> Auction)
 4.  Conversion Location (Website/Call/WhatsApp etc.)
 5.  Performance Goal (Link Clicks/Landing Page Views etc.)
 6.  Service Confirmation (Product/Service to promote) -> [LOCKED]
@@ -2265,7 +2266,7 @@ Otherwise, respond with a full, clear explanation, and include example JSON only
 
             planJson = {
               campaign_name: mcp.campaign_name || "New Campaign",
-              objective: (mcp.campaign_objective === "TRAFFIC") ? "OUTCOME_TRAFFIC" : (mcp.campaign_objective || "OUTCOME_TRAFFIC"),
+              objective: (mcp.campaign_objective === "TRAFFIC" || (mcp.campaign_objective && mcp.campaign_objective.includes("CLICK"))) ? "OUTCOME_TRAFFIC" : (mcp.campaign_objective || "OUTCOME_TRAFFIC"),
               performance_goal: adSetInput.performance_goal || "MAXIMIZE_LINK_CLICKS",
               budget: {
                 amount: budget.amount || 500,
@@ -2387,7 +2388,7 @@ Otherwise, respond with a full, clear explanation, and include example JSON only
 
             const cName = cp.campaign_name || "New Campaign";
             // Map Objective
-            let obj = cp.objective || "TRAFFIC";
+            let obj = cp.objective || "OUTCOME_TRAFFIC";
             if (obj.includes("LINK") || obj.includes("TRAFFIC")) obj = "OUTCOME_TRAFFIC";
             else if (obj.includes("LEAD")) obj = "OUTCOME_LEADS";
             else obj = "OUTCOME_TRAFFIC";
@@ -2446,7 +2447,7 @@ Otherwise, respond with a full, clear explanation, and include example JSON only
               : [];
             planJson = {
               campaign_name: d.name || "New Campaign",
-              objective: (d.objective && d.objective.includes("CLICK")) ? "OUTCOME_TRAFFIC" : (d.objective || "OUTCOME_TRAFFIC"),
+              objective: (d.objective && (d.objective.includes("CLICK") || d.objective.includes("TRAFFIC"))) ? "OUTCOME_TRAFFIC" : (d.objective?.includes("LEAD") ? "OUTCOME_LEADS" : (d.objective || "OUTCOME_TRAFFIC")),
               performance_goal: d.performance_goal || cr.performance_goal || lockedCampaignState?.performance_goal || "MAXIMIZE_LINK_CLICKS",
               budget: {
                 amount: d.budget?.daily_budget_inr || d.budget_daily_inr || 500,
