@@ -174,7 +174,7 @@ export default async function handler(req, res) {
         .from("meta_connections")
         .select("*")
         .eq("email", session.user.email.toLowerCase())
-        .single();
+        .maybeSingle();
 
       if (metaRow && metaRow.system_user_token) {
         metaConnected = true;
@@ -2068,6 +2068,57 @@ Otherwise, respond with a full, clear explanation, and include example JSON only
             };
           }
 
+          // 🔄 NORMALIZE JSON: Variation 8 (User Reported meta_campaign_plan)
+          if (planJson.meta_campaign_plan || planJson.campaign_creation_flow_step) {
+            console.log("🔄 Normalizing reported Meta Campaign Plan structure...");
+            const mcp = planJson.meta_campaign_plan || {};
+            const adSetInput = mcp.ad_set || {};
+            const creativeInput = mcp.creative || {};
+            const tgt = adSetInput.targeting || {};
+            const budget = mcp.budget || {};
+
+            planJson = {
+              campaign_name: mcp.campaign_name || "New Campaign",
+              objective: (mcp.campaign_objective === "TRAFFIC") ? "OUTCOME_TRAFFIC" : (mcp.campaign_objective || "OUTCOME_TRAFFIC"),
+              performance_goal: adSetInput.performance_goal || "MAXIMIZE_LINK_CLICKS",
+              budget: {
+                amount: budget.amount || 500,
+                currency: budget.currency || "INR",
+                type: budget.type || "DAILY"
+              },
+              targeting: {
+                geo_locations: {
+                  countries: ["IN"],
+                  cities: tgt.geo_locations?.map(c => {
+                    if (typeof c === "string") {
+                      const parts = c.split(",");
+                      return { name: parts[0].trim() };
+                    }
+                    return null;
+                  }).filter(Boolean) || []
+                },
+                age_min: parseInt(tgt.age_range?.split("-")[0]) || 18,
+                age_max: parseInt(tgt.age_range?.split("-")[1]?.replace("+", "")) || 65,
+                targeting_suggestions: {
+                  interests: tgt.detailed_targeting_suggestions || []
+                }
+              },
+              ad_sets: [
+                {
+                  name: "Ad Set 1",
+                  status: "PAUSED",
+                  ad_creative: {
+                    imagePrompt: creativeInput.image_generation_prompt || "Ad Image",
+                    primary_text: creativeInput.primary_text || "",
+                    headline: creativeInput.headline || "",
+                    call_to_action: creativeInput.call_to_action || "LEARN_MORE",
+                    destination_url: creativeInput.destination_url || "https://gabbarinfo.com"
+                  }
+                }
+              ]
+            };
+          }
+
           // 🔄 NORMALIZE JSON: Variation 6 (campaign + adSets + ads structure)
           if (planJson.campaign && planJson.adSets && Array.isArray(planJson.adSets)) {
             console.log("🔄 Normalizing Gemini JSON Variation 6 (campaign/adSets/ads)...");
@@ -2309,6 +2360,8 @@ Reply **YES** to generate this image and launch the campaign.
         instruction.toLowerCase().includes("confirm") ||
         instruction.toLowerCase().includes("proceed") ||
         instruction.toLowerCase().includes("launch") ||
+        instruction.toLowerCase().includes("generate") ||
+        instruction.toLowerCase().includes("image") ||
         lockedCampaignState.auto_run;
 
       // 🚀 CONSOLIDATED EXECUTION WATERFALL (Step 9 -> 10 -> 12)
