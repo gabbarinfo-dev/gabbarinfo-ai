@@ -465,6 +465,8 @@ export default async function handler(req, res) {
       });
     }
 
+    const lowerInstruction = instruction.toLowerCase();
+
     // 🔒 Do NOT allow old chat history to override verified Meta assets
     // FIXED: We allow history but we instruct the model to prioritize verified assets.
     const historyText = Array.isArray(chatHistory)
