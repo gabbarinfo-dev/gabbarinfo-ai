@@ -541,7 +541,11 @@ You are in META ADS / CREATIVE AGENT MODE.
   "targeting": {
     "geo_locations": { "countries": ["IN"], "cities": [{"name": "Mumbai"}] },
     "age_min": 25,
-    "age_max": 55
+    "age_max": 55,
+    "targeting_suggestions": {
+      "interests": ["Dentistry", "Oral Hygiene"],
+      "demographics": ["Parents"]
+    }
   },
   "ad_sets": [
     {
@@ -770,9 +774,11 @@ You are in GENERIC DIGITAL MARKETING AGENT MODE.
             const headline = Array.isArray(creative.headlines) ? creative.headlines[0] : (creative.headline || "");
             const call_to_action = ads0.call_to_action || creative.call_to_action || "LEARN_MORE";
             const budgetAmount = adset0.daily_budget?.amount || userPlan.budget?.amount || 500;
+            const performance_goal = adset0.performance_goal || userPlan.performance_goal || cd.performance_goal || null;
             userPlan = {
               campaign_name: cd.name || "New Campaign",
               objective: cd.objective && cd.objective.includes("CLICK") ? "OUTCOME_TRAFFIC" : (cd.objective || "OUTCOME_TRAFFIC"),
+              performance_goal: performance_goal,
               budget: {
                 amount: budgetAmount,
                 currency: adset0.daily_budget?.currency || "INR",
@@ -820,6 +826,7 @@ You are in GENERIC DIGITAL MARKETING AGENT MODE.
             userPlan = {
               campaign_name: c.campaign_name || c.name || "New Campaign",
               objective: objective,
+              performance_goal: userPlan.performance_goal || adSetInput.performance_goal || null,
               budget: {
                 amount: adSetInput.budget?.amount || 500,
                 currency: "INR",
@@ -845,7 +852,8 @@ You are in GENERIC DIGITAL MARKETING AGENT MODE.
             const proposedState = {
               ...lockedCampaignState,
               stage: "PLAN_PROPOSED",
-              plan: userPlan
+              plan: userPlan,
+              auto_run: true // ⚡ Trigger Auto-Waterfall for High Logic
             };
             await saveAnswerMemory(baseUrl, activeBusinessId, { campaign_state: proposedState });
             lockedCampaignState = proposedState;
@@ -923,162 +931,7 @@ You are in GENERIC DIGITAL MARKETING AGENT MODE.
       }
     }
 
-    // ============================================================
-    // 🤖 STATE MACHINE: EXECUTION FLOW (Plan -> Image -> Launch)
-    // ============================================================
-    if (lockedCampaignState) {
-      const stage = lockedCampaignState.stage || "PLANNING";
-      const userSaysYes =
-        instruction.toLowerCase().includes("yes") ||
-        instruction.toLowerCase().includes("approve") ||
-        instruction.toLowerCase().includes("confirm") ||
-        instruction.toLowerCase().includes("proceed") ||
-        instruction.toLowerCase().includes("launch"); // Added LAUNCH
-
-      // 🚀 CONSOLIDATED EXECUTION WATERFALL (Step 9 -> 10 -> 12)
-      if (userSaysYes) {
-        let currentState = { ...lockedCampaignState };
-        let waterfallLog = [];
-        let errorOcurred = false;
-        let stopReason = null;
-
-        // --- STEP 9: IMAGE GENERATION ---
-        const hasPlan = currentState.plan && currentState.plan.campaign_name;
-        const hasImage = currentState.creative && currentState.creative.imageBase64;
-
-        if (hasPlan && !hasImage) {
-          console.log("🚀 Waterfall: Starting Image Generation...");
-          const plan = currentState.plan;
-          const creativeResult = plan.ad_sets?.[0]?.ad_creative || plan.ad_sets?.[0]?.ads?.[0]?.creative || {};
-          const imagePrompt = creativeResult.image_prompt || creativeResult.imagePrompt || creativeResult.primary_text || `${plan.campaign_name} ad image`;
-
-          try {
-            const imgRes = await fetch(`${process.env.NEXT_PUBLIC_BASE_URL}/api/images/generate`, {
-              method: "POST",
-              headers: { "Content-Type": "application/json" },
-              body: JSON.stringify({ prompt: imagePrompt }),
-            });
-            const imgJson = await parseResponseSafe(imgRes);
-
-            if (imgJson.imageBase64) {
-              const newCreative = {
-                ...creativeResult,
-                imageBase64: imgJson.imageBase64,
-                imageUrl: `data:image/png;base64,${imgJson.imageBase64}`
-              };
-              currentState = { ...currentState, stage: "IMAGE_GENERATED", creative: newCreative };
-              waterfallLog.push("✅ Step 9: Image Generated");
-            } else {
-              errorOcurred = true;
-              stopReason = "Image Generation Failed (No Base64 returned)";
-            }
-          } catch (e) {
-            errorOcurred = true;
-            stopReason = `Image Generation Error: ${e.message}`;
-          }
-        } else if (hasImage) {
-          waterfallLog.push("⏭️ Step 9: Image Already Exists");
-        }
-
-        // --- STEP 10: IMAGE UPLOAD ---
-        if (!errorOcurred) {
-          const hasImageReady = currentState.creative && currentState.creative.imageBase64;
-          const hasHash = currentState.image_hash;
-
-          if (hasImageReady && !hasHash) {
-            console.log("🚀 Waterfall: Uploading Image to Meta...");
-            try {
-              const uploadRes = await fetch(`${process.env.NEXT_PUBLIC_BASE_URL}/api/meta/upload-image`, {
-                method: "POST",
-                headers: { "Content-Type": "application/json", "X-Client-Email": __currentEmail || "" },
-                body: JSON.stringify({ imageBase64: currentState.creative.imageBase64 })
-              });
-              const uploadJson = await parseResponseSafe(uploadRes);
-              const iHash = uploadJson.imageHash || uploadJson.image_hash;
-
-              if (uploadJson.ok && iHash) {
-                currentState = { ...currentState, stage: "READY_TO_LAUNCH", image_hash: iHash };
-                waterfallLog.push("✅ Step 10: Image Uploaded to Meta");
-              } else {
-                errorOcurred = true;
-                stopReason = `Meta Upload Failed: ${uploadJson.message || "Unknown error"}`;
-              }
-            } catch (e) {
-              errorOcurred = true;
-              stopReason = `Meta Upload Error: ${e.message}`;
-            }
-          } else if (hasHash) {
-            waterfallLog.push("⏭️ Step 10: Image Already Uploaded");
-          }
-        }
-
-        // --- STEP 12: EXECUTION (Final Step) ---
-        if (!errorOcurred) {
-          const isReady = currentState.stage === "READY_TO_LAUNCH" && currentState.image_hash;
-          const wantsLaunch = instruction.toLowerCase().includes("launch") || instruction.toLowerCase().includes("execute") || instruction.toLowerCase().includes("run") || instruction.toLowerCase().includes("publish");
-
-          if (isReady && (wantsLaunch || currentState.objective === "TRAFFIC")) {
-            console.log("🚀 Waterfall: Executing Campaign on Meta...");
-            try {
-              const plan = currentState.plan;
-              const finalPayload = {
-                ...plan,
-                ad_sets: plan.ad_sets.map(adset => ({
-                  ...adset,
-                  ad_creative: { ...adset.ad_creative, image_hash: currentState.image_hash }
-                }))
-              };
-
-              const execRes = await fetch(`${process.env.NEXT_PUBLIC_BASE_URL}/api/meta/execute-campaign`, {
-                method: "POST",
-                headers: { "Content-Type": "application/json", "X-Client-Email": __currentEmail || "" },
-                body: JSON.stringify({ platform: "meta", payload: finalPayload })
-              });
-              const execJson = await execRes.json();
-
-              if (execJson.ok) {
-                await saveAnswerMemory(process.env.NEXT_PUBLIC_BASE_URL, activeBusinessId, {
-                  campaign_state: { stage: "COMPLETED", final_result: execJson }
-                });
-                return res.status(200).json({
-                  ok: true,
-                  text: `🎉 **Campaign Published Successfully!**\n\n**Pipeline Status**:\n${waterfallLog.join("\n")}\n✅ Step 12: Campaign Created (PAUSED)\n\n**Meta Details**:\n- **Campaign Name**: ${plan.campaign_name}\n- **Campaign ID**: \`${execJson.id || "N/A"}\`\n- **Ad Account ID**: \`${verifiedMetaAssets?.ad_account?.id || "N/A"}\`\n- **Status**: PAUSED\n\nYour campaign is now waiting in your Meta Ads Manager for final review.`
-                });
-              } else {
-                errorOcurred = true;
-                stopReason = `Meta Execution Failed: ${execJson.message || "Unknown error"}`;
-              }
-            } catch (e) {
-              errorOcurred = true;
-              stopReason = `Meta Execution Error: ${e.message}`;
-            }
-          }
-        }
-
-        // Save progress reached
-        await saveAnswerMemory(process.env.NEXT_PUBLIC_BASE_URL, activeBusinessId, { campaign_state: currentState });
-
-        // If we stopped due to error or waiting
-        let feedbackText = "";
-        if (errorOcurred) {
-          feedbackText = `❌ **Automation Interrupted**:\n\n**Error**: ${stopReason}\n\n**Pipeline Progress**:\n${waterfallLog.join("\n")}\n\nI've saved the progress so far. Please check the error above and reply to try again.`;
-        } else if (currentState.stage === "IMAGE_GENERATED") {
-          feedbackText = `✅ **Image Generated Successfully**\n\n[Image Generated]\n\n**Next Steps**:\n1. Upload image to Meta Assets\n2. Create paused campaign on Facebook/Instagram\n\nReply **LAUNCH** to complete these steps automatically.`;
-        } else if (currentState.stage === "READY_TO_LAUNCH") {
-          feedbackText = `✅ **Image Uploaded & Ready**\n\nEverything is set for campaign launch.\n\n**Details**:\n- Campaign: ${currentState.plan.campaign_name}\n- Budget: ${currentState.plan.budget?.amount || "500"} INR\n\nReply **LAUNCH** to publish the campaign to Meta.`;
-        } else {
-          // Normal case - just planning or something else
-          feedbackText = `**Current Pipeline Progress**:\n${waterfallLog.join("\n") || "No steps completed in this turn."}\n\nWaiting for your confirmation...`;
-        }
-
-        return res.status(200).json({
-          ok: true,
-          text: feedbackText,
-          imageUrl: currentState.creative?.imageUrl
-        });
-      }
-
-    }
+    // WATERFALL REMOVED FROM TOP - MOVED TO BOTTOM
 
 
 
@@ -1086,63 +939,169 @@ You are in GENERIC DIGITAL MARKETING AGENT MODE.
     // 🎯 META OBJECTIVE PARSING (USER SELECTION)
     // ============================================================
 
-    let selectedMetaObjective = null;
-    let selectedDestination = null;
+    // ============================================================
+    // 🧠 PRO LOGIC: MULTI-PARAMETER EXTRACTION (ALL-IN-ONE)
+    // ============================================================
 
-    const lowerInstruction = instruction.toLowerCase().trim();
+    // We try to extract as much as possible if the user provided a block of text
+    const extractedData = {
+      objective: null,
+      destination: null,
+      performance_goal: null,
+      website_url: null,
+      phone: null,
+      location: null,
+      budget: null,
+      duration: null
+    };
 
-    // 🔐 APPLY LOCKED OBJECTIVE FIRST (IF EXISTS)
-    if (
-      mode === "meta_ads_plan" &&
-      lockedCampaignState?.objective &&
-      lockedCampaignState?.destination
-    ) {
-      selectedMetaObjective = lockedCampaignState.objective;
-      selectedDestination = lockedCampaignState.destination;
+    // Objective & Destination Extraction
+    const objLower = lowerInstruction;
+    if (objLower.includes("traffic")) extractedData.objective = "TRAFFIC";
+    else if (objLower.includes("lead")) extractedData.objective = "LEAD_GENERATION";
+    else if (objLower.includes("sale") || objLower.includes("conversion")) extractedData.objective = "OUTCOME_SALES";
+
+    if (objLower.includes("website")) extractedData.destination = "website";
+    else if (objLower.includes("call")) extractedData.destination = "call";
+    else if (objLower.includes("whatsapp")) extractedData.destination = "whatsapp";
+    else if (objLower.includes("instagram profile")) extractedData.destination = "instagram_profile";
+    else if (objLower.includes("facebook page")) extractedData.destination = "facebook_page";
+    else if (objLower.includes("message")) extractedData.destination = "messages";
+
+    // Performance Goal Extraction
+    if (objLower.includes("landing page view")) extractedData.performance_goal = "MAXIMIZE_LANDING_PAGE_VIEWS";
+    else if (objLower.includes("link click")) extractedData.performance_goal = "MAXIMIZE_LINK_CLICKS";
+    else if (objLower.includes("conversation")) extractedData.performance_goal = "MAXIMIZE_CONVERSATIONS";
+    else if (objLower.includes("call")) extractedData.performance_goal = "MAXIMIZE_CALLS";
+
+    // Website & Phone Extraction
+    const urlMatch = instruction.match(/(https?:\/\/[^\s]+)/);
+    if (urlMatch) extractedData.website_url = urlMatch[1];
+    const phoneMatch = instruction.match(/(\+?\d[\d\s-]{8,15})/);
+    if (phoneMatch) extractedData.phone = phoneMatch[1];
+
+    // Budget & Duration
+    const budgetMatch = instruction.match(/(?:budget|amount|day):\s*(\d+)/i) || instruction.match(/(?:₹|rs\.?)\s*(\d+)/i);
+    if (budgetMatch) extractedData.budget = budgetMatch[1];
+    const durationMatch = instruction.match(/(\d+)\s*days?/i);
+    if (durationMatch) extractedData.duration = durationMatch[1];
+
+    // Service & Location (Simple heuristic for Pro Logic)
+    const serviceMatch = instruction.match(/service[s]?:\s*([^\n,]+)/i);
+    if (serviceMatch) extractedData.service = serviceMatch[1].trim();
+    const locationMatch = instruction.match(/location[s]?:\s*([^\n,]+)/i);
+    if (locationMatch) extractedData.location = locationMatch[1].trim();
+
+    // 🎯 Apply Extracted Data to State if not already locked
+    if (mode === "meta_ads_plan" && activeBusinessId) {
+      let stateChanged = false;
+      const nextState = { ...lockedCampaignState };
+
+      if (extractedData.objective && !nextState.objective) { nextState.objective = extractedData.objective; stateChanged = true; }
+      if (extractedData.destination && !nextState.destination) { nextState.destination = extractedData.destination; stateChanged = true; }
+      if (extractedData.performance_goal && !nextState.performance_goal) { nextState.performance_goal = extractedData.performance_goal; stateChanged = true; }
+      if (extractedData.website_url && !nextState.landing_page) { nextState.landing_page = extractedData.website_url; stateChanged = true; }
+      if (extractedData.phone && !nextState.phone) { nextState.phone = extractedData.phone; stateChanged = true; }
+      if (extractedData.location && !nextState.location) { nextState.location = extractedData.location; stateChanged = true; }
+      if (extractedData.service && !nextState.service) { nextState.service = extractedData.service; stateChanged = true; }
+      if (extractedData.budget && !nextState.budget) { nextState.budget = { amount: extractedData.budget, currency: "INR", type: "DAILY" }; stateChanged = true; }
+      if (extractedData.duration && !nextState.duration) { nextState.duration = extractedData.duration; stateChanged = true; }
+
+      if (stateChanged) {
+        console.log("🧠 Pro Logic: Merged extracted data into state");
+        nextState.locked_at = new Date().toISOString();
+        await saveAnswerMemory(process.env.NEXT_PUBLIC_BASE_URL, activeBusinessId, { campaign_state: nextState });
+        lockedCampaignState = nextState;
+      }
     }
 
-    // 🧑‍💬 Parse ONLY if not already locked
-    if (!selectedMetaObjective) {
-      // Option 1 — Website traffic
-      if (lowerInstruction === "1" || lowerInstruction.includes("website")) {
-        selectedMetaObjective = "TRAFFIC";
-        selectedDestination = "website";
+    // ============================================================
+    // 🎯 META OBJECTIVE PARSING (USER SELECTION / HIERARCHY)
+    // ============================================================
+
+    let selectedMetaObjective = lockedCampaignState?.objective || null;
+    let selectedDestination = lockedCampaignState?.destination || null;
+    let selectedPerformanceGoal = lockedCampaignState?.performance_goal || null;
+
+    // 🧑‍💬 Interactive Sequence: Objective -> Destination -> Goal
+
+    // Step 1: Objective
+    if (mode === "meta_ads_plan" && !selectedMetaObjective) {
+      // (Keep existing interactive selection logic but refine it)
+      if (lowerInstruction.includes("traffic")) selectedMetaObjective = "TRAFFIC";
+      else if (lowerInstruction.includes("lead")) selectedMetaObjective = "LEAD_GENERATION";
+      else if (lowerInstruction.includes("sale")) selectedMetaObjective = "OUTCOME_SALES";
+
+      if (selectedMetaObjective) {
+        // Save and continue loop or wait? For now, we continue in this turn if possible
+        lockedCampaignState = { ...lockedCampaignState, objective: selectedMetaObjective, stage: "objective_selected" };
+        await saveAnswerMemory(process.env.NEXT_PUBLIC_BASE_URL, activeBusinessId, { campaign_state: lockedCampaignState });
+      } else {
+        return res.status(200).json({
+          ok: true, mode, gated: true,
+          text: "Let's build your Meta Campaign. What is your primary objective?\n\n1. **Traffic** (Get visits to website, page, or profile)\n2. **Leads** (Get calls, WhatsApp messages, or form fills)\n3. **Sales** (Drive conversions on your website)"
+        });
+      }
+    }
+
+    // Step 2: Conversion Location
+    if (mode === "meta_ads_plan" && selectedMetaObjective && !selectedDestination) {
+      let options = [];
+      if (selectedMetaObjective === "TRAFFIC") {
+        options = ["Website", "Instagram Profile", "Facebook Page"];
+      } else if (selectedMetaObjective === "LEAD_GENERATION") {
+        options = ["WhatsApp", "Calls", "Messenger/Instagram Direct"];
+      } else {
+        options = ["Website"];
       }
 
-      // Option 2 — Instagram profile
-      if (
-        lowerInstruction === "2" ||
-        lowerInstruction.includes("instagram profile")
-      ) {
-        selectedMetaObjective = "TRAFFIC";
-        selectedDestination = "instagram_profile";
+      // Detection
+      const input = lowerInstruction;
+      if (input.includes("1") || input.includes("website")) selectedDestination = "website";
+      else if (input.includes("2") || input.includes("instagram") || input.includes("call")) selectedDestination = selectedMetaObjective === "TRAFFIC" ? "instagram_profile" : "call";
+      else if (input.includes("3") || input.includes("facebook") || input.includes("whatsapp")) selectedDestination = selectedMetaObjective === "TRAFFIC" ? "facebook_page" : "whatsapp";
+      else if (input.includes("message")) selectedDestination = "messages";
+
+      if (selectedDestination) {
+        lockedCampaignState = { ...lockedCampaignState, destination: selectedDestination, stage: "destination_selected" };
+        await saveAnswerMemory(process.env.NEXT_PUBLIC_BASE_URL, activeBusinessId, { campaign_state: lockedCampaignState });
+      } else {
+        return res.status(200).json({
+          ok: true, mode, gated: true,
+          text: `Where should we drive this ${selectedMetaObjective.toLowerCase()}?\n\n` + options.map((o, i) => `${i + 1}. ${o}`).join("\n")
+        });
+      }
+    }
+
+    // Step 3: Performance Goal
+    if (mode === "meta_ads_plan" && selectedMetaObjective && selectedDestination && !selectedPerformanceGoal) {
+      let goals = [];
+      if (selectedDestination === "website") {
+        goals = ["Maximize Number of Link Clicks", "Maximize Number of Landing Page Views"];
+      } else if (selectedDestination === "call") {
+        goals = ["Maximize Number of Calls"];
+      } else if (selectedDestination === "whatsapp" || selectedDestination === "messages") {
+        goals = ["Maximize Number of Conversations"];
+      } else {
+        goals = ["Maximize Reach / Visits"];
       }
 
-      // Option 3 — Facebook page
-      if (
-        lowerInstruction === "3" ||
-        lowerInstruction.includes("facebook page")
-      ) {
-        selectedMetaObjective = "TRAFFIC";
-        selectedDestination = "facebook_page";
-      }
+      const input = lowerInstruction;
+      if (input.includes("link click")) selectedPerformanceGoal = "MAXIMIZE_LINK_CLICKS";
+      else if (input.includes("landing page view")) selectedPerformanceGoal = "MAXIMIZE_LANDING_PAGE_VIEWS";
+      else if (input.includes("conversation")) selectedPerformanceGoal = "MAXIMIZE_CONVERSATIONS";
+      else if (input.includes("call")) selectedPerformanceGoal = "MAXIMIZE_CALLS";
+      else if (input === "1") selectedPerformanceGoal = goals[0].toUpperCase().replace(/ /g, "_");
+      else if (input === "2" && goals[1]) selectedPerformanceGoal = goals[1].toUpperCase().replace(/ /g, "_");
 
-      // Option 4 — Call
-      if (lowerInstruction === "4" || lowerInstruction.includes("call")) {
-        selectedMetaObjective = "LEAD_GENERATION";
-        selectedDestination = "call";
-      }
-
-      // Option 5 — WhatsApp
-      if (lowerInstruction === "5" || lowerInstruction.includes("whatsapp")) {
-        selectedMetaObjective = "LEAD_GENERATION";
-        selectedDestination = "whatsapp";
-      }
-
-      // Option 6 — Messages
-      if (lowerInstruction === "6" || lowerInstruction.includes("message")) {
-        selectedMetaObjective = "LEAD_GENERATION";
-        selectedDestination = "messages";
+      if (selectedPerformanceGoal) {
+        lockedCampaignState = { ...lockedCampaignState, performance_goal: selectedPerformanceGoal, stage: "goal_selected" };
+        await saveAnswerMemory(process.env.NEXT_PUBLIC_BASE_URL, activeBusinessId, { campaign_state: lockedCampaignState });
+      } else {
+        return res.status(200).json({
+          ok: true, mode, gated: true,
+          text: `What is your performance goal for these ads?\n\n` + goals.map((g, i) => `${i + 1}. ${g}`).join("\n")
+        });
       }
     }
 
@@ -1350,27 +1309,22 @@ You are in GENERIC DIGITAL MARKETING AGENT MODE.
       mode === "meta_ads_plan" &&
       !lockedCampaignState?.service
     ) {
-      // Check if user is confirming a service just now
-      const serviceIndex = parseInt(lowerInstruction, 10);
-
-      if (
-        !isNaN(serviceIndex) &&
-        availableServices[serviceIndex - 1]
-      ) {
-        selectedService = availableServices[serviceIndex - 1];
-        // Will be saved by the lock logic below
+      if (extractedData.service) {
+        selectedService = extractedData.service;
       } else {
-        // Gate is CLOSED -> Ask question
-        return res.status(200).json({
-          ok: true,
-          gated: true,
-          text:
-            "Which service do you want to promote in this campaign?\n\n" +
-            (availableServices.length
-              ? availableServices.map((s, i) => `${i + 1}. ${s}`).join("\n")
-              : "- General Business Promotion\n- Specific Offer") +
-            "\n\nReply with the option number or type the service name.",
-        });
+        // Check if user is confirming a service just now
+        const serviceIdx = parseInt(lowerInstruction, 10);
+        if (!isNaN(serviceIdx) && availableServices[serviceIdx - 1]) {
+          selectedService = availableServices[serviceIdx - 1];
+        } else if (lowerInstruction.length > 3 && !lowerInstruction.match(/^\d+$/)) {
+          selectedService = instruction.trim();
+        } else {
+          return res.status(200).json({
+            ok: true, gated: true,
+            text: "Which service do you want to promote?\n\n" +
+              (availableServices.length ? availableServices.map((s, i) => `${i + 1}. ${s}`).join("\n") : "- Type your service name")
+          });
+        }
       }
     }
     // ============================================================
@@ -1493,19 +1447,10 @@ You are in GENERIC DIGITAL MARKETING AGENT MODE.
     if (
       mode === "meta_ads_plan" &&
       lockedCampaignState?.service &&
-      lockedCampaignState?.location
+      lockedCampaignState?.location &&
+      lockedCampaignState?.performance_goal
     ) {
-      // If we are here, we have Service + Location locked.
-      // We must check if we have a PLAN proposed yet.
-
-      if (!lockedCampaignState.plan) {
-        // We need to propose a plan, BUT we want Gemini to have clear instructions
-        // The systemPrompt "should" handle it, but let's force a specific "Planning Phase" call
-        // The existing logic falls through to Gemini below.
-
-        // We add a specific instruction to the context:
-        // "User has confirmed Service + Location. NOW generating detailed plan."
-      }
+      // All prerequisites met for Strategy Proposal
     }
 
 
@@ -1754,14 +1699,16 @@ Please choose ONE option:
     const lockedContext = lockedCampaignState
       ? `
 LOCKED CAMPAIGN STATE (DO NOT CHANGE OR RE-ASK):
-- Objective: ${lockedCampaignState.objective || "N/A"}
-- Destination: ${lockedCampaignState.destination || "N/A"}
+- Objective: ${lockedCampaignState.objective || "N/A"} (Auction)
+- Conversion Location: ${lockedCampaignState.destination || "N/A"}
+- Performance Goal: ${lockedCampaignState.performance_goal || "N/A"}
 - Service: ${lockedCampaignState.service || "N/A"}
 - Location: ${lockedCampaignState.location || "N/A"}
 
 RULES:
-- You MUST NOT ask again for objective, destination, service, or location.
+- You MUST NOT ask again for these locked fields.
 - You MUST use these as FINAL.
+- All campaigns are created as **PAUSED** (Off) by default.
 - Only suggest: budget, targeting, creatives, duration.
 `
       : "";
@@ -1779,9 +1726,9 @@ STRICT 12-STEP META CAMPAIGN FLOW
 ====================================================
 1.  User Request (Start)
 2.  Context Check (Business Intake / Meta Connection)
-3.  Objective Confirmation (Traffic/Leads etc.)
-4.  Objective Details (Destination URL / WhatsApp Number)
-5.  Safety Gate (Budget/Approval)
+3.  Objective Confirmation (Traffic/Leads etc. -> Auction)
+4.  Conversion Location (Website/Call/WhatsApp etc.)
+5.  Performance Goal (Link Clicks/Landing Page Views etc.)
 6.  Service Confirmation (Product/Service to promote) -> [LOCKED]
 7.  Location Confirmation (City/Area) -> [LOCKED]
 8.  Strategy Proposal (Generate JSON Plan) -> [LOCKED]
@@ -1805,6 +1752,7 @@ IF LOCKED CONTEXT EXISTS (Service + Location + Objective):
   - Campaign Name (Creative & Descriptive)
   - Budget (Daily, INR)
   - Targeting (Location from Locked Context)
+  - Targeting Suggestions (interests, demographics)
   - Creative (Headline, Primary Text, Image Prompt)
 
 IF NO LOCKED CONTEXT:
@@ -1960,6 +1908,7 @@ Otherwise, respond with a full, clear explanation, and include example JSON only
             planJson = {
               campaign_name: s.campaign_name || "New Campaign",
               objective: s.objective || "OUTCOME_TRAFFIC",
+              performance_goal: s.performance_goal || d.performance_goal || lockedCampaignState?.performance_goal || "MAXIMIZE_LINK_CLICKS",
               budget: {
                 amount: s.daily_budget_inr || 500,
                 currency: "INR",
@@ -1989,13 +1938,10 @@ Otherwise, respond with a full, clear explanation, and include example JSON only
           // 🔄 NORMALIZE JSON: Variation 2 (Step/Details structure)
           if (planJson.campaign_details) {
             console.log("🔄 Normalizing Gemini JSON Variation 2...");
-            const d = planJson.campaign_details;
-            const ads = planJson.ad_set_details || {};
-            const c = planJson.creative_details || {};
-
             planJson = {
               campaign_name: d.name || "New Campaign",
               objective: d.objective || "OUTCOME_TRAFFIC",
+              performance_goal: d.performance_goal || ads.performance_goal || lockedCampaignState?.performance_goal || "MAXIMIZE_LINK_CLICKS",
               budget: {
                 amount: d.budget_daily_inr || 500,
                 currency: "INR",
@@ -2028,13 +1974,10 @@ Otherwise, respond with a full, clear explanation, and include example JSON only
           // 🔄 NORMALIZE JSON: Variation 3 (EXECUTE: true structure)
           if (planJson.EXECUTE && planJson.campaign_plan) {
             console.log("🔄 Normalizing Gemini JSON Variation 3 (EXECUTE: true)...");
-            const d = planJson.campaign_plan;
-            const ads = d.ad_set_details || {};
-            const c = d.creative_details || {};
-
             planJson = {
               campaign_name: d.name || "New Campaign",
               objective: d.objective || "OUTCOME_TRAFFIC",
+              performance_goal: d.performance_goal || ads.performance_goal || lockedCampaignState?.performance_goal || "MAXIMIZE_LINK_CLICKS",
               budget: {
                 amount: d.budget_daily_inr || 500,
                 currency: "INR",
@@ -2079,6 +2022,7 @@ Otherwise, respond with a full, clear explanation, and include example JSON only
             planJson = {
               campaign_name: c.name || "New Campaign",
               objective: objective,
+              performance_goal: c.performance_goal || adSet.performance_goal || lockedCampaignState?.performance_goal || "MAXIMIZE_LINK_CLICKS",
               budget: {
                 amount: adSet.daily_budget || 500,
                 currency: adSet.currency || "INR",
@@ -2146,6 +2090,7 @@ Otherwise, respond with a full, clear explanation, and include example JSON only
             planJson = {
               campaign_name: c.name || "New Campaign",
               objective: objective,
+              performance_goal: c.performance_goal || adSet.performance_goal || lockedCampaignState?.performance_goal || "MAXIMIZE_LINK_CLICKS",
               budget: {
                 amount: budgetAmount,
                 currency: adSet.currency || "INR",
@@ -2205,6 +2150,7 @@ Otherwise, respond with a full, clear explanation, and include example JSON only
             planJson = {
               campaign_name: cName,
               objective: obj,
+              performance_goal: cp.performance_goal || adSetItem.performance_goal || lockedCampaignState?.performance_goal || "MAXIMIZE_LINK_CLICKS",
               budget: {
                 amount: budgetAmount,
                 currency: "INR",
@@ -2248,6 +2194,7 @@ Otherwise, respond with a full, clear explanation, and include example JSON only
             planJson = {
               campaign_name: d.name || "New Campaign",
               objective: (d.objective && d.objective.includes("CLICK")) ? "OUTCOME_TRAFFIC" : (d.objective || "OUTCOME_TRAFFIC"),
+              performance_goal: d.performance_goal || cr.performance_goal || lockedCampaignState?.performance_goal || "MAXIMIZE_LINK_CLICKS",
               budget: {
                 amount: d.budget?.daily_budget_inr || d.budget_daily_inr || 500,
                 currency: "INR",
@@ -2301,10 +2248,14 @@ Otherwise, respond with a full, clear explanation, and include example JSON only
             const creativeTitle = creative.headline || creative.title || "Headline";
             const creativeBody = creative.primary_text || creative.body || "Body Text";
 
+            const tStr = planJson.targeting?.targeting_suggestions
+              ? `\n**Suggestions**: ${planJson.targeting.targeting_suggestions.interests?.join(", ") || ""} (${planJson.targeting.targeting_suggestions.demographics?.join(", ") || ""})`
+              : "";
+
             text = `
 **Plan Proposed: ${planJson.campaign_name}**
 
-**Targeting**: ${planJson.targeting?.geo_locations?.countries?.join(", ") || "India"} (${planJson.targeting?.age_min || 18}-${planJson.targeting?.age_max || 65}+)
+**Targeting**: ${planJson.targeting?.geo_locations?.countries?.join(", ") || "India"} (${planJson.targeting?.age_min || 18}-${planJson.targeting?.age_max || 65}+)${tStr}
 **Budget**: ${bAmount} ${bCurrency} (${bType})
 
 **Creative Idea**: 
@@ -2324,6 +2275,160 @@ Reply **YES** to generate this image and launch the campaign.
           // Fallback: If we thought it was JSON but failed to parse,
           // we should probably leave 'text' as 'rawText' so the user sees the error or content.
         }
+      }
+    }
+
+    // ============================================================
+    // 🤖 STATE MACHINE: EXECUTION FLOW (Plan -> Image -> Launch)
+    // ============================================================
+    if (lockedCampaignState) {
+      const stage = lockedCampaignState.stage || "PLANNING";
+      // Auto-trigger if Logic 2 flag set or user says YES
+      const userSaysYes =
+        instruction.toLowerCase().includes("yes") ||
+        instruction.toLowerCase().includes("approve") ||
+        instruction.toLowerCase().includes("confirm") ||
+        instruction.toLowerCase().includes("proceed") ||
+        instruction.toLowerCase().includes("launch") ||
+        lockedCampaignState.auto_run;
+
+      // 🚀 CONSOLIDATED EXECUTION WATERFALL (Step 9 -> 10 -> 12)
+      if (stage !== "COMPLETED" && userSaysYes) {
+        let currentState = { ...lockedCampaignState };
+        let waterfallLog = [];
+        let errorOcurred = false;
+        let stopReason = null;
+
+        // --- STEP 9: IMAGE GENERATION ---
+        const hasPlan = currentState.plan && currentState.plan.campaign_name;
+        const hasImage = currentState.creative && currentState.creative.imageBase64;
+
+        if (hasPlan && !hasImage) {
+          console.log("🚀 Waterfall: Starting Image Generation...");
+          const plan = currentState.plan;
+          const creativeResult = plan.ad_sets?.[0]?.ad_creative || plan.ad_sets?.[0]?.ads?.[0]?.creative || {};
+          const imagePrompt = creativeResult.image_prompt || creativeResult.imagePrompt || creativeResult.primary_text || `${plan.campaign_name} ad image`;
+
+          try {
+            const imgRes = await fetch(`${process.env.NEXT_PUBLIC_BASE_URL}/api/images/generate`, {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ prompt: imagePrompt }),
+            });
+            const imgJson = await parseResponseSafe(imgRes);
+
+            if (imgJson.imageBase64) {
+              const newCreative = {
+                ...creativeResult,
+                imageBase64: imgJson.imageBase64,
+                imageUrl: `data:image/png;base64,${imgJson.imageBase64}`
+              };
+              currentState = { ...currentState, stage: "IMAGE_GENERATED", creative: newCreative };
+              waterfallLog.push("✅ Step 9: Image Generated");
+            } else {
+              errorOcurred = true;
+              stopReason = "Image Generation Failed (No Base64 returned)";
+            }
+          } catch (e) {
+            errorOcurred = true;
+            stopReason = `Image Generation Error: ${e.message}`;
+          }
+        } else if (hasImage) {
+          waterfallLog.push("⏭️ Step 9: Image Already Exists");
+        }
+
+        // --- STEP 10: IMAGE UPLOAD ---
+        if (!errorOcurred) {
+          const hasImageReady = currentState.creative && currentState.creative.imageBase64;
+          const hasHash = currentState.image_hash;
+
+          if (hasImageReady && !hasHash) {
+            console.log("🚀 Waterfall: Uploading Image to Meta...");
+            try {
+              const uploadRes = await fetch(`${process.env.NEXT_PUBLIC_BASE_URL}/api/meta/upload-image`, {
+                method: "POST",
+                headers: { "Content-Type": "application/json", "X-Client-Email": __currentEmail || "" },
+                body: JSON.stringify({ imageBase64: currentState.creative.imageBase64 })
+              });
+              const uploadJson = await parseResponseSafe(uploadRes);
+              const iHash = uploadJson.imageHash || uploadJson.image_hash;
+
+              if (uploadJson.ok && iHash) {
+                currentState = { ...currentState, stage: "READY_TO_LAUNCH", image_hash: iHash };
+                waterfallLog.push("✅ Step 10: Image Uploaded to Meta");
+              } else {
+                errorOcurred = true;
+                stopReason = `Meta Upload Failed: ${uploadJson.message || "Unknown error"}`;
+              }
+            } catch (e) {
+              errorOcurred = true;
+              stopReason = `Meta Upload Error: ${e.message}`;
+            }
+          } else if (hasHash) {
+            waterfallLog.push("⏭️ Step 10: Image Already Uploaded");
+          }
+        }
+
+        // --- STEP 12: EXECUTION (Final Step) ---
+        if (!errorOcurred) {
+          const isReady = currentState.stage === "READY_TO_LAUNCH" && currentState.image_hash;
+          // For auto_run, we don't need explicit 'launch' keyword
+          const wantsLaunch = instruction.toLowerCase().includes("launch") || instruction.toLowerCase().includes("execute") || instruction.toLowerCase().includes("run") || instruction.toLowerCase().includes("publish") || currentState.auto_run;
+
+          if (isReady && (wantsLaunch || currentState.objective === "TRAFFIC")) {
+            console.log("🚀 Waterfall: Executing Campaign on Meta...");
+            try {
+              const plan = currentState.plan;
+              const finalPayload = {
+                ...plan,
+                ad_sets: plan.ad_sets.map(adset => ({
+                  ...adset,
+                  ad_creative: { ...adset.ad_creative, image_hash: currentState.image_hash }
+                }))
+              };
+
+              const execRes = await fetch(`${process.env.NEXT_PUBLIC_BASE_URL}/api/meta/execute-campaign`, {
+                method: "POST",
+                headers: { "Content-Type": "application/json", "X-Client-Email": __currentEmail || "" },
+                body: JSON.stringify({ platform: "meta", payload: finalPayload })
+              });
+              const execJson = await execRes.json();
+
+              if (execJson.ok) {
+                await saveAnswerMemory(process.env.NEXT_PUBLIC_BASE_URL, activeBusinessId, {
+                  campaign_state: { stage: "COMPLETED", final_result: execJson }
+                });
+                return res.status(200).json({
+                  ok: true,
+                  text: `🎉 **Campaign Published Successfully!**\n\n**Pipeline Status**:\n${waterfallLog.join("\n")}\n✅ Step 12: Campaign Created (PAUSED)\n\n**Meta Details**:\n- **Campaign Name**: ${plan.campaign_name}\n- **Campaign ID**: \`${execJson.id || "N/A"}\`\n- **Ad Account ID**: \`${verifiedMetaAssets?.ad_account?.id || "N/A"}\`\n- **Status**: PAUSED\n\nYour campaign is now waiting in your Meta Ads Manager for final review.`
+                });
+              } else {
+                errorOcurred = true;
+                stopReason = `Meta Execution Failed: ${execJson.message || "Unknown error"}`;
+              }
+            } catch (e) {
+              errorOcurred = true;
+              stopReason = `Meta Execution Error: ${e.message}`;
+            }
+          }
+        }
+
+        // Save progress reached
+        await saveAnswerMemory(process.env.NEXT_PUBLIC_BASE_URL, activeBusinessId, { campaign_state: currentState });
+
+        // If we stopped due to error or waiting
+        let feedbackText = "";
+        if (errorOcurred) {
+          feedbackText = `❌ **Automation Interrupted**:\n\n**Error**: ${stopReason}\n\n**Pipeline Progress**:\n${waterfallLog.join("\n")}\n\nI've saved the progress so far. Please check the error above and reply to try again.`;
+        } else if (currentState.stage === "IMAGE_GENERATED") {
+          feedbackText = `✅ **Image Generated Successfully**\n\n[Image Generated]\n\n**Next Steps**:\n1. Upload image to Meta Assets\n2. Create paused campaign on Facebook/Instagram\n\nReply **LAUNCH** to complete these steps automatically.`;
+        } else if (currentState.stage === "READY_TO_LAUNCH") {
+          feedbackText = `✅ **Image Uploaded & Ready**\n\nEverything is set for campaign launch.\n\n**Details**:\n- Campaign: ${currentState.plan.campaign_name}\n- Budget: ${currentState.plan.budget?.amount || "500"} INR\n\nReply **LAUNCH** to publish the campaign to Meta.`;
+        } else {
+          feedbackText = `**Current Pipeline Progress**:\n${waterfallLog.join("\n") || "No steps completed in this turn."}\n\nWaiting for your confirmation...`;
+        }
+
+        return res.status(200).json({ ok: true, text: feedbackText, imageUrl: currentState.creative?.imageUrl });
       }
     }
 
