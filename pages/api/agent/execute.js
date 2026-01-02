@@ -176,13 +176,16 @@ export default async function handler(req, res) {
     // ============================================================
     let metaConnected = false;
     let activeBusinessId = null;
+    let metaRow = null;
 
     try {
-      const { data: metaRow } = await supabase
+      const { data: row } = await supabase
         .from("meta_connections")
         .select("*")
         .eq("email", session.user.email.toLowerCase())
         .maybeSingle();
+
+      metaRow = row;
 
       if (metaRow && metaRow.system_user_token) {
         metaConnected = true;
@@ -225,9 +228,20 @@ export default async function handler(req, res) {
 
         if (memData?.content) {
           const content = JSON.parse(memData.content);
-          if (content.business_answers?.[effectiveBusinessId]?.campaign_state) {
-            lockedCampaignState = content.business_answers[effectiveBusinessId].campaign_state;
-            console.log(`✅ Loaded lockedCampaignState for ${effectiveBusinessId}`);
+          const answers = content.business_answers || {};
+
+          // 🛡️ MULTI-KEY FALLBACK LOOKUP (Stability fix: Search all possible business/page IDs)
+          lockedCampaignState =
+            answers[effectiveBusinessId]?.campaign_state ||
+            answers[activeBusinessId]?.campaign_state ||
+            (metaRow?.fb_business_id ? answers[metaRow.fb_business_id]?.campaign_state : null) ||
+            (metaRow?.fb_page_id ? answers[metaRow.fb_page_id]?.campaign_state : null) ||
+            (metaRow?.ig_business_id ? answers[metaRow.ig_business_id]?.campaign_state : null) ||
+            answers["default_business"]?.campaign_state ||
+            null;
+
+          if (lockedCampaignState) {
+            console.log(`✅ Loaded lockedCampaignState (Match found via multi-key lookup)`);
           }
         }
       } catch (e) {
@@ -944,7 +958,7 @@ You are in GENERIC DIGITAL MARKETING AGENT MODE.
             }
             const newCreative = { ...creative, imageBase64: imgJson.imageBase64, imageUrl: `data:image/png;base64,${imgJson.imageBase64}` };
             const imageState = { ...lockedCampaignState, stage: "IMAGE_GENERATED", creative: newCreative };
-            await saveAnswerMemory(baseUrl, activeBusinessId, { campaign_state: imageState });
+            await saveAnswerMemory(baseUrl, effectiveBusinessId, { campaign_state: imageState }, session.user.email.toLowerCase());
             lockedCampaignState = imageState;
             // Upload image to Meta
             const uploadRes = await fetch(`${process.env.NEXT_PUBLIC_BASE_URL}/api/meta/upload-image`, {
@@ -958,7 +972,7 @@ You are in GENERIC DIGITAL MARKETING AGENT MODE.
               return res.status(200).json({ ok: false, message: "Image upload failed for provided JSON.", details: uploadJson });
             }
             const readyState = { ...lockedCampaignState, stage: "READY_TO_LAUNCH", image_hash: imageHash };
-            await saveAnswerMemory(baseUrl, activeBusinessId, { campaign_state: readyState });
+            await saveAnswerMemory(baseUrl, effectiveBusinessId, { campaign_state: readyState }, session.user.email.toLowerCase());
             lockedCampaignState = readyState;
             // Execute paused campaign
             const finalPayload = {
@@ -976,7 +990,7 @@ You are in GENERIC DIGITAL MARKETING AGENT MODE.
             let execJson = {};
             try { execJson = await execRes.json(); } catch (_) { execJson = { raw: await execRes.text() }; }
             if (execJson?.ok) {
-              await saveAnswerMemory(baseUrl, activeBusinessId, { campaign_state: { stage: "COMPLETED", final_result: execJson } });
+              await saveAnswerMemory(baseUrl, effectiveBusinessId, { campaign_state: { stage: "COMPLETED", final_result: execJson } }, session.user.email.toLowerCase());
               return res.status(200).json({
                 ok: true,
                 text: `Campaign created (PAUSED).\nCampaign: ${userPlan.campaign_name}\nImageHash: ${imageHash}\nStatus: ${execJson.status || "PAUSED"}\nID: ${execJson.id || "N/A"}`,
@@ -1082,7 +1096,7 @@ You are in GENERIC DIGITAL MARKETING AGENT MODE.
         if (extractedData.phone) nextState.phone_confirmed = true;
         if (extractedData.whatsapp) { nextState.whatsapp = extractedData.whatsapp; nextState.whatsapp_confirmed = true; }
         nextState.locked_at = new Date().toISOString();
-        await saveAnswerMemory(process.env.NEXT_PUBLIC_BASE_URL, activeBusinessId, { campaign_state: nextState });
+        await saveAnswerMemory(process.env.NEXT_PUBLIC_BASE_URL, effectiveBusinessId, { campaign_state: nextState }, session.user.email.toLowerCase());
         lockedCampaignState = nextState;
       }
     }
@@ -1107,7 +1121,7 @@ You are in GENERIC DIGITAL MARKETING AGENT MODE.
       if (selectedMetaObjective) {
         // Save and continue loop or wait? For now, we continue in this turn if possible
         lockedCampaignState = { ...lockedCampaignState, objective: selectedMetaObjective, stage: "objective_selected" };
-        await saveAnswerMemory(process.env.NEXT_PUBLIC_BASE_URL, activeBusinessId, { campaign_state: lockedCampaignState });
+        await saveAnswerMemory(process.env.NEXT_PUBLIC_BASE_URL, effectiveBusinessId, { campaign_state: lockedCampaignState }, session.user.email.toLowerCase());
       } else {
         return res.status(200).json({
           ok: true, mode, gated: true,
@@ -1136,7 +1150,7 @@ You are in GENERIC DIGITAL MARKETING AGENT MODE.
 
       if (selectedDestination) {
         lockedCampaignState = { ...lockedCampaignState, destination: selectedDestination, stage: "destination_selected" };
-        await saveAnswerMemory(process.env.NEXT_PUBLIC_BASE_URL, activeBusinessId, { campaign_state: lockedCampaignState });
+        await saveAnswerMemory(process.env.NEXT_PUBLIC_BASE_URL, effectiveBusinessId, { campaign_state: lockedCampaignState }, session.user.email.toLowerCase());
       } else {
         return res.status(200).json({
           ok: true, mode, gated: true,
@@ -1168,7 +1182,7 @@ You are in GENERIC DIGITAL MARKETING AGENT MODE.
 
       if (selectedPerformanceGoal) {
         lockedCampaignState = { ...lockedCampaignState, performance_goal: selectedPerformanceGoal, stage: "goal_selected" };
-        await saveAnswerMemory(process.env.NEXT_PUBLIC_BASE_URL, activeBusinessId, { campaign_state: lockedCampaignState });
+        await saveAnswerMemory(process.env.NEXT_PUBLIC_BASE_URL, effectiveBusinessId, { campaign_state: lockedCampaignState }, session.user.email.toLowerCase());
       } else {
         return res.status(200).json({
           ok: true, mode, gated: true,
@@ -1214,9 +1228,9 @@ You are in GENERIC DIGITAL MARKETING AGENT MODE.
           stage: "reset_objective"
         };
         const baseUrl = process.env.NEXT_PUBLIC_BASE_URL;
-        await saveAnswerMemory(baseUrl, activeBusinessId, {
+        await saveAnswerMemory(baseUrl, effectiveBusinessId, {
           campaign_state: newState
-        });
+        }, session.user.email.toLowerCase());
         lockedCampaignState = newState; // Update local
       }
     }
@@ -1339,16 +1353,23 @@ You are in GENERIC DIGITAL MARKETING AGENT MODE.
     ) {
       landingPageConfirmed = true;
       // 💾 Save to state immediately
-      if (activeBusinessId && detectedLandingPage) {
+      if (effectiveBusinessId && detectedLandingPage) {
+        const baseUrl = process.env.NEXT_PUBLIC_BASE_URL;
+        await saveAnswerMemory(baseUrl, effectiveBusinessId, {
+          campaign_state: {
+            ...lockedCampaignState,
+            landing_page: detectedLandingPage,
+            landing_page_confirmed: true,
+            locked_at: new Date().toISOString()
+          }
+        }, session.user.email.toLowerCase());
+        // Update local state
         lockedCampaignState = {
           ...lockedCampaignState,
           landing_page: detectedLandingPage,
+          landing_page_confirmed: true,
           locked_at: new Date().toISOString()
         };
-        const baseUrl = process.env.NEXT_PUBLIC_BASE_URL;
-        await saveAnswerMemory(baseUrl, activeBusinessId, {
-          campaign_state: lockedCampaignState
-        });
       }
     }
 
@@ -1362,6 +1383,7 @@ You are in GENERIC DIGITAL MARKETING AGENT MODE.
     ) {
       return res.status(200).json({
         ok: true,
+        mode,
         gated: true,
         text:
           `I found this website from your connected assets:\n\n` +
@@ -1420,20 +1442,21 @@ You are in GENERIC DIGITAL MARKETING AGENT MODE.
 
     if (
       selectedService &&
-      activeBusinessId
+      effectiveBusinessId
     ) {
       const baseUrl = process.env.NEXT_PUBLIC_BASE_URL;
 
       const newState = {
         ...lockedCampaignState,
         service: selectedService,
+        service_confirmed: true,
         stage: "service_selected",
         locked_at: new Date().toISOString(),
       };
 
-      await saveAnswerMemory(baseUrl, activeBusinessId, {
+      await saveAnswerMemory(baseUrl, effectiveBusinessId, {
         campaign_state: newState,
-      });
+      }, session.user.email.toLowerCase());
 
       // Update local state so subsequent logic works in THIS turn
       lockedCampaignState = newState;
@@ -1499,20 +1522,21 @@ You are in GENERIC DIGITAL MARKETING AGENT MODE.
 
     if (
       selectedLocation &&
-      activeBusinessId
+      effectiveBusinessId
     ) {
       const baseUrl = process.env.NEXT_PUBLIC_BASE_URL;
 
       const newState = {
         ...lockedCampaignState,
         location: selectedLocation,
+        location_confirmed: true,
         stage: "location_selected",
         locked_at: new Date().toISOString(),
       };
 
-      await saveAnswerMemory(baseUrl, activeBusinessId, {
+      await saveAnswerMemory(baseUrl, effectiveBusinessId, {
         campaign_state: newState,
-      });
+      }, session.user.email.toLowerCase());
 
       // Update local state so subsequent logic works in THIS turn
       lockedCampaignState = newState;
@@ -1538,7 +1562,7 @@ You are in GENERIC DIGITAL MARKETING AGENT MODE.
     // 🔒 LOCK CAMPAIGN STATE — OBJECTIVE & DESTINATION FINAL
     // ============================================================
 
-    if (mode === "meta_ads_plan" && selectedMetaObjective && activeBusinessId) {
+    if (mode === "meta_ads_plan" && selectedMetaObjective && effectiveBusinessId) {
       const baseUrl = process.env.NEXT_PUBLIC_BASE_URL;
 
       const newState = {
@@ -1549,9 +1573,9 @@ You are in GENERIC DIGITAL MARKETING AGENT MODE.
         locked_at: new Date().toISOString(),
       };
 
-      await saveAnswerMemory(baseUrl, activeBusinessId, {
+      await saveAnswerMemory(baseUrl, effectiveBusinessId, {
         campaign_state: newState,
-      });
+      }, session.user.email.toLowerCase());
 
       // Update local state
       lockedCampaignState = newState;
@@ -1737,14 +1761,14 @@ Please choose ONE option:
       mode === "meta_ads_plan" &&
       selectedMetaObjective &&
       selectedDestination &&
-      activeBusinessId
+      effectiveBusinessId
     ) {
       const baseUrl = process.env.NEXT_PUBLIC_BASE_URL;
 
-      await saveAnswerMemory(baseUrl, activeBusinessId, {
+      await saveAnswerMemory(baseUrl, effectiveBusinessId, {
         meta_objective: selectedMetaObjective,
         meta_destination: selectedDestination,
-      });
+      }, session.user.email.toLowerCase());
     }
 
     // ===============================
@@ -1770,7 +1794,7 @@ Please choose ONE option:
 
     // business_id should already be known from intake or selection
     if (activeBusinessId && Object.keys(detectedAnswers).length > 0) {
-      await saveAnswerMemory(baseUrl, activeBusinessId, detectedAnswers);
+      await saveAnswerMemory(baseUrl, effectiveBusinessId, detectedAnswers, session.user.email.toLowerCase());
     }
     // ============================================================
     // 🔒 INJECT LOCKED CAMPAIGN STATE INTO GEMINI CONTEXT (AUTHORITATIVE)
@@ -2046,9 +2070,9 @@ Otherwise, respond with a full, clear explanation, and include example JSON only
             const execJson = await execRes.json();
 
             if (execJson.ok) {
-              await saveAnswerMemory(process.env.NEXT_PUBLIC_BASE_URL, activeBusinessId, {
+              await saveAnswerMemory(process.env.NEXT_PUBLIC_BASE_URL, effectiveBusinessId, {
                 campaign_state: { stage: "COMPLETED", final_result: execJson }
-              });
+              }, session.user.email.toLowerCase());
               return res.status(200).json({
                 ok: true,
                 text: `🎉 **Campaign Published Successfully!**\n\n**Pipeline Status**:\n${waterfallLog.join("\n")}\n✅ Step 12: Campaign Created (PAUSED)\n\n**Meta Details**:\n- **Campaign Name**: ${plan.campaign_name}\n- **Campaign ID**: \`${execJson.id || "N/A"}\`\n- **Ad Account ID**: \`${verifiedMetaAssets?.ad_account?.id || "N/A"}\`\n- **Status**: PAUSED\n\nYour campaign is now waiting in your Meta Ads Manager for final review.`
@@ -2065,8 +2089,8 @@ Otherwise, respond with a full, clear explanation, and include example JSON only
       }
 
       // Save progress reached
-      if (activeBusinessId) {
-        await saveAnswerMemory(process.env.NEXT_PUBLIC_BASE_URL, activeBusinessId, { campaign_state: currentState });
+      if (effectiveBusinessId) {
+        await saveAnswerMemory(process.env.NEXT_PUBLIC_BASE_URL, effectiveBusinessId, { campaign_state: currentState }, session.user.email.toLowerCase());
       }
 
       // If we stopped due to error or waiting
@@ -2081,7 +2105,7 @@ Otherwise, respond with a full, clear explanation, and include example JSON only
         feedbackText = `**Current Pipeline Progress**:\n${waterfallLog.join("\n") || "No steps completed in this turn."}\n\n(Debug: Stage=${currentState.stage}, Plan=${currentState.plan ? "Yes" : "No"}, Image=${currentState.creative?.imageBase64 ? "Yes" : "No"}, Hash=${currentState.image_hash || "No"})\n\nWaiting for your confirmation...`;
       }
 
-      return res.status(200).json({ ok: true, text: feedbackText, imageUrl: currentState.creative?.imageUrl });
+      return res.status(200).json({ ok: true, text: feedbackText, imageUrl: currentState.creative?.imageUrl, mode });
     }
 
     const result = await model.generateContent({
@@ -2902,7 +2926,7 @@ Reply **YES** to generate this image and launch the campaign.
           feedbackText = `**Current Pipeline Progress**:\n${waterfallLog.join("\n") || "No steps completed in this turn."}\n\n(Debug: Stage=${currentState.stage}, Plan=${currentState.plan ? "Yes" : "No"})\n\nWaiting for your confirmation...`;
         }
 
-        return res.status(200).json({ ok: true, text: feedbackText, imageUrl: currentState.creative?.imageUrl });
+        return res.status(200).json({ ok: true, text: feedbackText, imageUrl: currentState.creative?.imageUrl, mode });
       }
     }
 
