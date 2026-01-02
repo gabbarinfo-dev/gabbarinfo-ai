@@ -1897,7 +1897,7 @@ Otherwise, respond with a full, clear explanation, and include example JSON only
       }
 
       // --- STEP 9: IMAGE GENERATION ---
-      const hasPlan = currentState.plan && (currentState.plan.campaign_name || currentState.plan.name || currentState.plan.campaign_plan || currentState.campaign_details);
+      const hasPlan = !!currentState.plan;
       const hasImage = currentState.creative && (currentState.creative.imageBase64 || currentState.creative.imageUrl);
 
       if (hasPlan && !hasImage) {
@@ -2023,7 +2023,7 @@ Otherwise, respond with a full, clear explanation, and include example JSON only
       } else if (currentState.stage === "READY_TO_LAUNCH") {
         feedbackText = `✅ **Image Uploaded & Ready**\n\nEverything is set for campaign launch.\n\n**Details**:\n- Campaign: ${currentState.plan.campaign_name}\n- Budget: ${currentState.plan.budget?.amount || "500"} INR\n\nReply **LAUNCH** to publish the campaign to Meta.`;
       } else {
-        feedbackText = `**Current Pipeline Progress**:\n${waterfallLog.join("\n") || "No steps completed in this turn."}\n\nWaiting for your confirmation...`;
+        feedbackText = `**Current Pipeline Progress**:\n${waterfallLog.join("\n") || "No steps completed in this turn."}\n\n(Debug: Stage=${currentState.stage}, Plan=${currentState.plan ? "Yes" : "No"})\n\nWaiting for your confirmation...`;
       }
 
       return res.status(200).json({ ok: true, text: feedbackText, imageUrl: currentState.creative?.imageUrl });
@@ -2567,7 +2567,7 @@ Reply **YES** to generate this image and launch the campaign.
         let stopReason = null;
 
         // --- STEP 9: IMAGE GENERATION ---
-        const hasPlan = currentState.plan && (currentState.plan.campaign_name || currentState.plan.name || currentState.plan.campaign_plan || currentState.plan.campaign_details);
+        const hasPlan = !!currentState.plan;
         const hasImage = currentState.creative && (currentState.creative.imageBase64 || currentState.creative.imageUrl);
 
         if (hasPlan && !hasImage) {
@@ -2692,7 +2692,7 @@ Reply **YES** to generate this image and launch the campaign.
         } else if (currentState.stage === "READY_TO_LAUNCH") {
           feedbackText = `✅ **Image Uploaded & Ready**\n\nEverything is set for campaign launch.\n\n**Details**:\n- Campaign: ${currentState.plan.campaign_name}\n- Budget: ${currentState.plan.budget?.amount || "500"} INR\n\nReply **LAUNCH** to publish the campaign to Meta.`;
         } else {
-          feedbackText = `**Current Pipeline Progress**:\n${waterfallLog.join("\n") || "No steps completed in this turn."}\n\nWaiting for your confirmation...`;
+          feedbackText = `**Current Pipeline Progress**:\n${waterfallLog.join("\n") || "No steps completed in this turn."}\n\n(Debug: Stage=${currentState.stage}, Plan=${currentState.plan ? "Yes" : "No"})\n\nWaiting for your confirmation...`;
         }
 
         return res.status(200).json({ ok: true, text: feedbackText, imageUrl: currentState.creative?.imageUrl });
