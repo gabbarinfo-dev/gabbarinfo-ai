@@ -2219,8 +2219,8 @@ Otherwise, respond with a full, clear explanation, and include example JSON only
             const tgt = adSet.targeting || {};
 
             // Map Objective
-            let objective = c.objective || "OUTCOME_TRAFFIC";
-            if (objective.includes("LEAD")) objective = "OUTCOME_LEADS";
+            let rawObj = c.objective || "OUTCOME_TRAFFIC";
+            let objective = (rawObj.includes("LEAD") || rawObj.includes("PROSPECT")) ? "OUTCOME_LEADS" : (rawObj.includes("SALE") || rawObj.includes("CONVERSION") ? "OUTCOME_SALES" : "OUTCOME_TRAFFIC");
 
             planJson = {
               campaign_name: c.name || "New Campaign",
@@ -2318,9 +2318,8 @@ Otherwise, respond with a full, clear explanation, and include example JSON only
             }
 
             // Map Objective
-            let objective = c.objective || "OUTCOME_TRAFFIC";
-            if (objective.includes("LEAD")) objective = "OUTCOME_LEADS";
-            else if (objective.includes("SALE") || objective.includes("CONVERSION")) objective = "OUTCOME_SALES";
+            let rawObj = c.objective || "OUTCOME_TRAFFIC";
+            let objective = (rawObj.includes("LEAD") || rawObj.includes("PROSPECT")) ? "OUTCOME_LEADS" : (rawObj.includes("SALE") || rawObj.includes("CONVERSION") ? "OUTCOME_SALES" : "OUTCOME_TRAFFIC");
 
             // Map Budget
             const budgetAmount = adSet.daily_budget || c.budget?.amount || 500;
@@ -2491,7 +2490,7 @@ Otherwise, respond with a full, clear explanation, and include example JSON only
               landing_page_confirmed: true,
               location_confirmed: true,
               service_confirmed: true,
-              auto_run: true,
+              // auto_run removed to prevent infinite loop on error & force plan visualization
             };
             const baseUrl = process.env.NEXT_PUBLIC_BASE_URL;
             await saveAnswerMemory(baseUrl, activeBusinessId, {
