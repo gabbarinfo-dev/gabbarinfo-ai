@@ -35,7 +35,14 @@ async function parseResponseSafe(resp) {
   }
 }
 
-async function saveAnswerMemory(baseUrl, business_id, answers) {
+async function saveAnswerMemory(baseUrl, business_id, answers, emailOverride = null) {
+  const targetEmail = emailOverride || __currentEmail;
+  if (!targetEmail) {
+    console.error("❌ saveAnswerMemory: No target email available!");
+    return;
+  }
+
+  // 1. Try internal API first
   try {
     if (baseUrl) {
       const resp = await fetch(`${baseUrl}/api/agent/answer-memory`, {
@@ -48,35 +55,51 @@ async function saveAnswerMemory(baseUrl, business_id, answers) {
       });
       if (resp.ok) return;
     }
-  } catch { }
-  if (!__currentEmail) return;
-  const { data: existing } = await supabase
-    .from("agent_memory")
-    .select("content")
-    .eq("email", __currentEmail)
-    .eq("memory_type", "client")
-    .maybeSingle();
-  let content = {};
-  try {
-    content = existing?.content ? JSON.parse(existing.content) : {};
-  } catch {
-    content = {};
+  } catch (e) {
+    console.warn("⚠️ saveAnswerMemory API call failed, falling back to direct Supabase:", e.message);
   }
-  content.business_answers = content.business_answers || {};
-  content.business_answers[business_id] = {
-    ...(content.business_answers[business_id] || {}),
-    ...answers,
-    updated_at: new Date().toISOString(),
-  };
-  await supabase.from("agent_memory").upsert(
-    {
-      email: __currentEmail,
-      memory_type: "client",
-      content: JSON.stringify(content),
+
+  // 2. Fallback to direct Supabase
+  try {
+    const { data: existing } = await supabase
+      .from("agent_memory")
+      .select("content")
+      .eq("email", targetEmail)
+      .eq("memory_type", "client")
+      .maybeSingle();
+
+    let content = {};
+    try {
+      content = existing?.content ? JSON.parse(existing.content) : {};
+    } catch {
+      content = {};
+    }
+
+    content.business_answers = content.business_answers || {};
+    content.business_answers[business_id] = {
+      ...(content.business_answers[business_id] || {}),
+      ...answers,
       updated_at: new Date().toISOString(),
-    },
-    { onConflict: "email,memory_type" }
-  );
+    };
+
+    const { error } = await supabase.from("agent_memory").upsert(
+      {
+        email: targetEmail,
+        memory_type: "client",
+        content: JSON.stringify(content),
+        updated_at: new Date().toISOString(),
+      },
+      { onConflict: "email,memory_type" }
+    );
+
+    if (error) {
+      console.error("❌ saveAnswerMemory Supabase Error:", error.message);
+    } else {
+      console.log(`✅ Memory saved for ${business_id}`);
+    }
+  } catch (err) {
+    console.error("❌ saveAnswerMemory Fatal Error:", err.message);
+  }
 }
 
 export default async function handler(req, res) {
@@ -570,6 +593,8 @@ You are in META ADS / CREATIVE AGENT MODE.
    - "Awareness" -> OUTCOME_AWARENESS
    - "Engagement" -> OUTCOME_ENGAGEMENT
    - "App Promotion" -> OUTCOME_APP_PROMOTION
+
+   *NEVER* use "LINK_CLICKS" or "CONVERSIONS" as the Objective. Those are Performance Goals.
 
 2. **CONVERSION LOCATION** (Where it happens):
    - "Website" (Most Common)
@@ -1912,24 +1937,31 @@ Otherwise, respond with a full, clear explanation, and include example JSON only
         lowerInstruction.includes("image"))
     ) {
       console.log("🚀 SHORT-CIRCUIT: Executing waterfall directly without Gemini");
-      const stage = lockedCampaignState.stage;
-      const userSaysYes = true;
+      
       let currentState = { ...lockedCampaignState };
+      
+      // 🛡️ Safety Check: Ensure plan is valid
+      if (!currentState.plan || !currentState.plan.campaign_name) {
+         console.error("❌ CRITICAL: Plan missing or invalid in currentState!");
+         return res.status(200).json({ 
+             ok: true, 
+             text: "❌ Internal Error: The campaign plan seems to be missing from memory. Please ask me to 'create the plan again'." 
+         });
+      }
+
+      const stage = lockedCampaignState.stage;
       let waterfallLog = [];
       let errorOcurred = false;
       let stopReason = null;
 
       console.log("📍 Waterfall Check - Stage:", stage);
-      console.log("📍 Waterfall Check - Plan exists:", !!currentState.plan);
-      if (currentState.plan) {
-        console.log("📍 Waterfall Check - Plan Name:", currentState.plan.campaign_name || currentState.plan.name);
-      }
+      console.log("📍 Waterfall Check - Plan Name:", currentState.plan.campaign_name);
 
       // --- STEP 9: IMAGE GENERATION ---
-      const hasPlan = !!currentState.plan;
+      // Logic: If we have a plan but NO image yet -> Generate Image
       const hasImage = currentState.creative && (currentState.creative.imageBase64 || currentState.creative.imageUrl);
-
-      if (hasPlan && !hasImage) {
+      
+      if (!hasImage) {
         console.log("🚀 Waterfall: Starting Image Generation...");
         const plan = currentState.plan || {};
         const adSet0 = (Array.isArray(plan.ad_sets) ? plan.ad_sets[0] : (plan.ad_sets || {}));
@@ -1961,7 +1993,7 @@ Otherwise, respond with a full, clear explanation, and include example JSON only
           errorOcurred = true;
           stopReason = `Image Generation Error: ${e.message}`;
         }
-      } else if (hasImage) {
+      } else {
         waterfallLog.push("⏭️ Step 9: Image Already Exists");
       }
 
@@ -2041,7 +2073,9 @@ Otherwise, respond with a full, clear explanation, and include example JSON only
       }
 
       // Save progress reached
-      await saveAnswerMemory(process.env.NEXT_PUBLIC_BASE_URL, activeBusinessId, { campaign_state: currentState });
+      if (activeBusinessId) {
+          await saveAnswerMemory(process.env.NEXT_PUBLIC_BASE_URL, activeBusinessId, { campaign_state: currentState });
+      }
 
       // If we stopped due to error or waiting
       let feedbackText = "";
@@ -2052,7 +2086,7 @@ Otherwise, respond with a full, clear explanation, and include example JSON only
       } else if (currentState.stage === "READY_TO_LAUNCH") {
         feedbackText = `✅ **Image Uploaded & Ready**\n\nEverything is set for campaign launch.\n\n**Details**:\n- Campaign: ${currentState.plan.campaign_name}\n- Budget: ${currentState.plan.budget?.amount || "500"} INR\n\nReply **LAUNCH** to publish the campaign to Meta.`;
       } else {
-        feedbackText = `**Current Pipeline Progress**:\n${waterfallLog.join("\n") || "No steps completed in this turn."}\n\n(Debug: Stage=${currentState.stage}, Plan=${currentState.plan ? "Yes" : "No"})\n\nWaiting for your confirmation...`;
+        feedbackText = `**Current Pipeline Progress**:\n${waterfallLog.join("\n") || "No steps completed in this turn."}\n\n(Debug: Stage=${currentState.stage}, Plan=${currentState.plan ? "Yes" : "No"}, Image=${currentState.creative?.imageBase64 ? "Yes" : "No"}, Hash=${currentState.image_hash || "No"})\n\nWaiting for your confirmation...`;
       }
 
       return res.status(200).json({ ok: true, text: feedbackText, imageUrl: currentState.creative?.imageUrl });
@@ -2557,12 +2591,14 @@ Otherwise, respond with a full, clear explanation, and include example JSON only
               landing_page_confirmed: true,
               location_confirmed: true,
               service_confirmed: true,
-              // auto_run removed to prevent infinite loop on error & force plan visualization
+              locked_at: new Date().toISOString()
             };
             const baseUrl = process.env.NEXT_PUBLIC_BASE_URL;
+            console.log("💾 Saving Proposed Plan to Agent Memory...");
             await saveAnswerMemory(baseUrl, activeBusinessId, {
               campaign_state: newState
-            });
+            }, session.user.email.toLowerCase());
+            
             lockedCampaignState = newState;
             console.log("✅ Saved Proposed Plan to State");
 
@@ -2613,6 +2649,23 @@ Reply **YES** to generate this image and launch the campaign.
     // ============================================================
     // 🤖 STATE MACHINE: EXECUTION FLOW (Plan -> Image -> Launch)
     // ============================================================
+
+    // 🛡️ GUARD: If user says YES (or force_continue) but we have no state, warn them.
+    // This prevents the "Generic Agent Response" fallback which confuses the user.
+    const isConfirmation = 
+      instruction.toLowerCase().includes("yes") || 
+      instruction.toLowerCase().includes("approve") || 
+      instruction.toLowerCase().includes("confirm") || 
+      body.force_continue;
+
+    if (!lockedCampaignState && isConfirmation && mode === "meta_ads_plan") {
+      console.warn("⚠️ User said YES but no lockedCampaignState found.");
+      return res.status(200).json({
+        ok: true,
+        text: "❌ **No Active Plan Found**\n\nI received your confirmation, but I don't have a saved plan to execute.\n\nThis can happen if:\n1. The plan wasn't saved correctly.\n2. You are trying to confirm a plan from a previous session.\n\nPlease ask me to **'create the plan again'**."
+      });
+    }
+
     if (lockedCampaignState) {
       const stage = lockedCampaignState.stage || "PLANNING";
       // Auto-trigger if Logic 2 flag set or user says YES
@@ -2629,6 +2682,16 @@ Reply **YES** to generate this image and launch the campaign.
       // 🚀 CONSOLIDATED EXECUTION WATERFALL (Step 9 -> 10 -> 12)
       if (stage !== "COMPLETED" && userSaysYes) {
         let currentState = { ...lockedCampaignState };
+
+        // 🛡️ DEFENSIVE CHECK: If user says YES but we have no plan, abort.
+        if (!currentState.plan) {
+           console.warn("⚠️ User said YES but no plan found in state.");
+           return res.status(200).json({
+               ok: true,
+               text: "❌ **Plan Not Found**\n\nI received your confirmation, but I can't find the campaign plan in my memory. This can happen if the previous step wasn't saved correctly.\n\nPlease ask me to **'create the plan again'**."
+           });
+        }
+
         let waterfallLog = [];
         let errorOcurred = false;
         let stopReason = null;
