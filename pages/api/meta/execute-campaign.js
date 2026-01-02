@@ -2114,7 +2114,7 @@ Otherwise, respond with a full, clear explanation, and include example JSON only
 
     // 🕵️ DETECT AND SAVE JSON PLAN (FROM GEMINI)
     // Supports: ```json ... ```, ``` ... ```, or plain JSON starting with {
-    if (activeBusinessId) {
+    if (effectiveBusinessId) {
       let jsonString = null;
 
       // 1. Try code blocks
@@ -2634,6 +2634,79 @@ Reply **YES** to generate this image and launch the campaign.
           // Fallback: If we thought it was JSON but failed to parse,
           // we should probably leave 'text' as 'rawText' so the user sees the error or content.
         }
+      }
+    }
+
+    // 🚨 FALLBACK: FORCE SAVE PLAN IF TEXT LOOKS LIKE A PROPOSAL BUT NO JSON WAS FOUND
+    // This catches the case where Gemini returns a nice text plan but forgets the JSON block.
+    // We construct a minimal plan from the User's Instruction + Gemini's Title.
+    if (mode === "meta_ads_plan" && !lockedCampaignState && effectiveBusinessId) {
+      const looksLikePlan = text.includes("Plan Proposed") || text.includes("Budget") || text.includes("Creative Idea");
+      
+      if (looksLikePlan) {
+        console.log("⚠️ No JSON plan detected, but text looks like a plan. Attempting fallback extraction...");
+        
+        // Helper to extract from User Instruction (more reliable for raw data)
+        const extract = (key) => {
+          const regex = new RegExp(`${key}[:\\-]?\\s*(.*?)(?:\\n|$)`, "i");
+          const match = instruction.match(regex);
+          return match ? match[1].trim() : null;
+        };
+
+        // Extract Title from Gemini Text (it usually gets this right)
+        const titleMatch = text.match(/\*\*Plan Proposed:?\s*(.*?)\*\*/i);
+        const extractedTitle = titleMatch ? titleMatch[1].trim() : (extract("Campaign Name") || "New Meta Campaign");
+
+        // Extract details from User Input
+        const rawBudget = extract("Budget");
+        const budgetVal = rawBudget ? parseInt(rawBudget.replace(/[^\d]/g, "")) : 500;
+        
+        const minimalPlan = {
+          campaign_name: extractedTitle,
+          objective: "OUTCOME_TRAFFIC", // Default safe objective
+          performance_goal: "MAXIMIZE_LINK_CLICKS", // Default safe goal
+          budget: {
+            amount: budgetVal || 500,
+            currency: "INR",
+            type: "DAILY",
+          },
+          targeting: {
+            geo_locations: {
+              countries: ["IN"],
+              cities: [] 
+            },
+            age_min: 18,
+            age_max: 65
+          },
+          ad_sets: [
+            {
+              name: "Ad Set 1",
+              status: "PAUSED",
+              ad_creative: {
+                primary_text: extract("Creative Idea") || extract("Services") || "Best Digital Marketing Services",
+                headline: extract("Headline") || "Grow Your Business",
+                call_to_action: "LEARN_MORE",
+                destination_url: extract("Website") || "https://gabbarinfo.com",
+                imagePrompt: extract("Image Concept") || "Professional business service ad"
+              },
+            },
+          ],
+        };
+
+        const newState = {
+          stage: "PLAN_PROPOSED",
+          plan: minimalPlan,
+          locked_at: new Date().toISOString(),
+        };
+
+        // SAVE IT!
+        await saveAnswerMemory(process.env.NEXT_PUBLIC_BASE_URL, effectiveBusinessId, {
+          campaign_state: newState
+        });
+        
+        // Update local state so the next check passes
+        lockedCampaignState = newState;
+        console.log("✅ Fallback Plan Saved Successfully.");
       }
     }
 
