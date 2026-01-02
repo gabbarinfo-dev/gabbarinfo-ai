@@ -41,7 +41,7 @@ async function saveAnswerMemory(baseUrl, business_id, answers, emailOverride = n
     console.error("❌ saveAnswerMemory: No target email available!");
     return;
   }
-  
+
   console.log(`💾 saveAnswerMemory: Saving for ${business_id} (Email: ${targetEmail})`);
 
   // Direct Supabase Write (Robust & Faster than internal fetch)
@@ -1929,16 +1929,16 @@ Otherwise, respond with a full, clear explanation, and include example JSON only
         lowerInstruction.includes("image"))
     ) {
       console.log("🚀 SHORT-CIRCUIT: Executing waterfall directly without Gemini");
-      
+
       let currentState = { ...lockedCampaignState };
-      
+
       // 🛡️ Safety Check: Ensure plan is valid
       if (!currentState.plan || !currentState.plan.campaign_name) {
-         console.error("❌ CRITICAL: Plan missing or invalid in currentState!");
-         return res.status(200).json({ 
-             ok: true, 
-             text: "❌ Internal Error: The campaign plan seems to be missing from memory. Please ask me to 'create the plan again'." 
-         });
+        console.error("❌ CRITICAL: Plan missing or invalid in currentState!");
+        return res.status(200).json({
+          ok: true,
+          text: "❌ Internal Error: The campaign plan seems to be missing from memory. Please ask me to 'create the plan again'."
+        });
       }
 
       const stage = lockedCampaignState.stage;
@@ -1952,7 +1952,7 @@ Otherwise, respond with a full, clear explanation, and include example JSON only
       // --- STEP 9: IMAGE GENERATION ---
       // Logic: If we have a plan but NO image yet -> Generate Image
       const hasImage = currentState.creative && (currentState.creative.imageBase64 || currentState.creative.imageUrl);
-      
+
       if (!hasImage) {
         console.log("🚀 Waterfall: Starting Image Generation...");
         const plan = currentState.plan || {};
@@ -2066,7 +2066,7 @@ Otherwise, respond with a full, clear explanation, and include example JSON only
 
       // Save progress reached
       if (activeBusinessId) {
-          await saveAnswerMemory(process.env.NEXT_PUBLIC_BASE_URL, activeBusinessId, { campaign_state: currentState });
+        await saveAnswerMemory(process.env.NEXT_PUBLIC_BASE_URL, activeBusinessId, { campaign_state: currentState });
       }
 
       // If we stopped due to error or waiting
@@ -2590,7 +2590,7 @@ Otherwise, respond with a full, clear explanation, and include example JSON only
             await saveAnswerMemory(baseUrl, effectiveBusinessId, {
               campaign_state: newState
             }, session.user.email.toLowerCase());
-            
+
             lockedCampaignState = newState;
             console.log("✅ Saved Proposed Plan to State");
 
@@ -2639,34 +2639,35 @@ Reply **YES** to generate this image and launch the campaign.
 
     // 🚨 FALLBACK: FORCE SAVE PLAN IF TEXT LOOKS LIKE A PROPOSAL BUT NO JSON WAS FOUND
     // This catches the case where Gemini returns a nice text plan but forgets the JSON block.
-    // We construct a minimal plan from the User's Instruction + Gemini's Title.
     // MODIFIED: We now trigger this if the text explicitly says "Plan Proposed", even if mode wasn't correctly switched.
-    const isPlanText = text.includes("Plan Proposed") || text.includes("**Plan Proposed");
-    if ((mode === "meta_ads_plan" || isPlanText) && !lockedCampaignState && effectiveBusinessId) {
-      const looksLikePlan = isPlanText || text.includes("Budget") || text.includes("Creative Idea");
-      
+    const isPlanText = /Plan Proposed|Plan Proposed:/i.test(text);
+
+    // 🔒 FIX: Allow saving if state exists but HAS NO PLAN (e.g. just stage=PLANNING)
+    if ((mode === "meta_ads_plan" || isPlanText) && (!lockedCampaignState || !lockedCampaignState.plan) && effectiveBusinessId) {
+      const looksLikePlan = isPlanText || text.includes("Budget") || text.includes("Creative Idea") || text.includes("Targeting");
+
       if (looksLikePlan) {
         console.log("⚠️ No JSON plan detected, but text looks like a plan. Attempting fallback extraction...");
-        
-        // Helper to extract from User Instruction (more reliable for raw data)
-        const extract = (key) => {
+
+        // Helper to extract from both Instruction (Input) and Text (Output)
+        const extractFrom = (source, key) => {
           const regex = new RegExp(`${key}[:\\-]?\\s*(.*?)(?:\\n|$)`, "i");
-          const match = instruction.match(regex);
+          const match = source.match(regex);
           return match ? match[1].trim() : null;
         };
 
-        // Extract Title from Gemini Text (it usually gets this right)
-        const titleMatch = text.match(/\*\*Plan Proposed:?\s*(.*?)\*\*/i);
-        const extractedTitle = titleMatch ? titleMatch[1].trim() : (extract("Campaign Name") || "New Meta Campaign");
-
-        // Extract details from User Input
-        const rawBudget = extract("Budget");
+        // Extraction Priority: Output Text (Gemini) > Input Instruction (User)
+        const extractedTitle = extractFrom(text, "Plan Proposed") || extractFrom(text, "Campaign Name") || extractFrom(instruction, "Campaign Name") || "New Meta Campaign";
+        const rawBudget = extractFrom(text, "Budget") || extractFrom(instruction, "Budget");
         const budgetVal = rawBudget ? parseInt(rawBudget.replace(/[^\d]/g, "")) : 500;
-        
+
+        const extractedLocation = extractFrom(text, "Location") || extractFrom(instruction, "Location") || "India";
+        const extractedWebsite = extractFrom(text, "Website") || extractFrom(instruction, "Website") || "https://gabbarinfo.com";
+
         const minimalPlan = {
           campaign_name: extractedTitle,
-          objective: "OUTCOME_TRAFFIC", // Default safe objective
-          performance_goal: "MAXIMIZE_LINK_CLICKS", // Default safe goal
+          objective: "OUTCOME_TRAFFIC",
+          performance_goal: "MAXIMIZE_LINK_CLICKS",
           budget: {
             amount: budgetVal || 500,
             currency: "INR",
@@ -2675,7 +2676,7 @@ Reply **YES** to generate this image and launch the campaign.
           targeting: {
             geo_locations: {
               countries: ["IN"],
-              cities: [] 
+              cities: extractedLocation.includes(",") ? extractedLocation.split(",").map(c => ({ name: c.trim() })) : [{ name: extractedLocation }]
             },
             age_min: 18,
             age_max: 65
@@ -2685,29 +2686,38 @@ Reply **YES** to generate this image and launch the campaign.
               name: "Ad Set 1",
               status: "PAUSED",
               ad_creative: {
-                primary_text: extract("Creative Idea") || extract("Services") || "Best Digital Marketing Services",
-                headline: extract("Headline") || "Grow Your Business",
-                call_to_action: "LEARN_MORE",
-                destination_url: extract("Website") || "https://gabbarinfo.com",
-                imagePrompt: extract("Image Concept") || "Professional business service ad"
+                primary_text: extractFrom(text, "Creative Idea") || extractFrom(instruction, "Creative Idea") || "Best Digital Marketing Services",
+                headline: extractFrom(text, "Headline") || extractFrom(instruction, "Services") || "Grow Your Business",
+                call_to_action: extractFrom(text, "Call to Action") || "LEARN_MORE",
+                destination_url: extractedWebsite,
+                image_prompt: extractFrom(text, "Image Concept") || extractFrom(instruction, "Image Concept") || "Professional business service ad"
               },
             },
           ],
         };
 
         const newState = {
+          ...lockedCampaignState,
           stage: "PLAN_PROPOSED",
           plan: minimalPlan,
+          // 🔒 SYNC PLAN DETAILS TO STATE
+          service: minimalPlan.campaign_name,
+          location: extractedLocation,
+          landing_page: extractedWebsite,
+          landing_page_confirmed: true,
+          location_confirmed: true,
+          service_confirmed: true,
           locked_at: new Date().toISOString(),
         };
 
         // SAVE IT!
         await saveAnswerMemory(process.env.NEXT_PUBLIC_BASE_URL, effectiveBusinessId, {
           campaign_state: newState
-        });
-        
-        // Update local state so the next check passes
+        }, session.user.email.toLowerCase());
+
+        // Update local state and mode
         lockedCampaignState = newState;
+        mode = "meta_ads_plan";
         console.log("✅ Fallback Plan Saved Successfully.");
       }
     }
@@ -2719,10 +2729,10 @@ Reply **YES** to generate this image and launch the campaign.
 
     // 🛡️ GUARD: If user says YES (or force_continue) but we have no state, warn them.
     // This prevents the "Generic Agent Response" fallback which confuses the user.
-    const isConfirmation = 
-      instruction.toLowerCase().includes("yes") || 
-      instruction.toLowerCase().includes("approve") || 
-      instruction.toLowerCase().includes("confirm") || 
+    const isConfirmation =
+      instruction.toLowerCase().includes("yes") ||
+      instruction.toLowerCase().includes("approve") ||
+      instruction.toLowerCase().includes("confirm") ||
       body.force_continue;
 
     if (!lockedCampaignState && isConfirmation && mode === "meta_ads_plan") {
@@ -2752,11 +2762,11 @@ Reply **YES** to generate this image and launch the campaign.
 
         // 🛡️ DEFENSIVE CHECK: If user says YES but we have no plan, abort.
         if (!currentState.plan) {
-           console.warn("⚠️ User said YES but no plan found in state.");
-           return res.status(200).json({
-               ok: true,
-               text: "❌ **Plan Not Found**\n\nI received your confirmation, but I can't find the campaign plan in my memory. This can happen if the previous step wasn't saved correctly.\n\nPlease ask me to **'create the plan again'**."
-           });
+          console.warn("⚠️ User said YES but no plan found in state.");
+          return res.status(200).json({
+            ok: true,
+            text: "❌ **Plan Not Found**\n\nI received your confirmation, but I can't find the campaign plan in my memory. This can happen if the previous step wasn't saved correctly.\n\nPlease ask me to **'create the plan again'**."
+          });
         }
 
         let waterfallLog = [];
@@ -2878,7 +2888,7 @@ Reply **YES** to generate this image and launch the campaign.
         }
 
         // Save progress reached
-        await saveAnswerMemory(process.env.NEXT_PUBLIC_BASE_URL, effectiveBusinessId, { campaign_state: currentState });
+        await saveAnswerMemory(process.env.NEXT_PUBLIC_BASE_URL, effectiveBusinessId, { campaign_state: currentState }, session.user.email.toLowerCase());
 
         // If we stopped due to error or waiting
         let feedbackText = "";
@@ -2902,6 +2912,7 @@ Reply **YES** to generate this image and launch the campaign.
     return res.status(200).json({
       ok: true,
       text,
+      mode,
     });
 
 
