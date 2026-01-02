@@ -2476,6 +2476,44 @@ Otherwise, respond with a full, clear explanation, and include example JSON only
 
           // Basic validation (is it a campaign plan?)
           if (planJson.campaign_name && planJson.ad_sets) {
+
+            // 🛡️ SECURITY: Enforce strict Objective & Optimization Mapping (User Golden Rule)
+            // Rule: Objective = Campaign Level (OUTCOME_TRAFFIC), Performance Goal = Ad Set Level (LINK_CLICKS)
+            const rawObj = (planJson.objective || "").toString().toUpperCase();
+            let cleanObjective = "OUTCOME_TRAFFIC"; // Default
+
+            if (rawObj.includes("LEAD") || rawObj.includes("PROSPECT")) cleanObjective = "OUTCOME_LEADS";
+            else if (rawObj.includes("SALE") || rawObj.includes("CONVERSION")) cleanObjective = "OUTCOME_SALES";
+            else if (rawObj.includes("AWARENESS") || rawObj.includes("REACH")) cleanObjective = "OUTCOME_AWARENESS";
+            else if (rawObj.includes("ENGAGE")) cleanObjective = "OUTCOME_ENGAGEMENT";
+            else if (rawObj.includes("APP")) cleanObjective = "OUTCOME_APP_PROMOTION";
+            // Else default to OUTCOME_TRAFFIC (catches "LINK_CLICKS", "TRAFFIC", etc.)
+
+            console.log(`🛡️ Sanitized Objective: ${planJson.objective} -> ${cleanObjective}`);
+            planJson.objective = cleanObjective;
+
+            // Ensure Ad Sets have correct structure
+            planJson.ad_sets = planJson.ad_sets.map(adset => {
+              // Map Performance Goal -> Optimization Goal
+              const perfGoal = (planJson.performance_goal || adset.performance_goal || "LINK_CLICKS").toString().toUpperCase();
+              let optGoal = "LINK_CLICKS";
+
+              if (cleanObjective === "OUTCOME_TRAFFIC") {
+                optGoal = perfGoal.includes("LANDING") ? "LANDING_PAGE_VIEWS" : "LINK_CLICKS";
+              } else if (cleanObjective === "OUTCOME_LEADS") {
+                optGoal = "LEADS"; // Simplified
+              } else if (cleanObjective === "OUTCOME_SALES") {
+                optGoal = "CONVERSIONS"; // Simplified
+              }
+
+              return {
+                ...adset,
+                optimization_goal: adset.optimization_goal || optGoal,
+                destination_type: adset.destination_type || "WEBSITE", // Default to Website
+                billing_event: "IMPRESSIONS" // Safe default
+              };
+            });
+
             const newState = {
               ...lockedCampaignState, // Preserve verified assets
               stage: "PLAN_PROPOSED",
