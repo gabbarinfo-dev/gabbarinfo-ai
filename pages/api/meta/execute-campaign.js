@@ -114,12 +114,17 @@ export default async function handler(req, res) {
       let optimizationGoal = "LINK_CLICKS";
       let billingEvent = "IMPRESSIONS";
 
-      const pg = (payload.performance_goal || "").toUpperCase();
-      if (pg.includes("LANDING_PAGE_VIEWS")) optimizationGoal = "LANDING_PAGE_VIEWS";
-      else if (pg.includes("LINK_CLICKS")) optimizationGoal = "LINK_CLICKS";
-      else if (pg.includes("CONVERSATIONS")) optimizationGoal = "CONVERSATIONS";
-      else if (pg.includes("REACH")) optimizationGoal = "REACH";
-      else if (pg.includes("CALLS")) optimizationGoal = "LINK_CLICKS";
+      // Allow Ad Set level override (Golden Rule)
+      if (adSet.optimization_goal) {
+        optimizationGoal = adSet.optimization_goal;
+      } else {
+        const pg = (payload.performance_goal || "").toUpperCase();
+        if (pg.includes("LANDING_PAGE_VIEWS")) optimizationGoal = "LANDING_PAGE_VIEWS";
+        else if (pg.includes("LINK_CLICKS")) optimizationGoal = "LINK_CLICKS";
+        else if (pg.includes("CONVERSATIONS")) optimizationGoal = "CONVERSATIONS";
+        else if (pg.includes("REACH")) optimizationGoal = "REACH";
+        else if (pg.includes("CALLS")) optimizationGoal = "LINK_CLICKS";
+      }
 
       const adSetParams = new URLSearchParams();
       adSetParams.append("name", adSet.name || "Ad Set 1");
