@@ -41,25 +41,10 @@ async function saveAnswerMemory(baseUrl, business_id, answers, emailOverride = n
     console.error("❌ saveAnswerMemory: No target email available!");
     return;
   }
+  
+  console.log(`💾 saveAnswerMemory: Saving for ${business_id} (Email: ${targetEmail})`);
 
-  // 1. Try internal API first
-  try {
-    if (baseUrl) {
-      const resp = await fetch(`${baseUrl}/api/agent/answer-memory`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          business_id,
-          answers,
-        }),
-      });
-      if (resp.ok) return;
-    }
-  } catch (e) {
-    console.warn("⚠️ saveAnswerMemory API call failed, falling back to direct Supabase:", e.message);
-  }
-
-  // 2. Fallback to direct Supabase
+  // Direct Supabase Write (Robust & Faster than internal fetch)
   try {
     const { data: existing } = await supabase
       .from("agent_memory")
@@ -95,7 +80,7 @@ async function saveAnswerMemory(baseUrl, business_id, answers, emailOverride = n
     if (error) {
       console.error("❌ saveAnswerMemory Supabase Error:", error.message);
     } else {
-      console.log(`✅ Memory saved for ${business_id}`);
+      console.log(`✅ Memory saved successfully for ${business_id}`);
     }
   } catch (err) {
     console.error("❌ saveAnswerMemory Fatal Error:", err.message);
@@ -210,6 +195,12 @@ export default async function handler(req, res) {
     } catch (e) {
       console.warn("Meta connection lookup failed:", e.message);
     }
+
+    // 🛡️ FALLBACK: Use "default_business" if no Meta connection exists yet.
+    // This ensures plans can be saved/retrieved even before connection.
+    const effectiveBusinessId = activeBusinessId || "default_business";
+    console.log(`🏢 Effective Business ID: ${effectiveBusinessId} (Active: ${activeBusinessId})`);
+
     let forcedBusinessContext = null;
 
     if (metaConnected && activeBusinessId) {
@@ -223,7 +214,7 @@ export default async function handler(req, res) {
     let lockedCampaignState = null;
 
     // 🔍 READ LOCKED CAMPAIGN STATE (AUTHORITATIVE — SINGLE SOURCE)
-    if (activeBusinessId) {
+    if (effectiveBusinessId) {
       try {
         const { data: memData } = await supabase
           .from("agent_memory")
@@ -234,8 +225,9 @@ export default async function handler(req, res) {
 
         if (memData?.content) {
           const content = JSON.parse(memData.content);
-          if (content.business_answers?.[activeBusinessId]?.campaign_state) {
-            lockedCampaignState = content.business_answers[activeBusinessId].campaign_state;
+          if (content.business_answers?.[effectiveBusinessId]?.campaign_state) {
+            lockedCampaignState = content.business_answers[effectiveBusinessId].campaign_state;
+            console.log(`✅ Loaded lockedCampaignState for ${effectiveBusinessId}`);
           }
         }
       } catch (e) {
@@ -924,7 +916,7 @@ You are in GENERIC DIGITAL MARKETING AGENT MODE.
               plan: userPlan,
               auto_run: true // ⚡ Trigger Auto-Waterfall for High Logic
             };
-            await saveAnswerMemory(baseUrl, activeBusinessId, { campaign_state: proposedState });
+            await saveAnswerMemory(baseUrl, effectiveBusinessId, { campaign_state: proposedState });
             lockedCampaignState = proposedState;
             // Generate image
             const creative = userPlan.ad_sets[0].ad_creative || {};
@@ -2122,7 +2114,7 @@ Otherwise, respond with a full, clear explanation, and include example JSON only
 
     // 🕵️ DETECT AND SAVE JSON PLAN (FROM GEMINI)
     // Supports: ```json ... ```, ``` ... ```, or plain JSON starting with {
-    if (activeBusinessId) {
+    if (effectiveBusinessId) {
       let jsonString = null;
 
       // 1. Try code blocks
@@ -2595,7 +2587,7 @@ Otherwise, respond with a full, clear explanation, and include example JSON only
             };
             const baseUrl = process.env.NEXT_PUBLIC_BASE_URL;
             console.log("💾 Saving Proposed Plan to Agent Memory...");
-            await saveAnswerMemory(baseUrl, activeBusinessId, {
+            await saveAnswerMemory(baseUrl, effectiveBusinessId, {
               campaign_state: newState
             }, session.user.email.toLowerCase());
             
@@ -2642,6 +2634,79 @@ Reply **YES** to generate this image and launch the campaign.
           // Fallback: If we thought it was JSON but failed to parse,
           // we should probably leave 'text' as 'rawText' so the user sees the error or content.
         }
+      }
+    }
+
+    // 🚨 FALLBACK: FORCE SAVE PLAN IF TEXT LOOKS LIKE A PROPOSAL BUT NO JSON WAS FOUND
+    // This catches the case where Gemini returns a nice text plan but forgets the JSON block.
+    // We construct a minimal plan from the User's Instruction + Gemini's Title.
+    if (mode === "meta_ads_plan" && !lockedCampaignState && effectiveBusinessId) {
+      const looksLikePlan = text.includes("Plan Proposed") || text.includes("Budget") || text.includes("Creative Idea");
+      
+      if (looksLikePlan) {
+        console.log("⚠️ No JSON plan detected, but text looks like a plan. Attempting fallback extraction...");
+        
+        // Helper to extract from User Instruction (more reliable for raw data)
+        const extract = (key) => {
+          const regex = new RegExp(`${key}[:\\-]?\\s*(.*?)(?:\\n|$)`, "i");
+          const match = instruction.match(regex);
+          return match ? match[1].trim() : null;
+        };
+
+        // Extract Title from Gemini Text (it usually gets this right)
+        const titleMatch = text.match(/\*\*Plan Proposed:?\s*(.*?)\*\*/i);
+        const extractedTitle = titleMatch ? titleMatch[1].trim() : (extract("Campaign Name") || "New Meta Campaign");
+
+        // Extract details from User Input
+        const rawBudget = extract("Budget");
+        const budgetVal = rawBudget ? parseInt(rawBudget.replace(/[^\d]/g, "")) : 500;
+        
+        const minimalPlan = {
+          campaign_name: extractedTitle,
+          objective: "OUTCOME_TRAFFIC", // Default safe objective
+          performance_goal: "MAXIMIZE_LINK_CLICKS", // Default safe goal
+          budget: {
+            amount: budgetVal || 500,
+            currency: "INR",
+            type: "DAILY",
+          },
+          targeting: {
+            geo_locations: {
+              countries: ["IN"],
+              cities: [] 
+            },
+            age_min: 18,
+            age_max: 65
+          },
+          ad_sets: [
+            {
+              name: "Ad Set 1",
+              status: "PAUSED",
+              ad_creative: {
+                primary_text: extract("Creative Idea") || extract("Services") || "Best Digital Marketing Services",
+                headline: extract("Headline") || "Grow Your Business",
+                call_to_action: "LEARN_MORE",
+                destination_url: extract("Website") || "https://gabbarinfo.com",
+                imagePrompt: extract("Image Concept") || "Professional business service ad"
+              },
+            },
+          ],
+        };
+
+        const newState = {
+          stage: "PLAN_PROPOSED",
+          plan: minimalPlan,
+          locked_at: new Date().toISOString(),
+        };
+
+        // SAVE IT!
+        await saveAnswerMemory(process.env.NEXT_PUBLIC_BASE_URL, effectiveBusinessId, {
+          campaign_state: newState
+        });
+        
+        // Update local state so the next check passes
+        lockedCampaignState = newState;
+        console.log("✅ Fallback Plan Saved Successfully.");
       }
     }
 
@@ -2744,7 +2809,7 @@ Reply **YES** to generate this image and launch the campaign.
             try {
               const uploadRes = await fetch(`${process.env.NEXT_PUBLIC_BASE_URL}/api/meta/upload-image`, {
                 method: "POST",
-                headers: { "Content-Type": "application/json", "X-Client-Email": __currentEmail || "" },
+                headers: { "Content-Type": "application/json", "x-client-email": __currentEmail || "" },
                 body: JSON.stringify({ imageBase64: currentState.creative.imageBase64 })
               });
               const uploadJson = await parseResponseSafe(uploadRes);
@@ -2786,13 +2851,13 @@ Reply **YES** to generate this image and launch the campaign.
 
               const execRes = await fetch(`${process.env.NEXT_PUBLIC_BASE_URL}/api/meta/execute-campaign`, {
                 method: "POST",
-                headers: { "Content-Type": "application/json", "X-Client-Email": __currentEmail || "" },
+                headers: { "Content-Type": "application/json", "x-client-email": __currentEmail || "" },
                 body: JSON.stringify({ platform: "meta", payload: finalPayload })
               });
               const execJson = await execRes.json();
 
               if (execJson.ok) {
-                await saveAnswerMemory(process.env.NEXT_PUBLIC_BASE_URL, activeBusinessId, {
+                await saveAnswerMemory(process.env.NEXT_PUBLIC_BASE_URL, effectiveBusinessId, {
                   campaign_state: { stage: "COMPLETED", final_result: execJson }
                 });
                 return res.status(200).json({
@@ -2811,7 +2876,7 @@ Reply **YES** to generate this image and launch the campaign.
         }
 
         // Save progress reached
-        await saveAnswerMemory(process.env.NEXT_PUBLIC_BASE_URL, activeBusinessId, { campaign_state: currentState });
+        await saveAnswerMemory(process.env.NEXT_PUBLIC_BASE_URL, effectiveBusinessId, { campaign_state: currentState });
 
         // If we stopped due to error or waiting
         let feedbackText = "";
