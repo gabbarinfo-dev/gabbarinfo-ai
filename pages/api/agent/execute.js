@@ -811,7 +811,7 @@ You are in GENERIC DIGITAL MARKETING AGENT MODE.
     // ============================================================
     // 🚀 DIRECT USER JSON → AUTO EXECUTE (Plan → Image → Launch)
     // ============================================================
-    if (mode === "meta_ads_plan" && activeBusinessId && typeof instruction === "string") {
+    if (mode === "meta_ads_plan" && typeof instruction === "string") {
       let userJsonString = null;
       const cbMatch = instruction.match(/```(?:json)?\s*([\s\S]*?)\s*```/);
       if (cbMatch) {
@@ -1075,7 +1075,7 @@ You are in GENERIC DIGITAL MARKETING AGENT MODE.
     if (locationMatch) extractedData.location = locationMatch[1].trim();
 
     // 🎯 Apply Extracted Data to State if not already locked
-    if (mode === "meta_ads_plan" && activeBusinessId) {
+    if (mode === "meta_ads_plan") {
       let stateChanged = false;
       const nextState = { ...lockedCampaignState };
 
@@ -1220,7 +1220,7 @@ You are in GENERIC DIGITAL MARKETING AGENT MODE.
       selectedDestination = null;
 
       // 🛠️ CLEAR LOCKED OBJECTIVE IN DB
-      if (activeBusinessId && lockedCampaignState) {
+      if (lockedCampaignState) {
         const newState = {
           ...lockedCampaignState,
           objective: null,
@@ -1793,7 +1793,7 @@ Please choose ONE option:
     }
 
     // business_id should already be known from intake or selection
-    if (activeBusinessId && Object.keys(detectedAnswers).length > 0) {
+    if (Object.keys(detectedAnswers).length > 0) {
       await saveAnswerMemory(baseUrl, effectiveBusinessId, detectedAnswers, session.user.email.toLowerCase());
     }
     // ============================================================
