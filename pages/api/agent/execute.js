@@ -562,13 +562,39 @@ You are in GOOGLE ADS AGENT MODE.
       modeFocus = `
 You are in META ADS / CREATIVE AGENT MODE.
 
-- Focus on Meta (Facebook + Instagram) campaign structure and creatives.
-- When the user clearly asks for "creative JSON" or "backend creative JSON",
-  you MUST output ONLY the JSON using this exact schema:
+*** CRITICAL: FOLLOW THIS 3-STEP DECISION HIERARCHY ***
+1. **CAMPAIGN OBJECTIVE** (Broad Goal):
+   - "Traffic" -> OUTCOME_TRAFFIC
+   - "Leads" -> OUTCOME_LEADS
+   - "Sales" -> OUTCOME_SALES
+   - "Awareness" -> OUTCOME_AWARENESS
+   - "Engagement" -> OUTCOME_ENGAGEMENT
+   - "App Promotion" -> OUTCOME_APP_PROMOTION
+
+2. **CONVERSION LOCATION** (Where it happens):
+   - "Website" (Most Common)
+   - "Messaging Apps" (WhatsApp/Messenger)
+   - "Instant Forms" (Lead Forms)
+   - "Calls"
+
+3. **PERFORMANCE GOAL** (Optimization):
+   - If Objective = Traffic:
+     - "Maximize Link Clicks" (Goal: LINK_CLICKS)
+     - "Maximize Landing Page Views" (Goal: LANDING_PAGE_VIEWS)
+   - If Objective = Leads:
+     - "Maximize Leads" (Goal: LEADS)
+   - If Objective = Sales:
+     - "Maximize Conversions" (Goal: CONVERSIONS)
+
+*** REQUIRED JSON SCHEMA ***
+When the user clearly asks for "creative JSON" or "backend creative JSON",
+you MUST output ONLY the JSON using this exact schema:
 
 {
   "campaign_name": "Dentist Clinic – Mumbai – Jan 2026",
   "objective": "OUTCOME_TRAFFIC",
+  "performance_goal": "MAXIMIZE_LINK_CLICKS",
+  "conversion_location": "WEBSITE",
   "budget": {
     "amount": 500,
     "currency": "INR",
@@ -587,6 +613,8 @@ You are in META ADS / CREATIVE AGENT MODE.
     {
       "name": "Ad Set 1",
       "status": "PAUSED",
+      "optimization_goal": "LINK_CLICKS",
+      "destination_type": "WEBSITE",
       "ad_creative": {
         "imagePrompt": "a modern clinic exterior at dusk, vibrant lighting, professional photographer",
         "primary_text": "Trusted by 5000+ patients. Painless treatments.",
@@ -598,7 +626,8 @@ You are in META ADS / CREATIVE AGENT MODE.
   ]
 }
 
-- Meta Objectives must be one of: OUTCOME_TRAFFIC (for Traffic), OUTCOME_LEADS (for Leads), OUTCOME_SALES (for Sales/Conversions).
+- Meta Objectives must be one of: OUTCOME_TRAFFIC, OUTCOME_LEADS, OUTCOME_SALES.
+- optimization_goal must match the performance goal (e.g., LINK_CLICKS, LANDING_PAGE_VIEWS).
 - When you output JSON-only, do NOT wrap it in backticks, and add no extra text.
 `;
     } else if (mode === "social_plan") {
