@@ -500,7 +500,7 @@ export default async function handler(req, res) {
     }
     // 🔁 AUTO-ROUTE TO META MODE (fallback for new campaigns)
     else if (
-      mode === "generic" &&
+      (mode === "generic" || mode === "strategy") &&
       instruction &&
       /(meta|facebook|instagram|fb|ig)/i.test(instruction)
     ) {
@@ -2640,8 +2640,10 @@ Reply **YES** to generate this image and launch the campaign.
     // 🚨 FALLBACK: FORCE SAVE PLAN IF TEXT LOOKS LIKE A PROPOSAL BUT NO JSON WAS FOUND
     // This catches the case where Gemini returns a nice text plan but forgets the JSON block.
     // We construct a minimal plan from the User's Instruction + Gemini's Title.
-    if (mode === "meta_ads_plan" && !lockedCampaignState && effectiveBusinessId) {
-      const looksLikePlan = text.includes("Plan Proposed") || text.includes("Budget") || text.includes("Creative Idea");
+    // MODIFIED: We now trigger this if the text explicitly says "Plan Proposed", even if mode wasn't correctly switched.
+    const isPlanText = text.includes("Plan Proposed") || text.includes("**Plan Proposed");
+    if ((mode === "meta_ads_plan" || isPlanText) && !lockedCampaignState && effectiveBusinessId) {
+      const looksLikePlan = isPlanText || text.includes("Budget") || text.includes("Creative Idea");
       
       if (looksLikePlan) {
         console.log("⚠️ No JSON plan detected, but text looks like a plan. Attempting fallback extraction...");
