@@ -375,7 +375,7 @@ export default function ChatPage() {
   useEffect(() => {
     async function fetchCredits() {
       try {
-        const res = await fetch("/api/credits/get");
+        const res = await fetch("/api/credits/get", { credentials: "include" });
         if (!res.ok) {
           console.error("Failed to load credits", await res.text());
           return;
@@ -559,6 +559,7 @@ export default function ChatPage() {
           const res = await fetch("/api/images/generate", {
             method: "POST",
             headers: { "Content-Type": "application/json" },
+            credentials: "include",
             body: JSON.stringify({
               prompt: imagePromptValue || userText,
             }),
@@ -636,6 +637,7 @@ Now respond as GabbarInfo AI.
       const res = await fetch("/api/generate", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
+        credentials: "include",
         body: JSON.stringify({
           prompt: finalPrompt,
           maxOutputTokens: 768,
@@ -755,6 +757,7 @@ Now respond as GabbarInfo AI.
       const res = await fetch("/api/agent/execute", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
+        credentials: "include",
         body: JSON.stringify({
           instruction,
           mode: agentMode,
@@ -908,8 +911,8 @@ Now respond as GabbarInfo AI.
             {role === "owner"
               ? "Owner · Unlimited"
               : creditsLoading
-              ? "Client · Credits: …"
-              : `Client · Credits: ${credits ?? 0}`}
+                ? "Client · Credits: …"
+                : `Client · Credits: ${credits ?? 0}`}
           </span>
 
           <div
@@ -1114,15 +1117,15 @@ Now respond as GabbarInfo AI.
           <form
             onSubmit={sendMessage}
             style={{
-             flexShrink: 0,
-             display: "flex",
-             padding: 10,
-             gap: 8,
-             borderTop: "1px solid #eee",
-             background: "#fff",
-             boxSizing: "border-box",
-           // extra bottom padding so buttons don't hide behind mobile nav bar
-             paddingBottom: "calc(10px + env(safe-area-inset-bottom, 0px))",
+              flexShrink: 0,
+              display: "flex",
+              padding: 10,
+              gap: 8,
+              borderTop: "1px solid #eee",
+              background: "#fff",
+              boxSizing: "border-box",
+              // extra bottom padding so buttons don't hide behind mobile nav bar
+              paddingBottom: "calc(10px + env(safe-area-inset-bottom, 0px))",
             }}
           >
             <input
@@ -1161,25 +1164,25 @@ Now respond as GabbarInfo AI.
             </button>
 
             {/* Image button (short label) */}
-<button
-  type="button"
-  disabled={loading}
-  onClick={() => {
-    setIsImageModalOpen(true);
-    setImagePrompt("");
-  }}
-  style={{
-    padding: "8px 10px",          // a bit slimmer
-    borderRadius: 8,
-    fontSize: 13,                 // slightly smaller text
-    border: "1px solid #ddd",
-    background: "#f5f5f5",
-    cursor: loading ? "default" : "pointer",
-    whiteSpace: "nowrap",
-  }}
->
-  ✨ Image
-</button>
+            <button
+              type="button"
+              disabled={loading}
+              onClick={() => {
+                setIsImageModalOpen(true);
+                setImagePrompt("");
+              }}
+              style={{
+                padding: "8px 10px",          // a bit slimmer
+                borderRadius: 8,
+                fontSize: 13,                 // slightly smaller text
+                border: "1px solid #ddd",
+                background: "#f5f5f5",
+                cursor: loading ? "default" : "pointer",
+                whiteSpace: "nowrap",
+              }}
+            >
+              ✨ Image
+            </button>
 
             <button
               type="submit"
