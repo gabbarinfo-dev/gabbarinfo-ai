@@ -103,6 +103,14 @@ export default async function handler(req, res) {
       return res.status(401).json({ ok: false, message: "Not authenticated" });
     }
     __currentEmail = session.user.email.toLowerCase();
+
+    // 🔥 DEBUG LOGS FOR CONTEXT MISMATCH
+    let { instruction = "", mode: bodyMode = body.mode } = body;
+    console.log("🔥 REQUEST START");
+    console.log("EMAIL:", __currentEmail);
+    console.log("INSTRUCTION:", instruction.substring(0, 50));
+    console.log("MODE:", bodyMode);
+    console.log("COOKIES:", req.headers.cookie ? "Present" : "Missing");
     // ============================================================
     // 🔍 STEP 1: AGENT META ASSET DISCOVERY (CACHED)
     // ============================================================
@@ -230,23 +238,49 @@ export default async function handler(req, res) {
           const content = JSON.parse(memData.content);
           const answers = content.business_answers || {};
 
-          // 🛡️ MULTI-KEY FALLBACK LOOKUP (Stability fix: Search all possible business/page IDs)
-          lockedCampaignState =
-            answers[effectiveBusinessId]?.campaign_state ||
-            answers[activeBusinessId]?.campaign_state ||
-            (metaRow?.fb_business_id ? answers[metaRow.fb_business_id]?.campaign_state : null) ||
-            (metaRow?.fb_page_id ? answers[metaRow.fb_page_id]?.campaign_state : null) ||
-            (metaRow?.ig_business_id ? answers[metaRow.ig_business_id]?.campaign_state : null) ||
-            answers["default_business"]?.campaign_state ||
-            null;
+          // 🛡️ MODIFIED ROBUST MULTI-KEY LOOKUP
+          // We search through all possible identity keys and pick the FIRST one that HAS a plan.
+          // This prevents picking up a "blank" state from a newly discovered business ID if a plan exists in "default_business".
+          const possibleKeys = [
+            effectiveBusinessId,
+            activeBusinessId,
+            metaRow?.fb_business_id,
+            metaRow?.fb_page_id,
+            metaRow?.ig_business_id,
+            "default_business"
+          ].filter(Boolean);
 
+          let bestMatch = null;
+          let sourceKey = null;
+
+          for (const key of possibleKeys) {
+            const state = answers[key]?.campaign_state;
+            if (state?.plan) {
+              bestMatch = state;
+              sourceKey = key;
+              break;
+            }
+            if (!bestMatch && state) {
+              bestMatch = state;
+              sourceKey = key;
+            }
+          }
+
+          lockedCampaignState = bestMatch;
           if (lockedCampaignState) {
-            console.log(`✅ Loaded lockedCampaignState (Match found via multi-key lookup)`);
+            console.log(`✅ Loaded lockedCampaignState from key: ${sourceKey} ${lockedCampaignState.plan ? "(Plan FOUND)" : "(No Plan)"}`);
           }
         }
       } catch (e) {
         console.warn("Campaign state read failed early:", e.message);
       }
+    }
+
+    console.log("🏢 EFFECTIVE BUSINESS ID:", effectiveBusinessId);
+    console.log("🔒 HAS LOCKED STATE:", !!lockedCampaignState);
+    if (lockedCampaignState) {
+      console.log("📍 LOCKED STAGE:", lockedCampaignState.stage);
+      console.log("📍 HAS PLAN:", !!lockedCampaignState.plan);
     }
 
     // 🔒 CRITICAL: FLAG FOR BYPASSING INTERACTIVE GATES
@@ -498,12 +532,11 @@ export default async function handler(req, res) {
     }
 
     let {
-      instruction,
-      mode = "generic",
       includeJson = false,
       chatHistory = [],
       extraContext = "",
     } = body;
+    let mode = body.mode || "generic";
 
     // 🔒 CRITICAL: FORCE MODE FROM LOCKED STATE (MUST BE FIRST)
     // If a lockedCampaignState exists → mode MUST be meta_ads_plan
