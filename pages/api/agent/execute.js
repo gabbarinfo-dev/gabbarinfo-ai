@@ -626,14 +626,14 @@ You are in META ADS / CREATIVE AGENT MODE.
 
 *** CRITICAL: FOLLOW THIS 3-STEP DECISION HIERARCHY ***
 1. **CAMPAIGN OBJECTIVE** (Broad Goal):
-   - "Traffic" -> OUTCOME_TRAFFIC
-   - "Leads" -> OUTCOME_LEADS
-   - "Sales" -> OUTCOME_SALES
-   - "Awareness" -> OUTCOME_AWARENESS
-   - "Engagement" -> OUTCOME_ENGAGEMENT
-   - "App Promotion" -> OUTCOME_APP_PROMOTION
+   - "Traffic" -> TRAFFIC
+   - "Leads" -> LEAD_GENERATION
+   - "Sales" -> SALES
+   - "Awareness" -> AWARENESS
+   - "App Promotion" -> APP_INSTALLS
+   - "Messages" -> MESSAGES
 
-   *NEVER* use "LINK_CLICKS" or "CONVERSIONS" as the Objective. Those are Performance Goals.
+   *NEVER* use "LINK_CLICKS" or "OUTCOME_TRAFFIC" as the Objective. Use the LEGACY enums above.
 
 2. **CONVERSION LOCATION** (Where it happens):
    - "Website" (Most Common)
@@ -655,7 +655,7 @@ You MUST ALWAYS output BOTH a human-readable summary AND the JSON using this exa
 
 {
   "campaign_name": "Dentist Clinic – Mumbai – Jan 2026",
-  "objective": "OUTCOME_TRAFFIC",
+  "objective": "TRAFFIC",
   "performance_goal": "MAXIMIZE_LINK_CLICKS",
   "conversion_location": "WEBSITE",
   "budget": {
@@ -689,8 +689,9 @@ You MUST ALWAYS output BOTH a human-readable summary AND the JSON using this exa
   ]
 }
 
-- Meta Objectives must be one of: OUTCOME_TRAFFIC, OUTCOME_LEADS, OUTCOME_SALES.
+- Meta Objectives must be one of: TRAFFIC, LEAD_GENERATION, SALES, AWARENESS, MESSAGES, APP_INSTALLS.
 - optimization_goal must match the performance goal (e.g., LINK_CLICKS, LANDING_PAGE_VIEWS).
+- destination_type should be set (e.g., WEBSITE, MESSAGING_APPS).
 - When you output JSON, wrap it in a proper JSON code block. Do NOT add extra text inside the JSON block.
 - ALWAYS propose a plan if you have enough info (objective, location, service, budget).
 `;
