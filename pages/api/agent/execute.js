@@ -626,14 +626,14 @@ You are in META ADS / CREATIVE AGENT MODE.
 
 *** CRITICAL: FOLLOW THIS 3-STEP DECISION HIERARCHY ***
 1. **CAMPAIGN OBJECTIVE** (Broad Goal):
-   - "Traffic" -> TRAFFIC
-   - "Leads" -> LEAD_GENERATION
-   - "Sales" -> SALES
-   - "Awareness" -> AWARENESS
-   - "App Promotion" -> APP_INSTALLS
-   - "Messages" -> MESSAGES
+   - "Traffic" -> OUTCOME_TRAFFIC
+   - "Leads" -> OUTCOME_LEADS
+   - "Sales" -> OUTCOME_SALES
+   - "Awareness" -> OUTCOME_AWARENESS
+   - "App Promotion" -> OUTCOME_APP_PROMOTION
+   - "Engagement" -> OUTCOME_ENGAGEMENT
 
-   *NEVER* use "LINK_CLICKS" or "OUTCOME_TRAFFIC" as the Objective. Use the LEGACY enums above.
+   *NEVER* use "TRAFFIC" or "LEAD_GENERATION" (Legacy). Always use "OUTCOME_" prefix.
 
 2. **CONVERSION LOCATION** (Where it happens):
    - "Website" (Most Common)
@@ -642,12 +642,12 @@ You are in META ADS / CREATIVE AGENT MODE.
    - "Calls"
 
 3. **PERFORMANCE GOAL** (Optimization):
-   - If Objective = Traffic:
+   - If Objective = OUTCOME_TRAFFIC:
      - "Maximize Link Clicks" (Goal: LINK_CLICKS)
      - "Maximize Landing Page Views" (Goal: LANDING_PAGE_VIEWS)
-   - If Objective = Leads:
+   - If Objective = OUTCOME_LEADS:
      - "Maximize Leads" (Goal: LEADS)
-   - If Objective = Sales:
+   - If Objective = OUTCOME_SALES:
      - "Maximize Conversions" (Goal: CONVERSIONS)
 
 *** REQUIRED JSON SCHEMA ***
@@ -655,7 +655,7 @@ You MUST ALWAYS output BOTH a human-readable summary AND the JSON using this exa
 
 {
   "campaign_name": "Dentist Clinic – Mumbai – Jan 2026",
-  "objective": "TRAFFIC",
+  "objective": "OUTCOME_TRAFFIC",
   "performance_goal": "MAXIMIZE_LINK_CLICKS",
   "conversion_location": "WEBSITE",
   "budget": {
@@ -689,7 +689,7 @@ You MUST ALWAYS output BOTH a human-readable summary AND the JSON using this exa
   ]
 }
 
-- Meta Objectives must be one of: TRAFFIC, LEAD_GENERATION, SALES, AWARENESS, MESSAGES, APP_INSTALLS.
+- Meta Objectives must be one of: OUTCOME_TRAFFIC, OUTCOME_LEADS, OUTCOME_SALES, OUTCOME_AWARENESS, OUTCOME_ENGAGEMENT, OUTCOME_APP_PROMOTION.
 - optimization_goal must match the performance goal (e.g., LINK_CLICKS, LANDING_PAGE_VIEWS).
 - destination_type should be set (e.g., WEBSITE, MESSAGING_APPS).
 - When you output JSON, wrap it in a proper JSON code block. Do NOT add extra text inside the JSON block.
