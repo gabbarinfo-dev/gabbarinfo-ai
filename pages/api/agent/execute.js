@@ -61,11 +61,23 @@ async function saveAnswerMemory(baseUrl, business_id, answers, emailOverride = n
     }
 
     content.business_answers = content.business_answers || {};
-    content.business_answers[business_id] = {
-      ...(content.business_answers[business_id] || {}),
-      ...answers,
-      updated_at: new Date().toISOString(),
-    };
+    content.business_answers = content.business_answers || {};
+
+    // 🔒 DEEP MERGE CAMPAIGN STATE (Prevent Data Loss)
+    const existingAnswers = content.business_answers[business_id] || {};
+    let finalAnswers = { ...existingAnswers, ...answers, updated_at: new Date().toISOString() };
+
+    if (answers.campaign_state && existingAnswers.campaign_state) {
+      console.log(`🧠 [Deep Merge] Merging campaign_state for ${business_id}...`);
+      finalAnswers.campaign_state = {
+        ...existingAnswers.campaign_state,
+        ...answers.campaign_state,
+        plan: answers.campaign_state.plan || existingAnswers.campaign_state.plan, // Explicitly preserve plan
+        stage: answers.campaign_state.stage || existingAnswers.campaign_state.stage
+      };
+    }
+
+    content.business_answers[business_id] = finalAnswers;
 
     const { error } = await supabase.from("agent_memory").upsert(
       {
@@ -2001,9 +2013,13 @@ Otherwise, respond with a full, clear explanation, and include example JSON only
       // 🛡️ Safety Check: Ensure plan is valid
       if (!currentState.plan || !currentState.plan.campaign_name) {
         console.error("❌ CRITICAL: Plan missing or invalid in currentState!");
+        // Force reset stage to allow regeneration
+        const resetState = { ...currentState, stage: "reset_objective", plan: null };
+        await saveAnswerMemory(baseUrl, effectiveBusinessId, { campaign_state: resetState }, session.user.email.toLowerCase());
+
         return res.status(200).json({
           ok: true,
-          text: "❌ Internal Error: The campaign plan seems to be missing from memory. Please ask me to 'create the plan again'."
+          text: "❌ **Plan Not Found**\n\nI received your confirmation, but I can't find the campaign plan in my memory. This can happen if the session expired.\n\nPlease reply with **\"Create Plan\"** to recreate it instantly."
         });
       }
 
