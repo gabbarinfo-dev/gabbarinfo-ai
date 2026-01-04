@@ -9,33 +9,42 @@ const supabase = createClient(
 );
 
 // 🔒 THE GOLDEN RULE MAPPER
-function mapObjectiveToODAX(obj) {
+// 🔒 THE GOLDEN RULE MAPPER (Legacy API Support)
+function mapObjectiveToLegacy(obj) {
   const o = (obj || "").toString().toUpperCase();
-  console.log(`[mapObjectiveToODAX] Input: "${obj}" -> Upper: "${o}"`);
+  console.log(`[mapObjectiveToLegacy] Input: "${obj}" -> Upper: "${o}"`);
 
+  // Explicit Legacy Matches
+  if (o === "TRAFFIC") return "TRAFFIC";
+  if (o === "LEAD_GENERATION" || o === "LEADS") return "LEAD_GENERATION";
+  if (o === "SALES" || o === "CONVERSIONS") return "SALES";
+  if (o === "MESSAGES") return "MESSAGES";
+  if (o === "OUTCOME_TRAFFIC") return "TRAFFIC"; // Handle old AI output
+  if (o === "OUTCOME_LEADS") return "LEAD_GENERATION";
+  if (o === "OUTCOME_SALES") return "SALES";
+
+  // Fuzzy Matches
   if (o.includes("TRAFFIC") || o.includes("LINK") || o.includes("CLICK") || o.includes("VISIT")) {
-    console.log(`[mapObjectiveToODAX] Result: OUTCOME_TRAFFIC`);
-    return "OUTCOME_TRAFFIC";
+    return "TRAFFIC";
   }
-  if (o.includes("LEAD") || o.includes("PROSPECT")) {
-    console.log(`[mapObjectiveToODAX] Result: OUTCOME_LEADS`);
-    return "OUTCOME_LEADS";
+  if (o.includes("LEAD") || o.includes("PROSPECT") || o.includes("FORM")) {
+    return "LEAD_GENERATION";
   }
-  if (o.includes("SALE") || o.includes("CONVERSION") || o.includes("COMMERCE") || o.includes("SHOP")) {
-    console.log(`[mapObjectiveToODAX] Result: OUTCOME_SALES`);
-    return "OUTCOME_SALES";
+  if (o.includes("SALE") || o.includes("CONVERSION") || o.includes("PURCHASE")) {
+    return "SALES";
   }
-  if (o.includes("MESSAGES") || o.includes("ENGAGEMENT") || o.includes("INTERACTION")) {
-    console.log(`[mapObjectiveToODAX] Result: OUTCOME_ENGAGEMENT`);
-    return "OUTCOME_ENGAGEMENT";
+  if (o.includes("MESSAGE") || o.includes("CHAT") || o.includes("WHATSAPP")) {
+    return "MESSAGES";
   }
-  if (o.includes("REACH") || o.includes("AWARENESS") || o.includes("VIEW")) {
-    console.log(`[mapObjectiveToODAX] Result: OUTCOME_AWARENESS`);
-    return "OUTCOME_AWARENESS";
+  if (o.includes("INSTALL") || o.includes("APP")) {
+    return "APP_INSTALLS";
+  }
+  if (o.includes("REACH") || o.includes("AWARENESS") || o.includes("BRAND")) {
+    return "AWARENESS";
   }
 
-  console.log(`[mapObjectiveToODAX] Fallback Result: OUTCOME_TRAFFIC`);
-  return "OUTCOME_TRAFFIC";
+  console.log(`[mapObjectiveToLegacy] Fallback Result: TRAFFIC`);
+  return "TRAFFIC";
 }
 
 export default async function handler(req, res) {
@@ -76,7 +85,7 @@ export default async function handler(req, res) {
   try {
     // 1. Map Objective
     const rawObjective = payload.objective || "";
-    const finalObjective = mapObjectiveToODAX(rawObjective);
+    const finalObjective = mapObjectiveToLegacy(rawObjective);
 
     console.log(`🚀 [Campaign Creator] Objective: ${finalObjective} (from raw: ${rawObjective})`);
 
@@ -111,6 +120,7 @@ export default async function handler(req, res) {
 
       let optimizationGoal = "LINK_CLICKS";
       let billingEvent = "IMPRESSIONS";
+      let destinationType = "WEBSITE";
 
       // Allow Ad Set level override (Golden Rule)
       if (adSet.optimization_goal) {
@@ -124,12 +134,25 @@ export default async function handler(req, res) {
         else if (pg.includes("CALLS")) optimizationGoal = "LINK_CLICKS";
       }
 
+      // Billing Event Logic
+      if (optimizationGoal === "LINK_CLICKS") {
+        billingEvent = "LINK_CLICKS";
+      }
+
+      // Destination Type Logic
+      if (adSet.destination_type) {
+        destinationType = adSet.destination_type;
+      } else if (finalObjective === "TRAFFIC" || finalObjective === "SALES" || finalObjective === "LEAD_GENERATION") {
+        destinationType = "WEBSITE";
+      }
+
       const adSetParams = new URLSearchParams();
       adSetParams.append("name", adSet.name || "Ad Set 1");
       adSetParams.append("campaign_id", campaignId);
       adSetParams.append(budgetType, String(Math.floor(Number(budgetAmount) * 100)));
       adSetParams.append("billing_event", billingEvent);
       adSetParams.append("optimization_goal", optimizationGoal);
+      adSetParams.append("destination_type", destinationType);
       adSetParams.append("bid_strategy", "LOWEST_COST_WITHOUT_CAP");
       adSetParams.append("status", "PAUSED");
       adSetParams.append("targeting", JSON.stringify({ geo_locations: { countries: ["IN"] }, age_min: 18, age_max: 65 }));
