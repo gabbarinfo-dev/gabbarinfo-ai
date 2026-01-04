@@ -9,42 +9,28 @@ const supabase = createClient(
 );
 
 // 🔒 THE GOLDEN RULE MAPPER
-// 🔒 THE GOLDEN RULE MAPPER (Legacy API Support)
-function mapObjectiveToLegacy(obj) {
+// 🔒 THE GOLDEN RULE MAPPER (ODAX / Outcome-Based)
+function mapObjectiveToODAX(obj) {
   const o = (obj || "").toString().toUpperCase();
-  console.log(`[mapObjectiveToLegacy] Input: "${obj}" -> Upper: "${o}"`);
+  console.log(`[mapObjectiveToODAX] Input: "${obj}" -> Upper: "${o}"`);
 
-  // Explicit Legacy Matches
-  if (o === "TRAFFIC") return "TRAFFIC";
-  if (o === "LEAD_GENERATION" || o === "LEADS") return "LEAD_GENERATION";
-  if (o === "SALES" || o === "CONVERSIONS") return "SALES";
-  if (o === "MESSAGES") return "MESSAGES";
-  if (o === "OUTCOME_TRAFFIC") return "TRAFFIC"; // Handle old AI output
-  if (o === "OUTCOME_LEADS") return "LEAD_GENERATION";
-  if (o === "OUTCOME_SALES") return "SALES";
+  // Explicit ODAX Matches
+  if (o === "OUTCOME_TRAFFIC" || o === "TRAFFIC") return "OUTCOME_TRAFFIC";
+  if (o === "OUTCOME_LEADS" || o === "LEAD_GENERATION" || o === "LEADS") return "OUTCOME_LEADS";
+  if (o === "OUTCOME_SALES" || o === "SALES" || o === "CONVERSIONS") return "OUTCOME_SALES";
+  if (o === "OUTCOME_ENGAGEMENT" || o === "MESSAGES" || o === "ENGAGEMENT") return "OUTCOME_ENGAGEMENT";
+  if (o === "OUTCOME_AWARENESS" || o === "AWARENESS" || o === "REACH") return "OUTCOME_AWARENESS";
+  if (o === "OUTCOME_APP_PROMOTION" || o === "APP_INSTALLS") return "OUTCOME_APP_PROMOTION";
 
   // Fuzzy Matches
-  if (o.includes("TRAFFIC") || o.includes("LINK") || o.includes("CLICK") || o.includes("VISIT")) {
-    return "TRAFFIC";
-  }
-  if (o.includes("LEAD") || o.includes("PROSPECT") || o.includes("FORM")) {
-    return "LEAD_GENERATION";
-  }
-  if (o.includes("SALE") || o.includes("CONVERSION") || o.includes("PURCHASE")) {
-    return "SALES";
-  }
-  if (o.includes("MESSAGE") || o.includes("CHAT") || o.includes("WHATSAPP")) {
-    return "MESSAGES";
-  }
-  if (o.includes("INSTALL") || o.includes("APP")) {
-    return "APP_INSTALLS";
-  }
-  if (o.includes("REACH") || o.includes("AWARENESS") || o.includes("BRAND")) {
-    return "AWARENESS";
-  }
+  if (o.includes("TRAFFIC") || o.includes("LINK") || o.includes("CLICK") || o.includes("VISIT")) return "OUTCOME_TRAFFIC";
+  if (o.includes("LEAD") || o.includes("PROSPECT") || o.includes("FORM")) return "OUTCOME_LEADS";
+  if (o.includes("SALE") || o.includes("CONVERSION") || o.includes("PURCHASE")) return "OUTCOME_SALES";
+  if (o.includes("MESSAGE") || o.includes("CHAT") || o.includes("WHATSAPP")) return "OUTCOME_ENGAGEMENT";
+  if (o.includes("AWARENESS") || o.includes("BRAND")) return "OUTCOME_AWARENESS";
 
-  console.log(`[mapObjectiveToLegacy] Fallback Result: TRAFFIC`);
-  return "TRAFFIC";
+  console.log(`[mapObjectiveToODAX] Fallback Result: OUTCOME_TRAFFIC`);
+  return "OUTCOME_TRAFFIC";
 }
 
 export default async function handler(req, res) {
@@ -85,17 +71,18 @@ export default async function handler(req, res) {
   try {
     // 1. Map Objective
     const rawObjective = payload.objective || "";
-    const finalObjective = mapObjectiveToLegacy(rawObjective);
+    const finalObjective = mapObjectiveToODAX(rawObjective);
 
     console.log(`🚀 [Campaign Creator] Objective: ${finalObjective} (from raw: ${rawObjective})`);
 
-    // 2. Create Campaign
+    // 2. Create Campaign (ODAX Strict Payload)
     const campaignParams = new URLSearchParams();
     campaignParams.append("name", payload.campaign_name);
     campaignParams.append("objective", finalObjective);
     campaignParams.append("status", "PAUSED");
     campaignParams.append("buying_type", "AUCTION");
     campaignParams.append("special_ad_categories", "[]");
+    campaignParams.append("is_odax", "true"); // 👈 CRITICAL REQUIRED FLAG FOR OUTCOME_ OBJECTIVES
     campaignParams.append("access_token", ACCESS_TOKEN);
 
     const cRes = await fetch(`https://graph.facebook.com/${API_VERSION}/act_${AD_ACCOUNT_ID}/campaigns`, {
@@ -142,7 +129,7 @@ export default async function handler(req, res) {
       // Destination Type Logic
       if (adSet.destination_type) {
         destinationType = adSet.destination_type;
-      } else if (finalObjective === "TRAFFIC" || finalObjective === "SALES" || finalObjective === "LEAD_GENERATION") {
+      } else if (finalObjective === "OUTCOME_TRAFFIC" || finalObjective === "OUTCOME_SALES" || finalObjective === "OUTCOME_LEADS") {
         destinationType = "WEBSITE";
       }
 
