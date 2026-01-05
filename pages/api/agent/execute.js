@@ -2723,9 +2723,11 @@ Reply **YES** to generate this image and launch the campaign.
     // 🚨 FALLBACK: FORCE SAVE PLAN IF TEXT LOOKS LIKE A PROPOSAL BUT NO JSON WAS FOUND
     // This catches the case where Gemini returns a nice text plan but forgets the JSON block.
     // We construct a minimal plan from the User's Instruction + Gemini's output.
-    const isPlanText = /Plan Proposed|Proposed Plan|Campaign Plan|Creative Idea/i.test(text);
+    const isPlanText = /Plan Proposed|Proposed Plan|Campaign Plan|Creative Idea|Strategy Proposal|Campaign Name/i.test(text);
 
     // 🔒 FIX: Allow saving if state exists but HAS NO PLAN (e.g. just stage=PLANNING)
+    // AND Only if we haven't already saved a JSON plan (planJson would handle that path above)
+    // AND if effectiveBusinessId is valid
     if ((mode === "meta_ads_plan" || isPlanText) && (!lockedCampaignState || !lockedCampaignState.plan) && effectiveBusinessId) {
       const looksLikePlan = isPlanText || text.includes("Budget") || text.includes("Creative Idea") || text.includes("Targeting") || text.includes("Creative Idea:");
 
