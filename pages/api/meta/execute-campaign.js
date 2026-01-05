@@ -108,6 +108,7 @@ export default async function handler(req, res) {
 
           // extra safety (explicit objective config)
           campaignParams.append("objective_config[objective_type]", objParam);
+          campaignParams.append("smart_promotion_type", "NONE"); // REQUIRED for ODAX envelope
         }
 
         campaignParams.append("access_token", ACCESS_TOKEN);
