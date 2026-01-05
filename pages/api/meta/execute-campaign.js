@@ -81,17 +81,15 @@ export default async function handler(req, res) {
     campaignParams.append("objective", finalObjective);
     campaignParams.append("status", "PAUSED");
 
-    // 🔒 FORCE-INJECT ODAX FLAGS (URGENT FIX)
-    // Meta requires these SPECIFICALLY for OUTCOME_ objectives.
-    if (finalObjective.startsWith("OUTCOME_")) {
-      console.log(`🔒 [ODAX Enforcement] Injecting mandatory flags for ${finalObjective}`);
-      campaignParams.set("buying_type", "AUCTION");
-      campaignParams.set("special_ad_categories", "[]");
-      campaignParams.set("is_odax", "true");
-    } else {
-      // Fallback/Legacy (safe defaults)
+    // 🔒 FORCE-INJECT ODAX FLAGS (Strict Enforcement)
+    if (finalObjective && finalObjective.startsWith("OUTCOME_")) {
+      console.log(`🔒 [ODAX Enforcement] Injecting flags for ${finalObjective}`);
       campaignParams.append("buying_type", "AUCTION");
       campaignParams.append("special_ad_categories", "[]");
+      campaignParams.append("is_odax", "true");
+
+      // extra safety (explicit objective config)
+      campaignParams.append("objective_config[objective_type]", finalObjective);
     }
 
     campaignParams.append("access_token", ACCESS_TOKEN);
