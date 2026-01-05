@@ -80,9 +80,20 @@ export default async function handler(req, res) {
     campaignParams.append("name", payload.campaign_name);
     campaignParams.append("objective", finalObjective);
     campaignParams.append("status", "PAUSED");
-    campaignParams.append("buying_type", "AUCTION");
-    campaignParams.append("special_ad_categories", "[]");
-    campaignParams.append("is_odax", "true"); // 👈 CRITICAL REQUIRED FLAG FOR OUTCOME_ OBJECTIVES
+
+    // 🔒 FORCE-INJECT ODAX FLAGS (URGENT FIX)
+    // Meta requires these SPECIFICALLY for OUTCOME_ objectives.
+    if (finalObjective.startsWith("OUTCOME_")) {
+      console.log(`🔒 [ODAX Enforcement] Injecting mandatory flags for ${finalObjective}`);
+      campaignParams.set("buying_type", "AUCTION");
+      campaignParams.set("special_ad_categories", "[]");
+      campaignParams.set("is_odax", "true");
+    } else {
+      // Fallback/Legacy (safe defaults)
+      campaignParams.append("buying_type", "AUCTION");
+      campaignParams.append("special_ad_categories", "[]");
+    }
+
     campaignParams.append("access_token", ACCESS_TOKEN);
 
     const cRes = await fetch(`https://graph.facebook.com/${API_VERSION}/act_${AD_ACCOUNT_ID}/campaigns`, {
