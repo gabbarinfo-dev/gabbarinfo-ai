@@ -71,41 +71,69 @@ export default async function handler(req, res) {
   try {
     // 1. Map Objective
     const rawObjective = payload.objective || "";
-    const finalObjective = mapObjectiveToODAX(rawObjective);
+    let finalObjective = mapObjectiveToODAX(rawObjective);
 
     console.log(`🚀 [Campaign Creator] Objective: ${finalObjective} (from raw: ${rawObjective})`);
 
-    // 2. Create Campaign (ODAX Strict Payload)
-    const campaignParams = new URLSearchParams();
-    campaignParams.append("name", payload.campaign_name);
-    campaignParams.append("objective", finalObjective);
-    campaignParams.append("status", "PAUSED");
+    // 2. Create Campaign (Retry Logic for Account Capability Fallback)
+    let campaignId = null;
+    let currentObjective = finalObjective;
 
-    // 🔒 FORCE-INJECT ODAX FLAGS (Strict Enforcement)
-    if (finalObjective && finalObjective.startsWith("OUTCOME_")) {
-      console.log(`🔒 [ODAX Enforcement] Injecting flags for ${finalObjective}`);
-      campaignParams.append("buying_type", "AUCTION");
-      campaignParams.append("special_ad_categories", "[]");
-      campaignParams.append("is_odax", "true");
+    // We allow 1 retry if the objective is OUTCOME_TRAFFIC and fails (likely due to account limitations)
+    for (let attempt = 1; attempt <= 2; attempt++) {
+      try {
+        const campaignParams = new URLSearchParams();
+        campaignParams.append("name", payload.campaign_name);
+        campaignParams.append("objective", currentObjective);
+        campaignParams.append("status", "PAUSED");
 
-      // extra safety (explicit objective config)
-      campaignParams.append("objective_config[objective_type]", finalObjective);
+        // 🔒 FORCE-INJECT ODAX FLAGS (Strict Enforcement)
+        if (currentObjective && currentObjective.startsWith("OUTCOME_")) {
+          console.log(`🔒 [ODAX Enforcement] Injecting flags for ${currentObjective}`);
+          campaignParams.append("buying_type", "AUCTION");
+          campaignParams.append("special_ad_categories", "[]");
+          campaignParams.append("is_odax", "true");
+
+          // extra safety (explicit objective config)
+          campaignParams.append("objective_config[objective_type]", currentObjective);
+        }
+
+        campaignParams.append("access_token", ACCESS_TOKEN);
+
+        console.log(`🚀 [Meta API] Creating Campaign (Attempt ${attempt}): ${currentObjective}`);
+        const cRes = await fetch(`https://graph.facebook.com/${API_VERSION}/act_${AD_ACCOUNT_ID}/campaigns`, {
+          method: "POST",
+          body: campaignParams
+        });
+        const cJson = await cRes.json();
+
+        if (!cRes.ok || !cJson.id) {
+          const errorMsg = cJson.error?.message || `Unknown Meta Error (Status: ${cRes.status})`;
+          throw new Error(errorMsg);
+        }
+
+        campaignId = cJson.id;
+        finalObjective = currentObjective; // Sync for downstream AdSet logic
+        console.log(`✅ Campaign Created Successfully: ${campaignId} (${currentObjective})`);
+        break; // Success!
+
+      } catch (err) {
+        console.warn(`⚠️ Attempt ${attempt} failed: ${err.message}`);
+
+        // SAFE FALLBACK RULE: If OUTCOME_TRAFFIC fails with ODAX/Param error, retry with OUTCOME_AWARENESS
+        const isObjError = err.message.includes("AGENT_V2_OBJ") || err.message.includes("Invalid parameter") || err.message.includes("Param");
+
+        if (attempt === 1 && currentObjective === "OUTCOME_TRAFFIC" && isObjError) {
+          console.log("🔄 [Fallback] Account Rejected OUTCOME_TRAFFIC. Retrying with OUTCOME_AWARENESS...");
+          currentObjective = "OUTCOME_AWARENESS";
+          continue; // Retry loop with new objective
+        }
+
+        // If not recoverable, rethrow properly
+        throw new Error(`Campaign Create Failed: ${err.message} (Obj: ${currentObjective})`);
+      }
     }
 
-    campaignParams.append("access_token", ACCESS_TOKEN);
-
-    const cRes = await fetch(`https://graph.facebook.com/${API_VERSION}/act_${AD_ACCOUNT_ID}/campaigns`, {
-      method: "POST",
-      body: campaignParams
-    });
-    const cJson = await cRes.json();
-
-    if (!cRes.ok || !cJson.id) {
-      const errorMsg = cJson.error?.message || `Unknown Meta Error (Status: ${cRes.status})`;
-      throw new Error(`Campaign Create Failed: ${errorMsg} (AGENT_V2_OBJ: ${finalObjective})`);
-    }
-
-    const campaignId = cJson.id;
     createdAssets.campaign_id = campaignId;
 
     // 3. Create Ad Set(s)
