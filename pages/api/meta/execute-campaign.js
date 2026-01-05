@@ -79,8 +79,8 @@ export default async function handler(req, res) {
     let campaignId = null;
     let currentObjective = finalObjective;
 
-    // Fallback Chain: Requested -> Traffic -> Awareness -> Messages
-    let objectivesToTry = [finalObjective, "OUTCOME_TRAFFIC", "OUTCOME_AWARENESS", "MESSAGES"];
+    // Fallback Chain: Requested -> Traffic -> Awareness -> Engagement (Messages)
+    let objectivesToTry = [finalObjective, "OUTCOME_TRAFFIC", "OUTCOME_AWARENESS", "OUTCOME_ENGAGEMENT"];
     // Remove duplicates to avoid retrying the same thing (e.g. if finalObjective is OUTCOME_TRAFFIC)
     objectivesToTry = [...new Set(objectivesToTry)];
 
@@ -99,7 +99,7 @@ export default async function handler(req, res) {
         campaignParams.append("status", "PAUSED");
 
         // 🔒 FORCE-INJECT ODAX FLAGS (Strict Enforcement)
-        // Works for OUTCOME_ objectives. For "MESSAGES", we skip ODAX flags or use legacy if needed.
+        // Works for OUTCOME_ objectives.
         if (objParam && objParam.startsWith("OUTCOME_")) {
           console.log(`🔒 [ODAX Enforcement] Injecting flags for ${objParam}`);
           campaignParams.append("buying_type", "AUCTION");
@@ -108,9 +108,6 @@ export default async function handler(req, res) {
 
           // extra safety (explicit objective config)
           campaignParams.append("objective_config[objective_type]", objParam);
-        } else if (objParam === "MESSAGES") {
-          // Legacy support for MESSAGES if needed (some accounts allow it without ODAX params)
-          campaignParams.append("special_ad_categories", "[]");
         }
 
         campaignParams.append("access_token", ACCESS_TOKEN);
@@ -189,6 +186,9 @@ export default async function handler(req, res) {
       // Destination Type Logic
       if (adSet.destination_type) {
         destinationType = adSet.destination_type;
+      } else if (finalObjective === "OUTCOME_ENGAGEMENT") {
+        destinationType = "MESSAGING_APPS";
+        optimizationGoal = "CONVERSATIONS"; // Override optimization goal for Engagement/Messages
       } else if (finalObjective === "OUTCOME_TRAFFIC" || finalObjective === "OUTCOME_SALES" || finalObjective === "OUTCOME_LEADS") {
         destinationType = "WEBSITE";
       }
