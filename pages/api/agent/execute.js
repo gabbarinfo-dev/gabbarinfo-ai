@@ -2860,13 +2860,31 @@ Reply **YES** to generate this image and launch the campaign.
 
         let currentState = { ...lockedCampaignState, locked_at: new Date().toISOString() };
 
-        // 🛡️ DEFENSIVE CHECK: If user says YES but we have no plan, abort.
-        if (!currentState.plan) {
-          console.warn("⚠️ User said YES but no plan found in state.");
-          return res.status(200).json({
-            ok: true,
-            text: "❌ **Plan Not Found**\n\nI received your confirmation, but I can't find the campaign plan in my memory. This can happen if the previous step wasn't saved correctly.\n\nPlease ask me to **'create the plan again'**."
+        // 🛡️ DEFENSIVE CHECK: If user says YES but we have no plan, FALLBACK TO PLANNING.
+        // Rule: NEVER execute without a plan. Implicitly regenerate it.
+        // 🛡️ HARD RULE: Never proceed to confirmation/execution without a saved plan
+        if (!currentState.plan || !currentState.plan.campaign_name) {
+          console.warn("⚠️ Plan missing at confirmation. Recreating plan immediately.");
+
+          const regeneratedPlan = await generateMetaCampaignPlan({
+            lockedCampaignState,
+            autoBusinessContext,
+            verifiedMetaAssets,
+            detectedLandingPage,
           });
+
+          const repairedState = {
+            ...currentState,
+            stage: "PLAN_PROPOSED",
+            plan: regeneratedPlan,
+            locked_at: new Date().toISOString()
+          };
+
+          await saveAnswerMemory(process.env.NEXT_PUBLIC_BASE_URL, effectiveBusinessId, {
+            campaign_state: repairedState
+          }, session.user.email.toLowerCase());
+
+          currentState = repairedState;
         }
 
         let waterfallLog = [];
@@ -3004,18 +3022,19 @@ Reply **YES** to generate this image and launch the campaign.
         }
 
         return res.status(200).json({ ok: true, text: feedbackText, imageUrl: currentState.creative?.imageUrl, mode });
+
       }
-    }
 
-    // ===============================
-    // 🧠 STEP-1 / STEP-2 NORMAL AGENT RESPONSE
-    // ===============================
-    return res.status(200).json({
-      ok: true,
-      text,
-      mode,
-    });
+      // ===============================
+      // 🧠 STEP-1 / STEP-2 NORMAL AGENT RESPONSE
+      // ===============================
+      return res.status(200).json({
+        ok: true,
+        text,
+        mode,
+      });
 
+    } // End of if (lockedCampaignState)
 
   } catch (err) {
     console.error("Agent execution error:", err);
@@ -3025,4 +3044,54 @@ Reply **YES** to generate this image and launch the campaign.
       error: err.message || String(err),
     });
   }
+}
+
+
+// 🛠️ HELPER: PROACTIVE PLAN REGENERATION (SELF-HEALING)
+async function generateMetaCampaignPlan({ lockedCampaignState, autoBusinessContext, verifiedMetaAssets, detectedLandingPage }) {
+  console.log("🔄 [Self-Healing] Regenerating Meta Campaign Plan from Context...");
+
+  const serviceName = lockedCampaignState?.service || autoBusinessContext?.business_name || "Digital Marketing";
+  const objective = lockedCampaignState?.objective || "OUTCOME_TRAFFIC";
+  const performanceGoal = lockedCampaignState?.performance_goal || "MAXIMIZE_LINK_CLICKS";
+  const landingPage = lockedCampaignState?.landing_page || detectedLandingPage || "https://gabbarinfo.com";
+  const location = lockedCampaignState?.location || "India";
+
+  // Deterministic Default Plan
+  return {
+    campaign_name: `${serviceName} Campaign`,
+    objective: objective,
+    performance_goal: performanceGoal,
+    budget: {
+      amount: 500,
+      currency: "INR",
+      type: "DAILY"
+    },
+    targeting: {
+      geo_locations: {
+        countries: ["IN"],
+        cities: location !== "India" ? [{ name: location }] : []
+      },
+      age_min: 18,
+      age_max: 65,
+      excluded_custom_audiences: [],
+      flexible_spec: []
+    },
+    ad_sets: [
+      {
+        name: `${serviceName} Ad Set`,
+        status: "PAUSED",
+        optimization_goal: performanceGoal === "MAXIMIZE_LEADS" ? "LEADS" : "LINK_CLICKS",
+        billing_event: "IMPRESSIONS",
+        destination_type: objective === "OUTCOME_LEADS" ? "ON_AD" : "WEBSITE",
+        ad_creative: {
+          imagePrompt: `${serviceName} professional service advertisement high quality`,
+          primary_text: `Looking for best ${serviceName}? We provide top-notch services to help you grow.`,
+          headline: `Expert ${serviceName}`,
+          call_to_action: "LEARN_MORE",
+          destination_url: landingPage
+        }
+      }
+    ]
+  };
 }
