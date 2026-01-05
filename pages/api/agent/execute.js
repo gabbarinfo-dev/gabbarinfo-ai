@@ -2011,16 +2011,32 @@ Otherwise, respond with a full, clear explanation, and include example JSON only
       let currentState = { ...lockedCampaignState, locked_at: new Date().toISOString() };
 
       // 🛡️ Safety Check: Ensure plan is valid
+      // 🛡️ HARD RULE: Never proceed to confirmation/execution without a saved plan
       if (!currentState.plan || !currentState.plan.campaign_name) {
-        console.error("❌ CRITICAL: Plan missing or invalid in currentState!");
-        // Force reset stage to allow regeneration
-        const resetState = { ...currentState, stage: "reset_objective", plan: null };
-        await saveAnswerMemory(baseUrl, effectiveBusinessId, { campaign_state: resetState }, session.user.email.toLowerCase());
+        console.warn("Plan missing at confirmation. Recreating automatically.");
 
-        return res.status(200).json({
-          ok: true,
-          text: "❌ **Plan Not Found**\n\nI received your confirmation, but I can't find the campaign plan in my memory. This can happen if the session expired.\n\nPlease reply with **\"Create Plan\"** to recreate it instantly."
+        const regeneratedPlan = await generateMetaCampaignPlan({
+          lockedCampaignState,
+          autoBusinessContext,
+          verifiedMetaAssets,
+          detectedLandingPage,
         });
+
+        const repairedState = {
+          ...currentState,
+          stage: "PLAN_PROPOSED",
+          plan: regeneratedPlan,
+          locked_at: new Date().toISOString()
+        };
+
+        await saveAnswerMemory(
+          baseUrl,
+          effectiveBusinessId,
+          { campaign_state: repairedState },
+          session.user.email.toLowerCase()
+        );
+
+        currentState = repairedState;
       }
 
       const stage = lockedCampaignState.stage;
