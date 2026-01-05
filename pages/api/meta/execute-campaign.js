@@ -75,32 +75,47 @@ export default async function handler(req, res) {
 
     console.log(`🚀 [Campaign Creator] Objective: ${finalObjective} (from raw: ${rawObjective})`);
 
-    // 2. Create Campaign (Retry Logic for Account Capability Fallback)
+    // 2. Create Campaign (Multi-Stage Safe Fallback)
     let campaignId = null;
     let currentObjective = finalObjective;
 
-    // We allow 1 retry if the objective is OUTCOME_TRAFFIC and fails (likely due to account limitations)
-    for (let attempt = 1; attempt <= 2; attempt++) {
+    // Fallback Chain: Requested -> Traffic -> Awareness -> Messages
+    let objectivesToTry = [finalObjective, "OUTCOME_TRAFFIC", "OUTCOME_AWARENESS", "MESSAGES"];
+    // Remove duplicates to avoid retrying the same thing (e.g. if finalObjective is OUTCOME_TRAFFIC)
+    objectivesToTry = [...new Set(objectivesToTry)];
+
+    console.log(`🛡️ [Fallback Strategy] Will attempt objectives in order: ${objectivesToTry.join(" -> ")}`);
+
+    let lastError = null;
+
+    for (let i = 0; i < objectivesToTry.length; i++) {
+      const objParam = objectivesToTry[i];
+      const attemptLabel = `Attempt ${i + 1}/${objectivesToTry.length}`;
+
       try {
         const campaignParams = new URLSearchParams();
         campaignParams.append("name", payload.campaign_name);
-        campaignParams.append("objective", currentObjective);
+        campaignParams.append("objective", objParam);
         campaignParams.append("status", "PAUSED");
 
         // 🔒 FORCE-INJECT ODAX FLAGS (Strict Enforcement)
-        if (currentObjective && currentObjective.startsWith("OUTCOME_")) {
-          console.log(`🔒 [ODAX Enforcement] Injecting flags for ${currentObjective}`);
+        // Works for OUTCOME_ objectives. For "MESSAGES", we skip ODAX flags or use legacy if needed.
+        if (objParam && objParam.startsWith("OUTCOME_")) {
+          console.log(`🔒 [ODAX Enforcement] Injecting flags for ${objParam}`);
           campaignParams.append("buying_type", "AUCTION");
           campaignParams.append("special_ad_categories", "[]");
           campaignParams.append("is_odax", "true");
 
           // extra safety (explicit objective config)
-          campaignParams.append("objective_config[objective_type]", currentObjective);
+          campaignParams.append("objective_config[objective_type]", objParam);
+        } else if (objParam === "MESSAGES") {
+          // Legacy support for MESSAGES if needed (some accounts allow it without ODAX params)
+          campaignParams.append("special_ad_categories", "[]");
         }
 
         campaignParams.append("access_token", ACCESS_TOKEN);
 
-        console.log(`🚀 [Meta API] Creating Campaign (Attempt ${attempt}): ${currentObjective}`);
+        console.log(`🚀 [Meta API] Creating Campaign (${attemptLabel}): ${objParam}`);
         const cRes = await fetch(`https://graph.facebook.com/${API_VERSION}/act_${AD_ACCOUNT_ID}/campaigns`, {
           method: "POST",
           body: campaignParams
@@ -113,25 +128,33 @@ export default async function handler(req, res) {
         }
 
         campaignId = cJson.id;
-        finalObjective = currentObjective; // Sync for downstream AdSet logic
-        console.log(`✅ Campaign Created Successfully: ${campaignId} (${currentObjective})`);
+        finalObjective = objParam; // Sync for downstream AdSet logic
+        console.log(`✅ Campaign Created Successfully: ${campaignId} (${objParam})`);
         break; // Success!
 
       } catch (err) {
-        console.warn(`⚠️ Attempt ${attempt} failed: ${err.message}`);
+        console.warn(`⚠️ ${attemptLabel} failed: ${err.message}`);
+        lastError = err;
 
-        // SAFE FALLBACK RULE: If OUTCOME_TRAFFIC fails with ODAX/Param error, retry with OUTCOME_AWARENESS
-        const isObjError = err.message.includes("AGENT_V2_OBJ") || err.message.includes("Invalid parameter") || err.message.includes("Param");
+        // Check if error is related to Objective/Account Capability
+        const isObjError =
+          err.message.includes("AGENT_V2_OBJ") ||
+          err.message.includes("Invalid parameter") ||
+          err.message.includes("Param") ||
+          err.message.includes("objective");
 
-        if (attempt === 1 && currentObjective === "OUTCOME_TRAFFIC" && isObjError) {
-          console.log("🔄 [Fallback] Account Rejected OUTCOME_TRAFFIC. Retrying with OUTCOME_AWARENESS...");
-          currentObjective = "OUTCOME_AWARENESS";
-          continue; // Retry loop with new objective
+        if (isObjError) {
+          console.log(`🔄 [Fallback] Objective ${objParam} rejected. Checking next option...`);
+          continue; // Try next objective in queue
         }
 
-        // If not recoverable, rethrow properly
-        throw new Error(`Campaign Create Failed: ${err.message} (Obj: ${currentObjective})`);
+        // If it's a different error (e.g. Auth, Network), stop retrying
+        throw new Error(`Campaign Create Failed (Fatal): ${err.message}`);
       }
+    }
+
+    if (!campaignId) {
+      throw new Error(`Campaign Creation Failed after ${objectivesToTry.length} attempts. Last Error: ${lastError?.message}`);
     }
 
     createdAssets.campaign_id = campaignId;
