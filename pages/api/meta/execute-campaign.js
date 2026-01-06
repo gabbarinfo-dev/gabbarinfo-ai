@@ -108,7 +108,7 @@ export default async function handler(req, res) {
 
           // extra safety (explicit objective config)
           campaignParams.append("objective_config[objective_type]", objParam);
-          campaignParams.append("smart_promotion_type", "NONE"); // REQUIRED for ODAX envelope
+          campaignParams.append("smart_promotion_type", "GUIDED_CREATION"); // REQUIRED for ODAX envelope
         }
 
         campaignParams.append("access_token", ACCESS_TOKEN);
@@ -152,7 +152,7 @@ export default async function handler(req, res) {
     }
 
     if (!campaignId) {
-      throw new Error(`Campaign Creation Failed after ${objectivesToTry.length} attempts. Last Error: ${lastError?.message}`);
+      throw new Error(`Campaign Creation Failed after ${objectivesToTry.length} attempts (Account: ${AD_ACCOUNT_ID}). Last Error: ${lastError?.message}`);
     }
 
     createdAssets.campaign_id = campaignId;
