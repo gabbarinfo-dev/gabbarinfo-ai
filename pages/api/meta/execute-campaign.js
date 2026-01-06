@@ -53,7 +53,7 @@ export default async function handler(req, res) {
 
   const { data: meta, error } = await supabase
     .from("meta_connections")
-    .select("fb_ad_account_id, system_user_token, fb_page_id")
+    .select("fb_ad_account_id, system_user_token, fb_page_id, instagram_actor_id")
     .eq("email", clientEmail)
     .single();
 
@@ -65,6 +65,25 @@ export default async function handler(req, res) {
   const ACCESS_TOKEN = meta.system_user_token;
   const PAGE_ID = meta.fb_page_id;
   const API_VERSION = "v21.0";
+
+  // 1b. Fetch Instagram Actor ID (if missing in DB)
+  let INSTAGRAM_ACTOR_ID = meta.instagram_actor_id;
+
+  if (!INSTAGRAM_ACTOR_ID && PAGE_ID) {
+    try {
+      console.log(`🔎 [Meta API] Fetching Instagram Account for Page ${PAGE_ID}...`);
+      const igRes = await fetch(`https://graph.facebook.com/${API_VERSION}/${PAGE_ID}?fields=instagram_business_account&access_token=${ACCESS_TOKEN}`);
+      const igJson = await igRes.json();
+      if (igJson.instagram_business_account?.id) {
+        INSTAGRAM_ACTOR_ID = igJson.instagram_business_account.id;
+        console.log(`✅ [Meta API] Found Linked Instagram Actor: ${INSTAGRAM_ACTOR_ID}`);
+      } else {
+        console.log(`ℹ️ [Meta API] No Linked Instagram Account found. Campaign will be Page-only.`);
+      }
+    } catch (e) {
+      console.warn(`⚠️ [Meta API] Failed to fetch Instagram Account: ${e.message}`);
+    }
+  }
 
   const createdAssets = { campaign_id: null, ad_sets: [], ads: [] };
 
@@ -184,7 +203,7 @@ export default async function handler(req, res) {
       const creative = adSet.ad_creative || {};
 
       // Use Universal Builder
-      const crParams = buildCreativePayload(finalObjective, creative, PAGE_ID, ACCESS_TOKEN);
+      const crParams = buildCreativePayload(finalObjective, creative, PAGE_ID, INSTAGRAM_ACTOR_ID, ACCESS_TOKEN);
 
       const crRes = await fetch(`https://graph.facebook.com/${API_VERSION}/act_${AD_ACCOUNT_ID}/adcreatives`, {
         method: "POST",
@@ -326,8 +345,8 @@ function buildAdSetPayload(objective, adSet, campaignId, accessToken) {
   return params;
 }
 
-// 🔒 UNIVERSAL CREATIVE BUILDER (Defensive & ODAX Compliant)
-function buildCreativePayload(objective, creative, pageId, accessToken) {
+// 🔒 UNIVERSAL CREATIVE BUILDER (Defensive & ODAX Compliant + Placement Safe)
+function buildCreativePayload(objective, creative, pageId, instagramActorId, accessToken) {
   console.log(`🎨 [Creative Builder] Building for Objective: ${objective}`);
 
   if (!pageId) throw new Error("Page ID is required for Creative");
@@ -335,39 +354,67 @@ function buildCreativePayload(objective, creative, pageId, accessToken) {
 
   // 1. Determine CTA based on Objective
   let ctaType = "LEARN_MORE";
+  let useLinkData = true; // Default to link_data (Traffic/Sales/Leads)
+
+  // TYPE SWITCHING & CTA MATRIX
   if (objective === "OUTCOME_TRAFFIC" || objective === "OUTCOME_SALES" || objective === "OUTCOME_LEADS") {
     ctaType = "LEARN_MORE";
+    useLinkData = true; // STRICT: Must use link_data for these
   } else if (objective === "OUTCOME_AWARENESS") {
-    ctaType = "NO_BUTTON"; // Or optional
+    ctaType = "NO_BUTTON"; // Awareness often rejects buttons or requires specific ones
+    useLinkData = false; // STRICT: Use photo_data for cleaner awareness ads
   } else if (objective === "OUTCOME_ENGAGEMENT") {
-    ctaType = "SEND_MESSAGE"; // Common for engagement
+    // Engagement is tricky.
+    // If Messaging -> SEND_MESSAGE
+    // If Post Engagement -> NO_BUTTON or LIKE_PAGE
+    if (creative.destination_type === "MESSAGING_APPS") {
+      ctaType = "SEND_MESSAGE";
+      useLinkData = true; // Messaging usually wraps in link-like structure or special call-to-action type
+    } else {
+      ctaType = "NO_BUTTON"; // Safe default for post engagement
+      useLinkData = false; // Use photo_data
+    }
   }
 
-  // Override if provided and valid
+  // Override if provided explicitly (and valid)
   if (creative.call_to_action) {
     ctaType = creative.call_to_action;
   }
 
   // 2. Build Object Story Spec (Universal Standard)
   const objectStorySpec = {
-    page_id: pageId,
-    link_data: {
+    page_id: pageId
+  };
+
+  // Inject Instagram Actor if available (Automatic Placement Safety)
+  if (instagramActorId) {
+    objectStorySpec.instagram_actor_id = instagramActorId;
+  }
+
+  // 3. Construct Data Block (Type Switching)
+  if (useLinkData) {
+    objectStorySpec.link_data = {
       image_hash: creative.image_hash,
       link: creative.destination_url || "https://gabbarinfo.com",
       message: creative.primary_text || "",
       name: creative.headline || "Ad",
-      // attachment_style: "link", // Optional but good for standard link ads
+      // attachment_style: "link",
+    };
+
+    // Add CTA only if not suppressed
+    if (ctaType !== "NO_BUTTON") {
+      objectStorySpec.link_data.call_to_action = { type: ctaType };
     }
-  };
 
-  // Add CTA if not suppressed
-  if (ctaType !== "NO_BUTTON") {
-    objectStorySpec.link_data.call_to_action = { type: ctaType };
+  } else {
+    // PHOTO_DATA (Awareness / Pure Engagement)
+    objectStorySpec.photo_data = {
+      image_hash: creative.image_hash,
+      caption: creative.primary_text || creative.headline || "", // Caption serves as primary text
+    };
+    // Note: photo_data typically doesn't support the same call_to_action structure embedded.
+    // It relies on the post itself.
   }
-
-  // 3. Instagram Actor (If needed)
-  // For now, we rely on Page backing. If IG placement is specifically targeted, we might need instagram_actor_id.
-  // We'll leave it as Page-backed for simplicity unless explicitly passed.
 
   const params = new URLSearchParams();
   params.append("name", creative.headline || "Creative");
