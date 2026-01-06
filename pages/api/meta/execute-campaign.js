@@ -8,7 +8,6 @@ const supabase = createClient(
   process.env.SUPABASE_SERVICE_ROLE_KEY
 );
 
-// 🔒 THE GOLDEN RULE MAPPER
 // 🔒 THE GOLDEN RULE MAPPER (ODAX / Outcome-Based)
 function mapObjectiveToODAX(obj) {
   const o = (obj || "").toString().toUpperCase();
@@ -96,11 +95,10 @@ export default async function handler(req, res) {
 
     // 2. Create Campaign (Multi-Stage Safe Fallback)
     let campaignId = null;
-    let currentObjective = finalObjective;
 
     // Fallback Chain: Requested -> Traffic -> Awareness -> Engagement (Messages)
     let objectivesToTry = [finalObjective, "OUTCOME_TRAFFIC", "OUTCOME_AWARENESS", "OUTCOME_ENGAGEMENT"];
-    // Remove duplicates to avoid retrying the same thing (e.g. if finalObjective is OUTCOME_TRAFFIC)
+    // Remove duplicates
     objectivesToTry = [...new Set(objectivesToTry)];
 
     console.log(`🛡️ [Fallback Strategy] Will attempt objectives in order: ${objectivesToTry.join(" -> ")}`);
@@ -118,16 +116,21 @@ export default async function handler(req, res) {
         campaignParams.append("status", "PAUSED");
 
         // 🔒 FORCE-INJECT ODAX FLAGS (Strict Enforcement)
-        // Works for OUTCOME_ objectives.
         if (objParam && objParam.startsWith("OUTCOME_")) {
           console.log(`🔒 [ODAX Enforcement] Injecting flags for ${objParam}`);
           campaignParams.append("buying_type", "AUCTION");
           campaignParams.append("special_ad_categories", "[]");
           campaignParams.append("is_odax", "true");
-
-          // extra safety (explicit objective config)
           campaignParams.append("objective_config[objective_type]", objParam);
-          campaignParams.append("smart_promotion_type", "GUIDED_CREATION"); // REQUIRED for ODAX envelope
+          campaignParams.append("smart_promotion_type", "GUIDED_CREATION");
+
+          // ODAX Safety Default
+          const dofSpec = {
+            "creative_features_spec": {
+              "standard_enhancements": { "enroll_status": "OPT_OUT" }
+            }
+          };
+          campaignParams.append("degrees_of_freedom_spec", JSON.stringify(dofSpec));
         }
 
         campaignParams.append("access_token", ACCESS_TOKEN);
@@ -153,7 +156,6 @@ export default async function handler(req, res) {
         console.warn(`⚠️ ${attemptLabel} failed: ${err.message}`);
         lastError = err;
 
-        // Check if error is related to Objective/Account Capability
         const isObjError =
           err.message.includes("AGENT_V2_OBJ") ||
           err.message.includes("Invalid parameter") ||
@@ -162,10 +164,9 @@ export default async function handler(req, res) {
 
         if (isObjError) {
           console.log(`🔄 [Fallback] Objective ${objParam} rejected. Checking next option...`);
-          continue; // Try next objective in queue
+          continue; // Try next objective
         }
 
-        // If it's a different error (e.g. Auth, Network), stop retrying
         throw new Error(`Campaign Create Failed (Fatal): ${err.message}`);
       }
     }
@@ -179,16 +180,24 @@ export default async function handler(req, res) {
     // 3. Create Ad Set(s)
     const adSets = payload.ad_sets || [{ name: "Ad Set 1" }];
     for (const adSet of adSets) {
-      // Prepare budget config (Campaign Level is usually CBO, but if ABOR (AdSet Budget), we set it here)
-      // The prompt assumes standard defaults. We will append budget here.
+      // Prepare budget config
       const budgetAmount = payload.budget?.amount || 500;
       const budgetType = (payload.budget?.type || "DAILY").toUpperCase() === "DAILY" ? "daily_budget" : "lifetime_budget";
 
+      // Build AdSet Payload
       const p = buildAdSetPayload(finalObjective, adSet, campaignId, ACCESS_TOKEN);
 
-      // Append Budget (since helper focused on parameters)
+      // Append Budget
       p.append(budgetType, String(Math.floor(Number(budgetAmount) * 100)));
 
+      if (budgetType === "lifetime_budget" && !adSet.end_time) {
+        // Default to 7 days if missing for lifetime
+        const endDate = new Date();
+        endDate.setDate(endDate.getDate() + 7);
+        p.append("end_time", endDate.toISOString());
+      }
+
+      console.log(`🛠️ [AdSet] Creating AdSet...`);
       const asRes = await fetch(`https://graph.facebook.com/${API_VERSION}/act_${AD_ACCOUNT_ID}/adsets`, {
         method: "POST",
         body: p
@@ -202,9 +211,10 @@ export default async function handler(req, res) {
       // 4. Create Creative
       const creative = adSet.ad_creative || {};
 
-      // Use Universal Builder
+      // Build Creative Payload
       const crParams = buildCreativePayload(finalObjective, creative, PAGE_ID, INSTAGRAM_ACTOR_ID, ACCESS_TOKEN);
 
+      console.log(`🎨 [Creative] Creating Creative...`);
       const crRes = await fetch(`https://graph.facebook.com/${API_VERSION}/act_${AD_ACCOUNT_ID}/adcreatives`, {
         method: "POST",
         body: crParams
@@ -244,34 +254,27 @@ export default async function handler(req, res) {
     return res.status(500).json({ ok: false, message: err.message });
   }
 }
-// 🔒 UNIVERSAL AD SET BUILDER (Defensive & ODAX Compliant)
-function buildAdSetPayload(objective, adSet, campaignId, accessToken) {
-  console.log(`🛠️ [AdSet Builder] Building for Objective: ${objective}`);
 
+// 🔒 UNIVERSAL AD SET BUILDER (Strict ODAX Compliance)
+function buildAdSetPayload(objective, adSet, campaignId, accessToken) {
   const params = new URLSearchParams();
 
-  // 1. Core Identity
+  // 1. Identity & Time
   params.append("name", adSet.name || "Ad Set 1");
   params.append("campaign_id", campaignId);
   params.append("status", "PAUSED");
   params.append("access_token", accessToken);
+  params.append("bid_strategy", "LOWEST_COST_WITHOUT_CAP");
 
-  // 2. Budget (Strict Validation)
-  const budgetAmount = adSet.budget_amount || 500; // Passed from parent logic typically, or default
-  // Note: Parent payload usually has the budget, but we'll handle what's passed in 'adSet' or generic defaults if needed.
-  // Actually, the main handler passes budget details. We'll simplify: 
-  // We assume the caller handles budget key/value appending or we do it here if adSet contains it.
-  // For this refactor, let's stick to objective params first, but the user asked for "ALL" logic here.
-  // Let's assume the loop handles budget since it's cleaner, OR we pass it in. 
-  // Let's rely on standard adSet structure having 'daily_budget' or 'lifetime_budget' keys if prepared, 
-  // or we pass budgetConfig.
+  // Start Time: Now + 5 mins (Safety Buffer)
+  const startTime = new Date(Date.now() + 5 * 60 * 1000);
+  params.append("start_time", startTime.toISOString());
 
-  // 3. ODAX Parameter Mapping
+  // 2. ODAX Parameter Matrix
   let optimization_goal = "LINK_CLICKS";
   let billing_event = "IMPRESSIONS";
   let destination_type = "WEBSITE";
-  let bid_strategy = "LOWEST_COST_WITHOUT_CAP";
-  let promoted_object = null; // For Sales/App
+  let promoted_object = null;
 
   switch (objective) {
     case "OUTCOME_TRAFFIC":
@@ -283,137 +286,142 @@ function buildAdSetPayload(objective, adSet, campaignId, accessToken) {
     case "OUTCOME_AWARENESS":
       optimization_goal = "REACH";
       billing_event = "IMPRESSIONS";
-      destination_type = undefined; // Not needed for pure awareness often
+      destination_type = undefined; // NONE allowed
       break;
 
     case "OUTCOME_ENGAGEMENT":
-      // Check if specifically Messaging (e.g. from Fallback or User intent)
       if (adSet.destination_type === "MESSAGING_APPS") {
         optimization_goal = "CONVERSATIONS";
         destination_type = "MESSAGING_APPS";
       } else {
-        optimization_goal = "POST_ENGAGEMENT"; // Default Engagement
+        optimization_goal = "POST_ENGAGEMENT";
         billing_event = "IMPRESSIONS";
         destination_type = undefined; // On-Ad
       }
       break;
 
     case "OUTCOME_LEADS":
-      optimization_goal = "LEAD_GENERATION"; // Instant Forms
+      optimization_goal = "LEAD_GENERATION";
       billing_event = "IMPRESSIONS";
-      destination_type = undefined; // Implies On-Ad / Form
+      destination_type = undefined; // On-Ad (Forms)
       break;
 
     case "OUTCOME_SALES":
       optimization_goal = "OFFSITE_CONVERSIONS";
       billing_event = "IMPRESSIONS";
       destination_type = "WEBSITE";
-      // Validation: Pixel is mandatory
-      if (adSet.promoted_object) {
-        promoted_object = adSet.promoted_object;
+
+      // HARD FAIL: Pixel Required
+      if (!adSet.promoted_object || !adSet.promoted_object.pixel_id) {
+        throw new Error("OUTCOME_SALES requires a Pixel ID (promoted_object.pixel_id).");
       }
+      promoted_object = {
+        pixel_id: adSet.promoted_object.pixel_id,
+        custom_event_type: adSet.promoted_object.custom_event_type || "PURCHASE"
+      };
       break;
 
     case "OUTCOME_APP_PROMOTION":
       optimization_goal = "APP_INSTALLS";
       billing_event = "IMPRESSIONS";
       destination_type = undefined;
-      // Validation: App ID is mandatory
-      if (adSet.promoted_object) {
-        promoted_object = adSet.promoted_object;
+
+      // HARD FAIL: App ID Required
+      if (!adSet.promoted_object || !adSet.promoted_object.application_id) {
+        throw new Error("OUTCOME_APP_PROMOTION requires an Application ID.");
       }
+      promoted_object = adSet.promoted_object;
       break;
 
     default:
-      // Fallback for unmapped (shouldn't happen with ODAX map)
-      console.warn(`⚠️ [AdSet Builder] Unmapped Objective ${objective}. Using Traffic defaults.`);
+      console.warn(`⚠️ Unmapped Objective ${objective}. Defaulting to Traffic.`);
       break;
   }
 
-  // 4. Overrides (The "Explicit Set" Rule)
+  // 3. Apply Parameters (Implicit Enforce)
   params.append("optimization_goal", optimization_goal);
   params.append("billing_event", billing_event);
-  params.append("bid_strategy", bid_strategy);
   if (destination_type) params.append("destination_type", destination_type);
   if (promoted_object) params.append("promoted_object", JSON.stringify(promoted_object));
 
-  // 5. Targeting (Strict Validation)
+  // 4. Targeting
   const targeting = adSet.targeting || { geo_locations: { countries: ["IN"] }, age_min: 18, age_max: 65 };
-  if (!targeting) throw new Error("Targeting is required for Ad Set");
   params.append("targeting", JSON.stringify(targeting));
 
   return params;
 }
 
-// 🔒 UNIVERSAL CREATIVE BUILDER (Defensive & ODAX Compliant + Placement Safe)
+// 🔒 UNIVERSAL CREATIVE BUILDER (Placement Safe & Strict Types)
+// 🔒 UNIVERSAL CREATIVE BUILDER (Placement Safe & Strict Types)
 function buildCreativePayload(objective, creative, pageId, instagramActorId, accessToken) {
-  console.log(`🎨 [Creative Builder] Building for Objective: ${objective}`);
-
   if (!pageId) throw new Error("Page ID is required for Creative");
   if (!creative || !creative.image_hash) throw new Error("Image Hash is required for Creative");
 
-  // 1. Determine CTA based on Objective
   let ctaType = "LEARN_MORE";
-  let useLinkData = true; // Default to link_data (Traffic/Sales/Leads)
+  let useLinkData = true;
 
-  // TYPE SWITCHING & CTA MATRIX
+  // 1. Strict Type Switching
   if (objective === "OUTCOME_TRAFFIC" || objective === "OUTCOME_SALES" || objective === "OUTCOME_LEADS") {
     ctaType = "LEARN_MORE";
-    useLinkData = true; // STRICT: Must use link_data for these
+    useLinkData = true; // MUST use link_data
+
+    // HARD FAIL: Destination URL Required
+    if (!creative.destination_url) {
+      throw new Error(`${objective} requires a destination_url for link_data creatives.`);
+    }
+
   } else if (objective === "OUTCOME_AWARENESS") {
-    ctaType = "NO_BUTTON"; // Awareness often rejects buttons or requires specific ones
-    useLinkData = false; // STRICT: Use photo_data for cleaner awareness ads
+    ctaType = "NO_BUTTON";
+    useLinkData = false; // MUST use photo_data (No link support usually)
+
   } else if (objective === "OUTCOME_ENGAGEMENT") {
-    // Engagement is tricky.
-    // If Messaging -> SEND_MESSAGE
-    // If Post Engagement -> NO_BUTTON or LIKE_PAGE
     if (creative.destination_type === "MESSAGING_APPS") {
       ctaType = "SEND_MESSAGE";
-      useLinkData = true; // Messaging usually wraps in link-like structure or special call-to-action type
+      useLinkData = true;
     } else {
-      ctaType = "NO_BUTTON"; // Safe default for post engagement
-      useLinkData = false; // Use photo_data
+      ctaType = "NO_BUTTON"; // Post Engagement
+      useLinkData = false;
     }
   }
 
-  // Override if provided explicitly (and valid)
+  // 2. Override Logic (Guardrails applied)
   if (creative.call_to_action) {
-    ctaType = creative.call_to_action;
+    if (objective === "OUTCOME_AWARENESS" || (objective === "OUTCOME_ENGAGEMENT" && !useLinkData)) {
+      console.warn(`⚠️ [Creative] Ignoring user CTA '${creative.call_to_action}' for ${objective}. Enforcing NO_BUTTON.`);
+      ctaType = "NO_BUTTON";
+    } else {
+      ctaType = creative.call_to_action;
+    }
   }
 
-  // 2. Build Object Story Spec (Universal Standard)
-  const objectStorySpec = {
-    page_id: pageId
-  };
+  // 3. Build Object Story Spec
+  const objectStorySpec = { page_id: pageId };
 
-  // Inject Instagram Actor if available (Automatic Placement Safety)
-  if (instagramActorId) {
+  // Placement Safety: Inject Instagram Actor ONLY if Page matches
+  // Simplistic check: If we have an IG Actor, we assume it's validly linked to this page (checked in handler)
+  if (instagramActorId && pageId) {
     objectStorySpec.instagram_actor_id = instagramActorId;
   }
 
-  // 3. Construct Data Block (Type Switching)
+  // 4. Data Block Construction
   if (useLinkData) {
     objectStorySpec.link_data = {
       image_hash: creative.image_hash,
       link: creative.destination_url || "https://gabbarinfo.com",
       message: creative.primary_text || "",
       name: creative.headline || "Ad",
-      // attachment_style: "link",
     };
 
-    // Add CTA only if not suppressed
     if (ctaType !== "NO_BUTTON") {
       objectStorySpec.link_data.call_to_action = { type: ctaType };
     }
-
   } else {
-    // PHOTO_DATA (Awareness / Pure Engagement)
+    // Photo Data (Awareness/Engagement)
     objectStorySpec.photo_data = {
       image_hash: creative.image_hash,
-      caption: creative.primary_text || creative.headline || "", // Caption serves as primary text
+      caption: creative.primary_text || creative.headline || "",
     };
-    // Note: photo_data typically doesn't support the same call_to_action structure embedded.
-    // It relies on the post itself.
+    // Implicit NO_BUTTON by nature of photo_data structure used here
   }
 
   const params = new URLSearchParams();
