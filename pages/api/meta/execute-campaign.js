@@ -175,7 +175,7 @@ export default async function handler(req, res) {
         body: p
       });
       const asJson = await asRes.json();
-      if (!asRes.ok) throw new Error(`AdSet Create Failed: ${asJson.error?.message}`);
+      if (!asRes.ok) throw new Error(`AdSet Create Failed: ${asJson.error?.message} (Account: ${AD_ACCOUNT_ID})`);
 
       const adSetId = asJson.id;
       createdAssets.ad_sets.push(adSetId);
@@ -205,7 +205,7 @@ export default async function handler(req, res) {
         body: crParams
       });
       const crJson = await crRes.json();
-      if (!crRes.ok) throw new Error(`Creative Create Failed: ${crJson.error?.message}`);
+      if (!crRes.ok) throw new Error(`Creative Create Failed: ${crJson.error?.message} (Account: ${AD_ACCOUNT_ID})`);
 
       const creativeId = crJson.id;
 
@@ -222,7 +222,7 @@ export default async function handler(req, res) {
         body: adParams
       });
       const adJson = await adRes.json();
-      if (!adRes.ok) throw new Error(`Ad Create Failed: ${adJson.error?.message}`);
+      if (!adRes.ok) throw new Error(`Ad Create Failed: ${adJson.error?.message} (Account: ${AD_ACCOUNT_ID})`);
 
       createdAssets.ads.push(adJson.id);
     }
