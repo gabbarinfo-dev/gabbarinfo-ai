@@ -84,6 +84,29 @@ export default async function handler(req, res) {
     }
   }
 
+  // 1c. PREFLIGHT SECURITY CHECK: Verify Ad Account Access
+  // This ensures the token actually has permissions for the target ad account ID.
+  try {
+    console.log(`🛡️ [Security Check] Verifying access to Ad Account: ${AD_ACCOUNT_ID}...`);
+    const verifyRes = await fetch(`https://graph.facebook.com/${API_VERSION}/act_${AD_ACCOUNT_ID}?fields=account_id,name&access_token=${ACCESS_TOKEN}`);
+    const verifyJson = await verifyRes.json();
+
+    if (!verifyRes.ok || verifyJson.error) {
+      console.error(`⛔ [Security Block] Access Denied: ${verifyJson.error?.message}`);
+      return res.status(403).json({
+        ok: false,
+        message: "Connected Meta account does not own or have access to this ad account."
+      });
+    }
+    console.log(`✅ [Security Check] Access Verified for Account: ${verifyJson.account_id} (${verifyJson.name})`);
+  } catch (e) {
+    console.error(`⛔ [Security Block] Validation Error: ${e.message}`);
+    // If we already sent a response (unlikely but safe), don't send another.
+    if (!res.headersSent) {
+      return res.status(500).json({ ok: false, message: `Preflight Auth Check Failed: ${e.message}` });
+    }
+  }
+
   const createdAssets = { campaign_id: null, ad_sets: [], ads: [] };
 
   try {
