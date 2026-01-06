@@ -182,23 +182,9 @@ export default async function handler(req, res) {
 
       // 4. Create Creative
       const creative = adSet.ad_creative || {};
-      if (!creative.image_hash) continue;
 
-      const creativeSpec = {
-        page_id: PAGE_ID,
-        link_data: {
-          image_hash: creative.image_hash,
-          link: creative.destination_url || "https://gabbarinfo.com",
-          message: creative.primary_text || "",
-          name: creative.headline || "",
-          call_to_action: { type: creative.call_to_action || "LEARN_MORE" }
-        }
-      };
-
-      const crParams = new URLSearchParams();
-      crParams.append("name", creative.headline || "Creative");
-      crParams.append("object_story_spec", JSON.stringify(creativeSpec));
-      crParams.append("access_token", ACCESS_TOKEN);
+      // Use Universal Builder
+      const crParams = buildCreativePayload(finalObjective, creative, PAGE_ID, ACCESS_TOKEN);
 
       const crRes = await fetch(`https://graph.facebook.com/${API_VERSION}/act_${AD_ACCOUNT_ID}/adcreatives`, {
         method: "POST",
@@ -336,6 +322,57 @@ function buildAdSetPayload(objective, adSet, campaignId, accessToken) {
   const targeting = adSet.targeting || { geo_locations: { countries: ["IN"] }, age_min: 18, age_max: 65 };
   if (!targeting) throw new Error("Targeting is required for Ad Set");
   params.append("targeting", JSON.stringify(targeting));
+
+  return params;
+}
+
+// 🔒 UNIVERSAL CREATIVE BUILDER (Defensive & ODAX Compliant)
+function buildCreativePayload(objective, creative, pageId, accessToken) {
+  console.log(`🎨 [Creative Builder] Building for Objective: ${objective}`);
+
+  if (!pageId) throw new Error("Page ID is required for Creative");
+  if (!creative || !creative.image_hash) throw new Error("Image Hash is required for Creative");
+
+  // 1. Determine CTA based on Objective
+  let ctaType = "LEARN_MORE";
+  if (objective === "OUTCOME_TRAFFIC" || objective === "OUTCOME_SALES" || objective === "OUTCOME_LEADS") {
+    ctaType = "LEARN_MORE";
+  } else if (objective === "OUTCOME_AWARENESS") {
+    ctaType = "NO_BUTTON"; // Or optional
+  } else if (objective === "OUTCOME_ENGAGEMENT") {
+    ctaType = "SEND_MESSAGE"; // Common for engagement
+  }
+
+  // Override if provided and valid
+  if (creative.call_to_action) {
+    ctaType = creative.call_to_action;
+  }
+
+  // 2. Build Object Story Spec (Universal Standard)
+  const objectStorySpec = {
+    page_id: pageId,
+    link_data: {
+      image_hash: creative.image_hash,
+      link: creative.destination_url || "https://gabbarinfo.com",
+      message: creative.primary_text || "",
+      name: creative.headline || "Ad",
+      // attachment_style: "link", // Optional but good for standard link ads
+    }
+  };
+
+  // Add CTA if not suppressed
+  if (ctaType !== "NO_BUTTON") {
+    objectStorySpec.link_data.call_to_action = { type: ctaType };
+  }
+
+  // 3. Instagram Actor (If needed)
+  // For now, we rely on Page backing. If IG placement is specifically targeted, we might need instagram_actor_id.
+  // We'll leave it as Page-backed for simplicity unless explicitly passed.
+
+  const params = new URLSearchParams();
+  params.append("name", creative.headline || "Creative");
+  params.append("object_story_spec", JSON.stringify(objectStorySpec));
+  params.append("access_token", accessToken);
 
   return params;
 }
