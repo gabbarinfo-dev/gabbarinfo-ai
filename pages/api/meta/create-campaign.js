@@ -54,7 +54,7 @@ export default async function handler(req, res) {
       });
     }
 
-    const ACCESS_TOKEN = conn.system_user_token;
+    const ACCESS_TOKEN = process.env.META_SYSTEM_USER_TOKEN;
     const AD_ACCOUNT_ID = conn.fb_ad_account_id;
 
     // ---------------------------
