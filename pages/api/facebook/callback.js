@@ -50,10 +50,9 @@ export default async function handler(req, res) {
       }
     );
 
-    const system_user_token = tokenRes.data.access_token;
     const fb_user_access_token = tokenRes.data.access_token;
-    if (!system_user_token) {
-      throw new Error("No system_user_token returned by Meta");
+    if (!fb_user_access_token) {
+      throw new Error("No access_token returned by Meta");
     }
 
     // -----------------------------
@@ -61,20 +60,20 @@ export default async function handler(req, res) {
     // -----------------------------
     const businessesRes = await axios.get(
       "https://graph.facebook.com/v19.0/me/businesses",
-      { params: { access_token: system_user_token } }
+      { params: { access_token: fb_user_access_token } }
     );
     const fb_business_id = businessesRes.data?.data?.[0]?.id || null;
 
     const adAccountsRes = await axios.get(
       "https://graph.facebook.com/v19.0/me/adaccounts",
-      { params: { access_token: system_user_token } }
+      { params: { access_token: fb_user_access_token } }
     );
     const fb_ad_account_id =
       adAccountsRes.data?.data?.[0]?.id || null;
 
     const pagesRes = await axios.get(
       "https://graph.facebook.com/v19.0/me/accounts",
-      { params: { access_token: system_user_token } }
+      { params: { access_token: fb_user_access_token } }
     );
     const fb_page_id = pagesRes.data?.data?.[0]?.id || null;
 
@@ -85,7 +84,7 @@ export default async function handler(req, res) {
         {
           params: {
             fields: "instagram_business_account",
-            access_token: system_user_token,
+            access_token: fb_user_access_token,
           },
         }
       );
@@ -101,8 +100,7 @@ export default async function handler(req, res) {
       .upsert(
         {
           email,
-          system_user_token,
-           fb_user_access_token,       // used ONCE for sync
+          fb_user_access_token,       // used ONCE for sync
           fb_business_id,
           fb_page_id,
           ig_business_id,
