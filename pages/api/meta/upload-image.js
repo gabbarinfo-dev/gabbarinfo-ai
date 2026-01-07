@@ -23,76 +23,76 @@ export default async function handler(req, res) {
   if (req.method !== "POST") {
     return res.status(405).json({ ok: false, message: "Only POST allowed" });
   }
-const session = await getServerSession(req, res, authOptions);
-const headerEmail = req.headers["x-client-email"];
-const clientEmail =
-  (session?.user?.email && session.user.email.toLowerCase()) ||
-  (typeof headerEmail === "string" ? headerEmail.toLowerCase() : null);
-if (!clientEmail) {
-  return res.status(401).json({ ok: false, message: "Unauthorized" });
-}
+  const session = await getServerSession(req, res, authOptions);
+  const headerEmail = req.headers["x-client-email"];
+  const clientEmail =
+    (session?.user?.email && session.user.email.toLowerCase()) ||
+    (typeof headerEmail === "string" ? headerEmail.toLowerCase() : null);
+  if (!clientEmail) {
+    return res.status(401).json({ ok: false, message: "Unauthorized" });
+  }
 
-const { data: meta, error } = await supabase
-  .from("meta_connections")
-  .select("fb_ad_account_id, system_user_token")
-  .eq("email", clientEmail)
-  .single();
+  const { data: meta, error } = await supabase
+    .from("meta_connections")
+    .select("fb_ad_account_id, system_user_token")
+    .eq("email", clientEmail)
+    .single();
 
-if (error || !meta?.fb_ad_account_id || !meta?.system_user_token) {
-  return res.status(400).json({
-    ok: false,
-    message: "Meta ad account not connected for this user.",
-  });
-}
-
-const AD_ACCOUNT_ID = (meta.fb_ad_account_id || "").toString().replace(/^act_/, "");
-const ACCESS_TOKEN = meta.system_user_token;
-
-try {
-  const { imageUrl, imageBase64 } = req.body || {};
-
-  if (!imageUrl && !imageBase64) {
+  if (error || !meta?.fb_ad_account_id) {
     return res.status(400).json({
       ok: false,
-      message: "Either imageUrl or imageBase64 is required in JSON body.",
+      message: "Meta ad account not connected for this user.",
     });
   }
 
-  const graphUrl = `https://graph.facebook.com/v24.0/act_${AD_ACCOUNT_ID}/adimages`;
- 
-  let resp;
-  if (imageUrl) {
-    const params = new URLSearchParams();
-    params.append("url", imageUrl);
-    params.append("access_token", ACCESS_TOKEN);
-    resp = await fetch(graphUrl, {
-      method: "POST",
-      headers: { "Content-Type": "application/x-www-form-urlencoded" },
-      body: params.toString(),
-    });
-  } else {
-    const cleaned = imageBase64
-      .toString()
-      .replace(/^data:image\/\w+;base64,/, "")
-      .replace(/\s+/g, "");
-    const buffer = Buffer.from(cleaned, "base64");
-    if (!buffer || buffer.length < 1024) {
+  const AD_ACCOUNT_ID = (meta.fb_ad_account_id || "").toString().replace(/^act_/, "");
+  const ACCESS_TOKEN = process.env.META_SYSTEM_USER_TOKEN;
+
+  try {
+    const { imageUrl, imageBase64 } = req.body || {};
+
+    if (!imageUrl && !imageBase64) {
       return res.status(400).json({
         ok: false,
-        message: "Generated image looks invalid or too small for upload.",
-        details: { size_bytes: buffer?.length || 0 },
+        message: "Either imageUrl or imageBase64 is required in JSON body.",
       });
     }
-    const blob = new Blob([buffer], { type: "image/png" });
-    const form = new FormData();
-    // Use 'source' for file uploads per Graph API conventions
-    form.append("source", blob, "creative.png");
-    form.append("access_token", ACCESS_TOKEN);
-    resp = await fetch(graphUrl, {
-      method: "POST",
-      body: form,
-    });
-  }
+
+    const graphUrl = `https://graph.facebook.com/v24.0/act_${AD_ACCOUNT_ID}/adimages`;
+
+    let resp;
+    if (imageUrl) {
+      const params = new URLSearchParams();
+      params.append("url", imageUrl);
+      params.append("access_token", ACCESS_TOKEN);
+      resp = await fetch(graphUrl, {
+        method: "POST",
+        headers: { "Content-Type": "application/x-www-form-urlencoded" },
+        body: params.toString(),
+      });
+    } else {
+      const cleaned = imageBase64
+        .toString()
+        .replace(/^data:image\/\w+;base64,/, "")
+        .replace(/\s+/g, "");
+      const buffer = Buffer.from(cleaned, "base64");
+      if (!buffer || buffer.length < 1024) {
+        return res.status(400).json({
+          ok: false,
+          message: "Generated image looks invalid or too small for upload.",
+          details: { size_bytes: buffer?.length || 0 },
+        });
+      }
+      const blob = new Blob([buffer], { type: "image/png" });
+      const form = new FormData();
+      // Use 'source' for file uploads per Graph API conventions
+      form.append("source", blob, "creative.png");
+      form.append("access_token", ACCESS_TOKEN);
+      resp = await fetch(graphUrl, {
+        method: "POST",
+        body: form,
+      });
+    }
 
     let json;
     try {
