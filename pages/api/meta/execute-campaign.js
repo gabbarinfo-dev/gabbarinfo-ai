@@ -61,7 +61,7 @@ export default async function handler(req, res) {
   }
 
   const AD_ACCOUNT_ID = (meta.fb_ad_account_id || "").toString().replace(/^act_/, "");
-  const ACCESS_TOKEN = meta.system_user_token;
+  const ACCESS_TOKEN = process.env.META_SYSTEM_USER_TOKEN;
   const PAGE_ID = meta.fb_page_id;
   const API_VERSION = "v21.0";
 
