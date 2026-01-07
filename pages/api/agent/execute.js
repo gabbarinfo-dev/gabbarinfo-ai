@@ -99,6 +99,58 @@ async function saveAnswerMemory(baseUrl, business_id, answers, emailOverride = n
   }
 }
 
+async function generateMetaCampaignPlan({ lockedCampaignState, autoBusinessContext, verifiedMetaAssets, detectedLandingPage, instruction, text }) {
+  const extract = (src, key) => {
+    const regex = new RegExp(`${key}[:\\-]?\\s*(.*?)(?:\\n|$)`, "i");
+    const match = (src || "").match(regex);
+    return match ? match[1].trim() : null;
+  };
+  const titleMatch = (text || "").match(/\*\*Plan Proposed:?\s*(.*?)\*\*/i);
+  const campaign_name = titleMatch ? titleMatch[1].trim() : (extract(instruction, "Campaign Name") || "Meta Campaign");
+  const rawBudget = extract(instruction, "Budget");
+  const budgetVal = rawBudget ? parseInt(rawBudget.replace(/[^\d]/g, "")) : (lockedCampaignState?.plan?.budget?.amount || 500);
+  const destination_url =
+    extract(instruction, "Website") ||
+    lockedCampaignState?.landing_page ||
+    detectedLandingPage ||
+    "https://gabbarinfo.com";
+  const primary_text =
+    extract(instruction, "Creative Idea") ||
+    extract(instruction, "Services") ||
+    "Professional digital marketing services";
+  const headline =
+    extract(instruction, "Headline") || "Grow Your Business";
+  const imagePrompt =
+    extract(instruction, "Image Concept") || "Business growth ad creative";
+  return {
+    campaign_name,
+    objective: lockedCampaignState?.objective || "OUTCOME_TRAFFIC",
+    performance_goal: lockedCampaignState?.performance_goal || "MAXIMIZE_LINK_CLICKS",
+    budget: { amount: budgetVal || 500, currency: "INR", type: "DAILY" },
+    targeting: {
+      geo_locations: { countries: ["IN"], cities: [] },
+      age_min: 18,
+      age_max: 65
+    },
+    ad_sets: [
+      {
+        name: "Ad Set 1",
+        status: "PAUSED",
+        optimization_goal: "LINK_CLICKS",
+        destination_type: "WEBSITE",
+        billing_event: "IMPRESSIONS",
+        ad_creative: {
+          primary_text,
+          headline,
+          call_to_action: "LEARN_MORE",
+          imagePrompt,
+          destination_url
+        }
+      }
+    ]
+  };
+}
+
 export default async function handler(req, res) {
   if (req.method !== "POST") {
     return res.status(405).json({ ok: false, message: "Only POST allowed." });
@@ -146,7 +198,7 @@ export default async function handler(req, res) {
         .eq("email", session.user.email.toLowerCase())
         .single();
 
-      if (!meta?.system_user_token || !meta?.fb_ad_account_id) {
+      if (!meta?.fb_ad_account_id) {
         return res.json({
           ok: true,
           gated: true,
@@ -155,7 +207,7 @@ export default async function handler(req, res) {
         });
       }
 
-      const token = meta.system_user_token;
+      const token = process.env.META_SYSTEM_USER_TOKEN;
 
       // Facebook Page
       const fbPageRes = await fetch(
@@ -207,7 +259,7 @@ export default async function handler(req, res) {
 
       metaRow = row;
 
-      if (metaRow && metaRow.system_user_token) {
+      if (metaRow) {
         metaConnected = true;
         activeBusinessId =
           metaRow.fb_business_id ||
@@ -2839,11 +2891,23 @@ Reply **YES** to generate this image and launch the campaign.
       body.force_continue;
 
     if (!lockedCampaignState && isConfirmation && mode === "meta_ads_plan") {
-      console.warn("⚠️ User said YES but no lockedCampaignState found.");
-      return res.status(200).json({
-        ok: true,
-        text: "❌ **No Active Plan Found**\n\nI received your confirmation, but I don't have a saved plan to execute.\n\nThis can happen if:\n1. The plan wasn't saved correctly.\n2. You are trying to confirm a plan from a previous session.\n\nPlease ask me to **'create the plan again'**."
+      const regeneratedPlan = await generateMetaCampaignPlan({
+        lockedCampaignState,
+        autoBusinessContext,
+        verifiedMetaAssets,
+        detectedLandingPage,
+        instruction,
+        text
       });
+      const newState = {
+        stage: "PLAN_PROPOSED",
+        plan: regeneratedPlan,
+        locked_at: new Date().toISOString()
+      };
+      await saveAnswerMemory(process.env.NEXT_PUBLIC_BASE_URL, effectiveBusinessId, {
+        campaign_state: newState
+      }, session.user.email.toLowerCase());
+      lockedCampaignState = newState;
     }
 
     if (lockedCampaignState) {
