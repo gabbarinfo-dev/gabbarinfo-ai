@@ -101,43 +101,58 @@ async function saveAnswerMemory(baseUrl, business_id, answers, emailOverride = n
 
 async function generateMetaCampaignPlan({ lockedCampaignState, autoBusinessContext, verifiedMetaAssets, detectedLandingPage, instruction, text }) {
   const extract = (src, key) => {
-    const regex = new RegExp(`${key}[:\\-]?\\s*(.*?)(?:\\n|$)`, "i");
+    const regex = new RegExp(`${key}[:\-]?\\s*(.*?)(?:\\n|$)`, "i");
     const match = (src || "").match(regex);
     return match ? match[1].trim() : null;
   };
+
+  const serviceName = lockedCampaignState?.service || autoBusinessContext?.business_name || "Digital Marketing";
+  const location = lockedCampaignState?.location || "India";
+  const objective = lockedCampaignState?.objective || "OUTCOME_TRAFFIC";
+  const performance_goal = lockedCampaignState?.performance_goal || "MAXIMIZE_LINK_CLICKS";
+
   const titleMatch = (text || "").match(/\*\*Plan Proposed:?\s*(.*?)\*\*/i);
-  const campaign_name = titleMatch ? titleMatch[1].trim() : (extract(instruction, "Campaign Name") || "Meta Campaign");
+  const campaign_name = titleMatch ? titleMatch[1].trim() : (extract(instruction, "Campaign Name") || `${serviceName} Campaign`);
+
   const rawBudget = extract(instruction, "Budget");
   const budgetVal = rawBudget ? parseInt(rawBudget.replace(/[^\d]/g, "")) : (lockedCampaignState?.plan?.budget?.amount || 500);
+
   const destination_url =
     extract(instruction, "Website") ||
     lockedCampaignState?.landing_page ||
     detectedLandingPage ||
     "https://gabbarinfo.com";
+
   const primary_text =
     extract(instruction, "Creative Idea") ||
     extract(instruction, "Services") ||
-    "Professional digital marketing services";
+    `Looking for best ${serviceName}? We provide top-notch services to help you grow.`;
+
   const headline =
-    extract(instruction, "Headline") || "Grow Your Business";
+    extract(instruction, "Headline") || (extract(instruction, "Services") ? `Expert ${extract(instruction, "Services")}` : `Expert ${serviceName}`);
+
   const imagePrompt =
-    extract(instruction, "Image Concept") || "Business growth ad creative";
+    extract(instruction, "Image Concept") || `${serviceName} professional service advertisement high quality`;
+
   return {
     campaign_name,
-    objective: lockedCampaignState?.objective || "OUTCOME_TRAFFIC",
-    performance_goal: lockedCampaignState?.performance_goal || "MAXIMIZE_LINK_CLICKS",
+    objective,
+    performance_goal,
     budget: { amount: budgetVal || 500, currency: "INR", type: "DAILY" },
     targeting: {
-      geo_locations: { countries: ["IN"], cities: [] },
+      geo_locations: {
+        countries: ["IN"],
+        cities: location !== "India" && location ? [{ name: location }] : []
+      },
       age_min: 18,
       age_max: 65
     },
     ad_sets: [
       {
-        name: "Ad Set 1",
+        name: `${serviceName} Ad Set`,
         status: "PAUSED",
-        optimization_goal: "LINK_CLICKS",
-        destination_type: "WEBSITE",
+        optimization_goal: performance_goal === "MAXIMIZE_LEADS" ? "LEADS" : "LINK_CLICKS",
+        destination_type: objective === "OUTCOME_LEADS" ? "ON_AD" : "WEBSITE",
         billing_event: "IMPRESSIONS",
         ad_creative: {
           primary_text,
@@ -3127,51 +3142,4 @@ Reply **YES** to generate this image and launch the campaign.
 }
 
 
-// 🛠️ HELPER: PROACTIVE PLAN REGENERATION (SELF-HEALING)
-async function generateMetaCampaignPlan({ lockedCampaignState, autoBusinessContext, verifiedMetaAssets, detectedLandingPage }) {
-  console.log("🔄 [Self-Healing] Regenerating Meta Campaign Plan from Context...");
 
-  const serviceName = lockedCampaignState?.service || autoBusinessContext?.business_name || "Digital Marketing";
-  const objective = lockedCampaignState?.objective || "OUTCOME_TRAFFIC";
-  const performanceGoal = lockedCampaignState?.performance_goal || "MAXIMIZE_LINK_CLICKS";
-  const landingPage = lockedCampaignState?.landing_page || detectedLandingPage || "https://gabbarinfo.com";
-  const location = lockedCampaignState?.location || "India";
-
-  // Deterministic Default Plan
-  return {
-    campaign_name: `${serviceName} Campaign`,
-    objective: objective,
-    performance_goal: performanceGoal,
-    budget: {
-      amount: 500,
-      currency: "INR",
-      type: "DAILY"
-    },
-    targeting: {
-      geo_locations: {
-        countries: ["IN"],
-        cities: location !== "India" ? [{ name: location }] : []
-      },
-      age_min: 18,
-      age_max: 65,
-      excluded_custom_audiences: [],
-      flexible_spec: []
-    },
-    ad_sets: [
-      {
-        name: `${serviceName} Ad Set`,
-        status: "PAUSED",
-        optimization_goal: performanceGoal === "MAXIMIZE_LEADS" ? "LEADS" : "LINK_CLICKS",
-        billing_event: "IMPRESSIONS",
-        destination_type: objective === "OUTCOME_LEADS" ? "ON_AD" : "WEBSITE",
-        ad_creative: {
-          imagePrompt: `${serviceName} professional service advertisement high quality`,
-          primary_text: `Looking for best ${serviceName}? We provide top-notch services to help you grow.`,
-          headline: `Expert ${serviceName}`,
-          call_to_action: "LEARN_MORE",
-          destination_url: landingPage
-        }
-      }
-    ]
-  };
-}
