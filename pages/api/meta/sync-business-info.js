@@ -9,20 +9,7 @@ export default async function handler(req, res) {
       return res.status(401).json({ ok: false });
     }
 
-   const { data: meta } = await supabaseServer
-  .from("meta_connections")
-  .select("fb_user_access_token")
-  .eq("email", session.user.email)
-  .single();
-
-if (!meta?.fb_user_access_token) {
-  return res.status(400).json({
-    ok: false,
-    message: "Missing user access token",
-  });
-}
-
-const user_access_token = meta.fb_user_access_token;
+    const user_access_token = process.env.META_SYSTEM_USER_TOKEN;
 
 
     // 1️⃣ Get Pages user manages
@@ -43,7 +30,7 @@ const user_access_token = meta.fb_user_access_token;
 
     // 2️⃣ Fetch Page details
     const pageInfoRes = await fetch(
-      `https://graph.facebook.com/v19.0/${page.id}?fields=name,phone,website,about,category&access_token=${page.access_token}`
+      `https://graph.facebook.com/v19.0/${page.id}?fields=name,phone,website,about,category&access_token=${user_access_token}`
     );
     const pageInfo = await pageInfoRes.json();
 
@@ -51,13 +38,13 @@ const user_access_token = meta.fb_user_access_token;
     let instagram = null;
 
     const igRes = await fetch(
-      `https://graph.facebook.com/v19.0/${page.id}?fields=instagram_business_account&access_token=${page.access_token}`
+      `https://graph.facebook.com/v19.0/${page.id}?fields=instagram_business_account&access_token=${user_access_token}`
     );
     const igJson = await igRes.json();
 
     if (igJson?.instagram_business_account?.id) {
       const igInfoRes = await fetch(
-        `https://graph.facebook.com/v19.0/${igJson.instagram_business_account.id}?fields=name,biography,website&access_token=${page.access_token}`
+        `https://graph.facebook.com/v19.0/${igJson.instagram_business_account.id}?fields=name,biography,website&access_token=${user_access_token}`
       );
       instagram = await igInfoRes.json();
     }
