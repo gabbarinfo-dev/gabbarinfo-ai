@@ -50,6 +50,13 @@ export default async function handler(req, res) {
     return res.status(400).json({ ok: false, message: "Invalid payload: campaign_name required" });
   }
 
+  // 1️⃣ Resolve placements explicitly
+  const placements = Array.isArray(platform)
+    ? platform
+    : typeof platform === "string"
+      ? [platform]
+      : ["facebook"]; // default safe fallback
+
   const { data: meta, error } = await supabase
     .from("meta_connections")
     .select("fb_ad_account_id, fb_page_id, ig_business_id, instagram_actor_id")
@@ -66,8 +73,32 @@ export default async function handler(req, res) {
   const API_VERSION = "v21.0";
 
   // 1b. Identity Identification
-  // ig_business_id is for context/sync, instagram_actor_id is for creative execution
-  const INSTAGRAM_ACTOR_ID = meta.instagram_actor_id || null;
+  let validatedInstagramActorId = null;
+  const storedActorId = meta.instagram_actor_id;
+
+  if (storedActorId) {
+    try {
+      console.log(`🔎 [Meta API] Checking if Ad Account act_${AD_ACCOUNT_ID} is authorized for Instagram Actor ${storedActorId}...`);
+      const igAuthRes = await fetch(`https://graph.facebook.com/${API_VERSION}/act_${AD_ACCOUNT_ID}/instagram_accounts?access_token=${ACCESS_TOKEN}`);
+      const igAuthJson = await igAuthRes.json();
+
+      const isAuthorized = igAuthJson?.data?.some(acc => acc.id === storedActorId);
+
+      if (isAuthorized) {
+        validatedInstagramActorId = storedActorId;
+        console.log(`✅ [Meta API] Instagram Actor ${storedActorId} is authorized for this Ad Account.`);
+      } else {
+        console.warn(`⚠️ [Meta API] Actor ${storedActorId} NOT authorized for Ad Account act_${AD_ACCOUNT_ID}. IG placements may be restricted.`);
+      }
+    } catch (e) {
+      console.error(`⚠️ [Meta API] Instagram Authorization check failed: ${e.message}`);
+    }
+  }
+
+  // 2️⃣ Compute final Instagram usage flag
+  const shouldUseInstagramActor =
+    validatedInstagramActorId &&
+    placements.includes("instagram");
 
   // 1c. PREFLIGHT SECURITY CHECK: Verify Ad Account Access
   // This ensures the token actually has permissions for the target ad account ID.
@@ -193,7 +224,7 @@ export default async function handler(req, res) {
       const budgetType = (payload.budget?.type || "DAILY").toUpperCase() === "DAILY" ? "daily_budget" : "lifetime_budget";
 
       // Build AdSet Payload
-      const p = buildAdSetPayload(finalObjective, adSet, campaignId, ACCESS_TOKEN);
+      const p = buildAdSetPayload(finalObjective, adSet, campaignId, ACCESS_TOKEN, placements);
 
       // Append Budget
       p.append(budgetType, String(Math.floor(Number(budgetAmount) * 100)));
@@ -219,8 +250,14 @@ export default async function handler(req, res) {
       // 4. Create Creative
       const creative = adSet.ad_creative || {};
 
-      // Build Creative Payload
-      const crParams = buildCreativePayload(finalObjective, creative, PAGE_ID, INSTAGRAM_ACTOR_ID, ACCESS_TOKEN);
+      // 3️⃣ Change creative builder call
+      const crParams = buildCreativePayload(
+        finalObjective,
+        creative,
+        PAGE_ID,
+        shouldUseInstagramActor ? validatedInstagramActorId : null,
+        ACCESS_TOKEN
+      );
 
       console.log(`🎨 [Creative] Creating Creative...`);
       const crRes = await fetch(`https://graph.facebook.com/${API_VERSION}/act_${AD_ACCOUNT_ID}/adcreatives`, {
@@ -264,7 +301,7 @@ export default async function handler(req, res) {
 }
 
 // 🔒 UNIVERSAL AD SET BUILDER (Strict ODAX Compliance)
-function buildAdSetPayload(objective, adSet, campaignId, accessToken) {
+function buildAdSetPayload(objective, adSet, campaignId, accessToken, placements) {
   const params = new URLSearchParams();
 
   // 1. Identity & Time
@@ -355,6 +392,17 @@ function buildAdSetPayload(objective, adSet, campaignId, accessToken) {
   // 4. Targeting
   const targeting = adSet.targeting || { geo_locations: { countries: ["IN"] }, age_min: 18, age_max: 65 };
   params.append("targeting", JSON.stringify(targeting));
+
+  // 5. Placements
+  params.append("publisher_platforms", JSON.stringify(placements));
+
+  if (placements.includes("facebook")) {
+    params.append("facebook_positions", JSON.stringify(["feed"]));
+  }
+
+  if (placements.includes("instagram")) {
+    params.append("instagram_positions", JSON.stringify(["stream"]));
+  }
 
   return params;
 }
