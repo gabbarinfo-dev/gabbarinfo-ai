@@ -117,11 +117,12 @@ async function generateMetaCampaignPlan({ lockedCampaignState, autoBusinessConte
   const rawBudget = extract(instruction, "Budget");
   const budgetVal = rawBudget ? parseInt(rawBudget.replace(/[^\d]/g, "")) : (lockedCampaignState?.plan?.budget?.amount || 500);
 
-  const destination_url =
-    extract(instruction, "Website") ||
+  const isWebsiteConversion = lockedCampaignState?.destination === "website";
+  const destination_url = isWebsiteConversion ? (
     lockedCampaignState?.landing_page ||
     detectedLandingPage ||
-    "https://gabbarinfo.com";
+    null
+  ) : null;
 
   const primary_text =
     extract(instruction, "Creative Idea") ||
@@ -956,8 +957,8 @@ You are in GENERIC DIGITAL MARKETING AGENT MODE.
                 else if (c?.name) cities.push({ name: c.name });
               }
             }
-            const urlCandidate = (ads0.landing_page_url || creative.landing_page || creative.destination_url || "").toString();
-            const cleanUrl = urlCandidate.replace(/[`]/g, "").trim() || "https://gabbarinfo.com";
+            const urlCandidate = (ads0.landing_page_url || creative.landing_page || creative.destination_url || detectedLandingPage || "").toString();
+            const cleanUrl = urlCandidate.replace(/[`]/g, "").trim() || null;
             const primaryText = Array.isArray(creative.primaryText) ? creative.primaryText[0] : (creative.primary_text || "");
             const headline = Array.isArray(creative.headlines) ? creative.headlines[0] : (creative.headline || "");
             const call_to_action = ads0.call_to_action || creative.call_to_action || "LEARN_MORE";
@@ -1008,8 +1009,9 @@ You are in GENERIC DIGITAL MARKETING AGENT MODE.
               if (o.includes("LEAD")) objective = "OUTCOME_LEADS";
               else if (o.includes("SALE") || o.includes("CONVERSION")) objective = "OUTCOME_SALES";
             }
-            // Map Destination
-            const destUrl = creativeInput.destination_url || "https://gabbarinfo.com";
+            // 🌐 Website Destination Guard (Strict Only)
+            const isWebsiteMode = lockedCampaignState?.destination === "website";
+            const finalDestUrl = isWebsiteMode ? (creativeInput.destination_url || lockedCampaignState?.landing_page || detectedLandingPage || null) : null;
 
             userPlan = {
               campaign_name: c.campaign_name || c.name || "New Campaign",
@@ -1029,7 +1031,7 @@ You are in GENERIC DIGITAL MARKETING AGENT MODE.
                   primary_text: Array.isArray(creativeInput.primary_texts) ? creativeInput.primary_texts[0] : (creativeInput.primary_text || ""),
                   headline: Array.isArray(creativeInput.headlines) ? creativeInput.headlines[0] : (creativeInput.headline || ""),
                   call_to_action: creativeInput.call_to_action || "LEARN_MORE",
-                  destination_url: destUrl
+                  destination_url: finalDestUrl
                 }
               }]
             };
@@ -1048,16 +1050,23 @@ You are in GENERIC DIGITAL MARKETING AGENT MODE.
             // Generate image
             const creative = userPlan.ad_sets[0].ad_creative || {};
             let destUrl = creative.destination_url || "";
-            try {
-              if (destUrl) {
+
+            const isWebsiteConversion = lockedCampaignState?.destination === "website";
+
+            if (isWebsiteConversion && destUrl) {
+              try {
                 const head = await fetch(destUrl, { method: "HEAD" });
-                if (!head.ok) destUrl = "https://gabbarinfo.com/";
-              } else {
-                destUrl = "https://gabbarinfo.com/";
+                if (!head.ok) {
+                  // Fallback to authoritative detected landing page if current fails
+                  destUrl = detectedLandingPage || null;
+                }
+              } catch {
+                destUrl = detectedLandingPage || null;
               }
-            } catch {
-              destUrl = "https://gabbarinfo.com/";
+            } else if (!isWebsiteConversion) {
+              destUrl = null;
             }
+
             creative.destination_url = destUrl;
             const imagePrompt = creative.imagePrompt || creative.primary_text || `${userPlan.campaign_name} ad image`;
             const imgRes = await fetch(`${process.env.NEXT_PUBLIC_BASE_URL}/api/images/generate`, {
@@ -1462,16 +1471,19 @@ You are in GENERIC DIGITAL MARKETING AGENT MODE.
       !landingPageConfirmed &&
       (instruction.toLowerCase().includes("yes") ||
         instruction.toLowerCase().includes("use this") ||
-        instruction.toLowerCase().includes("correct"))
+        instruction.toLowerCase().includes("correct") ||
+        instruction.toLowerCase().includes("use my main website"))
     ) {
       landingPageConfirmed = true;
+      const targetUrl = detectedLandingPage || null;
+
       // 💾 Save to state immediately
-      if (effectiveBusinessId && detectedLandingPage) {
+      if (effectiveBusinessId) {
         const baseUrl = process.env.NEXT_PUBLIC_BASE_URL;
         await saveAnswerMemory(baseUrl, effectiveBusinessId, {
           campaign_state: {
             ...lockedCampaignState,
-            landing_page: detectedLandingPage,
+            landing_page: targetUrl,
             landing_page_confirmed: true,
             locked_at: new Date().toISOString()
           }
@@ -1479,7 +1491,27 @@ You are in GENERIC DIGITAL MARKETING AGENT MODE.
         // Update local state
         lockedCampaignState = {
           ...lockedCampaignState,
-          landing_page: detectedLandingPage,
+          landing_page: targetUrl,
+          landing_page_confirmed: true,
+          locked_at: new Date().toISOString()
+        };
+      }
+    } else if (!landingPageConfirmed && extractedData.website_url && selectedDestination === "website") {
+      // Direct URL Provided
+      landingPageConfirmed = true;
+      if (effectiveBusinessId) {
+        const baseUrl = process.env.NEXT_PUBLIC_BASE_URL;
+        await saveAnswerMemory(baseUrl, effectiveBusinessId, {
+          campaign_state: {
+            ...lockedCampaignState,
+            landing_page: extractedData.website_url,
+            landing_page_confirmed: true,
+            locked_at: new Date().toISOString()
+          }
+        }, session.user.email.toLowerCase());
+        lockedCampaignState = {
+          ...lockedCampaignState,
+          landing_page: extractedData.website_url,
           landing_page_confirmed: true,
           locked_at: new Date().toISOString()
         };
@@ -1499,10 +1531,15 @@ You are in GENERIC DIGITAL MARKETING AGENT MODE.
         mode,
         gated: true,
         text:
-          `I found this website from your connected assets:\n\n` +
-          `${detectedLandingPage}\n\n` +
-          `Is this the page you want people to visit?\n\n` +
-          `Reply YES to confirm, or paste a different URL.`,
+          `To create your campaign, I need to know where you want people to go after clicking the ad.\n\n` +
+          `You can choose one of the following:\n\n` +
+          `1️⃣ **A specific landing page** (recommended for offers or services)\n` +
+          `Example: https://yourwebsite.com/seo-service\n\n` +
+          `2️⃣ **Your main website**\n` +
+          `If you don’t provide a specific page, I’ll automatically use the website already linked to your business.\n\n` +
+          `👉 If you share any URL here, it will override everything else.\n\n` +
+          `Please reply with:\n` +
+          `**A landing page URL** OR **"Use my main website"**`,
       });
     }
     // ============================================================
@@ -2343,7 +2380,7 @@ Otherwise, respond with a full, clear explanation, and include example JSON only
                     primary_text: c.primary_text || "",
                     headline: c.headline || "",
                     call_to_action: s.call_to_action || "LEARN_MORE",
-                    destination_url: s.destination_url || "https://gabbarinfo.com"
+                    destination_url: s.destination_url || detectedLandingPage || null
                   }
                 }
               ]
@@ -2383,7 +2420,7 @@ Otherwise, respond with a full, clear explanation, and include example JSON only
                     primary_text: c.primary_text || "",
                     headline: c.headline || "",
                     call_to_action: c.call_to_action || "LEARN_MORE",
-                    destination_url: d.destination || c.landing_page || "https://gabbarinfo.com"
+                    destination_url: (d.destination || c.landing_page || detectedLandingPage || null)
                   }
                 }
               ]
@@ -2424,7 +2461,7 @@ Otherwise, respond with a full, clear explanation, and include example JSON only
                     primary_text: c.primary_text || "",
                     headline: c.headline || "",
                     call_to_action: c.call_to_action || "LEARN_MORE",
-                    destination_url: d.destination || c.landing_page || "https://gabbarinfo.com"
+                    destination_url: (d.destination || c.landing_page || detectedLandingPage || null)
                   }
                 }
               ]
@@ -2469,7 +2506,7 @@ Otherwise, respond with a full, clear explanation, and include example JSON only
                     primary_text: creative.primaryText_options?.[0] || "",
                     headline: creative.headline_options?.[0] || "",
                     call_to_action: creative.call_to_action || "LEARN_MORE",
-                    destination_url: creative.destination_url || "https://gabbarinfo.com"
+                    destination_url: (creative.destination_url || detectedLandingPage || null)
                   }
                 }
               ]
@@ -2520,7 +2557,7 @@ Otherwise, respond with a full, clear explanation, and include example JSON only
                     primary_text: creativeInput.primary_text || "",
                     headline: creativeInput.headline || "",
                     call_to_action: creativeInput.call_to_action || "LEARN_MORE",
-                    destination_url: creativeInput.destination_url || "https://gabbarinfo.com"
+                    destination_url: (creativeInput.destination_url || detectedLandingPage || null)
                   }
                 }
               ]
@@ -2587,7 +2624,7 @@ Otherwise, respond with a full, clear explanation, and include example JSON only
                     primary_text: primaryText,
                     headline: headline,
                     call_to_action: creative.call_to_action_type || "LEARN_MORE",
-                    destination_url: creative.link_url || "https://gabbarinfo.com"
+                    destination_url: (creative.link_url || detectedLandingPage || null)
                   }
                 }
               ]
@@ -2647,7 +2684,7 @@ Otherwise, respond with a full, clear explanation, and include example JSON only
                     primary_text: creativeItem.primary_text || "",
                     headline: creativeItem.headline || "",
                     call_to_action: creativeItem.call_to_action || "LEARN_MORE",
-                    destination_url: creativeItem.destination_url || "https://gabbarinfo.com"
+                    destination_url: (creativeItem.destination_url || detectedLandingPage || null)
                   }
                 }
               ]
@@ -2660,7 +2697,7 @@ Otherwise, respond with a full, clear explanation, and include example JSON only
             const tgt = d.targeting || {};
             const dest = d.destination || {};
             const cr = d.ad_creative || {};
-            const urlCandidate = (dest.url || cr.landing_page || "https://gabbarinfo.com").toString();
+            const urlCandidate = (dest.url || cr.landing_page || detectedLandingPage || "").toString();
             const cleanUrl = urlCandidate.replace(/[`]/g, "").trim();
             const cities = Array.isArray(tgt.geo_locations)
               ? tgt.geo_locations.map((g) => (g.location_name ? { name: g.location_name } : null)).filter(Boolean)
@@ -2688,7 +2725,7 @@ Otherwise, respond with a full, clear explanation, and include example JSON only
                     primary_text: cr.primary_text || "",
                     headline: cr.headline || "",
                     call_to_action: dest.call_to_action || cr.call_to_action || "LEARN_MORE",
-                    destination_url: cleanUrl || "https://gabbarinfo.com"
+                    destination_url: (cleanUrl || detectedLandingPage || null)
                   }
                 }
               ]
@@ -2831,7 +2868,7 @@ Reply **YES** to generate this image and launch the campaign.
         const budgetVal = rawBudget ? parseInt(rawBudget.replace(/[^\d]/g, "")) : 500;
 
         const extractedLocation = extractFrom(text, "Location") || extractFrom(instruction, "Location") || "India";
-        const extractedWebsite = extractFrom(text, "Website") || extractFrom(instruction, "Website") || "https://gabbarinfo.com";
+        const extractedWebsite = extractFrom(text, "Website") || extractFrom(instruction, "Website") || detectedLandingPage || null;
 
         const minimalPlan = {
           campaign_name: extractedTitle.replace(/\*\*?$/, "").trim(),
@@ -3140,5 +3177,6 @@ Reply **YES** to generate this image and launch the campaign.
     });
   }
 }
+
 
 
