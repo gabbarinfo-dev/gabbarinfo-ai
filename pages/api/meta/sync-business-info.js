@@ -85,6 +85,7 @@ export default async function handler(req, res) {
       .from("meta_connections")
       .update({
         fb_ad_account_id: adAccountId || undefined,
+        ig_business_id: igJson?.instagram_business_account?.id || null,
         business_name: pageInfo.name || null,
         business_phone: pageInfo.phone || null,
         business_website: pageInfo.website || null,
