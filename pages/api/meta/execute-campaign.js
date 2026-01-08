@@ -244,35 +244,89 @@ export default async function handler(req, res) {
       const asJson = await asRes.json();
       if (!asRes.ok) throw new Error(`AdSet Create Failed: ${asJson.error?.message} (Account: ${AD_ACCOUNT_ID})`);
 
-      const adSetId = asJson.id;
-      createdAssets.ad_sets.push(adSetId);
-
-      // 4. Create Creative
+      // 4. Create Creative with Fallbacks
       const creative = adSet.ad_creative || {};
+      const fallbackStrategies = [
+        { name: "Primary", placements: placements, igActor: shouldUseInstagramActor ? validatedInstagramActorId : null, forcePhoto: false },
+        { name: "Fallback 1 (No Actor)", placements: placements, igActor: null, forcePhoto: false },
+        { name: "Fallback 2 (FB Only)", placements: ["facebook"], igActor: null, forcePhoto: false }
+      ];
 
-      // 3️⃣ Change creative builder call
-      const crParams = buildCreativePayload(
-        finalObjective,
-        creative,
-        PAGE_ID,
-        shouldUseInstagramActor ? validatedInstagramActorId : null,
-        ACCESS_TOKEN
-      );
+      // Special Awareness Fallback
+      if (finalObjective === "OUTCOME_AWARENESS") {
+        fallbackStrategies.push({ name: "Fallback 3 (Photo Only)", placements: ["facebook"], igActor: null, forcePhoto: true });
+      }
 
-      console.log(`🎨 [Creative] Creating Creative...`);
-      const crRes = await fetch(`https://graph.facebook.com/${API_VERSION}/act_${AD_ACCOUNT_ID}/adcreatives`, {
-        method: "POST",
-        body: crParams
-      });
-      const crJson = await crRes.json();
-      if (!crRes.ok) throw new Error(`Creative Create Failed: ${crJson.error?.message} (Account: ${AD_ACCOUNT_ID})`);
+      let creativeId = null;
+      let lastCreativeError = null;
+      let finalAdSetId = asJson.id; // Initialize with the first one created
 
-      const creativeId = crJson.id;
+      // Track AdSets by their placement signature to avoid redundant creation
+      const adSetsByPlacements = { [JSON.stringify(placements)]: asJson.id };
+
+      for (const strat of fallbackStrategies) {
+        try {
+          console.log(`🎨 [Creative] ${strat.name}: Attempting creation...`);
+
+          const platKey = JSON.stringify(strat.placements);
+          let currentAdSetId = adSetsByPlacements[platKey];
+
+          // If placements changed and we don't have an AdSet for it, create a NEW one
+          if (!currentAdSetId) {
+            console.log(`🛠️ [AdSet] Creating NEW Ad Set for fallback with placements ${platKey}...`);
+            const p = buildAdSetPayload(finalObjective, adSet, campaignId, ACCESS_TOKEN, strat.placements);
+            const asRes = await fetch(`https://graph.facebook.com/${API_VERSION}/act_${AD_ACCOUNT_ID}/adsets`, {
+              method: "POST",
+              body: p
+            });
+            const asJson = await asRes.json();
+            if (!asRes.ok) {
+              console.warn(`⚠️ [AdSet] New AdSet failed: ${asJson.error?.message}`);
+              continue; // Skip this strategy if we can't create the AdSet
+            }
+            currentAdSetId = asJson.id;
+            adSetsByPlacements[platKey] = currentAdSetId;
+            createdAssets.ad_sets.push(currentAdSetId);
+          }
+
+          // Compute creative mode from objective
+          const requiresPhotoOnly =
+            finalObjective === "OUTCOME_AWARENESS" ||
+            (finalObjective === "OUTCOME_ENGAGEMENT" &&
+              creative.destination_type !== "MESSAGING_APPS");
+
+          // Override creative format BEFORE building payload
+          const finalForcePhoto = strat.forcePhoto || requiresPhotoOnly;
+
+          const crParams = buildCreativePayload(finalObjective, creative, PAGE_ID, strat.igActor, ACCESS_TOKEN, finalForcePhoto, strat.placements);
+          const crRes = await fetch(`https://graph.facebook.com/${API_VERSION}/act_${AD_ACCOUNT_ID}/adcreatives`, {
+            method: "POST",
+            body: crParams
+          });
+          const crJson = await crRes.json();
+
+          if (crRes.ok && crJson.id) {
+            creativeId = crJson.id;
+            finalAdSetId = currentAdSetId;
+            console.log(`✅ [Creative] ${strat.name} Succeeded: ${creativeId} (AdSet: ${finalAdSetId})`);
+            break;
+          }
+          lastCreativeError = crJson.error?.message;
+          console.warn(`⚠️ [Creative] ${strat.name} Rejected: ${lastCreativeError}`);
+        } catch (e) {
+          console.warn(`⚠️ [Creative] ${strat.name} Error: ${e.message}`);
+          lastCreativeError = e.message;
+        }
+      }
+
+      if (!creativeId) {
+        throw new Error(`Creative Creation Failed after all fallbacks: ${lastCreativeError}`);
+      }
 
       // 5. Create Ad
       const adParams = new URLSearchParams();
       adParams.append("name", creative.headline || "Ad");
-      adParams.append("adset_id", adSetId);
+      adParams.append("adset_id", finalAdSetId);
       adParams.append("creative", JSON.stringify({ creative_id: creativeId }));
       adParams.append("status", "PAUSED");
       adParams.append("access_token", ACCESS_TOKEN);
@@ -408,16 +462,15 @@ function buildAdSetPayload(objective, adSet, campaignId, accessToken, placements
 }
 
 // 🔒 UNIVERSAL CREATIVE BUILDER (Placement Safe & Strict Types)
-// 🔒 UNIVERSAL CREATIVE BUILDER (Placement Safe & Strict Types)
-function buildCreativePayload(objective, creative, pageId, instagramActorId, accessToken) {
+function buildCreativePayload(objective, creative, pageId, instagramActorId, accessToken, forcePhoto = false, placements = []) {
   if (!pageId) throw new Error("Page ID is required for Creative");
   if (!creative || !creative.image_hash) throw new Error("Image Hash is required for Creative");
 
   let ctaType = "LEARN_MORE";
-  let useLinkData = true;
+  let useLinkData = !forcePhoto;
 
   // 1. Strict Type Switching
-  if (objective === "OUTCOME_TRAFFIC" || objective === "OUTCOME_SALES" || objective === "OUTCOME_LEADS") {
+  if (!forcePhoto && (objective === "OUTCOME_TRAFFIC" || objective === "OUTCOME_SALES" || objective === "OUTCOME_LEADS")) {
     ctaType = "LEARN_MORE";
     useLinkData = true; // MUST use link_data
 
@@ -426,9 +479,9 @@ function buildCreativePayload(objective, creative, pageId, instagramActorId, acc
       throw new Error(`${objective} requires a destination_url for link_data creatives.`);
     }
 
-  } else if (objective === "OUTCOME_AWARENESS") {
+  } else if (forcePhoto || objective === "OUTCOME_AWARENESS") {
     ctaType = "NO_BUTTON";
-    useLinkData = false; // MUST use photo_data (No link support usually)
+    useLinkData = false; // MUST use photo_data
 
   } else if (objective === "OUTCOME_ENGAGEMENT") {
     if (creative.destination_type === "MESSAGING_APPS") {
@@ -451,9 +504,12 @@ function buildCreativePayload(objective, creative, pageId, instagramActorId, acc
   }
 
   // 3. Build Object Story Spec
+  const isInstagramPlacement = placements.includes("instagram");
+  const finalInstagramActor = isInstagramPlacement ? instagramActorId : null;
+
   const objectStorySpec = {
     page_id: pageId,
-    ...(instagramActorId ? { instagram_actor_id: instagramActorId } : {})
+    ...(finalInstagramActor ? { instagram_actor_id: finalInstagramActor } : {})
   };
 
   // 4. Data Block Construction
