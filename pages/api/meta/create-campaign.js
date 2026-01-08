@@ -43,7 +43,7 @@ export default async function handler(req, res) {
     // ---------------------------
     const { data: conn, error } = await supabase
       .from("meta_connections")
-      .select("system_user_token, fb_ad_account_id")
+      .select("fb_ad_account_id")
       .eq("email", session.user.email.toLowerCase())
       .single();
 
