@@ -299,7 +299,7 @@ export default async function handler(req, res) {
           const finalForcePhoto = strat.forcePhoto || requiresPhotoOnly;
 
           const crParams = buildCreativePayload(finalObjective, creative, PAGE_ID, strat.igActor, ACCESS_TOKEN, finalForcePhoto, strat.placements);
-          const crRes = await fetch(`https://graph.facebook.com/${API_VERSION}/act_${AD_ACCOUNT_ID}/adcreatives`, {
+          const crRes = await fetch(`https://graph.facebook.com/${API_VERSION}/act_${AD_ACCOUNT_ID}/adcreatives?debug=all`, {
             method: "POST",
             body: crParams
           });
@@ -311,8 +311,16 @@ export default async function handler(req, res) {
             console.log(`✅ [Creative] ${strat.name} Succeeded: ${creativeId} (AdSet: ${finalAdSetId})`);
             break;
           }
-          lastCreativeError = crJson.error?.message;
-          console.warn(`⚠️ [Creative] ${strat.name} Rejected: ${lastCreativeError}`);
+          lastCreativeError = {
+            message: crJson.error?.message,
+            code: crJson.error?.code,
+            subcode: crJson.error?.error_subcode,
+            user_title: crJson.error?.error_user_title,
+            user_message: crJson.error?.error_user_msg,
+            error_data: crJson.error?.error_data,
+            fbtrace_id: crJson.error?.fbtrace_id
+          };
+          console.warn(`⚠️ [Creative] ${strat.name} Rejected:`, JSON.stringify(lastCreativeError, null, 2));
         } catch (e) {
           console.warn(`⚠️ [Creative] ${strat.name} Error: ${e.message}`);
           lastCreativeError = e.message;
@@ -320,7 +328,7 @@ export default async function handler(req, res) {
       }
 
       if (!creativeId) {
-        throw new Error(`Creative Creation Failed after all fallbacks: ${lastCreativeError}`);
+        throw new Error(`Creative Creation Failed after all fallbacks: ${JSON.stringify(lastCreativeError, null, 2)}`);
       }
 
       // 5. Create Ad
