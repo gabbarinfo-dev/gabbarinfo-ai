@@ -34,7 +34,7 @@ export default async function handler(req, res) {
 
   const { data: meta, error } = await supabase
     .from("meta_connections")
-    .select("fb_ad_account_id, system_user_token")
+    .select("fb_ad_account_id")
     .eq("email", clientEmail)
     .single();
 
