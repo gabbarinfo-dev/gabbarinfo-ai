@@ -67,6 +67,7 @@ export default async function handler(req, res) {
 
     // 3️⃣ Fetch Instagram business (if connected)
     let instagram = null;
+    let instagramActorId = null;
 
     const igRes = await fetch(
       `https://graph.facebook.com/v21.0/${page.id}?fields=instagram_business_account&access_token=${user_access_token}`
@@ -74,8 +75,21 @@ export default async function handler(req, res) {
     const igJson = await igRes.json();
 
     if (igJson?.instagram_business_account?.id) {
+      const igId = igJson.instagram_business_account.id;
+
+      // Explicitly resolve Actor ID for creatives
+      try {
+        const actorRes = await fetch(
+          `https://graph.facebook.com/v21.0/${igId}?fields=id,username&access_token=${user_access_token}`
+        );
+        const actorJson = await actorRes.json();
+        if (actorJson?.id) instagramActorId = actorJson.id;
+      } catch (e) {
+        console.warn(`[IG Actor Resolution Failed] ${e.message}`);
+      }
+
       const igInfoRes = await fetch(
-        `https://graph.facebook.com/v21.0/${igJson.instagram_business_account.id}?fields=name,biography,website&access_token=${user_access_token}`
+        `https://graph.facebook.com/v21.0/${igId}?fields=name,biography,website&access_token=${user_access_token}`
       );
       instagram = await igInfoRes.json();
     }
@@ -86,6 +100,7 @@ export default async function handler(req, res) {
       .update({
         fb_ad_account_id: adAccountId || undefined,
         ig_business_id: igJson?.instagram_business_account?.id || null,
+        instagram_actor_id: instagramActorId,
         business_name: pageInfo.name || null,
         business_phone: pageInfo.phone || null,
         business_website: pageInfo.website || null,
