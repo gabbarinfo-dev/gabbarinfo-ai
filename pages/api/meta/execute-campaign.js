@@ -51,48 +51,23 @@ export default async function handler(req, res) {
   }
 
   const { data: meta, error } = await supabase
-  .from("meta_connections")
-  .select("fb_ad_account_id, fb_page_id, ig_business_id, updated_at")
-  .eq("email", clientEmail)
-  .order("updated_at", { ascending: false })
-  .limit(1);
+    .from("meta_connections")
+    .select("fb_ad_account_id, fb_page_id, ig_business_id, instagram_actor_id")
+    .eq("email", clientEmail)
+    .single();
 
-if (error || !meta || meta.length === 0) {
-  return res.status(409).json({
-    ok: false,
-    message: "Meta not synced yet. Please sync business first."
-  });
-}
-
-const connection = meta[0];
-
-const AD_ACCOUNT_ID = connection.fb_ad_account_id
-  ?.toString()
-  .replace(/^act_/, "");
-
-const PAGE_ID = connection.fb_page_id;
-const IG_BUSINESS_ID = connection.ig_business_id;
-const ACCESS_TOKEN = process.env.META_SYSTEM_USER_TOKEN;
-const API_VERSION = "v21.0";
-
-  // 1b. Fetch Instagram Actor ID (if missing in DB)
-  let INSTAGRAM_ACTOR_ID = meta.ig_business_id;
-
-  if (!INSTAGRAM_ACTOR_ID && PAGE_ID) {
-    try {
-      console.log(`🔎 [Meta API] Fetching Instagram Account for Page ${PAGE_ID}...`);
-      const igRes = await fetch(`https://graph.facebook.com/${API_VERSION}/${PAGE_ID}?fields=instagram_business_account&access_token=${ACCESS_TOKEN}`);
-      const igJson = await igRes.json();
-      if (igJson.instagram_business_account?.id) {
-        INSTAGRAM_ACTOR_ID = igJson.instagram_business_account.id;
-        console.log(`✅ [Meta API] Found Linked Instagram Actor: ${INSTAGRAM_ACTOR_ID}`);
-      } else {
-        console.log(`ℹ️ [Meta API] No Linked Instagram Account found. Campaign will be Page-only.`);
-      }
-    } catch (e) {
-      console.warn(`⚠️ [Meta API] Failed to fetch Instagram Account: ${e.message}`);
-    }
+  if (error || !meta) {
+    return res.status(400).json({ ok: false, message: "Meta connection not found" });
   }
+
+  const AD_ACCOUNT_ID = (meta.fb_ad_account_id || "").toString().replace(/^act_/, "");
+  const ACCESS_TOKEN = process.env.META_SYSTEM_USER_TOKEN;
+  const PAGE_ID = meta.fb_page_id;
+  const API_VERSION = "v21.0";
+
+  // 1b. Identity Identification
+  // ig_business_id is for context/sync, instagram_actor_id is for creative execution
+  const INSTAGRAM_ACTOR_ID = meta.instagram_actor_id || null;
 
   // 1c. PREFLIGHT SECURITY CHECK: Verify Ad Account Access
   // This ensures the token actually has permissions for the target ad account ID.
@@ -428,13 +403,10 @@ function buildCreativePayload(objective, creative, pageId, instagramActorId, acc
   }
 
   // 3. Build Object Story Spec
-  const objectStorySpec = { page_id: pageId };
-
-  // Placement Safety: Inject Instagram Actor ONLY if Page matches
-  // Simplistic check: If we have an IG Actor, we assume it's validly linked to this page (checked in handler)
-  if (instagramActorId && pageId) {
-    objectStorySpec.instagram_actor_id = instagramActorId;
-  }
+  const objectStorySpec = {
+    page_id: pageId,
+    ...(instagramActorId ? { instagram_actor_id: instagramActorId } : {})
+  };
 
   // 4. Data Block Construction
   if (useLinkData) {
