@@ -52,27 +52,31 @@ export default async function handler(req, res) {
 
   const { data: meta, error } = await supabase
   .from("meta_connections")
-  .select("fb_ad_account_id, fb_page_id, instagram_actor_id")
+  .select("fb_ad_account_id, fb_page_id, ig_business_id, updated_at")
   .eq("email", clientEmail)
-  .single();
+  .order("updated_at", { ascending: false })
+  .limit(1);
 
-if (error || !meta) {
+if (error || !meta || meta.length === 0) {
   return res.status(409).json({
     ok: false,
     message: "Meta not synced yet. Please sync business first."
   });
 }
 
-const AD_ACCOUNT_ID = (meta.fb_ad_account_id || "")
-  .toString()
+const connection = meta[0];
+
+const AD_ACCOUNT_ID = connection.fb_ad_account_id
+  ?.toString()
   .replace(/^act_/, "");
 
+const PAGE_ID = connection.fb_page_id;
+const IG_BUSINESS_ID = connection.ig_business_id;
 const ACCESS_TOKEN = process.env.META_SYSTEM_USER_TOKEN;
-const PAGE_ID = meta.fb_page_id;
 const API_VERSION = "v21.0";
 
   // 1b. Fetch Instagram Actor ID (if missing in DB)
-  let INSTAGRAM_ACTOR_ID = meta.instagram_actor_id;
+  let INSTAGRAM_ACTOR_ID = meta.ig_business_id;
 
   if (!INSTAGRAM_ACTOR_ID && PAGE_ID) {
     try {
