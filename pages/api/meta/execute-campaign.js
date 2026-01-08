@@ -59,7 +59,7 @@ export default async function handler(req, res) {
 
   const { data: meta, error } = await supabase
     .from("meta_connections")
-    .select("fb_ad_account_id, fb_page_id, ig_business_id, instagram_actor_id")
+    .select("fb_ad_account_id, fb_page_id, ig_business_id, instagram_actor_id, business_website")
     .eq("email", clientEmail)
     .single();
 
@@ -246,6 +246,27 @@ export default async function handler(req, res) {
 
       // 4. Create Creative with Fallbacks
       const creative = adSet.ad_creative || {};
+
+      // 🌐 Website Destination URL Resolution (Strict - Website Only)
+      const isWebsiteConversion = adSet.destination_type === "WEBSITE" || payload.conversion_location === "WEBSITE";
+      const requiresDestinationUrl =
+        isWebsiteConversion &&
+        (finalObjective === "OUTCOME_TRAFFIC" ||
+          finalObjective === "OUTCOME_SALES" ||
+          finalObjective === "OUTCOME_LEADS");
+
+      if (requiresDestinationUrl) {
+        creative.destination_url =
+          creative.landing_page_url ||
+          creative.destination_url ||
+          payload.landing_page_url ||
+          payload.website ||
+          meta.business_website;
+
+        if (!creative.destination_url) {
+          throw new Error("Please provide a website or landing page for website traffic campaigns.");
+        }
+      }
       const fallbackStrategies = [
         { name: "Primary", placements: placements, igActor: shouldUseInstagramActor ? validatedInstagramActorId : null, forcePhoto: false },
         { name: "Fallback 1 (No Actor)", placements: placements, igActor: null, forcePhoto: false },
@@ -290,10 +311,13 @@ export default async function handler(req, res) {
           }
 
           // Compute creative mode from objective
+          const isMessagingOrCall =
+            adSet.destination_type === "MESSAGING_APPS" ||
+            ["WHATSAPP", "MESSENGER", "INSTAGRAM_DIRECT", "CALLS"].includes(payload.conversion_location);
+
           const requiresPhotoOnly =
             finalObjective === "OUTCOME_AWARENESS" ||
-            (finalObjective === "OUTCOME_ENGAGEMENT" &&
-              creative.destination_type !== "MESSAGING_APPS");
+            (finalObjective === "OUTCOME_ENGAGEMENT" && !isMessagingOrCall);
 
           // Override creative format BEFORE building payload
           const finalForcePhoto = strat.forcePhoto || requiresPhotoOnly;
