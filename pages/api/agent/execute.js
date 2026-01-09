@@ -270,69 +270,75 @@ export default async function handler(req, res) {
       // ============================================================
       // 0️⃣ EXPLICIT ASSET EXTRACTION & PERSISTENCE
       // ============================================================
-      const urlRegex = /(https?:\/\/[^\s]+(\.jpg|\.png|\.jpeg|\.webp)|https?:\/\/[^\s]+)/i;
-      const hashtagRegex = /#\w+/g;
+      const isConfirmationOnly = /^(\s*|\b)(yes|ok|publish|go ahead|do it|confirm)(\b|\s*)$/i.test(instruction);
 
-      const foundUrlMatch = instruction.match(urlRegex);
-      const foundHashtags = instruction.match(hashtagRegex) || [];
+      if (!isConfirmationOnly) {
+        const urlRegex = /(https?:\/\/[^\s]+(\.jpg|\.png|\.jpeg|\.webp)|https?:\/\/[^\s]+)/i;
+        const hashtagRegex = /#\w+/g;
 
-      let foundCaption = null;
-      const captionMatch = instruction.match(/Caption:\s*(.*)/i);
-      if (captionMatch) {
-        foundCaption = captionMatch[1].trim();
-      } else if (foundUrlMatch) {
-        const rawText = instruction.replace(foundUrlMatch[0], "").replace(/#\w+/g, "").trim();
-        if (rawText.length > 20 || !rawText.toLowerCase().includes("publish")) {
-          foundCaption = rawText;
-        }
-      }
+        const foundUrlMatch = instruction.match(urlRegex);
+        const foundHashtags = instruction.match(hashtagRegex) || [];
 
-      let explicitUrl = foundUrlMatch ? foundUrlMatch[0] : null;
-
-      // 🛠️ GOOGLE DRIVE NORMALIZATION & VALIDATION
-      if (explicitUrl) {
-        try {
-          console.log("🛠️ [Instagram] Normalizing Image URL...");
-          explicitUrl = await normalizeImageUrl(explicitUrl);
-        } catch (error) {
-          console.error("❌ [Instagram] Normalization Error:", error.message);
-          return res.status(200).json({ ok: false, text: `❌ **Invalid Image**: ${error.message}` });
-        }
-      }
-
-      // UPDATE STATE IMMEDIATELY IF ASSETS FOUND
-      if (explicitUrl || foundCaption) {
-        console.log("💾 [Instagram] Explicit Assets Found. Persisting...", { explicitUrl, foundCaption });
-
-        const existingCreative = lockedCampaignState?.creative || {};
-        const newCreative = {
-          ...existingCreative,
-          imageUrl: explicitUrl || existingCreative.imageUrl,
-          primary_text: foundCaption || existingCreative.primary_text,
-          hashtags: foundHashtags.length > 0 ? foundHashtags : (existingCreative.hashtags || [])
-        };
-
-        if (newCreative.primary_text && newCreative.hashtags && newCreative.hashtags.length > 0) {
-          const tagsStr = newCreative.hashtags.join(" ");
-          if (!newCreative.primary_text.includes(tagsStr)) {
-            newCreative.primary_text += " " + tagsStr;
+        let foundCaption = null;
+        const captionMatch = instruction.match(/Caption:\s*(.*)/i);
+        if (captionMatch) {
+          foundCaption = captionMatch[1].trim();
+        } else if (foundUrlMatch) {
+          const rawText = instruction.replace(foundUrlMatch[0], "").replace(/#\w+/g, "").trim();
+          if (rawText.length > 20 || !rawText.toLowerCase().includes("publish")) {
+            foundCaption = rawText;
           }
         }
 
-        await saveAnswerMemory(process.env.NEXT_PUBLIC_BASE_URL, effectiveBusinessId, {
-          campaign_state: {
+        let explicitUrl = foundUrlMatch ? foundUrlMatch[0] : null;
+
+        // 🛠️ GOOGLE DRIVE NORMALIZATION & VALIDATION
+        if (explicitUrl) {
+          try {
+            console.log("🛠️ [Instagram] Normalizing Image URL...");
+            explicitUrl = await normalizeImageUrl(explicitUrl);
+          } catch (error) {
+            console.error("❌ [Instagram] Normalization Error:", error.message);
+            return res.status(200).json({ ok: false, text: `❌ **Invalid Image**: ${error.message}` });
+          }
+        }
+
+        // UPDATE STATE IMMEDIATELY IF ASSETS FOUND
+        if (explicitUrl || foundCaption) {
+          console.log("💾 [Instagram] Explicit Assets Found. Persisting...", { explicitUrl, foundCaption });
+
+          const existingCreative = lockedCampaignState?.creative || {};
+          const newCreative = {
+            ...existingCreative,
+            imageUrl: explicitUrl || existingCreative.imageUrl,
+            primary_text: foundCaption || existingCreative.primary_text,
+            hashtags: foundHashtags.length > 0 ? foundHashtags : (existingCreative.hashtags || [])
+          };
+
+          if (newCreative.primary_text && newCreative.hashtags && newCreative.hashtags.length > 0) {
+            const tagsStr = newCreative.hashtags.join(" ");
+            if (!newCreative.primary_text.includes(tagsStr)) {
+              newCreative.primary_text += " " + tagsStr;
+            }
+          }
+
+          await saveAnswerMemory(process.env.NEXT_PUBLIC_BASE_URL, effectiveBusinessId, {
+            campaign_state: {
+              objective: "INSTAGRAM_POST",
+              creative: newCreative,
+              stage: "READY_TO_LAUNCH"
+            }
+          }, session.user.email.toLowerCase());
+
+          lockedCampaignState = {
+            ...lockedCampaignState,
             objective: "INSTAGRAM_POST",
             creative: newCreative,
-            stage: "READY_TO_LAUNCH"
-          }
-        }, session.user.email.toLowerCase());
-
-        lockedCampaignState = {
-          ...lockedCampaignState,
-          objective: "INSTAGRAM_POST",
-          creative: newCreative,
-          fb_image_url: newCreative.imageUrl
-        };
+            fb_image_url: newCreative.imageUrl
+          };
+        }
+      } else {
+        console.log("⏭️ [Instagram] Confirmation detected. Skipping asset extraction.");
       }
 
       // ============================================================
@@ -363,8 +369,8 @@ export default async function handler(req, res) {
       // ============================================================
       // 🛠️ AUTHORITATIVE ASSET DETECTION & LAUNCH TRIGGER
       // ============================================================
-      // Normalize and Re-validate rehydrated URL if it changed
-      if (hydratedState?.creative?.imageUrl) {
+      // Normalize and Re-validate rehydrated URL if it changed (and NOT confirmation only)
+      if (!isConfirmationOnly && hydratedState?.creative?.imageUrl) {
         try {
           hydratedState.creative.imageUrl = await normalizeImageUrl(hydratedState.creative.imageUrl);
         } catch (e) {
@@ -381,7 +387,7 @@ export default async function handler(req, res) {
         console.log("🚀 [Instagram] Assets detected + Confirmation. Executing...");
         try {
           // Double verify normalization
-          const finalImageUrl = await normalizeImageUrl(hasImage);
+          const finalImageUrl = isConfirmationOnly ? hasImage : await normalizeImageUrl(hasImage);
 
           const igResult = await executeInstagramPost({
             userEmail: __currentEmail,
@@ -418,16 +424,18 @@ export default async function handler(req, res) {
       }
 
       // C) LAUNCH TRIGGERED + ASSETS MISSING → ERROR
-      if (wantsLaunch && (!hasImage || !hasCaption)) {
-        console.warn("⚠️ [Instagram] Launch requested but assets missing.");
-        let missingMsg = "";
-        if (!hasImage) missingMsg += "Image URL";
-        if (!hasCaption) missingMsg += (missingMsg ? " and " : "") + "Caption";
+      if (wantsLaunch) {
+        if (!hydratedState?.creative?.imageUrl || !hydratedState?.creative?.primary_text) {
+          console.warn("⚠️ [Instagram] Launch requested but assets missing in hydratedState.");
+          let missingMsg = "";
+          if (!hydratedState?.creative?.imageUrl) missingMsg += "Image URL";
+          if (!hydratedState?.creative?.primary_text) missingMsg += (missingMsg ? " and " : "") + "Caption";
 
-        return res.status(200).json({
-          ok: false,
-          text: `⚠️ **Missing Assets**: I'm ready to publish, but I need the **${missingMsg}**. Please provide those details to proceed.`
-        });
+          return res.status(200).json({
+            ok: false,
+            text: `⚠️ **Missing Assets**: I'm ready to publish, but I need the **${missingMsg}**. Please provide those details to proceed.`
+          });
+        }
       }
 
       // D) DEFAULT: MISSING ASSETS + NO LAUNCH → MINIMAL PLANNING
