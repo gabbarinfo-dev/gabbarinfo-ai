@@ -53,6 +53,9 @@ export default async function handler(req, res) {
     } else if (lower.includes("call")) {
       objective = "calls";
       confidence = "medium";
+    } else if (lower.includes("organic") || lower.includes("post") || lower.includes("publish")) {
+      objective = "instagram_post";
+      confidence = "high";
     } else if (lower.includes("best campaign") || lower.includes("run ads")) {
       objective = "auto_recommend";
       confidence = "low";
