@@ -345,7 +345,7 @@ export default async function handler(req, res) {
       }
 
       // ============================================================
-      // 🔄 STATE REHYDRATION (CRITICAL FIX)
+      // 🔄 STATE REHYDRATION (MANDATORY)
       // ============================================================
       let hydratedState = lockedCampaignState;
       try {
@@ -362,35 +362,28 @@ export default async function handler(req, res) {
             const savedState = c.business_answers?.[effectiveBusinessId]?.campaign_state;
             if (savedState) {
               hydratedState = savedState;
-              console.log("✅ [Organic] State Rehydrated", {
-                img: !!hydratedState?.creative?.imageUrl,
-                txt: !!hydratedState?.creative?.primary_text
-              });
             }
           }
         }
       } catch (e) {
-        console.warn("[Organic] Rehydration warn:", e);
+        console.warn("[Instagram] Rehydration warning:", e);
       }
 
       // ============================================================
-      // 1️⃣ HARD EXECUTION TRIGGER (STRICT READ-ONLY from HYDRATED STATE)
+      // 🛠️ AUTHORITATIVE ASSET DETECTION & LAUNCH TRIGGER
       // ============================================================
-      const wantsLaunch = instruction
-        .toLowerCase()
-        .match(/\b(yes|ok|launch|execute|run|confirm|do it|proceed|go ahead)\b/);
+      const hasImage = hydratedState?.creative?.imageUrl;
+      const hasCaption = hydratedState?.creative?.primary_text;
+      const wantsLaunch = /\b(yes|ok|publish|go ahead|do it|confirm)\b/i.test(instruction);
 
-      if (
-        hydratedState?.creative?.imageUrl &&
-        hydratedState?.creative?.primary_text &&
-        wantsLaunch
-      ) {
-        console.log("🚀 [Organic] Executing Instagram Post...");
+      // A) ASSETS READY + USER CONFIRMATION → EXECUTE
+      if (hasImage && hasCaption && wantsLaunch) {
+        console.log("🚀 [Instagram] Assets detected + Confirmation. Executing...");
         try {
           const igResult = await executeInstagramPost({
             userEmail: __currentEmail,
-            imageUrl: hydratedState.creative.imageUrl,
-            caption: hydratedState.creative.primary_text
+            imageUrl: hasImage,
+            caption: hasCaption
           });
 
           if (igResult.id) {
@@ -401,42 +394,49 @@ export default async function handler(req, res) {
             return res.status(200).json({
               ok: true,
               message: "Instagram post published successfully",
-              text: `🎉 **Instagram Post Published Successfully!**\n\n- **Post ID**: \`${igResult.id}\`\n- **Platform**: Instagram (Organic)\n\nYour content is now live on your Instagram profile!`,
+              text: `🎉 **Instagram Post Published Successfully!**\n\n- **Post ID**: \`${igResult.id}\`\n\nYour content is now live on your Instagram profile!`,
               result: igResult,
             });
           }
         } catch (e) {
           return res.status(200).json({ ok: false, text: `❌ **Instagram Post Failed**: ${e.message}` });
         }
-      } else if (wantsLaunch) {
-        // HARD STOP: Missing Assets (Specific Feedback)
-        console.warn("⚠️ [Organic] Launch requested but assets missing.");
-        const finalCreative = hydratedState?.creative || {};
-        let missingMsg = "";
-        if (!finalCreative.imageUrl) missingMsg += "Image URL";
-        if (!finalCreative.primary_text) missingMsg += (missingMsg ? " and " : "") + "Caption";
+      }
 
+      // B) ASSETS READY + NO CONFIRMATION → JUST ASK READY?
+      if (hasImage && hasCaption && !wantsLaunch) {
+        console.log("✋ [Instagram] Assets ready but no confirmation. Asking user.");
         return res.status(200).json({
-          ok: false,
-          text: `⚠️ **Missing Assets**: I'm ready to publish, but I need the **${missingMsg}**. Please provide it to proceed.`
+          ok: true,
+          text: "I have your image and caption ready. **Ready to publish?**",
+          mode: "instagram_post"
         });
       }
 
-      // ============================================================
-      // 2️⃣ PLANNING PATH (FALLBACK ONLY - NO EXECUTION)
-      // ============================================================
-      console.log("🤖 [Organic] Generating Organic Content Plan (Simple Mode)...");
+      // C) LAUNCH TRIGGERED + ASSETS MISSING → ERROR
+      if (wantsLaunch && (!hasImage || !hasCaption)) {
+        console.warn("⚠️ [Instagram] Launch requested but assets missing.");
+        let missingMsg = "";
+        if (!hasImage) missingMsg += "Image URL";
+        if (!hasCaption) missingMsg += (missingMsg ? " and " : "") + "Caption";
 
+        return res.status(200).json({
+          ok: false,
+          text: `⚠️ **Missing Assets**: I'm ready to publish, but I need the **${missingMsg}**. Please provide those details to proceed.`
+        });
+      }
+
+      // D) DEFAULT: MISSING ASSETS + NO LAUNCH → MINIMAL PLANNING
+      console.log("🤖 [Instagram] Missing assets + No launch. Running simple plan.");
       const igSystemPrompt = `
-You are a creative Instagram Content Strategist.
-YOUR JOB: Help the user publish an ORGANIC post.
-
+You are an Instagram Post assistant.
+YOUR JOB: Help the user publish an organic Instagram post.
 RULES:
-1. If the user provides an image and caption, just ask "Ready to publish?".
-2. If resources are missing (Image or Caption), ask for them cleanly.
-3. Do NOT generate images. Do NOT mention Ads, Budgets, or Targeting.
-4. Keep it conversational and concise.
-5. Output minimal JSON for state: {"stage": "PLANNING", "objective": "INSTAGRAM_POST", "creative": {"primary_text": "caption", "imageUrl": "url"}}
+1. Ask for missing resources (Image URL or Caption) cleanly.
+2. If the user provides something, thank them and acknowledge.
+3. Keep it conversational and extremely concise. 
+4. DO NOT generate images. DO NOT mention Meta Ads.
+5. Output minimal JSON: {"creative": {"primary_text": "caption", "imageUrl": "url"}}
 `.trim();
 
       const model = genAI.getGenerativeModel({ model: GEMINI_MODEL });
@@ -451,43 +451,18 @@ RULES:
       if (jsonMatch) {
         try {
           const igPlan = JSON.parse(jsonMatch[1] || jsonMatch[0]);
-
-          // 💾 MANDATORY PERSISTENCE: If assets exist, save them immediately.
           if (igPlan.creative && (igPlan.creative.imageUrl || igPlan.creative.primary_text)) {
-            console.log("💾 [Organic] Gemini generated assets. Executing IMMEDIATE state save.", igPlan.creative);
-
-            // 1. Construct valid state
-            const currentCreative = lockedCampaignState?.creative || {};
-            const newCreative = {
-              ...currentCreative,
-              imageUrl: igPlan.creative.imageUrl || currentCreative.imageUrl,
-              primary_text: igPlan.creative.primary_text || currentCreative.primary_text
-            };
-
             const newState = {
-              ...lockedCampaignState,
+              ...hydratedState,
               objective: "INSTAGRAM_POST",
-              creative: newCreative,
-              stage: "READY_TO_LAUNCH",
+              creative: { ...(hydratedState?.creative || {}), ...igPlan.creative },
               locked_at: new Date().toISOString()
             };
-
-            // 2. Persist to DB (Critical Step)
-            // effectiveBusinessId is guaranteed to be a string or we fallback to "default" check earlier
-            await saveAnswerMemory(
-              process.env.NEXT_PUBLIC_BASE_URL,
-              effectiveBusinessId || "default_business",
-              { campaign_state: newState },
-              session.user.email.toLowerCase()
-            );
-
-            // 3. Update In-Memory Variable (For immediate consistency if needed)
-            lockedCampaignState = newState;
-            console.log("✅ [Organic] State saved. Ready for next turn.");
+            await saveAnswerMemory(process.env.NEXT_PUBLIC_BASE_URL, effectiveBusinessId, {
+              campaign_state: newState
+            }, session.user.email.toLowerCase());
           }
-        } catch (e) {
-          console.error("❌ [Organic] Failed to parse/save plan:", e);
-        }
+        } catch (e) { console.warn("IG Plan Parse error", e); }
       }
 
       return res.status(200).json({
