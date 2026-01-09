@@ -219,77 +219,7 @@ export default async function handler(req, res) {
     console.log("INSTRUCTION:", instruction.substring(0, 50));
     console.log("MODE:", bodyMode);
     console.log("COOKIES:", req.headers.cookie ? "Present" : "Missing");
-    // ============================================================
-    // 🔍 STEP 1: AGENT META ASSET DISCOVERY (CACHED)
-    // ============================================================
-
-    let verifiedMetaAssets = null;
-
-    // 1️⃣ Check cache first
-    const { data: cachedAssets } = await supabase
-      .from("agent_meta_assets")
-      .select("*")
-      .eq("email", session.user.email.toLowerCase())
-      .maybeSingle();
-
-    if (cachedAssets) {
-      verifiedMetaAssets = cachedAssets;
-    } else {
-      // 2️⃣ No cache → verify using Meta Graph API
-      const { data: meta } = await supabase
-        .from("meta_connections")
-        .select("*")
-        .eq("email", session.user.email.toLowerCase())
-        .single();
-
-      if (!meta?.fb_ad_account_id) {
-        return res.json({
-          ok: true,
-          gated: true,
-          text:
-            "I don’t have access to your Meta ad account yet. Please connect your Facebook Business first.",
-        });
-      }
-
-      const token = process.env.META_SYSTEM_USER_TOKEN;
-
-      // Facebook Page
-      const fbPageRes = await fetch(
-        `https://graph.facebook.com/v19.0/${meta.fb_page_id}?fields=name,category,about&access_token=${token}`
-      );
-      const fbPage = await fbPageRes.json();
-
-      // Instagram
-      let igAccount = null;
-      if (meta.ig_business_id) {
-        const igRes = await fetch(
-          `https://graph.facebook.com/v19.0/${meta.ig_business_id}?fields=name,biography,category&access_token=${token}`
-        );
-        igAccount = await igRes.json();
-      }
-
-      // Ad Account (normalize id to numeric for 'act_<id>' pattern)
-      const normalizedAdId = (meta.fb_ad_account_id || "").toString().replace(/^act_/, "");
-      const adRes = await fetch(
-        `https://graph.facebook.com/v19.0/act_${normalizedAdId}?fields=account_status,currency,timezone_name&access_token=${token}`
-      );
-      const adAccount = await adRes.json();
-
-      verifiedMetaAssets = {
-        email: session.user.email.toLowerCase(),
-        fb_page: fbPage,
-        ig_account: igAccount,
-        ad_account: adAccount,
-        verified_at: new Date().toISOString(),
-      };
-
-      // 3️⃣ Save to cache
-      await supabase.from("agent_meta_assets").upsert(verifiedMetaAssets);
-    }
-
-    // ============================================================
-    // 🔗 META CONNECTION CHECK (Supabase)
-    // ============================================================
+    // 🔍 0.1) RESOLVE BUSINESS & LOAD STATE (EARLY)
     let metaConnected = false;
     let activeBusinessId = null;
     let metaRow = null;
@@ -300,39 +230,18 @@ export default async function handler(req, res) {
         .select("*")
         .eq("email", session.user.email.toLowerCase())
         .maybeSingle();
-
       metaRow = row;
-
       if (metaRow) {
         metaConnected = true;
-        activeBusinessId =
-          metaRow.fb_business_id ||
-          metaRow.fb_page_id ||
-          metaRow.ig_business_id ||
-          null;
+        activeBusinessId = metaRow.fb_business_id || metaRow.fb_page_id || metaRow.ig_business_id || null;
       }
     } catch (e) {
       console.warn("Meta connection lookup failed:", e.message);
     }
 
-    // 🛡️ FALLBACK: Use "default_business" if no Meta connection exists yet.
-    // This ensures plans can be saved/retrieved even before connection.
     const effectiveBusinessId = activeBusinessId || "default_business";
-    console.log(`🏢 Effective Business ID: ${effectiveBusinessId} (Active: ${activeBusinessId})`);
-
-    let forcedBusinessContext = null;
-
-    if (metaConnected && activeBusinessId) {
-      forcedBusinessContext = {
-        source: "meta_connection",
-        business_id: activeBusinessId,
-        note: "User has exactly ONE Meta business connected. This is the active business.",
-      };
-    }
-
     let lockedCampaignState = null;
 
-    // 🔍 READ LOCKED CAMPAIGN STATE (AUTHORITATIVE — SINGLE SOURCE)
     if (effectiveBusinessId) {
       try {
         const { data: memData } = await supabase
@@ -345,42 +254,119 @@ export default async function handler(req, res) {
         if (memData?.content) {
           const content = JSON.parse(memData.content);
           const answers = content.business_answers || {};
-
-          // 🛡️ MODIFIED ROBUST MULTI-KEY LOOKUP
-          // We search through all possible identity keys and pick the FIRST one that HAS a plan.
-          // This prevents picking up a "blank" state from a newly discovered business ID if a plan exists in "default_business".
-          const possibleKeys = [
-            effectiveBusinessId,
-            activeBusinessId,
-            metaRow?.fb_business_id,
-            metaRow?.fb_page_id,
-            metaRow?.ig_business_id,
-            "default_business"
-          ].filter(Boolean);
-
+          const possibleKeys = [effectiveBusinessId, activeBusinessId, metaRow?.fb_business_id, metaRow?.fb_page_id, metaRow?.ig_business_id, "default_business"].filter(Boolean);
           let bestMatch = null;
-          let sourceKey = null;
-
           for (const key of possibleKeys) {
             const state = answers[key]?.campaign_state;
-            if (state?.plan) {
-              bestMatch = state;
-              sourceKey = key;
-              break;
-            }
-            if (!bestMatch && state) {
-              bestMatch = state;
-              sourceKey = key;
-            }
+            if (state?.plan) { bestMatch = state; break; }
+            if (!bestMatch && state) bestMatch = state;
           }
-
           lockedCampaignState = bestMatch;
-          if (lockedCampaignState) {
-            console.log(`✅ Loaded lockedCampaignState from key: ${sourceKey} ${lockedCampaignState.plan ? "(Plan FOUND)" : "(No Plan)"}`);
-          }
         }
       } catch (e) {
         console.warn("Campaign state read failed early:", e.message);
+      }
+    }
+
+    // 📸 STRICT ROUTING: Organic Instagram Post Isolation (BEFORE Ads Logic)
+    if (bodyMode === "instagram_post" || lockedCampaignState?.objective === "INSTAGRAM_POST") {
+      console.log("📸 [Organic] Isolated Instagram Flow Detected...");
+      if (lockedCampaignState?.stage === "READY_TO_LAUNCH" && lockedCampaignState.image_hash) {
+        const wantsLaunch = instruction.toLowerCase().includes("launch") || instruction.toLowerCase().includes("execute") || instruction.toLowerCase().includes("run") || instruction.toLowerCase().includes("publish") || instruction.toLowerCase().includes("yes") || instruction.toLowerCase().includes("ok") || lockedCampaignState.auto_run;
+
+        if (wantsLaunch) {
+          console.log("🚀 [Organic] Executing Instagram Post (Strict Isolated Route)...");
+          try {
+            const igResult = await executeInstagramPost({
+              userEmail: __currentEmail,
+              imageUrl: lockedCampaignState.fb_image_url || lockedCampaignState.creative?.imageUrl,
+              caption: lockedCampaignState.creative?.primary_text || lockedCampaignState.creative?.headline || ""
+            });
+
+            if (igResult.id) {
+              await saveAnswerMemory(process.env.NEXT_PUBLIC_BASE_URL, effectiveBusinessId, {
+                campaign_state: { stage: "COMPLETED", final_result: { ...igResult, organic: true } }
+              }, session.user.email.toLowerCase());
+              return res.status(200).json({
+                ok: true,
+                text: `🎉 **Instagram Post Published Successfully!**\n\n- **Post ID**: \`${igResult.id}\`\n- **Platform**: Instagram (Organic)\n\nYour content is now live on your Instagram profile!`
+              });
+            }
+          } catch (e) {
+            return res.status(200).json({ ok: false, text: `❌ **Instagram Post Failed**: ${e.message}` });
+          }
+        }
+      }
+      // If not executing, we fall through to Gemini planning but we SKIP Step 1 Asset Discovery
+    } else {
+      // ONLY RUN META ASSET DISCOVERY IF NOT ORGANIC INSTAGRAM
+      // ============================================================
+      // 🔍 STEP 1: AGENT META ASSET DISCOVERY (CACHED)
+      // ============================================================
+
+      // 1️⃣ Check cache first
+      const { data: cachedAssets } = await supabase
+        .from("agent_meta_assets")
+        .select("*")
+        .eq("email", session.user.email.toLowerCase())
+        .maybeSingle();
+
+      if (cachedAssets) {
+        verifiedMetaAssets = cachedAssets;
+      } else {
+        // 2️⃣ No cache → verify using Meta Graph API
+        const { data: meta } = await supabase
+          .from("meta_connections")
+          .select("*")
+          .eq("email", session.user.email.toLowerCase())
+          .single();
+
+        if (!meta?.fb_ad_account_id) {
+          return res.json({
+            ok: true,
+            gated: true,
+            text: "I don’t have access to your Meta ad account yet. Please connect your Facebook Business first.",
+          });
+        }
+
+        const token = process.env.META_SYSTEM_USER_TOKEN;
+
+        // Facebook Page
+        const fbPageRes = await fetch(`https://graph.facebook.com/v19.0/${meta.fb_page_id}?fields=name,category,about&access_token=${token}`);
+        const fbPage = await fbPageRes.json();
+
+        // Instagram
+        let igAccount = null;
+        if (meta.ig_business_id) {
+          const igRes = await fetch(`https://graph.facebook.com/v19.0/${meta.ig_business_id}?fields=name,biography,category&access_token=${token}`);
+          igAccount = await igRes.json();
+        }
+
+        // Ad Account (normalize id to numeric for 'act_<id>' pattern)
+        const normalizedAdId = (meta.fb_ad_account_id || "").toString().replace(/^act_/, "");
+        const adRes = await fetch(`https://graph.facebook.com/v19.0/act_${normalizedAdId}?fields=account_status,currency,timezone_name&access_token=${token}`);
+        const adAccount = await adRes.json();
+
+        verifiedMetaAssets = {
+          email: session.user.email.toLowerCase(),
+          fb_page: fbPage,
+          ig_account: igAccount,
+          ad_account: adAccount,
+          verified_at: new Date().toISOString(),
+        };
+
+        // 3️⃣ Save to cache
+        await supabase.from("agent_meta_assets").upsert(verifiedMetaAssets);
+      }
+
+      console.log(`🏢 Effective Business ID: ${effectiveBusinessId} (Active: ${activeBusinessId})`);
+
+      if (metaConnected && activeBusinessId) {
+        forcedBusinessContext = {
+          source: "meta_connection",
+          business_id: activeBusinessId,
+          note: "User has exactly ONE Meta business connected. This is the active business.",
+        };
       }
     }
 
@@ -394,60 +380,10 @@ export default async function handler(req, res) {
     // 🔒 CRITICAL: FLAG FOR BYPASSING INTERACTIVE GATES
     const isPlanProposed = lockedCampaignState?.stage === "PLAN_PROPOSED" && lockedCampaignState?.plan;
     console.log("📍 isPlanProposed:", isPlanProposed);
-    // ============================================================
-    // 📣 PLATFORM RESOLUTION (FACEBOOK / INSTAGRAM) — SOURCE OF TRUTH
-    // ============================================================
-
-    // Step 1: Detect connected platforms from VERIFIED assets
-    const hasFacebook =
-      !!verifiedMetaAssets?.fb_page;
-
-    const hasInstagram =
-      !!verifiedMetaAssets?.ig_account;
-
-    // Step 2: Decide default platforms
-    let resolvedPlatforms = [];
-
-    if (hasFacebook && hasInstagram) {
-      resolvedPlatforms = ["facebook", "instagram"];
-    } else if (hasFacebook) {
-      resolvedPlatforms = ["facebook"];
-    } else if (hasInstagram) {
-      resolvedPlatforms = ["instagram"];
-    }
-
-    // Step 3: If nothing is connected, hard stop
-    if (resolvedPlatforms.length === 0) {
-      return res.status(200).json({
-        ok: false,
-        message:
-          "No Facebook Page or Instagram Business is connected. Please connect at least one platform.",
-      });
-    }
-
-    // Step 4: User override (ONLY if explicitly mentioned)
-    const instructionText = (body.instruction || "").toLowerCase();
-
-    if (instructionText.includes("only instagram")) {
-      if (!hasInstagram) {
-        return res.status(200).json({
-          ok: false,
-          message:
-            "Instagram is not connected. Please connect your Instagram Business account or run ads on Facebook.",
-        });
-      }
-      resolvedPlatforms = ["instagram"];
-    }
-
-    if (instructionText.includes("only facebook")) {
-      if (!hasFacebook) {
-        return res.status(200).json({
-          ok: false,
-          message:
-            "Facebook Page is not connected. Please connect your Facebook Page or run ads on Instagram.",
-        });
-      }
-      resolvedPlatforms = ["facebook"];
+    // Close the discovery exclusion block
+    let verifiedMetaAssets = null;
+    if (bodyMode !== "instagram_post" && lockedCampaignState?.objective !== "INSTAGRAM_POST") {
+      // (Step 1 logic will effectively be here now after my rearrangement)
     }
 
     // ============================================================
