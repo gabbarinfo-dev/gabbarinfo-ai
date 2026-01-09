@@ -5,6 +5,7 @@ import { getServerSession } from "next-auth/next";
 import { authOptions } from "../auth/[...nextauth]";
 import { createClient } from "@supabase/supabase-js";
 import { executeInstagramPost } from "../../../lib/execute-instagram-post";
+import { normalizeImageUrl } from "../../../lib/normalize-image-url";
 
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL,
@@ -12,23 +13,7 @@ const supabase = createClient(
 );
 
 /* ---------------- HELPERS (INPUT NORMALIZATION) ---------------- */
-function normalizeGoogleDriveUrls(text) {
-  if (!text || typeof text !== "string") return text;
 
-  // Detection for validation
-  const driveLinks = text.match(/https?:\/\/drive\.google\.com\/[^\s]+/gi) || [];
-  for (const link of driveLinks) {
-    const idMatch = link.match(/\/file\/d\/([^\/\?\&]+)/) || link.match(/[?&]id=([^\/\?\&]+)/);
-    if (!idMatch || !idMatch[1]) {
-      throw new Error("Invalid Google Drive link format. Please use a standard share link (e.g., .../file/d/ID/view)");
-    }
-  }
-
-  // Conversion
-  return text.replace(/https?:\/\/drive\.google\.com\/(?:file\/d\/|open\?id=)([^\/\?\&]+)(?:\/[^\?\s]*)?/gi, (match, fileId) => {
-    return `https://drive.google.com/uc?export=view&id=${fileId}`;
-  });
-}
 
 const GEMINI_API_KEY = process.env.GEMINI_API_KEY;
 const GEMINI_MODEL = process.env.GEMINI_MODEL || "gemini-1.5-flash";
@@ -207,12 +192,8 @@ export default async function handler(req, res) {
     // 🔥 DEBUG LOGS FOR CONTEXT MISMATCH
     let { instruction = "", mode: bodyMode = body.mode } = body;
 
-    // 🛡️ INPUT NORMALIZATION: Google Drive Links
-    try {
-      instruction = normalizeGoogleDriveUrls(instruction);
-    } catch (e) {
-      return res.status(200).json({ ok: false, text: `❌ **Invalid Link**: ${e.message}` });
-    }
+    // 🛡️ INPUT NORMALIZATION and Assets handled in terminal branch below
+
 
     console.log("🔥 REQUEST START");
     console.log("EMAIL:", __currentEmail);
@@ -277,12 +258,18 @@ export default async function handler(req, res) {
       !instruction.toLowerCase().includes("sponsored");
 
     if (bodyMode === "instagram_post" || lockedCampaignState?.objective === "INSTAGRAM_POST" || isOrganicIntent) {
-      console.log("📸 [Organic] Entering Isolated Terminal Route...");
+      console.log("📸 [Instagram] Entering Isolated Terminal Route...");
+
+      // 🛑 FIREWALL ASSERTION: Ensure NO Ads leakage
+      const __adsCheck = () => {
+        if (bodyMode === "instagram_post" || lockedCampaignState?.objective === "INSTAGRAM_POST") {
+          throw new Error("INTERNAL_ERROR: Ads pipeline executed during Instagram post");
+        }
+      };
 
       // ============================================================
       // 0️⃣ EXPLICIT ASSET EXTRACTION & PERSISTENCE
       // ============================================================
-      // Detect explicit assets in the instruction to persist them BEFORE execution check.
       const urlRegex = /(https?:\/\/[^\s]+(\.jpg|\.png|\.jpeg|\.webp)|https?:\/\/[^\s]+)/i;
       const hashtagRegex = /#\w+/g;
 
@@ -291,24 +278,31 @@ export default async function handler(req, res) {
 
       let foundCaption = null;
       const captionMatch = instruction.match(/Caption:\s*(.*)/i);
-
       if (captionMatch) {
         foundCaption = captionMatch[1].trim();
       } else if (foundUrlMatch) {
-        // Fallback: cleaning up URL and hashtags to get remaining text
         const rawText = instruction.replace(foundUrlMatch[0], "").replace(/#\w+/g, "").trim();
-        // Basic heuristic to avoid saving "Publish" as a caption if it's just the command
         if (rawText.length > 20 || !rawText.toLowerCase().includes("publish")) {
           foundCaption = rawText;
         }
       }
 
-      const explicitUrl = foundUrlMatch ? foundUrlMatch[0] : null;
+      let explicitUrl = foundUrlMatch ? foundUrlMatch[0] : null;
+
+      // 🛠️ GOOGLE DRIVE NORMALIZATION & VALIDATION
+      if (explicitUrl) {
+        try {
+          console.log("🛠️ [Instagram] Normalizing Image URL...");
+          explicitUrl = await normalizeImageUrl(explicitUrl);
+        } catch (error) {
+          console.error("❌ [Instagram] Normalization Error:", error.message);
+          return res.status(200).json({ ok: false, text: `❌ **Invalid Image**: ${error.message}` });
+        }
+      }
 
       // UPDATE STATE IMMEDIATELY IF ASSETS FOUND
-      // (This fix guarantees the Hard Trigger below sees the new data on the SAME TURN)
       if (explicitUrl || foundCaption) {
-        console.log("💾 [Organic] Explicit Assets Found. Persisting...", { explicitUrl, foundCaption });
+        console.log("💾 [Instagram] Explicit Assets Found. Persisting...", { explicitUrl, foundCaption });
 
         const existingCreative = lockedCampaignState?.creative || {};
         const newCreative = {
@@ -318,7 +312,6 @@ export default async function handler(req, res) {
           hashtags: foundHashtags.length > 0 ? foundHashtags : (existingCreative.hashtags || [])
         };
 
-        // Ensure hashtags are in the text
         if (newCreative.primary_text && newCreative.hashtags && newCreative.hashtags.length > 0) {
           const tagsStr = newCreative.hashtags.join(" ");
           if (!newCreative.primary_text.includes(tagsStr)) {
@@ -326,7 +319,6 @@ export default async function handler(req, res) {
           }
         }
 
-        // 1. Save to Database (Async)
         await saveAnswerMemory(process.env.NEXT_PUBLIC_BASE_URL, effectiveBusinessId, {
           campaign_state: {
             objective: "INSTAGRAM_POST",
@@ -335,7 +327,6 @@ export default async function handler(req, res) {
           }
         }, session.user.email.toLowerCase());
 
-        // 2. Update Local Variable (Sync - for Immediate Read)
         lockedCampaignState = {
           ...lockedCampaignState,
           objective: "INSTAGRAM_POST",
@@ -372,6 +363,15 @@ export default async function handler(req, res) {
       // ============================================================
       // 🛠️ AUTHORITATIVE ASSET DETECTION & LAUNCH TRIGGER
       // ============================================================
+      // Normalize and Re-validate rehydrated URL if it changed
+      if (hydratedState?.creative?.imageUrl) {
+        try {
+          hydratedState.creative.imageUrl = await normalizeImageUrl(hydratedState.creative.imageUrl);
+        } catch (e) {
+          console.warn("[Instagram] Rehydrated URL validation failed:", e.message);
+        }
+      }
+
       const hasImage = hydratedState?.creative?.imageUrl;
       const hasCaption = hydratedState?.creative?.primary_text;
       const wantsLaunch = /\b(yes|ok|publish|go ahead|do it|confirm)\b/i.test(instruction);
@@ -380,9 +380,12 @@ export default async function handler(req, res) {
       if (hasImage && hasCaption && wantsLaunch) {
         console.log("🚀 [Instagram] Assets detected + Confirmation. Executing...");
         try {
+          // Double verify normalization
+          const finalImageUrl = await normalizeImageUrl(hasImage);
+
           const igResult = await executeInstagramPost({
             userEmail: __currentEmail,
-            imageUrl: hasImage,
+            imageUrl: finalImageUrl,
             caption: hasCaption
           });
 
@@ -399,6 +402,7 @@ export default async function handler(req, res) {
             });
           }
         } catch (e) {
+          console.error("❌ [Instagram] Execution Failure:", e.message);
           return res.status(200).json({ ok: false, text: `❌ **Instagram Post Failed**: ${e.message}` });
         }
       }
@@ -481,6 +485,9 @@ RULES:
     // 🔍 STEP 1: AGENT META ASSET DISCOVERY (ADS ONLY)
     // ============================================================
     // (This block only runs if NOT organic Instagram)
+    if (bodyMode === "instagram_post" || mode === "instagram_post" || lockedCampaignState?.objective === "INSTAGRAM_POST") {
+      throw new Error("INTERNAL_ERROR: Ads pipeline executed during Instagram post");
+    }
 
     // 1️⃣ Check cache first
     const { data: cachedAssets } = await supabase
@@ -617,6 +624,9 @@ RULES:
     // type: "meta_ads_creative"    -> forwards to /api/ads/create-creative
     //
     if (body.type) {
+      if (bodyMode === "instagram_post" || mode === "instagram_post" || lockedCampaignState?.objective === "INSTAGRAM_POST") {
+        throw new Error("INTERNAL_ERROR: Ads pipeline executed during Instagram post");
+      }
       // old behaviour path
       if (body.type === "google_ads_campaign") {
         const baseUrl = process.env.NEXT_PUBLIC_BASE_URL;
