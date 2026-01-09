@@ -276,10 +276,11 @@ export default async function handler(req, res) {
 
       // 1️⃣ EXECUTION PATH: If ready and user says YES
       const stage = lockedCampaignState?.stage || "PLANNING";
-      const hasImage = lockedCampaignState?.image_hash;
-      const wantsLaunch = instruction.toLowerCase().match(/\b(yes|ok|launch|execute|publish|run|confirm)\b/);
+      const hasImage = lockedCampaignState?.creative?.imageUrl || lockedCampaignState?.fb_image_url;
+      const hasCaption = lockedCampaignState?.creative?.primary_text || lockedCampaignState?.creative?.headline;
+      const wantsLaunch = instruction.toLowerCase().match(/\b(yes|ok|launch|execute|publish|run|confirm|do it|proceed)\b/);
 
-      if (stage === "READY_TO_LAUNCH" && hasImage && (wantsLaunch || lockedCampaignState?.auto_run)) {
+      if (stage === "READY_TO_LAUNCH" && hasImage && hasCaption && (wantsLaunch || lockedCampaignState?.auto_run)) {
         console.log("🚀 [Organic] Executing Instagram Post...");
         try {
           const igResult = await executeInstagramPost({
