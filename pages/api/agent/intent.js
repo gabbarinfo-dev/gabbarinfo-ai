@@ -9,7 +9,7 @@ export default async function handler(req, res) {
   }
 
   try {
-    const { query } = req.body;
+    const { query, mode } = req.body;
 
     if (!query || typeof query !== "string") {
       return res.status(400).json({
@@ -29,7 +29,7 @@ export default async function handler(req, res) {
     let confidence = "low";
 
     // Platform detection
-    if (lower.includes("facebook") || lower.includes("instagram") || lower.includes("meta")) {
+    if (lower.includes("facebook") || lower.includes("instagram") || lower.includes("meta") || mode === "instagram_post") {
       platform = "meta";
     }
 
@@ -53,7 +53,7 @@ export default async function handler(req, res) {
     } else if (lower.includes("call")) {
       objective = "calls";
       confidence = "medium";
-    } else if (lower.includes("organic") || lower.includes("post") || lower.includes("publish")) {
+    } else if (lower.includes("organic") || lower.includes("post") || lower.includes("publish") || mode === "instagram_post") {
       objective = "instagram_post";
       confidence = "high";
     } else if (lower.includes("best campaign") || lower.includes("run ads")) {
