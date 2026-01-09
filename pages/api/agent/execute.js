@@ -6,7 +6,6 @@ import { getServerSession } from "next-auth/next";
 import { authOptions } from "../auth/[...nextauth]";
 import { createClient } from "@supabase/supabase-js";
 import { executeInstagramPost } from "../../../lib/execute-instagram-post";
-import { normalizeImageUrl } from "../../../lib/normalize-image-url";
 
 
 const supabase = createClient(
@@ -16,8 +15,25 @@ const supabase = createClient(
 
 
 /* ---------------- HELPERS (INPUT NORMALIZATION) ---------------- */
+function normalizeGoogleDriveUrls(text) {
+  if (!text || typeof text !== "string") return text;
 
 
+  // Detection for validation
+  const driveLinks = text.match(/https?:\/\/drive\.google\.com\/[^\s]+/gi) || [];
+  for (const link of driveLinks) {
+    const idMatch = link.match(/\/file\/d\/([^\/\?\&]+)/) || link.match(/[?&]id=([^\/\?\&]+)/);
+    if (!idMatch || !idMatch[1]) {
+      throw new Error("Invalid Google Drive link format. Please use a standard share link (e.g., .../file/d/ID/view)");
+    }
+  }
+
+
+  // Conversion
+  return text.replace(/https?:\/\/drive\.google\.com\/(?:file\/d\/|open\?id=)([^\/\?\&]+)(?:\/[^\?\s]*)?/gi, (match, fileId) => {
+    return `https://drive.google.com/uc?export=view&id=${fileId}`;
+  });
+}
 
 
 const GEMINI_API_KEY = process.env.GEMINI_API_KEY;
@@ -223,9 +239,12 @@ export default async function handler(req, res) {
     let { instruction = "", mode: bodyMode = body.mode } = body;
 
 
-    // 🛡️ INPUT NORMALIZATION and Assets handled in terminal branch below
-
-
+    // 🛡️ INPUT NORMALIZATION: Google Drive Links
+    try {
+      instruction = normalizeGoogleDriveUrls(instruction);
+    } catch (e) {
+      return res.status(200).json({ ok: false, text: `❌ **Invalid Link**: ${e.message}` });
+    }
 
 
     console.log("🔥 REQUEST START");
@@ -297,104 +316,86 @@ export default async function handler(req, res) {
 
 
     if (bodyMode === "instagram_post" || lockedCampaignState?.objective === "INSTAGRAM_POST" || isOrganicIntent) {
-      console.log("📸 [Instagram] Entering Isolated Terminal Route...");
-
-
-      // 🛑 FIREWALL ASSERTION: Ensure NO Ads leakage
-      const __adsCheck = () => {
-        if (bodyMode === "instagram_post" || lockedCampaignState?.objective === "INSTAGRAM_POST") {
-          throw new Error("INTERNAL_ERROR: Ads pipeline executed during Instagram post");
-        }
-      };
+      console.log("📸 [Organic] Entering Isolated Terminal Route...");
 
 
       // ============================================================
       // 0️⃣ EXPLICIT ASSET EXTRACTION & PERSISTENCE
       // ============================================================
-      const isConfirmationOnly = /^(\s*|\b)(yes|ok|publish|go ahead|do it|confirm)(\b|\s*)$/i.test(instruction);
+      // Detect explicit assets in the instruction to persist them BEFORE execution check.
+      const urlRegex = /(https?:\/\/[^\s]+(\.jpg|\.png|\.jpeg|\.webp)|https?:\/\/[^\s]+)/i;
+      const hashtagRegex = /#\w+/g;
 
 
-      if (!isConfirmationOnly) {
-        const urlRegex = /(https?:\/\/[^\s]+(\.jpg|\.png|\.jpeg|\.webp)|https?:\/\/[^\s]+)/i;
-        const hashtagRegex = /#\w+/g;
+      const foundUrlMatch = instruction.match(urlRegex);
+      const foundHashtags = instruction.match(hashtagRegex) || [];
 
 
-        const foundUrlMatch = instruction.match(urlRegex);
-        const foundHashtags = instruction.match(hashtagRegex) || [];
+      let foundCaption = null;
+      const captionMatch = instruction.match(/Caption:\s*(.*)/i);
 
 
-        let foundCaption = null;
-        const captionMatch = instruction.match(/Caption:\s*(.*)/i);
-        if (captionMatch) {
-          foundCaption = captionMatch[1].trim();
-        } else if (foundUrlMatch) {
-          const rawText = instruction.replace(foundUrlMatch[0], "").replace(/#\w+/g, "").trim();
-          if (rawText.length > 20 || !rawText.toLowerCase().includes("publish")) {
-            foundCaption = rawText;
+      if (captionMatch) {
+        foundCaption = captionMatch[1].trim();
+      } else if (foundUrlMatch) {
+        // Fallback: cleaning up URL and hashtags to get remaining text
+        const rawText = instruction.replace(foundUrlMatch[0], "").replace(/#\w+/g, "").trim();
+        // Basic heuristic to avoid saving "Publish" as a caption if it's just the command
+        if (rawText.length > 20 || !rawText.toLowerCase().includes("publish")) {
+          foundCaption = rawText;
+        }
+      }
+
+
+      const explicitUrl = foundUrlMatch ? foundUrlMatch[0] : null;
+
+
+      // UPDATE STATE IMMEDIATELY IF ASSETS FOUND
+      // (This fix guarantees the Hard Trigger below sees the new data on the SAME TURN)
+      if (explicitUrl || foundCaption) {
+        console.log("💾 [Organic] Explicit Assets Found. Persisting...", { explicitUrl, foundCaption });
+
+
+        const existingCreative = lockedCampaignState?.creative || {};
+        const newCreative = {
+          ...existingCreative,
+          imageUrl: explicitUrl || existingCreative.imageUrl,
+          primary_text: foundCaption || existingCreative.primary_text,
+          hashtags: foundHashtags.length > 0 ? foundHashtags : (existingCreative.hashtags || [])
+        };
+
+
+        // Ensure hashtags are in the text
+        if (newCreative.primary_text && newCreative.hashtags && newCreative.hashtags.length > 0) {
+          const tagsStr = newCreative.hashtags.join(" ");
+          if (!newCreative.primary_text.includes(tagsStr)) {
+            newCreative.primary_text += " " + tagsStr;
           }
         }
 
 
-        let explicitUrl = foundUrlMatch ? foundUrlMatch[0] : null;
-
-
-        // 🛠️ GOOGLE DRIVE NORMALIZATION & VALIDATION
-        if (explicitUrl) {
-          try {
-            console.log("🛠️ [Instagram] Normalizing Image URL...");
-            explicitUrl = await normalizeImageUrl(explicitUrl);
-          } catch (error) {
-            console.error("❌ [Instagram] Normalization Error:", error.message);
-            return res.status(200).json({ ok: false, text: `❌ **Invalid Image**: ${error.message}` });
-          }
-        }
-
-
-        // UPDATE STATE IMMEDIATELY IF ASSETS FOUND
-        if (explicitUrl || foundCaption) {
-          console.log("💾 [Instagram] Explicit Assets Found. Persisting...", { explicitUrl, foundCaption });
-
-
-          const existingCreative = lockedCampaignState?.creative || {};
-          const newCreative = {
-            ...existingCreative,
-            imageUrl: explicitUrl || existingCreative.imageUrl,
-            primary_text: foundCaption || existingCreative.primary_text,
-            hashtags: foundHashtags.length > 0 ? foundHashtags : (existingCreative.hashtags || [])
-          };
-
-
-          if (newCreative.primary_text && newCreative.hashtags && newCreative.hashtags.length > 0) {
-            const tagsStr = newCreative.hashtags.join(" ");
-            if (!newCreative.primary_text.includes(tagsStr)) {
-              newCreative.primary_text += " " + tagsStr;
-            }
-          }
-
-
-          await saveAnswerMemory(process.env.NEXT_PUBLIC_BASE_URL, effectiveBusinessId, {
-            campaign_state: {
-              objective: "INSTAGRAM_POST",
-              creative: newCreative,
-              stage: "READY_TO_LAUNCH"
-            }
-          }, session.user.email.toLowerCase());
-
-
-          lockedCampaignState = {
-            ...lockedCampaignState,
+        // 1. Save to Database (Async)
+        await saveAnswerMemory(process.env.NEXT_PUBLIC_BASE_URL, effectiveBusinessId, {
+          campaign_state: {
             objective: "INSTAGRAM_POST",
             creative: newCreative,
-            fb_image_url: newCreative.imageUrl
-          };
-        }
-      } else {
-        console.log("⏭️ [Instagram] Confirmation detected. Skipping asset extraction.");
+            stage: "READY_TO_LAUNCH"
+          }
+        }, session.user.email.toLowerCase());
+
+
+        // 2. Update Local Variable (Sync - for Immediate Read)
+        lockedCampaignState = {
+          ...lockedCampaignState,
+          objective: "INSTAGRAM_POST",
+          creative: newCreative,
+          fb_image_url: newCreative.imageUrl
+        };
       }
 
 
       // ============================================================
-      // 🔄 STATE REHYDRATION (MANDATORY)
+      // 🔄 STATE REHYDRATION (CRITICAL FIX)
       // ============================================================
       let hydratedState = lockedCampaignState;
       try {
@@ -412,44 +413,37 @@ export default async function handler(req, res) {
             const savedState = c.business_answers?.[effectiveBusinessId]?.campaign_state;
             if (savedState) {
               hydratedState = savedState;
+              console.log("✅ [Organic] State Rehydrated", {
+                img: !!hydratedState?.creative?.imageUrl,
+                txt: !!hydratedState?.creative?.primary_text
+              });
             }
           }
         }
       } catch (e) {
-        console.warn("[Instagram] Rehydration warning:", e);
+        console.warn("[Organic] Rehydration warn:", e);
       }
 
 
       // ============================================================
-      // 🛠️ AUTHORITATIVE ASSET DETECTION & LAUNCH TRIGGER
+      // 1️⃣ HARD EXECUTION TRIGGER (STRICT READ-ONLY from HYDRATED STATE)
       // ============================================================
-      // Normalize and Re-validate rehydrated URL if it changed (and NOT confirmation only)
-      if (!isConfirmationOnly && hydratedState?.creative?.imageUrl) {
+      const wantsLaunch = instruction
+        .toLowerCase()
+        .match(/\b(yes|ok|launch|execute|run|confirm|do it|proceed|go ahead)\b/);
+
+
+      if (
+        hydratedState?.creative?.imageUrl &&
+        hydratedState?.creative?.primary_text &&
+        wantsLaunch
+      ) {
+        console.log("🚀 [Organic] Executing Instagram Post...");
         try {
-          hydratedState.creative.imageUrl = await normalizeImageUrl(hydratedState.creative.imageUrl);
-        } catch (e) {
-          console.warn("[Instagram] Rehydrated URL validation failed:", e.message);
-        }
-      }
-
-
-      const hasImage = hydratedState?.creative?.imageUrl;
-      const hasCaption = hydratedState?.creative?.primary_text;
-      const wantsLaunch = /\b(yes|ok|publish|go ahead|do it|confirm)\b/i.test(instruction);
-
-
-      // A) ASSETS READY + USER CONFIRMATION → EXECUTE
-      if (hasImage && hasCaption && wantsLaunch) {
-        console.log("🚀 [Instagram] Assets detected + Confirmation. Executing...");
-        try {
-          // Double verify normalization
-          const finalImageUrl = isConfirmationOnly ? hasImage : await normalizeImageUrl(hasImage);
-
-
           const igResult = await executeInstagramPost({
             userEmail: __currentEmail,
-            imageUrl: finalImageUrl,
-            caption: hasCaption
+            imageUrl: hydratedState.creative.imageUrl,
+            caption: hydratedState.creative.primary_text
           });
 
 
@@ -462,56 +456,46 @@ export default async function handler(req, res) {
             return res.status(200).json({
               ok: true,
               message: "Instagram post published successfully",
-              text: `🎉 **Instagram Post Published Successfully!**\n\n- **Post ID**: \`${igResult.id}\`\n\nYour content is now live on your Instagram profile!`,
+              text: `🎉 **Instagram Post Published Successfully!**\n\n- **Post ID**: \`${igResult.id}\`\n- **Platform**: Instagram (Organic)\n\nYour content is now live on your Instagram profile!`,
               result: igResult,
             });
           }
         } catch (e) {
-          console.error("❌ [Instagram] Execution Failure:", e.message);
           return res.status(200).json({ ok: false, text: `❌ **Instagram Post Failed**: ${e.message}` });
         }
-      }
+      } else if (wantsLaunch) {
+        // HARD STOP: Missing Assets (Specific Feedback)
+        console.warn("⚠️ [Organic] Launch requested but assets missing.");
+        const finalCreative = hydratedState?.creative || {};
+        let missingMsg = "";
+        if (!finalCreative.imageUrl) missingMsg += "Image URL";
+        if (!finalCreative.primary_text) missingMsg += (missingMsg ? " and " : "") + "Caption";
 
 
-      // B) ASSETS READY + NO CONFIRMATION → JUST ASK READY?
-      if (hasImage && hasCaption && !wantsLaunch) {
-        console.log("✋ [Instagram] Assets ready but no confirmation. Asking user.");
         return res.status(200).json({
-          ok: true,
-          text: "I have your image and caption ready. **Ready to publish?**",
-          mode: "instagram_post"
+          ok: false,
+          text: `⚠️ **Missing Assets**: I'm ready to publish, but I need the **${missingMsg}**. Please provide it to proceed.`
         });
       }
 
 
-      // C) LAUNCH TRIGGERED + ASSETS MISSING → ERROR
-      if (wantsLaunch) {
-        if (!hydratedState?.creative?.imageUrl || !hydratedState?.creative?.primary_text) {
-          console.warn("⚠️ [Instagram] Launch requested but assets missing in hydratedState.");
-          let missingMsg = "";
-          if (!hydratedState?.creative?.imageUrl) missingMsg += "Image URL";
-          if (!hydratedState?.creative?.primary_text) missingMsg += (missingMsg ? " and " : "") + "Caption";
+      // ============================================================
+      // 2️⃣ PLANNING PATH (FALLBACK ONLY - NO EXECUTION)
+      // ============================================================
+      console.log("🤖 [Organic] Generating Organic Content Plan (Simple Mode)...");
 
 
-          return res.status(200).json({
-            ok: false,
-            text: `⚠️ **Missing Assets**: I'm ready to publish, but I need the **${missingMsg}**. Please provide those details to proceed.`
-          });
-        }
-      }
-
-
-      // D) DEFAULT: MISSING ASSETS + NO LAUNCH → MINIMAL PLANNING
-      console.log("🤖 [Instagram] Missing assets + No launch. Running simple plan.");
       const igSystemPrompt = `
-You are an Instagram Post assistant.
-YOUR JOB: Help the user publish an organic Instagram post.
+You are a creative Instagram Content Strategist.
+YOUR JOB: Help the user publish an ORGANIC post.
+
+
 RULES:
-1. Ask for missing resources (Image URL or Caption) cleanly.
-2. If the user provides something, thank them and acknowledge.
-3. Keep it conversational and extremely concise. 
-4. DO NOT generate images. DO NOT mention Meta Ads.
-5. Output minimal JSON: {"creative": {"primary_text": "caption", "imageUrl": "url"}}
+1. If the user provides an image and caption, just ask "Ready to publish?".
+2. If resources are missing (Image or Caption), ask for them cleanly.
+3. Do NOT generate images. Do NOT mention Ads, Budgets, or Targeting.
+4. Keep it conversational and concise.
+5. Output minimal JSON for state: {"stage": "PLANNING", "objective": "INSTAGRAM_POST", "creative": {"primary_text": "caption", "imageUrl": "url"}}
 `.trim();
 
 
@@ -529,18 +513,48 @@ RULES:
       if (jsonMatch) {
         try {
           const igPlan = JSON.parse(jsonMatch[1] || jsonMatch[0]);
+
+
+          // 💾 MANDATORY PERSISTENCE: If assets exist, save them immediately.
           if (igPlan.creative && (igPlan.creative.imageUrl || igPlan.creative.primary_text)) {
+            console.log("💾 [Organic] Gemini generated assets. Executing IMMEDIATE state save.", igPlan.creative);
+
+
+            // 1. Construct valid state
+            const currentCreative = lockedCampaignState?.creative || {};
+            const newCreative = {
+              ...currentCreative,
+              imageUrl: igPlan.creative.imageUrl || currentCreative.imageUrl,
+              primary_text: igPlan.creative.primary_text || currentCreative.primary_text
+            };
+
+
             const newState = {
-              ...hydratedState,
+              ...lockedCampaignState,
               objective: "INSTAGRAM_POST",
-              creative: { ...(hydratedState?.creative || {}), ...igPlan.creative },
+              creative: newCreative,
+              stage: "READY_TO_LAUNCH",
               locked_at: new Date().toISOString()
             };
-            await saveAnswerMemory(process.env.NEXT_PUBLIC_BASE_URL, effectiveBusinessId, {
-              campaign_state: newState
-            }, session.user.email.toLowerCase());
+
+
+            // 2. Persist to DB (Critical Step)
+            // effectiveBusinessId is guaranteed to be a string or we fallback to "default" check earlier
+            await saveAnswerMemory(
+              process.env.NEXT_PUBLIC_BASE_URL,
+              effectiveBusinessId || "default_business",
+              { campaign_state: newState },
+              session.user.email.toLowerCase()
+            );
+
+
+            // 3. Update In-Memory Variable (For immediate consistency if needed)
+            lockedCampaignState = newState;
+            console.log("✅ [Organic] State saved. Ready for next turn.");
           }
-        } catch (e) { console.warn("IG Plan Parse error", e); }
+        } catch (e) {
+          console.error("❌ [Organic] Failed to parse/save plan:", e);
+        }
       }
 
 
@@ -562,9 +576,6 @@ RULES:
     // 🔍 STEP 1: AGENT META ASSET DISCOVERY (ADS ONLY)
     // ============================================================
     // (This block only runs if NOT organic Instagram)
-    if (bodyMode === "instagram_post" || mode === "instagram_post" || lockedCampaignState?.objective === "INSTAGRAM_POST") {
-      throw new Error("INTERNAL_ERROR: Ads pipeline executed during Instagram post");
-    }
 
 
     // 1️⃣ Check cache first
@@ -722,9 +733,6 @@ RULES:
     // type: "meta_ads_creative"    -> forwards to /api/ads/create-creative
     //
     if (body.type) {
-      if (bodyMode === "instagram_post" || mode === "instagram_post" || lockedCampaignState?.objective === "INSTAGRAM_POST") {
-        throw new Error("INTERNAL_ERROR: Ads pipeline executed during Instagram post");
-      }
       // old behaviour path
       if (body.type === "google_ads_campaign") {
         const baseUrl = process.env.NEXT_PUBLIC_BASE_URL;
@@ -3780,7 +3788,6 @@ Reply **YES** to generate this image and launch the campaign.
     });
   }
 }
-
 
 
 
