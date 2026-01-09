@@ -223,6 +223,8 @@ export default async function handler(req, res) {
     let metaConnected = false;
     let activeBusinessId = null;
     let metaRow = null;
+    let verifiedMetaAssets = null;
+    let forcedBusinessContext = null;
 
     try {
       const { data: row } = await supabase
@@ -381,10 +383,7 @@ export default async function handler(req, res) {
     const isPlanProposed = lockedCampaignState?.stage === "PLAN_PROPOSED" && lockedCampaignState?.plan;
     console.log("📍 isPlanProposed:", isPlanProposed);
     // Close the discovery exclusion block
-    let verifiedMetaAssets = null;
-    if (bodyMode !== "instagram_post" && lockedCampaignState?.objective !== "INSTAGRAM_POST") {
-      // (Step 1 logic will effectively be here now after my rearrangement)
-    }
+    // (End of discovery exclusion block)
 
     // ============================================================
     // 🧠 AUTO BUSINESS INTAKE (READ + INJECT CONTEXT)
