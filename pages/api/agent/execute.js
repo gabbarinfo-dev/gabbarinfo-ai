@@ -423,17 +423,42 @@ RULES:
         try {
           const igPlan = JSON.parse(jsonMatch[1] || jsonMatch[0]);
 
-          if (igPlan.stage && effectiveBusinessId) {
-            await saveAnswerMemory(process.env.NEXT_PUBLIC_BASE_URL, effectiveBusinessId, {
-              campaign_state: {
-                ...lockedCampaignState,
-                ...igPlan,
-                objective: "INSTAGRAM_POST",
-                locked_at: new Date().toISOString()
-              }
-            }, session.user.email.toLowerCase());
+          // 💾 MANDATORY PERSISTENCE: If assets exist, save them immediately.
+          if (igPlan.creative && (igPlan.creative.imageUrl || igPlan.creative.primary_text)) {
+            console.log("💾 [Organic] Gemini generated assets. Executing IMMEDIATE state save.", igPlan.creative);
+
+            // 1. Construct valid state
+            const currentCreative = lockedCampaignState?.creative || {};
+            const newCreative = {
+              ...currentCreative,
+              imageUrl: igPlan.creative.imageUrl || currentCreative.imageUrl,
+              primary_text: igPlan.creative.primary_text || currentCreative.primary_text
+            };
+
+            const newState = {
+              ...lockedCampaignState,
+              objective: "INSTAGRAM_POST",
+              creative: newCreative,
+              stage: "READY_TO_LAUNCH",
+              locked_at: new Date().toISOString()
+            };
+
+            // 2. Persist to DB (Critical Step)
+            // effectiveBusinessId is guaranteed to be a string or we fallback to "default" check earlier
+            await saveAnswerMemory(
+              process.env.NEXT_PUBLIC_BASE_URL,
+              effectiveBusinessId || "default_business",
+              { campaign_state: newState },
+              session.user.email.toLowerCase()
+            );
+
+            // 3. Update In-Memory Variable (For immediate consistency if needed)
+            lockedCampaignState = newState;
+            console.log("✅ [Organic] State saved. Ready for next turn.");
           }
-        } catch (e) { console.warn("IG Plan Parse error", e); }
+        } catch (e) {
+          console.error("❌ [Organic] Failed to parse/save plan:", e);
+        }
       }
 
       return res.status(200).json({
