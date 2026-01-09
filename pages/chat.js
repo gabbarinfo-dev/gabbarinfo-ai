@@ -704,6 +704,7 @@ Now respond as GabbarInfo AI.
       meta_ads_plan: "Meta Ads – Creative planner",
       social_plan: "Social media calendar",
       seo_blog: "SEO / Blog planner",
+      instagram_post: "Instagram Post Publish",
     };
 
     const label = modeLabels[agentMode] || "Agent";
@@ -1290,6 +1291,7 @@ Now respond as GabbarInfo AI.
                   </option>
                   <option value="social_plan">Social Media calendar</option>
                   <option value="seo_blog">SEO / Blog planner</option>
+                  <option value="instagram_post">Instagram Post Publish</option>
                 </select>
 
                 <label
