@@ -4,12 +4,31 @@ import { GoogleGenerativeAI } from "@google/generative-ai";
 import { getServerSession } from "next-auth/next";
 import { authOptions } from "../auth/[...nextauth]";
 import { createClient } from "@supabase/supabase-js";
+import { executeInstagramPost } from "../../../lib/execute-instagram-post";
 
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL,
   process.env.SUPABASE_SERVICE_ROLE_KEY
 );
 
+/* ---------------- HELPERS (INPUT NORMALIZATION) ---------------- */
+function normalizeGoogleDriveUrls(text) {
+  if (!text || typeof text !== "string") return text;
+
+  // Detection for validation
+  const driveLinks = text.match(/https?:\/\/drive\.google\.com\/[^\s]+/gi) || [];
+  for (const link of driveLinks) {
+    const idMatch = link.match(/\/file\/d\/([^\/\?\&]+)/) || link.match(/[?&]id=([^\/\?\&]+)/);
+    if (!idMatch || !idMatch[1]) {
+      throw new Error("Invalid Google Drive link format. Please use a standard share link (e.g., .../file/d/ID/view)");
+    }
+  }
+
+  // Conversion
+  return text.replace(/https?:\/\/drive\.google\.com\/(?:file\/d\/|open\?id=)([^\/\?\&]+)(?:\/[^\?\s]*)?/gi, (match, fileId) => {
+    return `https://drive.google.com/uc?export=view&id=${fileId}`;
+  });
+}
 
 const GEMINI_API_KEY = process.env.GEMINI_API_KEY;
 const GEMINI_MODEL = process.env.GEMINI_MODEL || "gemini-1.5-flash";
@@ -160,6 +179,7 @@ async function generateMetaCampaignPlan({ lockedCampaignState, autoBusinessConte
           headline,
           call_to_action: "LEARN_MORE",
           imagePrompt,
+          imageUrl: extract(instruction, "Image URL") || extract(text, "Image URL") || null,
           destination_url
         }
       }
@@ -186,6 +206,14 @@ export default async function handler(req, res) {
 
     // 🔥 DEBUG LOGS FOR CONTEXT MISMATCH
     let { instruction = "", mode: bodyMode = body.mode } = body;
+
+    // 🛡️ INPUT NORMALIZATION: Google Drive Links
+    try {
+      instruction = normalizeGoogleDriveUrls(instruction);
+    } catch (e) {
+      return res.status(200).json({ ok: false, text: `❌ **Invalid Link**: ${e.message}` });
+    }
+
     console.log("🔥 REQUEST START");
     console.log("EMAIL:", __currentEmail);
     console.log("INSTRUCTION:", instruction.substring(0, 50));
@@ -758,18 +786,21 @@ You MUST ALWAYS output BOTH a human-readable summary AND the JSON using this exa
       "status": "PAUSED",
       "optimization_goal": "LINK_CLICKS",
       "destination_type": "WEBSITE",
-      "ad_creative": {
-        "imagePrompt": "a modern clinic exterior at dusk, vibrant lighting, professional photographer",
-        "primary_text": "Trusted by 5000+ patients. Painless treatments.",
-        "headline": "Best Dental Clinic in Mumbai",
-        "call_to_action": "LEARN_MORE",
-        "destination_url": "https://client-website.com"
+        "ad_creative": {
+          "imagePrompt": "a modern clinic exterior at dusk, vibrant lighting, professional photographer",
+          "imageUrl": "https://client-hosted-image.com/photo.jpg",
+          "primary_text": "Trusted by 5000+ patients. Painless treatments.",
+          "headline": "Best Dental Clinic in Mumbai",
+          "call_to_action": "LEARN_MORE",
+          "destination_url": "https://client-website.com"
+        }
       }
-    }
-  ]
-}
+    ]
+  }
 
-- Meta Objectives must be one of: OUTCOME_TRAFFIC, OUTCOME_LEADS, OUTCOME_SALES, OUTCOME_AWARENESS, OUTCOME_ENGAGEMENT, OUTCOME_APP_PROMOTION.
+- **Organic Instagram Posts**: If the user wants an organic post (not an ad), use the objective "INSTAGRAM_POST". You MUST include a caption (primary_text) and an image (either imagePrompt or imageUrl). 
+- **Image URLs**: If the user provides a direct image link or Google Drive link, include it in the "imageUrl" field.
+- Meta Objectives must be one of: OUTCOME_TRAFFIC, OUTCOME_LEADS, OUTCOME_SALES, OUTCOME_AWARENESS, OUTCOME_ENGAGEMENT, OUTCOME_APP_PROMOTION, INSTAGRAM_POST.
 - optimization_goal must match the performance goal (e.g., LINK_CLICKS, LANDING_PAGE_VIEWS).
 - destination_type should be set (e.g., WEBSITE, MESSAGING_APPS).
 - When you output JSON, wrap it in a proper JSON code block. Do NOT add extra text inside the JSON block.
@@ -2377,6 +2408,7 @@ Otherwise, respond with a full, clear explanation, and include example JSON only
                   status: "PAUSED",
                   ad_creative: {
                     imagePrompt: c.image_prompt || c.image_generation_prompt || c.imagePrompt || "Ad Image",
+                    imageUrl: normalizeGoogleDriveUrls(c.image_url || c.imageUrl || null),
                     primary_text: c.primary_text || "",
                     headline: c.headline || "",
                     call_to_action: s.call_to_action || "LEARN_MORE",
@@ -2417,6 +2449,7 @@ Otherwise, respond with a full, clear explanation, and include example JSON only
                   status: "PAUSED",
                   ad_creative: {
                     imagePrompt: c.image_prompt || c.image_generation_prompt || c.imagePrompt || "Ad Image",
+                    imageUrl: normalizeGoogleDriveUrls(c.image_url || c.imageUrl || null),
                     primary_text: c.primary_text || "",
                     headline: c.headline || "",
                     call_to_action: c.call_to_action || "LEARN_MORE",
@@ -2458,6 +2491,7 @@ Otherwise, respond with a full, clear explanation, and include example JSON only
                   status: "PAUSED",
                   ad_creative: {
                     imagePrompt: c.image_prompt || c.image_generation_prompt || c.imagePrompt || "Ad Image",
+                    imageUrl: normalizeGoogleDriveUrls(c.image_url || c.imageUrl || null),
                     primary_text: c.primary_text || "",
                     headline: c.headline || "",
                     call_to_action: c.call_to_action || "LEARN_MORE",
@@ -2503,6 +2537,7 @@ Otherwise, respond with a full, clear explanation, and include example JSON only
                   status: c.status || "PAUSED",
                   ad_creative: {
                     imagePrompt: creative.image_prompt || creative.imagePrompt || "Ad Image",
+                    imageUrl: normalizeGoogleDriveUrls(creative.image_url || creative.imageUrl || null),
                     primary_text: creative.primaryText_options?.[0] || "",
                     headline: creative.headline_options?.[0] || "",
                     call_to_action: creative.call_to_action || "LEARN_MORE",
@@ -2554,6 +2589,7 @@ Otherwise, respond with a full, clear explanation, and include example JSON only
                   status: "PAUSED",
                   ad_creative: {
                     imagePrompt: creativeInput.imagePrompt || creativeInput.image_prompt || "Ad Image",
+                    imageUrl: normalizeGoogleDriveUrls(creativeInput.image_url || creativeInput.imageUrl || null),
                     primary_text: creativeInput.primary_text || "",
                     headline: creativeInput.headline || "",
                     call_to_action: creativeInput.call_to_action || "LEARN_MORE",
@@ -2621,6 +2657,7 @@ Otherwise, respond with a full, clear explanation, and include example JSON only
                   status: c.status || "PAUSED",
                   ad_creative: {
                     imagePrompt: assets.imagePrompt || "Ad Image",
+                    imageUrl: normalizeGoogleDriveUrls(assets.image_url || assets.imageUrl || null),
                     primary_text: primaryText,
                     headline: headline,
                     call_to_action: creative.call_to_action_type || "LEARN_MORE",
@@ -2681,6 +2718,7 @@ Otherwise, respond with a full, clear explanation, and include example JSON only
                   status: "PAUSED",
                   ad_creative: {
                     imagePrompt: creativeItem.image_prompt || "Ad Image",
+                    imageUrl: normalizeGoogleDriveUrls(creativeItem.image_url || creativeItem.imageUrl || null),
                     primary_text: creativeItem.primary_text || "",
                     headline: creativeItem.headline || "",
                     call_to_action: creativeItem.call_to_action || "LEARN_MORE",
@@ -2721,7 +2759,8 @@ Otherwise, respond with a full, clear explanation, and include example JSON only
                   name: "Ad Set 1",
                   status: "PAUSED",
                   ad_creative: {
-                    imagePrompt: cr.image_prompt || "Ad Image",
+                    imagePrompt: cr.image_prompt || cr.imagePrompt || "Ad Image",
+                    imageUrl: normalizeGoogleDriveUrls(cr.image_url || cr.imageUrl || null),
                     primary_text: cr.primary_text || "",
                     headline: cr.headline || "",
                     call_to_action: dest.call_to_action || cr.call_to_action || "LEARN_MORE",
@@ -2896,6 +2935,7 @@ Reply **YES** to generate this image and launch the campaign.
                 headline: extractFrom(text, "Headline") || extractFrom(text, "Plan Proposed") || "Grow Your Business",
                 call_to_action: extractFrom(text, "Call to Action") || "LEARN_MORE",
                 destination_url: extractedWebsite,
+                imageUrl: normalizeGoogleDriveUrls(extractFrom(text, "Image URL") || extractFrom(instruction, "Image URL")),
                 image_prompt: extractFrom(text, "Image Concept") || extractFrom(instruction, "Image Concept") || "Professional business service ad"
               },
             },
@@ -3078,7 +3118,8 @@ Reply **YES** to generate this image and launch the campaign.
               const iHash = uploadJson.imageHash || uploadJson.image_hash;
 
               if (uploadJson.ok && iHash) {
-                currentState = { ...currentState, stage: "READY_TO_LAUNCH", image_hash: iHash };
+                const iUrl = uploadJson.raw?.images?.[iHash]?.url;
+                currentState = { ...currentState, stage: "READY_TO_LAUNCH", image_hash: iHash, fb_image_url: iUrl };
                 waterfallLog.push("✅ Step 10: Image Uploaded to Meta");
               } else {
                 errorOcurred = true;
@@ -3103,6 +3144,28 @@ Reply **YES** to generate this image and launch the campaign.
             console.log("🚀 Waterfall: Executing Campaign on Meta...");
             try {
               const plan = currentState.plan;
+
+              // 📸 NEW: Organic Instagram Post Routing
+              if (plan?.objective === "INSTAGRAM_POST") {
+                console.log("📸 [Organic] Routing to Instagram Post...");
+                const igResult = await executeInstagramPost({
+                  userEmail: __currentEmail,
+                  imageUrl: currentState.fb_image_url || currentState.creative?.imageUrl,
+                  caption: currentState.creative?.primary_text || currentState.creative?.headline || ""
+                });
+
+                if (igResult.id) {
+                  await saveAnswerMemory(process.env.NEXT_PUBLIC_BASE_URL, effectiveBusinessId, {
+                    campaign_state: { stage: "COMPLETED", final_result: { ...igResult, organic: true } }
+                  }, session.user.email.toLowerCase());
+
+                  return res.status(200).json({
+                    ok: true,
+                    text: `🎉 **Instagram Post Published Successfully!**\n\n✅ Step 12: Organic Content Live\n\n- **Post ID**: \`${igResult.id}\`\n- **Platform**: Instagram (Organic)\n\nYour content is now live on your Instagram profile!`
+                  });
+                }
+              }
+
               const finalPayload = {
                 ...plan,
                 ad_sets: plan.ad_sets.map(adset => ({
