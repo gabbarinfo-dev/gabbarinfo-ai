@@ -275,32 +275,47 @@ export default async function handler(req, res) {
       console.log("📸 [Organic] Entering Isolated Terminal Route...");
 
       // 1️⃣ EXECUTION PATH: If ready and user says YES
-      // 1️⃣ EXECUTION PATH: Hard Trigger if Image + Caption + User Confirm
+      // 1️⃣ EXECUTION PATH: Hard Trigger if User Confirms
       // BYPASSING "READY_TO_LAUNCH" STAGE CHECK TO FIX CONFIRMATION BUG
-      const hasImage = lockedCampaignState?.creative?.imageUrl || lockedCampaignState?.fb_image_url;
-      const hasCaption = lockedCampaignState?.creative?.primary_text || lockedCampaignState?.creative?.headline;
       const wantsLaunch = instruction.toLowerCase().match(/\b(yes|ok|launch|execute|publish|run|confirm|do it|proceed|go ahead)\b/);
 
-      if (hasImage && hasCaption && (wantsLaunch || lockedCampaignState?.auto_run)) {
-        console.log("🚀 [Organic] Executing Instagram Post...");
-        try {
-          const igResult = await executeInstagramPost({
-            userEmail: __currentEmail,
-            imageUrl: lockedCampaignState.fb_image_url || lockedCampaignState.creative?.imageUrl,
-            caption: lockedCampaignState.creative?.primary_text || lockedCampaignState.creative?.headline || ""
-          });
+      if (wantsLaunch || lockedCampaignState?.auto_run) {
+        console.log("🚀 [Organic] Hard Execution Trigger Detected");
 
-          if (igResult.id) {
-            await saveAnswerMemory(process.env.NEXT_PUBLIC_BASE_URL, effectiveBusinessId, {
-              campaign_state: { stage: "COMPLETED", final_result: { ...igResult, organic: true } }
-            }, session.user.email.toLowerCase());
-            return res.status(200).json({
-              ok: true,
-              text: `🎉 **Instagram Post Published Successfully!**\n\n- **Post ID**: \`${igResult.id}\`\n- **Platform**: Instagram (Organic)\n\nYour content is now live on your Instagram profile!`
+        // Aggressive Asset Lookup
+        const pendingCreative = lockedCampaignState?.creative || lockedCampaignState?.plan?.creative || {};
+        const imageUrl = pendingCreative.imageUrl || lockedCampaignState?.fb_image_url || lockedCampaignState?.imageUrl;
+        const caption = pendingCreative.primary_text || pendingCreative.headline || lockedCampaignState?.caption;
+
+        if (imageUrl && caption) {
+          console.log("🚀 [Organic] Executing Instagram Post...");
+          try {
+            const igResult = await executeInstagramPost({
+              userEmail: __currentEmail,
+              imageUrl: imageUrl,
+              caption: caption
             });
+
+            if (igResult.id) {
+              await saveAnswerMemory(process.env.NEXT_PUBLIC_BASE_URL, effectiveBusinessId, {
+                campaign_state: { stage: "COMPLETED", final_result: { ...igResult, organic: true } }
+              }, session.user.email.toLowerCase());
+              return res.status(200).json({
+                ok: true,
+                text: `🎉 **Instagram Post Published Successfully!**\n\n- **Post ID**: \`${igResult.id}\`\n- **Platform**: Instagram (Organic)\n\nYour content is now live on your Instagram profile!`
+              });
+            }
+          } catch (e) {
+            return res.status(200).json({ ok: false, text: `❌ **Instagram Post Failed**: ${e.message}` });
           }
-        } catch (e) {
-          return res.status(200).json({ ok: false, text: `❌ **Instagram Post Failed**: ${e.message}` });
+        } else {
+          // HARD STOP: User wanted to launch, but assets are missing.
+          // DO NOT FALL THROUGH TO GEMINI.
+          console.warn("⚠️ [Organic] Launch requested but assets missing.");
+          return res.status(200).json({
+            ok: false,
+            text: "⚠️ **Missing Assets**: You asked to publish, but I don't have the Image URL or Caption found in my memory yet. Please provide them to proceed."
+          });
         }
       }
 
