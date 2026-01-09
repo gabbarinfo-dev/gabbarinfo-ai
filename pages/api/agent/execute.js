@@ -345,25 +345,27 @@ export default async function handler(req, res) {
       // 🔄 STATE REHYDRATION (MANDATORY)
       // ============================================================
       let hydratedState = lockedCampaignState;
-      try {
-        if (effectiveBusinessId && session?.user?.email) {
-          const { data: refetchData } = await supabase
-            .from("agent_memory")
-            .select("content")
-            .eq("email", session.user.email.toLowerCase())
-            .eq("memory_type", "client")
-            .maybeSingle();
+      if (!isConfirmationOnly) {
+        try {
+          if (effectiveBusinessId && session?.user?.email) {
+            const { data: refetchData } = await supabase
+              .from("agent_memory")
+              .select("content")
+              .eq("email", session.user.email.toLowerCase())
+              .eq("memory_type", "client")
+              .maybeSingle();
 
-          if (refetchData?.content) {
-            const c = JSON.parse(refetchData.content);
-            const savedState = c.business_answers?.[effectiveBusinessId]?.campaign_state;
-            if (savedState) {
-              hydratedState = savedState;
+            if (refetchData?.content) {
+              const c = JSON.parse(refetchData.content);
+              const savedState = c.business_answers?.[effectiveBusinessId]?.campaign_state;
+              if (savedState) {
+                hydratedState = savedState;
+              }
             }
           }
+        } catch (e) {
+          console.warn("[Instagram] Rehydration warning:", e);
         }
-      } catch (e) {
-        console.warn("[Instagram] Rehydration warning:", e);
       }
 
       // ============================================================
