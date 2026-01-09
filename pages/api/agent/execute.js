@@ -270,106 +270,152 @@ export default async function handler(req, res) {
       }
     }
 
-    // 📸 STRICT ROUTING: Organic Instagram Post Isolation (BEFORE Ads Logic)
+    // 📸 TERMINAL BRANCH: Organic Instagram Post Isolation (STRICT SEPARATION)
     if (bodyMode === "instagram_post" || lockedCampaignState?.objective === "INSTAGRAM_POST") {
-      console.log("📸 [Organic] Isolated Instagram Flow Detected...");
-      if (lockedCampaignState?.stage === "READY_TO_LAUNCH" && lockedCampaignState.image_hash) {
-        const wantsLaunch = instruction.toLowerCase().includes("launch") || instruction.toLowerCase().includes("execute") || instruction.toLowerCase().includes("run") || instruction.toLowerCase().includes("publish") || instruction.toLowerCase().includes("yes") || instruction.toLowerCase().includes("ok") || lockedCampaignState.auto_run;
+      console.log("📸 [Organic] Entering Isolated Terminal Route...");
 
-        if (wantsLaunch) {
-          console.log("🚀 [Organic] Executing Instagram Post (Strict Isolated Route)...");
-          try {
-            const igResult = await executeInstagramPost({
-              userEmail: __currentEmail,
-              imageUrl: lockedCampaignState.fb_image_url || lockedCampaignState.creative?.imageUrl,
-              caption: lockedCampaignState.creative?.primary_text || lockedCampaignState.creative?.headline || ""
+      // 1️⃣ EXECUTION PATH: If ready and user says YES
+      const stage = lockedCampaignState?.stage || "PLANNING";
+      const hasImage = lockedCampaignState?.image_hash;
+      const wantsLaunch = instruction.toLowerCase().match(/\b(yes|ok|launch|execute|publish|run|confirm)\b/);
+
+      if (stage === "READY_TO_LAUNCH" && hasImage && (wantsLaunch || lockedCampaignState?.auto_run)) {
+        console.log("🚀 [Organic] Executing Instagram Post...");
+        try {
+          const igResult = await executeInstagramPost({
+            userEmail: __currentEmail,
+            imageUrl: lockedCampaignState.fb_image_url || lockedCampaignState.creative?.imageUrl,
+            caption: lockedCampaignState.creative?.primary_text || lockedCampaignState.creative?.headline || ""
+          });
+
+          if (igResult.id) {
+            await saveAnswerMemory(process.env.NEXT_PUBLIC_BASE_URL, effectiveBusinessId, {
+              campaign_state: { stage: "COMPLETED", final_result: { ...igResult, organic: true } }
+            }, session.user.email.toLowerCase());
+            return res.status(200).json({
+              ok: true,
+              text: `🎉 **Instagram Post Published Successfully!**\n\n- **Post ID**: \`${igResult.id}\`\n- **Platform**: Instagram (Organic)\n\nYour content is now live on your Instagram profile!`
             });
-
-            if (igResult.id) {
-              await saveAnswerMemory(process.env.NEXT_PUBLIC_BASE_URL, effectiveBusinessId, {
-                campaign_state: { stage: "COMPLETED", final_result: { ...igResult, organic: true } }
-              }, session.user.email.toLowerCase());
-              return res.status(200).json({
-                ok: true,
-                text: `🎉 **Instagram Post Published Successfully!**\n\n- **Post ID**: \`${igResult.id}\`\n- **Platform**: Instagram (Organic)\n\nYour content is now live on your Instagram profile!`
-              });
-            }
-          } catch (e) {
-            return res.status(200).json({ ok: false, text: `❌ **Instagram Post Failed**: ${e.message}` });
           }
+        } catch (e) {
+          return res.status(200).json({ ok: false, text: `❌ **Instagram Post Failed**: ${e.message}` });
         }
       }
-      // If not executing, we fall through to Gemini planning but we SKIP Step 1 Asset Discovery
-    } else {
-      // ONLY RUN META ASSET DISCOVERY IF NOT ORGANIC INSTAGRAM
-      // ============================================================
-      // 🔍 STEP 1: AGENT META ASSET DISCOVERY (CACHED)
-      // ============================================================
 
-      // 1️⃣ Check cache first
-      const { data: cachedAssets } = await supabase
-        .from("agent_meta_assets")
+      // 2️⃣ PLANNING PATH: Dedicated Organic Content Gemini
+      console.log("🤖 [Organic] Generating Organic Content Plan...");
+      const igSystemPrompt = `
+You are a creative Instagram Content Strategist.
+YOUR JOB: Help the user publish an ORGANIC post.
+RULES:
+- Do NOT mention Ads, Campaigns, Budgets, or Targeting.
+- Do NOT use technical Ads terminology.
+- Suggest a creative caption and ask for an image URL or description.
+- If you have an image URL and caption, summarize and ask: "Ready to publish to Instagram?"
+- Output a minimal JSON for state: {"stage": "READY_TO_LAUNCH", "objective": "INSTAGRAM_POST", "creative": {"primary_text": "caption", "imageUrl": "url"}}
+`.trim();
+
+      const model = genAI.getGenerativeModel({ model: GEMINI_MODEL });
+      const result = await model.generateContent({
+        contents: [{ role: "user", parts: [{ text: `${igSystemPrompt}\n\nUser Instruction: ${instruction}` }] }],
+      });
+
+      const responseText = result.response.text();
+
+      // Simple JSON detection for IG state
+      let igPlan = null;
+      const jsonMatch = responseText.match(/```json\s*([\s\S]*?)\s*```/) || responseText.match(/{[\s\S]*?}/);
+      if (jsonMatch) {
+        try {
+          igPlan = JSON.parse(jsonMatch[1] || jsonMatch[0]);
+          if (igPlan.stage && effectiveBusinessId) {
+            await saveAnswerMemory(process.env.NEXT_PUBLIC_BASE_URL, effectiveBusinessId, {
+              campaign_state: {
+                ...lockedCampaignState,
+                ...igPlan,
+                objective: "INSTAGRAM_POST",
+                locked_at: new Date().toISOString()
+              }
+            }, session.user.email.toLowerCase());
+          }
+        } catch (e) { console.warn("IG Plan Parse error", e); }
+      }
+
+      return res.status(200).json({
+        ok: true,
+        text: responseText.replace(/```json[\s\S]*?```/g, "").trim(),
+        mode: "instagram_post"
+      });
+    }
+
+    // ============================================================
+    // 🔍 STEP 1: AGENT META ASSET DISCOVERY (ADS ONLY)
+    // ============================================================
+    // (This block only runs if NOT organic Instagram)
+
+    // 1️⃣ Check cache first
+    const { data: cachedAssets } = await supabase
+      .from("agent_meta_assets")
+      .select("*")
+      .eq("email", session.user.email.toLowerCase())
+      .maybeSingle();
+
+    if (cachedAssets) {
+      verifiedMetaAssets = cachedAssets;
+    } else {
+      // 2️⃣ No cache → verify using Meta Graph API
+      const { data: meta } = await supabase
+        .from("meta_connections")
         .select("*")
         .eq("email", session.user.email.toLowerCase())
-        .maybeSingle();
+        .single();
 
-      if (cachedAssets) {
-        verifiedMetaAssets = cachedAssets;
-      } else {
-        // 2️⃣ No cache → verify using Meta Graph API
-        const { data: meta } = await supabase
-          .from("meta_connections")
-          .select("*")
-          .eq("email", session.user.email.toLowerCase())
-          .single();
-
-        if (!meta?.fb_ad_account_id) {
-          return res.json({
-            ok: true,
-            gated: true,
-            text: "I don’t have access to your Meta ad account yet. Please connect your Facebook Business first.",
-          });
-        }
-
-        const token = process.env.META_SYSTEM_USER_TOKEN;
-
-        // Facebook Page
-        const fbPageRes = await fetch(`https://graph.facebook.com/v19.0/${meta.fb_page_id}?fields=name,category,about&access_token=${token}`);
-        const fbPage = await fbPageRes.json();
-
-        // Instagram
-        let igAccount = null;
-        if (meta.ig_business_id) {
-          const igRes = await fetch(`https://graph.facebook.com/v19.0/${meta.ig_business_id}?fields=name,biography,category&access_token=${token}`);
-          igAccount = await igRes.json();
-        }
-
-        // Ad Account (normalize id to numeric for 'act_<id>' pattern)
-        const normalizedAdId = (meta.fb_ad_account_id || "").toString().replace(/^act_/, "");
-        const adRes = await fetch(`https://graph.facebook.com/v19.0/act_${normalizedAdId}?fields=account_status,currency,timezone_name&access_token=${token}`);
-        const adAccount = await adRes.json();
-
-        verifiedMetaAssets = {
-          email: session.user.email.toLowerCase(),
-          fb_page: fbPage,
-          ig_account: igAccount,
-          ad_account: adAccount,
-          verified_at: new Date().toISOString(),
-        };
-
-        // 3️⃣ Save to cache
-        await supabase.from("agent_meta_assets").upsert(verifiedMetaAssets);
+      if (!meta?.fb_ad_account_id) {
+        return res.json({
+          ok: true,
+          gated: true,
+          text: "I don’t have access to your Meta ad account yet. Please connect your Facebook Business first.",
+        });
       }
 
-      console.log(`🏢 Effective Business ID: ${effectiveBusinessId} (Active: ${activeBusinessId})`);
+      const token = process.env.META_SYSTEM_USER_TOKEN;
 
-      if (metaConnected && activeBusinessId) {
-        forcedBusinessContext = {
-          source: "meta_connection",
-          business_id: activeBusinessId,
-          note: "User has exactly ONE Meta business connected. This is the active business.",
-        };
+      // Facebook Page
+      const fbPageRes = await fetch(`https://graph.facebook.com/v19.0/${meta.fb_page_id}?fields=name,category,about&access_token=${token}`);
+      const fbPage = await fbPageRes.json();
+
+      // Instagram
+      let igAccount = null;
+      if (meta.ig_business_id) {
+        const igRes = await fetch(`https://graph.facebook.com/v19.0/${meta.ig_business_id}?fields=name,biography,category&access_token=${token}`);
+        igAccount = await igRes.json();
       }
+
+      // Ad Account (normalize id to numeric for 'act_<id>' pattern)
+      const normalizedAdId = (meta.fb_ad_account_id || "").toString().replace(/^act_/, "");
+      const adRes = await fetch(`https://graph.facebook.com/v19.0/act_${normalizedAdId}?fields=account_status,currency,timezone_name&access_token=${token}`);
+      const adAccount = await adRes.json();
+
+      verifiedMetaAssets = {
+        email: session.user.email.toLowerCase(),
+        fb_page: fbPage,
+        ig_account: igAccount,
+        ad_account: adAccount,
+        verified_at: new Date().toISOString(),
+      };
+
+      // 3️⃣ Save to cache
+      await supabase.from("agent_meta_assets").upsert(verifiedMetaAssets);
+    }
+
+    console.log(`🏢 Effective Business ID: ${effectiveBusinessId} (Active: ${activeBusinessId})`);
+
+    if (metaConnected && activeBusinessId) {
+      forcedBusinessContext = {
+        source: "meta_connection",
+        business_id: activeBusinessId,
+        note: "User has exactly ONE Meta business connected. This is the active business.",
+      };
     }
 
     console.log("🏢 EFFECTIVE BUSINESS ID:", effectiveBusinessId);
@@ -1027,66 +1073,6 @@ You are in GENERIC DIGITAL MARKETING AGENT MODE.
                 }
               }]
             };
-          }
-          // Normalize Variation 7: Organic Instagram Post
-          if (userPlan.objective === "INSTAGRAM_POST") {
-            console.log("🔄 Normalizing Organic Instagram Post...");
-            userPlan = {
-              campaign_name: userPlan.campaign_name || "Instagram Organic Post",
-              objective: "INSTAGRAM_POST",
-              imageUrl: userPlan.imageUrl || null,
-              caption: userPlan.primary_text || userPlan.caption || "",
-              primary_text: userPlan.primary_text || userPlan.caption || "",
-              imagePrompt: userPlan.imagePrompt || userPlan.primary_text || "Engaging Instagram post image"
-            };
-
-            const baseUrl = process.env.NEXT_PUBLIC_BASE_URL;
-            const proposedState = {
-              ...lockedCampaignState,
-              stage: "PLAN_PROPOSED",
-              plan: userPlan,
-              objective: "INSTAGRAM_POST",
-              auto_run: true
-            };
-            await saveAnswerMemory(baseUrl, effectiveBusinessId, { campaign_state: proposedState });
-            lockedCampaignState = proposedState;
-
-            // Trigger Image generation immediately if needed
-            if (!userPlan.imageUrl) {
-              const imgRes = await fetch(`${process.env.NEXT_PUBLIC_BASE_URL}/api/images/generate`, {
-                method: "POST",
-                headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({ prompt: userPlan.imagePrompt })
-              });
-              const imgJson = await parseResponseSafe(imgRes);
-              if (imgJson?.imageBase64) {
-                userPlan.imageUrl = `data:image/png;base64,${imgJson.imageBase64}`;
-                const imageState = { ...lockedCampaignState, stage: "IMAGE_GENERATED", creative: { imageUrl: userPlan.imageUrl, imageBase64: imgJson.imageBase64 } };
-                await saveAnswerMemory(baseUrl, effectiveBusinessId, { campaign_state: imageState }, session.user.email.toLowerCase());
-                lockedCampaignState = imageState;
-
-                // Move to upload
-                const uploadRes = await fetch(`${process.env.NEXT_PUBLIC_BASE_URL}/api/meta/upload-image`, {
-                  method: "POST",
-                  headers: { "Content-Type": "application/json", "X-Client-Email": __currentEmail || "" },
-                  body: JSON.stringify({ imageBase64: imgJson.imageBase64 })
-                });
-                const uploadJson = await parseResponseSafe(uploadRes);
-                const imageHash = uploadJson.imageHash || uploadJson.image_hash;
-                if (imageHash) {
-                  const readyState = { ...lockedCampaignState, stage: "READY_TO_LAUNCH", image_hash: imageHash };
-                  await saveAnswerMemory(baseUrl, effectiveBusinessId, { campaign_state: readyState }, session.user.email.toLowerCase());
-                  lockedCampaignState = readyState;
-                  // The execution waterfall (Step 12) will pick this up on the NEXT turn or if we loop.
-                  // For now, we return a message to the user that we are ready or just finished depending on auto_run.
-                  // Since auto_run is true, the waterfall at the end of this handler will run!
-                }
-              }
-            } else if (userPlan.imageUrl) {
-              // If imageUrl already exists (e.g. from user or converted Link)
-              // Pre-upload it if possible or wait for waterfall.
-              // Waterfall (Step 12) works best for consistent state.
-            }
           }
 
           // If normalized to our schema, auto-run the pipeline now
@@ -3168,26 +3154,6 @@ Reply **YES** to generate this image and launch the campaign.
             try {
               const plan = currentState.plan;
 
-              // 📸 NEW: Organic Instagram Post Routing
-              if (plan?.objective === "INSTAGRAM_POST") {
-                console.log("📸 [Organic] Routing to Instagram Post...");
-                const igResult = await executeInstagramPost({
-                  userEmail: __currentEmail,
-                  imageUrl: currentState.fb_image_url || currentState.creative?.imageUrl,
-                  caption: currentState.creative?.primary_text || currentState.creative?.headline || ""
-                });
-
-                if (igResult.id) {
-                  await saveAnswerMemory(process.env.NEXT_PUBLIC_BASE_URL, effectiveBusinessId, {
-                    campaign_state: { stage: "COMPLETED", final_result: { ...igResult, organic: true } }
-                  }, session.user.email.toLowerCase());
-
-                  return res.status(200).json({
-                    ok: true,
-                    text: `🎉 **Instagram Post Published Successfully!**\n\n✅ Step 12: Organic Content Live\n\n- **Post ID**: \`${igResult.id}\`\n- **Platform**: Instagram (Organic)\n\nYour content is now live on your Instagram profile!`
-                  });
-                }
-              }
 
               const finalPayload = {
                 ...plan,
@@ -3263,4 +3229,6 @@ Reply **YES** to generate this image and launch the campaign.
     });
   }
 }
+
+
 
