@@ -275,12 +275,13 @@ export default async function handler(req, res) {
       console.log("📸 [Organic] Entering Isolated Terminal Route...");
 
       // 1️⃣ EXECUTION PATH: If ready and user says YES
-      const stage = lockedCampaignState?.stage || "PLANNING";
+      // 1️⃣ EXECUTION PATH: Hard Trigger if Image + Caption + User Confirm
+      // BYPASSING "READY_TO_LAUNCH" STAGE CHECK TO FIX CONFIRMATION BUG
       const hasImage = lockedCampaignState?.creative?.imageUrl || lockedCampaignState?.fb_image_url;
       const hasCaption = lockedCampaignState?.creative?.primary_text || lockedCampaignState?.creative?.headline;
-      const wantsLaunch = instruction.toLowerCase().match(/\b(yes|ok|launch|execute|publish|run|confirm|do it|proceed)\b/);
+      const wantsLaunch = instruction.toLowerCase().match(/\b(yes|ok|launch|execute|publish|run|confirm|do it|proceed|go ahead)\b/);
 
-      if (stage === "READY_TO_LAUNCH" && hasImage && hasCaption && (wantsLaunch || lockedCampaignState?.auto_run)) {
+      if (hasImage && hasCaption && (wantsLaunch || lockedCampaignState?.auto_run)) {
         console.log("🚀 [Organic] Executing Instagram Post...");
         try {
           const igResult = await executeInstagramPost({
