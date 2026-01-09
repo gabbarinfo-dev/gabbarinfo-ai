@@ -53,12 +53,16 @@ export default async function handler(req, res) {
     } else if (lower.includes("call")) {
       objective = "calls";
       confidence = "medium";
-    } else if (lower.includes("organic") || lower.includes("post") || lower.includes("publish") || mode === "instagram_post") {
-      objective = "instagram_post";
-      confidence = "high";
-    } else if (lower.includes("best campaign") || lower.includes("run ads")) {
-      objective = "auto_recommend";
+    } else {
+      objective = "generic";
       confidence = "low";
+    }
+
+    // Explicit override for mode
+    if (mode === "instagram_post") {
+      platform = "meta";
+      objective = "INSTAGRAM_POST";
+      confidence = "high";
     }
 
     return res.status(200).json({
@@ -70,6 +74,7 @@ export default async function handler(req, res) {
         confidence,
         requires_confirmation: true,
       },
+      intent_type: mode === "instagram_post" ? "INSTAGRAM_POST" : null, // Adding top-level indicator
     });
 
   } catch (err) {
