@@ -271,65 +271,143 @@ export default async function handler(req, res) {
     }
 
     // 📸 TERMINAL BRANCH: Organic Instagram Post Isolation (STRICT SEPARATION)
-    if (bodyMode === "instagram_post" || lockedCampaignState?.objective === "INSTAGRAM_POST") {
+    // We catch explicit mode, locked state, OR clear organic intent to prevent fall-through.
+    const isOrganicIntent = instruction.toLowerCase().includes("instagram") &&
+      !instruction.toLowerCase().includes("ad") &&
+      !instruction.toLowerCase().includes("sponsored");
+
+    if (bodyMode === "instagram_post" || lockedCampaignState?.objective === "INSTAGRAM_POST" || isOrganicIntent) {
       console.log("📸 [Organic] Entering Isolated Terminal Route...");
 
-      // 1️⃣ EXECUTION PATH: If ready and user says YES
-      // 1️⃣ EXECUTION PATH: Hard Trigger if User Confirms
-      // BYPASSING "READY_TO_LAUNCH" STAGE CHECK TO FIX CONFIRMATION BUG
-      const wantsLaunch = instruction.toLowerCase().match(/\b(yes|ok|launch|execute|publish|run|confirm|do it|proceed|go ahead)\b/);
+      // ============================================================
+      // 0️⃣ EXPLICIT ASSET EXTRACTION & PERSISTENCE
+      // ============================================================
+      // Detect explicit assets in the instruction to persist them BEFORE execution check.
+      const urlRegex = /(https?:\/\/[^\s]+(\.jpg|\.png|\.jpeg|\.webp)|https?:\/\/[^\s]+)/i;
+      const hashtagRegex = /#\w+/g;
 
-      if (wantsLaunch || lockedCampaignState?.auto_run) {
-        console.log("🚀 [Organic] Hard Execution Trigger Detected");
+      const foundUrlMatch = instruction.match(urlRegex);
+      const foundHashtags = instruction.match(hashtagRegex) || [];
 
-        // Aggressive Asset Lookup
-        const pendingCreative = lockedCampaignState?.creative || lockedCampaignState?.plan?.creative || {};
-        const imageUrl = pendingCreative.imageUrl || lockedCampaignState?.fb_image_url || lockedCampaignState?.imageUrl;
-        const caption = pendingCreative.primary_text || pendingCreative.headline || lockedCampaignState?.caption;
+      let foundCaption = null;
+      const captionMatch = instruction.match(/Caption:\s*(.*)/i);
 
-        if (imageUrl && caption) {
-          console.log("🚀 [Organic] Executing Instagram Post...");
-          try {
-            const igResult = await executeInstagramPost({
-              userEmail: __currentEmail,
-              imageUrl: imageUrl,
-              caption: caption
-            });
-
-            if (igResult.id) {
-              await saveAnswerMemory(process.env.NEXT_PUBLIC_BASE_URL, effectiveBusinessId, {
-                campaign_state: { stage: "COMPLETED", final_result: { ...igResult, organic: true } }
-              }, session.user.email.toLowerCase());
-              return res.status(200).json({
-                ok: true,
-                text: `🎉 **Instagram Post Published Successfully!**\n\n- **Post ID**: \`${igResult.id}\`\n- **Platform**: Instagram (Organic)\n\nYour content is now live on your Instagram profile!`
-              });
-            }
-          } catch (e) {
-            return res.status(200).json({ ok: false, text: `❌ **Instagram Post Failed**: ${e.message}` });
-          }
-        } else {
-          // HARD STOP: User wanted to launch, but assets are missing.
-          // DO NOT FALL THROUGH TO GEMINI.
-          console.warn("⚠️ [Organic] Launch requested but assets missing.");
-          return res.status(200).json({
-            ok: false,
-            text: "⚠️ **Missing Assets**: You asked to publish, but I don't have the Image URL or Caption found in my memory yet. Please provide them to proceed."
-          });
+      if (captionMatch) {
+        foundCaption = captionMatch[1].trim();
+      } else if (foundUrlMatch) {
+        // Fallback: cleaning up URL and hashtags to get remaining text
+        const rawText = instruction.replace(foundUrlMatch[0], "").replace(/#\w+/g, "").trim();
+        // Basic heuristic to avoid saving "Publish" as a caption if it's just the command
+        if (rawText.length > 20 || !rawText.toLowerCase().includes("publish")) {
+          foundCaption = rawText;
         }
       }
 
-      // 2️⃣ PLANNING PATH: Dedicated Organic Content Gemini
-      console.log("🤖 [Organic] Generating Organic Content Plan...");
+      const explicitUrl = foundUrlMatch ? foundUrlMatch[0] : null;
+
+      // UPDATE STATE IMMEDIATELY IF ASSETS FOUND
+      // (This fix guarantees the Hard Trigger below sees the new data on the SAME TURN)
+      if (explicitUrl || foundCaption) {
+        console.log("💾 [Organic] Explicit Assets Found. Persisting...", { explicitUrl, foundCaption });
+
+        const existingCreative = lockedCampaignState?.creative || {};
+        const newCreative = {
+          ...existingCreative,
+          imageUrl: explicitUrl || existingCreative.imageUrl,
+          primary_text: foundCaption || existingCreative.primary_text,
+          hashtags: foundHashtags.length > 0 ? foundHashtags : (existingCreative.hashtags || [])
+        };
+
+        // Ensure hashtags are in the text
+        if (newCreative.primary_text && newCreative.hashtags && newCreative.hashtags.length > 0) {
+          const tagsStr = newCreative.hashtags.join(" ");
+          if (!newCreative.primary_text.includes(tagsStr)) {
+            newCreative.primary_text += " " + tagsStr;
+          }
+        }
+
+        // 1. Save to Database (Async)
+        await saveAnswerMemory(process.env.NEXT_PUBLIC_BASE_URL, effectiveBusinessId, {
+          campaign_state: {
+            objective: "INSTAGRAM_POST",
+            creative: newCreative,
+            stage: "READY_TO_LAUNCH"
+          }
+        }, session.user.email.toLowerCase());
+
+        // 2. Update Local Variable (Sync - for Immediate Read)
+        lockedCampaignState = {
+          ...lockedCampaignState,
+          objective: "INSTAGRAM_POST",
+          creative: newCreative,
+          fb_image_url: newCreative.imageUrl
+        };
+      }
+
+      // ============================================================
+      // 1️⃣ HARD EXECUTION TRIGGER (STRICT READ-ONLY)
+      // ============================================================
+      const wantsLaunch = instruction
+        .toLowerCase()
+        .match(/\b(yes|ok|launch|execute|run|confirm|do it|proceed|go ahead)\b/);
+
+      if (
+        lockedCampaignState?.creative?.imageUrl &&
+        lockedCampaignState?.creative?.primary_text &&
+        wantsLaunch
+      ) {
+        console.log("🚀 [Organic] Executing Instagram Post...");
+        try {
+          const igResult = await executeInstagramPost({
+            userEmail: __currentEmail,
+            imageUrl: lockedCampaignState.creative.imageUrl,
+            caption: lockedCampaignState.creative.primary_text
+          });
+
+          if (igResult.id) {
+            await saveAnswerMemory(process.env.NEXT_PUBLIC_BASE_URL, effectiveBusinessId, {
+              campaign_state: { stage: "COMPLETED", final_result: { ...igResult, organic: true } }
+            }, session.user.email.toLowerCase());
+
+            return res.status(200).json({
+              ok: true,
+              message: "Instagram post published successfully",
+              text: `🎉 **Instagram Post Published Successfully!**\n\n- **Post ID**: \`${igResult.id}\`\n- **Platform**: Instagram (Organic)\n\nYour content is now live on your Instagram profile!`,
+              result: igResult,
+            });
+          }
+        } catch (e) {
+          return res.status(200).json({ ok: false, text: `❌ **Instagram Post Failed**: ${e.message}` });
+        }
+      } else if (wantsLaunch) {
+        // HARD STOP: Missing Assets (Specific Feedback)
+        console.warn("⚠️ [Organic] Launch requested but assets missing.");
+        const finalCreative = lockedCampaignState?.creative || {};
+        let missingMsg = "";
+        if (!finalCreative.imageUrl) missingMsg += "Image URL";
+        if (!finalCreative.primary_text) missingMsg += (missingMsg ? " and " : "") + "Caption";
+
+        return res.status(200).json({
+          ok: false,
+          text: `⚠️ **Missing Assets**: I'm ready to publish, but I need the **${missingMsg}**. Please provide it to proceed.`
+        });
+      }
+
+      // ============================================================
+      // 2️⃣ PLANNING PATH (FALLBACK ONLY - NO EXECUTION)
+      // ============================================================
+      console.log("🤖 [Organic] Generating Organic Content Plan (Simple Mode)...");
+
       const igSystemPrompt = `
 You are a creative Instagram Content Strategist.
 YOUR JOB: Help the user publish an ORGANIC post.
+
 RULES:
-- Do NOT mention Ads, Campaigns, Budgets, or Targeting.
-- Do NOT use technical Ads terminology.
-- Suggest a creative caption and ask for an image URL or description.
-- If you have an image URL and caption, summarize and ask: "Ready to publish to Instagram?"
-- Output a minimal JSON for state: {"stage": "READY_TO_LAUNCH", "objective": "INSTAGRAM_POST", "creative": {"primary_text": "caption", "imageUrl": "url"}}
+1. If the user provides an image and caption, just ask "Ready to publish?".
+2. If resources are missing (Image or Caption), ask for them cleanly.
+3. Do NOT generate images. Do NOT mention Ads, Budgets, or Targeting.
+4. Keep it conversational and concise.
+5. Output minimal JSON for state: {"stage": "PLANNING", "objective": "INSTAGRAM_POST", "creative": {"primary_text": "caption", "imageUrl": "url"}}
 `.trim();
 
       const model = genAI.getGenerativeModel({ model: GEMINI_MODEL });
@@ -338,13 +416,13 @@ RULES:
       });
 
       const responseText = result.response.text();
-
-      // Simple JSON detection for IG state
-      let igPlan = null;
       const jsonMatch = responseText.match(/```json\s*([\s\S]*?)\s*```/) || responseText.match(/{[\s\S]*?}/);
+      const finalText = responseText.replace(/```json[\s\S]*?```/g, "").trim();
+
       if (jsonMatch) {
         try {
-          igPlan = JSON.parse(jsonMatch[1] || jsonMatch[0]);
+          const igPlan = JSON.parse(jsonMatch[1] || jsonMatch[0]);
+
           if (igPlan.stage && effectiveBusinessId) {
             await saveAnswerMemory(process.env.NEXT_PUBLIC_BASE_URL, effectiveBusinessId, {
               campaign_state: {
@@ -360,9 +438,14 @@ RULES:
 
       return res.status(200).json({
         ok: true,
-        text: responseText.replace(/```json[\s\S]*?```/g, "").trim(),
+        text: finalText,
         mode: "instagram_post"
       });
+    }
+
+    // 🛑 HARD SAFETY STOP: Ensure no fall-through from Instagram block
+    if (bodyMode === "instagram_post" || lockedCampaignState?.objective === "INSTAGRAM_POST") {
+      return res.end();
     }
 
     // ============================================================
@@ -980,7 +1063,7 @@ You are in GENERIC DIGITAL MARKETING AGENT MODE.
     // ============================================================
     // 🚀 DIRECT USER JSON → AUTO EXECUTE (Plan → Image → Launch)
     // ============================================================
-    if ((mode === "meta_ads_plan" || mode === "instagram_post") && typeof instruction === "string") {
+    if (mode === "meta_ads_plan" && typeof instruction === "string") {
       let userJsonString = null;
       const cbMatch = instruction.match(/```(?:json)?\s*([\s\S]*?)\s*```/);
       if (cbMatch) {
