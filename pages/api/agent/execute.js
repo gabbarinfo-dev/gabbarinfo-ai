@@ -647,11 +647,14 @@ export default async function handler(req, res) {
     let mode = body.mode || "generic";
 
     // 🔒 CRITICAL: FORCE MODE FROM LOCKED STATE (MUST BE FIRST)
-    // If a lockedCampaignState exists → mode MUST be meta_ads_plan
-    // This runs BEFORE any Gemini calls or waterfalls to ensure correct mode context
+    // If a lockedCampaignState exists → mode MUST be its original mode or meta_ads_plan
     if (lockedCampaignState) {
-      mode = "meta_ads_plan";
-      console.log("🔒 MODE FORCED: meta_ads_plan (locked campaign state exists)");
+      if (lockedCampaignState.objective === "INSTAGRAM_POST") {
+        mode = "instagram_post";
+      } else {
+        mode = "meta_ads_plan";
+      }
+      console.log(`🔒 MODE FORCED: ${mode} (locked campaign state exists)`);
     }
     // 🔁 AUTO-ROUTE TO META MODE (fallback for new campaigns)
     else if (
@@ -806,6 +809,29 @@ You MUST ALWAYS output BOTH a human-readable summary AND the JSON using this exa
 - When you output JSON, wrap it in a proper JSON code block. Do NOT add extra text inside the JSON block.
 - ALWAYS propose a plan if you have enough info (objective, location, service, budget).
 `;
+    } else if (mode === "instagram_post") {
+      modeFocus = `
+You are in INSTAGRAM ORGANIC POST MODE.
+
+- Your ONLY goal is to prepare an organic Instagram post.
+- You MUST NOT ask about ad objectives, budgets, conversion locations, or targeting.
+- You MUST directly propose a post plan.
+- Use the objective "INSTAGRAM_POST".
+- The plan MUST include:
+  - primary_text (The caption for the post)
+  - imagePrompt (A prompt to generate the post image)
+  - imageUrl (If the user provided a link to an image)
+
+*** REQUIRED JSON SCHEMA ***
+{
+  "objective": "INSTAGRAM_POST",
+  "primary_text": "Your engaging caption here including #hashtags",
+  "imagePrompt": "a creative and high-quality image concept",
+  "imageUrl": "https://link-to-image.com (optional)"
+}
+
+- Output the JSON in a code block.
+`;
     } else if (mode === "social_plan") {
       modeFocus = `
 You are in SOCIAL MEDIA PLANNER MODE.
@@ -956,7 +982,7 @@ You are in GENERIC DIGITAL MARKETING AGENT MODE.
     // ============================================================
     // 🚀 DIRECT USER JSON → AUTO EXECUTE (Plan → Image → Launch)
     // ============================================================
-    if (mode === "meta_ads_plan" && typeof instruction === "string") {
+    if ((mode === "meta_ads_plan" || mode === "instagram_post") && typeof instruction === "string") {
       let userJsonString = null;
       const cbMatch = instruction.match(/```(?:json)?\s*([\s\S]*?)\s*```/);
       if (cbMatch) {
@@ -1067,6 +1093,67 @@ You are in GENERIC DIGITAL MARKETING AGENT MODE.
               }]
             };
           }
+          // Normalize Variation 7: Organic Instagram Post
+          if (userPlan.objective === "INSTAGRAM_POST") {
+            console.log("🔄 Normalizing Organic Instagram Post...");
+            userPlan = {
+              campaign_name: userPlan.campaign_name || "Instagram Organic Post",
+              objective: "INSTAGRAM_POST",
+              imageUrl: userPlan.imageUrl || null,
+              caption: userPlan.primary_text || userPlan.caption || "",
+              primary_text: userPlan.primary_text || userPlan.caption || "",
+              imagePrompt: userPlan.imagePrompt || userPlan.primary_text || "Engaging Instagram post image"
+            };
+
+            const baseUrl = process.env.NEXT_PUBLIC_BASE_URL;
+            const proposedState = {
+              ...lockedCampaignState,
+              stage: "PLAN_PROPOSED",
+              plan: userPlan,
+              objective: "INSTAGRAM_POST",
+              auto_run: true
+            };
+            await saveAnswerMemory(baseUrl, effectiveBusinessId, { campaign_state: proposedState });
+            lockedCampaignState = proposedState;
+
+            // Trigger Image generation immediately if needed
+            if (!userPlan.imageUrl) {
+              const imgRes = await fetch(`${process.env.NEXT_PUBLIC_BASE_URL}/api/images/generate`, {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ prompt: userPlan.imagePrompt })
+              });
+              const imgJson = await parseResponseSafe(imgRes);
+              if (imgJson?.imageBase64) {
+                userPlan.imageUrl = `data:image/png;base64,${imgJson.imageBase64}`;
+                const imageState = { ...lockedCampaignState, stage: "IMAGE_GENERATED", creative: { imageUrl: userPlan.imageUrl, imageBase64: imgJson.imageBase64 } };
+                await saveAnswerMemory(baseUrl, effectiveBusinessId, { campaign_state: imageState }, session.user.email.toLowerCase());
+                lockedCampaignState = imageState;
+
+                // Move to upload
+                const uploadRes = await fetch(`${process.env.NEXT_PUBLIC_BASE_URL}/api/meta/upload-image`, {
+                  method: "POST",
+                  headers: { "Content-Type": "application/json", "X-Client-Email": __currentEmail || "" },
+                  body: JSON.stringify({ imageBase64: imgJson.imageBase64 })
+                });
+                const uploadJson = await parseResponseSafe(uploadRes);
+                const imageHash = uploadJson.imageHash || uploadJson.image_hash;
+                if (imageHash) {
+                  const readyState = { ...lockedCampaignState, stage: "READY_TO_LAUNCH", image_hash: imageHash };
+                  await saveAnswerMemory(baseUrl, effectiveBusinessId, { campaign_state: readyState }, session.user.email.toLowerCase());
+                  lockedCampaignState = readyState;
+                  // The execution waterfall (Step 12) will pick this up on the NEXT turn or if we loop.
+                  // For now, we return a message to the user that we are ready or just finished depending on auto_run.
+                  // Since auto_run is true, the waterfall at the end of this handler will run!
+                }
+              }
+            } else if (userPlan.imageUrl) {
+              // If imageUrl already exists (e.g. from user or converted Link)
+              // Pre-upload it if possible or wait for waterfall.
+              // Waterfall (Step 12) works best for consistent state.
+            }
+          }
+
           // If normalized to our schema, auto-run the pipeline now
           if (userPlan.campaign_name && userPlan.ad_sets?.length) {
             const baseUrl = process.env.NEXT_PUBLIC_BASE_URL;
@@ -1074,6 +1161,7 @@ You are in GENERIC DIGITAL MARKETING AGENT MODE.
               ...lockedCampaignState,
               stage: "PLAN_PROPOSED",
               plan: userPlan,
+              objective: userPlan.objective,
               auto_run: true // ⚡ Trigger Auto-Waterfall for High Logic
             };
             await saveAnswerMemory(baseUrl, effectiveBusinessId, { campaign_state: proposedState });
@@ -1394,7 +1482,7 @@ You are in GENERIC DIGITAL MARKETING AGENT MODE.
 
     if (
       !isPlanProposed &&
-      mode === "meta_ads_plan" &&
+      (mode === "meta_ads_plan") &&
       !selectedMetaObjective
     ) {
       return res.status(200).json({
@@ -3240,5 +3328,6 @@ Reply **YES** to generate this image and launch the campaign.
     });
   }
 }
+
 
 
