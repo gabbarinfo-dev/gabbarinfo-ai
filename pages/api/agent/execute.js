@@ -345,23 +345,52 @@ export default async function handler(req, res) {
       }
 
       // ============================================================
-      // 1️⃣ HARD EXECUTION TRIGGER (STRICT READ-ONLY)
+      // 🔄 STATE REHYDRATION (CRITICAL FIX)
+      // ============================================================
+      let hydratedState = lockedCampaignState;
+      try {
+        if (effectiveBusinessId && session?.user?.email) {
+          const { data: refetchData } = await supabase
+            .from("agent_memory")
+            .select("content")
+            .eq("email", session.user.email.toLowerCase())
+            .eq("memory_type", "client")
+            .maybeSingle();
+
+          if (refetchData?.content) {
+            const c = JSON.parse(refetchData.content);
+            const savedState = c.business_answers?.[effectiveBusinessId]?.campaign_state;
+            if (savedState) {
+              hydratedState = savedState;
+              console.log("✅ [Organic] State Rehydrated", {
+                img: !!hydratedState?.creative?.imageUrl,
+                txt: !!hydratedState?.creative?.primary_text
+              });
+            }
+          }
+        }
+      } catch (e) {
+        console.warn("[Organic] Rehydration warn:", e);
+      }
+
+      // ============================================================
+      // 1️⃣ HARD EXECUTION TRIGGER (STRICT READ-ONLY from HYDRATED STATE)
       // ============================================================
       const wantsLaunch = instruction
         .toLowerCase()
         .match(/\b(yes|ok|launch|execute|run|confirm|do it|proceed|go ahead)\b/);
 
       if (
-        lockedCampaignState?.creative?.imageUrl &&
-        lockedCampaignState?.creative?.primary_text &&
+        hydratedState?.creative?.imageUrl &&
+        hydratedState?.creative?.primary_text &&
         wantsLaunch
       ) {
         console.log("🚀 [Organic] Executing Instagram Post...");
         try {
           const igResult = await executeInstagramPost({
             userEmail: __currentEmail,
-            imageUrl: lockedCampaignState.creative.imageUrl,
-            caption: lockedCampaignState.creative.primary_text
+            imageUrl: hydratedState.creative.imageUrl,
+            caption: hydratedState.creative.primary_text
           });
 
           if (igResult.id) {
@@ -382,7 +411,7 @@ export default async function handler(req, res) {
       } else if (wantsLaunch) {
         // HARD STOP: Missing Assets (Specific Feedback)
         console.warn("⚠️ [Organic] Launch requested but assets missing.");
-        const finalCreative = lockedCampaignState?.creative || {};
+        const finalCreative = hydratedState?.creative || {};
         let missingMsg = "";
         if (!finalCreative.imageUrl) missingMsg += "Image URL";
         if (!finalCreative.primary_text) missingMsg += (missingMsg ? " and " : "") + "Caption";
