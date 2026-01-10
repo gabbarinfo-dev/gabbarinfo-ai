@@ -1,6 +1,5 @@
 // pages/api/agent/execute.js
 
-
 import { GoogleGenerativeAI } from "@google/generative-ai";
 import { getServerSession } from "next-auth/next";
 import { authOptions } from "../auth/[...nextauth]";
@@ -8,21 +7,16 @@ import { createClient } from "@supabase/supabase-js";
 import { executeInstagramPost } from "../../../lib/execute-instagram-post";
 import { normalizeImageUrl } from "../../../lib/normalize-image-url";
 
-
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL,
   process.env.SUPABASE_SERVICE_ROLE_KEY
 );
 
-
 /* ---------------- HELPERS (INPUT NORMALIZATION) ---------------- */
-
-
 
 
 const GEMINI_API_KEY = process.env.GEMINI_API_KEY;
 const GEMINI_MODEL = process.env.GEMINI_MODEL || "gemini-1.5-flash";
-
 
 let genAI = null;
 let __currentEmail = null;
@@ -31,7 +25,6 @@ if (GEMINI_API_KEY) {
 } else {
   console.warn("⚠ GEMINI_API_KEY is not set. /api/agent/execute will not work for agent mode.");
 }
-
 
 async function parseResponseSafe(resp) {
   try {
@@ -46,7 +39,6 @@ async function parseResponseSafe(resp) {
   }
 }
 
-
 async function saveAnswerMemory(baseUrl, business_id, answers, emailOverride = null) {
   const targetEmail = emailOverride || __currentEmail;
   if (!targetEmail) {
@@ -54,9 +46,7 @@ async function saveAnswerMemory(baseUrl, business_id, answers, emailOverride = n
     return;
   }
 
-
   console.log(`💾 saveAnswerMemory: Saving for ${business_id} (Email: ${targetEmail})`);
-
 
   // Direct Supabase Write (Robust & Faster than internal fetch)
   try {
@@ -67,7 +57,6 @@ async function saveAnswerMemory(baseUrl, business_id, answers, emailOverride = n
       .eq("memory_type", "client")
       .maybeSingle();
 
-
     let content = {};
     try {
       content = existing?.content ? JSON.parse(existing.content) : {};
@@ -75,15 +64,12 @@ async function saveAnswerMemory(baseUrl, business_id, answers, emailOverride = n
       content = {};
     }
 
-
     content.business_answers = content.business_answers || {};
     content.business_answers = content.business_answers || {};
-
 
     // 🔒 DEEP MERGE CAMPAIGN STATE (Prevent Data Loss)
     const existingAnswers = content.business_answers[business_id] || {};
     let finalAnswers = { ...existingAnswers, ...answers, updated_at: new Date().toISOString() };
-
 
     if (answers.campaign_state && existingAnswers.campaign_state) {
       console.log(`🧠 [Deep Merge] Merging campaign_state for ${business_id}...`);
@@ -95,9 +81,7 @@ async function saveAnswerMemory(baseUrl, business_id, answers, emailOverride = n
       };
     }
 
-
     content.business_answers[business_id] = finalAnswers;
-
 
     const { error } = await supabase.from("agent_memory").upsert(
       {
@@ -109,7 +93,6 @@ async function saveAnswerMemory(baseUrl, business_id, answers, emailOverride = n
       { onConflict: "email,memory_type" }
     );
 
-
     if (error) {
       console.error("❌ saveAnswerMemory Supabase Error:", error.message);
     } else {
@@ -120,7 +103,6 @@ async function saveAnswerMemory(baseUrl, business_id, answers, emailOverride = n
   }
 }
 
-
 async function generateMetaCampaignPlan({ lockedCampaignState, autoBusinessContext, verifiedMetaAssets, detectedLandingPage, instruction, text }) {
   const extract = (src, key) => {
     const regex = new RegExp(`${key}[:\-]?\\s*(.*?)(?:\\n|$)`, "i");
@@ -128,20 +110,16 @@ async function generateMetaCampaignPlan({ lockedCampaignState, autoBusinessConte
     return match ? match[1].trim() : null;
   };
 
-
   const serviceName = lockedCampaignState?.service || autoBusinessContext?.business_name || "Digital Marketing";
   const location = lockedCampaignState?.location || "India";
   const objective = lockedCampaignState?.objective || "OUTCOME_TRAFFIC";
   const performance_goal = lockedCampaignState?.performance_goal || "MAXIMIZE_LINK_CLICKS";
 
-
   const titleMatch = (text || "").match(/\*\*Plan Proposed:?\s*(.*?)\*\*/i);
   const campaign_name = titleMatch ? titleMatch[1].trim() : (extract(instruction, "Campaign Name") || `${serviceName} Campaign`);
 
-
   const rawBudget = extract(instruction, "Budget");
   const budgetVal = rawBudget ? parseInt(rawBudget.replace(/[^\d]/g, "")) : (lockedCampaignState?.plan?.budget?.amount || 500);
-
 
   const isWebsiteConversion = lockedCampaignState?.destination === "website";
   const destination_url = isWebsiteConversion ? (
@@ -150,20 +128,16 @@ async function generateMetaCampaignPlan({ lockedCampaignState, autoBusinessConte
     null
   ) : null;
 
-
   const primary_text =
     extract(instruction, "Creative Idea") ||
     extract(instruction, "Services") ||
     `Looking for best ${serviceName}? We provide top-notch services to help you grow.`;
 
-
   const headline =
     extract(instruction, "Headline") || (extract(instruction, "Services") ? `Expert ${extract(instruction, "Services")}` : `Expert ${serviceName}`);
 
-
   const imagePrompt =
     extract(instruction, "Image Concept") || `${serviceName} professional service advertisement high quality`;
-
 
   return {
     campaign_name,
@@ -198,16 +172,13 @@ async function generateMetaCampaignPlan({ lockedCampaignState, autoBusinessConte
   };
 }
 
-
 export default async function handler(req, res) {
   if (req.method !== "POST") {
     return res.status(405).json({ ok: false, message: "Only POST allowed." });
   }
 
-
   try {
     const body = req.body || {};
-
 
     // ---------------------------
     // 0) REQUIRE SESSION (for everything)
@@ -218,14 +189,10 @@ export default async function handler(req, res) {
     }
     __currentEmail = session.user.email.toLowerCase();
 
-
     // 🔥 DEBUG LOGS FOR CONTEXT MISMATCH
     let { instruction = "", mode: bodyMode = body.mode } = body;
 
-
     // 🛡️ INPUT NORMALIZATION and Assets handled in terminal branch below
-
-
 
 
     console.log("🔥 REQUEST START");
@@ -239,7 +206,6 @@ export default async function handler(req, res) {
     let metaRow = null;
     let verifiedMetaAssets = null;
     let forcedBusinessContext = null;
-
 
     try {
       const { data: row } = await supabase
@@ -256,10 +222,8 @@ export default async function handler(req, res) {
       console.warn("Meta connection lookup failed:", e.message);
     }
 
-
     const effectiveBusinessId = activeBusinessId || "default_business";
     let lockedCampaignState = null;
-
 
     if (effectiveBusinessId) {
       try {
@@ -270,7 +234,6 @@ export default async function handler(req, res) {
           .eq("memory_type", "client")
           .maybeSingle();
 
-
         if (memData?.content) {
           const content = JSON.parse(memData.content);
           const answers = content.business_answers || {};
@@ -278,8 +241,21 @@ export default async function handler(req, res) {
           let bestMatch = null;
           for (const key of possibleKeys) {
             const state = answers[key]?.campaign_state;
-            if (state?.plan) { bestMatch = state; break; }
-            if (!bestMatch && state) bestMatch = state;
+            if (!state) continue;
+
+            // 🚀 PRIORITY 1: Organic Instagram Post (the confirmation turn needs this)
+            if (state.objective === "INSTAGRAM_POST") {
+              bestMatch = state;
+              break;
+            }
+
+            // PRIORITY 2: Ads Plan (existing baseline)
+            if (state.plan) {
+              if (!bestMatch) bestMatch = state;
+            }
+
+            // Fallback: any state
+            if (!bestMatch) bestMatch = state;
           }
           lockedCampaignState = bestMatch;
         }
@@ -288,26 +264,21 @@ export default async function handler(req, res) {
       }
     }
 
-
     // 📸 TERMINAL BRANCH: Organic Instagram Post Isolation (STRICT SEPARATION)
     // We catch explicit mode, locked state, OR clear organic intent to prevent fall-through.
     const isOrganicIntent = instruction.toLowerCase().includes("instagram") &&
       !instruction.toLowerCase().includes("ad") &&
       !instruction.toLowerCase().includes("sponsored");
 
-
     // 📸 TERMINAL BRANCH: Organic Instagram Isolation
     if (bodyMode === "instagram_post" || lockedCampaignState?.objective === "INSTAGRAM_POST" || isOrganicIntent) {
       console.log("📸 [Instagram] Isolated Terminal Flow");
 
-
       const isConfirmation = /^\s*(yes|ok|publish|go ahead|do it|confirm)\s*$/i.test(instruction);
-
 
       if (!isConfirmation) {
         const urlMatch = instruction.match(/https?:\/\/[^\s]+/i);
         const url = urlMatch ? urlMatch[0] : null;
-
 
         let caption = null;
         const captionMatch = instruction.match(/Caption:\s*(.*)/i);
@@ -316,7 +287,6 @@ export default async function handler(req, res) {
         } else if (url) {
           caption = instruction.replace(url, "").trim();
         }
-
 
         if (url || caption) {
           let normalizedUrl = url;
@@ -328,7 +298,6 @@ export default async function handler(req, res) {
             }
           }
 
-
           const existing = lockedCampaignState?.creative || {};
           const newCreative = {
             ...existing,
@@ -336,21 +305,17 @@ export default async function handler(req, res) {
             primary_text: caption || existing.primary_text
           };
 
-
           await saveAnswerMemory(process.env.NEXT_PUBLIC_BASE_URL, effectiveBusinessId, {
             campaign_state: { objective: "INSTAGRAM_POST", creative: newCreative, stage: "READY_TO_LAUNCH" }
           }, session.user.email.toLowerCase());
-
 
           lockedCampaignState = { ...lockedCampaignState, creative: newCreative };
         }
       }
 
-
       const creative = lockedCampaignState?.creative || {};
       let finalImage = creative.imageUrl;
       let finalCaption = creative.primary_text;
-
 
       // 🛡️ CONFIRMATION GUARD: Targeted re-hydration if assets missing on 'Yes' turn
       if (isConfirmation && (!finalImage || !finalCaption)) {
@@ -370,20 +335,16 @@ export default async function handler(req, res) {
         } catch (e) { console.warn("targeted re-hydration failed", e); }
       }
 
-
       const wantsLaunch = instruction.match(/\b(yes|ok|publish|confirm)\b/i);
-
 
       if (finalImage && finalCaption) {
         if (wantsLaunch) {
           try {
             if (!metaRow) throw new Error("Meta connection missing. Please connect your accounts.");
             const instagramId = metaRow.instagram_actor_id || metaRow.ig_business_id;
-            const accessToken = process.env.META_SYSTEM_USER_TOKEN || metaRow.fb_user_access_token;
-
+            const accessToken = metaRow.fb_user_access_token;
 
             if (!instagramId || !accessToken) throw new Error("Instagram configuration missing.");
-
 
             // Step 1: Create Media Container
             const cUrl = `https://graph.facebook.com/v21.0/${instagramId}/media`;
@@ -394,9 +355,7 @@ export default async function handler(req, res) {
             const cJson = await cRes.json();
             const creationId = cJson.id;
 
-
             if (!creationId) throw new Error(cJson.error?.message || "Container creation failed.");
-
 
             // Step 2: Publish Media
             console.log(`📸 [Instagram] Publishing media (ID: ${creationId})...`);
@@ -407,14 +366,11 @@ export default async function handler(req, res) {
             });
             const pJson = await pRes.json();
 
-
             if (!pRes.ok) throw new Error(pJson.error?.message || "Publishing failed.");
-
 
             await saveAnswerMemory(process.env.NEXT_PUBLIC_BASE_URL, effectiveBusinessId, {
               campaign_state: { stage: "COMPLETED", final_result: { id: pJson.id, organic: true } }
             }, session.user.email.toLowerCase());
-
 
             return res.json({
               ok: true,
@@ -438,26 +394,21 @@ export default async function handler(req, res) {
             }
           }, session.user.email.toLowerCase());
 
-
           return res.json({ ok: true, text: "I have your post ready. **Ready to publish?**", mode: "instagram_post" });
         }
       }
-
 
       if (!finalImage || !finalCaption) {
         return res.json({ ok: false, text: "⚠️ **Missing Assets**: Please provide an Image URL and Caption." });
       }
 
-
       return res.end();
     }
-
 
     // 🛑 HARD SAFETY STOP
     if (bodyMode === "instagram_post" || lockedCampaignState?.objective === "INSTAGRAM_POST") {
       return res.end();
     }
-
 
     // ============================================================
     // 🔍 STEP 1: AGENT META ASSET DISCOVERY (ADS ONLY)
@@ -467,14 +418,12 @@ export default async function handler(req, res) {
       throw new Error("INTERNAL_ERROR: Ads pipeline executed during Instagram post");
     }
 
-
     // 1️⃣ Check cache first
     const { data: cachedAssets } = await supabase
       .from("agent_meta_assets")
       .select("*")
       .eq("email", session.user.email.toLowerCase())
       .maybeSingle();
-
 
     if (cachedAssets) {
       verifiedMetaAssets = cachedAssets;
@@ -486,7 +435,6 @@ export default async function handler(req, res) {
         .eq("email", session.user.email.toLowerCase())
         .single();
 
-
       if (!meta?.fb_ad_account_id) {
         return res.json({
           ok: true,
@@ -495,14 +443,11 @@ export default async function handler(req, res) {
         });
       }
 
-
       const token = process.env.META_SYSTEM_USER_TOKEN;
-
 
       // Facebook Page
       const fbPageRes = await fetch(`https://graph.facebook.com/v19.0/${meta.fb_page_id}?fields=name,category,about&access_token=${token}`);
       const fbPage = await fbPageRes.json();
-
 
       // Instagram
       let igAccount = null;
@@ -511,12 +456,10 @@ export default async function handler(req, res) {
         igAccount = await igRes.json();
       }
 
-
       // Ad Account (normalize id to numeric for 'act_<id>' pattern)
       const normalizedAdId = (meta.fb_ad_account_id || "").toString().replace(/^act_/, "");
       const adRes = await fetch(`https://graph.facebook.com/v19.0/act_${normalizedAdId}?fields=account_status,currency,timezone_name&access_token=${token}`);
       const adAccount = await adRes.json();
-
 
       verifiedMetaAssets = {
         email: session.user.email.toLowerCase(),
@@ -526,14 +469,11 @@ export default async function handler(req, res) {
         verified_at: new Date().toISOString(),
       };
 
-
       // 3️⃣ Save to cache
       await supabase.from("agent_meta_assets").upsert(verifiedMetaAssets);
     }
 
-
     console.log(`🏢 Effective Business ID: ${effectiveBusinessId} (Active: ${activeBusinessId})`);
-
 
     if (metaConnected && activeBusinessId) {
       forcedBusinessContext = {
@@ -543,7 +483,6 @@ export default async function handler(req, res) {
       };
     }
 
-
     console.log("🏢 EFFECTIVE BUSINESS ID:", effectiveBusinessId);
     console.log("🔒 HAS LOCKED STATE:", !!lockedCampaignState);
     if (lockedCampaignState) {
@@ -551,18 +490,15 @@ export default async function handler(req, res) {
       console.log("📍 HAS PLAN:", !!lockedCampaignState.plan);
     }
 
-
     // 🔒 CRITICAL: FLAG FOR BYPASSING INTERACTIVE GATES
     const isPlanProposed = lockedCampaignState?.stage === "PLAN_PROPOSED" && lockedCampaignState?.plan;
     console.log("📍 isPlanProposed:", isPlanProposed);
     // Close the discovery exclusion block
     // (End of discovery exclusion block)
 
-
     // ============================================================
     // 🧠 AUTO BUSINESS INTAKE (READ + INJECT CONTEXT)
     let autoBusinessContext = null;
-
 
     try {
       const baseUrl = process.env.NEXT_PUBLIC_BASE_URL;
@@ -578,15 +514,12 @@ export default async function handler(req, res) {
           }
         );
 
-
         const intakeJson = await intakeRes.json();
-
 
         if (intakeJson?.ok && intakeJson?.intake) {
           autoBusinessContext = intakeJson.intake;
         }
       }
-
 
     } catch (e) {
       console.warn("Auto business intake failed:", e.message);
@@ -594,18 +527,15 @@ export default async function handler(req, res) {
     // 🌐 LANDING PAGE DETECTION (AUTHORITATIVE — SYNCED DATA)
     let detectedLandingPage = null;
 
-
     // Priority 1: Synced business website
     if (autoBusinessContext?.business_website) {
       detectedLandingPage = autoBusinessContext.business_website;
     }
 
-
     // Priority 2: Instagram website (synced)
     else if (autoBusinessContext?.instagram_website) {
       detectedLandingPage = autoBusinessContext.instagram_website;
     }
-
 
     // ============================================================
     const ADMIN_EMAILS = ["ndantare@gmail.com"];
@@ -637,7 +567,6 @@ export default async function handler(req, res) {
           });
         }
 
-
         const gaRes = await fetch(
           `${baseUrl}/api/google-ads/create-simple-campaign`,
           {
@@ -647,14 +576,12 @@ export default async function handler(req, res) {
           }
         );
 
-
         let gaJson = {};
         try {
           gaJson = await gaRes.json();
         } catch (_) {
           gaJson = { raw: await gaRes.text() };
         }
-
 
         return res.status(200).json({
           ok: true,
@@ -664,7 +591,6 @@ export default async function handler(req, res) {
           response: gaJson,
         });
       }
-
 
       if (body.type === "meta_ads_creative") {
         const baseUrl = process.env.NEXT_PUBLIC_BASE_URL;
@@ -679,9 +605,7 @@ export default async function handler(req, res) {
         // 🎨 CREATIVE GENERATION (AFTER COPY CONFIRMATION)
         // ============================================================
 
-
         let imageHash = null;
-
 
         // 1️⃣ Generate image via OpenAI
         const imageResp = await fetch(
@@ -695,12 +619,10 @@ export default async function handler(req, res) {
           }
         );
 
-
         const imageJson = await imageResp.json();
         if (!imageJson?.ok || !imageJson.imageBase64) {
           throw new Error("Image generation failed");
         }
-
 
         // 2️⃣ Upload image directly to Meta
         const uploadResp = await fetch(
@@ -714,15 +636,12 @@ export default async function handler(req, res) {
           }
         );
 
-
         const uploadJson = await uploadResp.json();
         if (!uploadJson?.ok || !uploadJson.image_hash) {
           throw new Error("Meta image upload failed");
         }
 
-
         imageHash = uploadJson.image_hash;
-
 
         const metaRes = await fetch(`${baseUrl}/api/ads/create-creative`, {
           method: "POST",
@@ -742,7 +661,6 @@ export default async function handler(req, res) {
           metaJson = { raw: await metaRes.text() };
         }
 
-
         return res.status(200).json({
           ok: true,
           mode: "router_legacy",
@@ -752,7 +670,6 @@ export default async function handler(req, res) {
         });
       }
 
-
       return res.status(400).json({
         ok: false,
         message:
@@ -760,11 +677,9 @@ export default async function handler(req, res) {
       });
     }
 
-
     // ============================================================
     // 2) NEW "AGENT MODE" – THINKING + JSON GENERATION VIA GEMINI
     // ============================================================
-
 
     if (!genAI) {
       return res.status(500).json({
@@ -773,14 +688,12 @@ export default async function handler(req, res) {
       });
     }
 
-
     let {
       includeJson = false,
       chatHistory = [],
       extraContext = "",
     } = body;
     let mode = body.mode || "generic";
-
 
     // 🔒 CRITICAL: FORCE MODE FROM LOCKED STATE (MUST BE FIRST)
     // If a lockedCampaignState exists → mode MUST be its original mode or meta_ads_plan
@@ -801,7 +714,6 @@ export default async function handler(req, res) {
       mode = "meta_ads_plan";
     }
 
-
     if (!instruction || typeof instruction !== "string") {
       return res.status(400).json({
         ok: false,
@@ -809,9 +721,7 @@ export default async function handler(req, res) {
       });
     }
 
-
     const lowerInstruction = instruction.toLowerCase();
-
 
     // 🔒 Do NOT allow old chat history to override verified Meta assets
     // FIXED: We allow history but we instruct the model to prioritize verified assets.
@@ -822,20 +732,16 @@ export default async function handler(req, res) {
         .join("\n\n")
       : "";
 
-
     // ---------- MODE-SPECIFIC FOCUS ----------
     let modeFocus = "";
-
 
     if (mode === "google_ads_plan") {
       modeFocus = `
 You are in GOOGLE ADS AGENT MODE.
 
-
 - Focus on campaign structures, ad groups, keywords, match types, budgets.
 - When the user clearly asks for "JSON" or "backend JSON" for a Google Ads campaign,
   you MUST output ONLY the JSON using this exact schema:
-
 
 {
   "customerId": "1234567890",
@@ -872,13 +778,11 @@ You are in GOOGLE ADS AGENT MODE.
   ]
 }
 
-
 - When you output JSON-only, do NOT wrap it in backticks, and add no extra text.
 `;
     } else if (mode === "meta_ads_plan") {
       modeFocus = `
 You are in META ADS / CREATIVE AGENT MODE.
-
 
 *** CRITICAL: FOLLOW THIS 3-STEP DECISION HIERARCHY ***
 1. **CAMPAIGN OBJECTIVE** (Broad Goal):
@@ -889,16 +793,13 @@ You are in META ADS / CREATIVE AGENT MODE.
    - "App Promotion" -> OUTCOME_APP_PROMOTION
    - "Engagement" -> OUTCOME_ENGAGEMENT
 
-
    *NEVER* use "TRAFFIC" or "LEAD_GENERATION" (Legacy). Always use "OUTCOME_" prefix.
-
 
 2. **CONVERSION LOCATION** (Where it happens):
    - "Website" (Most Common)
    - "Messaging Apps" (WhatsApp/Messenger)
    - "Instant Forms" (Lead Forms)
    - "Calls"
-
 
 3. **PERFORMANCE GOAL** (Optimization):
    - If Objective = OUTCOME_TRAFFIC:
@@ -909,10 +810,8 @@ You are in META ADS / CREATIVE AGENT MODE.
    - If Objective = OUTCOME_SALES:
      - "Maximize Conversions" (Goal: CONVERSIONS)
 
-
 *** REQUIRED JSON SCHEMA ***
 You MUST ALWAYS output BOTH a human-readable summary AND the JSON using this exact schema whenever you propose a campaign plan:
-
 
 {
   "campaign_name": "Dentist Clinic – Mumbai – Jan 2026",
@@ -951,7 +850,6 @@ You MUST ALWAYS output BOTH a human-readable summary AND the JSON using this exa
     ]
   }
 
-
 - **Organic Instagram Posts**: If the user wants an organic post (not an ad), use the objective "INSTAGRAM_POST". You MUST include a caption (primary_text) and an image (either imagePrompt or imageUrl). 
 - **Image URLs**: If the user provides a direct image link or Google Drive link, include it in the "imageUrl" field.
 - Meta Objectives must be one of: OUTCOME_TRAFFIC, OUTCOME_LEADS, OUTCOME_SALES, OUTCOME_AWARENESS, OUTCOME_ENGAGEMENT, OUTCOME_APP_PROMOTION, INSTAGRAM_POST.
@@ -964,7 +862,6 @@ You MUST ALWAYS output BOTH a human-readable summary AND the JSON using this exa
       modeFocus = `
 You are in INSTAGRAM ORGANIC POST MODE.
 
-
 - Your ONLY goal is to prepare an organic Instagram post.
 - You MUST NOT ask about ad objectives, budgets, conversion locations, or targeting.
 - You MUST directly propose a post plan.
@@ -974,7 +871,6 @@ You are in INSTAGRAM ORGANIC POST MODE.
   - imagePrompt (A prompt to generate the post image)
   - imageUrl (If the user provided a link to an image)
 
-
 *** REQUIRED JSON SCHEMA ***
 {
   "objective": "INSTAGRAM_POST",
@@ -983,13 +879,11 @@ You are in INSTAGRAM ORGANIC POST MODE.
   "imageUrl": "https://link-to-image.com (optional)"
 }
 
-
 - Output the JSON in a code block.
 `;
     } else if (mode === "social_plan") {
       modeFocus = `
 You are in SOCIAL MEDIA PLANNER MODE.
-
 
 - Focus on Instagram, Facebook, LinkedIn, YouTube content calendars.
 - Give hooks, caption ideas, posting frequency and content pillars.
@@ -999,14 +893,12 @@ You are in SOCIAL MEDIA PLANNER MODE.
       modeFocus = `
 You are in SEO / BLOG AGENT MODE.
 
-
 - Focus on keyword ideas, blog topics, outlines and SEO - optimised articles.
 - Use simple, clear language and structure the blog logically for humans + Google.
 `;
     } else {
       modeFocus = `
 You are in GENERIC DIGITAL MARKETING AGENT MODE.
-
 
 - You can combine Google Ads, Meta Ads, SEO, content and social together.
 - If the user explicitly asks for backend JSON, follow the exact schemas:
@@ -1032,9 +924,7 @@ You are in GENERIC DIGITAL MARKETING AGENT MODE.
           }),
         });
 
-
         const ragJson = await ragRes.json();
-
 
         if (ragJson?.chunks?.length) {
           ragContext = ragJson.chunks
@@ -1046,16 +936,13 @@ You are in GENERIC DIGITAL MARKETING AGENT MODE.
       console.warn("RAG fetch failed:", e.message);
     }
 
-
     // ===============================
     // 🔐 SAFETY GATE — BUSINESS + BUDGET CONFIRMATION
     // ===============================
     let safetyGateMessage = null;
 
-
     try {
       const baseUrl = process.env.NEXT_PUBLIC_BASE_URL;
-
 
       if (baseUrl) {
         const memRes = await fetch(`${baseUrl}/api/rag/query`, {
@@ -1069,9 +956,7 @@ You are in GENERIC DIGITAL MARKETING AGENT MODE.
           }),
         });
 
-
         const memJson = await memRes.json();
-
 
         const profiles = (memJson?.chunks || [])
           .map((c) => {
@@ -1082,7 +967,6 @@ You are in GENERIC DIGITAL MARKETING AGENT MODE.
             }
           })
           .filter(Boolean);
-
 
         // 🚫 No business at all (RAG OR META)
         // Admin / Owner bypass
@@ -1095,8 +979,6 @@ You are in GENERIC DIGITAL MARKETING AGENT MODE.
           safetyGateMessage =
             "You have multiple businesses connected. Please tell me which one to use.";
         }
-
-
 
 
         // 🛑 Budget / approval guard
@@ -1116,7 +998,6 @@ You are in GENERIC DIGITAL MARKETING AGENT MODE.
     if (!isPlanProposed && safetyGateMessage) {
       const baseUrl = process.env.NEXT_PUBLIC_BASE_URL;
 
-
       const qRes = await fetch(`${baseUrl}/api/agent/questions`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -1128,9 +1009,7 @@ You are in GENERIC DIGITAL MARKETING AGENT MODE.
         }),
       });
 
-
       const qJson = await qRes.json();
-
 
       return res.status(200).json({
         ok: true,
@@ -1146,11 +1025,8 @@ You are in GENERIC DIGITAL MARKETING AGENT MODE.
     // ============================================================
 
 
-
-
     let selectedService = null;
     let selectedLocation = null;
-
 
     // ============================================================
     // 🚀 DIRECT USER JSON → AUTO EXECUTE (Plan → Image → Launch)
@@ -1224,7 +1100,6 @@ You are in GENERIC DIGITAL MARKETING AGENT MODE.
             };
           }
 
-
           // Normalize Variation 6: Nested JSON { campaign, ad_set, ad_creative }
           if (userPlan.campaign && (userPlan.ad_set || userPlan.ad_sets)) {
             console.log("🔄 Normalizing Nested JSON (Campaign/AdSet)...");
@@ -1232,7 +1107,6 @@ You are in GENERIC DIGITAL MARKETING AGENT MODE.
             // Handle array or object for ad_set
             const adSetInput = Array.isArray(userPlan.ad_sets) ? userPlan.ad_sets[0] : (userPlan.ad_set || {});
             const creativeInput = userPlan.ad_creative || adSetInput.ad_creative || {};
-
 
             // Map Objective
             let objective = "OUTCOME_TRAFFIC";
@@ -1244,7 +1118,6 @@ You are in GENERIC DIGITAL MARKETING AGENT MODE.
             // 🌐 Website Destination Guard (Strict Only)
             const isWebsiteMode = lockedCampaignState?.destination === "website";
             const finalDestUrl = isWebsiteMode ? (creativeInput.destination_url || lockedCampaignState?.landing_page || detectedLandingPage || null) : null;
-
 
             userPlan = {
               campaign_name: c.campaign_name || c.name || "New Campaign",
@@ -1270,7 +1143,6 @@ You are in GENERIC DIGITAL MARKETING AGENT MODE.
             };
           }
 
-
           // If normalized to our schema, auto-run the pipeline now
           if (userPlan.campaign_name && userPlan.ad_sets?.length) {
             const baseUrl = process.env.NEXT_PUBLIC_BASE_URL;
@@ -1287,9 +1159,7 @@ You are in GENERIC DIGITAL MARKETING AGENT MODE.
             const creative = userPlan.ad_sets[0].ad_creative || {};
             let destUrl = creative.destination_url || "";
 
-
             const isWebsiteConversion = lockedCampaignState?.destination === "website";
-
 
             if (isWebsiteConversion && destUrl) {
               try {
@@ -1304,7 +1174,6 @@ You are in GENERIC DIGITAL MARKETING AGENT MODE.
             } else if (!isWebsiteConversion) {
               destUrl = null;
             }
-
 
             creative.destination_url = destUrl;
             const imagePrompt = creative.imagePrompt || creative.primary_text || `${userPlan.campaign_name} ad image`;
@@ -1367,11 +1236,7 @@ You are in GENERIC DIGITAL MARKETING AGENT MODE.
       }
     }
 
-
     // WATERFALL REMOVED FROM TOP - MOVED TO BOTTOM
-
-
-
 
 
 
@@ -1379,11 +1244,9 @@ You are in GENERIC DIGITAL MARKETING AGENT MODE.
     // 🎯 META OBJECTIVE PARSING (USER SELECTION)
     // ============================================================
 
-
     // ============================================================
     // 🧠 PRO LOGIC: MULTI-PARAMETER EXTRACTION (ALL-IN-ONE)
     // ============================================================
-
 
     // We try to extract as much as possible if the user provided a block of text
     const extractedData = {
@@ -1398,13 +1261,11 @@ You are in GENERIC DIGITAL MARKETING AGENT MODE.
       whatsapp: null
     };
 
-
     // Objective & Destination Extraction
     const objLower = lowerInstruction;
     if (objLower.includes("traffic")) extractedData.objective = "OUTCOME_TRAFFIC";
     else if (objLower.includes("lead")) extractedData.objective = "OUTCOME_LEADS";
     else if (objLower.includes("sale") || objLower.includes("conversion")) extractedData.objective = "OUTCOME_SALES";
-
 
     if (objLower.includes("website")) extractedData.destination = "website";
     else if (objLower.includes("call")) extractedData.destination = "call";
@@ -1413,13 +1274,11 @@ You are in GENERIC DIGITAL MARKETING AGENT MODE.
     else if (objLower.includes("facebook page")) extractedData.destination = "facebook_page";
     else if (objLower.includes("message")) extractedData.destination = "messages";
 
-
     // Performance Goal Extraction
     if (objLower.includes("landing page view")) extractedData.performance_goal = "MAXIMIZE_LANDING_PAGE_VIEWS";
     else if (objLower.includes("link click")) extractedData.performance_goal = "MAXIMIZE_LINK_CLICKS";
     else if (objLower.includes("conversation")) extractedData.performance_goal = "MAXIMIZE_CONVERSATIONS";
     else if (objLower.includes("call")) extractedData.performance_goal = "MAXIMIZE_CALLS";
-
 
     // Website & Phone Extraction
     const urlMatch = instruction.match(/(?:https?:\/\/)?(?:www\.)[a-zA-Z0-9-]+\.[a-zA-Z0-9-.]+/i) || instruction.match(/https?:\/\/[^\s]+/i);
@@ -1433,13 +1292,11 @@ You are in GENERIC DIGITAL MARKETING AGENT MODE.
     const waMatch = instruction.match(/whatsapp[^\d]*(\+?\d[\d\s-]{8,15})/i);
     if (waMatch) extractedData.whatsapp = waMatch[1];
 
-
     // Budget & Duration
     const budgetMatch = instruction.match(/(?:budget|amount|day):\s*(\d+)/i) || instruction.match(/(?:₹|rs\.?)\s*(\d+)/i);
     if (budgetMatch) extractedData.budget = budgetMatch[1];
     const durationMatch = instruction.match(/(\d+)\s*days?/i);
     if (durationMatch) extractedData.duration = durationMatch[1];
-
 
     // Service & Location (Simple heuristic for Pro Logic)
     const serviceMatch = instruction.match(/service[s]?:\s*([^\n,]+)/i);
@@ -1447,12 +1304,10 @@ You are in GENERIC DIGITAL MARKETING AGENT MODE.
     const locationMatch = instruction.match(/location[s]?:\s*([^\n]+)/i);
     if (locationMatch) extractedData.location = locationMatch[1].trim();
 
-
     // 🎯 Apply Extracted Data to State if not already locked
     if (mode === "meta_ads_plan") {
       let stateChanged = false;
       const nextState = { ...lockedCampaignState };
-
 
       if (extractedData.objective && !nextState.objective) { nextState.objective = extractedData.objective; stateChanged = true; }
       if (extractedData.destination && !nextState.destination) { nextState.destination = extractedData.destination; stateChanged = true; }
@@ -1463,7 +1318,6 @@ You are in GENERIC DIGITAL MARKETING AGENT MODE.
       if (extractedData.service && !nextState.service) { nextState.service = extractedData.service; stateChanged = true; }
       if (extractedData.budget && !nextState.budget) { nextState.budget = { amount: extractedData.budget, currency: "INR", type: "DAILY" }; stateChanged = true; }
       if (extractedData.duration && !nextState.duration) { nextState.duration = extractedData.duration; stateChanged = true; }
-
 
       if (stateChanged) {
         console.log("🧠 Pro Logic: Merged extracted data into state");
@@ -1477,19 +1331,15 @@ You are in GENERIC DIGITAL MARKETING AGENT MODE.
       }
     }
 
-
     // ============================================================
     // 🎯 META OBJECTIVE PARSING (USER SELECTION / HIERARCHY)
     // ============================================================
-
 
     let selectedMetaObjective = lockedCampaignState?.objective || null;
     let selectedDestination = lockedCampaignState?.destination || null;
     let selectedPerformanceGoal = lockedCampaignState?.performance_goal || null;
 
-
     // 🧑‍💬 Interactive Sequence: Objective -> Destination -> Goal
-
 
     // Step 1: Objective
     if (!isPlanProposed && mode === "meta_ads_plan" && !selectedMetaObjective) {
@@ -1497,7 +1347,6 @@ You are in GENERIC DIGITAL MARKETING AGENT MODE.
       if (lowerInstruction.includes("traffic")) selectedMetaObjective = "OUTCOME_TRAFFIC";
       else if (lowerInstruction.includes("lead")) selectedMetaObjective = "OUTCOME_LEADS";
       else if (lowerInstruction.includes("sale") || lowerInstruction.includes("conversion")) selectedMetaObjective = "OUTCOME_SALES";
-
 
       if (selectedMetaObjective) {
         // Save and continue loop or wait? For now, we continue in this turn if possible
@@ -1511,7 +1360,6 @@ You are in GENERIC DIGITAL MARKETING AGENT MODE.
       }
     }
 
-
     // Step 2: Conversion Location
     if (!isPlanProposed && mode === "meta_ads_plan" && selectedMetaObjective && !selectedDestination) {
       let options = [];
@@ -1523,14 +1371,12 @@ You are in GENERIC DIGITAL MARKETING AGENT MODE.
         options = ["Website"];
       }
 
-
       // Detection
       const input = lowerInstruction;
       if (input.includes("1") || input.includes("website")) selectedDestination = "website";
       else if (input.includes("2") || input.includes("instagram") || input.includes("call")) selectedDestination = selectedMetaObjective === "OUTCOME_TRAFFIC" ? "instagram_profile" : "call";
       else if (input.includes("3") || input.includes("facebook") || input.includes("whatsapp")) selectedDestination = selectedMetaObjective === "OUTCOME_TRAFFIC" ? "facebook_page" : "whatsapp";
       else if (input.includes("message")) selectedDestination = "messages";
-
 
       if (selectedDestination) {
         lockedCampaignState = { ...lockedCampaignState, destination: selectedDestination, stage: "destination_selected" };
@@ -1542,7 +1388,6 @@ You are in GENERIC DIGITAL MARKETING AGENT MODE.
         });
       }
     }
-
 
     // Step 3: Performance Goal
     if (!isPlanProposed && mode === "meta_ads_plan" && selectedMetaObjective && selectedDestination && !selectedPerformanceGoal) {
@@ -1557,7 +1402,6 @@ You are in GENERIC DIGITAL MARKETING AGENT MODE.
         goals = ["Maximize Reach / Visits"];
       }
 
-
       const input = lowerInstruction;
       if (input.includes("link click")) selectedPerformanceGoal = "MAXIMIZE_LINK_CLICKS";
       else if (input.includes("landing page view")) selectedPerformanceGoal = "MAXIMIZE_LANDING_PAGE_VIEWS";
@@ -1565,7 +1409,6 @@ You are in GENERIC DIGITAL MARKETING AGENT MODE.
       else if (input.includes("call")) selectedPerformanceGoal = "MAXIMIZE_CALLS";
       else if (input === "1") selectedPerformanceGoal = goals[0].toUpperCase().replace(/ /g, "_");
       else if (input === "2" && goals[1]) selectedPerformanceGoal = goals[1].toUpperCase().replace(/ /g, "_");
-
 
       if (selectedPerformanceGoal) {
         lockedCampaignState = { ...lockedCampaignState, performance_goal: selectedPerformanceGoal, stage: "goal_selected" };
@@ -1578,11 +1421,9 @@ You are in GENERIC DIGITAL MARKETING AGENT MODE.
       }
     }
 
-
     // ============================================================
     // 🔁 OBJECTIVE OVERRIDE (EXPLICIT USER INTENT ONLY)
     // ============================================================
-
 
     const objectiveOverrideKeywords = [
       "change objective",
@@ -1591,7 +1432,6 @@ You are in GENERIC DIGITAL MARKETING AGENT MODE.
       "make it",
       "instead of",
     ];
-
 
     const wantsObjectiveChange =
       objectiveOverrideKeywords.some((k) =>
@@ -1605,11 +1445,9 @@ You are in GENERIC DIGITAL MARKETING AGENT MODE.
         instruction.toLowerCase().includes("traffic")
       );
 
-
     if (mode === "meta_ads_plan" && wantsObjectiveChange) {
       selectedMetaObjective = null;
       selectedDestination = null;
-
 
       // 🛠️ CLEAR LOCKED OBJECTIVE IN DB
       if (lockedCampaignState) {
@@ -1627,11 +1465,9 @@ You are in GENERIC DIGITAL MARKETING AGENT MODE.
       }
     }
 
-
     // ============================================================
     // 🎯 META OBJECTIVE SELECTION — HARD BLOCK (STATE AWARE)
     // ============================================================
-
 
     if (
       !isPlanProposed &&
@@ -1654,20 +1490,16 @@ You are in GENERIC DIGITAL MARKETING AGENT MODE.
       });
     }
 
-
     // ============================================================
     // 📞 CALL DESTINATION CONFIRMATION (NO ASSUMPTIONS)
     // ============================================================
 
-
     let detectedPhoneNumber = null;
-
 
     // 1️⃣ Synced business phone (AUTHORITATIVE)
     if (autoBusinessContext?.business_phone) {
       detectedPhoneNumber = autoBusinessContext.business_phone;
     }
-
 
     // 2️⃣ RAG fallback (only if FB phone not found)
     if (!detectedPhoneNumber && ragContext) {
@@ -1676,7 +1508,6 @@ You are in GENERIC DIGITAL MARKETING AGENT MODE.
         detectedPhoneNumber = phoneMatch[1];
       }
     }
-
 
     // 3️⃣ If CALL objective selected but no number → STOP & ASK
     if (!isPlanProposed && selectedDestination === "call" && !detectedPhoneNumber) {
@@ -1689,7 +1520,6 @@ You are in GENERIC DIGITAL MARKETING AGENT MODE.
           "Please type the exact phone number you want people to call (with country code).",
       });
     }
-
 
     // 4️⃣ Ask confirmation if number found
     if (
@@ -1709,27 +1539,22 @@ You are in GENERIC DIGITAL MARKETING AGENT MODE.
       });
     }
 
-
     // ============================================================
     // 💬 WHATSAPP DESTINATION CONFIRMATION (ALWAYS ASK)
     // ============================================================
 
-
     let detectedWhatsappNumber = null;
-
 
     // 1️⃣ Suggest synced business phone (DO NOT auto-use)
     if (autoBusinessContext?.business_phone) {
       detectedWhatsappNumber = autoBusinessContext.business_phone;
     }
 
-
     // 2️⃣ If WhatsApp selected → ALWAYS confirm (unless already in state/confirmed)
     if (!isPlanProposed && selectedDestination === "whatsapp" && !lockedCampaignState?.whatsapp_confirmed) {
       const suggestionText = detectedWhatsappNumber
         ? `\n\nI found this number on your Facebook Page:\n📱 ${detectedWhatsappNumber}`
         : "";
-
 
       return res.status(200).json({
         ok: true,
@@ -1743,14 +1568,11 @@ You are in GENERIC DIGITAL MARKETING AGENT MODE.
       });
     }
 
-
     // ============================================================
     // 🌐 LANDING PAGE CONFIRMATION GATE (TRAFFIC ONLY)
     // ============================================================
 
-
     let landingPageConfirmed = !!lockedCampaignState?.landing_page;
-
 
     // Detect confirmation from user reply
     if (
@@ -1762,7 +1584,6 @@ You are in GENERIC DIGITAL MARKETING AGENT MODE.
     ) {
       landingPageConfirmed = true;
       const targetUrl = detectedLandingPage || null;
-
 
       // 💾 Save to state immediately
       if (effectiveBusinessId) {
@@ -1805,7 +1626,6 @@ You are in GENERIC DIGITAL MARKETING AGENT MODE.
       }
     }
 
-
     // If objective is website traffic and landing page exists but not confirmed
     if (
       !isPlanProposed &&
@@ -1834,15 +1654,12 @@ You are in GENERIC DIGITAL MARKETING AGENT MODE.
     // 🧾 SERVICE DETECTION (FROM BUSINESS INTAKE)
     // ============================================================
 
-
     const availableServices =
       autoBusinessContext?.detected_services || [];
-
 
     // ============================================================
     // ❓ SERVICE CONFIRMATION (BEFORE BUDGET / LOCATION)
     // ============================================================
-
 
     // Logic: If Service is NOT locked, preventing moving forward
     if (
@@ -1872,9 +1689,7 @@ You are in GENERIC DIGITAL MARKETING AGENT MODE.
     // 🔒 LOCK SELECTED SERVICE
     // ============================================================
 
-
     const serviceIndex = parseInt(lowerInstruction, 10);
-
 
     if (
       !isNaN(serviceIndex) &&
@@ -1883,13 +1698,11 @@ You are in GENERIC DIGITAL MARKETING AGENT MODE.
       selectedService = availableServices[serviceIndex - 1];
     }
 
-
     if (
       selectedService &&
       effectiveBusinessId
     ) {
       const baseUrl = process.env.NEXT_PUBLIC_BASE_URL;
-
 
       const newState = {
         ...lockedCampaignState,
@@ -1899,32 +1712,26 @@ You are in GENERIC DIGITAL MARKETING AGENT MODE.
         locked_at: new Date().toISOString(),
       };
 
-
       await saveAnswerMemory(baseUrl, effectiveBusinessId, {
         campaign_state: newState,
       }, session.user.email.toLowerCase());
-
 
       // Update local state so subsequent logic works in THIS turn
       lockedCampaignState = newState;
     }
 
-
     // ============================================================
     // 📍 LOCATION DETECTION (FROM BUSINESS INTAKE ONLY)
     // ============================================================
-
 
     let detectedLocation =
       autoBusinessContext?.business_city ||
       autoBusinessContext?.business_location ||
       null;
 
-
     // ============================================================
     // ❓ LOCATION CONFIRMATION (ONCE ONLY)
     // ============================================================
-
 
     if (
       !isPlanProposed &&
@@ -1950,11 +1757,9 @@ You are in GENERIC DIGITAL MARKETING AGENT MODE.
       }
     }
 
-
     // ============================================================
     // 🔒 LOCK LOCATION (CONFIRMED OR USER-PROVIDED)
     // ============================================================
-
 
     // Case 1️⃣ User confirmed detected location
     if (
@@ -1963,7 +1768,6 @@ You are in GENERIC DIGITAL MARKETING AGENT MODE.
     ) {
       selectedLocation = detectedLocation;
     }
-
 
     // Case 2️⃣ User typed a new location
     if (
@@ -1974,13 +1778,11 @@ You are in GENERIC DIGITAL MARKETING AGENT MODE.
       selectedLocation = instruction.trim();
     }
 
-
     if (
       selectedLocation &&
       effectiveBusinessId
     ) {
       const baseUrl = process.env.NEXT_PUBLIC_BASE_URL;
-
 
       const newState = {
         ...lockedCampaignState,
@@ -1990,20 +1792,16 @@ You are in GENERIC DIGITAL MARKETING AGENT MODE.
         locked_at: new Date().toISOString(),
       };
 
-
       await saveAnswerMemory(baseUrl, effectiveBusinessId, {
         campaign_state: newState,
       }, session.user.email.toLowerCase());
 
-
       // Update local state so subsequent logic works in THIS turn
       lockedCampaignState = newState;
-
 
       // OPTIONAL: immediate continue signal?
       // For now, let the user see the confirmation or next gate
     }
-
 
     // ============================================================
     // 💰 BUDGET & TARGETING GATE (STRICT)
@@ -2018,16 +1816,12 @@ You are in GENERIC DIGITAL MARKETING AGENT MODE.
     }
 
 
-
-
     // ============================================================
     // 🔒 LOCK CAMPAIGN STATE — OBJECTIVE & DESTINATION FINAL
     // ============================================================
 
-
     if (mode === "meta_ads_plan" && selectedMetaObjective && effectiveBusinessId) {
       const baseUrl = process.env.NEXT_PUBLIC_BASE_URL;
-
 
       const newState = {
         ...lockedCampaignState, // Preserve existing state (service/location if any)
@@ -2037,30 +1831,24 @@ You are in GENERIC DIGITAL MARKETING AGENT MODE.
         locked_at: new Date().toISOString(),
       };
 
-
       await saveAnswerMemory(baseUrl, effectiveBusinessId, {
         campaign_state: newState,
       }, session.user.email.toLowerCase());
-
 
       // Update local state
       lockedCampaignState = newState;
     }
 
-
     // ============================================================
     // 🔘 META CTA RESOLUTION — FORCED MODE
     // ============================================================
 
-
     let resolvedCTA = null;
-
 
     // FORCE CTA based on destination
     if (selectedDestination === "call") {
       resolvedCTA = "CALL_NOW";
     }
-
 
     if (
       selectedDestination === "whatsapp" ||
@@ -2069,33 +1857,26 @@ You are in GENERIC DIGITAL MARKETING AGENT MODE.
       resolvedCTA = "SEND_MESSAGE";
     }
 
-
     // Traffic / profile visits handled separately (NOT forced)
-
 
     // ============================================================
     // 💬 MESSAGE DESTINATION SELECTION (USER MUST CHOOSE)
     // ============================================================
 
-
     let selectedMessageChannel = null;
-
 
     // If user chose "messages", we must ask WHERE
     if (!isPlanProposed && selectedDestination === "messages" && !lockedCampaignState?.message_channel) {
       const msg = `
 Where do you want people to message you?
 
-
 Please choose ONE option:
-
 
 1. Instagram messages
 2. Facebook Messenger
 3. WhatsApp
 4. All available
 `.trim();
-
 
       return res.status(200).json({
         ok: true,
@@ -2105,23 +1886,19 @@ Please choose ONE option:
       });
     }
 
-
     // Handle follow-up selection
     if (selectedDestination === "messages") {
       if (lowerInstruction === "1" || lowerInstruction.includes("instagram")) {
         selectedMessageChannel = ["instagram"];
       }
 
-
       if (lowerInstruction === "2" || lowerInstruction.includes("facebook")) {
         selectedMessageChannel = ["facebook"];
       }
 
-
       if (lowerInstruction === "3" || lowerInstruction.includes("whatsapp")) {
         selectedMessageChannel = ["whatsapp"];
       }
-
 
       if (lowerInstruction === "4" || lowerInstruction.includes("all")) {
         selectedMessageChannel = ["instagram", "facebook", "whatsapp"];
@@ -2131,9 +1908,7 @@ Please choose ONE option:
     // ✏️ CTA OVERRIDE (USER CORRECTION MODE)
     // ============================================================
 
-
     let overriddenCTA = null;
-
 
     if (lowerInstruction.includes("change cta")) {
       if (lowerInstruction.includes("sign up")) {
@@ -2150,16 +1925,13 @@ Please choose ONE option:
       }
     }
 
-
     if (overriddenCTA) {
       resolvedCTA = overriddenCTA;
     }
 
-
     // ============================================================
     // 🔘 META CTA SELECTION — OBJECTIVE AWARE (HARD BLOCK)
     // ============================================================
-
 
     // Meta-approved CTA options per objective
     const META_CTA_MAP = {
@@ -2185,7 +1957,6 @@ Please choose ONE option:
       },
     };
 
-
     // Check if CTA already stored in memory (simple heuristic)
     const lowerText = instruction.toLowerCase();
     const ctaKeywords = [
@@ -2197,11 +1968,9 @@ Please choose ONE option:
       "whatsapp",
     ];
 
-
     const hasCTA =
       ctaKeywords.some((k) => lowerText.includes(k)) ||
       lowerText.includes("cta");
-
 
     // ============================================================
     // 🔘 META CTA SELECTION — DISABLED (Let Gemini Propose Strategy)
@@ -2237,18 +2006,14 @@ Please choose ONE option:
     */
 
 
-
-
     // ============================================================
     // 🎯 META ADS FULL FLOW (AUTO → CONFIRM → CREATE PAUSED)
     // [REMOVED DUPLICATE LOGIC - NOW HANDLED BY STATE MACHINE ABOVE]
     // ============================================================
 
-
     // ============================================================
     // 💾 STORE META OBJECTIVE IN MEMORY (ONCE USER SELECTS)
     // ============================================================
-
 
     if (
       mode === "meta_ads_plan" &&
@@ -2258,22 +2023,18 @@ Please choose ONE option:
     ) {
       const baseUrl = process.env.NEXT_PUBLIC_BASE_URL;
 
-
       await saveAnswerMemory(baseUrl, effectiveBusinessId, {
         meta_objective: selectedMetaObjective,
         meta_destination: selectedDestination,
       }, session.user.email.toLowerCase());
     }
 
-
     // ===============================
     // 💾 ANSWER MEMORY WIRING
     // ===============================
     const baseUrl = process.env.NEXT_PUBLIC_BASE_URL;
 
-
     const detectedAnswers = {};
-
 
     // Simple extraction (safe, heuristic — Gemini already guided the question)
     if (instruction.match(/₹|\d+/)) {
@@ -2289,7 +2050,6 @@ Please choose ONE option:
       detectedAnswers.approval = "YES";
     }
 
-
     // business_id should already be known from intake or selection
     if (Object.keys(detectedAnswers).length > 0) {
       await saveAnswerMemory(baseUrl, effectiveBusinessId, detectedAnswers, session.user.email.toLowerCase());
@@ -2297,7 +2057,6 @@ Please choose ONE option:
     // ============================================================
     // 🔒 INJECT LOCKED CAMPAIGN STATE INTO GEMINI CONTEXT (AUTHORITATIVE)
     // ============================================================
-
 
     const lockedContext = lockedCampaignState
       ? `
@@ -2308,7 +2067,6 @@ LOCKED CAMPAIGN STATE (DO NOT CHANGE OR RE-ASK):
 - Service: ${lockedCampaignState.service || "N/A"}
 - Location: ${lockedCampaignState.location || "N/A"}
 
-
 RULES:
 - You MUST NOT ask again for these locked fields.
 - You MUST use these as FINAL.
@@ -2317,16 +2075,13 @@ RULES:
 `
       : "";
 
-
     const systemPrompt = `
 You are GabbarInfo AI – a senior digital marketing strategist and backend AGENT.
-
 
 YOUR CORE JOB:
 - Follow the STRICT 12-STEP CAMPAIGN CREATION FLOW.
 - Do NOT skip steps.
 - Do NOT hallucinate assets (images/URLs).
-
 
 ====================================================
 STRICT 12-STEP META CAMPAIGN FLOW
@@ -2344,14 +2099,11 @@ STRICT 12-STEP META CAMPAIGN FLOW
 11. Final Confirmation (Paused Campaign)
 12. Execution (Create on Meta) -> [SYSTEM AUTOMATED]
 
-
 ====================================================
 CURRENT STATUS & INSTRUCTIONS
 ====================================================
 
-
 ${lockedContext ? "✅ LOCKED CONTEXT DETECTED (Steps 3-7 Complete)" : "⚠️ NO LOCKED CONTEXT (Steps 1-7 In Progress)"}
-
 
 IF LOCKED CONTEXT EXISTS (Service + Location + Objective):
 - You are at STEP 8 (Strategy Proposal).
@@ -2365,12 +2117,10 @@ IF LOCKED CONTEXT EXISTS (Service + Location + Objective):
   - Targeting Suggestions (interests, demographics)
   - Creative (Headline, Primary Text, Image Prompt)
 
-
 IF NO LOCKED CONTEXT:
 - You are likely in Steps 1-7.
 - Ask ONE clear question at a time to get the missing info (Objective, Service, Location).
 - Do NOT generate JSON yet.
-
 
 ====================================================
 CRITICAL BUSINESS RULES
@@ -2381,7 +2131,6 @@ CRITICAL BUSINESS RULES
 - For Step 8 (Strategy), output JSON ONLY if you have all details.
 - For Step 12 (Execution), NEVER simulate the output or say it is completed unless you see the REAL API output with a Campaign ID. If the pipeline is processing, tell the user to wait or that "Execution is handled by the system".
 - IMPORTANT: If a user says "YES" or "LAUNCH", the backend code handles the execution. You should NOT hallucinate a success message with fake IDs.
-
 
 ====================================================
 PLATFORM MODE GUIDANCE
@@ -2394,14 +2143,11 @@ CLIENT CONTEXT
 Verified Meta Assets:
 ${verifiedMetaAssets ? JSON.stringify(verifiedMetaAssets, null, 2) : "(none)"}
 
-
 Forced Meta Business Context:
 ${forcedBusinessContext ? JSON.stringify(forcedBusinessContext, null, 2) : "(none)"}
 
-
 Auto-Detected Business Intake:
 ${autoBusinessContext ? JSON.stringify(autoBusinessContext, null, 2) : "(none)"}
-
 
 RAG / Memory Context:
 ${ragContext || "(none)"}
@@ -2410,9 +2156,7 @@ ${ragContext || "(none)"}
     // 🚫 HARD STOP — PREVENT URL HALLUCINATION (META TRAFFIC)
     // ============================================================
 
-
     let finalLandingPage = null;
-
 
     if (selectedDestination === "website") {
       if (!detectedLandingPage) {
@@ -2425,43 +2169,34 @@ ${ragContext || "(none)"}
         });
       }
 
-
       finalLandingPage = detectedLandingPage;
     }
-
 
     const finalPrompt = `
 SYSTEM:
 ${systemPrompt}
 
-
 HISTORY (optional, last turns):
 ${historyText || "(no prior messages)"}
-
 
 USER INSTRUCTION:
 ${instruction}
 
-
 Caller hint:
 - includeJson = ${includeJson}
-
 
 If the user clearly asked for BACKEND JSON ONLY
 (and includeJson is true), respond with JSON only (no backticks, no explanation).
 Otherwise, respond with a full, clear explanation, and include example JSON only if helpful.
 `.trim();
 
-
     const model = genAI.getGenerativeModel({ model: GEMINI_MODEL });
-
 
     // 🛑 BLOCK GEMINI IF GATES ARE NOT PASSED (Double Safety)
     if (!isPlanProposed && mode === "meta_ads_plan" && (!lockedCampaignState?.service || !lockedCampaignState?.location)) {
       // Technically unreachable if gates are working, but safe fallback
       return res.status(200).json({ ok: true, text: "waiting for details..." });
     }
-
 
     // ⚡ CRITICAL SHORT-CIRCUIT: Skip Gemini if plan exists and user confirms
     if (
@@ -2483,18 +2218,14 @@ Otherwise, respond with a full, clear explanation, and include example JSON only
         return res.status(200).json({ ok: true, mode, text: "I'm already working on that! One moment..." });
       }
 
-
       console.log(`[PROD_LOG] 🚀 SHORT-CIRCUIT: Transitioning Started | User: ${session.user.email} | ID: ${effectiveBusinessId} | From: ${lockedCampaignState.stage}`);
 
-
       let currentState = { ...lockedCampaignState, locked_at: new Date().toISOString() };
-
 
       // 🛡️ Safety Check: Ensure plan is valid
       // 🛡️ HARD RULE: Never proceed to confirmation/execution without a saved plan
       if (!currentState.plan || !currentState.plan.campaign_name) {
         console.warn("Plan missing at confirmation. Recreating automatically.");
-
 
         const regeneratedPlan = await generateMetaCampaignPlan({
           lockedCampaignState,
@@ -2503,14 +2234,12 @@ Otherwise, respond with a full, clear explanation, and include example JSON only
           detectedLandingPage,
         });
 
-
         const repairedState = {
           ...currentState,
           stage: "PLAN_PROPOSED",
           plan: regeneratedPlan,
           locked_at: new Date().toISOString()
         };
-
 
         await saveAnswerMemory(
           baseUrl,
@@ -2519,25 +2248,20 @@ Otherwise, respond with a full, clear explanation, and include example JSON only
           session.user.email.toLowerCase()
         );
 
-
         currentState = repairedState;
       }
-
 
       const stage = lockedCampaignState.stage;
       let waterfallLog = [];
       let errorOcurred = false;
       let stopReason = null;
 
-
       console.log("📍 Waterfall Check - Stage:", stage);
       console.log("📍 Waterfall Check - Plan Name:", currentState.plan.campaign_name);
-
 
       // --- STEP 9: IMAGE GENERATION ---
       // Logic: If we have a plan but NO image yet -> Generate Image
       const hasImage = currentState.creative && (currentState.creative.imageBase64 || currentState.creative.imageUrl);
-
 
       if (!hasImage) {
         console.log("🚀 Waterfall: Starting Image Generation...");
@@ -2545,9 +2269,7 @@ Otherwise, respond with a full, clear explanation, and include example JSON only
         const adSet0 = (Array.isArray(plan.ad_sets) ? plan.ad_sets[0] : (plan.ad_sets || {}));
         const creativeResult = adSet0.ad_creative || adSet0.creative || adSet0.ads?.[0]?.creative || {};
 
-
         const imagePrompt = creativeResult.image_prompt || creativeResult.image_generation_prompt || creativeResult.imagePrompt || creativeResult.primary_text || `${plan.campaign_name || "New Campaign"} ad image`;
-
 
         try {
           const imgRes = await fetch(`${process.env.NEXT_PUBLIC_BASE_URL}/api/images/generate`, {
@@ -2556,7 +2278,6 @@ Otherwise, respond with a full, clear explanation, and include example JSON only
             body: JSON.stringify({ prompt: imagePrompt }),
           });
           const imgJson = await parseResponseSafe(imgRes);
-
 
           if (imgJson.imageBase64) {
             const newCreative = {
@@ -2578,12 +2299,10 @@ Otherwise, respond with a full, clear explanation, and include example JSON only
         waterfallLog.push("⏭️ Step 9: Image Already Exists");
       }
 
-
       // --- STEP 10: IMAGE UPLOAD ---
       if (!errorOcurred) {
         const hasImageReady = currentState.creative && currentState.creative.imageBase64;
         const hasHash = currentState.image_hash;
-
 
         if (hasImageReady && !hasHash) {
           console.log("🚀 Waterfall: Uploading Image to Meta...");
@@ -2595,7 +2314,6 @@ Otherwise, respond with a full, clear explanation, and include example JSON only
             });
             const uploadJson = await parseResponseSafe(uploadRes);
             const iHash = uploadJson.imageHash || uploadJson.image_hash;
-
 
             if (uploadJson.ok && iHash) {
               currentState = { ...currentState, stage: "READY_TO_LAUNCH", image_hash: iHash };
@@ -2613,12 +2331,10 @@ Otherwise, respond with a full, clear explanation, and include example JSON only
         }
       }
 
-
       // --- STEP 12: EXECUTION (Final Step) ---
       if (!errorOcurred) {
         const isReady = (currentState.stage === "READY_TO_LAUNCH" || currentState.stage === "IMAGE_UPLOADED") && currentState.image_hash;
         const wantsLaunch = lowerInstruction.includes("launch") || lowerInstruction.includes("execute") || lowerInstruction.includes("run") || lowerInstruction.includes("publish") || lowerInstruction.includes("yes") || lowerInstruction.includes("ok") || currentState.auto_run;
-
 
         if (isReady && (wantsLaunch || currentState.objective === "TRAFFIC")) {
           console.log("🚀 Waterfall: Executing Campaign on Meta...");
@@ -2632,14 +2348,12 @@ Otherwise, respond with a full, clear explanation, and include example JSON only
               }))
             };
 
-
             const execRes = await fetch(`${process.env.NEXT_PUBLIC_BASE_URL}/api/meta/execute-campaign`, {
               method: "POST",
               headers: { "Content-Type": "application/json", "X-Client-Email": __currentEmail || "" },
               body: JSON.stringify({ platform: "meta", payload: finalPayload })
             });
             const execJson = await execRes.json();
-
 
             if (execJson.ok) {
               await saveAnswerMemory(process.env.NEXT_PUBLIC_BASE_URL, effectiveBusinessId, {
@@ -2660,13 +2374,11 @@ Otherwise, respond with a full, clear explanation, and include example JSON only
         }
       }
 
-
       // Save progress reached
       if (effectiveBusinessId) {
         console.log(`[PROD_LOG] ✅ SHORT-CIRCUIT: Transition Finished | ID: ${effectiveBusinessId} | FinalStage: ${currentState.stage}`);
         await saveAnswerMemory(process.env.NEXT_PUBLIC_BASE_URL, effectiveBusinessId, { campaign_state: currentState }, session.user.email.toLowerCase());
       }
-
 
       // If we stopped due to error or waiting
       let feedbackText = "";
@@ -2680,10 +2392,8 @@ Otherwise, respond with a full, clear explanation, and include example JSON only
         feedbackText = `**Current Pipeline Progress**:\n${waterfallLog.join("\n") || "No steps completed in this turn."}\n\n(Debug: Stage=${currentState.stage}, Plan=${currentState.plan ? "Yes" : "No"}, Image=${currentState.creative?.imageBase64 ? "Yes" : "No"}, Hash=${currentState.image_hash || "No"})\n\nWaiting for your confirmation...`;
       }
 
-
       return res.status(200).json({ ok: true, text: feedbackText, imageUrl: currentState.creative?.imageUrl, mode });
     }
-
 
     const result = await model.generateContent({
       contents: [
@@ -2694,7 +2404,6 @@ Otherwise, respond with a full, clear explanation, and include example JSON only
       ],
     });
 
-
     const rawText =
       (result &&
         result.response &&
@@ -2702,9 +2411,7 @@ Otherwise, respond with a full, clear explanation, and include example JSON only
         result.response.text()) ||
       "";
 
-
     let text = rawText;
-
 
     // 🧹 CLEANUP: If Gemini outputs JSON, hide it from the user flow (User complaint: "Jumps to JSON").
     // We only want to show the JSON *Summary* text if passing a proposed plan.
@@ -2716,12 +2423,10 @@ Otherwise, respond with a full, clear explanation, and include example JSON only
     }
     */
 
-
     // 🕵️ DETECT AND SAVE JSON PLAN (FROM GEMINI)
     // Supports: ```json ... ```, ``` ... ```, or plain JSON starting with {
     if (effectiveBusinessId) {
       let jsonString = null;
-
 
       // 1. Try code blocks
       const strictMatch = rawText.match(/```(?:json)?\s*([\s\S]*?)\s*```/);
@@ -2747,11 +2452,9 @@ Otherwise, respond with a full, clear explanation, and include example JSON only
         }
       }
 
-
       if (jsonString) {
         try {
           let planJson = JSON.parse(jsonString);
-
 
           // 🔄 NORMALIZE JSON: If Gemini gave the "Nested" structure, flatten it to our Standard Schema
           if (planJson.campaign_data) {
@@ -2760,7 +2463,6 @@ Otherwise, respond with a full, clear explanation, and include example JSON only
             const s = d.campaign_settings || {};
             const t = d.targeting_plan || {};
             const c = d.creative_plan?.[0] || {};
-
 
             planJson = {
               campaign_name: s.campaign_name || "New Campaign",
@@ -2794,14 +2496,12 @@ Otherwise, respond with a full, clear explanation, and include example JSON only
             };
           }
 
-
           // 🔄 NORMALIZE JSON: Variation 2 (Step/Details structure)
           if (planJson.campaign_details) {
             console.log("🔄 Normalizing Gemini JSON Variation 2...");
             const d = planJson.campaign_details;
             const ads = Array.isArray(planJson.ad_sets) ? planJson.ad_sets[0] : (planJson.ad_sets || {});
             const c = ads.ad_creative || ads.creative || {};
-
 
             planJson = {
               campaign_name: d.name || "New Campaign",
@@ -2837,7 +2537,6 @@ Otherwise, respond with a full, clear explanation, and include example JSON only
             };
           }
 
-
           // 🔄 NORMALIZE JSON: Variation 3 (EXECUTE: true structure)
           if (planJson.EXECUTE && planJson.campaign_plan) {
             console.log("🔄 Normalizing Gemini JSON Variation 3 (EXECUTE: true)...");
@@ -2845,7 +2544,6 @@ Otherwise, respond with a full, clear explanation, and include example JSON only
             const d = cp.details || cp;
             const ads = Array.isArray(cp.ad_sets) ? cp.ad_sets[0] : (cp.ad_sets || {});
             const c = ads.ad_creative || ads.creative || {};
-
 
             planJson = {
               campaign_name: d.name || d.campaign_name || "New Campaign",
@@ -2881,7 +2579,6 @@ Otherwise, respond with a full, clear explanation, and include example JSON only
             };
           }
 
-
           // 🔄 NORMALIZE JSON: Variation 5 (campaigns array structure)
           if (planJson.campaigns && Array.isArray(planJson.campaigns)) {
             console.log("🔄 Normalizing Gemini JSON Variation 5 (campaigns array)...");
@@ -2890,11 +2587,9 @@ Otherwise, respond with a full, clear explanation, and include example JSON only
             const creative = adSet.adCreatives?.[0]?.creative || {};
             const tgt = adSet.targeting || {};
 
-
             // Map Objective
             let rawObj = c.objective || "OUTCOME_TRAFFIC";
             let objective = (rawObj.includes("LEAD") || rawObj.includes("PROSPECT")) ? "OUTCOME_LEADS" : (rawObj.includes("SALE") || rawObj.includes("CONVERSION") ? "OUTCOME_SALES" : "OUTCOME_TRAFFIC");
-
 
             planJson = {
               campaign_name: c.name || "New Campaign",
@@ -2930,7 +2625,6 @@ Otherwise, respond with a full, clear explanation, and include example JSON only
             };
           }
 
-
           // 🔄 NORMALIZE JSON: Variation 8 (User Reported meta_campaign_plan)
           if (planJson.meta_campaign_plan || planJson.campaign_creation_flow_step) {
             console.log("🔄 Normalizing reported Meta Campaign Plan structure...");
@@ -2939,7 +2633,6 @@ Otherwise, respond with a full, clear explanation, and include example JSON only
             const creativeInput = mcp.creative || {};
             const tgt = adSetInput.targeting || {};
             const budget = mcp.budget || {};
-
 
             planJson = {
               campaign_name: mcp.campaign_name || "New Campaign",
@@ -2984,7 +2677,6 @@ Otherwise, respond with a full, clear explanation, and include example JSON only
             };
           }
 
-
           // 🔄 NORMALIZE JSON: Variation 6 (campaign + adSets + ads structure)
           if (planJson.campaign && planJson.adSets && Array.isArray(planJson.adSets)) {
             console.log("🔄 Normalizing Gemini JSON Variation 6 (campaign/adSets/ads)...");
@@ -2996,15 +2688,12 @@ Otherwise, respond with a full, clear explanation, and include example JSON only
               creative = planJson.ads[0]?.creative_spec || planJson.ads[0]?.creative || {};
             }
 
-
             // Map Objective
             let rawObj = c.objective || "OUTCOME_TRAFFIC";
             let objective = (rawObj.includes("LEAD") || rawObj.includes("PROSPECT")) ? "OUTCOME_LEADS" : (rawObj.includes("SALE") || rawObj.includes("CONVERSION") ? "OUTCOME_SALES" : "OUTCOME_TRAFFIC");
 
-
             // Map Budget
             const budgetAmount = adSet.daily_budget || c.budget?.amount || 500;
-
 
             // Map Targeting
             const geo = adSet.targeting?.geo_locations || {};
@@ -3017,12 +2706,10 @@ Otherwise, respond with a full, clear explanation, and include example JSON only
               });
             }
 
-
             // Map Creative Assets
             const assets = creative.assets || {};
             const primaryText = Array.isArray(assets.primaryTextVariations) ? assets.primaryTextVariations[0] : (assets.primaryText || "");
             const headline = Array.isArray(assets.headlines) ? assets.headlines[0] : (assets.headline || "");
-
 
             planJson = {
               campaign_name: c.name || "New Campaign",
@@ -3058,21 +2745,17 @@ Otherwise, respond with a full, clear explanation, and include example JSON only
             };
           }
 
-
           // 🔄 NORMALIZE JSON: Variation 7 (Step 8 Flow - "campaign_plan" object)
           if (planJson.campaign_plan || (planJson.step === 8)) {
             console.log("🔄 Normalizing Gemini JSON Variation 7 (Campaign Plan / Step 8)...");
-
 
             const cp = planJson.campaign_plan || planJson;
             const adSetsStr = planJson.ad_set_strategy || planJson.ad_sets || [];
             const creativesStr = planJson.creative_strategy || planJson.ad_creatives || [];
 
-
             // Extract first items
             const adSetItem = Array.isArray(adSetsStr) ? adSetsStr[0] : (adSetsStr || {});
             const creativeItem = Array.isArray(creativesStr) ? creativesStr[0] : (creativesStr || {});
-
 
             const cName = cp.campaign_name || "New Campaign";
             // Map Objective
@@ -3081,16 +2764,13 @@ Otherwise, respond with a full, clear explanation, and include example JSON only
             else if (obj.includes("LEAD")) obj = "OUTCOME_LEADS";
             else obj = "OUTCOME_TRAFFIC";
 
-
             const budgetAmount = cp.budget_daily_inr || cp.budget?.amount || 500;
-
 
             // Map Location
             const geo = adSetItem.geo_targeting || {};
             const cities = Array.isArray(geo.cities)
               ? geo.cities.map(c => ({ name: c }))
               : (geo.cities ? [{ name: geo.cities }] : [{ name: "India" }]);
-
 
             planJson = {
               campaign_name: cName,
@@ -3125,7 +2805,6 @@ Otherwise, respond with a full, clear explanation, and include example JSON only
               ]
             };
           }
-
 
           // 🔄 NORMALIZE JSON: Variation 4 (Flat META plan shape)
           if (!planJson.campaign_name && (planJson.name || planJson.objective || planJson.ad_creative)) {
@@ -3169,16 +2848,13 @@ Otherwise, respond with a full, clear explanation, and include example JSON only
             };
           }
 
-
           // Basic validation (is it a campaign plan?)
           if (planJson.campaign_name && planJson.ad_sets) {
-
 
             // 🛡️ SECURITY: Enforce strict Objective & Optimization Mapping (User Golden Rule)
             // Rule: Objective = Campaign Level (OUTCOME_TRAFFIC), Performance Goal = Ad Set Level (LINK_CLICKS)
             const rawObj = (planJson.objective || "").toString().toUpperCase();
             let cleanObjective = "OUTCOME_TRAFFIC"; // Default
-
 
             if (rawObj.includes("LEAD") || rawObj.includes("PROSPECT")) cleanObjective = "OUTCOME_LEADS";
             else if (rawObj.includes("SALE") || rawObj.includes("CONVERSION")) cleanObjective = "OUTCOME_SALES";
@@ -3187,17 +2863,14 @@ Otherwise, respond with a full, clear explanation, and include example JSON only
             else if (rawObj.includes("APP")) cleanObjective = "OUTCOME_APP_PROMOTION";
             // Else default to OUTCOME_TRAFFIC (catches "LINK_CLICKS", "TRAFFIC", etc.)
 
-
             console.log(`🛡️ Sanitized Objective: ${planJson.objective} -> ${cleanObjective}`);
             planJson.objective = cleanObjective;
-
 
             // Ensure Ad Sets have correct structure
             planJson.ad_sets = planJson.ad_sets.map(adset => {
               // Map Performance Goal -> Optimization Goal
               const perfGoal = (planJson.performance_goal || adset.performance_goal || "LINK_CLICKS").toString().toUpperCase();
               let optGoal = "LINK_CLICKS";
-
 
               if (cleanObjective === "OUTCOME_TRAFFIC") {
                 optGoal = perfGoal.includes("LANDING") ? "LANDING_PAGE_VIEWS" : "LINK_CLICKS";
@@ -3207,7 +2880,6 @@ Otherwise, respond with a full, clear explanation, and include example JSON only
                 optGoal = "CONVERSIONS"; // Simplified
               }
 
-
               return {
                 ...adset,
                 optimization_goal: adset.optimization_goal || optGoal,
@@ -3215,7 +2887,6 @@ Otherwise, respond with a full, clear explanation, and include example JSON only
                 billing_event: "IMPRESSIONS" // Safe default
               };
             });
-
 
             const newState = {
               ...lockedCampaignState, // Preserve verified assets
@@ -3239,10 +2910,8 @@ Otherwise, respond with a full, clear explanation, and include example JSON only
               campaign_state: newState
             }, session.user.email.toLowerCase());
 
-
             lockedCampaignState = newState;
             console.log("✅ Saved Proposed Plan to State");
-
 
             // 📝 Overwrite the response text with a clean summary
             const creative = planJson.ad_sets?.[0]?.ad_creative || planJson.ad_sets?.[0]?.ads?.[0]?.creative || {};
@@ -3251,35 +2920,27 @@ Otherwise, respond with a full, clear explanation, and include example JSON only
             const bCurrency = planJson.budget?.currency || "INR";
             const bType = planJson.budget?.type || planJson.budget_type || "DAILY";
 
-
             const creativeTitle = creative.headline || creative.title || "Headline";
             const creativeBody = creative.primary_text || creative.body || "Body Text";
-
 
             const tStr = planJson.targeting?.targeting_suggestions
               ? `\n**Suggestions**: ${planJson.targeting.targeting_suggestions.interests?.join(", ") || ""} (${planJson.targeting.targeting_suggestions.demographics?.join(", ") || ""})`
               : "";
 
-
             text = `
 **Plan Proposed: ${planJson.campaign_name}**
 
-
 **Targeting**: ${planJson.targeting?.geo_locations?.countries?.join(", ") || "India"} (${planJson.targeting?.age_min || 18}-${planJson.targeting?.age_max || 65}+)${tStr}
 **Budget**: ${bAmount} ${bCurrency} (${bType})
-
 
 **Creative Idea**: 
 "${creativeTitle}"
 _${creativeBody}_
 
-
 **Image Concept**: 
 _${creative.image_prompt || creative.imagePrompt || "Standard ad creative based on service"}_
 
-
 **Call to Action**: ${creative.call_to_action || "Learn More"}
-
 
 Reply **YES** to generate this image and launch the campaign.
 `.trim();
@@ -3295,12 +2956,10 @@ Reply **YES** to generate this image and launch the campaign.
       }
     }
 
-
     // 🚨 FALLBACK: FORCE SAVE PLAN IF TEXT LOOKS LIKE A PROPOSAL BUT NO JSON WAS FOUND
     // This catches the case where Gemini returns a nice text plan but forgets the JSON block.
     // We construct a minimal plan from the User's Instruction + Gemini's output.
     const isPlanText = /Plan Proposed|Proposed Plan|Campaign Plan|Creative Idea|Strategy Proposal|Campaign Name/i.test(text);
-
 
     // 🔒 FIX: Allow saving if state exists but HAS NO PLAN (e.g. just stage=PLANNING)
     // AND Only if we haven't already saved a JSON plan (planJson would handle that path above)
@@ -3308,10 +2967,8 @@ Reply **YES** to generate this image and launch the campaign.
     if ((mode === "meta_ads_plan" || isPlanText) && (!lockedCampaignState || !lockedCampaignState.plan) && effectiveBusinessId) {
       const looksLikePlan = isPlanText || text.includes("Budget") || text.includes("Creative Idea") || text.includes("Targeting") || text.includes("Creative Idea:");
 
-
       if (looksLikePlan) {
         console.log("⚠️ No JSON plan detected, but text looks like a plan. Attempting aggressive fallback extraction...");
-
 
         // Helper to extract from both Instruction (Input) and Text (Output)
         const extractFrom = (source, key) => {
@@ -3321,16 +2978,13 @@ Reply **YES** to generate this image and launch the campaign.
           return match ? match[1].trim() : null;
         };
 
-
         // Extraction Priority: Output Text (Gemini) > Input Instruction (User)
         const extractedTitle = extractFrom(text, "Plan Proposed") || extractFrom(text, "Campaign Name") || extractFrom(instruction, "Campaign Name") || "New Meta Campaign";
         const rawBudget = extractFrom(text, "Budget") || extractFrom(instruction, "Budget");
         const budgetVal = rawBudget ? parseInt(rawBudget.replace(/[^\d]/g, "")) : 500;
 
-
         const extractedLocation = extractFrom(text, "Location") || extractFrom(instruction, "Location") || "India";
         const extractedWebsite = extractFrom(text, "Website") || extractFrom(instruction, "Website") || detectedLandingPage || null;
-
 
         const minimalPlan = {
           campaign_name: extractedTitle.replace(/\*\*?$/, "").trim(),
@@ -3365,7 +3019,6 @@ Reply **YES** to generate this image and launch the campaign.
           ],
         };
 
-
         const newState = {
           ...lockedCampaignState,
           stage: "PLAN_PROPOSED",
@@ -3380,13 +3033,11 @@ Reply **YES** to generate this image and launch the campaign.
           locked_at: new Date().toISOString(),
         };
 
-
         // SAVE IT!
         console.log("💾 Persisting text-based fallback plan to memory...");
         await saveAnswerMemory(process.env.NEXT_PUBLIC_BASE_URL, effectiveBusinessId, {
           campaign_state: newState
         }, session.user.email.toLowerCase());
-
 
         // Update local state and mode to ensure current turn response reflects the change
         lockedCampaignState = newState;
@@ -3396,12 +3047,9 @@ Reply **YES** to generate this image and launch the campaign.
     }
 
 
-
-
     // ============================================================
     // 🤖 STATE MACHINE: EXECUTION FLOW (Plan -> Image -> Launch)
     // ============================================================
-
 
     // 🛡️ GUARD: If user says YES (or force_continue) but we have no state, warn them.
     // This prevents the "Generic Agent Response" fallback which confuses the user.
@@ -3410,7 +3058,6 @@ Reply **YES** to generate this image and launch the campaign.
       instruction.toLowerCase().includes("approve") ||
       instruction.toLowerCase().includes("confirm") ||
       body.force_continue;
-
 
     if (!lockedCampaignState && isConfirmation && mode === "meta_ads_plan") {
       const regeneratedPlan = await generateMetaCampaignPlan({
@@ -3432,7 +3079,6 @@ Reply **YES** to generate this image and launch the campaign.
       lockedCampaignState = newState;
     }
 
-
     if (lockedCampaignState) {
       const stage = lockedCampaignState.stage || "PLANNING";
       // Auto-trigger if Logic 2 flag set or user says YES
@@ -3446,7 +3092,6 @@ Reply **YES** to generate this image and launch the campaign.
         instruction.toLowerCase().includes("image") ||
         lockedCampaignState.auto_run;
 
-
       // 🚀 CONSOLIDATED EXECUTION WATERFALL (Step 9 -> 10 -> 12)
       if (stage !== "COMPLETED" && userSaysYes) {
         // 🛡️ IDEMPOTENCY PROTECTION: Avoid double-processing if request arrives too fast
@@ -3454,26 +3099,21 @@ Reply **YES** to generate this image and launch the campaign.
         const lastUpdate = lockedCampaignState.locked_at ? new Date(lockedCampaignState.locked_at).getTime() : 0;
         const isTooFast = (now - lastUpdate < 10000); // 10s window
 
-
         // We allow "PLAN_PROPOSED" to be re-run, but once it moves to Gen/Upload/Launch, we lock it.
         if (isTooFast && (stage === "IMAGE_GENERATED" || stage === "READY_TO_LAUNCH" || stage === "EXECUTING")) {
           console.warn(`[IDEMPOTENCY] Blocked duplicate request for ${effectiveBusinessId} (Stage: ${stage})`);
           return res.status(200).json({ ok: true, mode, text: "I'm already working on that! One moment please..." });
         }
 
-
         console.log(`[PROD_LOG] 📶 State Transition Started | User: ${session.user.email} | ID: ${effectiveBusinessId} | CurrentStage: ${stage}`);
 
-
         let currentState = { ...lockedCampaignState, locked_at: new Date().toISOString() };
-
 
         // 🛡️ DEFENSIVE CHECK: If user says YES but we have no plan, FALLBACK TO PLANNING.
         // Rule: NEVER execute without a plan. Implicitly regenerate it.
         // 🛡️ HARD RULE: Never proceed to confirmation/execution without a saved plan
         if (!currentState.plan || !currentState.plan.campaign_name) {
           console.warn("⚠️ Plan missing at confirmation. Recreating plan immediately.");
-
 
           const regeneratedPlan = await generateMetaCampaignPlan({
             lockedCampaignState,
@@ -3485,8 +3125,6 @@ Reply **YES** to generate this image and launch the campaign.
           });
 
 
-
-
           const repairedState = {
             ...currentState,
             stage: "PLAN_PROPOSED",
@@ -3494,32 +3132,26 @@ Reply **YES** to generate this image and launch the campaign.
             locked_at: new Date().toISOString()
           };
 
-
           await saveAnswerMemory(process.env.NEXT_PUBLIC_BASE_URL, effectiveBusinessId, {
             campaign_state: repairedState
           }, session.user.email.toLowerCase());
 
-
           currentState = repairedState;
         }
-
 
         let waterfallLog = [];
         let errorOcurred = false;
         let stopReason = null;
 
-
         // --- STEP 9: IMAGE GENERATION ---
         const hasPlan = !!currentState.plan;
         const hasImage = currentState.creative && (currentState.creative.imageBase64 || currentState.creative.imageUrl);
-
 
         if (hasPlan && !hasImage) {
           console.log("🚀 Waterfall: Starting Image Generation...");
           const plan = currentState.plan;
           const creativeResult = plan.ad_sets?.[0]?.ad_creative || plan.ad_sets?.[0]?.ads?.[0]?.creative || {};
           const imagePrompt = creativeResult.image_prompt || creativeResult.imagePrompt || creativeResult.primary_text || `${plan.campaign_name} ad image`;
-
 
           try {
             const imgRes = await fetch(`${process.env.NEXT_PUBLIC_BASE_URL}/api/images/generate`, {
@@ -3528,7 +3160,6 @@ Reply **YES** to generate this image and launch the campaign.
               body: JSON.stringify({ prompt: imagePrompt }),
             });
             const imgJson = await parseResponseSafe(imgRes);
-
 
             if (imgJson.imageBase64) {
               const newCreative = {
@@ -3550,12 +3181,10 @@ Reply **YES** to generate this image and launch the campaign.
           waterfallLog.push("⏭️ Step 9: Image Already Exists");
         }
 
-
         // --- STEP 10: IMAGE UPLOAD ---
         if (!errorOcurred) {
           const hasImageReady = currentState.creative && currentState.creative.imageBase64;
           const hasHash = currentState.image_hash;
-
 
           if (hasImageReady && !hasHash) {
             console.log("🚀 Waterfall: Uploading Image to Meta...");
@@ -3567,7 +3196,6 @@ Reply **YES** to generate this image and launch the campaign.
               });
               const uploadJson = await parseResponseSafe(uploadRes);
               const iHash = uploadJson.imageHash || uploadJson.image_hash;
-
 
               if (uploadJson.ok && iHash) {
                 const iUrl = uploadJson.raw?.images?.[iHash]?.url;
@@ -3586,20 +3214,16 @@ Reply **YES** to generate this image and launch the campaign.
           }
         }
 
-
         // --- STEP 12: EXECUTION (Final Step) ---
         if (!errorOcurred) {
           const isReady = (currentState.stage === "READY_TO_LAUNCH" || currentState.stage === "IMAGE_UPLOADED") && currentState.image_hash;
           // For auto_run, we don't need explicit 'launch' keyword
           const wantsLaunch = instruction.toLowerCase().includes("launch") || instruction.toLowerCase().includes("execute") || instruction.toLowerCase().includes("run") || instruction.toLowerCase().includes("publish") || instruction.toLowerCase().includes("yes") || instruction.toLowerCase().includes("ok") || currentState.auto_run;
 
-
           if (isReady && (wantsLaunch || currentState.objective === "TRAFFIC")) {
             console.log("🚀 Waterfall: Executing Campaign on Meta...");
             try {
               const plan = currentState.plan;
-
-
 
 
               const finalPayload = {
@@ -3610,14 +3234,12 @@ Reply **YES** to generate this image and launch the campaign.
                 }))
               };
 
-
               const execRes = await fetch(`${process.env.NEXT_PUBLIC_BASE_URL}/api/meta/execute-campaign`, {
                 method: "POST",
                 headers: { "Content-Type": "application/json", "x-client-email": __currentEmail || "" },
                 body: JSON.stringify({ platform: "meta", payload: finalPayload })
               });
               const execJson = await execRes.json();
-
 
               if (execJson.ok) {
                 await saveAnswerMemory(process.env.NEXT_PUBLIC_BASE_URL, effectiveBusinessId, {
@@ -3638,11 +3260,9 @@ Reply **YES** to generate this image and launch the campaign.
           }
         }
 
-
         // Save progress reached
         console.log(`[PROD_LOG] ✅ State Transition Finished | ID: ${effectiveBusinessId} | FinalStage: ${currentState.stage}`);
         await saveAnswerMemory(process.env.NEXT_PUBLIC_BASE_URL, effectiveBusinessId, { campaign_state: currentState }, session.user.email.toLowerCase());
-
 
         // If we stopped due to error or waiting
         let feedbackText = "";
@@ -3656,12 +3276,9 @@ Reply **YES** to generate this image and launch the campaign.
           feedbackText = `**Current Pipeline Progress**:\n${waterfallLog.join("\n") || "No steps completed in this turn."}\n\n(Debug: Stage=${currentState.stage}, Plan=${currentState.plan ? "Yes" : "No"})\n\nWaiting for your confirmation...`;
         }
 
-
         return res.status(200).json({ ok: true, text: feedbackText, imageUrl: currentState.creative?.imageUrl, mode });
 
-
       }
-
 
       // ===============================
       // 🧠 STEP-1 / STEP-2 NORMAL AGENT RESPONSE
@@ -3672,9 +3289,7 @@ Reply **YES** to generate this image and launch the campaign.
         mode,
       });
 
-
     } // End of if (lockedCampaignState)
-
 
   } catch (err) {
     console.error("Agent execution error:", err);
@@ -3685,12 +3300,6 @@ Reply **YES** to generate this image and launch the campaign.
     });
   }
 }
-
-
-
-
-
-
 
 
 
