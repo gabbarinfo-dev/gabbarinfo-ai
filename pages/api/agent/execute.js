@@ -324,6 +324,11 @@ export default async function handler(req, res) {
 
       const wantsLaunch = instruction.match(/\b(yes|ok|publish|confirm)\b/i);
 
+      if (isConfirmation && finalImage && finalCaption) {
+        // continue to publish OR wait for wantsLaunch logic
+        // DO NOT fall through to Missing Assets
+      }
+
       if (finalImage && finalCaption && wantsLaunch) {
         try {
           if (!metaRow) throw new Error("Meta connection missing. Please connect your accounts.");
@@ -372,15 +377,11 @@ export default async function handler(req, res) {
         return res.json({ ok: true, text: "I have your post ready. **Ready to publish?**", mode: "instagram_post" });
       }
 
-      // If assets are still missing, use a simple planning fallback
-      if (!isConfirmation) {
-        const igSystemPrompt = `You are an Instagram assistant. Ask for missing image URL or caption cleanly. Concisely.`.trim();
-        const model = genAI.getGenerativeModel({ model: GEMINI_MODEL });
-        const result = await model.generateContent(igSystemPrompt + "\n\nUser: " + instruction);
-        return res.json({ ok: true, text: result.response.text(), mode: "instagram_post" });
+      if (!finalImage || !finalCaption) {
+        return res.json({ ok: false, text: "⚠️ **Missing Assets**: Please provide an Image URL and Caption." });
       }
 
-      return res.json({ ok: false, text: "⚠️ **Missing Assets**: Please provide an Image URL and Caption." });
+      return res.end();
     }
 
     // 🛑 HARD SAFETY STOP
