@@ -301,67 +301,82 @@ export default async function handler(req, res) {
       }
 
       const creative = lockedCampaignState?.creative || {};
-      const finalImage = creative.imageUrl;
-      const finalCaption = creative.primary_text;
+      let finalImage = creative.imageUrl;
+      let finalCaption = creative.primary_text;
+
+      // 🛡️ CONFIRMATION GUARD: Targeted re-hydration if assets missing on 'Yes' turn
+      if (isConfirmation && (!finalImage || !finalCaption)) {
+        try {
+          const { data: mem } = await supabase.from("agent_memory").select("content").eq("email", session.user.email.toLowerCase()).eq("memory_type", "client").maybeSingle();
+          if (mem?.content) {
+            const answers = JSON.parse(mem.content).business_answers || {};
+            for (const key in answers) {
+              const state = answers[key]?.campaign_state;
+              if (state?.objective === "INSTAGRAM_POST" && state?.creative?.imageUrl) {
+                finalImage = state.creative.imageUrl;
+                finalCaption = state.creative.primary_text || finalCaption;
+                break;
+              }
+            }
+          }
+        } catch (e) { console.warn("targeted re-hydration failed", e); }
+      }
+
       const wantsLaunch = instruction.match(/\b(yes|ok|publish|confirm)\b/i);
 
-      if (finalImage && finalCaption && wantsLaunch) {
-        try {
-          if (!metaRow) throw new Error("Meta connection missing. Please connect your accounts.");
-          const instagramId = metaRow.instagram_actor_id || metaRow.ig_business_id;
-          const accessToken = process.env.META_SYSTEM_USER_TOKEN || metaRow.fb_user_access_token;
+      if (finalImage && finalCaption) {
+        if (wantsLaunch) {
+          try {
+            if (!metaRow) throw new Error("Meta connection missing. Please connect your accounts.");
+            const instagramId = metaRow.instagram_actor_id || metaRow.ig_business_id;
+            const accessToken = process.env.META_SYSTEM_USER_TOKEN || metaRow.fb_user_access_token;
 
-          if (!instagramId || !accessToken) throw new Error("Instagram configuration missing.");
+            if (!instagramId || !accessToken) throw new Error("Instagram configuration missing.");
 
-          // Step 1: Create Media Container
-          const cUrl = `https://graph.facebook.com/v21.0/${instagramId}/media`;
-          const cRes = await fetch(cUrl, {
-            method: "POST",
-            body: new URLSearchParams({ image_url: finalImage, caption: finalCaption, access_token: accessToken })
-          });
-          const cJson = await cRes.json();
-          const creationId = cJson.id;
+            // Step 1: Create Media Container
+            const cUrl = `https://graph.facebook.com/v21.0/${instagramId}/media`;
+            const cRes = await fetch(cUrl, {
+              method: "POST",
+              body: new URLSearchParams({ image_url: finalImage, caption: finalCaption, access_token: accessToken })
+            });
+            const cJson = await cRes.json();
+            const creationId = cJson.id;
 
-          if (!creationId) throw new Error(cJson.error?.message || "Container creation failed.");
+            if (!creationId) throw new Error(cJson.error?.message || "Container creation failed.");
 
-          // Step 2: Publish Media
-          console.log(`📸 [Instagram] Publishing media (ID: ${creationId})...`);
-          const pUrl = `https://graph.facebook.com/v21.0/${instagramId}/media_publish`;
-          const pRes = await fetch(pUrl, {
-            method: "POST",
-            body: new URLSearchParams({ creation_id: creationId, access_token: accessToken })
-          });
-          const pJson = await pRes.json();
+            // Step 2: Publish Media
+            console.log(`📸 [Instagram] Publishing media (ID: ${creationId})...`);
+            const pUrl = `https://graph.facebook.com/v21.0/${instagramId}/media_publish`;
+            const pRes = await fetch(pUrl, {
+              method: "POST",
+              body: new URLSearchParams({ creation_id: creationId, access_token: accessToken })
+            });
+            const pJson = await pRes.json();
 
-          if (!pRes.ok) throw new Error(pJson.error?.message || "Publishing failed.");
+            if (!pRes.ok) throw new Error(pJson.error?.message || "Publishing failed.");
 
-          await saveAnswerMemory(process.env.NEXT_PUBLIC_BASE_URL, effectiveBusinessId, {
-            campaign_state: { stage: "COMPLETED", final_result: { id: pJson.id, organic: true } }
-          }, session.user.email.toLowerCase());
+            await saveAnswerMemory(process.env.NEXT_PUBLIC_BASE_URL, effectiveBusinessId, {
+              campaign_state: { stage: "COMPLETED", final_result: { id: pJson.id, organic: true } }
+            }, session.user.email.toLowerCase());
 
-          return res.json({
-            ok: true,
-            text: `🎉 **Instagram Post Published Successfully!**\n\n- **Post ID**: \`${pJson.id}\`\n\nYour content is now live!`
-          });
-        } catch (e) {
-          console.error("❌ Instagram execution error:", e.message);
-          return res.json({ ok: false, text: `❌ **Instagram Post Failed**: ${e.message}` });
+            return res.json({
+              ok: true,
+              text: `🎉 **Instagram Post Published Successfully!**\n\n- **Post ID**: \`${pJson.id}\`\n\nYour content is now live!`
+            });
+          } catch (e) {
+            console.error("❌ Instagram execution error:", e.message);
+            return res.json({ ok: false, text: `❌ **Instagram Post Failed**: ${e.message}` });
+          }
+        } else {
+          return res.json({ ok: true, text: "I have your post ready. **Ready to publish?**", mode: "instagram_post" });
         }
       }
 
-      if (finalImage && finalCaption && !wantsLaunch) {
-        return res.json({ ok: true, text: "I have your post ready. **Ready to publish?**", mode: "instagram_post" });
+      if (!finalImage || !finalCaption) {
+        return res.json({ ok: false, text: "⚠️ **Missing Assets**: Please provide an Image URL and Caption." });
       }
 
-      // If assets are still missing, use a simple planning fallback
-      if (!isConfirmation) {
-        const igSystemPrompt = `You are an Instagram assistant. Ask for missing image URL or caption cleanly. Concisely.`.trim();
-        const model = genAI.getGenerativeModel({ model: GEMINI_MODEL });
-        const result = await model.generateContent(igSystemPrompt + "\n\nUser: " + instruction);
-        return res.json({ ok: true, text: result.response.text(), mode: "instagram_post" });
-      }
-
-      return res.json({ ok: false, text: "⚠️ **Missing Assets**: Please provide an Image URL and Caption." });
+      return res.end();
     }
 
     // 🛑 HARD SAFETY STOP
@@ -3259,4 +3274,6 @@ Reply **YES** to generate this image and launch the campaign.
     });
   }
 }
+
+
 
