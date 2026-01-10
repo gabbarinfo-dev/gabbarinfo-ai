@@ -368,6 +368,19 @@ export default async function handler(req, res) {
             return res.json({ ok: false, text: `❌ **Instagram Post Failed**: ${e.message}` });
           }
         } else {
+          // 💾 MANDATORY PERSISTENCE: Ensure assets survive Turn 2 confirmation
+          await saveAnswerMemory(process.env.NEXT_PUBLIC_BASE_URL, effectiveBusinessId, {
+            campaign_state: {
+              objective: "INSTAGRAM_POST",
+              creative: {
+                imageUrl: finalImage,
+                primary_text: finalCaption,
+                ...(creative.hashtags ? { hashtags: creative.hashtags } : {})
+              },
+              stage: "READY_TO_LAUNCH"
+            }
+          }, session.user.email.toLowerCase());
+
           return res.json({ ok: true, text: "I have your post ready. **Ready to publish?**", mode: "instagram_post" });
         }
       }
