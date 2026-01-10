@@ -241,8 +241,21 @@ export default async function handler(req, res) {
           let bestMatch = null;
           for (const key of possibleKeys) {
             const state = answers[key]?.campaign_state;
-            if (state?.plan) { bestMatch = state; break; }
-            if (!bestMatch && state) bestMatch = state;
+            if (!state) continue;
+
+            // 🚀 PRIORITY 1: Organic Instagram Post (the confirmation turn needs this)
+            if (state.objective === "INSTAGRAM_POST") {
+              bestMatch = state;
+              break;
+            }
+
+            // PRIORITY 2: Ads Plan (existing baseline)
+            if (state.plan) {
+              if (!bestMatch) bestMatch = state;
+            }
+
+            // Fallback: any state
+            if (!bestMatch) bestMatch = state;
           }
           lockedCampaignState = bestMatch;
         }
