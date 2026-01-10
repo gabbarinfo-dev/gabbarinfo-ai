@@ -301,33 +301,9 @@ export default async function handler(req, res) {
       }
 
       const creative = lockedCampaignState?.creative || {};
-      let finalImage = creative.imageUrl;
-      let finalCaption = creative.primary_text;
-
-      // 🛡️ CONFIRMATION GUARD: Targeted re-hydration if assets missing on 'Yes' turn
-      if (isConfirmation && (!finalImage || !finalCaption)) {
-        try {
-          const { data: mem } = await supabase.from("agent_memory").select("content").eq("email", session.user.email.toLowerCase()).eq("memory_type", "client").maybeSingle();
-          if (mem?.content) {
-            const answers = JSON.parse(mem.content).business_answers || {};
-            for (const key in answers) {
-              const state = answers[key]?.campaign_state;
-              if (state?.objective === "INSTAGRAM_POST" && state?.creative?.imageUrl) {
-                finalImage = state.creative.imageUrl;
-                finalCaption = state.creative.primary_text || finalCaption;
-                break;
-              }
-            }
-          }
-        } catch (e) { console.warn("targeted re-hydration failed", e); }
-      }
-
+      const finalImage = creative.imageUrl;
+      const finalCaption = creative.primary_text;
       const wantsLaunch = instruction.match(/\b(yes|ok|publish|confirm)\b/i);
-
-      if (isConfirmation && finalImage && finalCaption) {
-        // continue to publish OR wait for wantsLaunch logic
-        // DO NOT fall through to Missing Assets
-      }
 
       if (finalImage && finalCaption && wantsLaunch) {
         try {
@@ -377,11 +353,15 @@ export default async function handler(req, res) {
         return res.json({ ok: true, text: "I have your post ready. **Ready to publish?**", mode: "instagram_post" });
       }
 
-      if (!finalImage || !finalCaption) {
-        return res.json({ ok: false, text: "⚠️ **Missing Assets**: Please provide an Image URL and Caption." });
+      // If assets are still missing, use a simple planning fallback
+      if (!isConfirmation) {
+        const igSystemPrompt = `You are an Instagram assistant. Ask for missing image URL or caption cleanly. Concisely.`.trim();
+        const model = genAI.getGenerativeModel({ model: GEMINI_MODEL });
+        const result = await model.generateContent(igSystemPrompt + "\n\nUser: " + instruction);
+        return res.json({ ok: true, text: result.response.text(), mode: "instagram_post" });
       }
 
-      return res.end();
+      return res.json({ ok: false, text: "⚠️ **Missing Assets**: Please provide an Image URL and Caption." });
     }
 
     // 🛑 HARD SAFETY STOP
@@ -3279,6 +3259,4 @@ Reply **YES** to generate this image and launch the campaign.
     });
   }
 }
-
-
 
