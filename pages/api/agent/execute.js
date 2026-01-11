@@ -297,14 +297,6 @@ export default async function handler(req, res) {
         if (url || caption) {
           let normalizedUrl = url;
           if (url) {
-            // 🛑 OPTION A: Reject Google Drive URLs immediately
-            if (url.includes("drive.google.com") || url.includes("drive.googleusercontent.com")) {
-              return res.json({ 
-                ok: false, 
-                text: "⚠️ **Google Drive Link Detected**: Google Drive images cannot be used directly. Please upload the image to a public URL (e.g. Unsplash, CDN, or your website)." 
-              });
-            }
-
             try {
               normalizedUrl = await normalizeImageUrl(url);
             } catch (e) {
@@ -374,11 +366,79 @@ export default async function handler(req, res) {
       }
 
       // ------------------------------------------------------------
-      // 🔧 FIX: SERVER-SIDE IMAGE REHOSTING REMOVED (Option A)
+      // 🔧 FIX: SERVER-SIDE IMAGE REHOSTING (Google Drive - Option B)
       // ------------------------------------------------------------
-      // Previous logic removed to enforce strict rejection of Drive URLs.
-      // ------------------------------------------------------------
+      let driveTempPath = null;
+      if (finalImage && finalImage.includes("drive.google.com")) {
+         console.log("🔄 [Rehost] Detected Google Drive URL. Attempting server-side download...");
+         
+         // 1. Extract File ID
+         const fileIdMatch = finalImage.match(/\/d\/([^\/\?]+)/) || finalImage.match(/id=([^\&]+)/);
+         const fileId = fileIdMatch ? fileIdMatch[1] : null;
 
+         if (!fileId) {
+            return res.json({ ok: false, text: "❌ **Drive Error**: Could not extract File ID from URL." });
+         }
+
+         // 2. Download from Google Drive API
+         try {
+            if (!session.accessToken) {
+               throw new Error("No Google Access Token found. Please sign in again with Google to use Drive integration.");
+            }
+
+            const driveApiUrl = `https://www.googleapis.com/drive/v3/files/${fileId}?alt=media`;
+            console.log(`⬇️ Fetching from Drive API: ${fileId}`);
+            
+            const driveRes = await fetch(driveApiUrl, {
+               headers: {
+                  "Authorization": `Bearer ${session.accessToken}`
+               }
+            });
+
+            if (!driveRes.ok) {
+               const errText = await driveRes.text();
+               console.error("Drive API Error:", errText);
+               if (driveRes.status === 403 || driveRes.status === 401) {
+                  throw new Error("Permission denied. Please re-login to grant Google Drive access.");
+               }
+               throw new Error(`Drive API failed: ${driveRes.statusText}`);
+            }
+
+            const arrayBuffer = await driveRes.arrayBuffer();
+            const buffer = Buffer.from(arrayBuffer);
+
+            // 3. Upload to Supabase 'knowledge-base' (Temp Folder)
+            // Using 'knowledge-base' bucket as it is known to exist.
+            // Folder: temp-instagram
+            const uuid = crypto.randomUUID ? crypto.randomUUID() : Math.random().toString(36).substring(7);
+            const fileName = `${effectiveBusinessId || "unknown"}/${uuid}.jpg`;
+            driveTempPath = `temp-instagram/${fileName}`; 
+
+            const { error: uploadErr } = await supabase.storage
+               .from("knowledge-base")
+               .upload(driveTempPath, buffer, { contentType: "image/jpeg", upsert: false });
+
+            if (uploadErr) throw uploadErr;
+
+            // 4. Get Public URL
+            const { data: publicData } = supabase.storage
+               .from("knowledge-base")
+               .getPublicUrl(driveTempPath);
+
+            const rehostedUrl = publicData.publicUrl;
+            console.log("✅ [Rehost] Success:", rehostedUrl);
+
+            // 5. Replace finalImage TEMPORARILY
+            // We do NOT persist this to memory permanently unless confirmation is needed next.
+            // But for this execution, we use the rehosted URL.
+            finalImage = rehostedUrl;
+
+         } catch (rehostErr) {
+            console.error("❌ [Rehost] Failed:", rehostErr.message);
+            return res.json({ ok: false, text: `❌ **Drive Error**: ${rehostErr.message}` });
+         }
+      }
+      
       const wantsLaunch = instruction.match(/\b(yes|ok|publish|confirm)\b/i);
 
       if (finalImage && finalCaption) {
@@ -428,6 +488,19 @@ export default async function handler(req, res) {
             const pJson = await pRes.json();
 
             if (!pRes.ok) throw new Error(pJson.error?.message || "Publishing failed.");
+
+            // 7️⃣ CLEANUP (MANDATORY)
+            if (driveTempPath) {
+               console.log(`🧹 Cleaning up temp file: ${driveTempPath}`);
+               try {
+                  const { error: delErr } = await supabase.storage
+                     .from("knowledge-base")
+                     .remove([driveTempPath]);
+                  if (delErr) console.warn("Cleanup warning:", delErr.message);
+               } catch (cleanupErr) {
+                  console.warn("Cleanup failed:", cleanupErr);
+               }
+            }
 
             await saveAnswerMemory(process.env.NEXT_PUBLIC_BASE_URL, effectiveBusinessId, {
               campaign_state: { stage: "COMPLETED", final_result: { id: pJson.id, organic: true } }
