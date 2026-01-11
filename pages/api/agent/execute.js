@@ -244,18 +244,18 @@ export default async function handler(req, res) {
             const state = answers[key]?.campaign_state;
             if (!state) continue;
 
-            // 🚀 PRIORITY 1: Organic Instagram Post (the confirmation turn needs this)
+            // 🚀 PRIORITY 1: Organic Instagram Post (STRICT WINNER)
             if (state.objective === "INSTAGRAM_POST") {
               bestMatch = state;
-              break;
+              break; // Found Instagram state? Stop immediately. It wins.
             }
 
-            // PRIORITY 2: Ads Plan (existing baseline)
+            // PRIORITY 2: Ads Plan (Only if no Instagram state found yet)
             if (state.plan && !bestMatch) {
               bestMatch = state;
             }
 
-            // Fallback: any state
+            // Fallback
             if (!bestMatch) bestMatch = state;
           }
           lockedCampaignState = bestMatch;
@@ -422,8 +422,10 @@ export default async function handler(req, res) {
       return res.json({ ok: false, text: "⚠️ **Missing Assets**: Please provide an Image URL and Caption." });
     }
 
-    // 🛑 HARD SAFETY STOP
+    // 🛑 HARD SAFETY STOP (ABSOLUTE ADS BLOCK)
+    // This must run BEFORE any Ads logic (Asset Discovery, Plan Generation, etc.)
     if (bodyMode === "instagram_post" || lockedCampaignState?.objective === "INSTAGRAM_POST") {
+      console.log("🛑 [Instagram] Hard Stop - Preventing Ads Logic Fall-through");
       return res.end();
     }
 
@@ -432,7 +434,8 @@ export default async function handler(req, res) {
     // ============================================================
     // (This block only runs if NOT organic Instagram)
     if (bodyMode === "instagram_post" || mode === "instagram_post" || lockedCampaignState?.objective === "INSTAGRAM_POST") {
-      throw new Error("INTERNAL_ERROR: Ads pipeline executed during Instagram post");
+       console.log("🛑 [Instagram] Hard Stop - Preventing Ads Logic Fall-through (Redundant Check)");
+       return res.end();
     }
 
     // 1️⃣ Check cache first
