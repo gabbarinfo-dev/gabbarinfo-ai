@@ -250,8 +250,8 @@ export default async function handler(req, res) {
             }
 
             // PRIORITY 2: Ads Plan (existing baseline)
-            if (state.plan) {
-              if (!bestMatch) bestMatch = state;
+            if (state.plan && !bestMatch) {
+              bestMatch = state;
             }
 
             // Fallback: any state
@@ -323,13 +323,13 @@ export default async function handler(req, res) {
           const { data: mem } = await supabase.from("agent_memory").select("content").eq("email", session.user.email.toLowerCase()).eq("memory_type", "client").maybeSingle();
           if (mem?.content) {
             const answers = JSON.parse(mem.content).business_answers || {};
-            for (const key in answers) {
+            const possibleKeys = [effectiveBusinessId, activeBusinessId, metaRow?.fb_business_id, metaRow?.fb_page_id, metaRow?.ig_business_id, "default_business"].filter(Boolean);
+            for (const key of possibleKeys) {
               const state = answers[key]?.campaign_state;
-              if (state?.objective === "INSTAGRAM_POST" && state?.creative?.imageUrl) {
-                finalImage = state.creative.imageUrl;
-                finalCaption = state.creative.primary_text || finalCaption;
-                break;
-              }
+              if (state?.objective !== "INSTAGRAM_POST") continue;
+              if (!finalImage && state?.creative?.imageUrl) finalImage = state.creative.imageUrl;
+              if (!finalCaption && state?.creative?.primary_text) finalCaption = state.creative.primary_text;
+              break;
             }
           }
         } catch (e) { console.warn("targeted re-hydration failed", e); }
@@ -398,11 +398,7 @@ export default async function handler(req, res) {
         }
       }
 
-      if (!finalImage || !finalCaption) {
-        return res.json({ ok: false, text: "⚠️ **Missing Assets**: Please provide an Image URL and Caption." });
-      }
-
-      return res.end();
+      return res.json({ ok: false, text: "⚠️ **Missing Assets**: Please provide an Image URL and Caption." });
     }
 
     // 🛑 HARD SAFETY STOP
