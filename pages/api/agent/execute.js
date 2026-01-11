@@ -341,10 +341,12 @@ export default async function handler(req, res) {
         if (wantsLaunch) {
           try {
             if (!metaRow) throw new Error("Meta connection missing. Please connect your accounts.");
-            const instagramId = metaRow.instagram_actor_id || metaRow.ig_business_id;
+            
+            // 🔒 TOKEN SAFETY: Explicitly use fb_user_access_token (NO System Token fallback)
             const accessToken = metaRow.fb_user_access_token;
+            const instagramId = metaRow.instagram_actor_id || metaRow.ig_business_id;
 
-            if (!instagramId || !accessToken) throw new Error("Instagram configuration missing.");
+            if (!instagramId || !accessToken) throw new Error("Instagram configuration missing. Please re-sync your assets.");
 
             // Step 1: Create Media Container
             const cUrl = `https://graph.facebook.com/v21.0/${instagramId}/media`;
