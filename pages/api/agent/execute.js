@@ -320,16 +320,34 @@ export default async function handler(req, res) {
       // 🛡️ CONFIRMATION GUARD: Targeted re-hydration if assets missing on 'Yes' turn
       if (isConfirmation && (!finalImage || !finalCaption)) {
         try {
+          console.log("💧 [Instagram] Re-hydrating state from memory...");
           const { data: mem } = await supabase.from("agent_memory").select("content").eq("email", session.user.email.toLowerCase()).eq("memory_type", "client").maybeSingle();
           if (mem?.content) {
             const answers = JSON.parse(mem.content).business_answers || {};
             const possibleKeys = [effectiveBusinessId, activeBusinessId, metaRow?.fb_business_id, metaRow?.fb_page_id, metaRow?.ig_business_id, "default_business"].filter(Boolean);
+            
+            let bestState = null;
+            
+            // Greedy search for the most complete INSTAGRAM_POST state
             for (const key of possibleKeys) {
-              const state = answers[key]?.campaign_state;
-              if (state?.objective !== "INSTAGRAM_POST") continue;
-              if (!finalImage && state?.creative?.imageUrl) finalImage = state.creative.imageUrl;
-              if (!finalCaption && state?.creative?.primary_text) finalCaption = state.creative.primary_text;
-              break;
+              const s = answers[key]?.campaign_state;
+              if (s?.objective === "INSTAGRAM_POST") {
+                 // 1. Prioritize state with BOTH assets
+                 if (s.creative?.imageUrl && s.creative?.primary_text) {
+                    bestState = s;
+                    break; // Found perfect match, stop looking
+                 }
+                 // 2. Keep partial match if we don't have a better one yet
+                 if (!bestState && (s.creative?.imageUrl || s.creative?.primary_text)) {
+                    bestState = s;
+                 }
+              }
+            }
+
+            if (bestState) {
+               if (!finalImage && bestState.creative?.imageUrl) finalImage = bestState.creative.imageUrl;
+               if (!finalCaption && bestState.creative?.primary_text) finalCaption = bestState.creative.primary_text;
+               console.log("💧 [Instagram] Re-hydration successful:", { finalImage: !!finalImage, finalCaption: !!finalCaption });
             }
           }
         } catch (e) { console.warn("targeted re-hydration failed", e); }
