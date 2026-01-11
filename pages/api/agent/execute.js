@@ -240,6 +240,10 @@ export default async function handler(req, res) {
           const answers = content.business_answers || {};
           const possibleKeys = [effectiveBusinessId, activeBusinessId, metaRow?.fb_business_id, metaRow?.fb_page_id, metaRow?.ig_business_id, "default_business"].filter(Boolean);
           let bestMatch = null;
+          
+          // 🛑 DEBUG: Log all keys we are checking
+          console.log("🔍 Checking campaign keys:", possibleKeys);
+
           for (const key of possibleKeys) {
             const state = answers[key]?.campaign_state;
             if (!state) continue;
@@ -247,6 +251,7 @@ export default async function handler(req, res) {
             // 🚀 PRIORITY 1: Organic Instagram Post (STRICT WINNER)
             if (state.objective === "INSTAGRAM_POST") {
               bestMatch = state;
+              console.log(`✅ Found INSTAGRAM_POST in key: ${key}`);
               break; // Found Instagram state? Stop immediately. It wins.
             }
 
@@ -324,15 +329,19 @@ export default async function handler(req, res) {
           console.log("💧 [Instagram] Re-hydrating state from memory...");
           const { data: mem } = await supabase.from("agent_memory").select("content").eq("email", session.user.email.toLowerCase()).eq("memory_type", "client").maybeSingle();
           if (mem?.content) {
-            const answers = JSON.parse(mem.content).business_answers || {};
-            const possibleKeys = [effectiveBusinessId, activeBusinessId, metaRow?.fb_business_id, metaRow?.fb_page_id, metaRow?.ig_business_id, "default_business"].filter(Boolean);
+            const parsedContent = JSON.parse(mem.content);
+            const answers = parsedContent.business_answers || {};
             
+            // 🔍 SUPER GREEDY SEARCH: Look everywhere, not just known keys
             let bestState = null;
-            
-            // Greedy search for the most complete INSTAGRAM_POST state
-            for (const key of possibleKeys) {
+            const allKeys = Object.keys(answers);
+            console.log("💧 Checking ALL memory keys:", allKeys);
+
+            for (const key of allKeys) {
               const s = answers[key]?.campaign_state;
               if (s?.objective === "INSTAGRAM_POST") {
+                 console.log(`💧 Found candidate in ${key}:`, { hasImage: !!s.creative?.imageUrl, hasText: !!s.creative?.primary_text });
+                 
                  // 1. Prioritize state with BOTH assets
                  if (s.creative?.imageUrl && s.creative?.primary_text) {
                     bestState = s;
@@ -349,6 +358,8 @@ export default async function handler(req, res) {
                if (!finalImage && bestState.creative?.imageUrl) finalImage = bestState.creative.imageUrl;
                if (!finalCaption && bestState.creative?.primary_text) finalCaption = bestState.creative.primary_text;
                console.log("💧 [Instagram] Re-hydration successful:", { finalImage: !!finalImage, finalCaption: !!finalCaption });
+            } else {
+               console.warn("💧 [Instagram] No valid INSTAGRAM_POST state found in memory.");
             }
           }
         } catch (e) { console.warn("targeted re-hydration failed", e); }
@@ -376,7 +387,12 @@ export default async function handler(req, res) {
             const cJson = await cRes.json();
             const creationId = cJson.id;
 
+            console.log("📸 [Instagram] Container Response:", JSON.stringify(cJson));
+
             if (!creationId) throw new Error(cJson.error?.message || "Container creation failed.");
+
+            // 🕒 WAIT: Short delay to ensure media is processed (prevents "Media ID not available")
+            await new Promise(r => setTimeout(r, 1000));
 
             // Step 2: Publish Media
             console.log(`📸 [Instagram] Publishing media (ID: ${creationId})...`);
