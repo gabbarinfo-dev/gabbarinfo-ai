@@ -6,6 +6,7 @@ import { authOptions } from "../auth/[...nextauth]";
 import { createClient } from "@supabase/supabase-js";
 import { executeInstagramPost } from "../../../lib/execute-instagram-post";
 import { normalizeImageUrl } from "../../../lib/normalize-image-url";
+import { creativeEntry } from "../../../lib/instagram/creative-entry";
 
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL,
@@ -373,9 +374,38 @@ export default async function handler(req, res) {
       // ------------------------------------------------------------
       
       const wantsLaunch = instruction.match(/\b(yes|ok|publish|confirm)\b/i);
+      let forceLaunch = false;
+
+      // 🎨 CREATIVE MODE ROUTER
+      // If Path A (explicit assets) didn't populate finalImage/finalCaption,
+      // and we haven't re-hydrated them from memory, we try Creative Mode.
+      if (!finalImage || !finalCaption) {
+          console.log("🎨 [Instagram] Delegating to Creative Mode...");
+          try {
+            const creativeResult = await creativeEntry({
+                supabase,
+                session,
+                instruction,
+                metaRow,
+                effectiveBusinessId
+            });
+
+            if (creativeResult.assets) {
+                console.log("🎨 [Instagram] Assets returned from Creative Mode. Launching...");
+                finalImage = creativeResult.assets.imageUrl;
+                finalCaption = creativeResult.assets.caption;
+                forceLaunch = true; 
+            } else if (creativeResult.response) {
+                return res.json(creativeResult.response);
+            }
+          } catch (e) {
+             console.error("Creative Mode Fatal:", e);
+             return res.json({ ok: false, text: "Creative Mode Failed: " + e.message });
+          }
+      }
 
       if (finalImage && finalCaption) {
-        if (wantsLaunch) {
+        if (wantsLaunch || forceLaunch) {
           try {
             if (!metaRow) throw new Error("Meta connection missing. Please connect your accounts.");
             
