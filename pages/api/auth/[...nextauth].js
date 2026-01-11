@@ -33,7 +33,7 @@ export const authOptions = {
           access_type: "offline",
           response_type: "code",
           scope:
-            "openid email profile https://www.googleapis.com/auth/adwords",
+            "openid email profile https://www.googleapis.com/auth/adwords https://www.googleapis.com/auth/drive.readonly",
         },
       },
     }),
