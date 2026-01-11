@@ -365,6 +365,66 @@ export default async function handler(req, res) {
         } catch (e) { console.warn("targeted re-hydration failed", e); }
       }
 
+      // ------------------------------------------------------------
+      // 🔧 FIX: SERVER-SIDE IMAGE REHOSTING (Google Drive)
+      // ------------------------------------------------------------
+      // Meta cannot fetch Google Drive URLs (even public ones).
+      // We must download them and rehost on Supabase Storage (public bucket).
+      if (finalImage && (finalImage.includes("drive.google.com") || finalImage.includes("drive.googleusercontent.com"))) {
+         console.log("🔄 [Rehost] Detected Google Drive URL. Rehosting to Supabase...");
+         try {
+            // 1. Download from Drive
+            const downRes = await fetch(finalImage);
+            if (!downRes.ok) throw new Error(`Failed to fetch Drive image: ${downRes.statusText}`);
+            const arrayBuffer = await downRes.arrayBuffer();
+            const buffer = Buffer.from(arrayBuffer);
+
+            // 2. Upload to Supabase 'knowledge-base'
+            // Using a timestamped filename to avoid collisions
+            const fileName = `rehosted_${Date.now()}_${Math.random().toString(36).substring(7)}.png`;
+            const storagePath = `instagram-posts/${fileName}`; 
+
+            const { error: uploadErr } = await supabase.storage
+               .from("knowledge-base")
+               .upload(storagePath, buffer, { contentType: "image/png", upsert: false });
+
+            if (uploadErr) throw uploadErr;
+
+            // 3. Get Public URL
+            const { data: publicData } = supabase.storage
+               .from("knowledge-base")
+               .getPublicUrl(storagePath);
+
+            const rehostedUrl = publicData.publicUrl;
+            console.log("✅ [Rehost] Success:", rehostedUrl);
+
+            // 4. Replace finalImage
+            finalImage = rehostedUrl;
+
+            // 5. PERSISTENCE (Update Agent Memory)
+            // We must update the state so subsequent turns use the rehosted URL.
+            if (lockedCampaignState?.creative) {
+                lockedCampaignState.creative.imageUrl = rehostedUrl;
+            }
+            
+             await saveAnswerMemory(process.env.NEXT_PUBLIC_BASE_URL, effectiveBusinessId, {
+              campaign_state: {
+                objective: "INSTAGRAM_POST",
+                creative: {
+                  ...(lockedCampaignState?.creative || {}),
+                  imageUrl: rehostedUrl,
+                  primary_text: finalCaption || lockedCampaignState?.creative?.primary_text
+                },
+                stage: "READY_TO_LAUNCH"
+              }
+            }, session.user.email.toLowerCase());
+
+         } catch (rehostErr) {
+            console.error("❌ [Rehost] Failed:", rehostErr.message);
+            return res.json({ ok: false, text: `❌ **Image Error**: Unable to process Google Drive image. ${rehostErr.message}` });
+         }
+      }
+
       const wantsLaunch = instruction.match(/\b(yes|ok|publish|confirm)\b/i);
 
       if (finalImage && finalCaption) {
