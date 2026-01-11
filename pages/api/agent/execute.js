@@ -191,6 +191,7 @@ export default async function handler(req, res) {
 
     // 🔥 DEBUG LOGS FOR CONTEXT MISMATCH
     let { instruction = "", mode: bodyMode = body.mode } = body;
+    let mode = body.mode || "generic"; // Moved up to avoid TDZ errors
 
     // 🛡️ INPUT NORMALIZATION and Assets handled in terminal branch below
 
@@ -709,7 +710,8 @@ export default async function handler(req, res) {
       chatHistory = [],
       extraContext = "",
     } = body;
-    let mode = body.mode || "generic";
+    // let mode = body.mode || "generic"; // Moved to top of file
+
 
     // 🔒 CRITICAL: FORCE MODE FROM LOCKED STATE (MUST BE FIRST)
     // If a lockedCampaignState exists → mode MUST be its original mode or meta_ads_plan
