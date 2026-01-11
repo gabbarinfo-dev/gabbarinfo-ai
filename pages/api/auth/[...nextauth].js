@@ -33,7 +33,7 @@ export const authOptions = {
           access_type: "offline",
           response_type: "code",
           scope:
-            "openid email profile https://www.googleapis.com/auth/adwords https://www.googleapis.com/auth/drive.readonly",
+            "openid email profile https://www.googleapis.com/auth/adwords",
         },
       },
     }),
@@ -146,3 +146,4 @@ export const authOptions = {
 };
 
 export default NextAuth(authOptions);
+
