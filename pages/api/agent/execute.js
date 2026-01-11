@@ -372,6 +372,16 @@ export default async function handler(req, res) {
           try {
             if (!metaRow) throw new Error("Meta connection missing. Please connect your accounts.");
             
+            // 🛡️ HARD IMAGE VALIDATION (User Requirement 1)
+            // Must run inside Instagram organic block only.
+            if (!finalImage || typeof finalImage !== "string" || finalImage.length < 5) {
+               console.warn("❌ [Instagram] Invalid finalImage:", finalImage);
+               return res.json({ 
+                 ok: false, 
+                 text: "⚠️ **Invalid Image URL**: Please provide a valid public image link." 
+               }); 
+            }
+
             // 🔒 TOKEN SAFETY: Explicitly use fb_user_access_token (NO System Token fallback)
             const accessToken = metaRow.fb_user_access_token;
             const instagramId = metaRow.instagram_actor_id || metaRow.ig_business_id;
