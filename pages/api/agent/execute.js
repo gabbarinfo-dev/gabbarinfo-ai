@@ -6,8 +6,6 @@ import { authOptions } from "../auth/[...nextauth]";
 import { createClient } from "@supabase/supabase-js";
 import { executeInstagramPost } from "../../../lib/execute-instagram-post";
 import { normalizeImageUrl } from "../../../lib/normalize-image-url";
-import { creativeEntry } from "../../../lib/instagram/creative-entry";
-import { loadCreativeState, clearCreativeState } from "../../../lib/instagram/creative-memory";
 
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL,
@@ -191,86 +189,40 @@ export default async function handler(req, res) {
     }
     __currentEmail = session.user.email.toLowerCase();
 
-    // 🔥 HARD RESET: FIRST-PRINCIPLES ROUTING
+    // 🔥 DEBUG LOGS FOR CONTEXT MISMATCH
     let { instruction = "", mode: bodyMode = body.mode } = body;
-    let mode = body.mode || "generic";
 
-    // 🔍 0.1) RESOLVE META CONNECTION (CRITICAL FOR PATH A)
-    let metaRow = null;
+    // 🛡️ INPUT NORMALIZATION and Assets handled in terminal branch below
+
+
+    console.log("🔥 REQUEST START");
+    console.log("EMAIL:", __currentEmail);
+    console.log("INSTRUCTION:", instruction.substring(0, 50));
+    console.log("MODE:", bodyMode);
+    console.log("COOKIES:", req.headers.cookie ? "Present" : "Missing");
+    // 🔍 0.1) RESOLVE BUSINESS & LOAD STATE (EARLY)
+    let metaConnected = false;
     let activeBusinessId = null;
+    let metaRow = null;
+    let verifiedMetaAssets = null;
+    let forcedBusinessContext = null;
+
     try {
-      const { data: row } = await supabase.from("meta_connections").select("*").eq("email", session.user.email.toLowerCase()).maybeSingle();
+      const { data: row } = await supabase
+        .from("meta_connections")
+        .select("*")
+        .eq("email", session.user.email.toLowerCase())
+        .maybeSingle();
       metaRow = row;
-      if (metaRow) activeBusinessId = metaRow.fb_business_id || metaRow.fb_page_id || metaRow.ig_business_id || null;
-    } catch (e) { console.warn("Meta lookup failed:", e.message); }
-    const effectiveBusinessId = activeBusinessId || "default_business";
-
-    // 🔍 0.2) ASSET DETECTION (PATH A SOVEREIGNTY)
-    const urlMatch = instruction.match(/https?:\/\/[^\s]+/i);
-    const finalImageUrl = urlMatch ? urlMatch[0] : (body.imageUrl || body.image_url);
-
-    let manualCaption = body.caption || body.primary_text;
-    if (!manualCaption && urlMatch) manualCaption = instruction.replace(urlMatch[0], "").trim();
-    const captionMatch = instruction.match(/Caption:\s*(.*)/i);
-    if (captionMatch) manualCaption = captionMatch[1].trim();
-
-    const hasBothAssets = finalImageUrl && manualCaption && manualCaption.length > 5;
-
-    // 🚀 FIX 1: SACRED DIRECT PATH A (PRIORITY 0)
-    // Rule: If BOTH assets exist -> Creative Mode is FORBIDDEN. Publish immediately.
-    if (hasBothAssets && metaRow) {
-      console.log("🚀 [Instagram] SACRED PATH A: Direct assets detected. Publishing...");
-      try {
-        const postId = await executeInstagramPost({
-          imageUrl: finalImageUrl,
-          caption: manualCaption,
-          accessToken: metaRow.fb_user_access_token,
-          igBusinessId: metaRow.instagram_actor_id || metaRow.ig_business_id,
-          userEmail: session.user.email
-        });
-        await clearCreativeState(supabase, session.user.email.toLowerCase());
-        return res.status(200).json({ ok: true, postId, text: `🎉 **Instagram Post Published!**\n\n- **Post ID**: \`${postId}\`` });
-      } catch (e) {
-        return res.status(500).json({ ok: false, text: `❌ **Publish Failed**: ${e.message}` });
+      if (metaRow) {
+        metaConnected = true;
+        activeBusinessId = metaRow.fb_business_id || metaRow.fb_page_id || metaRow.ig_business_id || null;
       }
+    } catch (e) {
+      console.warn("Meta connection lookup failed:", e.message);
     }
 
-    // 🎨 STICKY CREATIVE MODE (PRIORITY 1)
-    // Rule: Creative Mode only runs if Image OR Caption is missing.
-    try {
-      const creativeState = await loadCreativeState(supabase, session.user.email.toLowerCase());
-      const isStickyMode = (creativeState?.creativeSessionId && creativeState.stage !== "COMPLETED") || (bodyMode === "instagram_post");
-
-      if (isStickyMode) {
-        console.log("🎨 [Sticky Mode] Routing to Creative Mode.");
-        const result = await creativeEntry({
-          supabase, session, instruction, metaRow, effectiveBusinessId
-        });
-
-        // 🚀 FIX 3: PUBLISH BRIDGE (BRIDGE TO PATH A)
-        if (result.intent === "PUBLISH_INSTAGRAM_POST") {
-          console.log("🚀 [Instagram] Creative Mode Handoff -> Path A");
-          const { imageUrl, caption } = result.payload;
-          try {
-            const postId = await executeInstagramPost({
-              imageUrl,
-              caption,
-              accessToken: metaRow.fb_user_access_token,
-              igBusinessId: metaRow.instagram_actor_id || metaRow.ig_business_id,
-              userEmail: session.user.email
-            });
-            await clearCreativeState(supabase, session.user.email.toLowerCase(), creativeState.creativeSessionId);
-            return res.status(200).json({ ok: true, postId, text: `🎉 **Instagram Post Published!**\n\n- **Post ID**: \`${postId}\`` });
-          } catch (e) {
-            return res.status(500).json({ ok: false, text: `❌ **Publish Failed**: ${e.message}` });
-          }
-        }
-
-        if (result.response) return res.json({ ...result.response, mode: "instagram_post" });
-        return res.json({ ...result, mode: "instagram_post" });
-      }
-    } catch (e) { console.warn("Sticky check failed:", e); }
-
+    const effectiveBusinessId = activeBusinessId || "default_business";
     let lockedCampaignState = null;
 
     if (effectiveBusinessId) {
@@ -287,27 +239,22 @@ export default async function handler(req, res) {
           const answers = content.business_answers || {};
           const possibleKeys = [effectiveBusinessId, activeBusinessId, metaRow?.fb_business_id, metaRow?.fb_page_id, metaRow?.ig_business_id, "default_business"].filter(Boolean);
           let bestMatch = null;
-
-          // 🛑 DEBUG: Log all keys we are checking
-          console.log("🔍 Checking campaign keys:", possibleKeys);
-
           for (const key of possibleKeys) {
             const state = answers[key]?.campaign_state;
             if (!state) continue;
 
-            // 🚀 PRIORITY 1: Organic Instagram Post (STRICT WINNER)
+            // 🚀 PRIORITY 1: Organic Instagram Post (the confirmation turn needs this)
             if (state.objective === "INSTAGRAM_POST") {
               bestMatch = state;
-              console.log(`✅ Found INSTAGRAM_POST in key: ${key}`);
-              break; // Found Instagram state? Stop immediately. It wins.
+              break;
             }
 
-            // PRIORITY 2: Ads Plan (Only if no Instagram state found yet)
+            // PRIORITY 2: Ads Plan (existing baseline)
             if (state.plan && !bestMatch) {
               bestMatch = state;
             }
 
-            // Fallback
+            // Fallback: any state
             if (!bestMatch) bestMatch = state;
           }
           lockedCampaignState = bestMatch;
@@ -330,6 +277,7 @@ export default async function handler(req, res) {
       const isConfirmation = /^\s*(yes|ok|publish|go ahead|do it|confirm)\s*$/i.test(instruction);
 
       if (!isConfirmation) {
+        const urlMatch = instruction.match(/https?:\/\/[^\s]+/i);
         const url = urlMatch ? urlMatch[0] : null;
 
         let caption = null;
@@ -372,122 +320,63 @@ export default async function handler(req, res) {
       // 🛡️ CONFIRMATION GUARD: Targeted re-hydration if assets missing on 'Yes' turn
       if (isConfirmation && (!finalImage || !finalCaption)) {
         try {
-          console.log("💧 [Instagram] Re-hydrating state from memory...");
           const { data: mem } = await supabase.from("agent_memory").select("content").eq("email", session.user.email.toLowerCase()).eq("memory_type", "client").maybeSingle();
           if (mem?.content) {
-            const parsedContent = JSON.parse(mem.content);
-            const answers = parsedContent.business_answers || {};
-
-            // 🔍 SUPER GREEDY SEARCH: Look everywhere, not just known keys
-            let bestState = null;
-            const allKeys = Object.keys(answers);
-            console.log("💧 Checking ALL memory keys:", allKeys);
-
-            for (const key of allKeys) {
-              const s = answers[key]?.campaign_state;
-              if (s?.objective === "INSTAGRAM_POST") {
-                console.log(`💧 Found candidate in ${key}:`, { hasImage: !!s.creative?.imageUrl, hasText: !!s.creative?.primary_text });
-
-                // 1. Prioritize state with BOTH assets
-                if (s.creative?.imageUrl && s.creative?.primary_text) {
-                  bestState = s;
-                  break; // Found perfect match, stop looking
-                }
-                // 2. Keep partial match if we don't have a better one yet
-                if (!bestState && (s.creative?.imageUrl || s.creative?.primary_text)) {
-                  bestState = s;
-                }
-              }
-            }
-
-            if (bestState) {
-              if (!finalImage && bestState.creative?.imageUrl) finalImage = bestState.creative.imageUrl;
-              if (!finalCaption && bestState.creative?.primary_text) finalCaption = bestState.creative.primary_text;
-              console.log("💧 [Instagram] Re-hydration successful:", { finalImage: !!finalImage, finalCaption: !!finalCaption });
-            } else {
-              console.warn("💧 [Instagram] No valid INSTAGRAM_POST state found in memory.");
+            const answers = JSON.parse(mem.content).business_answers || {};
+            const possibleKeys = [effectiveBusinessId, activeBusinessId, metaRow?.fb_business_id, metaRow?.fb_page_id, metaRow?.ig_business_id, "default_business"].filter(Boolean);
+            for (const key of possibleKeys) {
+              const state = answers[key]?.campaign_state;
+              if (state?.objective !== "INSTAGRAM_POST") continue;
+              if (!finalImage && state?.creative?.imageUrl) finalImage = state.creative.imageUrl;
+              if (!finalCaption && state?.creative?.primary_text) finalCaption = state.creative.primary_text;
+              break;
             }
           }
         } catch (e) { console.warn("targeted re-hydration failed", e); }
       }
 
-      // ------------------------------------------------------------
-      // 🔧 FIX: SERVER-SIDE IMAGE REHOSTING REMOVED (Strict Rejection)
-      // ------------------------------------------------------------
-      // Logic removed as per user instruction. 
-      // Drive URLs are now rejected in normalize-image-url.js
-      // ------------------------------------------------------------
-
       const wantsLaunch = instruction.match(/\b(yes|ok|publish|confirm)\b/i);
-      let forceLaunch = false;
-
-      // 🎨 CREATIVE MODE ROUTER
-      // If Path A (explicit assets) didn't populate finalImage/finalCaption,
-      // and we haven't re-hydrated them from memory, we try Creative Mode.
-      if (!finalImage || !finalCaption) {
-        console.log("🎨 [Instagram] Delegating to Creative Mode...");
-        try {
-          const creativeResult = await creativeEntry({
-            supabase,
-            session,
-            instruction,
-            metaRow,
-            effectiveBusinessId
-          });
-
-          if (creativeResult.assets) {
-            console.log("🎨 [Instagram] Assets returned from Creative Mode. Launching...");
-            finalImage = creativeResult.assets.imageUrl;
-            finalCaption = creativeResult.assets.caption;
-            forceLaunch = true;
-          } else if (creativeResult.response) {
-            return res.json(creativeResult.response);
-          }
-        } catch (e) {
-          console.error("Creative Mode Fatal:", e);
-          return res.json({ ok: false, text: "Creative Mode Failed: " + e.message });
-        }
-      }
 
       if (finalImage && finalCaption) {
-        if (wantsLaunch || forceLaunch) {
+        if (wantsLaunch) {
           try {
             if (!metaRow) throw new Error("Meta connection missing. Please connect your accounts.");
-
-            // 🛡️ HARD IMAGE VALIDATION (User Requirement 1)
-            // Must run inside Instagram organic block only.
-            if (!finalImage || typeof finalImage !== "string" || finalImage.length < 5) {
-              console.warn("❌ [Instagram] Invalid finalImage:", finalImage);
-              return res.json({
-                ok: false,
-                text: "⚠️ **Invalid Image URL**: Please provide a valid public image link."
-              });
-            }
-
+            
             // 🔒 TOKEN SAFETY: Explicitly use fb_user_access_token (NO System Token fallback)
             const accessToken = metaRow.fb_user_access_token;
             const instagramId = metaRow.instagram_actor_id || metaRow.ig_business_id;
 
             if (!instagramId || !accessToken) throw new Error("Instagram configuration missing. Please re-sync your assets.");
 
-            const postId = await executeInstagramPost({
-              imageUrl: finalImage,
-              caption: finalCaption,
-              accessToken,
-              igBusinessId: instagramId,
-              userEmail: session.user.email // 🔥 FIX: PASS EMAIL
+            // Step 1: Create Media Container
+            const cUrl = `https://graph.facebook.com/v21.0/${instagramId}/media`;
+            const cRes = await fetch(cUrl, {
+              method: "POST",
+              body: new URLSearchParams({ image_url: finalImage, caption: finalCaption, access_token: accessToken })
             });
+            const cJson = await cRes.json();
+            const creationId = cJson.id;
 
-            // 7️⃣ CLEANUP (MANDATORY) - REMOVED (No server-side rehosting)
-            // No temp files created, so no cleanup needed.
+            if (!creationId) throw new Error(cJson.error?.message || "Container creation failed.");
+
+            // Step 2: Publish Media
+            console.log(`📸 [Instagram] Publishing media (ID: ${creationId})...`);
+            const pUrl = `https://graph.facebook.com/v21.0/${instagramId}/media_publish`;
+            const pRes = await fetch(pUrl, {
+              method: "POST",
+              body: new URLSearchParams({ creation_id: creationId, access_token: accessToken })
+            });
+            const pJson = await pRes.json();
+
+            if (!pRes.ok) throw new Error(pJson.error?.message || "Publishing failed.");
 
             await saveAnswerMemory(process.env.NEXT_PUBLIC_BASE_URL, effectiveBusinessId, {
-              campaign_state: { stage: "COMPLETED", final_result: { id: postId, organic: true } }
+              campaign_state: { stage: "COMPLETED", final_result: { id: pJson.id, organic: true } }
             }, session.user.email.toLowerCase());
 
             return res.json({
               ok: true,
-              text: `🎉 **Instagram Post Published Successfully!**\n\n- **Post ID**: \`${postId}\`\n\nYour content is now live!`
+              text: `🎉 **Instagram Post Published Successfully!**\n\n- **Post ID**: \`${pJson.id}\`\n\nYour content is now live!`
             });
           } catch (e) {
             console.error("❌ Instagram execution error:", e.message);
@@ -514,10 +403,8 @@ export default async function handler(req, res) {
       return res.json({ ok: false, text: "⚠️ **Missing Assets**: Please provide an Image URL and Caption." });
     }
 
-    // 🛑 HARD SAFETY STOP (ABSOLUTE ADS BLOCK)
-    // This must run BEFORE any Ads logic (Asset Discovery, Plan Generation, etc.)
+    // 🛑 HARD SAFETY STOP
     if (bodyMode === "instagram_post" || lockedCampaignState?.objective === "INSTAGRAM_POST") {
-      console.log("🛑 [Instagram] Hard Stop - Preventing Ads Logic Fall-through");
       return res.end();
     }
 
@@ -526,8 +413,7 @@ export default async function handler(req, res) {
     // ============================================================
     // (This block only runs if NOT organic Instagram)
     if (bodyMode === "instagram_post" || mode === "instagram_post" || lockedCampaignState?.objective === "INSTAGRAM_POST") {
-      console.log("🛑 [Instagram] Hard Stop - Preventing Ads Logic Fall-through (Redundant Check)");
-      return res.end();
+      throw new Error("INTERNAL_ERROR: Ads pipeline executed during Instagram post");
     }
 
     // 1️⃣ Check cache first
@@ -805,8 +691,7 @@ export default async function handler(req, res) {
       chatHistory = [],
       extraContext = "",
     } = body;
-    // let mode = body.mode || "generic"; // Moved to top of file
-
+    let mode = body.mode || "generic";
 
     // 🔒 CRITICAL: FORCE MODE FROM LOCKED STATE (MUST BE FIRST)
     // If a lockedCampaignState exists → mode MUST be its original mode or meta_ads_plan
@@ -1394,9 +1279,9 @@ You are in GENERIC DIGITAL MARKETING AGENT MODE.
     else if (objLower.includes("call")) extractedData.performance_goal = "MAXIMIZE_CALLS";
 
     // Website & Phone Extraction
-    const adsUrlMatch = instruction.match(/(?:https?:\/\/)?(?:www\.)[a-zA-Z0-9-]+\.[a-zA-Z0-9-.]+/i) || instruction.match(/https?:\/\/[^\s]+/i);
-    if (adsUrlMatch) {
-      let url = adsUrlMatch[0];
+    const urlMatch = instruction.match(/(?:https?:\/\/)?(?:www\.)[a-zA-Z0-9-]+\.[a-zA-Z0-9-.]+/i) || instruction.match(/https?:\/\/[^\s]+/i);
+    if (urlMatch) {
+      let url = urlMatch[0];
       if (!url.startsWith("http")) url = "https://" + url;
       extractedData.website_url = url;
     }
@@ -3413,6 +3298,4 @@ Reply **YES** to generate this image and launch the campaign.
     });
   }
 }
-
-
 
