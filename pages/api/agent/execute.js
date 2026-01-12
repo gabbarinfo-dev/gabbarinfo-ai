@@ -193,7 +193,21 @@ export default async function handler(req, res) {
 
     // 🔥 DEBUG LOGS FOR CONTEXT MISMATCH
     let { instruction = "", mode: bodyMode = body.mode } = body;
-    let mode = body.mode || "generic"; // Moved up to avoid TDZ errors
+    let mode = body.mode || "generic";
+
+    // 🔧 FIX 2: MANUAL PATH A PRIORITY DETECTION
+    const urlMatch = instruction.match(/https?:\/\/[^\s]+/i);
+    const bodyUrl = body.imageUrl || body.image_url;
+    const finalImageUrl = urlMatch ? urlMatch[0] : bodyUrl;
+
+    let manualCaption = body.caption || body.primary_text;
+    if (!manualCaption && urlMatch) {
+      manualCaption = instruction.replace(urlMatch[0], "").trim();
+    }
+    const captionMatch = instruction.match(/Caption:\s*(.*)/i);
+    if (captionMatch) manualCaption = captionMatch[1].trim();
+
+    const hasManualAssets = finalImageUrl && manualCaption && manualCaption.length > 3;
 
     // 🛡️ INPUT NORMALIZATION and Assets handled in terminal branch below
 
@@ -234,8 +248,8 @@ export default async function handler(req, res) {
       const creativeState = await loadCreativeState(supabase, session.user.email.toLowerCase());
 
       // 🔧 FIX: Route to Creative Mode if either an active session exists OR the mode is explicitly requested
-      // This handles the transition turn where the DB state might not be visible yet but the client knows the mode.
-      const isStickyMode = (creativeState?.creativeSessionId && creativeState.stage !== "COMPLETED") || (bodyMode === "instagram_post");
+      // 🔒 SAFETY: Bypass if manual assets are present to restore Path A priority
+      const isStickyMode = !hasManualAssets && ((creativeState?.creativeSessionId && creativeState.stage !== "COMPLETED") || (bodyMode === "instagram_post"));
 
       if (isStickyMode) {
         console.log("🎨 [Sticky Mode] Routing to Creative Mode. Session:", creativeState?.creativeSessionId || "NEW");
@@ -257,7 +271,8 @@ export default async function handler(req, res) {
               imageUrl,
               caption,
               accessToken: metaRow.fb_user_access_token,
-              igBusinessId: metaRow.instagram_actor_id || metaRow.ig_business_id
+              igBusinessId: metaRow.instagram_actor_id || metaRow.ig_business_id,
+              userEmail: session.user.email // 🔥 FIX: PASS EMAIL
             });
 
             // Success: Clear state and return Post ID
@@ -344,7 +359,6 @@ export default async function handler(req, res) {
       const isConfirmation = /^\s*(yes|ok|publish|go ahead|do it|confirm)\s*$/i.test(instruction);
 
       if (!isConfirmation) {
-        const urlMatch = instruction.match(/https?:\/\/[^\s]+/i);
         const url = urlMatch ? urlMatch[0] : null;
 
         let caption = null;
@@ -485,43 +499,24 @@ export default async function handler(req, res) {
 
             if (!instagramId || !accessToken) throw new Error("Instagram configuration missing. Please re-sync your assets.");
 
-            // Step 1: Create Media Container
-            const cUrl = `https://graph.facebook.com/v21.0/${instagramId}/media`;
-            const cRes = await fetch(cUrl, {
-              method: "POST",
-              body: new URLSearchParams({ image_url: finalImage, caption: finalCaption, access_token: accessToken })
+            const postId = await executeInstagramPost({
+              imageUrl: finalImage,
+              caption: finalCaption,
+              accessToken,
+              igBusinessId: instagramId,
+              userEmail: session.user.email // 🔥 FIX: PASS EMAIL
             });
-            const cJson = await cRes.json();
-            const creationId = cJson.id;
-
-            console.log("📸 [Instagram] Container Response:", JSON.stringify(cJson));
-
-            if (!creationId) throw new Error(cJson.error?.message || "Container creation failed.");
-
-            // 🕒 WAIT: Short delay to ensure media is processed (prevents "Media ID not available")
-            await new Promise(r => setTimeout(r, 1000));
-
-            // Step 2: Publish Media
-            console.log(`📸 [Instagram] Publishing media (ID: ${creationId})...`);
-            const pUrl = `https://graph.facebook.com/v21.0/${instagramId}/media_publish`;
-            const pRes = await fetch(pUrl, {
-              method: "POST",
-              body: new URLSearchParams({ creation_id: creationId, access_token: accessToken })
-            });
-            const pJson = await pRes.json();
-
-            if (!pRes.ok) throw new Error(pJson.error?.message || "Publishing failed.");
 
             // 7️⃣ CLEANUP (MANDATORY) - REMOVED (No server-side rehosting)
             // No temp files created, so no cleanup needed.
 
             await saveAnswerMemory(process.env.NEXT_PUBLIC_BASE_URL, effectiveBusinessId, {
-              campaign_state: { stage: "COMPLETED", final_result: { id: pJson.id, organic: true } }
+              campaign_state: { stage: "COMPLETED", final_result: { id: postId, organic: true } }
             }, session.user.email.toLowerCase());
 
             return res.json({
               ok: true,
-              text: `🎉 **Instagram Post Published Successfully!**\n\n- **Post ID**: \`${pJson.id}\`\n\nYour content is now live!`
+              text: `🎉 **Instagram Post Published Successfully!**\n\n- **Post ID**: \`${postId}\`\n\nYour content is now live!`
             });
           } catch (e) {
             console.error("❌ Instagram execution error:", e.message);
@@ -1428,9 +1423,9 @@ You are in GENERIC DIGITAL MARKETING AGENT MODE.
     else if (objLower.includes("call")) extractedData.performance_goal = "MAXIMIZE_CALLS";
 
     // Website & Phone Extraction
-    const urlMatch = instruction.match(/(?:https?:\/\/)?(?:www\.)[a-zA-Z0-9-]+\.[a-zA-Z0-9-.]+/i) || instruction.match(/https?:\/\/[^\s]+/i);
-    if (urlMatch) {
-      let url = urlMatch[0];
+    const adsUrlMatch = instruction.match(/(?:https?:\/\/)?(?:www\.)[a-zA-Z0-9-]+\.[a-zA-Z0-9-.]+/i) || instruction.match(/https?:\/\/[^\s]+/i);
+    if (adsUrlMatch) {
+      let url = adsUrlMatch[0];
       if (!url.startsWith("http")) url = "https://" + url;
       extractedData.website_url = url;
     }
