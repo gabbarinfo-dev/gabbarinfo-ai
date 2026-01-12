@@ -7,6 +7,7 @@ import { createClient } from "@supabase/supabase-js";
 import { executeInstagramPost } from "../../../lib/execute-instagram-post";
 import { normalizeImageUrl } from "../../../lib/normalize-image-url";
 import { creativeEntry } from "../../../lib/instagram/creative-entry";
+import { loadCreativeState } from "../../../lib/instagram/creative-memory";
 
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL,
@@ -225,6 +226,33 @@ export default async function handler(req, res) {
     }
 
     const effectiveBusinessId = activeBusinessId || "default_business";
+
+    // ---------------------------
+    // 0.2) CHECK ACTIVE CREATIVE SESSION (STICKY MODE)
+    // ---------------------------
+    try {
+        const creativeState = await loadCreativeState(supabase, session.user.email.toLowerCase());
+        // If we have an active session that isn't completed, capture it.
+        if (creativeState?.creativeSessionId && creativeState.stage !== "COMPLETED") {
+            console.log("🎨 [Sticky Mode] Routing to Creative Mode Session:", creativeState.creativeSessionId);
+            const result = await creativeEntry({
+                supabase,
+                session,
+                instruction: instruction || "",
+                metaRow,
+                effectiveBusinessId
+            });
+            
+            // Map internal result to API response
+            if (result.response) {
+                 return res.status(200).json(result.response);
+            }
+            return res.status(200).json(result);
+        }
+    } catch (e) {
+        console.warn("Sticky session check failed:", e);
+    }
+
     let lockedCampaignState = null;
 
     if (effectiveBusinessId) {
