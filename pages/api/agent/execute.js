@@ -6,6 +6,8 @@ import { authOptions } from "../auth/[...nextauth]";
 import { createClient } from "@supabase/supabase-js";
 import { executeInstagramPost } from "../../../lib/execute-instagram-post";
 import { normalizeImageUrl } from "../../../lib/normalize-image-url";
+import { creativeEntry } from "../../../lib/instagram/creative-entry";
+import { clearCreativeState } from "../../../lib/instagram/creative-memory";
 
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL,
@@ -270,137 +272,111 @@ export default async function handler(req, res) {
       !instruction.toLowerCase().includes("ad") &&
       !instruction.toLowerCase().includes("sponsored");
 
-    // 📸 TERMINAL BRANCH: Organic Instagram Isolation
+    // 📸 TERMINAL BRANCH: Organic Instagram Isolation (STRICT SEPARATION)
     if (bodyMode === "instagram_post" || lockedCampaignState?.objective === "INSTAGRAM_POST" || isOrganicIntent) {
       console.log("📸 [Instagram] Isolated Terminal Flow");
 
-      const isConfirmation = /^\s*(yes|ok|publish|go ahead|do it|confirm)\s*$/i.test(instruction);
+      // 1. FRESH ASSET DETECTION (MANDATORY FOR FIX 2)
+      const urlMatch = instruction.match(/https?:\/\/[^\s]+/i);
+      const urlInInstruction = urlMatch ? urlMatch[0] : null;
 
-      if (!isConfirmation) {
-        const urlMatch = instruction.match(/https?:\/\/[^\s]+/i);
-        const url = urlMatch ? urlMatch[0] : null;
-
-        let caption = null;
-        const captionMatch = instruction.match(/Caption:\s*(.*)/i);
-        if (captionMatch) {
-          caption = captionMatch[1].trim();
-        } else if (url) {
-          caption = instruction.replace(url, "").trim();
-        }
-
-        if (url || caption) {
-          let normalizedUrl = url;
-          if (url) {
-            try {
-              normalizedUrl = await normalizeImageUrl(url);
-            } catch (e) {
-              return res.json({ ok: false, text: `❌ **Invalid Image**: ${e.message}` });
-            }
-          }
-
-          const existing = lockedCampaignState?.creative || {};
-          const newCreative = {
-            ...existing,
-            imageUrl: normalizedUrl || existing.imageUrl,
-            primary_text: caption || existing.primary_text
-          };
-
-          await saveAnswerMemory(process.env.NEXT_PUBLIC_BASE_URL, effectiveBusinessId, {
-            campaign_state: { objective: "INSTAGRAM_POST", creative: newCreative, stage: "READY_TO_LAUNCH" }
-          }, session.user.email.toLowerCase());
-
-          lockedCampaignState = { ...lockedCampaignState, creative: newCreative };
-        }
+      let captionInInstruction = null;
+      const captionMatch = instruction.match(/Caption:\s*(.*)/i);
+      if (captionMatch) {
+        captionInInstruction = captionMatch[1].trim();
+      } else if (urlInInstruction) {
+        captionInInstruction = instruction.replace(urlInInstruction, "").trim();
       }
 
-      const creative = lockedCampaignState?.creative || {};
-      let finalImage = creative.imageUrl;
-      let finalCaption = creative.primary_text;
+      // 🚀 FIX 2: Path A Publishing ONLY if current instruction has fresh assets
+      const hasBothAssets = !!(urlInInstruction && (captionInInstruction || instruction.length > 50));
 
-      // 🛡️ CONFIRMATION GUARD: Targeted re-hydration if assets missing on 'Yes' turn
-      if (isConfirmation && (!finalImage || !finalCaption)) {
+      if (hasBothAssets) {
+        console.log("🚀 [Instagram] Path A Triggered (Fresh Assets Detected)");
+
+        // FIX 1: Hard Reset Creative Memory on Manual Path A
+        await clearCreativeState(supabase, session.user.email.toLowerCase());
+
         try {
-          const { data: mem } = await supabase.from("agent_memory").select("content").eq("email", session.user.email.toLowerCase()).eq("memory_type", "client").maybeSingle();
-          if (mem?.content) {
-            const answers = JSON.parse(mem.content).business_answers || {};
-            const possibleKeys = [effectiveBusinessId, activeBusinessId, metaRow?.fb_business_id, metaRow?.fb_page_id, metaRow?.ig_business_id, "default_business"].filter(Boolean);
-            for (const key of possibleKeys) {
-              const state = answers[key]?.campaign_state;
-              if (state?.objective !== "INSTAGRAM_POST") continue;
-              if (!finalImage && state?.creative?.imageUrl) finalImage = state.creative.imageUrl;
-              if (!finalCaption && state?.creative?.primary_text) finalCaption = state.creative.primary_text;
-              break;
-            }
-          }
-        } catch (e) { console.warn("targeted re-hydration failed", e); }
-      }
+          if (!metaRow) throw new Error("Meta connection missing. Please connect your accounts.");
+          const accessToken = metaRow.fb_user_access_token;
+          const instagramId = metaRow.instagram_actor_id || metaRow.ig_business_id;
+          if (!instagramId || !accessToken) throw new Error("Instagram configuration missing.");
 
-      const wantsLaunch = instruction.match(/\b(yes|ok|publish|confirm)\b/i);
+          const finalImage = await normalizeImageUrl(urlInInstruction);
+          const finalCaption = captionInInstruction;
 
-      if (finalImage && finalCaption) {
-        if (wantsLaunch) {
-          try {
-            if (!metaRow) throw new Error("Meta connection missing. Please connect your accounts.");
-            
-            // 🔒 TOKEN SAFETY: Explicitly use fb_user_access_token (NO System Token fallback)
-            const accessToken = metaRow.fb_user_access_token;
-            const instagramId = metaRow.instagram_actor_id || metaRow.ig_business_id;
+          // DIRECT PATH A PUBLISH (Inlined for Sovereignity)
+          console.log(`📸 [Instagram] Publishing Path A...`);
+          const cUrl = `https://graph.facebook.com/v21.0/${instagramId}/media`;
+          const cRes = await fetch(cUrl, {
+            method: "POST",
+            body: new URLSearchParams({ image_url: finalImage, caption: finalCaption, access_token: accessToken })
+          });
+          const cJson = await cRes.json();
+          if (!cJson.id) throw new Error(cJson.error?.message || "Container creation failed.");
 
-            if (!instagramId || !accessToken) throw new Error("Instagram configuration missing. Please re-sync your assets.");
+          const pUrl = `https://graph.facebook.com/v21.0/${instagramId}/media_publish`;
+          const pRes = await fetch(pUrl, {
+            method: "POST",
+            body: new URLSearchParams({ creation_id: cJson.id, access_token: accessToken })
+          });
+          const pJson = await pRes.json();
+          if (!pRes.ok) throw new Error(pJson.error?.message || "Publishing failed.");
 
-            // Step 1: Create Media Container
-            const cUrl = `https://graph.facebook.com/v21.0/${instagramId}/media`;
-            const cRes = await fetch(cUrl, {
-              method: "POST",
-              body: new URLSearchParams({ image_url: finalImage, caption: finalCaption, access_token: accessToken })
-            });
-            const cJson = await cRes.json();
-            const creationId = cJson.id;
-
-            if (!creationId) throw new Error(cJson.error?.message || "Container creation failed.");
-
-            // Step 2: Publish Media
-            console.log(`📸 [Instagram] Publishing media (ID: ${creationId})...`);
-            const pUrl = `https://graph.facebook.com/v21.0/${instagramId}/media_publish`;
-            const pRes = await fetch(pUrl, {
-              method: "POST",
-              body: new URLSearchParams({ creation_id: creationId, access_token: accessToken })
-            });
-            const pJson = await pRes.json();
-
-            if (!pRes.ok) throw new Error(pJson.error?.message || "Publishing failed.");
-
-            await saveAnswerMemory(process.env.NEXT_PUBLIC_BASE_URL, effectiveBusinessId, {
-              campaign_state: { stage: "COMPLETED", final_result: { id: pJson.id, organic: true } }
-            }, session.user.email.toLowerCase());
-
-            return res.json({
-              ok: true,
-              text: `🎉 **Instagram Post Published Successfully!**\n\n- **Post ID**: \`${pJson.id}\`\n\nYour content is now live!`
-            });
-          } catch (e) {
-            console.error("❌ Instagram execution error:", e.message);
-            return res.json({ ok: false, text: `❌ **Instagram Post Failed**: ${e.message}` });
-          }
-        } else {
-          // 💾 MANDATORY PERSISTENCE: Ensure assets survive Turn 2 confirmation
           await saveAnswerMemory(process.env.NEXT_PUBLIC_BASE_URL, effectiveBusinessId, {
-            campaign_state: {
-              objective: "INSTAGRAM_POST",
-              creative: {
-                imageUrl: finalImage,
-                primary_text: finalCaption,
-                ...(creative.hashtags ? { hashtags: creative.hashtags } : {})
-              },
-              stage: "READY_TO_LAUNCH"
-            }
+            campaign_state: { stage: "COMPLETED", final_result: { id: pJson.id, organic: true } }
           }, session.user.email.toLowerCase());
 
-          return res.json({ ok: true, text: "I have your post ready. **Ready to publish?**", mode: "instagram_post" });
+          return res.json({
+            ok: true,
+            text: `🎉 **Instagram Post Published Successfully!**\n\n- **Post ID**: \`${pJson.id}\`\n\nYour content is now live!`
+          });
+        } catch (e) {
+          console.error("❌ Instagram execution error:", e.message);
+          return res.json({ ok: false, text: `❌ **Instagram Post Failed**: ${e.message}` });
         }
       }
 
-      return res.json({ ok: false, text: "⚠️ **Missing Assets**: Please provide an Image URL and Caption." });
+      // 🛡️ DELEGATE TO CREATIVE MODE (HANDLES QUESTIONS, CONFIRMATIONS, AND INTENT)
+      const creativeResult = await creativeEntry({
+        supabase,
+        session,
+        instruction,
+        metaRow,
+        effectiveBusinessId
+      });
+
+      // FIX 2: Publishing based on Intent only
+      if (creativeResult.intent === "PUBLISH_INSTAGRAM_POST") {
+        console.log("📬 [Instagram] Received intent from Creative Mode");
+        const { imageUrl, caption } = creativeResult.payload;
+
+        try {
+          const result = await executeInstagramPost({
+            userEmail: session.user.email.toLowerCase(),
+            imageUrl,
+            caption
+          });
+
+          // Cleanup after successful intent publish
+          await clearCreativeState(supabase, session.user.email.toLowerCase());
+
+          return res.json({
+            ok: true,
+            text: `🎉 **Instagram Post Published Successfully!**\n\n- **Post ID**: \`${result.id}\`\n\nYour generated content is now live!`
+          });
+        } catch (e) {
+          return res.json({ ok: false, text: `❌ **Publish Failed**: ${e.message}` });
+        }
+      }
+
+      // Return standard FSM response (questions, preview)
+      if (creativeResult.response) {
+        return res.json(creativeResult.response);
+      }
+
+      return res.json({ ok: false, text: "Wait, I need some more details for your Instagram post." });
     }
 
     // 🛑 HARD SAFETY STOP
@@ -3298,4 +3274,3 @@ Reply **YES** to generate this image and launch the campaign.
     });
   }
 }
-
