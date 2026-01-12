@@ -231,31 +231,58 @@ export default async function handler(req, res) {
     // 0.2) CHECK ACTIVE CREATIVE SESSION (STICKY MODE)
     // ---------------------------
     try {
-        const creativeState = await loadCreativeState(supabase, session.user.email.toLowerCase());
-        
-        // 🔧 FIX: Route to Creative Mode if either an active session exists OR the mode is explicitly requested
-        // This handles the transition turn where the DB state might not be visible yet but the client knows the mode.
-        const isStickyMode = (creativeState?.creativeSessionId && creativeState.stage !== "COMPLETED") || (bodyMode === "instagram_post");
+      const creativeState = await loadCreativeState(supabase, session.user.email.toLowerCase());
 
-        if (isStickyMode) {
-            console.log("🎨 [Sticky Mode] Routing to Creative Mode. Session:", creativeState?.creativeSessionId || "NEW");
-            const result = await creativeEntry({
-                supabase,
-                session,
-                instruction: instruction || "",
-                metaRow,
-                effectiveBusinessId
+      // 🔧 FIX: Route to Creative Mode if either an active session exists OR the mode is explicitly requested
+      // This handles the transition turn where the DB state might not be visible yet but the client knows the mode.
+      const isStickyMode = (creativeState?.creativeSessionId && creativeState.stage !== "COMPLETED") || (bodyMode === "instagram_post");
+
+      if (isStickyMode) {
+        console.log("🎨 [Sticky Mode] Routing to Creative Mode. Session:", creativeState?.creativeSessionId || "NEW");
+        const result = await creativeEntry({
+          supabase,
+          session,
+          instruction: instruction || "",
+          metaRow,
+          effectiveBusinessId
+        });
+
+        // 🔥 FIX 1: RESTORE PATH A BRIDGE
+        if (result.intent === "PUBLISH_INSTAGRAM_POST") {
+          console.log("🚀 [Instagram] Creative Mode signaled PUBLISH. Delegating to Path A...");
+          const { imageUrl, caption } = result.payload;
+
+          try {
+            const postId = await executeInstagramPost({
+              imageUrl,
+              caption,
+              accessToken: metaRow.fb_user_access_token,
+              igBusinessId: metaRow.instagram_actor_id || metaRow.ig_business_id
             });
-            
-            // Map internal result to API response
-            if (result.response) {
-                 // Ensure the mode is preserved in the response
-                 return res.status(200).json({ ...result.response, mode: "instagram_post" });
-            }
-            return res.status(200).json({ ...result, mode: "instagram_post" });
+
+            // Success: Clear state and return Post ID
+            await clearCreativeState(supabase, session.user.email.toLowerCase(), creativeState.creativeSessionId);
+
+            return res.status(200).json({
+              ok: true,
+              postId,
+              text: `🎉 **Instagram Post Published Successfully!**\n\n- **Post ID**: \`${postId}\`\n\nYour content is now live!`
+            });
+          } catch (publishError) {
+            console.error("❌ Creative Mode Publish Failed:", publishError);
+            return res.status(500).json({ ok: false, text: `❌ **Instagram Post Failed**: ${publishError.message}` });
+          }
         }
+
+        // Map internal result to API response
+        if (result.response) {
+          // Ensure the mode is preserved in the response
+          return res.status(200).json({ ...result.response, mode: "instagram_post" });
+        }
+        return res.status(200).json({ ...result, mode: "instagram_post" });
+      }
     } catch (e) {
-        console.warn("Sticky session check failed:", e);
+      console.warn("Sticky session check failed:", e);
     }
 
     let lockedCampaignState = null;
@@ -274,7 +301,7 @@ export default async function handler(req, res) {
           const answers = content.business_answers || {};
           const possibleKeys = [effectiveBusinessId, activeBusinessId, metaRow?.fb_business_id, metaRow?.fb_page_id, metaRow?.ig_business_id, "default_business"].filter(Boolean);
           let bestMatch = null;
-          
+
           // 🛑 DEBUG: Log all keys we are checking
           console.log("🔍 Checking campaign keys:", possibleKeys);
 
@@ -365,7 +392,7 @@ export default async function handler(req, res) {
           if (mem?.content) {
             const parsedContent = JSON.parse(mem.content);
             const answers = parsedContent.business_answers || {};
-            
+
             // 🔍 SUPER GREEDY SEARCH: Look everywhere, not just known keys
             let bestState = null;
             const allKeys = Object.keys(answers);
@@ -374,26 +401,26 @@ export default async function handler(req, res) {
             for (const key of allKeys) {
               const s = answers[key]?.campaign_state;
               if (s?.objective === "INSTAGRAM_POST") {
-                 console.log(`💧 Found candidate in ${key}:`, { hasImage: !!s.creative?.imageUrl, hasText: !!s.creative?.primary_text });
-                 
-                 // 1. Prioritize state with BOTH assets
-                 if (s.creative?.imageUrl && s.creative?.primary_text) {
-                    bestState = s;
-                    break; // Found perfect match, stop looking
-                 }
-                 // 2. Keep partial match if we don't have a better one yet
-                 if (!bestState && (s.creative?.imageUrl || s.creative?.primary_text)) {
-                    bestState = s;
-                 }
+                console.log(`💧 Found candidate in ${key}:`, { hasImage: !!s.creative?.imageUrl, hasText: !!s.creative?.primary_text });
+
+                // 1. Prioritize state with BOTH assets
+                if (s.creative?.imageUrl && s.creative?.primary_text) {
+                  bestState = s;
+                  break; // Found perfect match, stop looking
+                }
+                // 2. Keep partial match if we don't have a better one yet
+                if (!bestState && (s.creative?.imageUrl || s.creative?.primary_text)) {
+                  bestState = s;
+                }
               }
             }
 
             if (bestState) {
-               if (!finalImage && bestState.creative?.imageUrl) finalImage = bestState.creative.imageUrl;
-               if (!finalCaption && bestState.creative?.primary_text) finalCaption = bestState.creative.primary_text;
-               console.log("💧 [Instagram] Re-hydration successful:", { finalImage: !!finalImage, finalCaption: !!finalCaption });
+              if (!finalImage && bestState.creative?.imageUrl) finalImage = bestState.creative.imageUrl;
+              if (!finalCaption && bestState.creative?.primary_text) finalCaption = bestState.creative.primary_text;
+              console.log("💧 [Instagram] Re-hydration successful:", { finalImage: !!finalImage, finalCaption: !!finalCaption });
             } else {
-               console.warn("💧 [Instagram] No valid INSTAGRAM_POST state found in memory.");
+              console.warn("💧 [Instagram] No valid INSTAGRAM_POST state found in memory.");
             }
           }
         } catch (e) { console.warn("targeted re-hydration failed", e); }
@@ -405,7 +432,7 @@ export default async function handler(req, res) {
       // Logic removed as per user instruction. 
       // Drive URLs are now rejected in normalize-image-url.js
       // ------------------------------------------------------------
-      
+
       const wantsLaunch = instruction.match(/\b(yes|ok|publish|confirm)\b/i);
       let forceLaunch = false;
 
@@ -413,43 +440,43 @@ export default async function handler(req, res) {
       // If Path A (explicit assets) didn't populate finalImage/finalCaption,
       // and we haven't re-hydrated them from memory, we try Creative Mode.
       if (!finalImage || !finalCaption) {
-          console.log("🎨 [Instagram] Delegating to Creative Mode...");
-          try {
-            const creativeResult = await creativeEntry({
-                supabase,
-                session,
-                instruction,
-                metaRow,
-                effectiveBusinessId
-            });
+        console.log("🎨 [Instagram] Delegating to Creative Mode...");
+        try {
+          const creativeResult = await creativeEntry({
+            supabase,
+            session,
+            instruction,
+            metaRow,
+            effectiveBusinessId
+          });
 
-            if (creativeResult.assets) {
-                console.log("🎨 [Instagram] Assets returned from Creative Mode. Launching...");
-                finalImage = creativeResult.assets.imageUrl;
-                finalCaption = creativeResult.assets.caption;
-                forceLaunch = true; 
-            } else if (creativeResult.response) {
-                return res.json(creativeResult.response);
-            }
-          } catch (e) {
-             console.error("Creative Mode Fatal:", e);
-             return res.json({ ok: false, text: "Creative Mode Failed: " + e.message });
+          if (creativeResult.assets) {
+            console.log("🎨 [Instagram] Assets returned from Creative Mode. Launching...");
+            finalImage = creativeResult.assets.imageUrl;
+            finalCaption = creativeResult.assets.caption;
+            forceLaunch = true;
+          } else if (creativeResult.response) {
+            return res.json(creativeResult.response);
           }
+        } catch (e) {
+          console.error("Creative Mode Fatal:", e);
+          return res.json({ ok: false, text: "Creative Mode Failed: " + e.message });
+        }
       }
 
       if (finalImage && finalCaption) {
         if (wantsLaunch || forceLaunch) {
           try {
             if (!metaRow) throw new Error("Meta connection missing. Please connect your accounts.");
-            
+
             // 🛡️ HARD IMAGE VALIDATION (User Requirement 1)
             // Must run inside Instagram organic block only.
             if (!finalImage || typeof finalImage !== "string" || finalImage.length < 5) {
-               console.warn("❌ [Instagram] Invalid finalImage:", finalImage);
-               return res.json({ 
-                 ok: false, 
-                 text: "⚠️ **Invalid Image URL**: Please provide a valid public image link." 
-               }); 
+              console.warn("❌ [Instagram] Invalid finalImage:", finalImage);
+              return res.json({
+                ok: false,
+                text: "⚠️ **Invalid Image URL**: Please provide a valid public image link."
+              });
             }
 
             // 🔒 TOKEN SAFETY: Explicitly use fb_user_access_token (NO System Token fallback)
@@ -533,8 +560,8 @@ export default async function handler(req, res) {
     // ============================================================
     // (This block only runs if NOT organic Instagram)
     if (bodyMode === "instagram_post" || mode === "instagram_post" || lockedCampaignState?.objective === "INSTAGRAM_POST") {
-       console.log("🛑 [Instagram] Hard Stop - Preventing Ads Logic Fall-through (Redundant Check)");
-       return res.end();
+      console.log("🛑 [Instagram] Hard Stop - Preventing Ads Logic Fall-through (Redundant Check)");
+      return res.end();
     }
 
     // 1️⃣ Check cache first
