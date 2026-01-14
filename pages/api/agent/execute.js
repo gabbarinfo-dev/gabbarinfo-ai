@@ -2870,7 +2870,7 @@ Otherwise, respond with a full, clear explanation, and include example JSON only
               stage: "PLAN_PROPOSED",
               plan: planJson,
               // Objective/Dest might be redundant if in lockedCampaignState, but safe to keep
-              objective: lockedCampaignState?.objective || selectedMetaObjective,
+              objective: planJson.objective || lockedCampaignState?.objective || selectedMetaObjective,
               destination: lockedCampaignState?.destination || selectedDestination,
               // 🔒 FIX: Sync plan details to state to prevent re-gating
               service: lockedCampaignState?.service || planJson.campaign_name || "Digital Marketing",
@@ -2882,13 +2882,13 @@ Otherwise, respond with a full, clear explanation, and include example JSON only
               locked_at: new Date().toISOString()
             };
             const baseUrl = process.env.NEXT_PUBLIC_BASE_URL;
-            console.log("💾 Saving Proposed Plan to Agent Memory...");
+            console.log("💾 [JSON] Saving Proposed Plan to Agent Memory...");
             await saveAnswerMemory(baseUrl, effectiveBusinessId, {
               campaign_state: newState
             }, session.user.email.toLowerCase());
 
             lockedCampaignState = newState;
-            console.log("✅ Saved Proposed Plan to State");
+            console.log("✅ [JSON] Saved Proposed Plan to State");
 
             // 📝 Overwrite the response text with a clean summary
             const creative = planJson.ad_sets?.[0]?.ad_creative || planJson.ad_sets?.[0]?.ads?.[0]?.creative || {};
@@ -3000,6 +3000,7 @@ Reply **YES** to generate this image and launch the campaign.
           ...lockedCampaignState,
           stage: "PLAN_PROPOSED",
           plan: minimalPlan,
+          objective: minimalPlan.objective, // Ensure objective is set for the gate
           // 🔒 SYNC PLAN DETAILS TO STATE to ensure Turn 2 (YES) finds everything
           service: minimalPlan.campaign_name,
           location: extractedLocation,
@@ -3011,7 +3012,7 @@ Reply **YES** to generate this image and launch the campaign.
         };
 
         // SAVE IT!
-        console.log("💾 Persisting text-based fallback plan to memory...");
+        console.log("💾 [Fallback] Persisting text-based fallback plan to memory...");
         await saveAnswerMemory(process.env.NEXT_PUBLIC_BASE_URL, effectiveBusinessId, {
           campaign_state: newState
         }, session.user.email.toLowerCase());
@@ -3019,7 +3020,7 @@ Reply **YES** to generate this image and launch the campaign.
         // Update local state and mode to ensure current turn response reflects the change
         lockedCampaignState = newState;
         mode = "meta_ads_plan";
-        console.log("✅ Fallback Plan Persisted Successfully.");
+        console.log("✅ [Fallback] Plan Persisted Successfully.");
       }
     }
 
