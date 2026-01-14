@@ -141,7 +141,44 @@ export default function FacebookBusinessConnect() {
     }
   };
 
-  // 👆 ADDED IG LOGIC HERE
+  // --- AD INSIGHTS FEATURE (ads_read) ---
+  const [showAdInsightsModal, setShowAdInsightsModal] = useState(false);
+  const [adData, setAdData] = useState(null);
+  const [adLoading, setAdLoading] = useState(false);
+  const [showAdConsentModal, setShowAdConsentModal] = useState(false);
+
+  const handleAdInsightsClick = () => {
+    if (meta?.business_info_synced !== true) {
+      alert("Please sync business info first");
+      return;
+    }
+    setShowAdConsentModal(true);
+  };
+
+  const handleAdConsentYes = async () => {
+    setShowAdConsentModal(false);
+    setShowAdInsightsModal(true);
+    setAdLoading(true);
+    try {
+      const res = await fetch("/api/meta/ad-insights", {
+        method: "POST",
+      });
+      const data = await res.json();
+      if (data.ok) {
+        setAdData(data.data);
+      } else {
+        alert("Failed to fetch Ad insights: " + (data.message || "Unknown error"));
+        setShowAdInsightsModal(false);
+      }
+    } catch (e) {
+      alert("Error: " + e.message);
+      setShowAdInsightsModal(false);
+    } finally {
+      setAdLoading(false);
+    }
+  };
+
+  // 👆 ADDED AD LOGIC HERE
   return (
     <div
       style={{
@@ -208,6 +245,20 @@ export default function FacebookBusinessConnect() {
               }}
             >
               View Instagram Insights
+            </button>
+
+            <button
+              onClick={handleAdInsightsClick}
+              style={{
+                padding: "8px 12px",
+                background: status === "connected" ? "#fff" : "#f3f4f6",
+                color: status === "connected" ? "#1877F2" : "#9ca3af",
+                border: `1px solid ${status === "connected" ? "#1877F2" : "#d1d5db"}`,
+                borderRadius: "6px",
+                cursor: status === "connected" ? "pointer" : "not-allowed",
+              }}
+            >
+              View Ad Insights
             </button>
 
             <button
@@ -318,6 +369,61 @@ export default function FacebookBusinessConnect() {
                 )}
                 <div style={{ display: "flex", justifyContent: "flex-end", marginTop: 20 }}>
                   <button onClick={() => setShowIgInsightsModal(false)} style={confirmBtnStyle}>Close</button>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* AD CONSENT MODAL */}
+          {showAdConsentModal && (
+            <div style={modalOverlayStyle}>
+              <div style={modalContentStyle}>
+                <h3>Ad Account Insights</h3>
+                <p>Do you want to view insights for your Ad Account?</p>
+                <div style={{ display: "flex", gap: 10, justifyContent: "flex-end", marginTop: 20 }}>
+                  <button onClick={() => setShowAdConsentModal(false)} style={cancelBtnStyle}>No</button>
+                  <button onClick={handleAdConsentYes} style={confirmBtnStyle}>Yes</button>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* AD INSIGHTS RESULTS MODAL */}
+          {showAdInsightsModal && (
+            <div style={modalOverlayStyle}>
+              <div style={modalContentStyle}>
+                <h3>Ad Account Insights</h3>
+                {adLoading ? (
+                  <p>Fetching ad performance...</p>
+                ) : adData ? (
+                  <div style={{ marginTop: 15 }}>
+                    {adData.campaign_name ? (
+                      <>
+                        <div style={{ marginBottom: 15, padding: "8px", background: "#f9fafb", borderRadius: "4px" }}>
+                          <strong style={{ fontSize: 12, color: "#666", display: "block", marginBottom: 4 }}>LATEST CAMPAIGN</strong>
+                          <span style={{ fontWeight: 500 }}>{adData.campaign_name}</span>
+                        </div>
+                        <div style={metricRowStyle}>
+                          <strong>Impressions</strong>
+                          <span>{adData.impressions.toLocaleString()}</span>
+                        </div>
+                        <div style={metricRowStyle}>
+                          <strong>Lifetime Reach</strong>
+                          <span>{adData.reach.toLocaleString()} people</span>
+                        </div>
+                      </>
+                    ) : (
+                      <p>No active campaigns found in this account.</p>
+                    )}
+                    <p style={{ fontSize: 12, color: "#666", marginTop: 20 }}>
+                      * Insights are shown for the most recent campaign in this ad account.
+                    </p>
+                  </div>
+                ) : (
+                  <p>No data available.</p>
+                )}
+                <div style={{ display: "flex", justifyContent: "flex-end", marginTop: 20 }}>
+                  <button onClick={() => setShowAdInsightsModal(false)} style={confirmBtnStyle}>Close</button>
                 </div>
               </div>
             </div>
