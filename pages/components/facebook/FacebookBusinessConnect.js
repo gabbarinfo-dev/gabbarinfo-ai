@@ -183,7 +183,7 @@ export default function FacebookBusinessConnect() {
             <div style={modalOverlayStyle}>
               <div style={modalContentStyle}>
                 <h3>Facebook Page Engagement</h3>
-                <p>Do you want to access Facebook Page engagement insights? This helps us optimize your content and is required for Meta App Review.</p>
+                <p>Do you want to view engagement insights for your Facebook Page?</p>
                 <div style={{ display: "flex", gap: 10, justifyContent: "flex-end", marginTop: 20 }}>
                   <button onClick={() => setShowConsentModal(false)} style={cancelBtnStyle}>No</button>
                   <button onClick={handleConsentYes} style={confirmBtnStyle}>Yes</button>
