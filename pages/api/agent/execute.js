@@ -192,7 +192,8 @@ export default async function handler(req, res) {
     __currentEmail = session.user.email.toLowerCase();
 
     // 🔥 DEBUG LOGS FOR CONTEXT MISMATCH
-    let { instruction = "", mode: bodyMode = body.mode } = body;
+    const { instruction = "", mode: bodyMode = body.mode, includeJson = false, chatHistory = [], extraContext = "" } = body;
+    let mode = bodyMode || "generic";
 
     // 🛡️ INPUT NORMALIZATION and Assets handled in terminal branch below
 
@@ -660,12 +661,7 @@ export default async function handler(req, res) {
       });
     }
 
-    let {
-      includeJson = false,
-      chatHistory = [],
-      extraContext = "",
-    } = body;
-    let mode = body.mode || "generic";
+    // 🕵️ AGENT MODE SELECTION
 
     // 🔒 CRITICAL: FORCE MODE FROM LOCKED STATE (MUST BE FIRST)
     // If a lockedCampaignState exists → mode MUST be its original mode or meta_ads_plan
