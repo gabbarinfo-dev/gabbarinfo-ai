@@ -59,9 +59,9 @@ export default async function handler(req, res) {
     // Pick first page (you can improve later)
     const page = pagesJson.data[0];
 
-    // 2️⃣ Fetch Page details
+    // 2️⃣ Fetch Page details (Including Page Access Token)
     const pageInfoRes = await fetch(
-      `https://graph.facebook.com/v21.0/${page.id}?fields=name,phone,website,about,category&access_token=${user_access_token}`
+      `https://graph.facebook.com/v21.0/${page.id}?fields=name,phone,website,about,category,access_token&access_token=${user_access_token}`
     );
     const pageInfo = await pageInfoRes.json();
 
@@ -94,11 +94,13 @@ export default async function handler(req, res) {
       instagram = await igInfoRes.json();
     }
 
-    // 4️⃣ Store extracted data (NO TOKENS)
+    // 4️⃣ Store extracted data
     await supabaseServer
       .from("meta_connections")
       .update({
         fb_ad_account_id: adAccountId || undefined,
+        fb_page_id: page.id || null, // Ensure Page ID is persisted
+        fb_page_access_token: pageInfo.access_token || null, // Persist Page Token
         ig_business_id: igJson?.instagram_business_account?.id || null,
         instagram_actor_id: instagramActorId,
         business_name: pageInfo.name || null,
