@@ -276,14 +276,6 @@ export default async function handler(req, res) {
     if (bodyMode === "instagram_post" || lockedCampaignState?.objective === "INSTAGRAM_POST" || isOrganicIntent) {
       console.log("📸 [Instagram] Isolated Terminal Flow");
 
-      // 🛡️ MODE GATING: Strict isolation for Instagram posting logic
-      if (bodyMode !== "Instagram Post Publish") {
-        return res.json({
-          ok: true,
-          text: "Instagram posting is only available when Instagram Post Publish mode is selected."
-        });
-      }
-
       // 1. FRESH ASSET DETECTION (MANDATORY FOR FIX 2)
       const urlMatch = instruction.match(/https?:\/\/[^\s]+/i);
       const urlInInstruction = urlMatch ? urlMatch[0] : null;
@@ -296,10 +288,10 @@ export default async function handler(req, res) {
         captionInInstruction = instruction.replace(urlInInstruction, "").trim();
       }
 
-      // 🚀 FIX 2: Path A Publishing ONLY if current instruction has fresh assets
+      // 🚀 FIX 2: Path A Publishing ONLY if current instruction has fresh assets AND mode is correct
       const hasBothAssets = !!(urlInInstruction && (captionInInstruction || instruction.length > 50));
 
-      if (hasBothAssets) {
+      if (hasBothAssets && bodyMode === "Instagram Post Publish") {
         console.log("🚀 [Instagram] Path A Triggered (Fresh Assets Detected)");
 
         // FIX 1: Hard Reset Creative Memory on Manual Path A
@@ -346,45 +338,47 @@ export default async function handler(req, res) {
         }
       }
 
-      // 🛡️ DELEGATE TO CREATIVE MODE (HANDLES QUESTIONS, CONFIRMATIONS, AND INTENT)
-      const creativeResult = await creativeEntry({
-        supabase,
-        session,
-        instruction,
-        metaRow,
-        effectiveBusinessId
-      });
+      // 🛡️ DELEGATE TO CREATIVE MODE (ONLY IN INSTAGRAM MODE)
+      if (bodyMode === "Instagram Post Publish") {
+        const creativeResult = await creativeEntry({
+          supabase,
+          session,
+          instruction,
+          metaRow,
+          effectiveBusinessId
+        });
 
-      // FIX 2: Publishing based on Intent only
-      if (creativeResult.intent === "PUBLISH_INSTAGRAM_POST") {
-        console.log("📬 [Instagram] Received intent from Creative Mode");
-        const { imageUrl, caption } = creativeResult.payload;
+        // FIX 2: Publishing based on Intent only
+        if (creativeResult.intent === "PUBLISH_INSTAGRAM_POST") {
+          console.log("📬 [Instagram] Received intent from Creative Mode");
+          const { imageUrl, caption } = creativeResult.payload;
 
-        try {
-          const result = await executeInstagramPost({
-            userEmail: session.user.email.toLowerCase(),
-            imageUrl,
-            caption
-          });
+          try {
+            const result = await executeInstagramPost({
+              userEmail: session.user.email.toLowerCase(),
+              imageUrl,
+              caption
+            });
 
-          // Cleanup after successful intent publish
-          await clearCreativeState(supabase, session.user.email.toLowerCase());
+            // Cleanup after successful intent publish
+            await clearCreativeState(supabase, session.user.email.toLowerCase());
 
-          return res.json({
-            ok: true,
-            text: `🎉 **Instagram Post Published Successfully!**\n\n- **Post ID**: \`${result.id}\`\n\nYour generated content is now live!`
-          });
-        } catch (e) {
-          return res.json({ ok: false, text: `❌ **Publish Failed**: ${e.message}` });
+            return res.json({
+              ok: true,
+              text: `🎉 **Instagram Post Published Successfully!**\n\n- **Post ID**: \`${result.id}\`\n\nYour generated content is now live!`
+            });
+          } catch (e) {
+            return res.json({ ok: false, text: `❌ **Publish Failed**: ${e.message}` });
+          }
         }
-      }
 
-      // Return standard FSM response (questions, preview)
-      if (creativeResult.response) {
-        return res.json(creativeResult.response);
-      }
+        // Return standard FSM response (questions, preview)
+        if (creativeResult.response) {
+          return res.json(creativeResult.response);
+        }
 
-      return res.json({ ok: false, text: "Wait, I need some more details for your Instagram post." });
+        return res.json({ ok: false, text: "Wait, I need some more details for your Instagram post." });
+      }
     }
 
     // 🛑 HARD SAFETY STOP
