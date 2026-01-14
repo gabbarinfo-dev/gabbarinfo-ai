@@ -104,7 +104,44 @@ export default function FacebookBusinessConnect() {
     }
   };
 
-  // 👆 ADD THIS LOGIC ABOVE THE RETURN
+  // --- INSTAGRAM INSIGHTS FEATURE (instagram_basic) ---
+  const [showIgInsightsModal, setShowIgInsightsModal] = useState(false);
+  const [igData, setIgData] = useState(null);
+  const [igLoading, setIgLoading] = useState(false);
+  const [showIgConsentModal, setShowIgConsentModal] = useState(false);
+
+  const handleIgInsightsClick = () => {
+    if (meta?.business_info_synced !== true) {
+      alert("Please sync business info first");
+      return;
+    }
+    setShowIgConsentModal(true);
+  };
+
+  const handleIgConsentYes = async () => {
+    setShowIgConsentModal(false);
+    setShowIgInsightsModal(true);
+    setIgLoading(true);
+    try {
+      const res = await fetch("/api/meta/instagram-insights", {
+        method: "POST",
+      });
+      const data = await res.json();
+      if (data.ok) {
+        setIgData(data.data);
+      } else {
+        alert("Failed to fetch Instagram insights: " + (data.message || "Unknown error"));
+        setShowIgInsightsModal(false);
+      }
+    } catch (e) {
+      alert("Error: " + e.message);
+      setShowIgInsightsModal(false);
+    } finally {
+      setIgLoading(false);
+    }
+  };
+
+  // 👆 ADDED IG LOGIC HERE
   return (
     <div
       style={{
@@ -160,6 +197,20 @@ export default function FacebookBusinessConnect() {
             </button>
 
             <button
+              onClick={handleIgInsightsClick}
+              style={{
+                padding: "8px 12px",
+                background: status === "connected" ? "#fff" : "#f3f4f6",
+                color: status === "connected" ? "#1877F2" : "#9ca3af",
+                border: `1px solid ${status === "connected" ? "#1877F2" : "#d1d5db"}`,
+                borderRadius: "6px",
+                cursor: status === "connected" ? "pointer" : "not-allowed",
+              }}
+            >
+              View Instagram Insights
+            </button>
+
+            <button
               onClick={handleDisconnect}
               style={{
                 padding: "8px 12px",
@@ -178,7 +229,7 @@ export default function FacebookBusinessConnect() {
             You can reconnect anytime and add new Facebook Pages or grant access to other assets.
           </p>
 
-          {/* CONSENT MODAL */}
+          {/* PAGE CONSENT MODAL */}
           {showConsentModal && (
             <div style={modalOverlayStyle}>
               <div style={modalContentStyle}>
@@ -192,7 +243,7 @@ export default function FacebookBusinessConnect() {
             </div>
           )}
 
-          {/* ENGAGEMENT RESULTS MODAL */}
+          {/* PAGE ENGAGEMENT RESULTS MODAL */}
           {showEngagementModal && (
             <div style={modalOverlayStyle}>
               <div style={modalContentStyle}>
@@ -222,6 +273,51 @@ export default function FacebookBusinessConnect() {
                 )}
                 <div style={{ display: "flex", justifyContent: "flex-end", marginTop: 20 }}>
                   <button onClick={() => setShowEngagementModal(false)} style={confirmBtnStyle}>Close</button>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* IG CONSENT MODAL */}
+          {showIgConsentModal && (
+            <div style={modalOverlayStyle}>
+              <div style={modalContentStyle}>
+                <h3>Instagram Business Insights</h3>
+                <p>Do you want to view insights for your Instagram business account?</p>
+                <div style={{ display: "flex", gap: 10, justifyContent: "flex-end", marginTop: 20 }}>
+                  <button onClick={() => setShowIgConsentModal(false)} style={cancelBtnStyle}>No</button>
+                  <button onClick={handleIgConsentYes} style={confirmBtnStyle}>Yes</button>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* IG INSIGHTS RESULTS MODAL */}
+          {showIgInsightsModal && (
+            <div style={modalOverlayStyle}>
+              <div style={modalContentStyle}>
+                <h3>Instagram Business Insights</h3>
+                {igLoading ? (
+                  <p>Fetching Instagram metrics...</p>
+                ) : igData ? (
+                  <div style={{ marginTop: 15 }}>
+                    <div style={metricRowStyle}>
+                      <strong>Followers</strong>
+                      <span>{igData.followers_count.toLocaleString()}</span>
+                    </div>
+                    <div style={metricRowStyle}>
+                      <strong>Media Count</strong>
+                      <span>{igData.media_count.toLocaleString()} posts</span>
+                    </div>
+                    <p style={{ fontSize: 12, color: "#666", marginTop: 20 }}>
+                      * These metrics show your current Instagram business profile scale.
+                    </p>
+                  </div>
+                ) : (
+                  <p>No data available.</p>
+                )}
+                <div style={{ display: "flex", justifyContent: "flex-end", marginTop: 20 }}>
+                  <button onClick={() => setShowIgInsightsModal(false)} style={confirmBtnStyle}>Close</button>
                 </div>
               </div>
             </div>
