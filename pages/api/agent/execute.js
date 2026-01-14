@@ -198,6 +198,7 @@ export default async function handler(req, res) {
     // 🛡️ INPUT NORMALIZATION and Assets handled in terminal branch below
 
 
+
     console.log("🔥 REQUEST START");
     console.log("EMAIL:", __currentEmail);
     console.log("INSTRUCTION:", instruction.substring(0, 50));
@@ -274,7 +275,7 @@ export default async function handler(req, res) {
       !instruction.toLowerCase().includes("sponsored");
 
     // 📸 TERMINAL BRANCH: Organic Instagram Isolation (STRICT SEPARATION)
-    if (bodyMode === "instagram_post" || lockedCampaignState?.objective === "INSTAGRAM_POST" || isOrganicIntent) {
+    if (mode === "Instagram Post Publish") {
       console.log("📸 [Instagram] Isolated Terminal Flow");
 
       // 1. FRESH ASSET DETECTION (MANDATORY FOR FIX 2)
