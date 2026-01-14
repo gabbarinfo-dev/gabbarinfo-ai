@@ -276,6 +276,14 @@ export default async function handler(req, res) {
     if (bodyMode === "instagram_post" || lockedCampaignState?.objective === "INSTAGRAM_POST" || isOrganicIntent) {
       console.log("📸 [Instagram] Isolated Terminal Flow");
 
+      // 🛡️ MODE GATING: Strict isolation for Instagram posting logic
+      if (bodyMode !== "Instagram Post Publish") {
+        return res.json({
+          ok: true,
+          text: "Instagram posting is only available when Instagram Post Publish mode is selected."
+        });
+      }
+
       // 1. FRESH ASSET DETECTION (MANDATORY FOR FIX 2)
       const urlMatch = instruction.match(/https?:\/\/[^\s]+/i);
       const urlInInstruction = urlMatch ? urlMatch[0] : null;
