@@ -668,13 +668,15 @@ export default async function handler(req, res) {
 
     // 🔒 CRITICAL: FORCE MODE FROM LOCKED STATE (MUST BE FIRST)
     // If a lockedCampaignState exists → mode MUST be its original mode or meta_ads_plan
-    if (lockedCampaignState) {
+    // 🔒 CRITICAL: DROPDOWN MODE IS AUTHORITATIVE
+    // lockedCampaignState is advisory only for new campaigns.
+    if (lockedCampaignState && (mode === "generic" || mode === "strategy")) {
       if (lockedCampaignState.objective === "INSTAGRAM_POST") {
         mode = "instagram_post";
       } else {
         mode = "meta_ads_plan";
       }
-      console.log(`🔒 MODE FORCED: ${mode} (locked campaign state exists)`);
+      console.log(`🔒 MODE ADAPTED FROM HISTORY: ${mode} (no explicit dropdown override)`);
     }
     // 🔁 AUTO-ROUTE TO META MODE (fallback for new campaigns)
     else if (
@@ -2191,7 +2193,11 @@ Otherwise, respond with a full, clear explanation, and include example JSON only
 
       console.log(`[PROD_LOG] 🚀 SHORT-CIRCUIT: Transitioning Started | User: ${session.user.email} | ID: ${effectiveBusinessId} | From: ${lockedCampaignState.stage}`);
 
-      let currentState = { ...lockedCampaignState, locked_at: new Date().toISOString() };
+      let currentState = {
+        ...lockedCampaignState,
+        stage: "APPROVED", // ✅ Transition to APPROVED state immediately on confirmation
+        locked_at: new Date().toISOString()
+      };
 
       // 🛡️ Safety Check: Ensure plan is valid
       // 🛡️ HARD RULE: Never proceed to confirmation/execution without a saved plan
@@ -2275,7 +2281,7 @@ Otherwise, respond with a full, clear explanation, and include example JSON only
         const hasImageReady = currentState.creative && currentState.creative.imageBase64;
         const hasHash = currentState.image_hash;
 
-        if (hasImageReady && !hasHash) {
+        if (hasGeneratedImage && !hasHash && hasImageReady) {
           console.log("🚀 Waterfall: Uploading Image to Meta...");
           try {
             const uploadRes = await fetch(`${process.env.NEXT_PUBLIC_BASE_URL}/api/meta/upload-image`, {
@@ -3157,7 +3163,7 @@ Reply **YES** to generate this image and launch the campaign.
           const hasImageReady = currentState.creative && currentState.creative.imageBase64;
           const hasHash = currentState.image_hash;
 
-          if (hasImageReady && !hasHash) {
+          if (hasGeneratedImage && !hasHash && hasImageReady) {
             console.log("🚀 Waterfall: Uploading Image to Meta...");
             try {
               const uploadRes = await fetch(`${process.env.NEXT_PUBLIC_BASE_URL}/api/meta/upload-image`, {
