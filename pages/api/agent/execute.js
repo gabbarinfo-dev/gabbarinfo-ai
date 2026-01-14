@@ -388,7 +388,7 @@ export default async function handler(req, res) {
     // 🔍 STEP 1: AGENT META ASSET DISCOVERY (ADS ONLY)
     // ============================================================
     // (This block only runs if NOT organic Instagram)
-    if (bodyMode === "instagram_post" || mode === "instagram_post" || lockedCampaignState?.objective === "INSTAGRAM_POST") {
+    if (mode === "Instagram Post Publish") {
       throw new Error("INTERNAL_ERROR: Ads pipeline executed during Instagram post");
     }
 
@@ -527,7 +527,7 @@ export default async function handler(req, res) {
     // type: "meta_ads_creative"    -> forwards to /api/ads/create-creative
     //
     if (body.type) {
-      if (bodyMode === "instagram_post" || mode === "instagram_post" || lockedCampaignState?.objective === "INSTAGRAM_POST") {
+      if (mode === "Instagram Post Publish") {
         throw new Error("INTERNAL_ERROR: Ads pipeline executed during Instagram post");
       }
       // old behaviour path
