@@ -381,10 +381,6 @@ export default async function handler(req, res) {
       }
     }
 
-    // 🛑 HARD SAFETY STOP
-    if (bodyMode === "instagram_post" || lockedCampaignState?.objective === "INSTAGRAM_POST") {
-      return res.end();
-    }
 
     // ============================================================
     // 🔍 STEP 1: AGENT META ASSET DISCOVERY (ADS ONLY)
