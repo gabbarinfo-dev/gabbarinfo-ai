@@ -2232,9 +2232,9 @@ Otherwise, respond with a full, clear explanation, and include example JSON only
 
       // --- STEP 9: IMAGE GENERATION ---
       // Logic: If we have a plan but NO image yet -> Generate Image
-      const hasImage = currentState.creative && (currentState.creative.imageBase64 || currentState.creative.imageUrl);
+      const hasGeneratedImage = !!currentState?.image_hash || !!currentState?.creative?.imageBase64;
 
-      if (!hasImage) {
+      if (!hasGeneratedImage) {
         console.log("🚀 Waterfall: Starting Image Generation...");
         const plan = currentState.plan || {};
         const adSet0 = (Array.isArray(plan.ad_sets) ? plan.ad_sets[0] : (plan.ad_sets || {}));
@@ -3116,9 +3116,9 @@ Reply **YES** to generate this image and launch the campaign.
 
         // --- STEP 9: IMAGE GENERATION ---
         const hasPlan = !!currentState.plan;
-        const hasImage = currentState.creative && (currentState.creative.imageBase64 || currentState.creative.imageUrl);
+        const hasGeneratedImage = !!currentState?.image_hash || !!currentState?.creative?.imageBase64;
 
-        if (hasPlan && !hasImage) {
+        if (hasPlan && !hasGeneratedImage) {
           console.log("🚀 Waterfall: Starting Image Generation...");
           const plan = currentState.plan;
           const creativeResult = plan.ad_sets?.[0]?.ad_creative || plan.ad_sets?.[0]?.ads?.[0]?.creative || {};
@@ -3148,7 +3148,7 @@ Reply **YES** to generate this image and launch the campaign.
             errorOcurred = true;
             stopReason = `Image Generation Error: ${e.message}`;
           }
-        } else if (hasImage) {
+        } else if (hasGeneratedImage) {
           waterfallLog.push("⏭️ Step 9: Image Already Exists");
         }
 
