@@ -24,7 +24,9 @@ export default async function handler(req, res) {
             return res.status(404).json({ ok: false, message: "Meta connection or Ad Account ID not found." });
         }
 
-        const adAccountId = meta.fb_ad_account_id;
+        const rawAdAccountId = meta.fb_ad_account_id;
+        const normalizedId = rawAdAccountId.replace(/^act_/, '');
+        const adAccountNode = `act_${normalizedId}`;
         // Existing project token pattern: Use system token if available, else user token
         const accessToken = process.env.META_SYSTEM_USER_TOKEN || meta.fb_user_access_token;
 
@@ -34,7 +36,7 @@ export default async function handler(req, res) {
 
         // 2. Fetch Latest Campaign
         const campaignRes = await fetch(
-            `https://graph.facebook.com/v21.0/act_${adAccountId}/campaigns?limit=1&fields=name&access_token=${accessToken}`
+            `https://graph.facebook.com/v21.0/${adAccountNode}/campaigns?limit=1&fields=name&access_token=${accessToken}`
         );
         const campaignJson = await campaignRes.json();
 
