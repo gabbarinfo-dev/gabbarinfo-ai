@@ -16,7 +16,7 @@ export default async function handler(req, res) {
         // 1. Get Meta connection details (fb_page_id and tokens)
         const { data: meta, error } = await supabaseServer
             .from("meta_connections")
-            .select("fb_page_id, fb_user_access_token")
+            .select("fb_page_id, fb_page_access_token") // 👈 Must use Page Access Token
             .eq("email", session.user.email.toLowerCase())
             .maybeSingle();
 
@@ -25,11 +25,10 @@ export default async function handler(req, res) {
         }
 
         const pageId = meta.fb_page_id;
-        // Use system token if available, else user token (project pattern)
-        const accessToken = process.env.META_SYSTEM_USER_TOKEN || meta.fb_user_access_token;
+        const accessToken = meta.fb_page_access_token; // 👈 STRICT: Use Page Token only
 
         if (!accessToken) {
-            return res.status(400).json({ ok: false, message: "Meta access token not found." });
+            return res.status(400).json({ ok: false, message: "Facebook Page access token not found. Please re-sync your business info." });
         }
 
         // 2. Fetch Page Basic Metrics (fan_count, followers_count)
