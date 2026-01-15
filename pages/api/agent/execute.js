@@ -587,7 +587,12 @@ export default async function handler(req, res) {
     } = body;
     let mode = body.mode || "generic";
 
-    // 🔒 [PATCHED] FORCED MODE LOGIC REMOVED
+    if (mode === "meta_ads_plan") {
+      console.log("TRACE: ENTER META ADS HANDLER");
+      console.log("TRACE: MODE =", mode);
+      console.log("TRACE: INSTRUCTION =", instruction);
+      console.log("TRACE: STAGE (initial) =", lockedCampaignState?.stage);
+    }
     // We strictly respect body.mode. We do NOT force meta_ads_plan anymore.
     // If lockedCampaignState exists, it will be used ONLY if we are naturally in meta_ads_plan mode.
 
@@ -613,6 +618,10 @@ export default async function handler(req, res) {
     // 🛡️ PATCH 2: Dedicated Confirmation Gate
     // ============================================================
     if (lockedCampaignState && mode === "meta_ads_plan") {
+      console.log("TRACE: CONFIRMATION CHECK");
+      console.log("TRACE: USER SAID YES =", lowerInstruction.includes("yes"));
+      console.log("TRACE: STAGE (before confirm) =", lockedCampaignState?.stage);
+
       if (lockedCampaignState.stage === "PLAN_PROPOSED") {
         if (!lowerInstruction.includes("yes")) {
           return res.status(200).json({
@@ -1153,6 +1162,9 @@ You are in GENERIC DIGITAL MARKETING AGENT MODE.
       mode === "meta_ads_plan" &&
       !selectedMetaObjective
     ) {
+      console.log("TRACE: ENTER INTAKE FLOW");
+      console.log("TRACE: STAGE (intake) =", lockedCampaignState?.stage);
+
       return res.status(200).json({
         ok: true,
         mode,
@@ -1893,6 +1905,10 @@ Otherwise, respond with a full, clear explanation, and include example JSON only
           locked_at: new Date().toISOString()
         };
 
+        console.log("TRACE: PLAN PROPOSED");
+        console.log("TRACE: STAGE (plan) =", state?.stage);
+        console.log("TRACE: PLAN OBJECT =", repairedState.plan);
+
         await saveAnswerMemory(
           process.env.NEXT_PUBLIC_BASE_URL,
           effectiveBusinessId,
@@ -1913,6 +1929,9 @@ Otherwise, respond with a full, clear explanation, and include example JSON only
 
       // 🛡️ PATCH 3: WATERFALL ENTRY RULE
       if (mode === "meta_ads_plan") {
+        console.log("TRACE: ENTER WATERFALL");
+        console.log("TRACE: STAGE (waterfall) =", lockedCampaignState?.stage);
+
         if (!lockedCampaignState || (lockedCampaignState.stage !== "PLAN_CONFIRMED" && lockedCampaignState.stage !== "IMAGE_GENERATED" && lockedCampaignState.stage !== "READY_TO_LAUNCH")) {
           return res.status(200).json({
             ok: true,
@@ -1934,6 +1953,9 @@ Otherwise, respond with a full, clear explanation, and include example JSON only
       const isImageUploaded = !!state.meta?.uploadedImageHash || !!state.meta?.imageMediaId;
 
       if (!isImageGenerated && (stage === "PLAN_CONFIRMED")) {
+        console.log("TRACE: IMAGE GENERATION ATTEMPT");
+        console.log("TRACE: IMAGE EXISTS =", !!state.creative);
+
         console.log("🚀 Waterfall: Starting Image Generation...");
         const plan = state.plan || {};
         const adSet0 = (Array.isArray(plan.ad_sets) ? plan.ad_sets[0] : (plan.ad_sets || {}));
@@ -1968,6 +1990,11 @@ Otherwise, respond with a full, clear explanation, and include example JSON only
               session.user.email.toLowerCase()
             );
 
+            console.log("TRACE: PIPELINE STEP REPORT");
+            console.log("TRACE: STAGE (pipeline) =", state.stage);
+            console.log("TRACE: IMAGE EXISTS =", !!state.creative);
+            console.log("TRACE: IMAGE UPLOADED =", !!state.meta?.uploadedImageHash);
+
             waterfallLog.push("✅ Step 9: Image Generated");
           } else {
             errorOcurred = true;
@@ -1978,6 +2005,11 @@ Otherwise, respond with a full, clear explanation, and include example JSON only
           stopReason = `Image Generation Error: ${e.message}`;
         }
       } else {
+        console.log("TRACE: PIPELINE STEP REPORT");
+        console.log("TRACE: STAGE (pipeline) =", state.stage);
+        console.log("TRACE: IMAGE EXISTS =", !!state.creative);
+        console.log("TRACE: IMAGE UPLOADED =", !!state.meta?.uploadedImageHash);
+
         waterfallLog.push("⏭️ Step 9: Image Already Exists");
       }
 
@@ -1985,6 +2017,9 @@ Otherwise, respond with a full, clear explanation, and include example JSON only
       if (!errorOcurred) {
         // 🔒 PATCH: Use strict upload check
         if (state.creative?.imageBase64 && !isImageUploaded) {
+          console.log("TRACE: IMAGE UPLOAD ATTEMPT");
+          console.log("TRACE: IMAGE HASH =", state.meta?.uploadedImageHash);
+
           console.log("🚀 Waterfall: Uploading Image to Meta...");
           try {
             const uploadRes = await fetch(`${process.env.NEXT_PUBLIC_BASE_URL}/api/meta/upload-image`, {
@@ -2027,6 +2062,11 @@ Otherwise, respond with a full, clear explanation, and include example JSON only
             stopReason = `Meta Upload Error: ${e.message}`;
           }
         } else if (isImageUploaded) {
+          console.log("TRACE: PIPELINE STEP REPORT");
+          console.log("TRACE: STAGE (pipeline) =", state.stage);
+          console.log("TRACE: IMAGE EXISTS =", !!state.creative);
+          console.log("TRACE: IMAGE UPLOADED =", !!state.meta?.uploadedImageHash);
+
           waterfallLog.push("⏭️ Step 10: Image Already Uploaded");
         }
       }
@@ -2627,6 +2667,10 @@ Otherwise, respond with a full, clear explanation, and include example JSON only
             lockedCampaignState = newState;
             console.log("✅ Saved Proposed Plan to State");
 
+            console.log("TRACE: PLAN PROPOSED");
+            console.log("TRACE: STAGE (plan) =", lockedCampaignState?.stage);
+            console.log("TRACE: PLAN OBJECT =", lockedCampaignState?.plan);
+
             // 📝 Overwrite the response text with a clean summary
             const creative = planJson.ad_sets?.[0]?.ad_creative || planJson.ad_sets?.[0]?.ads?.[0]?.creative || {};
             // Handle Budget Variance (Object vs Flat)
@@ -2677,10 +2721,10 @@ Reply **YES** to confirm this plan and proceed.
     // We construct a minimal plan from the User's Instruction + Gemini's output.
     const isPlanText = /Plan Proposed|Proposed Plan|Campaign Plan|Creative Idea|Strategy Proposal|Campaign Name/i.test(text);
 
-    // 🔒 FIX: Allow saving if state exists but HAS NO PLAN (e.g. just stage=PLANNING)
     // AND Only if we haven't already saved a JSON plan (planJson would handle that path above)
     // AND if effectiveBusinessId is valid
     if ((mode === "meta_ads_plan" || isPlanText) && (!lockedCampaignState || !lockedCampaignState.plan) && effectiveBusinessId) {
+      console.log("TRACE: FALLBACK META ADS PATH HIT");
       const looksLikePlan = isPlanText || text.includes("Budget") || text.includes("Creative Idea") || text.includes("Targeting") || text.includes("Creative Idea:");
 
       if (looksLikePlan) {
@@ -2760,6 +2804,10 @@ Reply **YES** to confirm this plan and proceed.
         mode = "meta_ads_plan";
         console.log("✅ Fallback Plan Persisted Successfully.");
 
+        console.log("TRACE: PLAN PROPOSED");
+        console.log("TRACE: STAGE (plan) =", lockedCampaignState?.stage);
+        console.log("TRACE: PLAN OBJECT =", lockedCampaignState?.plan);
+
         // 🛡️ PATCH 1: HARD STOP AT PLAN_PROPOSED (Fallback path)
         return res.status(200).json({
           ok: true,
@@ -2808,6 +2856,9 @@ Reply **YES** to confirm this plan and proceed.
 
         // 🛡️ PATCH 3: WATERFALL ENTRY RULE
         if (mode === "meta_ads_plan") {
+          console.log("TRACE: ENTER WATERFALL");
+          console.log("TRACE: STAGE (waterfall) =", lockedCampaignState?.stage);
+
           if (!lockedCampaignState || (lockedCampaignState.stage !== "PLAN_CONFIRMED" && lockedCampaignState.stage !== "IMAGE_GENERATED" && lockedCampaignState.stage !== "READY_TO_LAUNCH")) {
             return res.status(200).json({
               ok: true,
@@ -2857,6 +2908,10 @@ Reply **YES** to confirm this plan and proceed.
 
           currentState = repairedState;
 
+          console.log("TRACE: PLAN PROPOSED");
+          console.log("TRACE: STAGE (plan) =", repairedState.stage);
+          console.log("TRACE: PLAN OBJECT =", repairedState.plan);
+
           // 🛡️ PATCH 1: HARD STOP AT PLAN_PROPOSED (Regeneration path - global)
           return res.status(200).json({
             ok: true,
@@ -2878,6 +2933,9 @@ Reply **YES** to confirm this plan and proceed.
         const isImageUploaded = !!currentState.meta?.uploadedImageHash || !!currentState.meta?.imageMediaId || !!currentState.image_hash;
 
         if (hasPlan && !isImageGenerated && (currentState.stage === "PLAN_CONFIRMED")) {
+          console.log("TRACE: IMAGE GENERATION ATTEMPT");
+          console.log("TRACE: IMAGE EXISTS =", !!currentState.creative);
+
           console.log("🚀 Waterfall: Starting Image Generation...");
           const plan = currentState.plan;
           const creativeResult = plan.ad_sets?.[0]?.ad_creative || plan.ad_sets?.[0]?.ads?.[0]?.creative || {};
@@ -2898,6 +2956,12 @@ Reply **YES** to confirm this plan and proceed.
                 imageUrl: `data:image/png;base64,${imgJson.imageBase64}`
               };
               currentState = { ...currentState, stage: "IMAGE_GENERATED", creative: newCreative };
+
+              console.log("TRACE: PIPELINE STEP REPORT");
+              console.log("TRACE: STAGE (pipeline) =", currentState.stage);
+              console.log("TRACE: IMAGE EXISTS =", !!currentState.creative);
+              console.log("TRACE: IMAGE UPLOADED =", !!currentState.meta?.uploadedImageHash);
+
               waterfallLog.push("✅ Step 9: Image Generated");
             } else {
               errorOcurred = true;
@@ -2908,6 +2972,11 @@ Reply **YES** to confirm this plan and proceed.
             stopReason = `Image Generation Error: ${e.message}`;
           }
         } else if (isImageGenerated) {
+          console.log("TRACE: PIPELINE STEP REPORT");
+          console.log("TRACE: STAGE (pipeline) =", currentState.stage);
+          console.log("TRACE: IMAGE EXISTS =", !!currentState.creative);
+          console.log("TRACE: IMAGE UPLOADED =", !!currentState.meta?.uploadedImageHash);
+
           waterfallLog.push("⏭️ Step 9: Image Already Exists");
         }
 
@@ -2916,6 +2985,9 @@ Reply **YES** to confirm this plan and proceed.
           const hasImageContent = currentState.creative && currentState.creative.imageBase64;
 
           if (hasImageContent && !isImageUploaded) {
+            console.log("TRACE: IMAGE UPLOAD ATTEMPT");
+            console.log("TRACE: IMAGE HASH =", currentState.meta?.uploadedImageHash);
+
             console.log("🚀 Waterfall: Uploading Image to Meta...");
             try {
               const uploadRes = await fetch(`${process.env.NEXT_PUBLIC_BASE_URL}/api/meta/upload-image`, {
@@ -2947,6 +3019,11 @@ Reply **YES** to confirm this plan and proceed.
                   session.user.email.toLowerCase()
                 );
 
+                console.log("TRACE: PIPELINE STEP REPORT");
+                console.log("TRACE: STAGE (pipeline) =", currentState.stage);
+                console.log("TRACE: IMAGE EXISTS =", !!currentState.creative);
+                console.log("TRACE: IMAGE UPLOADED =", !!currentState.meta?.uploadedImageHash);
+
                 waterfallLog.push("✅ Step 10: Image Uploaded to Meta");
               } else {
                 errorOcurred = true;
@@ -2957,6 +3034,11 @@ Reply **YES** to confirm this plan and proceed.
               stopReason = `Meta Upload Error: ${e.message}`;
             }
           } else if (isImageUploaded) {
+            console.log("TRACE: PIPELINE STEP REPORT");
+            console.log("TRACE: STAGE (pipeline) =", currentState.stage);
+            console.log("TRACE: IMAGE EXISTS =", !!currentState.creative);
+            console.log("TRACE: IMAGE UPLOADED =", !!currentState.meta?.uploadedImageHash);
+
             waterfallLog.push("⏭️ Step 10: Image Already Uploaded");
           }
         }
@@ -3044,8 +3126,14 @@ Reply **YES** to confirm this plan and proceed.
         // If we stopped due to error or waiting
         let feedbackText = "";
         if (errorOcurred) {
+          console.log("TRACE: PIPELINE STEP REPORT");
+          console.log("TRACE: STAGE (pipeline) =", currentState.stage);
+
           feedbackText = `❌ **Automation Interrupted**:\n\n**Error**: ${stopReason}\n\n**Pipeline Progress**:\n${waterfallLog.join("\n")}\n\nI've saved the progress so far. Please check the error above and reply to try again.`;
         } else if (currentState.stage === "IMAGE_GENERATED") {
+          console.log("TRACE: PIPELINE STEP REPORT");
+          console.log("TRACE: STAGE (pipeline) =", currentState.stage);
+
           // 🛡️ PATCH: Verify Image actually exists
           if (currentState.creative?.imageBase64 || currentState.creative?.imageUrl) {
             feedbackText = `✅ **Image Generated Successfully**\n\n[Image Generated]\n\n**Next Steps**:\n1. Upload image to Meta Assets\n2. Create paused campaign on Facebook/Instagram\n\nReply **LAUNCH** to complete these steps automatically.`;
@@ -3053,6 +3141,9 @@ Reply **YES** to confirm this plan and proceed.
             feedbackText = `❌ **Image Generation Failed**\n\nThe image could not be generated. Please try again.`;
           }
         } else if (currentState.stage === "READY_TO_LAUNCH") {
+          console.log("TRACE: PIPELINE STEP REPORT");
+          console.log("TRACE: STAGE (pipeline) =", currentState.stage);
+
           // 🛡️ PATCH: Verify Hash actually exists
           if (currentState.creative?.imageHash) {
             feedbackText = `✅ **Image Uploaded & Ready**\n\nEverything is set for campaign launch.\n\n**Details**:\n- Campaign: ${currentState.plan.campaign_name}\n- Budget: ${currentState.plan.budget?.amount || "500"} INR\n\nReply **LAUNCH** to publish the campaign to Meta.`;
@@ -3060,6 +3151,9 @@ Reply **YES** to confirm this plan and proceed.
             feedbackText = `❌ **Image Upload Failed**\n\nThe image was generated but could not be uploaded to Meta. Please check your connection and try again.`;
           }
         } else {
+          console.log("TRACE: PIPELINE STEP REPORT");
+          console.log("TRACE: STAGE (pipeline) =", currentState.stage);
+
           feedbackText = `**Current Pipeline Progress**:\n${waterfallLog.join("\n") || "No steps completed in this turn."}\n\n(Debug: Stage=${currentState.stage}, Plan=${currentState.plan ? "Yes" : "No"})\n\nWaiting for your confirmation...`;
         }
 
