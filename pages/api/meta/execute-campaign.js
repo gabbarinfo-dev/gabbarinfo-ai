@@ -9,8 +9,6 @@ import { normalizeImageUrl } from "../../../lib/normalize-image-url";
 import { creativeEntry } from "../../../lib/instagram/creative-entry";
 import { clearCreativeState } from "../../../lib/instagram/creative-memory";
 
-const normalizeGoogleDriveUrls = normalizeImageUrl;
-
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL,
   process.env.SUPABASE_SERVICE_ROLE_KEY
@@ -194,12 +192,9 @@ export default async function handler(req, res) {
     __currentEmail = session.user.email.toLowerCase();
 
     // 🔥 DEBUG LOGS FOR CONTEXT MISMATCH
-    const { instruction = "", mode: bodyMode = body.mode, includeJson = false, chatHistory = [], extraContext = "" } = body;
-    let mode = bodyMode || "generic";
-    let currentState = null;
+    let { instruction = "", mode: bodyMode = body.mode } = body;
 
     // 🛡️ INPUT NORMALIZATION and Assets handled in terminal branch below
-
 
 
     console.log("🔥 REQUEST START");
@@ -271,18 +266,6 @@ export default async function handler(req, res) {
       }
     }
 
-    // 🔒 INVARIANT GUARD — Protect Meta Ads PLAN_PROPOSED stage
-    // If we have a proposed plan and the user says "YES", we lock the currentState 
-    // to prevent interactive discovery gates from regressing the stage.
-    if (
-      lockedCampaignState?.stage === "PLAN_PROPOSED" &&
-      (lockedCampaignState?.plan || lockedCampaignState?.planJson) &&
-      instruction?.trim().toLowerCase() === "yes"
-    ) {
-      console.log("🔒 [GUARD] Protecting PLAN_PROPOSED stage from regression");
-      currentState = { ...lockedCampaignState };
-    }
-
     // 📸 TERMINAL BRANCH: Organic Instagram Post Isolation (STRICT SEPARATION)
     // We catch explicit mode, locked state, OR clear organic intent to prevent fall-through.
     const isOrganicIntent = instruction.toLowerCase().includes("instagram") &&
@@ -290,7 +273,7 @@ export default async function handler(req, res) {
       !instruction.toLowerCase().includes("sponsored");
 
     // 📸 TERMINAL BRANCH: Organic Instagram Isolation (STRICT SEPARATION)
-    if (mode === "Instagram Post Publish") {
+    if (bodyMode === "instagram_post" || lockedCampaignState?.objective === "INSTAGRAM_POST" || isOrganicIntent) {
       console.log("📸 [Instagram] Isolated Terminal Flow");
 
       // 1. FRESH ASSET DETECTION (MANDATORY FOR FIX 2)
@@ -305,10 +288,10 @@ export default async function handler(req, res) {
         captionInInstruction = instruction.replace(urlInInstruction, "").trim();
       }
 
-      // 🚀 FIX 2: Path A Publishing ONLY if current instruction has fresh assets AND mode is correct
+      // 🚀 FIX 2: Path A Publishing ONLY if current instruction has fresh assets
       const hasBothAssets = !!(urlInInstruction && (captionInInstruction || instruction.length > 50));
 
-      if (hasBothAssets && bodyMode === "Instagram Post Publish") {
+      if (hasBothAssets) {
         console.log("🚀 [Instagram] Path A Triggered (Fresh Assets Detected)");
 
         // FIX 1: Hard Reset Creative Memory on Manual Path A
@@ -355,55 +338,57 @@ export default async function handler(req, res) {
         }
       }
 
-      // 🛡️ DELEGATE TO CREATIVE MODE (ONLY IN INSTAGRAM MODE)
-      if (bodyMode === "Instagram Post Publish") {
-        const creativeResult = await creativeEntry({
-          supabase,
-          session,
-          instruction,
-          metaRow,
-          effectiveBusinessId
-        });
+      // 🛡️ DELEGATE TO CREATIVE MODE (HANDLES QUESTIONS, CONFIRMATIONS, AND INTENT)
+      const creativeResult = await creativeEntry({
+        supabase,
+        session,
+        instruction,
+        metaRow,
+        effectiveBusinessId
+      });
 
-        // FIX 2: Publishing based on Intent only
-        if (creativeResult.intent === "PUBLISH_INSTAGRAM_POST") {
-          console.log("📬 [Instagram] Received intent from Creative Mode");
-          const { imageUrl, caption } = creativeResult.payload;
+      // FIX 2: Publishing based on Intent only
+      if (creativeResult.intent === "PUBLISH_INSTAGRAM_POST") {
+        console.log("📬 [Instagram] Received intent from Creative Mode");
+        const { imageUrl, caption } = creativeResult.payload;
 
-          try {
-            const result = await executeInstagramPost({
-              userEmail: session.user.email.toLowerCase(),
-              imageUrl,
-              caption
-            });
+        try {
+          const result = await executeInstagramPost({
+            userEmail: session.user.email.toLowerCase(),
+            imageUrl,
+            caption
+          });
 
-            // Cleanup after successful intent publish
-            await clearCreativeState(supabase, session.user.email.toLowerCase());
+          // Cleanup after successful intent publish
+          await clearCreativeState(supabase, session.user.email.toLowerCase());
 
-            return res.json({
-              ok: true,
-              text: `🎉 **Instagram Post Published Successfully!**\n\n- **Post ID**: \`${result.id}\`\n\nYour generated content is now live!`
-            });
-          } catch (e) {
-            return res.json({ ok: false, text: `❌ **Publish Failed**: ${e.message}` });
-          }
+          return res.json({
+            ok: true,
+            text: `🎉 **Instagram Post Published Successfully!**\n\n- **Post ID**: \`${result.id}\`\n\nYour generated content is now live!`
+          });
+        } catch (e) {
+          return res.json({ ok: false, text: `❌ **Publish Failed**: ${e.message}` });
         }
-
-        // Return standard FSM response (questions, preview)
-        if (creativeResult.response) {
-          return res.json(creativeResult.response);
-        }
-
-        return res.json({ ok: false, text: "Wait, I need some more details for your Instagram post." });
       }
+
+      // Return standard FSM response (questions, preview)
+      if (creativeResult.response) {
+        return res.json(creativeResult.response);
+      }
+
+      return res.json({ ok: false, text: "Wait, I need some more details for your Instagram post." });
     }
 
+    // 🛑 HARD SAFETY STOP
+    if (bodyMode === "instagram_post" || lockedCampaignState?.objective === "INSTAGRAM_POST") {
+      return res.end();
+    }
 
     // ============================================================
     // 🔍 STEP 1: AGENT META ASSET DISCOVERY (ADS ONLY)
     // ============================================================
     // (This block only runs if NOT organic Instagram)
-    if (mode === "Instagram Post Publish") {
+    if (bodyMode === "instagram_post" || mode === "instagram_post" || lockedCampaignState?.objective === "INSTAGRAM_POST") {
       throw new Error("INTERNAL_ERROR: Ads pipeline executed during Instagram post");
     }
 
@@ -542,7 +527,7 @@ export default async function handler(req, res) {
     // type: "meta_ads_creative"    -> forwards to /api/ads/create-creative
     //
     if (body.type) {
-      if (mode === "Instagram Post Publish") {
+      if (bodyMode === "instagram_post" || mode === "instagram_post" || lockedCampaignState?.objective === "INSTAGRAM_POST") {
         throw new Error("INTERNAL_ERROR: Ads pipeline executed during Instagram post");
       }
       // old behaviour path
@@ -677,19 +662,22 @@ export default async function handler(req, res) {
       });
     }
 
-    // 🕵️ AGENT MODE SELECTION
+    let {
+      includeJson = false,
+      chatHistory = [],
+      extraContext = "",
+    } = body;
+    let mode = body.mode || "generic";
 
     // 🔒 CRITICAL: FORCE MODE FROM LOCKED STATE (MUST BE FIRST)
     // If a lockedCampaignState exists → mode MUST be its original mode or meta_ads_plan
-    // 🔒 CRITICAL: DROPDOWN MODE IS AUTHORITATIVE
-    // lockedCampaignState is advisory only for new campaigns.
-    if (lockedCampaignState && (mode === "generic" || mode === "strategy")) {
+    if (lockedCampaignState) {
       if (lockedCampaignState.objective === "INSTAGRAM_POST") {
         mode = "instagram_post";
       } else {
         mode = "meta_ads_plan";
       }
-      console.log(`🔒 MODE ADAPTED FROM HISTORY: ${mode} (no explicit dropdown override)`);
+      console.log(`🔒 MODE FORCED: ${mode} (locked campaign state exists)`);
     }
     // 🔁 AUTO-ROUTE TO META MODE (fallback for new campaigns)
     else if (
@@ -2206,11 +2194,7 @@ Otherwise, respond with a full, clear explanation, and include example JSON only
 
       console.log(`[PROD_LOG] 🚀 SHORT-CIRCUIT: Transitioning Started | User: ${session.user.email} | ID: ${effectiveBusinessId} | From: ${lockedCampaignState.stage}`);
 
-      let currentState = {
-        ...lockedCampaignState,
-        stage: "APPROVED", // ✅ Transition to APPROVED state immediately on confirmation
-        locked_at: new Date().toISOString()
-      };
+      let currentState = { ...lockedCampaignState, locked_at: new Date().toISOString() };
 
       // 🛡️ Safety Check: Ensure plan is valid
       // 🛡️ HARD RULE: Never proceed to confirmation/execution without a saved plan
@@ -2251,9 +2235,9 @@ Otherwise, respond with a full, clear explanation, and include example JSON only
 
       // --- STEP 9: IMAGE GENERATION ---
       // Logic: If we have a plan but NO image yet -> Generate Image
-      const hasGeneratedImage = !!currentState?.image_hash || !!currentState?.creative?.imageBase64;
+      const hasImage = currentState.creative && (currentState.creative.imageBase64 || currentState.creative.imageUrl);
 
-      if (!hasGeneratedImage) {
+      if (!hasImage) {
         console.log("🚀 Waterfall: Starting Image Generation...");
         const plan = currentState.plan || {};
         const adSet0 = (Array.isArray(plan.ad_sets) ? plan.ad_sets[0] : (plan.ad_sets || {}));
@@ -2294,7 +2278,7 @@ Otherwise, respond with a full, clear explanation, and include example JSON only
         const hasImageReady = currentState.creative && currentState.creative.imageBase64;
         const hasHash = currentState.image_hash;
 
-        if (hasGeneratedImage && !hasHash && hasImageReady) {
+        if (hasImageReady && !hasHash) {
           console.log("🚀 Waterfall: Uploading Image to Meta...");
           try {
             const uploadRes = await fetch(`${process.env.NEXT_PUBLIC_BASE_URL}/api/meta/upload-image`, {
@@ -2883,7 +2867,7 @@ Otherwise, respond with a full, clear explanation, and include example JSON only
               stage: "PLAN_PROPOSED",
               plan: planJson,
               // Objective/Dest might be redundant if in lockedCampaignState, but safe to keep
-              objective: planJson.objective || lockedCampaignState?.objective || selectedMetaObjective,
+              objective: lockedCampaignState?.objective || selectedMetaObjective,
               destination: lockedCampaignState?.destination || selectedDestination,
               // 🔒 FIX: Sync plan details to state to prevent re-gating
               service: lockedCampaignState?.service || planJson.campaign_name || "Digital Marketing",
@@ -2895,13 +2879,13 @@ Otherwise, respond with a full, clear explanation, and include example JSON only
               locked_at: new Date().toISOString()
             };
             const baseUrl = process.env.NEXT_PUBLIC_BASE_URL;
-            console.log("💾 [JSON] Saving Proposed Plan to Agent Memory...");
+            console.log("💾 Saving Proposed Plan to Agent Memory...");
             await saveAnswerMemory(baseUrl, effectiveBusinessId, {
               campaign_state: newState
             }, session.user.email.toLowerCase());
 
             lockedCampaignState = newState;
-            console.log("✅ [JSON] Saved Proposed Plan to State");
+            console.log("✅ Saved Proposed Plan to State");
 
             // 📝 Overwrite the response text with a clean summary
             const creative = planJson.ad_sets?.[0]?.ad_creative || planJson.ad_sets?.[0]?.ads?.[0]?.creative || {};
@@ -2934,14 +2918,6 @@ _${creative.image_prompt || creative.imagePrompt || "Standard ad creative based 
 
 Reply **YES** to generate this image and launch the campaign.
 `.trim();
-
-            // 🟢 [RESTORE] Confirmation Question + JSON Response
-            return res.status(200).json({
-              ok: true,
-              text,
-              campaignJson: planJson,
-              mode
-            });
           } else {
             // It's JSON, but not a plan we recognize. 
             // Maybe it's just normal JSON output. Let's keep the raw text so user can see it.
@@ -3021,7 +2997,6 @@ Reply **YES** to generate this image and launch the campaign.
           ...lockedCampaignState,
           stage: "PLAN_PROPOSED",
           plan: minimalPlan,
-          objective: minimalPlan.objective, // Ensure objective is set for the gate
           // 🔒 SYNC PLAN DETAILS TO STATE to ensure Turn 2 (YES) finds everything
           service: minimalPlan.campaign_name,
           location: extractedLocation,
@@ -3033,7 +3008,7 @@ Reply **YES** to generate this image and launch the campaign.
         };
 
         // SAVE IT!
-        console.log("💾 [Fallback] Persisting text-based fallback plan to memory...");
+        console.log("💾 Persisting text-based fallback plan to memory...");
         await saveAnswerMemory(process.env.NEXT_PUBLIC_BASE_URL, effectiveBusinessId, {
           campaign_state: newState
         }, session.user.email.toLowerCase());
@@ -3041,15 +3016,7 @@ Reply **YES** to generate this image and launch the campaign.
         // Update local state and mode to ensure current turn response reflects the change
         lockedCampaignState = newState;
         mode = "meta_ads_plan";
-        console.log("✅ [Fallback] Plan Persisted Successfully.");
-
-        // 🟢 [RESTORE] Confirmation Question + JSON Response (Fallback Path)
-        return res.status(200).json({
-          ok: true,
-          text,
-          campaignJson: minimalPlan,
-          mode
-        });
+        console.log("✅ Fallback Plan Persisted Successfully.");
       }
     }
 
@@ -3114,7 +3081,7 @@ Reply **YES** to generate this image and launch the campaign.
 
         console.log(`[PROD_LOG] 📶 State Transition Started | User: ${session.user.email} | ID: ${effectiveBusinessId} | CurrentStage: ${stage}`);
 
-        currentState = currentState || { ...lockedCampaignState, locked_at: new Date().toISOString() };
+        let currentState = { ...lockedCampaignState, locked_at: new Date().toISOString() };
 
         // 🛡️ DEFENSIVE CHECK: If user says YES but we have no plan, FALLBACK TO PLANNING.
         // Rule: NEVER execute without a plan. Implicitly regenerate it.
@@ -3152,9 +3119,9 @@ Reply **YES** to generate this image and launch the campaign.
 
         // --- STEP 9: IMAGE GENERATION ---
         const hasPlan = !!currentState.plan;
-        const hasGeneratedImage = !!currentState?.image_hash || !!currentState?.creative?.imageBase64;
+        const hasImage = currentState.creative && (currentState.creative.imageBase64 || currentState.creative.imageUrl);
 
-        if (hasPlan && !hasGeneratedImage) {
+        if (hasPlan && !hasImage) {
           console.log("🚀 Waterfall: Starting Image Generation...");
           const plan = currentState.plan;
           const creativeResult = plan.ad_sets?.[0]?.ad_creative || plan.ad_sets?.[0]?.ads?.[0]?.creative || {};
@@ -3184,7 +3151,7 @@ Reply **YES** to generate this image and launch the campaign.
             errorOcurred = true;
             stopReason = `Image Generation Error: ${e.message}`;
           }
-        } else if (hasGeneratedImage) {
+        } else if (hasImage) {
           waterfallLog.push("⏭️ Step 9: Image Already Exists");
         }
 
@@ -3193,7 +3160,7 @@ Reply **YES** to generate this image and launch the campaign.
           const hasImageReady = currentState.creative && currentState.creative.imageBase64;
           const hasHash = currentState.image_hash;
 
-          if (hasGeneratedImage && !hasHash && hasImageReady) {
+          if (hasImageReady && !hasHash) {
             console.log("🚀 Waterfall: Uploading Image to Meta...");
             try {
               const uploadRes = await fetch(`${process.env.NEXT_PUBLIC_BASE_URL}/api/meta/upload-image`, {
