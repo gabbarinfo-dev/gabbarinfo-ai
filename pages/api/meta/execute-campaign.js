@@ -155,13 +155,12 @@ ${verifyJson.error?.message}`);
 ✅
  [Security Check] Access Verified for Account: 
 ${verifyJson.account_id} (${verifyJson.name})`); 
-  } catch (e) { 
+  } catch (e) {
     console.error(`
 ⛔
  [Security Block] Validation Error: 
-${e.message}`); 
-    // If we already sent a response (unlikely but safe), don't send 
-another. 
+${e.message}`);
+    // If we already sent a response (unlikely but safe), don't send another.
     if (!res.headersSent) { 
       return res.status(500).json({ ok: false, message: `Preflight Auth 
 Check Failed: ${e.message}` }); 
