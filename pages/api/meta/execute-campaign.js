@@ -203,15 +203,12 @@ order: ${objectivesToTry.join(" -> ")}`);
 1}/${objectivesToTry.length}`; 
  
       try { 
-        const campaignParams = new URLSearchParams(); 
-        campaignParams.append("name", payload.campaign_name); 
-        campaignParams.append("objective", objParam); 
-        campaignParams.append("status", "PAUSED"); 
- 
-        // 
-�
-�
- FORCE-INJECT ODAX FLAGS (Strict Enforcement) 
+        const campaignParams = new URLSearchParams();
+        campaignParams.append("name", payload.campaign_name);
+        campaignParams.append("objective", objParam);
+        campaignParams.append("status", "PAUSED");
+
+        // FORCE-INJECT ODAX FLAGS (Strict Enforcement)
         if (objParam && objParam.startsWith("OUTCOME_")) { 
           console.log(`
 🔒
@@ -333,13 +330,10 @@ dsets`, {
       if (!asRes.ok) throw new Error(`AdSet Create Failed: 
 ${asJson.error?.message} (Account: ${AD_ACCOUNT_ID})`); 
  
-      // 4. Create Creative with Fallbacks 
-      const creative = adSet.ad_creative || {}; 
- 
-      // 
-�
-�
- Website Destination URL Resolution (Strict - Website Only) 
+      // 4. Create Creative with Fallbacks
+      const creative = adSet.ad_creative || {};
+
+      // Website Destination URL Resolution (Strict - Website Only)
       const isWebsiteConversion = adSet.destination_type === "WEBSITE" 
 || payload.conversion_location === "WEBSITE"; 
       const requiresDestinationUrl = 
@@ -522,20 +516,16 @@ ${adJson.error?.message} (Account: ${AD_ACCOUNT_ID})`);
   } 
 } 
  
-// 
-�
-�
- UNIVERSAL AD SET BUILDER (Strict ODAX Compliance) 
-function buildAdSetPayload(objective, adSet, campaignId, accessToken, 
-placements) { 
-  const params = new URLSearchParams(); 
- 
-  // 1. Identity & Time 
-  params.append("name", adSet.name || "Ad Set 1"); 
-  params.append("campaign_id", campaignId); 
-  params.append("status", "PAUSED"); 
-  params.append("access_token", accessToken); 
-  params.append("bid_strategy", "LOWEST_COST_WITHOUT_CAP"); 
+// UNIVERSAL AD SET BUILDER (Strict ODAX Compliance)
+function buildAdSetPayload(objective, adSet, campaignId, accessToken, placements) {
+  const params = new URLSearchParams();
+
+  // 1. Identity & Time
+  params.append("name", adSet.name || "Ad Set 1");
+  params.append("campaign_id", campaignId);
+  params.append("status", "PAUSED");
+  params.append("access_token", accessToken);
+  params.append("bid_strategy", "LOWEST_COST_WITHOUT_CAP");
  
   // Start Time: Now + 5 mins (Safety Buffer) 
   const startTime = new Date(Date.now() + 5 * 60 * 1000); 
@@ -638,17 +628,13 @@ JSON.stringify(promoted_object));
     params.append("instagram_positions", JSON.stringify(["stream"])); 
   } 
  
-  return params; 
-} 
- 
-// 
-�
-�
- UNIVERSAL CREATIVE BUILDER (Placement Safe & Strict Types) 
-function buildCreativePayload(objective, creative, pageId, 
-instagramActorId, accessToken, forcePhoto = false, placements = []) { 
-  if (!pageId) throw new Error("Page ID is required for Creative"); 
-  if (!creative || !creative.image_hash) throw new Error("Image Hash is required for Creative"); 
+  return params;
+}
+
+// UNIVERSAL CREATIVE BUILDER (Placement Safe & Strict Types)
+function buildCreativePayload(objective, creative, pageId, instagramActorId, accessToken, forcePhoto = false, placements = []) {
+  if (!pageId) throw new Error("Page ID is required for Creative");
+  if (!creative || !creative.image_hash) throw new Error("Image Hash is required for Creative");
  
   let ctaType = "LEARN_MORE"; 
   let useLinkData = !forcePhoto; 
