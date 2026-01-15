@@ -2921,6 +2921,14 @@ _${creative.image_prompt || creative.imagePrompt || "Standard ad creative based 
 
 Reply **YES** to generate this image and launch the campaign.
 `.trim();
+
+            // 🟢 [RESTORE] Confirmation Question + JSON Response
+            return res.status(200).json({
+              ok: true,
+              text,
+              campaignJson: planJson,
+              mode
+            });
           } else {
             // It's JSON, but not a plan we recognize. 
             // Maybe it's just normal JSON output. Let's keep the raw text so user can see it.
@@ -3021,6 +3029,14 @@ Reply **YES** to generate this image and launch the campaign.
         lockedCampaignState = newState;
         mode = "meta_ads_plan";
         console.log("✅ [Fallback] Plan Persisted Successfully.");
+
+        // 🟢 [RESTORE] Confirmation Question + JSON Response (Fallback Path)
+        return res.status(200).json({
+          ok: true,
+          text,
+          campaignJson: minimalPlan,
+          mode
+        });
       }
     }
 
