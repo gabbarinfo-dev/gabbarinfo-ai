@@ -8,10 +8,7 @@ const supabase = createClient(
   process.env.SUPABASE_SERVICE_ROLE_KEY 
 ); 
  
-// 
-�
-�
- THE GOLDEN RULE MAPPER (ODAX / Outcome-Based) 
+// THE GOLDEN RULE MAPPER (ODAX / Outcome-Based) 
 function mapObjectiveToODAX(obj) { 
   const o = (obj || "").toString().toUpperCase(); 
   console.log(`[mapObjectiveToODAX] Input: "${obj}" -> Upper: "${o}"`); 
