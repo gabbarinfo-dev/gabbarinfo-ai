@@ -130,8 +130,7 @@ failed: ${e.message}`);
     placements.includes("instagram"); 
  
   // 1c. PREFLIGHT SECURITY CHECK: Verify Ad Account Access 
-  // This ensures the token actually has permissions for the target ad 
-account ID. 
+  // This ensures the token actually has permissions for the target ad account ID. 
   try { 
     console.log(`
 🛡
