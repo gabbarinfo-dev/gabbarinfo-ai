@@ -386,11 +386,10 @@ asJson.id };
  [Creative] ${strat.name}: Attempting 
 creation...`); 
  
-          const platKey = JSON.stringify(strat.placements); 
-          let currentAdSetId = adSetsByPlacements[platKey]; 
- 
-          // If placements changed and we don't have an AdSet for it, 
-create a NEW one 
+          const platKey = JSON.stringify(strat.placements);
+          let currentAdSetId = adSetsByPlacements[platKey];
+
+          // If placements changed and we don't have an AdSet for it, create a NEW one
           if (!currentAdSetId) { 
             console.log(`
 🛠
