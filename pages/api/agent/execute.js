@@ -3311,40 +3311,50 @@ async function handleInstagramPostOnly(req, res, session, body) {
     effectiveBusinessId: activeBusinessId,
   });
 
-  if (creativeResult.intent === "PUBLISH_INSTAGRAM_POST") {
+  // 1️⃣ HIGHEST PRIORITY: PUBLISH WHEN CONFIRMATION IS GIVEN
+  if (
+    creativeResult.intent === "PUBLISH_INSTAGRAM_POST" &&
+    creativeResult.payload?.imageUrl &&
+    creativeResult.payload?.caption
+  ) {
     const { imageUrl, caption } = creativeResult.payload;
 
-    const result = await executeInstagramPost({
-      userEmail: session.user.email.toLowerCase(),
-      imageUrl,
-      caption,
-    });
+    try {
+      const publishResult = await executeInstagramPost({
+        userEmail: session.user.email.toLowerCase(),
+        imageUrl,
+        caption,
+      });
 
-    await clearCreativeState(supabase, session.user.email.toLowerCase());
+      await clearCreativeState(supabase, session.user.email.toLowerCase());
 
-    await saveAnswerMemory(
-      process.env.NEXT_PUBLIC_BASE_URL,
-      activeBusinessId,
-      {
-        campaign_state: {
-          stage: "COMPLETED",
-          flow: "instagram_publish",
-          final_result: result,
-        },
-      },
-      session.user.email.toLowerCase()
-    );
+      // IMMEDIATELY return to prevent double-response
+      return res.status(200).json({
+        ok: true,
+        mode: "instagram_post",
+        text: "🎉 Instagram Post Published Successfully!",
+        result: publishResult
+      });
+    } catch (publishError) {
+      console.error("❌ Instagram Publish Error:", publishError);
 
-    return res.json({
-      ok: true,
-      text: `🎉 **Instagram Post Published Successfully!**\n\n- **Post ID**: \`${result.id}\``,
-    });
+      // Clear state even on error to allow retry
+      await clearCreativeState(supabase, session.user.email.toLowerCase());
+
+      return res.status(200).json({
+        ok: false,
+        mode: "instagram_post",
+        text: `Failed to publish Instagram post: ${publishError.message || "Unknown error"}. Please try again.`
+      });
+    }
   }
 
+  // 2️⃣ SECOND: RETURN PREVIEW OR QUESTIONS (NON-TERMINAL)
   if (creativeResult.response) {
     return res.json(creativeResult.response);
   }
 
+  // 3️⃣ FALLBACK: Request more information (should rarely be reached)
   return res.json({
     ok: true,
     text: "I need a bit more information to create your Instagram post.",
