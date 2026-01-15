@@ -2015,10 +2015,12 @@ Otherwise, respond with a full, clear explanation, and include example JSON only
       console.log(`[PROD_LOG] 🚀 SHORT-CIRCUIT: Transitioning Started | User: ${session.user.email} | ID: ${effectiveBusinessId} | From: ${lockedCampaignState.stage}`);
 
       let currentState = { ...lockedCampaignState, locked_at: new Date().toISOString() };
+      // 🔒 SINGLE SOURCE OF TRUTH — waterfall must ONLY use currentState (mutated as state)
+      let state = currentState;
 
       // 🛡️ Safety Check: Ensure plan is valid
       // 🛡️ HARD RULE: Never proceed to confirmation/execution without a saved plan
-      if (!currentState.plan || !currentState.plan.campaign_name) {
+      if (!state.plan || !state.plan.campaign_name) {
         console.warn("Plan missing at confirmation. Recreating automatically.");
 
         const regeneratedPlan = await generateMetaCampaignPlan({
@@ -2029,37 +2031,41 @@ Otherwise, respond with a full, clear explanation, and include example JSON only
         });
 
         const repairedState = {
-          ...currentState,
+          ...state,
           stage: "PLAN_PROPOSED",
           plan: regeneratedPlan,
           locked_at: new Date().toISOString()
         };
 
         await saveAnswerMemory(
-          baseUrl,
+          process.env.NEXT_PUBLIC_BASE_URL,
           effectiveBusinessId,
           { campaign_state: repairedState },
           session.user.email.toLowerCase()
         );
 
-        currentState = repairedState;
+        state = repairedState;
+        currentState = repairedState; // Keep alias in sync
       }
 
-      const stage = lockedCampaignState.stage;
+      const stage = state.stage;
       let waterfallLog = [];
       let errorOcurred = false;
       let stopReason = null;
 
       console.log("📍 Waterfall Check - Stage:", stage);
-      console.log("📍 Waterfall Check - Plan Name:", currentState.plan.campaign_name);
+      console.log("📍 Waterfall Check - Plan Name:", state.plan.campaign_name);
 
       // --- STEP 9: IMAGE GENERATION ---
       // Logic: If we have a plan but NO image yet -> Generate Image
-      const hasImage = currentState.creative && (currentState.creative.imageBase64 || currentState.creative.imageUrl);
 
-      if (!hasImage) {
+      // 🛡️ PATCH: Differentiate Generated vs Uploaded (Strict)
+      const isImageGenerated = !!state.creative?.imageBase64 || !!state.creative?.imageUrl;
+      const isImageUploaded = !!state.meta?.uploadedImageHash || !!state.meta?.imageMediaId;
+
+      if (!isImageGenerated) {
         console.log("🚀 Waterfall: Starting Image Generation...");
-        const plan = currentState.plan || {};
+        const plan = state.plan || {};
         const adSet0 = (Array.isArray(plan.ad_sets) ? plan.ad_sets[0] : (plan.ad_sets || {}));
         const creativeResult = adSet0.ad_creative || adSet0.creative || adSet0.ads?.[0]?.creative || {};
 
@@ -2079,7 +2085,19 @@ Otherwise, respond with a full, clear explanation, and include example JSON only
               imageBase64: imgJson.imageBase64,
               imageUrl: `data:image/png;base64,${imgJson.imageBase64}`
             };
-            currentState = { ...currentState, stage: "IMAGE_GENERATED", creative: newCreative };
+
+            // 🔒 UPDATE STATE
+            state = { ...state, stage: "IMAGE_GENERATED", creative: newCreative };
+            currentState = state; // Sync
+
+            // 💾 PERSIST IMMEDIATELY
+            await saveAnswerMemory(
+              process.env.NEXT_PUBLIC_BASE_URL,
+              effectiveBusinessId,
+              { campaign_state: state },
+              session.user.email.toLowerCase()
+            );
+
             waterfallLog.push("✅ Step 9: Image Generated");
           } else {
             errorOcurred = true;
@@ -2095,22 +2113,40 @@ Otherwise, respond with a full, clear explanation, and include example JSON only
 
       // --- STEP 10: IMAGE UPLOAD ---
       if (!errorOcurred) {
-        const hasImageReady = currentState.creative && currentState.creative.imageBase64;
-        const hasHash = currentState.image_hash;
-
-        if (hasImageReady && !hasHash) {
+        // 🔒 PATCH: Use strict upload check
+        if (state.creative?.imageBase64 && !isImageUploaded) {
           console.log("🚀 Waterfall: Uploading Image to Meta...");
           try {
             const uploadRes = await fetch(`${process.env.NEXT_PUBLIC_BASE_URL}/api/meta/upload-image`, {
               method: "POST",
               headers: { "Content-Type": "application/json", "X-Client-Email": __currentEmail || "" },
-              body: JSON.stringify({ imageBase64: currentState.creative.imageBase64 })
+              body: JSON.stringify({ imageBase64: state.creative.imageBase64 })
             });
             const uploadJson = await parseResponseSafe(uploadRes);
             const iHash = uploadJson.imageHash || uploadJson.image_hash;
 
             if (uploadJson.ok && iHash) {
-              currentState = { ...currentState, stage: "READY_TO_LAUNCH", image_hash: iHash };
+              // 🔒 PATCH: Persist Upload Hash Immediately using STATE
+              const metaUpdate = {
+                ...state.meta,
+                uploadedImageHash: iHash,
+                imageMediaId: uploadJson.image_id || null
+              };
+
+              state = {
+                ...state,
+                image_hash: iHash,
+                meta: metaUpdate
+              };
+              currentState = state; // Sync
+
+              await saveAnswerMemory(
+                process.env.NEXT_PUBLIC_BASE_URL,
+                effectiveBusinessId,
+                { campaign_state: currentState },
+                session.user.email.toLowerCase()
+              );
+
               waterfallLog.push("✅ Step 10: Image Uploaded to Meta");
             } else {
               errorOcurred = true;
@@ -2120,25 +2156,46 @@ Otherwise, respond with a full, clear explanation, and include example JSON only
             errorOcurred = true;
             stopReason = `Meta Upload Error: ${e.message}`;
           }
-        } else if (hasHash) {
+        } else if (isImageUploaded) {
           waterfallLog.push("⏭️ Step 10: Image Already Uploaded");
         }
       }
 
+      // 🔒 MICRO PATCH: FORCE STAGE ADVANCEMENT AFTER VERIFIED IMAGE UPLOAD
+      if (
+        state.stage === "PLAN_PROPOSED" &&
+        (state.meta?.uploadedImageHash || state.meta?.imageMediaId)
+      ) {
+        state = {
+          ...state,
+          stage: "READY_TO_LAUNCH",
+          locked_at: new Date().toISOString()
+        };
+        currentState = state; // Sync
+
+        await saveAnswerMemory(
+          process.env.NEXT_PUBLIC_BASE_URL,
+          effectiveBusinessId,
+          { campaign_state: state },
+          session.user.email.toLowerCase()
+        );
+      }
+
       // --- STEP 12: EXECUTION (Final Step) ---
       if (!errorOcurred) {
-        const isReady = (currentState.stage === "READY_TO_LAUNCH" || currentState.stage === "IMAGE_UPLOADED") && currentState.image_hash;
-        const wantsLaunch = lowerInstruction.includes("launch") || lowerInstruction.includes("execute") || lowerInstruction.includes("run") || lowerInstruction.includes("publish") || lowerInstruction.includes("yes") || lowerInstruction.includes("ok") || currentState.auto_run;
+        // 🔒 PATCH: Execution requires READY_TO_LAUNCH strict
+        const isReady = state.stage === "READY_TO_LAUNCH" && state.image_hash;
+        const wantsLaunch = lowerInstruction.includes("launch") || lowerInstruction.includes("execute") || lowerInstruction.includes("run") || lowerInstruction.includes("publish") || lowerInstruction.includes("yes") || lowerInstruction.includes("ok") || state.auto_run;
 
-        if (isReady && (wantsLaunch || currentState.objective === "TRAFFIC")) {
+        if (isReady && (wantsLaunch || state.objective === "TRAFFIC")) {
           console.log("🚀 Waterfall: Executing Campaign on Meta...");
           try {
-            const plan = currentState.plan;
+            const plan = state.plan;
             const finalPayload = {
               ...plan,
               ad_sets: plan.ad_sets.map(adset => ({
                 ...adset,
-                ad_creative: { ...adset.ad_creative, image_hash: currentState.image_hash }
+                ad_creative: { ...adset.ad_creative, image_hash: state.image_hash }
               }))
             };
 
@@ -2170,23 +2227,23 @@ Otherwise, respond with a full, clear explanation, and include example JSON only
 
       // Save progress reached
       if (effectiveBusinessId) {
-        console.log(`[PROD_LOG] ✅ SHORT-CIRCUIT: Transition Finished | ID: ${effectiveBusinessId} | FinalStage: ${currentState.stage}`);
-        await saveAnswerMemory(process.env.NEXT_PUBLIC_BASE_URL, effectiveBusinessId, { campaign_state: currentState }, session.user.email.toLowerCase());
+        console.log(`[PROD_LOG] ✅ SHORT-CIRCUIT: Transition Finished | ID: ${effectiveBusinessId} | FinalStage: ${state.stage}`);
+        await saveAnswerMemory(process.env.NEXT_PUBLIC_BASE_URL, effectiveBusinessId, { campaign_state: state }, session.user.email.toLowerCase());
       }
 
       // If we stopped due to error or waiting
       let feedbackText = "";
       if (errorOcurred) {
         feedbackText = `❌ **Automation Interrupted**:\n\n**Error**: ${stopReason}\n\n**Pipeline Progress**:\n${waterfallLog.join("\n")}\n\nI've saved the progress so far. Please check the error above and reply to try again.`;
-      } else if (currentState.stage === "IMAGE_GENERATED") {
+      } else if (state.stage === "IMAGE_GENERATED") {
         feedbackText = `✅ **Image Generated Successfully**\n\n[Image Generated]\n\n**Next Steps**:\n1. Upload image to Meta Assets\n2. Create paused campaign on Facebook/Instagram\n\nReply **LAUNCH** to complete these steps automatically.`;
-      } else if (currentState.stage === "READY_TO_LAUNCH") {
-        feedbackText = `✅ **Image Uploaded & Ready**\n\nEverything is set for campaign launch.\n\n**Details**:\n- Campaign: ${currentState.plan.campaign_name}\n- Budget: ${currentState.plan.budget?.amount || "500"} INR\n\nReply **LAUNCH** to publish the campaign to Meta.`;
+      } else if (state.stage === "READY_TO_LAUNCH") {
+        feedbackText = `✅ **Image Uploaded & Ready**\n\nEverything is set for campaign launch.\n\n**Details**:\n- Campaign: ${state.plan.campaign_name}\n- Budget: ${state.plan.budget?.amount || "500"} INR\n\nReply **LAUNCH** to publish the campaign to Meta.`;
       } else {
-        feedbackText = `**Current Pipeline Progress**:\n${waterfallLog.join("\n") || "No steps completed in this turn."}\n\n(Debug: Stage=${currentState.stage}, Plan=${currentState.plan ? "Yes" : "No"}, Image=${currentState.creative?.imageBase64 ? "Yes" : "No"}, Hash=${currentState.image_hash || "No"})\n\nWaiting for your confirmation...`;
+        feedbackText = `**Current Pipeline Progress**:\n${waterfallLog.join("\n") || "No steps completed in this turn."}\n\n(Debug: Stage=${state.stage}, Plan=${state.plan ? "Yes" : "No"}, Image=${state.creative?.imageBase64 ? "Yes" : "No"}, Hash=${state.image_hash || "No"})\n\nWaiting for your confirmation...`;
       }
 
-      return res.status(200).json({ ok: true, text: feedbackText, imageUrl: currentState.creative?.imageUrl, mode });
+      return res.status(200).json({ ok: true, text: feedbackText, imageUrl: state.creative?.imageUrl, mode });
     }
 
     const result = await model.generateContent({
@@ -2915,9 +2972,13 @@ Reply **YES** to generate this image and launch the campaign.
 
         // --- STEP 9: IMAGE GENERATION ---
         const hasPlan = !!currentState.plan;
-        const hasImage = currentState.creative && (currentState.creative.imageBase64 || currentState.creative.imageUrl);
 
-        if (hasPlan && !hasImage) {
+        // 🛡️ PATCH: Differentiate Generated vs Uploaded (Strict)
+        const isImageGenerated = !!currentState.creative?.imageBase64 || !!currentState.creative?.imageUrl;
+        // 🛡️ PATCH 1: SINGLE SOURCE OF TRUTH (Require confirmed hash or ID)
+        const isImageUploaded = !!currentState.meta?.uploadedImageHash || !!currentState.meta?.imageMediaId || !!currentState.image_hash;
+
+        if (hasPlan && !isImageGenerated) {
           console.log("🚀 Waterfall: Starting Image Generation...");
           const plan = currentState.plan;
           const creativeResult = plan.ad_sets?.[0]?.ad_creative || plan.ad_sets?.[0]?.ads?.[0]?.creative || {};
@@ -2947,16 +3008,15 @@ Reply **YES** to generate this image and launch the campaign.
             errorOcurred = true;
             stopReason = `Image Generation Error: ${e.message}`;
           }
-        } else if (hasImage) {
+        } else if (isImageGenerated) {
           waterfallLog.push("⏭️ Step 9: Image Already Exists");
         }
 
-        // --- STEP 10: IMAGE UPLOAD ---
+        // --- STEP 10: IMAGE UPLOAD (STRICT CHECK) ---
         if (!errorOcurred) {
-          const hasImageReady = currentState.creative && currentState.creative.imageBase64;
-          const hasHash = currentState.image_hash;
+          const hasImageContent = currentState.creative && currentState.creative.imageBase64;
 
-          if (hasImageReady && !hasHash) {
+          if (hasImageContent && !isImageUploaded) {
             console.log("🚀 Waterfall: Uploading Image to Meta...");
             try {
               const uploadRes = await fetch(`${process.env.NEXT_PUBLIC_BASE_URL}/api/meta/upload-image`, {
@@ -2968,7 +3028,26 @@ Reply **YES** to generate this image and launch the campaign.
               const iHash = uploadJson.imageHash || uploadJson.image_hash;
 
               if (uploadJson.ok && iHash) {
-                currentState = { ...currentState, stage: "READY_TO_LAUNCH", image_hash: iHash };
+                // 🛡️ FINAL INVARIANT PATCH: PERSIST STAGE ADVANCE
+                currentState = {
+                  ...currentState,
+                  stage: "READY_TO_LAUNCH",
+                  image_hash: iHash, // Keep for backward compatibility
+                  meta: {
+                    ...currentState.meta,
+                    uploadedImageHash: iHash,
+                    uploadedAt: new Date().toISOString(),
+                  },
+                  locked_at: new Date().toISOString(),
+                };
+
+                await saveAnswerMemory(
+                  process.env.NEXT_PUBLIC_BASE_URL,
+                  effectiveBusinessId,
+                  { campaign_state: currentState },
+                  session.user.email.toLowerCase()
+                );
+
                 waterfallLog.push("✅ Step 10: Image Uploaded to Meta");
               } else {
                 errorOcurred = true;
@@ -2978,9 +3057,29 @@ Reply **YES** to generate this image and launch the campaign.
               errorOcurred = true;
               stopReason = `Meta Upload Error: ${e.message}`;
             }
-          } else if (hasHash) {
+          } else if (isImageUploaded) {
             waterfallLog.push("⏭️ Step 10: Image Already Uploaded");
           }
+        }
+
+        // 🛡️ PATCH: FORCE STAGE ADVANCE AFTER CONFIRMED IMAGE UPLOAD
+        if (
+          currentState.stage === "PLAN_PROPOSED" &&
+          (currentState.meta?.uploadedImageHash || currentState.meta?.imageMediaId)
+        ) {
+          console.log("✅ Advancing stage from PLAN_PROPOSED → READY_TO_LAUNCH");
+          currentState = {
+            ...currentState,
+            stage: "READY_TO_LAUNCH",
+            locked_at: new Date().toISOString(),
+          };
+
+          await saveAnswerMemory(
+            process.env.NEXT_PUBLIC_BASE_URL,
+            effectiveBusinessId,
+            { campaign_state: currentState },
+            session.user.email.toLowerCase()
+          );
         }
 
         // --- STEP 12: EXECUTION (Final Step) ---
@@ -2990,6 +3089,14 @@ Reply **YES** to generate this image and launch the campaign.
           const wantsLaunch = instruction.toLowerCase().includes("launch") || instruction.toLowerCase().includes("execute") || instruction.toLowerCase().includes("run") || instruction.toLowerCase().includes("publish") || instruction.toLowerCase().includes("yes") || instruction.toLowerCase().includes("ok") || currentState.auto_run;
 
           if (isReady && (wantsLaunch || currentState.objective === "TRAFFIC")) {
+            // 🛡️ PATCH 3: EXECUTION MUST REQUIRE READY_TO_LAUNCH
+            if (currentState.stage !== "READY_TO_LAUNCH") {
+              return res.json({
+                ok: true,
+                text: "Preparing campaign assets. Please wait a moment..."
+              });
+            }
+
             console.log("🚀 Waterfall: Executing Campaign on Meta...");
             try {
               const plan = currentState.plan;
@@ -2997,7 +3104,11 @@ Reply **YES** to generate this image and launch the campaign.
                 ...plan,
                 ad_sets: plan.ad_sets.map(adset => ({
                   ...adset,
-                  ad_creative: { ...adset.ad_creative, image_hash: currentState.image_hash }
+                  // 🛡️ PATCH 4: PAYLOAD IMAGE GUARANTEE (HARD STOP IF MISSING)
+                  ad_creative: {
+                    ...adset.ad_creative,
+                    image_hash: currentState.meta?.uploadedImageHash || currentState.image_hash || (() => { throw new Error("CRITICAL: Missing Image Hash in Execution Payload"); })()
+                  }
                 }))
               };
 
