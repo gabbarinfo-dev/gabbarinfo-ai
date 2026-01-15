@@ -148,8 +148,7 @@ ields=account_id,name&access_token=${ACCESS_TOKEN}`);
 ${verifyJson.error?.message}`); 
       return res.status(403).json({ 
         ok: false, 
-        message: "Connected Meta account does not own or have access to 
-this ad account." 
+        message: "Connected Meta account does not own or have access to this ad account." 
       }); 
     } 
     console.log(`
