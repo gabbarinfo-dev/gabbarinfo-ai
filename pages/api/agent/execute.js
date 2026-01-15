@@ -121,7 +121,13 @@ function isMetaPlanComplete(plan) {
 }
 
 export default async function handler(req, res) {
+  let currentState = null; // Default until loaded
+
   if (req.method !== "POST") {
+    console.log("TRACE: ENTER EXECUTE");
+    console.log("TRACE: MODE =", req.body?.mode);
+    console.log("TRACE: INSTRUCTION =", req.body?.instruction);
+    console.log("TRACE: RETURNING RESPONSE — STAGE = undefined");
     return res.status(405).json({ ok: false, message: "Only POST allowed." });
   }
 
@@ -133,9 +139,11 @@ export default async function handler(req, res) {
     // ---------------------------
     const session = await getServerSession(req, res, authOptions);
     if (!session) {
+      console.log("TRACE: RETURNING RESPONSE — STAGE =", currentState?.stage);
       return res.status(401).json({ ok: false, message: "Not authenticated" });
     }
     __currentEmail = session.user.email.toLowerCase();
+    console.log("TRACE: SESSION OK =", session.user.email);
 
     // 🔒 MODE AUTHORITY GATE — INSTAGRAM ISOLATION
     if (body.mode === "instagram_post") {
@@ -150,10 +158,7 @@ export default async function handler(req, res) {
     console.log("INSTRUCTION:", instruction.substring(0, 50));
     console.log("MODE:", bodyMode);
     console.log("COOKIES:", req.headers.cookie ? "Present" : "Missing");
-    // ============================================================
-    // 🔍 STEP 1: AGENT META ASSET DISCOVERY (CACHED)
-    // ============================================================
-
+    console.log("TRACE: META ADS LOGIC ENTRY");
     let verifiedMetaAssets = null;
 
     // 1️⃣ Check cache first
@@ -167,13 +172,18 @@ export default async function handler(req, res) {
       verifiedMetaAssets = cachedAssets;
     } else {
       // 2️⃣ No cache → verify using Meta Graph API
+      console.log("TRACE: FETCHING META CONNECTION FROM SUPABASE");
       const { data: meta } = await supabase
         .from("meta_connections")
         .select("*")
         .eq("email", session.user.email.toLowerCase())
         .single();
 
+      console.log("TRACE: META CONNECTION RESULT =", meta);
+      console.log("TRACE: RESOLVED AD ACCOUNT ID =", meta?.fb_ad_account_id);
+
       if (!meta?.system_user_token || !meta?.fb_ad_account_id) {
+        console.log("TRACE: RETURNING RESPONSE — STAGE =", currentState?.stage);
         return res.json({
           ok: true,
           gated: true,
@@ -618,12 +628,13 @@ export default async function handler(req, res) {
     // 🛡️ PATCH 2: Dedicated Confirmation Gate
     // ============================================================
     if (lockedCampaignState && mode === "meta_ads_plan") {
-      console.log("TRACE: CONFIRMATION CHECK");
+      console.log("TRACE: ENTER SHORT-CIRCUIT EXECUTION PATH");
       console.log("TRACE: USER SAID YES =", lowerInstruction.includes("yes"));
       console.log("TRACE: STAGE (before confirm) =", lockedCampaignState?.stage);
 
       if (lockedCampaignState.stage === "PLAN_PROPOSED") {
         if (!lowerInstruction.includes("yes")) {
+          console.log("TRACE: RETURNING RESPONSE — STAGE =", currentState?.stage);
           return res.status(200).json({
             ok: true,
             mode,
@@ -1039,8 +1050,11 @@ You are in GENERIC DIGITAL MARKETING AGENT MODE.
       if (selectedMetaObjective) {
         // Save and continue loop or wait? For now, we continue in this turn if possible
         lockedCampaignState = { ...lockedCampaignState, objective: selectedMetaObjective, stage: "objective_selected" };
+        currentState = lockedCampaignState;
         await saveAnswerMemory(process.env.NEXT_PUBLIC_BASE_URL, effectiveBusinessId, { campaign_state: lockedCampaignState }, session.user.email.toLowerCase());
       } else {
+        console.log("TRACE: ENTER META INTAKE FLOW");
+        console.log("TRACE: RETURNING RESPONSE — STAGE =", currentState?.stage);
         return res.status(200).json({
           ok: true, mode, gated: true,
           text: "Let's build your Meta Campaign. What is your primary objective?\n\n1. **Traffic** (Get visits to website, page, or profile)\n2. **Leads** (Get calls, WhatsApp messages, or form fills)\n3. **Sales** (Drive conversions on your website)"
@@ -1068,8 +1082,11 @@ You are in GENERIC DIGITAL MARKETING AGENT MODE.
 
       if (selectedDestination) {
         lockedCampaignState = { ...lockedCampaignState, destination: selectedDestination, stage: "destination_selected" };
+        currentState = lockedCampaignState;
         await saveAnswerMemory(process.env.NEXT_PUBLIC_BASE_URL, effectiveBusinessId, { campaign_state: lockedCampaignState }, session.user.email.toLowerCase());
       } else {
+        console.log("TRACE: ENTER META INTAKE FLOW");
+        console.log("TRACE: RETURNING RESPONSE — STAGE =", currentState?.stage);
         return res.status(200).json({
           ok: true, mode, gated: true,
           text: `Where should we drive this ${selectedMetaObjective.toLowerCase()}?\n\n` + options.map((o, i) => `${i + 1}. ${o}`).join("\n")
@@ -1100,8 +1117,11 @@ You are in GENERIC DIGITAL MARKETING AGENT MODE.
 
       if (selectedPerformanceGoal) {
         lockedCampaignState = { ...lockedCampaignState, performance_goal: selectedPerformanceGoal, stage: "goal_selected" };
+        currentState = lockedCampaignState;
         await saveAnswerMemory(process.env.NEXT_PUBLIC_BASE_URL, effectiveBusinessId, { campaign_state: lockedCampaignState }, session.user.email.toLowerCase());
       } else {
+        console.log("TRACE: ENTER META INTAKE FLOW");
+        console.log("TRACE: RETURNING RESPONSE — STAGE =", currentState?.stage);
         return res.status(200).json({
           ok: true, mode, gated: true,
           text: `What is your performance goal for these ads?\n\n` + goals.map((g, i) => `${i + 1}. ${g}`).join("\n")
@@ -1162,8 +1182,8 @@ You are in GENERIC DIGITAL MARKETING AGENT MODE.
       mode === "meta_ads_plan" &&
       !selectedMetaObjective
     ) {
-      console.log("TRACE: ENTER INTAKE FLOW");
-      console.log("TRACE: STAGE (intake) =", lockedCampaignState?.stage);
+      console.log("TRACE: ENTER META INTAKE FLOW");
+      console.log("TRACE: RETURNING RESPONSE — STAGE =", currentState?.stage);
 
       return res.status(200).json({
         ok: true,
@@ -1202,6 +1222,8 @@ You are in GENERIC DIGITAL MARKETING AGENT MODE.
 
     // 3️⃣ If CALL objective selected but no number → STOP & ASK
     if (!isPlanProposed && selectedDestination === "call" && !detectedPhoneNumber) {
+      console.log("TRACE: ENTER META INTAKE FLOW");
+      console.log("TRACE: RETURNING RESPONSE — STAGE =", currentState?.stage);
       return res.status(200).json({
         ok: true,
         mode,
@@ -1220,6 +1242,8 @@ You are in GENERIC DIGITAL MARKETING AGENT MODE.
       !lowerInstruction.includes("yes") &&
       !lockedCampaignState?.phone_confirmed
     ) {
+      console.log("TRACE: ENTER META INTAKE FLOW");
+      console.log("TRACE: RETURNING RESPONSE — STAGE =", currentState?.stage);
       return res.status(200).json({
         ok: true,
         mode,
@@ -1243,10 +1267,12 @@ You are in GENERIC DIGITAL MARKETING AGENT MODE.
 
     // 2️⃣ If WhatsApp selected → ALWAYS confirm (unless already in state/confirmed)
     if (!isPlanProposed && selectedDestination === "whatsapp" && !lockedCampaignState?.whatsapp_confirmed) {
+      console.log("TRACE: ENTER META INTAKE FLOW");
       const suggestionText = detectedWhatsappNumber
         ? `\n\nI found this number on your Facebook Page:\n📱 ${detectedWhatsappNumber}`
         : "";
 
+      console.log("TRACE: RETURNING RESPONSE — STAGE =", currentState?.stage);
       return res.status(200).json({
         ok: true,
         mode,
@@ -1302,6 +1328,8 @@ You are in GENERIC DIGITAL MARKETING AGENT MODE.
       !landingPageConfirmed &&
       !lockedCampaignState?.landing_page_confirmed
     ) {
+      console.log("TRACE: ENTER META INTAKE FLOW");
+      console.log("TRACE: RETURNING RESPONSE — STAGE =", currentState?.stage);
       return res.status(200).json({
         ok: true,
         mode,
@@ -1340,6 +1368,8 @@ You are in GENERIC DIGITAL MARKETING AGENT MODE.
         } else if (lowerInstruction.length > 3 && !lowerInstruction.match(/^\d+$/)) {
           selectedService = instruction.trim();
         } else {
+          console.log("TRACE: ENTER META INTAKE FLOW");
+          console.log("TRACE: RETURNING RESPONSE — STAGE =", currentState?.stage);
           return res.status(200).json({
             ok: true, gated: true,
             text: "Which service do you want to promote?\n\n" +
@@ -1403,6 +1433,8 @@ You are in GENERIC DIGITAL MARKETING AGENT MODE.
       !lockedCampaignState?.location_confirmed
     ) {
       if (detectedLocation) {
+        console.log("TRACE: ENTER META INTAKE FLOW");
+        console.log("TRACE: RETURNING RESPONSE — STAGE =", currentState?.stage);
         return res.status(200).json({
           ok: true,
           gated: true,
@@ -1412,6 +1444,8 @@ You are in GENERIC DIGITAL MARKETING AGENT MODE.
             `Reply YES to confirm, or type a different city / area.`,
         });
       } else {
+        console.log("TRACE: ENTER META INTAKE FLOW");
+        console.log("TRACE: RETURNING RESPONSE — STAGE =", currentState?.stage);
         return res.status(200).json({
           ok: true,
           gated: true,
@@ -1541,6 +1575,8 @@ Please choose ONE option:
 4. All available
 `.trim();
 
+      console.log("TRACE: ENTER META INTAKE FLOW");
+      console.log("TRACE: RETURNING RESPONSE — STAGE =", currentState?.stage);
       return res.status(200).json({
         ok: true,
         mode,
@@ -1920,6 +1956,7 @@ Otherwise, respond with a full, clear explanation, and include example JSON only
         currentState = repairedState; // Keep alias in sync
 
         // 🛡️ PATCH 1: HARD STOP AT PLAN_PROPOSED (Regeneration path)
+        console.log("TRACE: RETURNING RESPONSE — STAGE =", currentState?.stage);
         return res.status(200).json({
           ok: true,
           mode,
@@ -1929,10 +1966,11 @@ Otherwise, respond with a full, clear explanation, and include example JSON only
 
       // 🛡️ PATCH 3: WATERFALL ENTRY RULE
       if (mode === "meta_ads_plan") {
-        console.log("TRACE: ENTER WATERFALL");
-        console.log("TRACE: STAGE (waterfall) =", lockedCampaignState?.stage);
+        console.log("TRACE: ENTER META WATERFALL");
+        console.log("TRACE: CURRENT STAGE =", currentState?.stage);
 
         if (!lockedCampaignState || (lockedCampaignState.stage !== "PLAN_CONFIRMED" && lockedCampaignState.stage !== "IMAGE_GENERATED" && lockedCampaignState.stage !== "READY_TO_LAUNCH")) {
+          console.log("TRACE: RETURNING RESPONSE — STAGE =", currentState?.stage);
           return res.status(200).json({
             ok: true,
             mode,
@@ -2020,6 +2058,7 @@ Otherwise, respond with a full, clear explanation, and include example JSON only
           console.log("TRACE: IMAGE UPLOAD ATTEMPT");
           console.log("TRACE: IMAGE HASH =", state.meta?.uploadedImageHash);
 
+          console.log("TRACE: UPLOADING IMAGE TO META");
           console.log("🚀 Waterfall: Uploading Image to Meta...");
           try {
             const uploadRes = await fetch(`${process.env.NEXT_PUBLIC_BASE_URL}/api/meta/upload-image`, {
@@ -2028,6 +2067,7 @@ Otherwise, respond with a full, clear explanation, and include example JSON only
               body: JSON.stringify({ imageBase64: state.creative.imageBase64 })
             });
             const uploadJson = await parseResponseSafe(uploadRes);
+            console.log("TRACE: IMAGE UPLOAD RESPONSE =", uploadJson);
             const iHash = uploadJson.imageHash || uploadJson.image_hash;
 
             if (uploadJson.ok && iHash) {
@@ -2214,6 +2254,7 @@ Otherwise, respond with a full, clear explanation, and include example JSON only
       }
 
       if (jsonString) {
+        console.log("TRACE: DIRECT JSON DETECTED — USER PROVIDED PLAN");
         try {
           let planJson = JSON.parse(jsonString);
 
@@ -2809,6 +2850,7 @@ Reply **YES** to confirm this plan and proceed.
         console.log("TRACE: PLAN OBJECT =", lockedCampaignState?.plan);
 
         // 🛡️ PATCH 1: HARD STOP AT PLAN_PROPOSED (Fallback path)
+        console.log("TRACE: RETURNING RESPONSE — STAGE =", currentState?.stage);
         return res.status(200).json({
           ok: true,
           mode,
@@ -2856,10 +2898,11 @@ Reply **YES** to confirm this plan and proceed.
 
         // 🛡️ PATCH 3: WATERFALL ENTRY RULE
         if (mode === "meta_ads_plan") {
-          console.log("TRACE: ENTER WATERFALL");
-          console.log("TRACE: STAGE (waterfall) =", lockedCampaignState?.stage);
+          console.log("TRACE: ENTER META WATERFALL");
+          console.log("TRACE: CURRENT STAGE =", currentState?.stage);
 
           if (!lockedCampaignState || (lockedCampaignState.stage !== "PLAN_CONFIRMED" && lockedCampaignState.stage !== "IMAGE_GENERATED" && lockedCampaignState.stage !== "READY_TO_LAUNCH")) {
+            console.log("TRACE: RETURNING RESPONSE — STAGE =", currentState?.stage);
             return res.status(200).json({
               ok: true,
               mode,
@@ -2875,6 +2918,7 @@ Reply **YES** to confirm this plan and proceed.
         // We allow "PLAN_PROPOSED" to be re-run, but once it moves to Gen/Upload/Launch, we lock it.
         if (isTooFast && (stage === "IMAGE_GENERATED" || stage === "READY_TO_LAUNCH" || stage === "EXECUTING")) {
           console.warn(`[IDEMPOTENCY] Blocked duplicate request for ${effectiveBusinessId} (Stage: ${stage})`);
+          console.log("TRACE: RETURNING RESPONSE — STAGE =", currentState?.stage);
           return res.status(200).json({ ok: true, mode, text: "I'm already working on that! One moment please..." });
         }
 
@@ -2913,6 +2957,7 @@ Reply **YES** to confirm this plan and proceed.
           console.log("TRACE: PLAN OBJECT =", repairedState.plan);
 
           // 🛡️ PATCH 1: HARD STOP AT PLAN_PROPOSED (Regeneration path - global)
+          console.log("TRACE: RETURNING RESPONSE — STAGE =", currentState?.stage);
           return res.status(200).json({
             ok: true,
             mode,
@@ -2985,9 +3030,7 @@ Reply **YES** to confirm this plan and proceed.
           const hasImageContent = currentState.creative && currentState.creative.imageBase64;
 
           if (hasImageContent && !isImageUploaded) {
-            console.log("TRACE: IMAGE UPLOAD ATTEMPT");
-            console.log("TRACE: IMAGE HASH =", currentState.meta?.uploadedImageHash);
-
+            console.log("TRACE: UPLOADING IMAGE TO META");
             console.log("🚀 Waterfall: Uploading Image to Meta...");
             try {
               const uploadRes = await fetch(`${process.env.NEXT_PUBLIC_BASE_URL}/api/meta/upload-image`, {
@@ -2996,6 +3039,7 @@ Reply **YES** to confirm this plan and proceed.
                 body: JSON.stringify({ imageBase64: currentState.creative.imageBase64 })
               });
               const uploadJson = await parseResponseSafe(uploadRes);
+              console.log("TRACE: IMAGE UPLOAD RESPONSE =", uploadJson);
               const iHash = uploadJson.imageHash || uploadJson.image_hash;
 
               if (uploadJson.ok && iHash) {
@@ -3072,6 +3116,7 @@ Reply **YES** to confirm this plan and proceed.
           if (isReady && (wantsLaunch || currentState.objective === "TRAFFIC")) {
             // 🛡️ PATCH 3: EXECUTION MUST REQUIRE READY_TO_LAUNCH
             if (currentState.stage !== "READY_TO_LAUNCH") {
+              console.log("TRACE: RETURNING RESPONSE — STAGE =", currentState?.stage);
               return res.json({
                 ok: true,
                 text: "Preparing campaign assets. Please wait a moment..."
@@ -3093,6 +3138,7 @@ Reply **YES** to confirm this plan and proceed.
                 }))
               };
 
+              console.log("TRACE: EXECUTING META CAMPAIGN");
               const execRes = await fetch(`${process.env.NEXT_PUBLIC_BASE_URL}/api/meta/execute-campaign`, {
                 method: "POST",
                 headers: { "Content-Type": "application/json", "x-client-email": __currentEmail || "" },
@@ -3104,6 +3150,8 @@ Reply **YES** to confirm this plan and proceed.
                 await saveAnswerMemory(process.env.NEXT_PUBLIC_BASE_URL, effectiveBusinessId, {
                   campaign_state: { stage: "COMPLETED", final_result: execJson }
                 });
+                currentState.stage = "COMPLETED"; // Explicit sync for log
+                console.log("TRACE: RETURNING RESPONSE — STAGE =", currentState?.stage);
                 return res.status(200).json({
                   ok: true,
                   text: `🎉 **Campaign Published Successfully!**\n\n**Pipeline Status**:\n${waterfallLog.join("\n")}\n✅ Step 12: Campaign Created (PAUSED)\n\n**Meta Details**:\n- **Campaign Name**: ${plan.campaign_name}\n- **Campaign ID**: \`${execJson.id || "N/A"}\`\n- **Ad Account ID**: \`${verifiedMetaAssets?.ad_account?.id || "N/A"}\`\n- **Status**: PAUSED\n\nYour campaign is now waiting in your Meta Ads Manager for final review.`
@@ -3157,6 +3205,7 @@ Reply **YES** to confirm this plan and proceed.
           feedbackText = `**Current Pipeline Progress**:\n${waterfallLog.join("\n") || "No steps completed in this turn."}\n\n(Debug: Stage=${currentState.stage}, Plan=${currentState.plan ? "Yes" : "No"})\n\nWaiting for your confirmation...`;
         }
 
+        console.log("TRACE: RETURNING RESPONSE — STAGE =", currentState?.stage);
         return res.status(200).json({ ok: true, text: feedbackText, imageUrl: currentState.creative?.imageUrl, mode });
 
       }
@@ -3164,6 +3213,7 @@ Reply **YES** to confirm this plan and proceed.
       // ===============================
       // 🧠 STEP-1 / STEP-2 NORMAL AGENT RESPONSE
       // ===============================
+      console.log("TRACE: RETURNING RESPONSE — STAGE =", currentState?.stage);
       return res.status(200).json({
         ok: true,
         text,
@@ -3174,6 +3224,7 @@ Reply **YES** to confirm this plan and proceed.
 
   } catch (err) {
     console.error("Agent execution error:", err);
+    console.log("TRACE: RETURNING RESPONSE — STAGE = ERROR");
     return res.status(500).json({
       ok: false,
       message: "Server error in /api/agent/execute",
@@ -3234,6 +3285,8 @@ async function generateMetaCampaignPlan({ lockedCampaignState, autoBusinessConte
 
 
 async function handleInstagramPostOnly(req, res, session, body) {
+  console.log("TRACE: ENTER INSTAGRAM MODE");
+  let currentState = null; // Default for returns
   const { instruction = "" } = body;
 
   // Resolve Meta connection (do NOT reuse Ads logic)
@@ -3287,6 +3340,7 @@ async function handleInstagramPostOnly(req, res, session, body) {
       session.user.email.toLowerCase()
     );
 
+    console.log("TRACE: RETURNING RESPONSE — STAGE =", currentState?.stage);
     return res.json({
       ok: true,
       text: `🎉 **Instagram Post Published Successfully!**\n\n- **Post ID**: \`${result.id}\``,
@@ -3322,6 +3376,7 @@ async function handleInstagramPostOnly(req, res, session, body) {
       await clearCreativeState(supabase, session.user.email.toLowerCase());
 
       // IMMEDIATELY return to prevent double-response
+      console.log("TRACE: RETURNING RESPONSE — STAGE =", currentState?.stage);
       return res.status(200).json({
         ok: true,
         mode: "instagram_post",
@@ -3334,6 +3389,7 @@ async function handleInstagramPostOnly(req, res, session, body) {
       // Clear state even on error to allow retry
       await clearCreativeState(supabase, session.user.email.toLowerCase());
 
+      console.log("TRACE: RETURNING RESPONSE — STAGE =", currentState?.stage);
       return res.status(200).json({
         ok: false,
         mode: "instagram_post",
@@ -3344,10 +3400,12 @@ async function handleInstagramPostOnly(req, res, session, body) {
 
   // 2️⃣ SECOND: RETURN PREVIEW OR QUESTIONS (NON-TERMINAL)
   if (creativeResult.response) {
+    console.log("TRACE: RETURNING RESPONSE — STAGE =", currentState?.stage);
     return res.json(creativeResult.response);
   }
 
   // 3️⃣ FALLBACK: Request more information (should rarely be reached)
+  console.log("TRACE: RETURNING RESPONSE — STAGE =", currentState?.stage);
   return res.json({
     ok: true,
     text: "I need a bit more information to create your Instagram post.",
