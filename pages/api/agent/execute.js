@@ -246,54 +246,57 @@ export default async function handler(req, res) {
     let lockedCampaignState = null;
 
     // 🔍 READ LOCKED CAMPAIGN STATE (AUTHORITATIVE — SINGLE SOURCE)
-    if (effectiveBusinessId) {
-      try {
-        const { data: memData } = await supabase
-          .from("agent_memory")
-          .select("content")
-          .eq("email", session.user.email.toLowerCase())
-          .eq("memory_type", "client")
-          .maybeSingle();
+    // 🛡️ PATCH: PREVENT INSTAGRAM MODE FROM READING META ADS MEMORY
+    if (body.mode !== "instagram_post") {
+      if (effectiveBusinessId) {
+        try {
+          const { data: memData } = await supabase
+            .from("agent_memory")
+            .select("content")
+            .eq("email", session.user.email.toLowerCase())
+            .eq("memory_type", "client")
+            .maybeSingle();
 
-        if (memData?.content) {
-          const content = JSON.parse(memData.content);
-          const answers = content.business_answers || {};
+          if (memData?.content) {
+            const content = JSON.parse(memData.content);
+            const answers = content.business_answers || {};
 
-          // 🛡️ MODIFIED ROBUST MULTI-KEY LOOKUP
-          // We search through all possible identity keys and pick the FIRST one that HAS a plan.
-          // This prevents picking up a "blank" state from a newly discovered business ID if a plan exists in "default_business".
-          const possibleKeys = [
-            effectiveBusinessId,
-            activeBusinessId,
-            metaRow?.fb_business_id,
-            metaRow?.fb_page_id,
-            metaRow?.ig_business_id,
-            "default_business"
-          ].filter(Boolean);
+            // 🛡️ MODIFIED ROBUST MULTI-KEY LOOKUP
+            // We search through all possible identity keys and pick the FIRST one that HAS a plan.
+            // This prevents picking up a "blank" state from a newly discovered business ID if a plan exists in "default_business".
+            const possibleKeys = [
+              effectiveBusinessId,
+              activeBusinessId,
+              metaRow?.fb_business_id,
+              metaRow?.fb_page_id,
+              metaRow?.ig_business_id,
+              "default_business"
+            ].filter(Boolean);
 
-          let bestMatch = null;
-          let sourceKey = null;
+            let bestMatch = null;
+            let sourceKey = null;
 
-          for (const key of possibleKeys) {
-            const state = answers[key]?.campaign_state;
-            if (state?.plan) {
-              bestMatch = state;
-              sourceKey = key;
-              break;
+            for (const key of possibleKeys) {
+              const state = answers[key]?.campaign_state;
+              if (state?.plan) {
+                bestMatch = state;
+                sourceKey = key;
+                break;
+              }
+              if (!bestMatch && state) {
+                bestMatch = state;
+                sourceKey = key;
+              }
             }
-            if (!bestMatch && state) {
-              bestMatch = state;
-              sourceKey = key;
+
+            lockedCampaignState = bestMatch;
+            if (lockedCampaignState) {
+              console.log(`✅ Loaded lockedCampaignState from key: ${sourceKey} ${lockedCampaignState.plan ? "(Plan FOUND)" : "(No Plan)"}`);
             }
           }
-
-          lockedCampaignState = bestMatch;
-          if (lockedCampaignState) {
-            console.log(`✅ Loaded lockedCampaignState from key: ${sourceKey} ${lockedCampaignState.plan ? "(Plan FOUND)" : "(No Plan)"}`);
-          }
+        } catch (e) {
+          console.warn("Campaign state read failed early:", e.message);
         }
-      } catch (e) {
-        console.warn("Campaign state read failed early:", e.message);
       }
     }
 
@@ -341,26 +344,31 @@ export default async function handler(req, res) {
     // Step 4: User override (ONLY if explicitly mentioned)
     const instructionText = (body.instruction || "").toLowerCase();
 
-    if (instructionText.includes("only instagram")) {
-      if (!hasInstagram) {
-        return res.status(200).json({
-          ok: false,
-          message:
-            "Instagram is not connected. Please connect your Instagram Business account or run ads on Facebook.",
-        });
+    // 🛡️ PATCH: PLATFORM OVERRIDE GUARD
+    // Only allow manual platform selection in Instagram Post mode.
+    // Meta Ads mode must determine platforms based on connected assets and campaign rules.
+    if (body.mode === "instagram_post") {
+      if (instructionText.includes("only instagram")) {
+        if (!hasInstagram) {
+          return res.status(200).json({
+            ok: false,
+            message:
+              "Instagram is not connected. Please connect your Instagram Business account or run ads on Facebook.",
+          });
+        }
+        resolvedPlatforms = ["instagram"];
       }
-      resolvedPlatforms = ["instagram"];
-    }
 
-    if (instructionText.includes("only facebook")) {
-      if (!hasFacebook) {
-        return res.status(200).json({
-          ok: false,
-          message:
-            "Facebook Page is not connected. Please connect your Facebook Page or run ads on Instagram.",
-        });
+      if (instructionText.includes("only facebook")) {
+        if (!hasFacebook) {
+          return res.status(200).json({
+            ok: false,
+            message:
+              "Facebook Page is not connected. Please connect your Facebook Page or run ads on Instagram.",
+          });
+        }
+        resolvedPlatforms = ["facebook"];
       }
-      resolvedPlatforms = ["facebook"];
     }
 
     // ============================================================
@@ -559,21 +567,10 @@ export default async function handler(req, res) {
     } = body;
     let mode = body.mode || "generic";
 
-    // 🔒 CRITICAL: FORCE MODE FROM LOCKED STATE (MUST BE FIRST)
-    // If a lockedCampaignState exists → mode MUST be meta_ads_plan
-    // This runs BEFORE any Gemini calls or waterfalls to ensure correct mode context
-    if (lockedCampaignState) {
-      mode = "meta_ads_plan";
-      console.log("🔒 MODE FORCED: meta_ads_plan (locked campaign state exists)");
-    }
-    // 🔁 AUTO-ROUTE TO META MODE (fallback for new campaigns)
-    else if (
-      (mode === "generic" || mode === "strategy") &&
-      instruction &&
-      /(meta|facebook|instagram|fb|ig)/i.test(instruction)
-    ) {
-      mode = "meta_ads_plan";
-    }
+    // 🔒 [PATCHED] FORCED MODE LOGIC REMOVED
+    // We strictly respect body.mode. We do NOT force meta_ads_plan anymore.
+    // If lockedCampaignState exists, it will be used ONLY if we are naturally in meta_ads_plan mode.
+
 
     if (!instruction || typeof instruction !== "string") {
       return res.status(400).json({
@@ -3039,9 +3036,19 @@ Reply **YES** to generate this image and launch the campaign.
         if (errorOcurred) {
           feedbackText = `❌ **Automation Interrupted**:\n\n**Error**: ${stopReason}\n\n**Pipeline Progress**:\n${waterfallLog.join("\n")}\n\nI've saved the progress so far. Please check the error above and reply to try again.`;
         } else if (currentState.stage === "IMAGE_GENERATED") {
-          feedbackText = `✅ **Image Generated Successfully**\n\n[Image Generated]\n\n**Next Steps**:\n1. Upload image to Meta Assets\n2. Create paused campaign on Facebook/Instagram\n\nReply **LAUNCH** to complete these steps automatically.`;
+          // 🛡️ PATCH: Verify Image actually exists
+          if (currentState.creative?.imageBase64 || currentState.creative?.imageUrl) {
+            feedbackText = `✅ **Image Generated Successfully**\n\n[Image Generated]\n\n**Next Steps**:\n1. Upload image to Meta Assets\n2. Create paused campaign on Facebook/Instagram\n\nReply **LAUNCH** to complete these steps automatically.`;
+          } else {
+            feedbackText = `❌ **Image Generation Failed**\n\nThe image could not be generated. Please try again.`;
+          }
         } else if (currentState.stage === "READY_TO_LAUNCH") {
-          feedbackText = `✅ **Image Uploaded & Ready**\n\nEverything is set for campaign launch.\n\n**Details**:\n- Campaign: ${currentState.plan.campaign_name}\n- Budget: ${currentState.plan.budget?.amount || "500"} INR\n\nReply **LAUNCH** to publish the campaign to Meta.`;
+          // 🛡️ PATCH: Verify Hash actually exists
+          if (currentState.creative?.imageHash) {
+            feedbackText = `✅ **Image Uploaded & Ready**\n\nEverything is set for campaign launch.\n\n**Details**:\n- Campaign: ${currentState.plan.campaign_name}\n- Budget: ${currentState.plan.budget?.amount || "500"} INR\n\nReply **LAUNCH** to publish the campaign to Meta.`;
+          } else {
+            feedbackText = `❌ **Image Upload Failed**\n\nThe image was generated but could not be uploaded to Meta. Please check your connection and try again.`;
+          }
         } else {
           feedbackText = `**Current Pipeline Progress**:\n${waterfallLog.join("\n") || "No steps completed in this turn."}\n\n(Debug: Stage=${currentState.stage}, Plan=${currentState.plan ? "Yes" : "No"})\n\nWaiting for your confirmation...`;
         }
