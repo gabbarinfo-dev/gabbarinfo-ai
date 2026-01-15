@@ -9,6 +9,11 @@ import { normalizeImageUrl } from "../../../lib/normalize-image-url";
 import { creativeEntry } from "../../../lib/instagram/creative-entry";
 import { clearCreativeState } from "../../../lib/instagram/creative-memory";
 
+const Messages = {
+  META_EXECUTION_FAILED: "Meta Execution Failed",
+};
+
+
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL,
   process.env.SUPABASE_SERVICE_ROLE_KEY
@@ -101,6 +106,18 @@ async function saveAnswerMemory(baseUrl, business_id, answers, emailOverride = n
   } catch (err) {
     console.error("❌ saveAnswerMemory Fatal Error:", err.message);
   }
+}
+
+function isMetaPlanComplete(plan) {
+  return !!(
+    plan &&
+    plan.campaign_name &&
+    plan.objective &&
+    plan.performance_goal &&
+    plan.ad_sets?.[0]?.ad_creative?.destination_url &&
+    plan.ad_sets?.[0]?.ad_creative?.headline &&
+    plan.ad_sets?.[0]?.ad_creative?.primary_text
+  );
 }
 
 export default async function handler(req, res) {
@@ -308,7 +325,9 @@ export default async function handler(req, res) {
     }
 
     // 🔒 CRITICAL: FLAG FOR BYPASSING INTERACTIVE GATES
-    const isPlanProposed = lockedCampaignState?.stage === "PLAN_PROPOSED" && lockedCampaignState?.plan;
+    const isPlanProposed =
+      lockedCampaignState?.stage === "PLAN_PROPOSED" &&
+      isMetaPlanComplete(lockedCampaignState?.plan);
     console.log("📍 isPlanProposed:", isPlanProposed);
     // ============================================================
     // 📣 PLATFORM RESOLUTION (FACEBOOK / INSTAGRAM) — SOURCE OF TRUTH
