@@ -1131,9 +1131,20 @@ You are in GENERIC DIGITAL MARKETING AGENT MODE.
     // 🎯 META OBJECTIVE PARSING (USER SELECTION / HIERARCHY)
     // ============================================================
 
-    let selectedMetaObjective = lockedCampaignState?.objective || null;
-    let selectedDestination = lockedCampaignState?.destination || null;
-    let selectedPerformanceGoal = lockedCampaignState?.performance_goal || null;
+    let selectedMetaObjective = null;
+    let selectedDestination = null;
+    let selectedPerformanceGoal = null;
+
+    if (lockedCampaignState) {
+      const stage = lockedCampaignState.stage;
+      const isCompletedCycle =
+        stage === "COMPLETED" || stage === "READY_TO_LAUNCH";
+      if (!isCompletedCycle) {
+        selectedMetaObjective = lockedCampaignState.objective || null;
+        selectedDestination = lockedCampaignState.destination || null;
+        selectedPerformanceGoal = lockedCampaignState.performance_goal || null;
+      }
+    }
 
     // 🧑‍💬 Interactive Sequence: Objective -> Destination -> Goal
 
@@ -2413,7 +2424,7 @@ Otherwise, respond with a full, clear explanation, and include example JSON only
           errorOcurred = true;
           stopReason = `Image Generation Error: ${e.message}`;
         }
-      } else {
+      } else if (isImageGenerated) {
         console.log("TRACE: PIPELINE STEP REPORT");
         console.log("TRACE: STAGE (pipeline) =", state.stage);
         console.log("TRACE: IMAGE EXISTS =", !!state.creative);
@@ -2587,13 +2598,10 @@ Otherwise, respond with a full, clear explanation, and include example JSON only
 
     // 🧹 CLEANUP: If Gemini outputs JSON, hide it from the user flow (User complaint: "Jumps to JSON").
     // We only want to show the JSON *Summary* text if passing a proposed plan.
-    /*
-    if (activeBusinessId && text.includes("```json")) {
-      // We will strip the JSON block for the display text
+    if (mode === "meta_ads_plan" && text.includes("```json")) {
       text = text.replace(/```json[\s\S]*?```/g, "").trim();
       if (!text) text = "I have drafted a plan based on your requirements. Please check it internally.";
     }
-    */
 
     // 🕵️ DETECT AND SAVE JSON PLAN (FROM GEMINI)
     // Supports: ```json ... ```, ``` ... ```, or plain JSON starting with {
@@ -3099,6 +3107,8 @@ Otherwise, respond with a full, clear explanation, and include example JSON only
 
             text = `
 **Plan Proposed: ${planJson.campaign_name}**
+
+**Ad Account ID**: \`${verifiedMetaAssets?.ad_account?.id || "N/A"}\`
 
 **Targeting**: ${planJson.targeting?.geo_locations?.countries?.join(", ") || "India"} (${planJson.targeting?.age_min || 18}-${planJson.targeting?.age_max || 65}+)${tStr}
 **Budget**: ${bAmount} ${bCurrency} (${bType})
