@@ -2125,8 +2125,14 @@ Please choose ONE option:
     // 🔒 INJECT LOCKED CAMPAIGN STATE INTO GEMINI CONTEXT (AUTHORITATIVE)
     // ============================================================
 
-    const lockedContext = lockedCampaignState
-      ? `
+    let lockedContext = "";
+
+    if (mode === "meta_ads_plan" && lockedCampaignState) {
+      const stage = lockedCampaignState.stage;
+      const isCompletedCycle =
+        stage === "COMPLETED" || stage === "READY_TO_LAUNCH";
+      if (!isCompletedCycle) {
+        lockedContext = `
 LOCKED CAMPAIGN STATE (DO NOT CHANGE OR RE-ASK):
 - Objective: ${lockedCampaignState.objective || "N/A"} (Auction)
 - Conversion Location: ${lockedCampaignState.destination || "N/A"}
@@ -2141,8 +2147,9 @@ RULES:
 - You MUST use these as FINAL.
 - All campaigns are created as **PAUSED** (Off) by default.
 - Only suggest: budget, targeting, creatives, duration.
-`
-      : "";
+`;
+      }
+    }
 
     const systemPrompt = `
 You are GabbarInfo AI – a senior digital marketing strategist and backend AGENT.
