@@ -2224,9 +2224,640 @@ Otherwise, respond with a full, clear explanation, and include example JSON only
     }
     */
 
+    // 🕵️ DETECT AND SAVE JSON PLAN (FROM GEMINI)
+    // Supports: ```json ... ```, ``` ... ```, or plain JSON starting with {
+    if (effectiveBusinessId) {
+      let jsonString = null;
 
+      // 1. Try code blocks
+      const strictMatch = rawText.match(/```(?:json)?\s*([\s\S]*?)\s*```/);
+      if (strictMatch) {
+        jsonString = strictMatch[1];
+      } else {
+        // 2. Try finding the outermost JSON object (Robust Fallback)
+        // Look for the first '{' and the last '}'
+        const start = rawText.indexOf('{');
+        const end = rawText.lastIndexOf('}');
+        if (start !== -1 && end !== -1 && end > start) {
+          // Verify it looks like our JSON (has campaign_name or EXECUTE or campaign OR objective)
+          const candidate = rawText.substring(start, end + 1);
+          if (
+            candidate.includes("campaign") ||
+            candidate.includes("objective") ||
+            candidate.includes("EXECUTE") ||
+            candidate.includes("ad_sets") ||
+            candidate.includes("budget")
+          ) {
+            jsonString = candidate;
+          }
+        }
+      }
 
+      if (jsonString) {
+        console.log("TRACE: DIRECT JSON DETECTED — USER PROVIDED PLAN");
+        try {
+          let planJson = JSON.parse(jsonString);
 
+          // 🔄 NORMALIZE JSON: If Gemini gave the "Nested" structure, flatten it to our Standard Schema
+          if (planJson.campaign_data) {
+            console.log("🔄 Normalizing Gemini Nested JSON Plan...");
+            const d = planJson.campaign_data;
+            const s = d.campaign_settings || {};
+            const t = d.targeting_plan || {};
+            const c = d.creative_plan?.[0] || {};
+
+            planJson = {
+              campaign_name: s.campaign_name || "New Campaign",
+              objective: (s.objective && (s.objective.includes("LEAD") || s.objective.includes("PROSPECT"))) ? "OUTCOME_LEADS" : (s.objective?.includes("SALE") || s.objective?.includes("CONVERSION") ? "OUTCOME_SALES" : "OUTCOME_TRAFFIC"),
+              performance_goal: s.performance_goal || d.performance_goal || lockedCampaignState?.performance_goal || "MAXIMIZE_LINK_CLICKS",
+              budget: {
+                amount: s.daily_budget_inr || s.budget?.amount || 500,
+                currency: "INR",
+                type: "DAILY"
+              },
+              targeting: {
+                geo_locations: { countries: ["IN"], cities: t.locations?.map(l => ({ name: l })) || [] },
+                age_min: parseInt(t.age_range?.split("-")[0]) || 18,
+                age_max: parseInt(t.age_range?.split("-")[1]) || 65,
+                targeting_suggestions: t.targeting_suggestions || {}
+              },
+              ad_sets: [
+                {
+                  name: c.creative_set_name || "Ad Set 1",
+                  status: "PAUSED",
+                  ad_creative: {
+                    imagePrompt: c.image_prompt || c.image_generation_prompt || c.imagePrompt || "Ad Image",
+                    primary_text: c.primary_text || "",
+                    headline: c.headline || "",
+                    call_to_action: s.call_to_action || "LEARN_MORE",
+                    destination_url: s.destination_url || "https://gabbarinfo.com"
+                  }
+                }
+              ]
+            };
+          }
+
+          // 🔄 NORMALIZE JSON: Variation 2 (Step/Details structure)
+          if (planJson.campaign_details) {
+            console.log("🔄 Normalizing Gemini JSON Variation 2...");
+            const d = planJson.campaign_details;
+            const ads = Array.isArray(planJson.ad_sets) ? planJson.ad_sets[0] : (planJson.ad_sets || {});
+            const c = ads.ad_creative || ads.creative || {};
+
+            planJson = {
+              campaign_name: d.name || "New Campaign",
+              objective: (d.objective && (d.objective.includes("LEAD") || d.objective.includes("PROSPECT"))) ? "OUTCOME_LEADS" : (d.objective?.includes("SALE") || d.objective?.includes("CONVERSION") ? "OUTCOME_SALES" : "OUTCOME_TRAFFIC"),
+              performance_goal: d.performance_goal || ads.performance_goal || lockedCampaignState?.performance_goal || "MAXIMIZE_LINK_CLICKS",
+              budget: {
+                amount: d.budget_daily_inr || ads.daily_budget?.amount || 500,
+                currency: "INR",
+                type: "DAILY"
+              },
+              targeting: {
+                geo_locations: {
+                  countries: d.targeting?.location === "India" ? ["IN"] : ["IN"],
+                  cities: []
+                },
+                age_min: d.targeting?.age_min || 18,
+                age_max: d.targeting?.age_max || 65
+              },
+              ad_sets: [
+                {
+                  name: ads.name || "Ad Set 1",
+                  status: "PAUSED",
+                  ad_creative: {
+                    imagePrompt: c.image_prompt || c.image_generation_prompt || c.imagePrompt || "Ad Image",
+                    primary_text: c.primary_text || "",
+                    headline: c.headline || "",
+                    call_to_action: c.call_to_action || "LEARN_MORE",
+                    destination_url: d.destination || c.landing_page || "https://gabbarinfo.com"
+                  }
+                }
+              ]
+            };
+          }
+
+          // 🔄 NORMALIZE JSON: Variation 3 (EXECUTE: true structure)
+          if (planJson.EXECUTE && planJson.campaign_plan) {
+            console.log("🔄 Normalizing Gemini JSON Variation 3 (EXECUTE: true)...");
+            const cp = planJson.campaign_plan;
+            const d = cp.details || cp;
+            const ads = Array.isArray(cp.ad_sets) ? cp.ad_sets[0] : (cp.ad_sets || {});
+            const c = ads.ad_creative || ads.creative || {};
+
+            planJson = {
+              campaign_name: d.name || d.campaign_name || "New Campaign",
+              objective: (d.objective && (d.objective.includes("LEAD") || d.objective.includes("PROSPECT"))) ? "OUTCOME_LEADS" : (d.objective?.includes("SALE") || d.objective?.includes("CONVERSION") ? "OUTCOME_SALES" : "OUTCOME_TRAFFIC"),
+              performance_goal: d.performance_goal || ads.performance_goal || lockedCampaignState?.performance_goal || "MAXIMIZE_LINK_CLICKS",
+              budget: {
+                amount: d.budget_daily_inr || d.budget?.amount || 500,
+                currency: "INR",
+                type: "DAILY"
+              },
+              targeting: {
+                geo_locations: {
+                  countries: d.targeting?.location === "India" ? ["IN"] : ["IN"],
+                  cities: []
+                },
+                age_min: d.targeting?.age_min || 18,
+                age_max: d.targeting?.age_max || 65
+              },
+              ad_sets: [
+                {
+                  name: ads.name || "Ad Set 1",
+                  status: "PAUSED",
+                  ad_creative: {
+                    imagePrompt: c.image_prompt || c.image_generation_prompt || c.imagePrompt || "Ad Image",
+                    primary_text: c.primary_text || "",
+                    headline: c.headline || "",
+                    call_to_action: c.call_to_action || "LEARN_MORE",
+                    destination_url: d.destination || c.landing_page || "https://gabbarinfo.com"
+                  }
+                }
+              ]
+            };
+          }
+
+          // 🔄 NORMALIZE JSON: Variation 5 (campaigns array structure)
+          if (planJson.campaigns && Array.isArray(planJson.campaigns)) {
+            console.log("🔄 Normalizing Gemini JSON Variation 5 (campaigns array)...");
+            const c = planJson.campaigns[0];
+            const adSet = c.adSets?.[0] || {};
+            const creative = adSet.adCreatives?.[0]?.creative || {};
+            const tgt = adSet.targeting || {};
+
+            // Map Objective
+            let rawObj = c.objective || "OUTCOME_TRAFFIC";
+            let objective = (rawObj.includes("LEAD") || rawObj.includes("PROSPECT")) ? "OUTCOME_LEADS" : (rawObj.includes("SALE") || rawObj.includes("CONVERSION") ? "OUTCOME_SALES" : "OUTCOME_TRAFFIC");
+
+            planJson = {
+              campaign_name: c.name || "New Campaign",
+              objective: objective,
+              performance_goal: c.performance_goal || adSet.performance_goal || lockedCampaignState?.performance_goal || "MAXIMIZE_LINK_CLICKS",
+              budget: {
+                amount: adSet.daily_budget || 500,
+                currency: adSet.currency || "INR",
+                type: "DAILY"
+              },
+              targeting: {
+                geo_locations: {
+                  countries: ["IN"],
+                  cities: tgt.geo_locations?.cities?.map(city => ({ name: city.name })) || []
+                },
+                age_min: tgt.age_min || 18,
+                age_max: tgt.age_max || 65
+              },
+              ad_sets: [
+                {
+                  name: adSet.name || "Ad Set 1",
+                  status: c.status || "PAUSED",
+                  ad_creative: {
+                    imagePrompt: creative.image_prompt || creative.imagePrompt || "Ad Image",
+                    primary_text: creative.primaryText_options?.[0] || "",
+                    headline: creative.headline_options?.[0] || "",
+                    call_to_action: creative.call_to_action || "LEARN_MORE",
+                    destination_url: creative.destination_url || "https://gabbarinfo.com"
+                  }
+                }
+              ]
+            };
+          }
+
+          // 🔄 NORMALIZE JSON: Variation 8 (User Reported meta_campaign_plan)
+          if (planJson.meta_campaign_plan || planJson.campaign_creation_flow_step) {
+            console.log("🔄 Normalizing reported Meta Campaign Plan structure...");
+            const mcp = planJson.meta_campaign_plan || {};
+            const adSetInput = mcp.ad_set || {};
+            const creativeInput = mcp.creative || {};
+            const tgt = adSetInput.targeting || {};
+            const budget = mcp.budget || {};
+
+            planJson = {
+              campaign_name: mcp.campaign_name || "New Campaign",
+              objective: (mcp.campaign_objective === "TRAFFIC" || (mcp.campaign_objective && mcp.campaign_objective.includes("CLICK"))) ? "OUTCOME_TRAFFIC" : (mcp.campaign_objective || "OUTCOME_TRAFFIC"),
+              performance_goal: adSetInput.performance_goal || "MAXIMIZE_LINK_CLICKS",
+              budget: {
+                amount: budget.amount || 500,
+                currency: budget.currency || "INR",
+                type: budget.type || "DAILY"
+              },
+              targeting: {
+                geo_locations: {
+                  countries: ["IN"],
+                  cities: tgt.geo_locations?.map(c => {
+                    if (typeof c === "string") {
+                      const parts = c.split(",");
+                      return { name: parts[0].trim() };
+                    }
+                    return null;
+                  }).filter(Boolean) || []
+                },
+                age_min: parseInt(tgt.age_range?.split("-")[0]) || 18,
+                age_max: parseInt(tgt.age_range?.split("-")[1]?.replace("+", "")) || 65,
+                targeting_suggestions: {
+                  interests: tgt.detailed_targeting_suggestions || []
+                }
+              },
+              ad_sets: [
+                {
+                  name: "Ad Set 1",
+                  status: "PAUSED",
+                  ad_creative: {
+                    imagePrompt: creativeInput.imagePrompt || creativeInput.image_prompt || "Ad Image",
+                    primary_text: creativeInput.primary_text || "",
+                    headline: creativeInput.headline || "",
+                    call_to_action: creativeInput.call_to_action || "LEARN_MORE",
+                    destination_url: creativeInput.destination_url || "https://gabbarinfo.com"
+                  }
+                }
+              ]
+            };
+          }
+
+          // 🔄 NORMALIZE JSON: Variation 6 (campaign + adSets + ads structure)
+          if (planJson.campaign && planJson.adSets && Array.isArray(planJson.adSets)) {
+            console.log("🔄 Normalizing Gemini JSON Variation 6 (campaign/adSets/ads)...");
+            const c = planJson.campaign;
+            const adSet = planJson.adSets[0] || {};
+            // Try to find creative in ads array or adSet
+            let creative = {};
+            if (planJson.ads && Array.isArray(planJson.ads)) {
+              creative = planJson.ads[0]?.creative_spec || planJson.ads[0]?.creative || {};
+            }
+
+            // Map Objective
+            let rawObj = c.objective || "OUTCOME_TRAFFIC";
+            let objective = (rawObj.includes("LEAD") || rawObj.includes("PROSPECT")) ? "OUTCOME_LEADS" : (rawObj.includes("SALE") || rawObj.includes("CONVERSION") ? "OUTCOME_SALES" : "OUTCOME_TRAFFIC");
+
+            // Map Budget
+            const budgetAmount = adSet.daily_budget || c.budget?.amount || 500;
+
+            // Map Targeting
+            const geo = adSet.targeting?.geo_locations || {};
+            const countries = ["IN"]; // Default
+            const cities = [];
+            if (geo.cities) {
+              geo.cities.forEach(city => {
+                if (typeof city === "string") cities.push({ name: city });
+                else if (city.name) cities.push({ name: city.name });
+              });
+            }
+
+            // Map Creative Assets
+            const assets = creative.assets || {};
+            const primaryText = Array.isArray(assets.primaryTextVariations) ? assets.primaryTextVariations[0] : (assets.primaryText || "");
+            const headline = Array.isArray(assets.headlines) ? assets.headlines[0] : (assets.headline || "");
+
+            planJson = {
+              campaign_name: c.name || "New Campaign",
+              objective: objective,
+              performance_goal: c.performance_goal || adSet.performance_goal || lockedCampaignState?.performance_goal || "MAXIMIZE_LINK_CLICKS",
+              budget: {
+                amount: budgetAmount,
+                currency: adSet.currency || "INR",
+                type: "DAILY"
+              },
+              targeting: {
+                geo_locations: {
+                  countries: countries,
+                  cities: cities
+                },
+                age_min: adSet.targeting?.age_min || 18,
+                age_max: adSet.targeting?.age_max || 65
+              },
+              ad_sets: [
+                {
+                  name: adSet.name || "Ad Set 1",
+                  status: c.status || "PAUSED",
+                  ad_creative: {
+                    imagePrompt: assets.imagePrompt || "Ad Image",
+                    primary_text: primaryText,
+                    headline: headline,
+                    call_to_action: creative.call_to_action_type || "LEARN_MORE",
+                    destination_url: creative.link_url || "https://gabbarinfo.com"
+                  }
+                }
+              ]
+            };
+          }
+
+          // 🔄 NORMALIZE JSON: Variation 7 (Step 8 Flow - "campaign_plan" object)
+          if (planJson.campaign_plan || (planJson.step === 8)) {
+            console.log("🔄 Normalizing Gemini JSON Variation 7 (Campaign Plan / Step 8)...");
+
+            const cp = planJson.campaign_plan || planJson;
+            const adSetsStr = planJson.ad_set_strategy || planJson.ad_sets || [];
+            const creativesStr = planJson.creative_strategy || planJson.ad_creatives || [];
+
+            // Extract first items
+            const adSetItem = Array.isArray(adSetsStr) ? adSetsStr[0] : (adSetsStr || {});
+            const creativeItem = Array.isArray(creativesStr) ? creativesStr[0] : (creativesStr || {});
+
+            const cName = cp.campaign_name || "New Campaign";
+            // Map Objective
+            let obj = cp.objective || "OUTCOME_TRAFFIC";
+            if (obj.includes("LINK") || obj.includes("TRAFFIC")) obj = "OUTCOME_TRAFFIC";
+            else if (obj.includes("LEAD")) obj = "OUTCOME_LEADS";
+            else obj = "OUTCOME_TRAFFIC";
+
+            const budgetAmount = cp.budget_daily_inr || cp.budget?.amount || 500;
+
+            // Map Location
+            const geo = adSetItem.geo_targeting || {};
+            const cities = Array.isArray(geo.cities)
+              ? geo.cities.map(c => ({ name: c }))
+              : (geo.cities ? [{ name: geo.cities }] : [{ name: "India" }]);
+
+            planJson = {
+              campaign_name: cName,
+              objective: obj,
+              performance_goal: cp.performance_goal || adSetItem.performance_goal || lockedCampaignState?.performance_goal || "MAXIMIZE_LINK_CLICKS",
+              budget: {
+                amount: budgetAmount,
+                currency: "INR",
+                type: "DAILY"
+              },
+              targeting: {
+                geo_locations: {
+                  countries: ["IN"],
+                  cities: cities
+                },
+                age_min: 18,
+                age_max: 65
+              },
+              ad_sets: [
+                {
+                  name: adSetItem.ad_set_name || "Ad Set 1",
+                  status: "PAUSED",
+                  ad_creative: {
+                    imagePrompt: creativeItem.image_prompt || "Ad Image",
+                    primary_text: creativeItem.primary_text || "",
+                    headline: creativeItem.headline || "",
+                    call_to_action: creativeItem.call_to_action || "LEARN_MORE",
+                    destination_url: creativeItem.destination_url || "https://gabbarinfo.com"
+                  }
+                }
+              ]
+            };
+          }
+
+          // 🔄 NORMALIZE JSON: Variation 4 (Flat META plan shape)
+          if (!planJson.campaign_name && (planJson.name || planJson.objective || planJson.ad_creative)) {
+            const d = planJson;
+            const tgt = d.targeting || {};
+            const dest = d.destination || {};
+            const cr = d.ad_creative || {};
+            const urlCandidate = (dest.url || cr.landing_page || "https://gabbarinfo.com").toString();
+            const cleanUrl = urlCandidate.replace(/[`]/g, "").trim();
+            const cities = Array.isArray(tgt.geo_locations)
+              ? tgt.geo_locations.map((g) => (g.location_name ? { name: g.location_name } : null)).filter(Boolean)
+              : [];
+            planJson = {
+              campaign_name: d.name || "New Campaign",
+              objective: (d.objective && (d.objective.includes("CLICK") || d.objective.includes("TRAFFIC"))) ? "OUTCOME_TRAFFIC" : (d.objective?.includes("LEAD") ? "OUTCOME_LEADS" : (d.objective || "OUTCOME_TRAFFIC")),
+              performance_goal: d.performance_goal || cr.performance_goal || lockedCampaignState?.performance_goal || "MAXIMIZE_LINK_CLICKS",
+              budget: {
+                amount: d.budget?.daily_budget_inr || d.budget_daily_inr || 500,
+                currency: "INR",
+                type: "DAILY"
+              },
+              targeting: {
+                geo_locations: { countries: ["IN"], cities },
+                age_min: 18,
+                age_max: 65
+              },
+              ad_sets: [
+                {
+                  name: "Ad Set 1",
+                  status: "PAUSED",
+                  ad_creative: {
+                    imagePrompt: cr.image_prompt || "Ad Image",
+                    primary_text: cr.primary_text || "",
+                    headline: cr.headline || "",
+                    call_to_action: dest.call_to_action || cr.call_to_action || "LEARN_MORE",
+                    destination_url: cleanUrl || "https://gabbarinfo.com"
+                  }
+                }
+              ]
+            };
+          }
+
+          // Basic validation (is it a campaign plan?)
+          if (planJson.campaign_name && planJson.ad_sets) {
+
+            // 🛡️ SECURITY: Enforce strict Objective & Optimization Mapping (User Golden Rule)
+            // Rule: Objective = Campaign Level (OUTCOME_TRAFFIC), Performance Goal = Ad Set Level (LINK_CLICKS)
+            const rawObj = (planJson.objective || "").toString().toUpperCase();
+            let cleanObjective = "OUTCOME_TRAFFIC"; // Default
+
+            if (rawObj.includes("LEAD") || rawObj.includes("PROSPECT")) cleanObjective = "OUTCOME_LEADS";
+            else if (rawObj.includes("SALE") || rawObj.includes("CONVERSION")) cleanObjective = "OUTCOME_SALES";
+            else if (rawObj.includes("AWARENESS") || rawObj.includes("REACH")) cleanObjective = "OUTCOME_AWARENESS";
+            else if (rawObj.includes("ENGAGE")) cleanObjective = "OUTCOME_ENGAGEMENT";
+            else if (rawObj.includes("APP")) cleanObjective = "OUTCOME_APP_PROMOTION";
+            // Else default to OUTCOME_TRAFFIC (catches "LINK_CLICKS", "TRAFFIC", etc.)
+
+            console.log(`🛡️ Sanitized Objective: ${planJson.objective} -> ${cleanObjective}`);
+            planJson.objective = cleanObjective;
+
+            // Ensure Ad Sets have correct structure
+            planJson.ad_sets = planJson.ad_sets.map(adset => {
+              // Map Performance Goal -> Optimization Goal
+              const perfGoal = (planJson.performance_goal || adset.performance_goal || "LINK_CLICKS").toString().toUpperCase();
+              let optGoal = "LINK_CLICKS";
+
+              if (cleanObjective === "OUTCOME_TRAFFIC") {
+                optGoal = perfGoal.includes("LANDING") ? "LANDING_PAGE_VIEWS" : "LINK_CLICKS";
+              } else if (cleanObjective === "OUTCOME_LEADS") {
+                optGoal = "LEADS"; // Simplified
+              } else if (cleanObjective === "OUTCOME_SALES") {
+                optGoal = "CONVERSIONS"; // Simplified
+              }
+
+              return {
+                ...adset,
+                optimization_goal: adset.optimization_goal || optGoal,
+                destination_type: adset.destination_type || "WEBSITE", // Default to Website
+                billing_event: "IMPRESSIONS" // Safe default
+              };
+            });
+
+            const newState = {
+              ...lockedCampaignState, // Preserve verified assets
+              stage: "PLAN_PROPOSED",
+              plan: planJson,
+              // Objective/Dest might be redundant if in lockedCampaignState, but safe to keep
+              objective: lockedCampaignState?.objective || selectedMetaObjective,
+              destination: lockedCampaignState?.destination || selectedDestination,
+              // 🔒 FIX: Sync plan details to state to prevent re-gating
+              service: lockedCampaignState?.service || planJson.campaign_name || "Digital Marketing",
+              location: lockedCampaignState?.location || (planJson.targeting?.geo_locations?.cities?.[0]?.name) || "India",
+              landing_page: lockedCampaignState?.landing_page || planJson.ad_sets?.[0]?.ad_creative?.destination_url,
+              landing_page_confirmed: true,
+              location_confirmed: true,
+              service_confirmed: true,
+              auto_run: false,
+              locked_at: new Date().toISOString()
+            };
+            const baseUrl = process.env.NEXT_PUBLIC_BASE_URL;
+            console.log("💾 Saving Proposed Plan to Agent Memory...");
+            await saveAnswerMemory(baseUrl, effectiveBusinessId, {
+              campaign_state: newState
+            }, session.user.email.toLowerCase());
+
+            lockedCampaignState = newState;
+            console.log("✅ Saved Proposed Plan to State");
+
+            console.log("TRACE: PLAN PROPOSED");
+            console.log("TRACE: STAGE (plan) =", lockedCampaignState?.stage);
+            console.log("TRACE: PLAN OBJECT =", lockedCampaignState?.plan);
+
+            // 📝 Overwrite the response text with a clean summary
+            const creative = planJson.ad_sets?.[0]?.ad_creative || planJson.ad_sets?.[0]?.ads?.[0]?.creative || {};
+            // Handle Budget Variance (Object vs Flat)
+            const bAmount = planJson.budget?.amount || planJson.budget_value || "N/A";
+            const bCurrency = planJson.budget?.currency || "INR";
+            const bType = planJson.budget?.type || planJson.budget_type || "DAILY";
+
+            const creativeTitle = creative.headline || creative.title || "Headline";
+            const creativeBody = creative.primary_text || creative.body || "Body Text";
+
+            const tStr = planJson.targeting?.targeting_suggestions
+              ? `\n**Suggestions**: ${planJson.targeting.targeting_suggestions.interests?.join(", ") || ""} (${planJson.targeting.targeting_suggestions.demographics?.join(", ") || ""})`
+              : "";
+
+            text = `
+**Plan Proposed: ${planJson.campaign_name}**
+
+**Targeting**: ${planJson.targeting?.geo_locations?.countries?.join(", ") || "India"} (${planJson.targeting?.age_min || 18}-${planJson.targeting?.age_max || 65}+)${tStr}
+**Budget**: ${bAmount} ${bCurrency} (${bType})
+
+**Creative Idea**: 
+"${creativeTitle}"
+_${creativeBody}_
+
+**Image Concept**: 
+_${creative.image_prompt || creative.imagePrompt || "Standard ad creative based on service"}_
+
+**Call to Action**: ${creative.call_to_action || "Learn More"}
+
+Reply **YES** to confirm this plan and proceed.
+`.trim();
+
+            return res.status(200).json({ ok: true, mode, text });
+          } else {
+            // It's JSON, but not a plan we recognize. 
+            // Maybe it's just normal JSON output. Let's keep the raw text so user can see it.
+          }
+        } catch (e) {
+          console.warn("Failed to parse/save detected JSON plan:", e);
+          // Fallback: If we thought it was JSON but failed to parse,
+          // we should probably leave 'text' as 'rawText' so the user sees the error or content.
+        }
+      }
+    }
+
+    // 🚨 FALLBACK: FORCE SAVE PLAN IF TEXT LOOKS LIKE A PROPOSAL BUT NO JSON WAS FOUND
+    // This catches the case where Gemini returns a nice text plan but forgets the JSON block.
+    // We construct a minimal plan from the User's Instruction + Gemini's output.
+    const isPlanText = /Plan Proposed|Proposed Plan|Campaign Plan|Creative Idea|Strategy Proposal|Campaign Name/i.test(text);
+
+    // AND Only if we haven't already saved a JSON plan (planJson would handle that path above)
+    // AND if effectiveBusinessId is valid
+    if ((mode === "meta_ads_plan" || isPlanText) && (!lockedCampaignState || !lockedCampaignState.plan) && effectiveBusinessId) {
+      console.log("TRACE: FALLBACK META ADS PATH HIT");
+      const looksLikePlan = isPlanText || text.includes("Budget") || text.includes("Creative Idea") || text.includes("Targeting") || text.includes("Creative Idea:");
+
+      if (looksLikePlan) {
+        console.log("⚠️ No JSON plan detected, but text looks like a plan. Attempting aggressive fallback extraction...");
+
+        // Helper to extract from both Instruction (Input) and Text (Output)
+        const extractFrom = (source, key) => {
+          // Robust regex to handle **Plan Proposed**, Plan Proposed:, etc.
+          const regex = new RegExp(`(?:\\*\\*|#)?${key}(?:\\*\\*|#)?[:\\-]?\\s*(.*?)(?:\\n|$)`, "i");
+          const match = source.match(regex);
+          return match ? match[1].trim() : null;
+        };
+
+        // Extraction Priority: Output Text (Gemini) > Input Instruction (User)
+        const extractedTitle = extractFrom(text, "Plan Proposed") || extractFrom(text, "Campaign Name") || extractFrom(instruction, "Campaign Name") || "New Meta Campaign";
+        const rawBudget = extractFrom(text, "Budget") || extractFrom(instruction, "Budget");
+        const budgetVal = rawBudget ? parseInt(rawBudget.replace(/[^\d]/g, "")) : 500;
+
+        const extractedLocation = extractFrom(text, "Location") || extractFrom(instruction, "Location") || "India";
+        const extractedWebsite = extractFrom(text, "Website") || extractFrom(instruction, "Website") || "https://gabbarinfo.com";
+
+        const minimalPlan = {
+          campaign_name: extractedTitle.replace(/\*\*?$/, "").trim(),
+          objective: "OUTCOME_TRAFFIC",
+          performance_goal: "MAXIMIZE_LINK_CLICKS",
+          budget: {
+            amount: budgetVal || 500,
+            currency: "INR",
+            type: "DAILY",
+          },
+          targeting: {
+            geo_locations: {
+              countries: ["IN"],
+              cities: extractedLocation.includes(",") ? extractedLocation.split(",").map(c => ({ name: c.trim() })) : [{ name: extractedLocation }]
+            },
+            age_min: 18,
+            age_max: 65
+          },
+          ad_sets: [
+            {
+              name: "Ad Set 1",
+              status: "PAUSED",
+              ad_creative: {
+                primary_text: extractFrom(text, "Creative Idea") || extractFrom(instruction, "Creative Idea") || "Best Digital Marketing Services",
+                headline: extractFrom(text, "Headline") || extractFrom(text, "Plan Proposed") || "Grow Your Business",
+                call_to_action: extractFrom(text, "Call to Action") || "LEARN_MORE",
+                destination_url: extractedWebsite,
+                image_prompt: extractFrom(text, "Image Concept") || extractFrom(instruction, "Image Concept") || "Professional business service ad"
+              },
+            },
+          ],
+        };
+
+        const newState = {
+          ...lockedCampaignState,
+          stage: "PLAN_PROPOSED",
+          plan: minimalPlan,
+          auto_run: false,
+          // 🔒 SYNC PLAN DETAILS TO STATE to ensure Turn 2 (YES) finds everything
+          service: minimalPlan.campaign_name,
+          location: extractedLocation,
+          landing_page: extractedWebsite,
+          landing_page_confirmed: true,
+          location_confirmed: true,
+          service_confirmed: true,
+          locked_at: new Date().toISOString(),
+        };
+
+        // SAVE IT!
+        console.log("💾 Persisting text-based fallback plan to memory...");
+        await saveAnswerMemory(process.env.NEXT_PUBLIC_BASE_URL, effectiveBusinessId, {
+          campaign_state: newState
+        }, session.user.email.toLowerCase());
+
+        // Update local state and mode to ensure current turn response reflects the change
+        lockedCampaignState = newState;
+        mode = "meta_ads_plan";
+        console.log("✅ Fallback Plan Persisted Successfully.");
+
+        console.log("TRACE: PLAN PROPOSED");
+        console.log("TRACE: STAGE (plan) =", lockedCampaignState?.stage);
+        console.log("TRACE: PLAN OBJECT =", lockedCampaignState?.plan);
+
+        // 🛡️ PATCH 1: HARD STOP AT PLAN_PROPOSED (Fallback path)
+        console.log("TRACE: RETURNING RESPONSE — STAGE =", currentState?.stage);
+        return res.status(200).json({
+          ok: true,
+          mode,
+          text: `**Plan Proposed: ${newState.plan.campaign_name}**\nReply **YES** to confirm and proceed.`
+        });
+      }
+    }
 
 
     // ============================================================
@@ -2780,6 +3411,7 @@ async function handleInstagramPostOnly(req, res, session, body) {
     text: "I need a bit more information to create your Instagram post.",
   });
 }
+
 
 
 
