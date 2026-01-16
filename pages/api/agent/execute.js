@@ -971,13 +971,161 @@ You are in GENERIC DIGITAL MARKETING AGENT MODE.
     const phoneMatch = instruction.match(/phone[^\d]*(\+?\d[\d\s-]{8,15})/i) || instruction.match(/(\+?\d[\d\s-]{8,15})/);
     if (phoneMatch) extractedData.phone = phoneMatch[1];
     const waMatch = instruction.match(/whatsapp[^\d]*(\+?\d[\d\s-]{8,15})/i);
-    if (waMatch) extractedData.whatsapp = waMatch[1];
+    if (waMatch) extractedData.whatsapp = phoneMatch[1];
 
     // Budget & Duration (parsing only)
     const budgetMatch = instruction.match(/(?:budget|amount|day):\s*(\d+)/i) || instruction.match(/(?:₹|rs\.?)\s*(\d+)/i);
     if (budgetMatch) extractedData.budget = budgetMatch[1];
     const durationMatch = instruction.match(/(\d+)\s*days?/i);
     if (durationMatch) extractedData.duration = durationMatch[1];
+
+    if (!isPlanProposed && mode === "meta_ads_plan") {
+      const lines = instruction.split(/\n+/).map((l) => l.trim()).filter(Boolean);
+
+      const candidate = {
+        objective: null,
+        destination: null,
+        performance_goal: null,
+        website: null,
+        phone: null,
+        whatsapp: null,
+        service: null,
+        location: null,
+        budget_per_day: null,
+        total_days: null,
+      };
+
+      for (const line of lines) {
+        const idx = line.indexOf(":");
+        if (idx === -1) continue;
+        const rawKey = line.slice(0, idx).trim().toLowerCase();
+        const value = line.slice(idx + 1).trim();
+        if (!value) continue;
+
+        if (rawKey === "objective") {
+          const v = value.toLowerCase();
+          if (v.includes("traffic")) candidate.objective = "OUTCOME_TRAFFIC";
+          else if (v.includes("lead")) candidate.objective = "OUTCOME_LEADS";
+          else if (v.includes("sale") || v.includes("conversion")) candidate.objective = "OUTCOME_SALES";
+        } else if (rawKey === "conversion location" || rawKey === "conversion_location" || rawKey === "destination") {
+          const v = value.toLowerCase();
+          if (v.includes("website")) candidate.destination = "website";
+          else if (v.includes("instagram")) candidate.destination = "instagram_profile";
+          else if (v.includes("facebook")) candidate.destination = "facebook_page";
+          else if (v.includes("call") || v.includes("phone")) candidate.destination = "call";
+          else if (v.includes("whatsapp")) candidate.destination = "whatsapp";
+          else if (v.includes("message")) candidate.destination = "messages";
+        } else if (rawKey === "performance goal" || rawKey === "performance_goal") {
+          const v = value.toLowerCase();
+          if (v.includes("link") && v.includes("click")) candidate.performance_goal = "MAXIMIZE_LINK_CLICKS";
+          else if (v.includes("landing") && v.includes("page")) candidate.performance_goal = "MAXIMIZE_LANDING_PAGE_VIEWS";
+          else if (v.includes("conversation")) candidate.performance_goal = "MAXIMIZE_CONVERSATIONS";
+          else if (v.includes("call")) candidate.performance_goal = "MAXIMIZE_CALLS";
+        } else if (rawKey === "website") {
+          let urlVal = value.trim();
+          if (urlVal && !urlVal.startsWith("http")) urlVal = "https://" + urlVal;
+          candidate.website = urlVal;
+        } else if (rawKey === "phone") {
+          candidate.phone = value.trim();
+        } else if (rawKey === "whatsapp") {
+          candidate.whatsapp = value.trim();
+        } else if (rawKey === "service") {
+          candidate.service = value.trim();
+        } else if (rawKey === "location") {
+          candidate.location = value.trim();
+        } else if (rawKey === "daily budget" || rawKey === "budget" || rawKey === "daily_budget") {
+          const num = parseInt(value.replace(/[^\d]/g, ""), 10);
+          if (!Number.isNaN(num) && num > 0) candidate.budget_per_day = num;
+        } else if (rawKey === "duration") {
+          const num = parseInt(value.replace(/[^\d]/g, ""), 10);
+          if (!Number.isNaN(num) && num > 0) candidate.total_days = num;
+        }
+      }
+
+      const hasObjective = !!candidate.objective;
+      const hasDestination = !!candidate.destination;
+      const hasPerformanceGoal = !!candidate.performance_goal;
+      const hasService = !!candidate.service;
+      const hasLocation = !!candidate.location;
+      const hasBudget = candidate.budget_per_day != null;
+      const hasDuration = candidate.total_days != null;
+
+      let hasAsset = true;
+      if (candidate.destination === "website") {
+        hasAsset = !!candidate.website;
+      } else if (candidate.destination === "call") {
+        hasAsset = !!candidate.phone;
+      } else if (candidate.destination === "whatsapp") {
+        hasAsset = !!candidate.whatsapp;
+      }
+
+      const expertComplete =
+        hasObjective &&
+        hasDestination &&
+        hasPerformanceGoal &&
+        hasService &&
+        hasLocation &&
+        hasBudget &&
+        hasDuration &&
+        hasAsset;
+
+      const isFreshIntake =
+        !lockedCampaignState ||
+        (
+          !lockedCampaignState.objective &&
+          !lockedCampaignState.destination &&
+          !lockedCampaignState.performance_goal &&
+          !lockedCampaignState.service &&
+          !lockedCampaignState.location &&
+          !lockedCampaignState.budget_per_day &&
+          !lockedCampaignState.total_days
+        );
+
+      if (expertComplete && isFreshIntake && effectiveBusinessId) {
+        const baseUrl = process.env.NEXT_PUBLIC_BASE_URL;
+        const newState = {
+          ...lockedCampaignState,
+          objective: candidate.objective,
+          destination: candidate.destination,
+          performance_goal: candidate.performance_goal,
+          service: candidate.service,
+          service_confirmed: true,
+          location: candidate.location,
+          location_confirmed: true,
+          budget_per_day: candidate.budget_per_day,
+          total_days: candidate.total_days,
+          locked_at: new Date().toISOString(),
+          stage: "intake_complete",
+        };
+
+        if (candidate.destination === "website") {
+          newState.landing_page = candidate.website;
+          newState.landing_page_confirmed = true;
+        } else if (candidate.destination === "call") {
+          newState.phone = candidate.phone;
+          newState.phone_confirmed = true;
+        } else if (candidate.destination === "whatsapp") {
+          newState.whatsapp = candidate.whatsapp;
+          newState.whatsapp_confirmed = true;
+        }
+
+        await saveAnswerMemory(
+          baseUrl,
+          effectiveBusinessId,
+          { campaign_state: newState },
+          session.user.email.toLowerCase()
+        );
+
+        lockedCampaignState = newState;
+
+        return res.status(200).json({
+          ok: true,
+          mode,
+          gated: true,
+          text: "All required Meta campaign details have been received and locked. I will now use these to draft your Meta ads plan. Reply again to continue.",
+        });
+      }
+    }
 
     // ============================================================
     // 🎯 META OBJECTIVE PARSING (USER SELECTION / HIERARCHY)
@@ -3634,3 +3782,5 @@ async function handleInstagramPostOnly(req, res, session, body) {
     text: "I need a bit more information to create your Instagram post.",
   });
 }
+
+
