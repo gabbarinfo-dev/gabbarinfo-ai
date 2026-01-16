@@ -1478,6 +1478,21 @@ You are in GENERIC DIGITAL MARKETING AGENT MODE.
       !lockedCampaignState?.location &&
       !lockedCampaignState?.location_confirmed
     ) {
+      if (effectiveBusinessId) {
+        const baseUrl = process.env.NEXT_PUBLIC_BASE_URL;
+        const questionState = {
+          ...lockedCampaignState,
+          location_question_asked: true,
+          locked_at: new Date().toISOString(),
+        };
+        await saveAnswerMemory(
+          baseUrl,
+          effectiveBusinessId,
+          { campaign_state: questionState },
+          session.user.email.toLowerCase()
+        );
+        lockedCampaignState = questionState;
+      }
       if (detectedLocation) {
         console.log("TRACE: ENTER META INTAKE FLOW");
         console.log("TRACE: RETURNING RESPONSE — STAGE =", currentState?.stage);
@@ -1514,6 +1529,7 @@ You are in GENERIC DIGITAL MARKETING AGENT MODE.
 
     // Case 2️⃣ User typed a new location
     if (
+      lockedCampaignState?.location_question_asked &&
       !instruction.toLowerCase().includes("yes") &&
       instruction.length > 2 &&
       !instruction.match(/^\d+$/)
