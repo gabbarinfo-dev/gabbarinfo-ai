@@ -602,6 +602,7 @@ export default async function handler(req, res) {
       chatHistory = [],
       extraContext = "",
     } = body;
+    includeJson = false;
     let mode = body.mode || "generic";
 
     const lowerMode = (mode || "").toLowerCase();
@@ -663,6 +664,8 @@ export default async function handler(req, res) {
         location_confirmed: false,
         budget_per_day: null,
         total_days: null,
+        budget_confirmed: false,
+        duration_confirmed: false,
         landing_page: null,
         landing_page_confirmed: false,
         phone: null,
@@ -1892,7 +1895,7 @@ You are in GENERIC DIGITAL MARKETING AGENT MODE.
         hasLocation &&
         hasAsset;
 
-      if (!isPlanProposed && prerequisitesMet) {
+        if (!isPlanProposed && prerequisitesMet) {
         let budgetPerDay = lockedCampaignState?.budget_per_day || null;
         let totalDays = lockedCampaignState?.total_days || null;
 
@@ -1909,6 +1912,7 @@ You are in GENERIC DIGITAL MARKETING AGENT MODE.
               const newState = {
                 ...lockedCampaignState,
                 budget_per_day: numericBudget,
+                budget_confirmed: true,
                 locked_at: new Date().toISOString(),
               };
               await saveAnswerMemory(
@@ -1964,6 +1968,7 @@ You are in GENERIC DIGITAL MARKETING AGENT MODE.
               const newState = {
                 ...lockedCampaignState,
                 total_days: numericDays,
+                duration_confirmed: true,
                 locked_at: new Date().toISOString(),
               };
               await saveAnswerMemory(
@@ -2266,7 +2271,9 @@ Please choose ONE option:
         !!lockedCampaignState.service &&
         !!lockedCampaignState.location &&
         !!lockedCampaignState.budget_per_day &&
-        !!lockedCampaignState.total_days;
+        !!lockedCampaignState.total_days &&
+        !!lockedCampaignState.budget_confirmed &&
+        !!lockedCampaignState.duration_confirmed;
       if (!isCompletedCycle && hasCoreLock) {
         lockedContext = `
 LOCKED CAMPAIGN STATE (DO NOT CHANGE OR RE-ASK):
@@ -3238,10 +3245,11 @@ Otherwise, respond with a full, clear explanation, and include example JSON only
           // Basic validation (is it a campaign plan?)
           if (planJson.campaign_name && planJson.ad_sets) {
 
-            // 🔐 HARD GUARD: Budget & Duration must be user-locked before accepting any plan
             const hasLockedBudget =
               !!lockedCampaignState?.budget_per_day &&
-              !!lockedCampaignState?.total_days;
+              !!lockedCampaignState?.total_days &&
+              !!lockedCampaignState?.budget_confirmed &&
+              !!lockedCampaignState?.duration_confirmed;
 
             if (mode === "meta_ads_plan" && !hasLockedBudget) {
               console.log("⛔ Ignoring JSON plan because budget/duration are not locked in state.");
@@ -3419,7 +3427,9 @@ Reply **YES** to confirm this plan and proceed.
       if (looksLikePlan) {
         const hasLockedBudgetFallback =
           !!lockedCampaignState?.budget_per_day &&
-          !!lockedCampaignState?.total_days;
+          !!lockedCampaignState?.total_days &&
+          !!lockedCampaignState?.budget_confirmed &&
+          !!lockedCampaignState?.duration_confirmed;
 
         if (mode === "meta_ads_plan" && !hasLockedBudgetFallback) {
           if (!lockedCampaignState?.budget_per_day) {
@@ -3802,7 +3812,7 @@ Reply **YES** to confirm this plan and proceed.
                   // 🛡️ PATCH 4: PAYLOAD IMAGE GUARANTEE (HARD STOP IF MISSING)
                   ad_creative: {
                     ...adset.ad_creative,
-                    image_hash: currentState.meta?.uploadedImageHash || currentState.image_hash || (() => { throw new Error(Messages.META_EXECUTION_FAILED); })()
+                    image_hash: currentState.meta?.uploadedImageHash || currentState.image_hash || (() => { throw new Error("Meta Execution Failed: Missing image hash for creative payload"); })()
                   }
                 }))
               };
@@ -3883,6 +3893,12 @@ Reply **YES** to confirm this plan and proceed.
       // 🧠 STEP-1 / STEP-2 NORMAL AGENT RESPONSE
       // ===============================
       console.log("TRACE: RETURNING RESPONSE — STAGE =", currentState?.stage);
+      if ((mode === "meta_ads_plan" || mode === "generic") && typeof text === "string") {
+        const trimmed = text.trim();
+        if (trimmed.startsWith("{") && trimmed.endsWith("}")) {
+          text = "I have processed your request based on the details provided. Please ask me in plain language if you want a summary of the plan.";
+        }
+      }
       return res.status(200).json({
         ok: true,
         text,
