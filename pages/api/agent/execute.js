@@ -597,14 +597,78 @@ export default async function handler(req, res) {
     } = body;
     let mode = body.mode || "generic";
 
+    const lowerMode = (mode || "").toLowerCase();
+    const isMetaIntent =
+      lowerInstruction.includes("meta ads") ||
+      lowerInstruction.includes("meta campaign") ||
+      lowerInstruction.includes("facebook ads") ||
+      lowerInstruction.includes("instagram ads") ||
+      lowerInstruction.includes("fb ads") ||
+      lowerInstruction.includes("facebook campaign") ||
+      lowerInstruction.includes("instagram campaign") ||
+      lowerInstruction.includes("run ads on facebook") ||
+      lowerInstruction.includes("run ads on instagram");
+
+    if (lowerMode === "generic" && isMetaIntent) {
+      mode = "meta_ads_plan";
+    }
+
+    const isNewMetaCampaignRequest =
+      mode === "meta_ads_plan" &&
+      (
+        lowerInstruction.includes("create a meta ads campaign") ||
+        lowerInstruction.includes("create meta ads campaign") ||
+        lowerInstruction.includes("create an ad campaign") ||
+        lowerInstruction.includes("create a campaign for my business") ||
+        lowerInstruction.includes("create a meta campaign") ||
+        lowerInstruction.includes("run an ad") ||
+        lowerInstruction.includes("run ads for my business") ||
+        lowerInstruction.includes("ad run")
+      );
+
     if (mode === "meta_ads_plan") {
       console.log("TRACE: ENTER META ADS HANDLER");
       console.log("TRACE: MODE =", mode);
       console.log("TRACE: INSTRUCTION =", instruction);
       console.log("TRACE: STAGE (initial) =", lockedCampaignState?.stage);
     }
-    // We strictly respect body.mode. We do NOT force meta_ads_plan anymore.
-    // If lockedCampaignState exists, it will be used ONLY if we are naturally in meta_ads_plan mode.
+
+    if (isNewMetaCampaignRequest && lockedCampaignState && effectiveBusinessId) {
+      const baseUrl = process.env.NEXT_PUBLIC_BASE_URL;
+      const resetState = {
+        ...lockedCampaignState,
+        objective: null,
+        destination: null,
+        performance_goal: null,
+        service: null,
+        service_confirmed: false,
+        location: null,
+        location_confirmed: false,
+        budget_per_day: null,
+        total_days: null,
+        landing_page: null,
+        landing_page_confirmed: false,
+        phone: null,
+        phone_confirmed: false,
+        whatsapp: null,
+        whatsapp_confirmed: false,
+        message_channel: null,
+        location_question_asked: false,
+        stage: "reset_intake",
+        locked_at: new Date().toISOString(),
+      };
+
+      await saveAnswerMemory(
+        baseUrl,
+        effectiveBusinessId,
+        { campaign_state: resetState },
+        session.user.email.toLowerCase()
+      );
+
+      lockedCampaignState = resetState;
+      currentState = resetState;
+      console.log("TRACE: META STATE RESET FOR NEW CAMPAIGN REQUEST");
+    }
 
 
     if (!instruction || typeof instruction !== "string") {
@@ -1139,7 +1203,7 @@ You are in GENERIC DIGITAL MARKETING AGENT MODE.
       const stage = lockedCampaignState.stage;
       const isCompletedCycle =
         stage === "COMPLETED" || stage === "READY_TO_LAUNCH";
-      if (!isCompletedCycle) {
+      if (!isCompletedCycle && !isNewMetaCampaignRequest) {
         selectedMetaObjective = lockedCampaignState.objective || null;
         selectedDestination = lockedCampaignState.destination || null;
         selectedPerformanceGoal = lockedCampaignState.performance_goal || null;
@@ -1150,10 +1214,17 @@ You are in GENERIC DIGITAL MARKETING AGENT MODE.
 
     // Step 1: Objective
     if (!isPlanProposed && mode === "meta_ads_plan" && !selectedMetaObjective) {
-      // (Keep existing interactive selection logic but refine it)
-      if (lowerInstruction.includes("traffic")) selectedMetaObjective = "OUTCOME_TRAFFIC";
-      else if (lowerInstruction.includes("lead")) selectedMetaObjective = "OUTCOME_LEADS";
-      else if (lowerInstruction.includes("sale") || lowerInstruction.includes("conversion")) selectedMetaObjective = "OUTCOME_SALES";
+      const input = lowerInstruction.trim();
+
+      if (input === "1" || input.includes("traffic")) {
+        selectedMetaObjective = "OUTCOME_TRAFFIC";
+      } else if (input === "2" || input.includes("lead")) {
+        selectedMetaObjective = "OUTCOME_LEADS";
+      } else if (input === "3" || input.includes("sale") || input.includes("conversion")) {
+        selectedMetaObjective = "OUTCOME_SALES";
+      } else if (input === "4" || input.includes("engagement") || input.includes("engage")) {
+        selectedMetaObjective = "OUTCOME_ENGAGEMENT";
+      }
 
       if (selectedMetaObjective) {
         lockedCampaignState = { ...lockedCampaignState, objective: selectedMetaObjective, stage: "objective_selected" };
@@ -1161,18 +1232,48 @@ You are in GENERIC DIGITAL MARKETING AGENT MODE.
         await saveAnswerMemory(process.env.NEXT_PUBLIC_BASE_URL, effectiveBusinessId, { campaign_state: lockedCampaignState }, session.user.email.toLowerCase());
         console.log("TRACE: ENTER META INTAKE FLOW");
         console.log("TRACE: RETURNING RESPONSE — STAGE =", currentState?.stage);
+
+        let nextQuestion = "";
+        if (selectedMetaObjective === "OUTCOME_TRAFFIC") {
+          nextQuestion =
+            "Now, where should we send people when they click your ad?\n\n" +
+            "1. Website\n" +
+            "2. Instagram profile\n" +
+            "3. Facebook page";
+        } else if (selectedMetaObjective === "OUTCOME_LEADS") {
+          nextQuestion =
+            "Now, where should people contact you to become leads?\n\n" +
+            "1. WhatsApp\n" +
+            "2. Calls\n" +
+            "3. Messenger / Instagram Direct";
+        } else {
+          nextQuestion =
+            "Now, where should people complete this action?\n\n" +
+            "1. Website";
+        }
+
         return res.status(200).json({
           ok: true,
           mode,
           gated: true,
-          text: "Got it. I’ve locked your campaign objective.",
+          text:
+            "Got it. I’ve locked your campaign objective.\n\n" +
+            nextQuestion,
         });
       } else {
         console.log("TRACE: ENTER META INTAKE FLOW");
         console.log("TRACE: RETURNING RESPONSE — STAGE =", currentState?.stage);
         return res.status(200).json({
-          ok: true, mode, gated: true,
-          text: "Let's build your Meta Campaign. What is your primary objective?\n\n1. **Traffic** (Get visits to website, page, or profile)\n2. **Leads** (Get calls, WhatsApp messages, or form fills)\n3. **Sales** (Drive conversions on your website)"
+          ok: true,
+          mode,
+          gated: true,
+          text:
+            "What is the primary objective of this campaign?\n\n" +
+            "Please choose ONE option:\n\n" +
+            "1. Traffic – Get more people to visit your website or profile\n" +
+            "2. Leads – Get more enquiries via WhatsApp, calls, or forms\n" +
+            "3. Sales – Drive purchases or conversions on your website\n" +
+            "4. Engagement – Get more messages, profile visits, or interactions",
         });
       }
     }
@@ -2131,7 +2232,15 @@ Please choose ONE option:
       const stage = lockedCampaignState.stage;
       const isCompletedCycle =
         stage === "COMPLETED" || stage === "READY_TO_LAUNCH";
-      if (!isCompletedCycle) {
+      const hasCoreLock =
+        !!lockedCampaignState.objective &&
+        !!lockedCampaignState.destination &&
+        !!lockedCampaignState.performance_goal &&
+        !!lockedCampaignState.service &&
+        !!lockedCampaignState.location &&
+        !!lockedCampaignState.budget_per_day &&
+        !!lockedCampaignState.total_days;
+      if (!isCompletedCycle && hasCoreLock) {
         lockedContext = `
 LOCKED CAMPAIGN STATE (DO NOT CHANGE OR RE-ASK):
 - Objective: ${lockedCampaignState.objective || "N/A"} (Auction)
@@ -2640,7 +2749,7 @@ Otherwise, respond with a full, clear explanation, and include example JSON only
       }
 
       if (jsonString) {
-        console.log("TRACE: DIRECT JSON DETECTED — USER PROVIDED PLAN");
+        console.log("TRACE: DIRECT JSON DETECTED — MODEL PROVIDED PLAN");
         try {
           let planJson = JSON.parse(jsonString);
 
