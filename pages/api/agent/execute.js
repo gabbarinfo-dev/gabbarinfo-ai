@@ -335,10 +335,17 @@ export default async function handler(req, res) {
       console.log("📍 HAS PLAN:", !!lockedCampaignState.plan);
     }
 
-    // 🔒 CRITICAL: FLAG FOR BYPASSING INTERACTIVE GATES
     const isPlanProposed =
-      lockedCampaignState?.stage === "PLAN_PROPOSED" &&
-      isMetaPlanComplete(lockedCampaignState?.plan);
+      !!lockedCampaignState &&
+      lockedCampaignState.stage === "PLAN_PROPOSED" &&
+      isMetaPlanComplete(lockedCampaignState.plan) &&
+      !!lockedCampaignState.objective &&
+      !!lockedCampaignState.destination &&
+      !!lockedCampaignState.performance_goal &&
+      !!lockedCampaignState.service &&
+      !!lockedCampaignState.location &&
+      !!lockedCampaignState.budget_per_day &&
+      !!lockedCampaignState.total_days;
     console.log("📍 isPlanProposed:", isPlanProposed);
     // ============================================================
     // 📣 PLATFORM RESOLUTION (FACEBOOK / INSTAGRAM) — SOURCE OF TRUTH
@@ -2455,12 +2462,20 @@ Otherwise, respond with a full, clear explanation, and include example JSON only
         state = repairedState;
         currentState = repairedState; // Keep alias in sync
 
-        // 🛡️ PATCH 1: HARD STOP AT PLAN_PROPOSED (Regeneration path)
+        const adAccountIdForPlan = verifiedMetaAssets?.ad_account?.id;
+        if (!adAccountIdForPlan) {
+          return res.status(200).json({
+            ok: false,
+            mode,
+            text: "I could not detect a connected Meta Ad Account. Please connect your Meta Ad Account and then ask me to create this campaign again."
+          });
+        }
+
         console.log("TRACE: RETURNING RESPONSE — STAGE =", currentState?.stage);
         return res.status(200).json({
           ok: true,
           mode,
-          text: `**Plan Proposed: ${repairedState.plan.campaign_name}**\nReply **YES** to confirm and proceed.`
+          text: `**Plan Proposed: ${repairedState.plan.campaign_name}**\n**Ad Account ID**: \`${adAccountIdForPlan}\`\n\nReply **YES** to confirm and proceed.`
         });
       }
 
@@ -2612,7 +2627,7 @@ Otherwise, respond with a full, clear explanation, and include example JSON only
       }
 
       // 🔒 MICRO PATCH: FORCE STAGE ADVANCEMENT AFTER VERIFIED IMAGE UPLOAD
-      if (
+  if (
         state.stage === "PLAN_PROPOSED" &&
         (state.meta?.uploadedImageHash || state.meta?.imageMediaId)
       ) {
@@ -2637,7 +2652,7 @@ Otherwise, respond with a full, clear explanation, and include example JSON only
         const isReady = state.stage === "READY_TO_LAUNCH" && state.image_hash;
         const wantsLaunch = lowerInstruction.includes("launch") || lowerInstruction.includes("execute") || lowerInstruction.includes("run") || lowerInstruction.includes("publish") || lowerInstruction.includes("yes") || lowerInstruction.includes("ok");
 
-        if (isReady && (wantsLaunch || state.objective === "TRAFFIC")) {
+        if (isReady && wantsLaunch) {
           console.log("🚀 Waterfall: Executing Campaign on Meta...");
           try {
             const plan = state.plan;
@@ -3322,10 +3337,19 @@ Otherwise, respond with a full, clear explanation, and include example JSON only
               ? `\n**Suggestions**: ${planJson.targeting.targeting_suggestions.interests?.join(", ") || ""} (${planJson.targeting.targeting_suggestions.demographics?.join(", ") || ""})`
               : "";
 
+            const adAccountIdForPlan = verifiedMetaAssets?.ad_account?.id;
+            if (!adAccountIdForPlan) {
+              return res.status(200).json({
+                ok: false,
+                mode,
+                text: "I could not detect a connected Meta Ad Account. Please connect your Meta Ad Account and then ask me to create this campaign again."
+              });
+            }
+
             text = `
 **Plan Proposed: ${planJson.campaign_name}**
 
-**Ad Account ID**: \`${verifiedMetaAssets?.ad_account?.id || "N/A"}\`
+**Ad Account ID**: \`${adAccountIdForPlan}\`
 
 **Targeting**: ${planJson.targeting?.geo_locations?.countries?.join(", ") || "India"} (${planJson.targeting?.age_min || 18}-${planJson.targeting?.age_max || 65}+)${tStr}
 **Budget**: ${bAmount} ${bCurrency} (${bType})
@@ -3361,13 +3385,41 @@ Reply **YES** to confirm this plan and proceed.
     // We construct a minimal plan from the User's Instruction + Gemini's output.
     const isPlanText = /Plan Proposed|Proposed Plan|Campaign Plan|Creative Idea|Strategy Proposal|Campaign Name/i.test(text);
 
-    // AND Only if we haven't already saved a JSON plan (planJson would handle that path above)
-    // AND if effectiveBusinessId is valid
-    if ((mode === "meta_ads_plan" || isPlanText) && (!lockedCampaignState || !lockedCampaignState.plan) && effectiveBusinessId) {
+    const hasExistingPlanOrStage =
+      !!lockedCampaignState?.plan ||
+      (lockedCampaignState &&
+        (lockedCampaignState.stage === "PLAN_PROPOSED" ||
+          lockedCampaignState.stage === "PLAN_CONFIRMED" ||
+          lockedCampaignState.stage === "IMAGE_GENERATED" ||
+          lockedCampaignState.stage === "READY_TO_LAUNCH" ||
+          lockedCampaignState.stage === "COMPLETED"));
+
+    if ((mode === "meta_ads_plan" || isPlanText) && !hasExistingPlanOrStage && effectiveBusinessId) {
       console.log("TRACE: FALLBACK META ADS PATH HIT");
       const looksLikePlan = isPlanText || text.includes("Budget") || text.includes("Creative Idea") || text.includes("Targeting") || text.includes("Creative Idea:");
 
       if (looksLikePlan) {
+        const hasLockedBudgetFallback =
+          !!lockedCampaignState?.budget_per_day &&
+          !!lockedCampaignState?.total_days;
+
+        if (mode === "meta_ads_plan" && !hasLockedBudgetFallback) {
+          if (!lockedCampaignState?.budget_per_day) {
+            return res.status(200).json({
+              ok: true,
+              mode,
+              gated: true,
+              text: "Before I draft the Meta campaign plan, what is your DAILY budget in INR?"
+            });
+          }
+
+          return res.status(200).json({
+            ok: true,
+            mode,
+            gated: true,
+            text: "Before I draft the Meta campaign plan, for how many days should this campaign run?"
+          });
+        }
         console.log("⚠️ No JSON plan detected, but text looks like a plan. Attempting aggressive fallback extraction...");
 
         // Helper to extract from both Instruction (Input) and Text (Output)
@@ -3842,6 +3894,7 @@ async function generateMetaCampaignPlan({ lockedCampaignState, autoBusinessConte
   const performanceGoal = lockedCampaignState?.performance_goal || "MAXIMIZE_LINK_CLICKS";
   const landingPage = lockedCampaignState?.landing_page || detectedLandingPage || "https://gabbarinfo.com";
   const location = lockedCampaignState?.location || "India";
+  const budgetAmount = lockedCampaignState?.budget_per_day || 500;
 
   // Deterministic Default Plan
   return {
@@ -3849,7 +3902,7 @@ async function generateMetaCampaignPlan({ lockedCampaignState, autoBusinessConte
     objective: objective,
     performance_goal: performanceGoal,
     budget: {
-      amount: 500,
+      amount: budgetAmount,
       currency: "INR",
       type: "DAILY"
     },
@@ -4010,4 +4063,5 @@ async function handleInstagramPostOnly(req, res, session, body) {
     text: "I need a bit more information to create your Instagram post.",
   });
 }
+
 
