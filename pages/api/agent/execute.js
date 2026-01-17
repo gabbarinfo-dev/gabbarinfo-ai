@@ -2971,6 +2971,69 @@ Otherwise, respond with a full, clear explanation, and include example JSON only
             };
           }
 
+          // 🔄 NORMALIZE JSON: Variation 9 (Step 8 flat shape: step_flow + creative_assets)
+          if (planJson.step_flow && planJson.campaign_name && planJson.creative_assets) {
+            console.log("🔄 Normalizing Gemini JSON Variation 9 (step_flow + creative_assets)...");
+
+            const tgt = planJson.targeting || {};
+            const rawLoc = tgt.location || [];
+            const locArray = Array.isArray(rawLoc) ? rawLoc : [rawLoc].filter(Boolean);
+            const cities = locArray.map((l) => {
+              if (typeof l === "string") {
+                return { name: l };
+              }
+              return null;
+            }).filter(Boolean);
+
+            const creativeInput = planJson.creative_assets || {};
+
+            const rawObj = (planJson.campaign_objective || "").toString().toUpperCase();
+            let objective = "OUTCOME_TRAFFIC";
+            if (rawObj.includes("LEAD")) objective = "OUTCOME_LEADS";
+            else if (rawObj.includes("SALE") || rawObj.includes("CONVERSION")) objective = "OUTCOME_SALES";
+
+            const perfGoalRaw = (planJson.optimization_goal || "").toString().toUpperCase();
+
+            let destUrl = planJson.destination_url || "";
+            if (typeof destUrl === "string") {
+              destUrl = destUrl.toString().replace(/[`]/g, "").trim();
+            } else {
+              destUrl = "https://gabbarinfo.com";
+            }
+
+            planJson = {
+              campaign_name: planJson.campaign_name || "New Campaign",
+              objective,
+              performance_goal: perfGoalRaw || lockedCampaignState?.performance_goal || "MAXIMIZE_LINK_CLICKS",
+              budget: {
+                amount: planJson.budget_daily_inr || 500,
+                currency: "INR",
+                type: "DAILY"
+              },
+              targeting: {
+                geo_locations: {
+                  countries: ["IN"],
+                  cities: cities
+                },
+                age_min: 25,
+                age_max: 55
+              },
+              ad_sets: [
+                {
+                  name: "Ad Set 1",
+                  status: "PAUSED",
+                  ad_creative: {
+                    imagePrompt: creativeInput.image_prompt || creativeInput.imagePrompt || "Ad Image",
+                    primary_text: creativeInput.primary_text || "",
+                    headline: creativeInput.headline || "",
+                    call_to_action: creativeInput.call_to_action || "LEARN_MORE",
+                    destination_url: destUrl || "https://gabbarinfo.com"
+                  }
+                }
+              ]
+            };
+          }
+
           // 🔄 NORMALIZE JSON: Variation 6 (campaign + adSets + ads structure)
           if (planJson.campaign && planJson.adSets && Array.isArray(planJson.adSets)) {
             console.log("🔄 Normalizing Gemini JSON Variation 6 (campaign/adSets/ads)...");
@@ -3142,6 +3205,42 @@ Otherwise, respond with a full, clear explanation, and include example JSON only
           // Basic validation (is it a campaign plan?)
           if (planJson.campaign_name && planJson.ad_sets) {
 
+            // 🔐 HARD GUARD: Budget & Duration must be user-locked before accepting any plan
+            const hasLockedBudget =
+              !!lockedCampaignState?.budget_per_day &&
+              !!lockedCampaignState?.total_days;
+
+            if (mode === "meta_ads_plan" && !hasLockedBudget) {
+              console.log("⛔ Ignoring JSON plan because budget/duration are not locked in state.");
+
+              // Ask for the missing field explicitly, instead of adopting a model-invented budget/duration
+              if (!lockedCampaignState?.budget_per_day) {
+                return res.status(200).json({
+                  ok: true,
+                  mode,
+                  gated: true,
+                  text: "Before I draft the Meta campaign plan, what is your DAILY budget in INR?"
+                });
+              }
+
+              return res.status(200).json({
+                ok: true,
+                mode,
+                gated: true,
+                text: "Before I draft the Meta campaign plan, for how many days should this campaign run?"
+              });
+            }
+
+            // 🔐 Enforce user-locked budget as the single source of truth
+            if (lockedCampaignState?.budget_per_day) {
+              planJson.budget = {
+                ...(planJson.budget || {}),
+                amount: lockedCampaignState.budget_per_day,
+                currency: (planJson.budget && planJson.budget.currency) || "INR",
+                type: (planJson.budget && planJson.budget.type) || "DAILY"
+              };
+            }
+
             // 🛡️ SECURITY: Enforce strict Objective & Optimization Mapping (User Golden Rule)
             // Rule: Objective = Campaign Level (OUTCOME_TRAFFIC), Performance Goal = Ad Set Level (LINK_CLICKS)
             const rawObj = (planJson.objective || "").toString().toUpperCase();
@@ -3245,8 +3344,9 @@ Reply **YES** to confirm this plan and proceed.
 
             return res.status(200).json({ ok: true, mode, text });
           } else {
-            // It's JSON, but not a plan we recognize. 
-            // Maybe it's just normal JSON output. Let's keep the raw text so user can see it.
+            if (mode === "meta_ads_plan") {
+              text = "I have drafted a campaign plan internally based on your inputs. Please ask me again to create or review the Meta ads plan if you did not see a summary.";
+            }
           }
         } catch (e) {
           console.warn("Failed to parse/save detected JSON plan:", e);
