@@ -1573,8 +1573,10 @@ You are in GENERIC DIGITAL MARKETING AGENT MODE.
 
     let landingPageConfirmed = !!lockedCampaignState?.landing_page_confirmed;
 
-    // Detect confirmation from user reply
+    // Detect confirmation from user reply (only during intake, before plan proposal)
     if (
+      !isPlanProposed &&
+      mode === "meta_ads_plan" &&
       !landingPageConfirmed &&
       (instruction.toLowerCase().includes("yes") ||
         instruction.toLowerCase().includes("use this") ||
@@ -2712,10 +2714,10 @@ Otherwise, respond with a full, clear explanation, and include example JSON only
 
     let text = rawText;
 
-    // 🧹 CLEANUP: If Gemini outputs JSON, hide it from the user flow (User complaint: "Jumps to JSON").
-    // We only want to show the JSON *Summary* text if passing a proposed plan.
-    if (mode === "meta_ads_plan" && text.includes("```json")) {
-      text = text.replace(/```json[\s\S]*?```/g, "").trim();
+    // 🧹 CLEANUP: If Gemini outputs a JSON code block, hide it from the user flow (Meta Ads).
+    // We only want to show the human-readable summary, never the raw JSON.
+    if (mode === "meta_ads_plan" && text.includes("```")) {
+      text = text.replace(/```(?:json)?[\s\S]*?```/g, "").trim();
       if (!text) text = "I have drafted a plan based on your requirements. Please check it internally.";
     }
 
