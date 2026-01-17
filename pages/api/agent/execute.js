@@ -1178,6 +1178,8 @@ You are in GENERIC DIGITAL MARKETING AGENT MODE.
           location_confirmed: true,
           budget_per_day: candidate.budget_per_day,
           total_days: candidate.total_days,
+          budget_confirmed: true,
+          duration_confirmed: true,
           locked_at: new Date().toISOString(),
           stage: "intake_complete",
         };
@@ -2422,11 +2424,19 @@ Otherwise, respond with a full, clear explanation, and include example JSON only
         !lockedCampaignState?.service ||
         !lockedCampaignState?.location ||
         !lockedCampaignState?.budget_per_day ||
-        !lockedCampaignState?.total_days
+        !lockedCampaignState?.total_days ||
+        !lockedCampaignState?.budget_confirmed ||
+        !lockedCampaignState?.duration_confirmed
       )
     ) {
       // Technically unreachable if gates are working, but safe fallback
-      return res.status(200).json({ ok: true, text: "waiting for details..." });
+      let fallbackText = "Before I can draft your Meta campaign plan, I still need your daily budget and total duration in days.";
+      if (!lockedCampaignState?.budget_per_day || !lockedCampaignState?.budget_confirmed) {
+        fallbackText = "Before I draft the Meta campaign plan, what is your DAILY budget in INR?";
+      } else if (!lockedCampaignState?.total_days || !lockedCampaignState?.duration_confirmed) {
+        fallbackText = "Before I draft the Meta campaign plan, for how many days should this campaign run?";
+      }
+      return res.status(200).json({ ok: true, mode, gated: true, text: fallbackText });
     }
 
     // ⚡ CRITICAL SHORT-CIRCUIT: Skip Gemini if plan exists and user confirms
@@ -2455,8 +2465,31 @@ Otherwise, respond with a full, clear explanation, and include example JSON only
       // 🔒 SINGLE SOURCE OF TRUTH — waterfall must ONLY use currentState (mutated as state)
       let state = currentState;
 
-      // 🛡️ Safety Check: Ensure plan is valid
       if (!state.plan || !state.plan.campaign_name) {
+        const hasLockedBudgetForRegen =
+          !!lockedCampaignState?.budget_per_day &&
+          !!lockedCampaignState?.total_days &&
+          !!lockedCampaignState?.budget_confirmed &&
+          !!lockedCampaignState?.duration_confirmed;
+
+        if (mode === "meta_ads_plan" && !hasLockedBudgetForRegen) {
+          if (!lockedCampaignState?.budget_per_day) {
+            return res.status(200).json({
+              ok: true,
+              mode,
+              gated: true,
+              text: "Before I draft the Meta campaign plan, what is your DAILY budget in INR?"
+            });
+          }
+
+          return res.status(200).json({
+            ok: true,
+            mode,
+            gated: true,
+            text: "Before I draft the Meta campaign plan, for how many days should this campaign run?"
+          });
+        }
+
         console.warn("Plan missing at confirmation. Recreating automatically.");
 
         const regeneratedPlan = await generateMetaCampaignPlan({
@@ -2485,7 +2518,7 @@ Otherwise, respond with a full, clear explanation, and include example JSON only
         );
 
         state = repairedState;
-        currentState = repairedState; // Keep alias in sync
+        currentState = repairedState;
 
         const adAccountIdForPlan = verifiedMetaAssets?.ad_account?.id;
         if (!adAccountIdForPlan) {
@@ -3498,6 +3531,10 @@ Reply **YES** to confirm this plan and proceed.
           ],
         };
 
+        if (lockedCampaignState?.budget_per_day) {
+          minimalPlan.budget.amount = lockedCampaignState.budget_per_day;
+        }
+
         const newState = {
           ...lockedCampaignState,
           stage: "PLAN_PROPOSED",
@@ -3609,6 +3646,30 @@ Reply **YES** to confirm this plan and proceed.
         // Rule: NEVER execute without a plan. Implicitly regenerate it.
         // 🛡️ HARD RULE: Never proceed to confirmation/execution without a saved plan
         if (!currentState.plan || !currentState.plan.campaign_name) {
+          const hasLockedBudgetForRegen =
+            !!lockedCampaignState?.budget_per_day &&
+            !!lockedCampaignState?.total_days &&
+            !!lockedCampaignState?.budget_confirmed &&
+            !!lockedCampaignState?.duration_confirmed;
+
+          if (mode === "meta_ads_plan" && !hasLockedBudgetForRegen) {
+            if (!lockedCampaignState?.budget_per_day) {
+              return res.status(200).json({
+                ok: true,
+                mode,
+                gated: true,
+                text: "Before I draft the Meta campaign plan, what is your DAILY budget in INR?"
+              });
+            }
+
+            return res.status(200).json({
+              ok: true,
+              mode,
+              gated: true,
+              text: "Before I draft the Meta campaign plan, for how many days should this campaign run?"
+            });
+          }
+
           console.warn("⚠️ Plan missing at confirmation. Recreating plan immediately.");
 
           const regeneratedPlan = await generateMetaCampaignPlan({
@@ -3635,7 +3696,6 @@ Reply **YES** to confirm this plan and proceed.
           console.log("TRACE: STAGE (plan) =", repairedState.stage);
           console.log("TRACE: PLAN OBJECT =", repairedState.plan);
 
-          // 🛡️ PATCH 1: HARD STOP AT PLAN_PROPOSED (Regeneration path - global)
           console.log("TRACE: RETURNING RESPONSE — STAGE =", currentState?.stage);
           return res.status(200).json({
             ok: true,
@@ -4097,4 +4157,5 @@ async function handleInstagramPostOnly(req, res, session, body) {
     text: "I need a bit more information to create your Instagram post.",
   });
 }
+
 
