@@ -620,6 +620,16 @@ export default async function handler(req, res) {
       mode = "meta_ads_plan";
     }
 
+    if (
+      mode === "generic" &&
+      lockedCampaignState &&
+      lockedCampaignState.objective &&
+      lockedCampaignState.stage &&
+      lockedCampaignState.stage !== "COMPLETED"
+    ) {
+      mode = "meta_ads_plan";
+    }
+
     const isNewMetaCampaignRequest =
       mode === "meta_ads_plan" &&
       (
@@ -1243,10 +1253,10 @@ You are in GENERIC DIGITAL MARKETING AGENT MODE.
         let nextQuestion = "";
         if (selectedMetaObjective === "OUTCOME_TRAFFIC") {
           nextQuestion =
-            "Now, where should we send people when they click your ad?\n\n" +
+            "Now, where should we direct the users who click on the ad?\n\n" +
             "1. Website\n" +
-            "2. Instagram profile\n" +
-            "3. Facebook page";
+            "2. Calls\n" +
+            "3. Messages (WhatsApp / Messenger / Instagram)";
         } else if (selectedMetaObjective === "OUTCOME_LEADS") {
           nextQuestion =
             "Now, where should people contact you to become leads?\n\n" +
@@ -1289,19 +1299,25 @@ You are in GENERIC DIGITAL MARKETING AGENT MODE.
     if (!isPlanProposed && mode === "meta_ads_plan" && selectedMetaObjective && !selectedDestination) {
       let options = [];
       if (selectedMetaObjective === "OUTCOME_TRAFFIC") {
-        options = ["Website", "Instagram Profile", "Facebook Page"];
+        options = ["Website", "Calls", "Messages (WhatsApp / Messenger / Instagram)"];
       } else if (selectedMetaObjective === "OUTCOME_LEADS") {
         options = ["WhatsApp", "Calls", "Messenger/Instagram Direct"];
       } else {
         options = ["Website"];
       }
 
-      // Detection
       const input = lowerInstruction;
-      if (input.includes("1") || input.includes("website")) selectedDestination = "website";
-      else if (input.includes("2") || input.includes("instagram") || input.includes("call")) selectedDestination = selectedMetaObjective === "OUTCOME_TRAFFIC" ? "instagram_profile" : "call";
-      else if (input.includes("3") || input.includes("facebook") || input.includes("whatsapp")) selectedDestination = selectedMetaObjective === "OUTCOME_TRAFFIC" ? "facebook_page" : "whatsapp";
-      else if (input.includes("message")) selectedDestination = "messages";
+      if (input.includes("1") || input.includes("website") || input.includes("site")) {
+        selectedDestination = "website";
+      } else if (input.includes("2") || input.includes("call") || input.includes("phone")) {
+        selectedDestination = "call";
+      } else if (input.includes("3") || input.includes("whatsapp") || input.includes("message") || input.includes("messages") || input.includes("chat") || input.includes("dm")) {
+        selectedDestination = "messages";
+      } else if (selectedMetaObjective === "OUTCOME_LEADS") {
+        if (input.includes("whatsapp")) selectedDestination = "whatsapp";
+        else if (input.includes("call") || input.includes("phone")) selectedDestination = "call";
+        else if (input.includes("messenger") || input.includes("instagram")) selectedDestination = "messages";
+      }
 
       if (selectedDestination) {
         lockedCampaignState = { ...lockedCampaignState, destination: selectedDestination, stage: "destination_selected" };
@@ -1319,7 +1335,9 @@ You are in GENERIC DIGITAL MARKETING AGENT MODE.
         console.log("TRACE: ENTER META INTAKE FLOW");
         console.log("TRACE: RETURNING RESPONSE — STAGE =", currentState?.stage);
         return res.status(200).json({
-          ok: true, mode, gated: true,
+          ok: true,
+          mode,
+          gated: true,
           text: `Where should we drive this ${selectedMetaObjective.toLowerCase()}?\n\n` + options.map((o, i) => `${i + 1}. ${o}`).join("\n")
         });
       }
