@@ -268,7 +268,8 @@ ampaigns`, {
           err.message.includes("AGENT_V2_OBJ") || 
           err.message.includes("Invalid parameter") || 
           err.message.includes("Param") || 
-          err.message.includes("objective"); 
+          err.message.includes("objective") ||
+          err.message.includes("Messages is not defined"); 
  
         if (isObjError) { 
           console.log(`
