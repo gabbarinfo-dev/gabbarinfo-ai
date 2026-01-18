@@ -651,7 +651,13 @@ export default async function handler(req, res) {
       console.log("TRACE: STAGE (initial) =", lockedCampaignState?.stage);
     }
 
-    if (isNewMetaCampaignRequest && lockedCampaignState && effectiveBusinessId) {
+    const existingStage = lockedCampaignState?.stage || "";
+    const canResetForNewCampaign =
+      !existingStage ||
+      existingStage === "COMPLETED" ||
+      existingStage === "READY_TO_LAUNCH";
+
+    if (isNewMetaCampaignRequest && lockedCampaignState && effectiveBusinessId && canResetForNewCampaign) {
       const baseUrl = process.env.NEXT_PUBLIC_BASE_URL;
       const resetState = {
         ...lockedCampaignState,
@@ -2559,7 +2565,6 @@ Otherwise, respond with a full, clear explanation, and include example JSON only
       console.log("📍 Waterfall Check - Stage:", stage);
       console.log("📍 Waterfall Check - Plan Name:", state.plan.campaign_name);
 
-      // --- STEP 9: IMAGE GENERATION ---
       const isImageGenerated = !!state.creative?.imageBase64 || !!state.creative?.imageUrl;
       const isImageUploaded = !!state.meta?.uploadedImageHash || !!state.meta?.imageMediaId;
 
@@ -2615,7 +2620,10 @@ Otherwise, respond with a full, clear explanation, and include example JSON only
           errorOcurred = true;
           stopReason = `Image Generation Error: ${e.message}`;
         }
-      } else if (isImageGenerated) {
+      } else if (
+        isImageGenerated &&
+        (stage === "PLAN_CONFIRMED" || stage === "IMAGE_GENERATED" || stage === "READY_TO_LAUNCH")
+      ) {
         console.log("TRACE: PIPELINE STEP REPORT");
         console.log("TRACE: STAGE (pipeline) =", state.stage);
         console.log("TRACE: IMAGE EXISTS =", !!state.creative);
@@ -2674,7 +2682,10 @@ Otherwise, respond with a full, clear explanation, and include example JSON only
             errorOcurred = true;
             stopReason = `Meta Upload Error: ${e.message}`;
           }
-        } else if (isImageUploaded) {
+        } else if (
+          isImageUploaded &&
+          (state.stage === "IMAGE_GENERATED" || state.stage === "READY_TO_LAUNCH")
+        ) {
           console.log("TRACE: PIPELINE STEP REPORT");
           console.log("TRACE: STAGE (pipeline) =", state.stage);
           console.log("TRACE: IMAGE EXISTS =", !!state.creative);
@@ -3596,9 +3607,8 @@ Reply **YES** to confirm this plan and proceed.
       });
     }
 
-    if (lockedCampaignState) {
+    if (lockedCampaignState && mode === "meta_ads_plan") {
       const stage = lockedCampaignState.stage || "PLANNING";
-      // Auto-trigger if Logic 2 flag set or user says YES
       const userSaysYes =
         instruction.toLowerCase().includes("yes") ||
         instruction.toLowerCase().includes("approve") ||
@@ -3608,7 +3618,6 @@ Reply **YES** to confirm this plan and proceed.
         instruction.toLowerCase().includes("generate") ||
         instruction.toLowerCase().includes("image");
 
-      // 🚀 CONSOLIDATED EXECUTION WATERFALL (Step 9 -> 10 -> 12)
       if (stage !== "COMPLETED" && userSaysYes) {
         let currentState = { ...lockedCampaignState, locked_at: new Date().toISOString() };
 
