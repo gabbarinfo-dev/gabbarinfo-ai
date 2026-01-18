@@ -661,16 +661,9 @@ export default async function handler(req, res) {
       console.log("TRACE: STAGE (initial) =", lockedCampaignState?.stage);
     }
 
-    const existingStage = lockedCampaignState?.stage || "";
-    const canResetForNewCampaign =
-      !existingStage ||
-      existingStage === "COMPLETED" ||
-      existingStage === "READY_TO_LAUNCH";
-
-    if (isNewMetaCampaignRequest && lockedCampaignState && effectiveBusinessId && canResetForNewCampaign) {
+    if (isNewMetaCampaignRequest && effectiveBusinessId) {
       const baseUrl = process.env.NEXT_PUBLIC_BASE_URL;
       const resetState = {
-        ...lockedCampaignState,
         objective: null,
         destination: null,
         performance_goal: null,
@@ -690,7 +683,8 @@ export default async function handler(req, res) {
         whatsapp_confirmed: false,
         message_channel: null,
         location_question_asked: false,
-        stage: "reset_intake",
+        plan: null,
+        stage: null,
         locked_at: new Date().toISOString(),
       };
 
