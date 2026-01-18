@@ -116,6 +116,23 @@ export default async function handler(req, res) {
           detectedServices.push(page.url);
         }
       }
+
+      if (detectedServices.length) {
+        const base = websiteUrl.replace(/\/$/, "");
+        const unique = Array.from(new Set(detectedServices));
+        detectedServices = unique.filter((u) => {
+          if (!u) return false;
+          try {
+            const normalized = u.replace(/\/$/, "");
+            if (normalized === base) return false;
+            const parsed = new URL(u);
+            const path = parsed.pathname || "/";
+            return path !== "/";
+          } catch (_) {
+            return true;
+          }
+        });
+      }
     }
 
    // 🧠 FINAL INTAKE OBJECT (AUTHORITATIVE — AGENT READABLE)
