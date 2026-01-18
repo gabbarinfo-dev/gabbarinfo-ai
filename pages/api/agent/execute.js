@@ -1885,8 +1885,16 @@ You are in GENERIC DIGITAL MARKETING AGENT MODE.
       selectedLocation = detectedLocation;
     }
 
-    // Case 2️⃣ User typed a new location (with or without explicit question)
+    // Case 2️⃣ User typed a new location (only when we are in the location stage)
+    const stageForLocation = lockedCampaignState?.stage || "";
+    const isInLocationStage =
+      lockedCampaignState?.location_question_asked ||
+      stageForLocation === "service_selected" ||
+      stageForLocation === "goal_selected" ||
+      stageForLocation === "location_selected";
+
     if (
+      isInLocationStage &&
       !instruction.toLowerCase().includes("yes") &&
       instruction.length > 2 &&
       !instruction.match(/^\d+$/)
