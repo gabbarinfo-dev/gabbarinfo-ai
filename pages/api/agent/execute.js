@@ -606,16 +606,26 @@ export default async function handler(req, res) {
     let mode = body.mode || "generic";
 
     const lowerMode = (mode || "").toLowerCase();
+
+    let historyTextForIntent = "";
+    if (Array.isArray(chatHistory) && chatHistory.length > 0) {
+      historyTextForIntent = chatHistory
+        .slice(-10)
+        .map((m) => (m && typeof m.text === "string" ? m.text.toLowerCase() : ""))
+        .join(" ");
+    }
+
+    const intentSource = `${lowerInstruction} ${historyTextForIntent}`;
     const isMetaIntent =
-      lowerInstruction.includes("meta ads") ||
-      lowerInstruction.includes("meta campaign") ||
-      lowerInstruction.includes("facebook ads") ||
-      lowerInstruction.includes("instagram ads") ||
-      lowerInstruction.includes("fb ads") ||
-      lowerInstruction.includes("facebook campaign") ||
-      lowerInstruction.includes("instagram campaign") ||
-      lowerInstruction.includes("run ads on facebook") ||
-      lowerInstruction.includes("run ads on instagram");
+      intentSource.includes("meta ads") ||
+      intentSource.includes("meta campaign") ||
+      intentSource.includes("facebook ads") ||
+      intentSource.includes("instagram ads") ||
+      intentSource.includes("fb ads") ||
+      intentSource.includes("facebook campaign") ||
+      intentSource.includes("instagram campaign") ||
+      intentSource.includes("run ads on facebook") ||
+      intentSource.includes("run ads on instagram");
 
     if (lowerMode === "generic" && isMetaIntent) {
       mode = "meta_ads_plan";
@@ -4166,4 +4176,5 @@ async function handleInstagramPostOnly(req, res, session, body) {
     text: "I need a bit more information to create your Instagram post.",
   });
 }
+
 
