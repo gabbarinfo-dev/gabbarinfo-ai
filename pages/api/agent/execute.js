@@ -1346,11 +1346,31 @@ You are in GENERIC DIGITAL MARKETING AGENT MODE.
         await saveAnswerMemory(process.env.NEXT_PUBLIC_BASE_URL, effectiveBusinessId, { campaign_state: lockedCampaignState }, session.user.email.toLowerCase());
         console.log("TRACE: ENTER META INTAKE FLOW");
         console.log("TRACE: RETURNING RESPONSE — STAGE =", currentState?.stage);
+
+        let followupText = "Conversion location saved.";
+
+        if (!lockedCampaignState.performance_goal) {
+          let goals = [];
+          if (selectedDestination === "website") {
+            goals = ["Maximize Number of Link Clicks", "Maximize Number of Landing Page Views"];
+          } else if (selectedDestination === "call") {
+            goals = ["Maximize Number of Calls"];
+          } else if (selectedDestination === "whatsapp" || selectedDestination === "messages") {
+            goals = ["Maximize Number of Conversations"];
+          } else {
+            goals = ["Maximize Reach / Visits"];
+          }
+
+          followupText +=
+            "\n\nWhat is your performance goal for these ads?\n\n" +
+            goals.map((g, i) => `${i + 1}. ${g}`).join("\n");
+        }
+
         return res.status(200).json({
           ok: true,
           mode,
           gated: true,
-          text: "Conversion location saved.",
+          text: followupText,
         });
       } else {
         console.log("TRACE: ENTER META INTAKE FLOW");
@@ -1395,7 +1415,7 @@ You are in GENERIC DIGITAL MARKETING AGENT MODE.
           ok: true,
           mode,
           gated: true,
-          text: "Performance goal locked.",
+          text: "Performance goal locked.\n\nNext, I will verify your website and service details to prepare the campaign plan. Please continue and answer the next question I ask.",
         });
       } else {
         console.log("TRACE: ENTER META INTAKE FLOW");
@@ -1641,11 +1661,25 @@ You are in GENERIC DIGITAL MARKETING AGENT MODE.
         lockedCampaignState = nextState;
         console.log("TRACE: ENTER META INTAKE FLOW");
         console.log("TRACE: RETURNING RESPONSE — STAGE =", currentState?.stage);
+        let nextText = "Website confirmed as your landing page.";
+
+        if (!lockedCampaignState?.service) {
+          const availableServices =
+            autoBusinessContext?.detected_services || [];
+          const serviceOptions = availableServices.length
+            ? availableServices.map((s, i) => `${i + 1}. ${s}`).join("\n")
+            : "- Type your service name";
+
+          nextText +=
+            "\n\nWhich service do you want to promote?\n\n" +
+            serviceOptions;
+        }
+
         return res.status(200).json({
           ok: true,
           mode,
           gated: true,
-          text: "Website confirmed as your landing page.",
+          text: nextText,
         });
       }
     }
@@ -1759,11 +1793,18 @@ You are in GENERIC DIGITAL MARKETING AGENT MODE.
       lockedCampaignState = newState;
       console.log("TRACE: ENTER META INTAKE FLOW");
       console.log("TRACE: RETURNING RESPONSE — STAGE =", currentState?.stage);
+      let nextText = "Service locked for this campaign.";
+
+      if (!newState.location && !newState.location_confirmed) {
+        nextText +=
+          "\n\nWhere should this ad run? (e.g. Mumbai, New York, or 'Online')";
+      }
+
       return res.status(200).json({
         ok: true,
         mode,
         gated: true,
-        text: "Service locked for this campaign.",
+        text: nextText,
       });
     }
 
@@ -1776,15 +1817,24 @@ You are in GENERIC DIGITAL MARKETING AGENT MODE.
       autoBusinessContext?.business_location ||
       null;
 
+    const hasLocation =
+      !!lockedCampaignState?.location || !!lockedCampaignState?.location_confirmed;
+    const alreadyAskedLocation = !!lockedCampaignState?.location_question_asked;
+    const inputLooksLikeLocation =
+      instruction.length > 2 &&
+      !instruction.toLowerCase().includes("yes") &&
+      !instruction.match(/^\d+$/);
+
     // ============================================================
-    // ❓ LOCATION CONFIRMATION (ONCE ONLY)
+    // ❓ LOCATION CONFIRMATION (ASK ONLY WHEN NEEDED)
     // ============================================================
 
     if (
       !isPlanProposed &&
       mode === "meta_ads_plan" &&
-      !lockedCampaignState?.location &&
-      !lockedCampaignState?.location_confirmed
+      !hasLocation &&
+      !alreadyAskedLocation &&
+      !inputLooksLikeLocation
     ) {
       if (effectiveBusinessId) {
         const baseUrl = process.env.NEXT_PUBLIC_BASE_URL;
@@ -1835,9 +1885,8 @@ You are in GENERIC DIGITAL MARKETING AGENT MODE.
       selectedLocation = detectedLocation;
     }
 
-    // Case 2️⃣ User typed a new location
+    // Case 2️⃣ User typed a new location (with or without explicit question)
     if (
-      lockedCampaignState?.location_question_asked &&
       !instruction.toLowerCase().includes("yes") &&
       instruction.length > 2 &&
       !instruction.match(/^\d+$/)
