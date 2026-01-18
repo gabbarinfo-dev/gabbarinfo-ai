@@ -260,7 +260,7 @@ export default async function handler(req, res) {
         email: session.user.email.toLowerCase(),
         fb_page: fbPage,
         ig_account: igAccount,
-        ad_account: adAccount,
+        ad_account: { ...adAccount, id: normalizedAdId },
         verified_at: new Date().toISOString(),
       };
 
@@ -761,7 +761,7 @@ export default async function handler(req, res) {
     // ============================================================
     // 🛡️ PATCH 2: Dedicated Confirmation Gate
     // ============================================================
-    if (lockedCampaignState && mode === "meta_ads_plan") {
+    if (lockedCampaignState && lockedCampaignState.plan && mode === "meta_ads_plan") {
       console.log("TRACE: ENTER SHORT-CIRCUIT EXECUTION PATH");
       console.log("TRACE: USER SAID YES =", lowerInstruction.includes("yes"));
       console.log("TRACE: STAGE (before confirm) =", lockedCampaignState?.stage);
@@ -2629,6 +2629,7 @@ Otherwise, respond with a full, clear explanation, and include example JSON only
           ...state,
           stage: "PLAN_PROPOSED",
           plan: regeneratedPlan,
+          plan_visible: true,
           locked_at: new Date().toISOString()
         };
 
@@ -2646,20 +2647,15 @@ Otherwise, respond with a full, clear explanation, and include example JSON only
         state = repairedState;
         currentState = repairedState;
 
-        const adAccountIdForPlan = verifiedMetaAssets?.ad_account?.id;
-        if (!adAccountIdForPlan) {
-          return res.status(200).json({
-            ok: false,
-            mode,
-            text: "I could not detect a connected Meta Ad Account. Please connect your Meta Ad Account and then ask me to create this campaign again."
-          });
-        }
+        const adAccountIdForPlan =
+          (verifiedMetaAssets?.ad_account && (verifiedMetaAssets.ad_account.id || verifiedMetaAssets.ad_account.account_id)) ||
+          (metaRow?.fb_ad_account_id || null);
 
         console.log("TRACE: RETURNING RESPONSE — STAGE =", currentState?.stage);
         return res.status(200).json({
           ok: true,
           mode,
-          text: `**Plan Proposed: ${repairedState.plan.campaign_name}**\n**Ad Account ID**: \`${adAccountIdForPlan}\`\n\nReply **YES** to confirm and proceed.`
+          text: `**Plan Proposed: ${repairedState.plan.campaign_name}**\n**Ad Account ID**: \`${adAccountIdForPlan || "N/A"}\`\n\nReply **YES** to confirm and proceed.`
         });
       }
 
@@ -3487,6 +3483,7 @@ Otherwise, respond with a full, clear explanation, and include example JSON only
               ...lockedCampaignState, // Preserve verified assets
               stage: "PLAN_PROPOSED",
               plan: planJson,
+              plan_visible: true,
               // Objective/Dest might be redundant if in lockedCampaignState, but safe to keep
               objective: lockedCampaignState?.objective || selectedMetaObjective,
               destination: lockedCampaignState?.destination || selectedDestination,
@@ -3527,19 +3524,10 @@ Otherwise, respond with a full, clear explanation, and include example JSON only
               ? `\n**Suggestions**: ${planJson.targeting.targeting_suggestions.interests?.join(", ") || ""} (${planJson.targeting.targeting_suggestions.demographics?.join(", ") || ""})`
               : "";
 
-            const adAccountIdForPlan = verifiedMetaAssets?.ad_account?.id;
-            if (!adAccountIdForPlan) {
-              return res.status(200).json({
-                ok: false,
-                mode,
-                text: "I could not detect a connected Meta Ad Account. Please connect your Meta Ad Account and then ask me to create this campaign again."
-              });
-            }
-
             text = `
 **Plan Proposed: ${planJson.campaign_name}**
 
-**Ad Account ID**: \`${adAccountIdForPlan}\`
+**Ad Account ID**: \`${(verifiedMetaAssets?.ad_account && (verifiedMetaAssets.ad_account.id || verifiedMetaAssets.ad_account.account_id)) || metaRow?.fb_ad_account_id || "N/A"}\`
 
 **Targeting**: ${planJson.targeting?.geo_locations?.countries?.join(", ") || "India"} (${planJson.targeting?.age_min || 18}-${planJson.targeting?.age_max || 65}+)${tStr}
 **Budget**: ${bAmount} ${bCurrency} (${bType})
