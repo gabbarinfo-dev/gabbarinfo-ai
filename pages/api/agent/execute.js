@@ -120,6 +120,46 @@ function isMetaPlanComplete(plan) {
   );
 }
 
+function normalizeServiceOptions(services, landingPage) {
+  if (!Array.isArray(services)) return [];
+  const base = landingPage ? landingPage.replace(/\/$/, "") : null;
+  const seen = new Set();
+  const result = [];
+
+  for (const raw of services) {
+    if (!raw) continue;
+    let label = raw;
+
+    try {
+      const parsed = new URL(raw);
+      const normalized = parsed.origin + parsed.pathname.replace(/\/$/, "");
+      if (base && normalized === base) continue;
+
+      const path = parsed.pathname || "/";
+      if (path && path !== "/") {
+        const segments = path.split("/").filter(Boolean);
+        if (segments.length) {
+          const last = segments[segments.length - 1];
+          if (last) {
+            label = last.replace(/[-_]+/g, " ").trim();
+            if (label.length) {
+              label = label.charAt(0).toUpperCase() + label.slice(1);
+            }
+          }
+        }
+      }
+    } catch (_) {}
+
+    if (!label) continue;
+    const key = label.toLowerCase();
+    if (seen.has(key)) continue;
+    seen.add(key);
+    result.push(label);
+  }
+
+  return result;
+}
+
 export default async function handler(req, res) {
   let currentState = null; // Default until loaded
 
@@ -1658,10 +1698,19 @@ You are in GENERIC DIGITAL MARKETING AGENT MODE.
         let nextText = "Website confirmed as your landing page.";
 
         if (!lockedCampaignState?.service) {
-          const availableServices =
+          const rawServices =
             autoBusinessContext?.detected_services || [];
-          const serviceOptions = availableServices.length
-            ? availableServices.map((s, i) => `${i + 1}. ${s}`).join("\n")
+          const normalizedServices = normalizeServiceOptions(
+            rawServices,
+            detectedLandingPage ||
+              autoBusinessContext?.business_website ||
+              autoBusinessContext?.instagram_website ||
+              null
+          );
+          const serviceOptions = normalizedServices.length
+            ? normalizedServices
+                .map((s, i) => `${i + 1}. ${s}`)
+                .join("\n")
             : "- Type your service name";
 
           nextText +=
@@ -1723,8 +1772,13 @@ You are in GENERIC DIGITAL MARKETING AGENT MODE.
     // 🧾 SERVICE DETECTION (FROM BUSINESS INTAKE)
     // ============================================================
 
-    const availableServices =
-      autoBusinessContext?.detected_services || [];
+    const availableServices = normalizeServiceOptions(
+      autoBusinessContext?.detected_services || [],
+      detectedLandingPage ||
+        autoBusinessContext?.business_website ||
+        autoBusinessContext?.instagram_website ||
+        null
+    );
 
     // ============================================================
     // ❓ SERVICE CONFIRMATION (BEFORE BUDGET / LOCATION)
@@ -1787,11 +1841,14 @@ You are in GENERIC DIGITAL MARKETING AGENT MODE.
       lockedCampaignState = newState;
       console.log("TRACE: ENTER META INTAKE FLOW");
       console.log("TRACE: RETURNING RESPONSE — STAGE =", currentState?.stage);
-      let nextText = "Service locked for this campaign.";
+      let nextText = `Got it. I will promote "${selectedService}" in this campaign.`;
 
       if (!newState.location && !newState.location_confirmed) {
         nextText +=
           "\n\nWhere should this ad run? (e.g. Mumbai, New York, or 'Online')";
+      } else {
+        nextText +=
+          "\n\nI will now ask about your budget and duration. Please answer the next question directly.";
       }
 
       return res.status(200).json({
@@ -1874,7 +1931,8 @@ You are in GENERIC DIGITAL MARKETING AGENT MODE.
     // Case 1️⃣ User confirmed detected location
     if (
       detectedLocation &&
-      instruction.toLowerCase().includes("yes")
+      instruction.toLowerCase().includes("yes") &&
+      !lockedCampaignState?.location_confirmed
     ) {
       selectedLocation = detectedLocation;
     }
@@ -1882,10 +1940,11 @@ You are in GENERIC DIGITAL MARKETING AGENT MODE.
     // Case 2️⃣ User typed a new location (only when we are in the location stage)
     const stageForLocation = lockedCampaignState?.stage || "";
     const isInLocationStage =
-      lockedCampaignState?.location_question_asked ||
-      stageForLocation === "service_selected" ||
-      stageForLocation === "goal_selected" ||
-      stageForLocation === "location_selected";
+      !lockedCampaignState?.location_confirmed &&
+      (lockedCampaignState?.location_question_asked ||
+        stageForLocation === "service_selected" ||
+        stageForLocation === "goal_selected" ||
+        stageForLocation === "location_selected");
 
     if (
       isInLocationStage &&
@@ -1922,7 +1981,7 @@ You are in GENERIC DIGITAL MARKETING AGENT MODE.
         ok: true,
         mode,
         gated: true,
-        text: "Location locked for this campaign.",
+        text: `Location locked as "${selectedLocation}". I will now ask about your budget and campaign duration. Please answer the next question directly.`,
       });
     }
 
