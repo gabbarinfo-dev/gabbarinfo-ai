@@ -376,8 +376,6 @@ export default async function handler(req, res) {
       };
     }
 
-    let lockedCampaignState = null;
-
     // 🔍 READ LOCKED CAMPAIGN STATE (AUTHORITATIVE — SINGLE SOURCE)
     // 🛡️ PATCH: PREVENT INSTAGRAM MODE FROM READING META ADS MEMORY
     if (body.mode !== "instagram_post" && !lockedCampaignState) { // Only read if NOT already reset
