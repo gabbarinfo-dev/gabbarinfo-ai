@@ -2967,8 +2967,8 @@ Otherwise, respond with a full, clear explanation, and include example JSON only
 
     // 🕵️ DETECT AND SAVE JSON PLAN (FROM GEMINI)
     // Supports: ```json ... ```, ``` ... ```, or plain JSON starting with {
-    // 🔒 ABSOLUTE RULE: No plan generation on first message
-    if (effectiveBusinessId && !isNewMetaCampaignRequest) {
+    // 🔒 ABSOLUTE RULE: No plan generation on first message or when user confirms
+    if (effectiveBusinessId && !isNewMetaCampaignRequest && !lowerInstruction.includes("yes")) {
       let jsonString = null;
 
       // 1. Try code blocks
@@ -3618,8 +3618,8 @@ Reply **YES** to confirm this plan and proceed.
           lockedCampaignState.stage === "READY_TO_LAUNCH" ||
           lockedCampaignState.stage === "COMPLETED"));
 
-    // 🔒 SINGLE PROPOSER RULE: Disable fallback if ANY stage exists or plan exists, AND ensure no plan on first message
-    if ((mode === "meta_ads_plan" || isPlanText) && !lockedCampaignState?.plan && !lockedCampaignState?.stage && effectiveBusinessId && !isNewMetaCampaignRequest) {
+    // 🔒 SINGLE PROPOSER RULE: Disable fallback if ANY stage exists or plan exists, AND ensure no plan on first message or when user confirms
+    if ((mode === "meta_ads_plan" || isPlanText) && !lockedCampaignState?.plan && !lockedCampaignState?.stage && effectiveBusinessId && !isNewMetaCampaignRequest && !lowerInstruction.includes("yes")) {
       console.log("TRACE: FALLBACK META ADS PATH HIT");
       const looksLikePlan = isPlanText || text.includes("Budget") || text.includes("Creative Idea") || text.includes("Targeting") || text.includes("Creative Idea:");
 
