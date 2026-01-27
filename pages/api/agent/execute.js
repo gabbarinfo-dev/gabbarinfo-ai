@@ -78,7 +78,7 @@ async function saveAnswerMemory(baseUrl, business_id, answers, emailOverride = n
 
     if (answers.campaign_state && existingAnswers.campaign_state) {
       console.log(`🧠 [Deep Merge] Merging campaign_state for ${business_id}...`);
-      
+
       // 🛡️ CRITICAL FIX: Ensure PLAN is never lost during merge
       const newPlan = answers.campaign_state.plan;
       const oldPlan = existingAnswers.campaign_state.plan;
@@ -87,7 +87,7 @@ async function saveAnswerMemory(baseUrl, business_id, answers, emailOverride = n
       finalAnswers.campaign_state = {
         ...existingAnswers.campaign_state,
         ...answers.campaign_state,
-        plan: finalPlan, 
+        plan: finalPlan,
         stage: answers.campaign_state.stage || existingAnswers.campaign_state.stage
       };
     }
@@ -154,7 +154,7 @@ function normalizeServiceOptions(services, landingPage) {
           }
         }
       }
-    } catch (_) {}
+    } catch (_) { }
 
     if (!label) continue;
     const key = label.toLowerCase();
@@ -200,11 +200,11 @@ export default async function handler(req, res) {
     // 🔥 DEBUG LOGS FOR CONTEXT MISMATCH
     let { instruction = "", mode: bodyMode = body.mode } = body;
     const lowerInstruction = instruction.toLowerCase();
-    
+
     // 1️⃣ HARD RESET MUST HAPPEN BEFORE MEMORY LOAD
     // Rule: If instruction intent matches “create / run / start ads campaign”
     // Then: Ignore any existing campaign_state, Force a fresh state, Do NOT load old plans
-    
+
     const isNewMetaCampaignRequest =
       (bodyMode === "meta_ads_plan" || bodyMode === "generic") &&
       (
@@ -250,13 +250,9 @@ export default async function handler(req, res) {
         locked_at: new Date().toISOString(),
       };
 
-      // We don't save yet, just set local state to clean
+      // 🔒 RESET IS IN-MEMORY ONLY (Mandatory Fix 6)
       lockedCampaignState = resetState;
       currentState = resetState;
-      
-      // We will save this clean state to memory later if we proceed, 
-      // or we can rely on saveAnswerMemory calls downstream. 
-      // But critical: lockedCampaignState is CLEAN now.
     }
 
     console.log("🔥 REQUEST START");
@@ -770,10 +766,8 @@ export default async function handler(req, res) {
       : "";
 
 
-    // ============================================================
-    // 🛡️ PATCH 2: Dedicated Confirmation Gate
-    // ============================================================
-    if (lockedCampaignState && lockedCampaignState.plan && mode === "meta_ads_plan" && planGeneratedThisTurn === true) {
+    // 🛡️ PATCH 2: Dedicated Confirmation Gate (Mandatory Fix 3)
+    if (lockedCampaignState && lockedCampaignState.plan && planGeneratedThisTurn === true && mode === "meta_ads_plan") {
       console.log("TRACE: ENTER SHORT-CIRCUIT EXECUTION PATH");
       console.log("TRACE: USER SAID YES =", lowerInstruction.includes("yes"));
       console.log("TRACE: STAGE (before confirm) =", lockedCampaignState?.stage);
@@ -781,62 +775,62 @@ export default async function handler(req, res) {
       if (lockedCampaignState.stage === "PLAN_PROPOSED") {
         // 🔒 Only confirm if explicit YES. Otherwise fall through to Gemini (don't block).
         if (lowerInstruction.includes("yes")) {
-            // 🛡️ CRITICAL GUARD: Ensure we have a plan before confirming
-            if (!lockedCampaignState.plan) {
-                console.error("❌ CRITICAL: Attempting to confirm PLAN_PROPOSED but 'plan' is missing in state!");
-                // Revert to generating plan logic (or just error out gracefully)
-                return res.status(200).json({
-                    ok: true,
-                    mode,
-                    text: "I seem to have lost the plan details. Let me regenerate it for you.\n\nReply **YES** to generate the plan again."
-                });
-            }
+          // 🛡️ CRITICAL GUARD: Ensure we have a plan before confirming
+          if (!lockedCampaignState.plan) {
+            console.error("❌ CRITICAL: Attempting to confirm PLAN_PROPOSED but 'plan' is missing in state!");
+            // Revert to generating plan logic (or just error out gracefully)
+            return res.status(200).json({
+              ok: true,
+              mode,
+              text: "I seem to have lost the plan details. Let me regenerate it for you.\n\nReply **YES** to generate the plan again."
+            });
+          }
 
-            // User confirmed
-            console.log("✅ User Confirmed Plan. Transitioning: PLAN_PROPOSED -> PLAN_CONFIRMED");
-            
-            const nextState = {
-                ...lockedCampaignState,
-                stage: "PLAN_CONFIRMED",
-                auto_run: false,
-                locked_at: new Date().toISOString()
-            };
+          // User confirmed
+          console.log("✅ User Confirmed Plan. Transitioning: PLAN_PROPOSED -> PLAN_CONFIRMED");
 
-            // Explicitly save the validated state
-            await saveAnswerMemory(
-              process.env.NEXT_PUBLIC_BASE_URL,
-              effectiveBusinessId,
-              { campaign_state: nextState },
-              session.user.email.toLowerCase()
-            );
+          const nextState = {
+            ...lockedCampaignState,
+            stage: "PLAN_CONFIRMED",
+            auto_run: false,
+            locked_at: new Date().toISOString()
+          };
 
-            // Update local state reference to avoid stale reads downstream
-            lockedCampaignState = nextState;
-            currentState = nextState;
+          // Explicitly save the validated state
+          await saveAnswerMemory(
+            process.env.NEXT_PUBLIC_BASE_URL,
+            effectiveBusinessId,
+            { campaign_state: nextState },
+            session.user.email.toLowerCase()
+          );
 
-            // 🚀 FALLTHROUGH: Do NOT return here. 
-            // We want to immediately trigger the "Short-Circuit" waterfall below
-            // so the user doesn't have to say "Ok" to start image generation.
-            console.log("🚀 Immediate Fallthrough to Waterfall...");
+          // Update local state reference to avoid stale reads downstream
+          lockedCampaignState = nextState;
+          currentState = nextState;
+
+          // 🚀 FALLTHROUGH: Do NOT return here. 
+          // We want to immediately trigger the "Short-Circuit" waterfall below
+          // so the user doesn't have to say "Ok" to start image generation.
+          console.log("🚀 Immediate Fallthrough to Waterfall...");
         } else {
-             console.log("TRACE: Plan proposed but not confirmed. Falling through to model...");
+          console.log("TRACE: Plan proposed but not confirmed. Falling through to model...");
         }
       }
     }
-    
+
     // ============================================================
     // 4️⃣ IMAGE GENERATION MUST BE EXPLICIT (Force Waterfall)
     // ============================================================
     // If we are in PLAN_CONFIRMED, we MUST generate image.
     // The legacy "waterfall" below handles this if lockedCampaignState.stage === "PLAN_CONFIRMED".
     // We just need to ensure nothing blocks it.
-    
+
     // ============================================================
     // 6️⃣ GUARANTEE: FIRST USER MESSAGE CAN NEVER SHOW A PLAN
     // ============================================================
     if (isNewMetaCampaignRequest && lockedCampaignState?.stage) {
-       console.error("❌ INVARIANT VIOLATION: New request but stage is not null. Resetting.");
-       lockedCampaignState = null; // Force reset
+      console.error("❌ INVARIANT VIOLATION: New request but stage is not null. Resetting.");
+      lockedCampaignState = null; // Force reset
     }
 
     // ---------- MODE-SPECIFIC FOCUS ----------
@@ -1745,14 +1739,14 @@ You are in GENERIC DIGITAL MARKETING AGENT MODE.
           const normalizedServices = normalizeServiceOptions(
             rawServices,
             detectedLandingPage ||
-              autoBusinessContext?.business_website ||
-              autoBusinessContext?.instagram_website ||
-              null
+            autoBusinessContext?.business_website ||
+            autoBusinessContext?.instagram_website ||
+            null
           );
           const serviceOptions = normalizedServices.length
             ? normalizedServices
-                .map((s, i) => `${i + 1}. ${s}`)
-                .join("\n")
+              .map((s, i) => `${i + 1}. ${s}`)
+              .join("\n")
             : "- Type your service name";
 
           nextText +=
@@ -1817,9 +1811,9 @@ You are in GENERIC DIGITAL MARKETING AGENT MODE.
     const availableServices = normalizeServiceOptions(
       autoBusinessContext?.detected_services || [],
       detectedLandingPage ||
-        autoBusinessContext?.business_website ||
-        autoBusinessContext?.instagram_website ||
-        null
+      autoBusinessContext?.business_website ||
+      autoBusinessContext?.instagram_website ||
+      null
     );
 
     // ============================================================
@@ -2065,7 +2059,7 @@ You are in GENERIC DIGITAL MARKETING AGENT MODE.
         hasLocation &&
         hasAsset;
 
-        if (!isPlanProposed && prerequisitesMet) {
+      if (!isPlanProposed && prerequisitesMet) {
         let budgetPerDay = lockedCampaignState?.budget_per_day || null;
         let totalDays = lockedCampaignState?.total_days || null;
 
@@ -2608,10 +2602,11 @@ Otherwise, respond with a full, clear explanation, and include example JSON only
       return res.status(200).json({ ok: true, mode, gated: true, text: fallbackText });
     }
 
-    // ⚡ CRITICAL SHORT-CIRCUIT: Skip Gemini if plan exists and user confirms
+    // ⚡ CRITICAL SHORT-CIRCUIT: Skip Gemini if plan exists and user confirms (Mandatory Fix 1 & 3)
     if (
       (lockedCampaignState?.stage === "PLAN_CONFIRMED" || lockedCampaignState?.stage === "IMAGE_GENERATED" || lockedCampaignState?.stage === "READY_TO_LAUNCH") &&
       lockedCampaignState?.plan &&
+      planGeneratedThisTurn === true && // 🔒 HARD GATE
       (lowerInstruction.includes("yes") ||
         lowerInstruction.includes("approve") ||
         lowerInstruction.includes("confirm") ||
@@ -2856,7 +2851,7 @@ Otherwise, respond with a full, clear explanation, and include example JSON only
       }
 
       // 🔒 MICRO PATCH: FORCE STAGE ADVANCEMENT AFTER VERIFIED IMAGE UPLOAD
-  if (
+      if (
         state.stage === "PLAN_PROPOSED" &&
         (state.meta?.uploadedImageHash || state.meta?.imageMediaId)
       ) {
@@ -2965,6 +2960,14 @@ Otherwise, respond with a full, clear explanation, and include example JSON only
       if (!text) text = "I have drafted a plan based on your requirements. Please check it internally.";
     }
 
+    // 🔒 ABSOLUTE RULE — NO PLAN ON FIRST MESSAGE (Mandatory Fix 2)
+    if (isNewMetaCampaignRequest === true && mode === "meta_ads_plan") {
+      text = text.replace(/plan proposed/gi, "").replace(/proposed plan/gi, "").replace(/review the plan/gi, "").trim();
+      if (text.includes("Confirm") || text.includes("YES")) {
+        text = "I've started setting up your campaign. What is the primary objective of this campaign?";
+      }
+    }
+
     // 🕵️ DETECT AND SAVE JSON PLAN (FROM GEMINI)
     // Supports: ```json ... ```, ``` ... ```, or plain JSON starting with {
     // 🔒 ABSOLUTE RULE: No plan generation on first message or when user confirms
@@ -2997,7 +3000,10 @@ Otherwise, respond with a full, clear explanation, and include example JSON only
 
       if (jsonString) {
         console.log("TRACE: DIRECT JSON DETECTED — MODEL PROVIDED PLAN");
-        planGeneratedThisTurn = true; // 🔒 Mark plan as generated in this request
+
+        // 🔒 REQUEST-BOUND OWNERSHIP (Mandatory Fix 1)
+        planGeneratedThisTurn = true;
+
         try {
           let planJson = JSON.parse(jsonString);
 
@@ -3609,17 +3615,16 @@ Reply **YES** to confirm this plan and proceed.
     // We construct a minimal plan from the User's Instruction + Gemini's output.
     const isPlanText = /Plan Proposed|Proposed Plan|Campaign Plan|Creative Idea|Strategy Proposal|Campaign Name/i.test(text);
 
-    const hasExistingPlanOrStage =
-      !!lockedCampaignState?.plan ||
-      (lockedCampaignState &&
-        (lockedCampaignState.stage === "PLAN_PROPOSED" ||
-          lockedCampaignState.stage === "PLAN_CONFIRMED" ||
-          lockedCampaignState.stage === "IMAGE_GENERATED" ||
-          lockedCampaignState.stage === "READY_TO_LAUNCH" ||
-          lockedCampaignState.stage === "COMPLETED"));
+    // 🔒 SINGLE PROPOSER RULE (Mandatory Fix 4)
+    // Disable ALL fallback/self-healing if plan exists or stage is not null
+    const canProposePlan =
+      !isNewMetaCampaignRequest &&
+      !lockedCampaignState?.plan &&
+      !lockedCampaignState?.stage &&
+      effectiveBusinessId &&
+      !lowerInstruction.includes("yes");
 
-    // 🔒 SINGLE PROPOSER RULE: Disable fallback if ANY stage exists or plan exists, AND ensure no plan on first message or when user confirms
-    if ((mode === "meta_ads_plan" || isPlanText) && !lockedCampaignState?.plan && !lockedCampaignState?.stage && effectiveBusinessId && !isNewMetaCampaignRequest && !lowerInstruction.includes("yes")) {
+    if ((mode === "meta_ads_plan" || isPlanText) && canProposePlan) {
       console.log("TRACE: FALLBACK META ADS PATH HIT");
       const looksLikePlan = isPlanText || text.includes("Budget") || text.includes("Creative Idea") || text.includes("Targeting") || text.includes("Creative Idea:");
 
@@ -3701,7 +3706,9 @@ Reply **YES** to confirm this plan and proceed.
           minimalPlan.budget.amount = lockedCampaignState.budget_per_day;
         }
 
-        planGeneratedThisTurn = true; // 🔒 Mark plan as generated in this request
+        // 🔒 REQUEST-BOUND OWNERSHIP (Mandatory Fix 1)
+        planGeneratedThisTurn = true;
+
         const newState = {
           ...lockedCampaignState,
           stage: "PLAN_PROPOSED",
@@ -3765,144 +3772,41 @@ Reply **YES** to confirm this plan and proceed.
 
     if (lockedCampaignState && mode === "meta_ads_plan") {
       const stage = lockedCampaignState.stage || "PLANNING";
-      const userSaysYes =
-        instruction.toLowerCase().includes("yes") ||
-        instruction.toLowerCase().includes("approve") ||
-        instruction.toLowerCase().includes("confirm") ||
-        instruction.toLowerCase().includes("proceed") ||
-        instruction.toLowerCase().includes("launch") ||
-        instruction.toLowerCase().includes("generate") ||
-        instruction.toLowerCase().includes("image");
+      const userSaysYes = lowerInstruction.includes("yes") || lowerInstruction.includes("approve") || lowerInstruction.includes("launch") || lowerInstruction.includes("ok");
 
-      if (stage !== "COMPLETED" && userSaysYes) {
-        let currentState = { ...lockedCampaignState, locked_at: new Date().toISOString() };
+      // 🔒 HARD GATE: Memory plans are READ-ONLY (Mandatory Fix 1 & 3)
+      if (planGeneratedThisTurn === false && (stage === "PLAN_PROPOSED" || stage === "PLAN_CONFIRMED" || stage === "IMAGE_GENERATED" || stage === "READY_TO_LAUNCH")) {
+        console.log("TRACE: Memory plan detected. Bypassing automated pipeline.");
+        // We do NOT enter automation for memory-loaded plans. 
+        // Gemini will handle any questions or re-proposal.
+      } else if (stage !== "COMPLETED" && userSaysYes) {
 
-        // 🛡️ PATCH 3: WATERFALL ENTRY RULE
-        if (mode === "meta_ads_plan") {
-          console.log("TRACE: ENTER META WATERFALL");
-          console.log("TRACE: CURRENT STAGE =", currentState?.stage);
-
-          // 🔒 CONFIRMATION GATE: Only fire if plan was generated THIS TURN
-          if (
-            (!lockedCampaignState || (lockedCampaignState.stage !== "PLAN_CONFIRMED" && lockedCampaignState.stage !== "IMAGE_GENERATED" && lockedCampaignState.stage !== "READY_TO_LAUNCH")) &&
-            planGeneratedThisTurn === true
-          ) {
-            console.log("TRACE: RETURNING RESPONSE — STAGE =", currentState?.stage);
-            return res.status(200).json({
-              ok: true,
-              mode,
-              text: "Please review the proposed plan and reply YES to confirm before I proceed."
-            });
-          }
-        }
-        // 🛡️ IDEMPOTENCY PROTECTION: Avoid double-processing if request arrives too fast
+        // 🛡️ IDEMPOTENCY PROTECTION
         const now = Date.now();
         const lastUpdate = lockedCampaignState.locked_at ? new Date(lockedCampaignState.locked_at).getTime() : 0;
-        const isTooFast = (now - lastUpdate < 10000); // 10s window
-
-        // We allow "PLAN_PROPOSED" to be re-run, but once it moves to Gen/Upload/Launch, we lock it.
-        if (isTooFast && (stage === "IMAGE_GENERATED" || stage === "READY_TO_LAUNCH" || stage === "EXECUTING")) {
-          console.warn(`[IDEMPOTENCY] Blocked duplicate request for ${effectiveBusinessId} (Stage: ${stage})`);
-          console.log("TRACE: RETURNING RESPONSE — STAGE =", currentState?.stage);
-          return res.status(200).json({ ok: true, mode, text: "I'm already working on that! One moment please..." });
+        if (now - lastUpdate < 10000 && stage !== "PLAN_PROPOSED") {
+          console.warn(`[IDEMPOTENCY] Blocked duplicate request for ${effectiveBusinessId}`);
+          return res.status(200).json({ ok: true, mode, text: "I'm already working on that! One moment..." });
         }
 
-        console.log(`[PROD_LOG] 📶 State Transition Started | User: ${session.user.email} | ID: ${effectiveBusinessId} | CurrentStage: ${stage}`);
+        let currentState = { ...lockedCampaignState, locked_at: new Date().toISOString() };
 
-        // 🛡️ REVIVAL: If user says YES to an old plan, we must adopt it into the current turn to allow execution
-        // This satisfies "Only plans generated in THIS request may be confirmed or executed" by making it effectively generated now.
-        if (lockedCampaignState && lockedCampaignState.plan && !planGeneratedThisTurn && userSaysYes) {
-             console.log("♻️ Reviving existing plan for confirmation (User said YES)...");
-             planGeneratedThisTurn = true;
-             
-             // Fix stage if stuck in intake (e.g. objective_selected) or just proposed
-             if (!["PLAN_PROPOSED", "PLAN_CONFIRMED", "IMAGE_GENERATED", "READY_TO_LAUNCH", "COMPLETED"].includes(currentState.stage) || currentState.stage === "PLAN_PROPOSED") {
-                console.log(`♻️ Auto-Confirming Revived Plan: ${currentState.stage} -> PLAN_CONFIRMED`);
-                currentState.stage = "PLAN_CONFIRMED";
-                // Sync lockedCampaignState too
-                lockedCampaignState.stage = "PLAN_CONFIRMED"; 
-                
-                // Save immediately to persist the "Confirmation" event
-                await saveAnswerMemory(
-                    process.env.NEXT_PUBLIC_BASE_URL,
-                    effectiveBusinessId,
-                    { campaign_state: currentState },
-                    session.user.email.toLowerCase()
-                );
-             }
-        }
-
-        // 🛡️ EXECUTION GATE: If plan was not generated/revived this turn, STOP.
-        if (!planGeneratedThisTurn) {
-            console.log("🛑 Execution blocked: Plan exists but was not generated/revived this turn.");
-             return res.status(200).json({
-              ok: true,
-              mode,
-              text: "I see a plan from a previous session. Please reply **YES** to confirm and proceed."
-            });
-        }
-
-        // let currentState = { ...lockedCampaignState, locked_at: new Date().toISOString() }; // Moved up
-
-        // 🛡️ DEFENSIVE CHECK: If user says YES but we have no plan, FALLBACK TO PLANNING.
-        // Rule: NEVER execute without a plan. Implicitly regenerate it.
-        // 🛡️ HARD RULE: Never proceed to confirmation/execution without a saved plan
+        // 🛡️ DEFENSIVE: Ensure plan exists before proceeding
         if (!currentState.plan || !currentState.plan.campaign_name) {
-          const hasLockedBudgetForRegen =
-            !!lockedCampaignState?.budget_per_day &&
-            !!lockedCampaignState?.total_days &&
-            !!lockedCampaignState?.budget_confirmed &&
-            !!lockedCampaignState?.duration_confirmed;
-
-          if (mode === "meta_ads_plan" && !hasLockedBudgetForRegen) {
-            if (!lockedCampaignState?.budget_per_day) {
-              return res.status(200).json({
-                ok: true,
-                mode,
-                gated: true,
-                text: "Before I draft the Meta campaign plan, what is your DAILY budget in INR?"
-              });
-            }
-
-            return res.status(200).json({
-              ok: true,
-              mode,
-              gated: true,
-              text: "Before I draft the Meta campaign plan, for how many days should this campaign run?"
-            });
-          }
-
-          console.warn("⚠️ Plan missing at confirmation. Recreating plan immediately.");
-
+          console.warn("⚠️ Plan missing at confirmation. Recreating plan.");
           const regeneratedPlan = await generateMetaCampaignPlan({
             lockedCampaignState,
             autoBusinessContext,
             verifiedMetaAssets,
             detectedLandingPage,
           });
-
-          const repairedState = {
-            ...currentState,
-            stage: "PLAN_PROPOSED",
-            plan: regeneratedPlan,
-            locked_at: new Date().toISOString()
-          };
-
-          await saveAnswerMemory(process.env.NEXT_PUBLIC_BASE_URL, effectiveBusinessId, {
-            campaign_state: repairedState
-          }, session.user.email.toLowerCase());
-
-          currentState = repairedState;
-
-          console.log("TRACE: PLAN PROPOSED");
-          console.log("TRACE: STAGE (plan) =", repairedState.stage);
-          console.log("TRACE: PLAN OBJECT =", repairedState.plan);
-
-          console.log("TRACE: RETURNING RESPONSE — STAGE =", currentState?.stage);
+          currentState.plan = regeneratedPlan;
+          currentState.stage = "PLAN_PROPOSED";
+          await saveAnswerMemory(process.env.NEXT_PUBLIC_BASE_URL, effectiveBusinessId, { campaign_state: currentState }, session.user.email.toLowerCase());
           return res.status(200).json({
             ok: true,
             mode,
-            text: `**Plan Proposed: ${repairedState.plan.campaign_name}**\nReply **YES** to confirm and proceed.`
+            text: `**Plan Proposed: ${currentState.plan.campaign_name}**\nReply **YES** to confirm and proceed.`
           });
         }
 
@@ -3911,20 +3815,14 @@ Reply **YES** to confirm this plan and proceed.
         let stopReason = null;
 
         // --- STEP 9: IMAGE GENERATION ---
-        const hasPlan = !!currentState.plan;
-
-        // 🛡️ PATCH: Differentiate Generated vs Uploaded (Strict)
         const isImageGenerated = !!currentState.creative?.imageBase64 || !!currentState.creative?.imageUrl;
-        // 🛡️ PATCH 1: SINGLE SOURCE OF TRUTH (Require confirmed hash or ID)
         const isImageUploaded = !!currentState.meta?.uploadedImageHash || !!currentState.meta?.imageMediaId || !!currentState.image_hash;
 
-        if (hasPlan && !isImageGenerated && (currentState.stage === "PLAN_CONFIRMED")) {
-          console.log("TRACE: IMAGE GENERATION ATTEMPT");
-          console.log("TRACE: IMAGE EXISTS =", !!currentState.creative);
-
+        if (!isImageGenerated && (currentState.stage === "PLAN_CONFIRMED" || currentState.stage === "PLAN_PROPOSED")) {
           console.log("🚀 Waterfall: Starting Image Generation...");
           const plan = currentState.plan;
-          const creativeResult = plan.ad_sets?.[0]?.ad_creative || plan.ad_sets?.[0]?.ads?.[0]?.creative || {};
+          const adSet0 = Array.isArray(plan.ad_sets) ? plan.ad_sets[0] : (plan.ad_sets || {});
+          const creativeResult = adSet0.ad_creative || adSet0.creative || {};
           const imagePrompt = creativeResult.image_prompt || creativeResult.imagePrompt || creativeResult.primary_text || `${plan.campaign_name} ad image`;
 
           try {
@@ -3936,134 +3834,56 @@ Reply **YES** to confirm this plan and proceed.
             const imgJson = await parseResponseSafe(imgRes);
 
             if (imgJson.imageBase64) {
-              const newCreative = {
-                ...creativeResult,
-                imageBase64: imgJson.imageBase64,
-                imageUrl: `data:image/png;base64,${imgJson.imageBase64}`
-              };
-              currentState = { ...currentState, stage: "IMAGE_GENERATED", creative: newCreative };
-
-              console.log("TRACE: PIPELINE STEP REPORT");
-              console.log("TRACE: STAGE (pipeline) =", currentState.stage);
-              console.log("TRACE: IMAGE EXISTS =", !!currentState.creative);
-              console.log("TRACE: IMAGE UPLOADED =", !!currentState.meta?.uploadedImageHash);
-
+              currentState.creative = { ...creativeResult, imageBase64: imgJson.imageBase64, imageUrl: `data:image/png;base64,${imgJson.imageBase64}` };
+              currentState.stage = "IMAGE_GENERATED";
               waterfallLog.push("✅ Step 9: Image Generated");
             } else {
               errorOcurred = true;
-              stopReason = "Image Generation Failed (No Base64 returned)";
+              stopReason = "Image Generation Failed";
             }
           } catch (e) {
             errorOcurred = true;
             stopReason = `Image Generation Error: ${e.message}`;
           }
         } else if (isImageGenerated) {
-          console.log("TRACE: PIPELINE STEP REPORT");
-          console.log("TRACE: STAGE (pipeline) =", currentState.stage);
-          console.log("TRACE: IMAGE EXISTS =", !!currentState.creative);
-          console.log("TRACE: IMAGE UPLOADED =", !!currentState.meta?.uploadedImageHash);
-
           waterfallLog.push("⏭️ Step 9: Image Already Exists");
         }
 
-        // --- STEP 10: IMAGE UPLOAD (STRICT CHECK) ---
-        if (!errorOcurred) {
-          const hasImageContent = currentState.creative && currentState.creative.imageBase64;
+        // --- STEP 10: IMAGE UPLOAD ---
+        if (!errorOcurred && currentState.creative?.imageBase64 && !isImageUploaded) {
+          console.log("🚀 Waterfall: Uploading Image to Meta...");
+          try {
+            const uploadRes = await fetch(`${process.env.NEXT_PUBLIC_BASE_URL}/api/meta/upload-image`, {
+              method: "POST",
+              headers: { "Content-Type": "application/json", "x-client-email": __currentEmail || "" },
+              body: JSON.stringify({ imageBase64: currentState.creative.imageBase64 })
+            });
+            const uploadJson = await parseResponseSafe(uploadRes);
+            const iHash = uploadJson.imageHash || uploadJson.image_hash;
 
-          if (hasImageContent && !isImageUploaded) {
-            console.log("TRACE: UPLOADING IMAGE TO META");
-            console.log("🚀 Waterfall: Uploading Image to Meta...");
-            try {
-              const uploadRes = await fetch(`${process.env.NEXT_PUBLIC_BASE_URL}/api/meta/upload-image`, {
-                method: "POST",
-                headers: { "Content-Type": "application/json", "x-client-email": __currentEmail || "" },
-                body: JSON.stringify({ imageBase64: currentState.creative.imageBase64 })
-              });
-              const uploadJson = await parseResponseSafe(uploadRes);
-              console.log("TRACE: IMAGE UPLOAD RESPONSE =", uploadJson);
-              const iHash = uploadJson.imageHash || uploadJson.image_hash;
-
-              if (uploadJson.ok && iHash) {
-                // 🛡️ FINAL INVARIANT PATCH: PERSIST STAGE ADVANCE
-                currentState = {
-                  ...currentState,
-                  stage: "READY_TO_LAUNCH",
-                  image_hash: iHash, // Keep for backward compatibility
-                  meta: {
-                    ...currentState.meta,
-                    uploadedImageHash: iHash,
-                    uploadedAt: new Date().toISOString(),
-                  },
-                  locked_at: new Date().toISOString(),
-                };
-
-                await saveAnswerMemory(
-                  process.env.NEXT_PUBLIC_BASE_URL,
-                  effectiveBusinessId,
-                  { campaign_state: currentState },
-                  session.user.email.toLowerCase()
-                );
-
-                console.log("TRACE: PIPELINE STEP REPORT");
-                console.log("TRACE: STAGE (pipeline) =", currentState.stage);
-                console.log("TRACE: IMAGE EXISTS =", !!currentState.creative);
-                console.log("TRACE: IMAGE UPLOADED =", !!currentState.meta?.uploadedImageHash);
-
-                waterfallLog.push("✅ Step 10: Image Uploaded to Meta");
-              } else {
-                errorOcurred = true;
-                stopReason = `Meta Upload Failed: ${uploadJson.message || "Unknown error"}`;
-              }
-            } catch (e) {
+            if (uploadJson.ok && iHash) {
+              currentState.image_hash = iHash;
+              currentState.meta = { ...currentState.meta, uploadedImageHash: iHash, uploadedAt: new Date().toISOString() };
+              currentState.stage = "READY_TO_LAUNCH";
+              waterfallLog.push("✅ Step 10: Image Uploaded to Meta");
+            } else {
               errorOcurred = true;
-              stopReason = `Meta Upload Error: ${e.message}`;
+              stopReason = `Meta Upload Failed: ${uploadJson.message || "Unknown error"}`;
             }
-          } else if (isImageUploaded) {
-            console.log("TRACE: PIPELINE STEP REPORT");
-            console.log("TRACE: STAGE (pipeline) =", currentState.stage);
-            console.log("TRACE: IMAGE EXISTS =", !!currentState.creative);
-            console.log("TRACE: IMAGE UPLOADED =", !!currentState.meta?.uploadedImageHash);
-
-            waterfallLog.push("⏭️ Step 10: Image Already Uploaded");
+          } catch (e) {
+            errorOcurred = true;
+            stopReason = `Meta Upload Error: ${e.message}`;
           }
+        } else if (isImageUploaded) {
+          waterfallLog.push("⏭️ Step 10: Image Already Uploaded");
+          if (currentState.stage !== "READY_TO_LAUNCH") currentState.stage = "READY_TO_LAUNCH";
         }
 
-        // 🛡️ PATCH: FORCE STAGE ADVANCE AFTER CONFIRMED IMAGE UPLOAD
-        if (
-          currentState.stage === "PLAN_PROPOSED" &&
-          (currentState.meta?.uploadedImageHash || currentState.meta?.imageMediaId)
-        ) {
-          console.log("✅ Advancing stage from PLAN_PROPOSED → READY_TO_LAUNCH");
-          currentState = {
-            ...currentState,
-            stage: "READY_TO_LAUNCH",
-            locked_at: new Date().toISOString(),
-          };
+        // --- STEP 12: EXECUTION ---
+        if (!errorOcurred && currentState.stage === "READY_TO_LAUNCH" && currentState.image_hash) {
+          const wantsLaunch = lowerInstruction.includes("launch") || lowerInstruction.includes("execute") || lowerInstruction.includes("run") || lowerInstruction.includes("publish");
 
-          await saveAnswerMemory(
-            process.env.NEXT_PUBLIC_BASE_URL,
-            effectiveBusinessId,
-            { campaign_state: currentState },
-            session.user.email.toLowerCase()
-          );
-        }
-
-        // --- STEP 12: EXECUTION (Final Step) ---
-        if (!errorOcurred) {
-          const isReady = (currentState.stage === "READY_TO_LAUNCH" || currentState.stage === "IMAGE_UPLOADED") && currentState.image_hash;
-          // For auto_run, we don't need explicit 'launch' keyword
-          const wantsLaunch = instruction.toLowerCase().includes("launch") || instruction.toLowerCase().includes("execute") || instruction.toLowerCase().includes("run") || instruction.toLowerCase().includes("publish") || instruction.toLowerCase().includes("yes") || instruction.toLowerCase().includes("ok");
-
-          if (isReady && (wantsLaunch || currentState.objective === "TRAFFIC")) {
-            // 🛡️ PATCH 3: EXECUTION MUST REQUIRE READY_TO_LAUNCH
-            if (currentState.stage !== "READY_TO_LAUNCH") {
-              console.log("TRACE: RETURNING RESPONSE — STAGE =", currentState?.stage);
-              return res.json({
-                ok: true,
-                text: "Preparing campaign assets. Please wait a moment..."
-              });
-            }
-
+          if (wantsLaunch) {
             console.log("🚀 Waterfall: Executing Campaign on Meta...");
             try {
               const plan = currentState.plan;
@@ -4071,15 +3891,9 @@ Reply **YES** to confirm this plan and proceed.
                 ...plan,
                 ad_sets: plan.ad_sets.map(adset => ({
                   ...adset,
-                  // 🛡️ PATCH 4: PAYLOAD IMAGE GUARANTEE (HARD STOP IF MISSING)
-                  ad_creative: {
-                    ...adset.ad_creative,
-                    image_hash: currentState.meta?.uploadedImageHash || currentState.image_hash || (() => { throw new Error("Meta Execution Failed: Missing image hash for creative payload"); })()
-                  }
+                  ad_creative: { ...adset.ad_creative, image_hash: currentState.image_hash }
                 }))
               };
-
-              console.log("TRACE: EXECUTING META CAMPAIGN");
               const execRes = await fetch(`${process.env.NEXT_PUBLIC_BASE_URL}/api/meta/execute-campaign`, {
                 method: "POST",
                 headers: { "Content-Type": "application/json", "x-client-email": __currentEmail || "" },
@@ -4088,294 +3902,372 @@ Reply **YES** to confirm this plan and proceed.
               const execJson = await execRes.json();
 
               if (execJson.ok) {
-                await saveAnswerMemory(process.env.NEXT_PUBLIC_BASE_URL, effectiveBusinessId, {
-                  campaign_state: { stage: "COMPLETED", final_result: execJson }
-                });
-                currentState.stage = "COMPLETED"; // Explicit sync for log
-                console.log("TRACE: RETURNING RESPONSE — STAGE =", currentState?.stage);
+                currentState.stage = "COMPLETED";
+                currentState.final_result = execJson;
+                await saveAnswerMemory(process.env.NEXT_PUBLIC_BASE_URL, effectiveBusinessId, { campaign_state: currentState }, session.user.email.toLowerCase());
                 return res.status(200).json({
                   ok: true,
-                  text: `🎉 **Campaign Published Successfully!**\n\n**Pipeline Status**:\n${waterfallLog.join("\n")}\n✅ Step 12: Campaign Created (PAUSED)\n\n**Meta Details**:\n- **Campaign Name**: ${plan.campaign_name}\n- **Campaign ID**: \`${execJson.id || "N/A"}\`\n- **Ad Account ID**: \`${verifiedMetaAssets?.ad_account?.id || "N/A"}\`\n- **Status**: PAUSED\n\nYour campaign is now waiting in your Meta Ads Manager for final review.`
+                  text: `🎉 **Campaign Published Successfully!**\n\n**Meta Details**:\n- **Campaign Name**: ${plan.campaign_name}\n- **Campaign ID**: \`${execJson.id || "N/A"}\`\n\nYour campaign is now waiting in Meta Ads Manager (PAUSED).`
                 });
               } else {
                 errorOcurred = true;
-                stopReason = `Meta Execution Failed: ${execJson.message || "Unknown error"}`;
+                console.log(`[PROD_LOG] 📶 State Transition Started | User: ${session.user.email} | ID: ${effectiveBusinessId} | CurrentStage: ${stage}`);
+
+                // let currentState = { ...lockedCampaignState, locked_at: new Date().toISOString() }; // Moved up
+
+                // 🛡️ DEFENSIVE CHECK: If user says YES but we have no plan, FALLBACK TO PLANNING.
+                // Rule: NEVER execute without a plan. Implicitly regenerate it.
+                // 🛡️ HARD RULE: Never proceed to confirmation/execution without a saved plan
+                if (!currentState.plan || !currentState.plan.campaign_name) {
+                  const hasLockedBudgetForRegen =
+                    !!lockedCampaignState?.budget_per_day &&
+                    !!lockedCampaignState?.total_days &&
+                    !!lockedCampaignState?.budget_confirmed &&
+                    !!lockedCampaignState?.duration_confirmed;
+
+                  if (mode === "meta_ads_plan" && !hasLockedBudgetForRegen) {
+                    if (!lockedCampaignState?.budget_per_day) {
+                      return res.status(200).json({
+                        ok: true,
+                        mode,
+                        gated: true,
+                        text: "Before I draft the Meta campaign plan, what is your DAILY budget in INR?"
+                      });
+                    }
+
+                    return res.status(200).json({
+                      ok: true,
+                      mode,
+                      gated: true,
+                      text: "Before I draft the Meta campaign plan, for how many days should this campaign run?"
+                    });
+                  }
+
+                  console.warn("⚠️ Plan missing at confirmation. Recreating plan immediately.");
+
+                  const regeneratedPlan = await generateMetaCampaignPlan({
+                    lockedCampaignState,
+                    autoBusinessContext,
+                    verifiedMetaAssets,
+                    detectedLandingPage,
+                  });
+
+                  const repairedState = {
+                    ...currentState,
+                    stage: "PLAN_PROPOSED",
+                    plan: regeneratedPlan,
+                    locked_at: new Date().toISOString()
+                  };
+
+                  await saveAnswerMemory(process.env.NEXT_PUBLIC_BASE_URL, effectiveBusinessId, {
+                    campaign_state: repairedState
+                  }, session.user.email.toLowerCase());
+
+                  currentState = repairedState;
+
+                  console.log("TRACE: PLAN PROPOSED");
+                  console.log("TRACE: STAGE (plan) =", repairedState.stage);
+                  console.log("TRACE: PLAN OBJECT =", repairedState.plan);
+
+                  console.log("TRACE: RETURNING RESPONSE — STAGE =", currentState?.stage);
+                  return res.status(200).json({
+                    ok: true,
+                    mode,
+                    text: `**Plan Proposed: ${repairedState.plan.campaign_name}**\nReply **YES** to confirm and proceed.`
+                  });
+                }
+
+                let waterfallLog = [];
+                let errorOcurred = false;
+                let stopReason = null;
+
+                // --- STEP 9: IMAGE GENERATION ---
+                const hasPlan = !!currentState.plan;
+
+                // 🛡️ PATCH: Differentiate Generated vs Uploaded (Strict)
+                const isImageGenerated = !!currentState.creative?.imageBase64 || !!currentState.creative?.imageUrl;
+                // 🛡️ PATCH 1: SINGLE SOURCE OF TRUTH (Require confirmed hash or ID)
+                const isImageUploaded = !!currentState.meta?.uploadedImageHash || !!currentState.meta?.imageMediaId || !!currentState.image_hash;
+
+                if (hasPlan && !isImageGenerated && (currentState.stage === "PLAN_CONFIRMED")) {
+                  console.log("TRACE: IMAGE GENERATION ATTEMPT");
+                  console.log("TRACE: IMAGE EXISTS =", !!currentState.creative);
+
+                  console.log("🚀 Waterfall: Starting Image Generation...");
+                  const plan = currentState.plan;
+                  const creativeResult = plan.ad_sets?.[0]?.ad_creative || plan.ad_sets?.[0]?.ads?.[0]?.creative || {};
+                  const imagePrompt = creativeResult.image_prompt || creativeResult.imagePrompt || creativeResult.primary_text || `${plan.campaign_name} ad image`;
+
+                  try {
+                    const imgRes = await fetch(`${process.env.NEXT_PUBLIC_BASE_URL}/api/images/generate`, {
+                      method: "POST",
+                      headers: { "Content-Type": "application/json" },
+                      body: JSON.stringify({ prompt: imagePrompt }),
+                    });
+                    const imgJson = await parseResponseSafe(imgRes);
+
+                    if (imgJson.imageBase64) {
+                      const newCreative = {
+                        ...creativeResult,
+                        imageBase64: imgJson.imageBase64,
+                        imageUrl: `data:image/png;base64,${imgJson.imageBase64}`
+                      };
+                      currentState = { ...currentState, stage: "IMAGE_GENERATED", creative: newCreative };
+
+                      console.log("TRACE: PIPELINE STEP REPORT");
+                      console.log("TRACE: STAGE (pipeline) =", currentState.stage);
+                      console.log("TRACE: IMAGE EXISTS =", !!currentState.creative);
+                      console.log("TRACE: IMAGE UPLOADED =", !!currentState.meta?.uploadedImageHash);
+
+                      waterfallLog.push("✅ Step 9: Image Generated");
+                    } else {
+                      errorOcurred = true;
+                      stopReason = "Image Generation Failed (No Base64 returned)";
+                    }
+                  } catch (e) {
+                    errorOcurred = true;
+                    stopReason = `Image Generation Error: ${e.message}`;
+                  }
+                } else if (isImageGenerated) {
+                  console.log("TRACE: PIPELINE STEP REPORT");
+                  console.log("TRACE: STAGE (pipeline) =", currentState.stage);
+                  console.log("TRACE: IMAGE EXISTS =", !!currentState.creative);
+                  console.log("TRACE: IMAGE UPLOADED =", !!currentState.meta?.uploadedImageHash);
+
+                  waterfallLog.push("⏭️ Step 9: Image Already Exists");
+                }
+
+                // --- STEP 10: IMAGE UPLOAD (STRICT CHECK) ---
+                if (!errorOcurred) {
+                  const hasImageContent = currentState.creative && currentState.creative.imageBase64;
+
+                  if (hasImageContent && !isImageUploaded) {
+                    console.log("TRACE: UPLOADING IMAGE TO META");
+                    console.log("🚀 Waterfall: Uploading Image to Meta...");
+                    try {
+                      const uploadRes = await fetch(`${process.env.NEXT_PUBLIC_BASE_URL}/api/meta/upload-image`, {
+                        method: "POST",
+                        headers: { "Content-Type": "application/json", "x-client-email": __currentEmail || "" },
+                        body: JSON.stringify({ imageBase64: currentState.creative.imageBase64 })
+                      });
+                      const uploadJson = await parseResponseSafe(uploadRes);
+                      console.log("TRACE: IMAGE UPLOAD RESPONSE =", uploadJson);
+                      const iHash = uploadJson.imageHash || uploadJson.image_hash;
+
+                      if (uploadJson.ok && iHash) {
+                        // 🛡️ FINAL INVARIANT PATCH: PERSIST STAGE ADVANCE
+                        currentState = {
+                          ...currentState,
+                          stage: "READY_TO_LAUNCH",
+                          image_hash: iHash, // Keep for backward compatibility
+                          meta: {
+                            ...currentState.meta,
+                            uploadedImageHash: iHash,
+                            uploadedAt: new Date().toISOString(),
+                          },
+                          locked_at: new Date().toISOString(),
+                        };
+
+                        await saveAnswerMemory(
+                          process.env.NEXT_PUBLIC_BASE_URL,
+                          effectiveBusinessId,
+                          { campaign_state: currentState },
+                          session.user.email.toLowerCase()
+                        );
+
+                        console.log("TRACE: PIPELINE STEP REPORT");
+                        console.log("TRACE: STAGE (pipeline) =", currentState.stage);
+                        console.log("TRACE: IMAGE EXISTS =", !!currentState.creative);
+                        console.log("TRACE: IMAGE UPLOADED =", !!currentState.meta?.uploadedImageHash);
+
+                        waterfallLog.push("✅ Step 10: Image Uploaded to Meta");
+                      } else {
+                        errorOcurred = true;
+                        stopReason = `Meta Upload Failed: ${uploadJson.message || "Unknown error"}`;
+                      }
+                    } catch (e) {
+                      errorOcurred = true;
+                      stopReason = `Meta Upload Error: ${e.message}`;
+                    }
+                  } else if (isImageUploaded) {
+                    console.log("TRACE: PIPELINE STEP REPORT");
+                    console.log("TRACE: STAGE (pipeline) =", currentState.stage);
+                    console.log("TRACE: IMAGE EXISTS =", !!currentState.creative);
+                    console.log("TRACE: IMAGE UPLOADED =", !!currentState.meta?.uploadedImageHash);
+
+                    waterfallLog.push("⏭️ Step 10: Image Already Uploaded");
+                  }
+                }
+
+                // 🛡️ PATCH: FORCE STAGE ADVANCE AFTER CONFIRMED IMAGE UPLOAD
+                if (
+                  currentState.stage === "PLAN_PROPOSED" &&
+                  (currentState.meta?.uploadedImageHash || currentState.meta?.imageMediaId)
+                ) {
+                  console.log("✅ Advancing stage from PLAN_PROPOSED → READY_TO_LAUNCH");
+                  currentState = {
+                    ...currentState,
+                    stage: "READY_TO_LAUNCH",
+                    locked_at: new Date().toISOString(),
+                  };
+
+                  await saveAnswerMemory(
+                    process.env.NEXT_PUBLIC_BASE_URL,
+                    effectiveBusinessId,
+                    { campaign_state: currentState },
+                    session.user.email.toLowerCase()
+                  );
+                }
+
+                // --- STEP 12: EXECUTION (Final Step) ---
+                if (!errorOcurred) {
+                  const isReady = (currentState.stage === "READY_TO_LAUNCH" || currentState.stage === "IMAGE_UPLOADED") && currentState.image_hash;
+                  // For auto_run, we don't need explicit 'launch' keyword
+                  const wantsLaunch = instruction.toLowerCase().includes("launch") || instruction.toLowerCase().includes("execute") || instruction.toLowerCase().includes("run") || instruction.toLowerCase().includes("publish") || instruction.toLowerCase().includes("yes") || instruction.toLowerCase().includes("ok");
+
+                  if (isReady && (wantsLaunch || currentState.objective === "TRAFFIC")) {
+                    // 🛡️ PATCH 3: EXECUTION MUST REQUIRE READY_TO_LAUNCH
+                    if (currentState.stage !== "READY_TO_LAUNCH") {
+                      console.log("TRACE: RETURNING RESPONSE — STAGE =", currentState?.stage);
+                      return res.json({
+                        ok: true,
+                        text: "Preparing campaign assets. Please wait a moment..."
+                      });
+                    }
+
+                    console.log("🚀 Waterfall: Executing Campaign on Meta...");
+                    try {
+                      const plan = currentState.plan;
+                      const finalPayload = {
+                        ...plan,
+                        ad_sets: plan.ad_sets.map(adset => ({
+                          ...adset,
+                          // 🛡️ PATCH 4: PAYLOAD IMAGE GUARANTEE (HARD STOP IF MISSING)
+                          ad_creative: {
+                            ...adset.ad_creative,
+                            image_hash: currentState.meta?.uploadedImageHash || currentState.image_hash || (() => { throw new Error("Meta Execution Failed: Missing image hash for creative payload"); })()
+                          }
+                        }))
+                      };
+
+                      console.log("TRACE: EXECUTING META CAMPAIGN");
+                      const execRes = await fetch(`${process.env.NEXT_PUBLIC_BASE_URL}/api/meta/execute-campaign`, {
+                        method: "POST",
+                        headers: { "Content-Type": "application/json", "x-client-email": __currentEmail || "" },
+                        body: JSON.stringify({ platform: "meta", payload: finalPayload })
+                      });
+                      const execJson = await execRes.json();
+
+                      if (execJson.ok) {
+                        await saveAnswerMemory(process.env.NEXT_PUBLIC_BASE_URL, effectiveBusinessId, {
+                          campaign_state: { stage: "COMPLETED", final_result: execJson }
+                        });
+                        currentState.stage = "COMPLETED"; // Explicit sync for log
+                        console.log("TRACE: RETURNING RESPONSE — STAGE =", currentState?.stage);
+                        return res.status(200).json({
+                          ok: true,
+                          text: `🎉 **Campaign Published Successfully!**\n\n**Pipeline Status**:\n${waterfallLog.join("\n")}\n✅ Step 12: Campaign Created (PAUSED)\n\n**Meta Details**:\n- **Campaign Name**: ${plan.campaign_name}\n- **Campaign ID**: \`${execJson.id || "N/A"}\`\n- **Ad Account ID**: \`${verifiedMetaAssets?.ad_account?.id || "N/A"}\`\n- **Status**: PAUSED\n\nYour campaign is now waiting in your Meta Ads Manager for final review.`
+                        });
+                      } else {
+                        errorOcurred = true;
+                        stopReason = `Meta Execution Failed: ${execJson.message || "Unknown error"}`;
+                      }
+                    } catch (e) {
+                      errorOcurred = true;
+                      stopReason = `Meta Execution Error: ${e.message}`;
+                    }
+                  }
+                }
+
+                // Save progress reached
+                console.log(`[PROD_LOG] ✅ State Transition Finished | ID: ${effectiveBusinessId} | FinalStage: ${currentState.stage}`);
+                await saveAnswerMemory(process.env.NEXT_PUBLIC_BASE_URL, effectiveBusinessId, { campaign_state: currentState }, session.user.email.toLowerCase());
+
+                // If we stopped due to error or waiting
+                let feedbackText = "";
+                if (errorOcurred) {
+                  console.log("TRACE: PIPELINE STEP REPORT");
+                  console.log("TRACE: STAGE (pipeline) =", currentState.stage);
+
+                  feedbackText = `❌ **Automation Interrupted**:\n\n**Error**: ${stopReason}\n\n**Pipeline Progress**:\n${waterfallLog.join("\n")}\n\nI've saved the progress so far. Please check the error above and reply to try again.`;
+                } else if (currentState.stage === "IMAGE_GENERATED") {
+                  console.log("TRACE: PIPELINE STEP REPORT");
+                  console.log("TRACE: STAGE (pipeline) =", currentState.stage);
+
+                  // 🛡️ PATCH: Verify Image actually exists
+                  if (currentState.creative?.imageBase64 || currentState.creative?.imageUrl) {
+                    feedbackText = `✅ **Image Generated Successfully**\n\n[Image Generated]\n\n**Next Steps**:\n1. Upload image to Meta Assets\n2. Create paused campaign on Facebook/Instagram\n\nReply **LAUNCH** to complete these steps automatically.`;
+                  } else {
+                    feedbackText = `❌ **Image Generation Failed**\n\nThe image could not be generated. Please try again.`;
+                  }
+                } else if (currentState.stage === "READY_TO_LAUNCH") {
+                  console.log("TRACE: PIPELINE STEP REPORT");
+                  console.log("TRACE: STAGE (pipeline) =", currentState.stage);
+
+                  // 🛡️ PATCH: Verify Hash actually exists
+                  if (currentState.creative?.imageHash) {
+                    feedbackText = `✅ **Image Uploaded & Ready**\n\nEverything is set for campaign launch.\n\n**Details**:\n- Campaign: ${currentState.plan.campaign_name}\n- Budget: ${currentState.plan.budget?.amount || "500"} INR\n\nReply **LAUNCH** to publish the campaign to Meta.`;
+                  } else {
+                    feedbackText = `❌ **Image Upload Failed**\n\nThe image was generated but could not be uploaded to Meta. Please check your connection and try again.`;
+                  }
+                } else {
+                  console.log("TRACE: PIPELINE STEP REPORT");
+                  console.log("TRACE: STAGE (pipeline) =", currentState.stage);
+                  feedbackText = `**Current Pipeline Progress**:\n${waterfallLog.join("\n") || "No steps completed in this turn."}\n\n(Debug: Stage=${currentState.stage}, Plan=${currentState.plan ? "Yes" : "No"})\n\nWaiting for your confirmation...`;
+                }
+
+                console.log("TRACE: RETURNING RESPONSE — STAGE =", currentState?.stage);
+                return res.status(200).json({ ok: true, text: feedbackText, imageUrl: currentState.creative?.imageUrl, mode });
               }
+            }
+
+    if ((mode === "meta_ads_plan" || mode === "generic") && typeof text === "string") {
+              const trimmed = text.trim();
+              if (trimmed.startsWith("{") && trimmed.endsWith("}")) {
+                text = "I have processed your request based on the details provided. Please ask me in plain language if you want a summary of the plan.";
+              }
+            }
+
+            return res.status(200).json({ ok: true, text, mode });
+
+          } catch (err) {
+            console.error("Agent execution error:", err);
+            return res.status(500).json({ ok: false, message: "Server error", error: err.message });
+          }
+        }
+
+        async function generateMetaCampaignPlan({ lockedCampaignState, autoBusinessContext, verifiedMetaAssets, detectedLandingPage }) {
+          console.log("🔄 Regenerating Meta Campaign Plan...");
+          const serviceName = lockedCampaignState?.service || "Digital Marketing";
+          return {
+            campaign_name: `${serviceName} Campaign`,
+            objective: "OUTCOME_TRAFFIC",
+            performance_goal: "MAXIMIZE_LINK_CLICKS",
+            budget: { amount: 500, currency: "INR", type: "DAILY" },
+            targeting: { geo_locations: { countries: ["IN"], cities: [] }, age_min: 18, age_max: 65 },
+            ad_sets: [{
+              name: "Ad Set 1", status: "PAUSED", optimization_goal: "LINK_CLICKS", billing_event: "IMPRESSIONS", destination_type: "WEBSITE",
+              ad_creative: { imagePrompt: "ad", primary_text: "text", headline: "headline", call_to_action: "LEARN_MORE", destination_url: "https://gabbarinfo.com" }
+            }]
+          };
+        }
+
+        async function handleInstagramPostOnly(req, res, session, body) {
+          const { instruction = "" } = body;
+          const { data: metaRow } = await supabase.from("meta_connections").select("*").eq("email", session.user.email.toLowerCase()).maybeSingle();
+          const activeBusinessId = metaRow?.fb_business_id || "default_business";
+          const urlMatch = instruction.match(/https?:\/\/[^\s]+/i);
+          const imageUrl = urlMatch ? urlMatch[0] : null;
+          if (imageUrl) {
+            try {
+              await clearCreativeState(supabase, session.user.email.toLowerCase());
+              const result = await executeInstagramPost({ userEmail: session.user.email.toLowerCase(), imageUrl, caption: "Post" });
+              return res.json({ ok: true, text: "🎉 Instagram Post Published!" });
             } catch (e) {
-              errorOcurred = true;
-              stopReason = `Meta Execution Error: ${e.message}`;
+              return res.status(200).json({ ok: false, text: "Error" });
             }
           }
+          const creativeResult = await creativeEntry({ supabase, session, instruction, metaRow, effectiveBusinessId: activeBusinessId });
+          if (creativeResult.response) return res.json(creativeResult.response);
+          return res.json({ ok: true, text: "More info needed." });
         }
-
-        // Save progress reached
-        console.log(`[PROD_LOG] ✅ State Transition Finished | ID: ${effectiveBusinessId} | FinalStage: ${currentState.stage}`);
-        await saveAnswerMemory(process.env.NEXT_PUBLIC_BASE_URL, effectiveBusinessId, { campaign_state: currentState }, session.user.email.toLowerCase());
-
-        // If we stopped due to error or waiting
-        let feedbackText = "";
-        if (errorOcurred) {
-          console.log("TRACE: PIPELINE STEP REPORT");
-          console.log("TRACE: STAGE (pipeline) =", currentState.stage);
-
-          feedbackText = `❌ **Automation Interrupted**:\n\n**Error**: ${stopReason}\n\n**Pipeline Progress**:\n${waterfallLog.join("\n")}\n\nI've saved the progress so far. Please check the error above and reply to try again.`;
-        } else if (currentState.stage === "IMAGE_GENERATED") {
-          console.log("TRACE: PIPELINE STEP REPORT");
-          console.log("TRACE: STAGE (pipeline) =", currentState.stage);
-
-          // 🛡️ PATCH: Verify Image actually exists
-          if (currentState.creative?.imageBase64 || currentState.creative?.imageUrl) {
-            feedbackText = `✅ **Image Generated Successfully**\n\n[Image Generated]\n\n**Next Steps**:\n1. Upload image to Meta Assets\n2. Create paused campaign on Facebook/Instagram\n\nReply **LAUNCH** to complete these steps automatically.`;
-          } else {
-            feedbackText = `❌ **Image Generation Failed**\n\nThe image could not be generated. Please try again.`;
-          }
-        } else if (currentState.stage === "READY_TO_LAUNCH") {
-          console.log("TRACE: PIPELINE STEP REPORT");
-          console.log("TRACE: STAGE (pipeline) =", currentState.stage);
-
-          // 🛡️ PATCH: Verify Hash actually exists
-          if (currentState.creative?.imageHash) {
-            feedbackText = `✅ **Image Uploaded & Ready**\n\nEverything is set for campaign launch.\n\n**Details**:\n- Campaign: ${currentState.plan.campaign_name}\n- Budget: ${currentState.plan.budget?.amount || "500"} INR\n\nReply **LAUNCH** to publish the campaign to Meta.`;
-          } else {
-            feedbackText = `❌ **Image Upload Failed**\n\nThe image was generated but could not be uploaded to Meta. Please check your connection and try again.`;
-          }
-        } else {
-          console.log("TRACE: PIPELINE STEP REPORT");
-          console.log("TRACE: STAGE (pipeline) =", currentState.stage);
-
-          feedbackText = `**Current Pipeline Progress**:\n${waterfallLog.join("\n") || "No steps completed in this turn."}\n\n(Debug: Stage=${currentState.stage}, Plan=${currentState.plan ? "Yes" : "No"})\n\nWaiting for your confirmation...`;
-        }
-
-        console.log("TRACE: RETURNING RESPONSE — STAGE =", currentState?.stage);
-        return res.status(200).json({ ok: true, text: feedbackText, imageUrl: currentState.creative?.imageUrl, mode });
-
-      }
-
-      // ===============================
-      // 🧠 STEP-1 / STEP-2 NORMAL AGENT RESPONSE
-      // ===============================
-      console.log("TRACE: RETURNING RESPONSE — STAGE =", currentState?.stage);
-      if ((mode === "meta_ads_plan" || mode === "generic") && typeof text === "string") {
-        const trimmed = text.trim();
-        if (trimmed.startsWith("{") && trimmed.endsWith("}")) {
-          text = "I have processed your request based on the details provided. Please ask me in plain language if you want a summary of the plan.";
-        }
-      }
-      return res.status(200).json({
-        ok: true,
-        text,
-        mode,
-      });
-
-    } // End of if (lockedCampaignState)
-
-  } catch (err) {
-    console.error("Agent execution error:", err);
-    console.log("TRACE: RETURNING RESPONSE — STAGE = ERROR");
-    return res.status(500).json({
-      ok: false,
-      message: "Server error in /api/agent/execute",
-      error: err.message || String(err),
-    });
-  }
-}
-
-
-// 🛠️ HELPER: PROACTIVE PLAN REGENERATION (SELF-HEALING)
-async function generateMetaCampaignPlan({ lockedCampaignState, autoBusinessContext, verifiedMetaAssets, detectedLandingPage }) {
-  console.log("🔄 [Self-Healing] Regenerating Meta Campaign Plan from Context...");
-
-  const serviceName = lockedCampaignState?.service || autoBusinessContext?.business_name || "Digital Marketing";
-  const objective = lockedCampaignState?.objective || "OUTCOME_TRAFFIC";
-  const performanceGoal = lockedCampaignState?.performance_goal || "MAXIMIZE_LINK_CLICKS";
-  const landingPage = lockedCampaignState?.landing_page || detectedLandingPage || "https://gabbarinfo.com";
-  const location = lockedCampaignState?.location || "India";
-  const budgetAmount = lockedCampaignState?.budget_per_day || 500;
-
-  // Deterministic Default Plan
-  return {
-    campaign_name: `${serviceName} Campaign`,
-    objective: objective,
-    performance_goal: performanceGoal,
-    budget: {
-      amount: budgetAmount,
-      currency: "INR",
-      type: "DAILY"
-    },
-    targeting: {
-      geo_locations: {
-        countries: ["IN"],
-        cities: location !== "India" ? [{ name: location }] : []
-      },
-      age_min: 18,
-      age_max: 65,
-      excluded_custom_audiences: [],
-      flexible_spec: []
-    },
-    ad_sets: [
-      {
-        name: `${serviceName} Ad Set`,
-        status: "PAUSED",
-        optimization_goal: performanceGoal === "MAXIMIZE_LEADS" ? "LEADS" : "LINK_CLICKS",
-        billing_event: "IMPRESSIONS",
-        destination_type: objective === "OUTCOME_LEADS" ? "ON_AD" : "WEBSITE",
-        ad_creative: {
-          imagePrompt: `${serviceName} professional service advertisement high quality`,
-          primary_text: `Looking for best ${serviceName}? We provide top-notch services to help you grow.`,
-          headline: `Expert ${serviceName}`,
-          call_to_action: "LEARN_MORE",
-          destination_url: landingPage
-        }
-      }
-    ]
-  };
-}
-
-
-async function handleInstagramPostOnly(req, res, session, body) {
-  console.log("TRACE: ENTER INSTAGRAM MODE");
-  let currentState = null; // Default for returns
-  const { instruction = "" } = body;
-
-  // Resolve Meta connection (do NOT reuse Ads logic)
-  const { data: metaRow } = await supabase
-    .from("meta_connections")
-    .select("*")
-    .eq("email", session.user.email.toLowerCase())
-    .maybeSingle();
-
-  const activeBusinessId =
-    metaRow?.fb_business_id ||
-    metaRow?.fb_page_id ||
-    metaRow?.ig_business_id ||
-    "default_business";
-
-  // -------------------------------
-  // PATH A — Direct URL + Caption
-  // -------------------------------
-  const urlMatch = instruction.match(/https?:\/\/[^\s]+/i);
-  const imageUrl = urlMatch ? urlMatch[0] : null;
-
-  let caption = null;
-  const captionMatch = instruction.match(/Caption:\s*(.*)/i);
-  if (captionMatch) {
-    caption = captionMatch[1].trim();
-  } else if (imageUrl) {
-    caption = instruction.replace(imageUrl, "").trim();
-  }
-
-  if (imageUrl && caption && caption.length > 5) {
-    try {
-      await clearCreativeState(supabase, session.user.email.toLowerCase());
-
-      const normalizedImage = await normalizeImageUrl(imageUrl);
-
-      const result = await executeInstagramPost({
-        userEmail: session.user.email.toLowerCase(),
-        imageUrl: normalizedImage,
-        caption,
-      });
-
-      await saveAnswerMemory(
-        process.env.NEXT_PUBLIC_BASE_URL,
-        activeBusinessId,
-        {
-          campaign_state: {
-            stage: "COMPLETED",
-            flow: "instagram_publish",
-            final_result: result,
-          },
-        },
-        session.user.email.toLowerCase()
-      );
-
-      console.log("TRACE: RETURNING RESPONSE — STAGE =", currentState?.stage);
-      return res.json({
-        ok: true,
-        text: `🎉 **Instagram Post Published Successfully!**\n\n- **Post ID**: \`${result.id}\``,
-      });
-    } catch (e) {
-      console.error("Instagram Direct Path Error:", e);
-      console.log("TRACE: RETURNING RESPONSE — STAGE =", currentState?.stage);
-      return res.status(200).json({
-        ok: false,
-        mode: "instagram_post",
-        text: `Failed to publish Instagram post: ${e.message || "Unknown error"}. Please try again.`,
-      });
-    }
-  }
-
-  // -------------------------------
-  // PATH B — Creative Entry FSM
-  // -------------------------------
-  const creativeResult = await creativeEntry({
-    supabase,
-    session,
-    instruction,
-    metaRow,
-    effectiveBusinessId: activeBusinessId,
-  });
-
-  // 1️⃣ HIGHEST PRIORITY: PUBLISH WHEN CONFIRMATION IS GIVEN
-  if (creativeResult && creativeResult.assets) {
-    const { imageUrl, caption } = creativeResult.assets;
-
-    if (!imageUrl) {
-      console.error("❌ Creative Result has assets but NO imageUrl:", creativeResult);
-      // Fallback to error message instead of generic "more info"
-      return res.status(200).json({
-        ok: false,
-        mode: "instagram_post",
-        text: "Something went wrong: Image URL is missing. Please try saying 'reset' to start over."
-      });
-    }
-
-    try {
-      const publishResult = await executeInstagramPost({
-        userEmail: session.user.email.toLowerCase(),
-        imageUrl,
-        caption: caption || "Check out this post!", // Fallback caption
-      });
-
-      await clearCreativeState(supabase, session.user.email.toLowerCase());
-
-      // IMMEDIATELY return to prevent double-response
-      console.log("TRACE: RETURNING RESPONSE — STAGE =", currentState?.stage);
-      return res.status(200).json({
-        ok: true,
-        mode: "instagram_post",
-        text: "🎉 Instagram Post Published Successfully!",
-        result: publishResult
-      });
-    } catch (publishError) {
-      console.error("❌ Instagram Publish Error:", publishError);
-
-      // Clear state even on error to allow retry
-      await clearCreativeState(supabase, session.user.email.toLowerCase());
-
-      console.log("TRACE: RETURNING RESPONSE — STAGE =", currentState?.stage);
-      return res.status(200).json({
-        ok: false,
-        mode: "instagram_post",
-        text: `Failed to publish Instagram post: ${publishError.message || "Unknown error"}. Please try again.`
-      });
-    }
-  }
-
-  // 2️⃣ SECOND: RETURN PREVIEW OR QUESTIONS (NON-TERMINAL)
-  if (creativeResult.response) {
-    console.log("TRACE: RETURNING RESPONSE — STAGE =", currentState?.stage);
-    return res.json(creativeResult.response);
-  }
-
-  // 3️⃣ FALLBACK: Request more information (should rarely be reached)
-  console.log("TRACE: RETURNING RESPONSE — STAGE =", currentState?.stage);
-  return res.json({
-    ok: true,
-    text: "I need a bit more information to create your Instagram post.",
-  });
-}
-
-
-
-
