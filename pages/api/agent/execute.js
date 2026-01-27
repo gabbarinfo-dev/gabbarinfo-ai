@@ -168,6 +168,7 @@ function normalizeServiceOptions(services, landingPage) {
 
 export default async function handler(req, res) {
   let currentState = null; // Default until loaded
+  let planGeneratedThisTurn = false; // 🔒 Request-scoped flag for plan ownership
 
   if (req.method !== "POST") {
     console.log("TRACE: ENTER EXECUTE");
@@ -778,52 +779,48 @@ export default async function handler(req, res) {
       console.log("TRACE: STAGE (before confirm) =", lockedCampaignState?.stage);
 
       if (lockedCampaignState.stage === "PLAN_PROPOSED") {
-        if (!lowerInstruction.includes("yes")) {
-          console.log("TRACE: RETURNING RESPONSE — STAGE =", currentState?.stage);
-          return res.status(200).json({
-            ok: true,
-            mode,
-            text: "Please review the plan above and reply YES to confirm."
-          });
+        // 🔒 Only confirm if explicit YES. Otherwise fall through to Gemini (don't block).
+        if (lowerInstruction.includes("yes")) {
+            // 🛡️ CRITICAL GUARD: Ensure we have a plan before confirming
+            if (!lockedCampaignState.plan) {
+                console.error("❌ CRITICAL: Attempting to confirm PLAN_PROPOSED but 'plan' is missing in state!");
+                // Revert to generating plan logic (or just error out gracefully)
+                return res.status(200).json({
+                    ok: true,
+                    mode,
+                    text: "I seem to have lost the plan details. Let me regenerate it for you.\n\nReply **YES** to generate the plan again."
+                });
+            }
+
+            // User confirmed
+            console.log("✅ User Confirmed Plan. Transitioning: PLAN_PROPOSED -> PLAN_CONFIRMED");
+            
+            const nextState = {
+                ...lockedCampaignState,
+                stage: "PLAN_CONFIRMED",
+                auto_run: false,
+                locked_at: new Date().toISOString()
+            };
+
+            // Explicitly save the validated state
+            await saveAnswerMemory(
+              process.env.NEXT_PUBLIC_BASE_URL,
+              effectiveBusinessId,
+              { campaign_state: nextState },
+              session.user.email.toLowerCase()
+            );
+
+            // Update local state reference to avoid stale reads downstream
+            lockedCampaignState = nextState;
+            currentState = nextState;
+
+            // 🚀 FALLTHROUGH: Do NOT return here. 
+            // We want to immediately trigger the "Short-Circuit" waterfall below
+            // so the user doesn't have to say "Ok" to start image generation.
+            console.log("🚀 Immediate Fallthrough to Waterfall...");
+        } else {
+             console.log("TRACE: Plan proposed but not confirmed. Falling through to model...");
         }
-
-        // 🛡️ CRITICAL GUARD: Ensure we have a plan before confirming
-        if (!lockedCampaignState.plan) {
-            console.error("❌ CRITICAL: Attempting to confirm PLAN_PROPOSED but 'plan' is missing in state!");
-            // Revert to generating plan logic (or just error out gracefully)
-            return res.status(200).json({
-                ok: true,
-                mode,
-                text: "I seem to have lost the plan details. Let me regenerate it for you.\n\nReply **YES** to generate the plan again."
-            });
-        }
-
-        // User confirmed
-        console.log("✅ User Confirmed Plan. Transitioning: PLAN_PROPOSED -> PLAN_CONFIRMED");
-        
-        const nextState = {
-            ...lockedCampaignState,
-            stage: "PLAN_CONFIRMED",
-            auto_run: false,
-            locked_at: new Date().toISOString()
-        };
-
-        // Explicitly save the validated state
-        await saveAnswerMemory(
-          process.env.NEXT_PUBLIC_BASE_URL,
-          effectiveBusinessId,
-          { campaign_state: nextState },
-          session.user.email.toLowerCase()
-        );
-
-        // Update local state reference to avoid stale reads downstream
-        lockedCampaignState = nextState;
-        currentState = nextState;
-
-        // 🚀 FALLTHROUGH: Do NOT return here. 
-        // We want to immediately trigger the "Short-Circuit" waterfall below
-        // so the user doesn't have to say "Ok" to start image generation.
-        console.log("🚀 Immediate Fallthrough to Waterfall...");
       }
     }
     
@@ -2970,7 +2967,8 @@ Otherwise, respond with a full, clear explanation, and include example JSON only
 
     // 🕵️ DETECT AND SAVE JSON PLAN (FROM GEMINI)
     // Supports: ```json ... ```, ``` ... ```, or plain JSON starting with {
-    if (effectiveBusinessId) {
+    // 🔒 ABSOLUTE RULE: No plan generation on first message
+    if (effectiveBusinessId && !isNewMetaCampaignRequest) {
       let jsonString = null;
 
       // 1. Try code blocks
@@ -2999,6 +2997,7 @@ Otherwise, respond with a full, clear explanation, and include example JSON only
 
       if (jsonString) {
         console.log("TRACE: DIRECT JSON DETECTED — MODEL PROVIDED PLAN");
+        planGeneratedThisTurn = true; // 🔒 Mark plan as generated in this request
         try {
           let planJson = JSON.parse(jsonString);
 
@@ -3619,7 +3618,8 @@ Reply **YES** to confirm this plan and proceed.
           lockedCampaignState.stage === "READY_TO_LAUNCH" ||
           lockedCampaignState.stage === "COMPLETED"));
 
-    if ((mode === "meta_ads_plan" || isPlanText) && !hasExistingPlanOrStage && effectiveBusinessId) {
+    // 🔒 SINGLE PROPOSER RULE: Disable fallback if ANY stage exists or plan exists, AND ensure no plan on first message
+    if ((mode === "meta_ads_plan" || isPlanText) && !lockedCampaignState?.plan && !lockedCampaignState?.stage && effectiveBusinessId && !isNewMetaCampaignRequest) {
       console.log("TRACE: FALLBACK META ADS PATH HIT");
       const looksLikePlan = isPlanText || text.includes("Budget") || text.includes("Creative Idea") || text.includes("Targeting") || text.includes("Creative Idea:");
 
@@ -3701,6 +3701,7 @@ Reply **YES** to confirm this plan and proceed.
           minimalPlan.budget.amount = lockedCampaignState.budget_per_day;
         }
 
+        planGeneratedThisTurn = true; // 🔒 Mark plan as generated in this request
         const newState = {
           ...lockedCampaignState,
           stage: "PLAN_PROPOSED",
@@ -3781,7 +3782,11 @@ Reply **YES** to confirm this plan and proceed.
           console.log("TRACE: ENTER META WATERFALL");
           console.log("TRACE: CURRENT STAGE =", currentState?.stage);
 
-          if (!lockedCampaignState || (lockedCampaignState.stage !== "PLAN_CONFIRMED" && lockedCampaignState.stage !== "IMAGE_GENERATED" && lockedCampaignState.stage !== "READY_TO_LAUNCH")) {
+          // 🔒 CONFIRMATION GATE: Only fire if plan was generated THIS TURN
+          if (
+            (!lockedCampaignState || (lockedCampaignState.stage !== "PLAN_CONFIRMED" && lockedCampaignState.stage !== "IMAGE_GENERATED" && lockedCampaignState.stage !== "READY_TO_LAUNCH")) &&
+            planGeneratedThisTurn === true
+          ) {
             console.log("TRACE: RETURNING RESPONSE — STAGE =", currentState?.stage);
             return res.status(200).json({
               ok: true,
@@ -4337,5 +4342,10 @@ async function handleInstagramPostOnly(req, res, session, body) {
     text: "I need a bit more information to create your Instagram post.",
   });
 }
+
+
+  });
+}
+
 
 
