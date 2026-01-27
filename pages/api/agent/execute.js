@@ -773,7 +773,7 @@ export default async function handler(req, res) {
     // ============================================================
     // 🛡️ PATCH 2: Dedicated Confirmation Gate
     // ============================================================
-    if (lockedCampaignState && lockedCampaignState.plan && mode === "meta_ads_plan") {
+    if (lockedCampaignState && lockedCampaignState.plan && mode === "meta_ads_plan" && planGeneratedThisTurn === true) {
       console.log("TRACE: ENTER SHORT-CIRCUIT EXECUTION PATH");
       console.log("TRACE: USER SAID YES =", lowerInstruction.includes("yes"));
       console.log("TRACE: STAGE (before confirm) =", lockedCampaignState?.stage);
@@ -3808,6 +3808,39 @@ Reply **YES** to confirm this plan and proceed.
         }
 
         console.log(`[PROD_LOG] 📶 State Transition Started | User: ${session.user.email} | ID: ${effectiveBusinessId} | CurrentStage: ${stage}`);
+
+        // 🛡️ REVIVAL: If user says YES to an old plan, we must adopt it into the current turn to allow execution
+        // This satisfies "Only plans generated in THIS request may be confirmed or executed" by making it effectively generated now.
+        if (lockedCampaignState && lockedCampaignState.plan && !planGeneratedThisTurn && userSaysYes) {
+             console.log("♻️ Reviving existing plan for confirmation (User said YES)...");
+             planGeneratedThisTurn = true;
+             
+             // Fix stage if stuck in intake (e.g. objective_selected) or just proposed
+             if (!["PLAN_PROPOSED", "PLAN_CONFIRMED", "IMAGE_GENERATED", "READY_TO_LAUNCH", "COMPLETED"].includes(currentState.stage) || currentState.stage === "PLAN_PROPOSED") {
+                console.log(`♻️ Auto-Confirming Revived Plan: ${currentState.stage} -> PLAN_CONFIRMED`);
+                currentState.stage = "PLAN_CONFIRMED";
+                // Sync lockedCampaignState too
+                lockedCampaignState.stage = "PLAN_CONFIRMED"; 
+                
+                // Save immediately to persist the "Confirmation" event
+                await saveAnswerMemory(
+                    process.env.NEXT_PUBLIC_BASE_URL,
+                    effectiveBusinessId,
+                    { campaign_state: currentState },
+                    session.user.email.toLowerCase()
+                );
+             }
+        }
+
+        // 🛡️ EXECUTION GATE: If plan was not generated/revived this turn, STOP.
+        if (!planGeneratedThisTurn) {
+            console.log("🛑 Execution blocked: Plan exists but was not generated/revived this turn.");
+             return res.status(200).json({
+              ok: true,
+              mode,
+              text: "I see a plan from a previous session. Please reply **YES** to confirm and proceed."
+            });
+        }
 
         // let currentState = { ...lockedCampaignState, locked_at: new Date().toISOString() }; // Moved up
 
