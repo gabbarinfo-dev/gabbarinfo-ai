@@ -309,7 +309,7 @@ export default async function handler(req, res) {
     console.log("🔥 REQUEST START");
     console.log("EMAIL:", __currentEmail);
     console.log("INSTRUCTION:", instruction.substring(0, 50));
-    console.log("MODE:", bodyMode);
+    console.log("MODE:", mode);
     console.log("COOKIES:", req.headers.cookie ? "Present" : "Missing");
     console.log("TRACE: META ADS LOGIC ENTRY");
     let verifiedMetaAssets = null;
