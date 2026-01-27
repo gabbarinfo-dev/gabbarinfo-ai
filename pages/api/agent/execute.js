@@ -814,11 +814,10 @@ export default async function handler(req, res) {
         // Update local state reference to avoid stale reads downstream
         lockedCampaignState = nextState;
 
-        return res.status(200).json({
-          ok: true,
-          mode,
-          text: "Plan confirmed. Starting campaign setup…"
-        });
+        // 🚀 FALLTHROUGH: Do NOT return here. 
+        // We want to immediately trigger the "Short-Circuit" waterfall below
+        // so the user doesn't have to say "Ok" to start image generation.
+        console.log("🚀 Immediate Fallthrough to Waterfall...");
       }
     }
 
@@ -2566,6 +2565,7 @@ Otherwise, respond with a full, clear explanation, and include example JSON only
 
     // 🛑 BLOCK GEMINI IF GATES ARE NOT PASSED (Double Safety)
     if (
+      !lockedCampaignState?.plan &&
       !isPlanProposed &&
       mode === "meta_ads_plan" &&
       (
@@ -2600,7 +2600,8 @@ Otherwise, respond with a full, clear explanation, and include example JSON only
         lowerInstruction.includes("proceed") ||
         lowerInstruction.includes("launch") ||
         lowerInstruction.includes("generate") ||
-        lowerInstruction.includes("image"))
+        lowerInstruction.includes("image") ||
+        lowerInstruction.includes("ok"))
     ) {
       // 🛡️ IDEMPOTENCY PROTECTION
       const now = Date.now();
