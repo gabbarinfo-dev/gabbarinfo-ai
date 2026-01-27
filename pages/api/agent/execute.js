@@ -4180,34 +4180,44 @@ async function handleInstagramPostOnly(req, res, session, body) {
   }
 
   if (imageUrl && caption && caption.length > 5) {
-    await clearCreativeState(supabase, session.user.email.toLowerCase());
+    try {
+      await clearCreativeState(supabase, session.user.email.toLowerCase());
 
-    const normalizedImage = await normalizeImageUrl(imageUrl);
+      const normalizedImage = await normalizeImageUrl(imageUrl);
 
-    const result = await executeInstagramPost({
-      userEmail: session.user.email.toLowerCase(),
-      imageUrl: normalizedImage,
-      caption,
-    });
+      const result = await executeInstagramPost({
+        userEmail: session.user.email.toLowerCase(),
+        imageUrl: normalizedImage,
+        caption,
+      });
 
-    await saveAnswerMemory(
-      process.env.NEXT_PUBLIC_BASE_URL,
-      activeBusinessId,
-      {
-        campaign_state: {
-          stage: "COMPLETED",
-          flow: "instagram_publish",
-          final_result: result,
+      await saveAnswerMemory(
+        process.env.NEXT_PUBLIC_BASE_URL,
+        activeBusinessId,
+        {
+          campaign_state: {
+            stage: "COMPLETED",
+            flow: "instagram_publish",
+            final_result: result,
+          },
         },
-      },
-      session.user.email.toLowerCase()
-    );
+        session.user.email.toLowerCase()
+      );
 
-    console.log("TRACE: RETURNING RESPONSE — STAGE =", currentState?.stage);
-    return res.json({
-      ok: true,
-      text: `🎉 **Instagram Post Published Successfully!**\n\n- **Post ID**: \`${result.id}\``,
-    });
+      console.log("TRACE: RETURNING RESPONSE — STAGE =", currentState?.stage);
+      return res.json({
+        ok: true,
+        text: `🎉 **Instagram Post Published Successfully!**\n\n- **Post ID**: \`${result.id}\``,
+      });
+    } catch (e) {
+      console.error("Instagram Direct Path Error:", e);
+      console.log("TRACE: RETURNING RESPONSE — STAGE =", currentState?.stage);
+      return res.status(200).json({
+        ok: false,
+        mode: "instagram_post",
+        text: `Failed to publish Instagram post: ${e.message || "Unknown error"}. Please try again.`,
+      });
+    }
   }
 
   // -------------------------------
@@ -4223,11 +4233,12 @@ async function handleInstagramPostOnly(req, res, session, body) {
 
   // 1️⃣ HIGHEST PRIORITY: PUBLISH WHEN CONFIRMATION IS GIVEN
   if (
-    creativeResult.intent === "PUBLISH_INSTAGRAM_POST" &&
-    creativeResult.payload?.imageUrl &&
-    creativeResult.payload?.caption
+    creativeResult &&
+    creativeResult.assets &&
+    creativeResult.assets.imageUrl &&
+    creativeResult.assets.caption
   ) {
-    const { imageUrl, caption } = creativeResult.payload;
+    const { imageUrl, caption } = creativeResult.assets;
 
     try {
       const publishResult = await executeInstagramPost({
