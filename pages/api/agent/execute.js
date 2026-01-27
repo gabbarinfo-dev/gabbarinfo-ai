@@ -180,33 +180,75 @@ export default async function handler(req, res) {
 
   try {
     const body = req.body || {};
-
-    // ---------------------------
-    // 0) REQUIRE SESSION (for everything)
-    // ---------------------------
     const session = await getServerSession(req, res, authOptions);
     if (!session) {
-      console.log("TRACE: RETURNING RESPONSE — STAGE =", currentState?.stage);
       return res.status(401).json({ ok: false, message: "Not authenticated" });
     }
+
     __currentEmail = session.user.email.toLowerCase();
-    console.log("TRACE: SESSION OK =", session.user.email);
+    const { instruction = "", chatHistory = [] } = body;
+    let mode = body.mode || "generic";
+    const lowerInstruction = instruction.toLowerCase();
+
+    // 💡 INTENT DETECTION: If in generic mode, check if user wants Meta Ads
+    if (mode === "generic") {
+      const historyTextForIntent = Array.isArray(chatHistory)
+        ? chatHistory.slice(-10).map(m => m?.text?.toLowerCase() || "").join(" ")
+        : "";
+      const intentSource = `${lowerInstruction} ${historyTextForIntent}`;
+      const isMetaIntent =
+        intentSource.includes("meta ads") || intentSource.includes("meta campaign") ||
+        intentSource.includes("facebook ads") || intentSource.includes("instagram ads") ||
+        intentSource.includes("facebook campaign") || intentSource.includes("instagram campaign") ||
+        intentSource.includes("run ads") || intentSource.includes("start ads");
+
+      if (isMetaIntent) {
+        mode = "meta_ads_plan";
+      }
+    }
 
     // 🔒 MODE AUTHORITY GATE — INSTAGRAM ISOLATION
-    if (body.mode === "instagram_post") {
+    if (mode === "instagram_post") {
       return handleInstagramPostOnly(req, res, session, body);
     }
 
-    // 🔥 DEBUG LOGS FOR CONTEXT MISMATCH
-    let { instruction = "", mode: bodyMode = body.mode } = body;
-    const lowerInstruction = instruction.toLowerCase();
+    // ============================================================
+    // 🔗 META CONNECTION & BUSINESS ID RESOLUTION
+    // ============================================================
+    let metaConnected = false;
+    let activeBusinessId = null;
+    let metaRow = null;
+
+    try {
+      const { data: row } = await supabase
+        .from("meta_connections")
+        .select("*")
+        .eq("email", __currentEmail)
+        .maybeSingle();
+
+      metaRow = row;
+
+      if (metaRow && metaRow.system_user_token) {
+        metaConnected = true;
+        activeBusinessId =
+          metaRow.fb_business_id ||
+          metaRow.fb_page_id ||
+          metaRow.ig_business_id ||
+          null;
+      }
+    } catch (e) {
+      console.warn("Meta connection lookup failed:", e.message);
+    }
+
+    // 🛡️ FALLBACK: Use "default_business" if no Meta connection exists yet.
+    const effectiveBusinessId = activeBusinessId || "default_business";
 
     // 1️⃣ HARD RESET MUST HAPPEN BEFORE MEMORY LOAD
     // Rule: If instruction intent matches “create / run / start ads campaign”
     // Then: Ignore any existing campaign_state, Force a fresh state, Do NOT load old plans
 
     const isNewMetaCampaignRequest =
-      (bodyMode === "meta_ads_plan" || bodyMode === "generic") &&
+      (mode === "meta_ads_plan" || mode === "generic") &&
       (
         lowerInstruction.includes("create a meta ads campaign") ||
         lowerInstruction.includes("create meta ads campaign") ||
@@ -339,37 +381,6 @@ export default async function handler(req, res) {
       await supabase.from("agent_meta_assets").upsert(verifiedMetaAssets);
     }
 
-    // ============================================================
-    // 🔗 META CONNECTION CHECK (Supabase)
-    // ============================================================
-    let metaConnected = false;
-    let activeBusinessId = null;
-    let metaRow = null;
-
-    try {
-      const { data: row } = await supabase
-        .from("meta_connections")
-        .select("*")
-        .eq("email", session.user.email.toLowerCase())
-        .maybeSingle();
-
-      metaRow = row;
-
-      if (metaRow && metaRow.system_user_token) {
-        metaConnected = true;
-        activeBusinessId =
-          metaRow.fb_business_id ||
-          metaRow.fb_page_id ||
-          metaRow.ig_business_id ||
-          null;
-      }
-    } catch (e) {
-      console.warn("Meta connection lookup failed:", e.message);
-    }
-
-    // 🛡️ FALLBACK: Use "default_business" if no Meta connection exists yet.
-    // This ensures plans can be saved/retrieved even before connection.
-    const effectiveBusinessId = activeBusinessId || "default_business";
     console.log(`🏢 Effective Business ID: ${effectiveBusinessId} (Active: ${activeBusinessId})`);
 
     let forcedBusinessContext = null;
@@ -707,38 +718,9 @@ export default async function handler(req, res) {
 
     let {
       includeJson = false,
-      chatHistory = [],
       extraContext = "",
     } = body;
     includeJson = false;
-    let mode = body.mode || "generic";
-
-    const lowerMode = (mode || "").toLowerCase();
-
-    let historyTextForIntent = "";
-    if (Array.isArray(chatHistory) && chatHistory.length > 0) {
-      historyTextForIntent = chatHistory
-        .slice(-10)
-        .map((m) => (m && typeof m.text === "string" ? m.text.toLowerCase() : ""))
-        .join(" ");
-    }
-
-    const intentSource = `${lowerInstruction} ${historyTextForIntent}`;
-    const isMetaIntent =
-      intentSource.includes("meta ads") ||
-      intentSource.includes("meta campaign") ||
-      intentSource.includes("facebook ads") ||
-      intentSource.includes("instagram ads") ||
-      intentSource.includes("fb ads") ||
-      intentSource.includes("facebook campaign") ||
-      intentSource.includes("instagram campaign") ||
-      intentSource.includes("run ads on facebook") ||
-      intentSource.includes("run ads on instagram");
-
-    if (lowerMode === "generic" && isMetaIntent) {
-      mode = "meta_ads_plan";
-    }
-
     if (
       mode === "generic" &&
       lockedCampaignState &&
@@ -4102,5 +4084,21 @@ async function handleInstagramPostOnly(req, res, session, body) {
   }
   const creativeResult = await creativeEntry({ supabase, session, instruction, metaRow, effectiveBusinessId: activeBusinessId });
   if (creativeResult.response) return res.json(creativeResult.response);
+
+  // 🛡️ Path B: Final Confirmation Success
+  if (creativeResult.assets) {
+    try {
+      const postResult = await executeInstagramPost({
+        userEmail: session.user.email.toLowerCase(),
+        imageUrl: creativeResult.assets.imageUrl,
+        caption: creativeResult.assets.caption
+      });
+      return res.json({ ok: true, text: "🎉 Instagram Post Published!" });
+    } catch (e) {
+      console.error("Path B Publication Error:", e);
+      return res.status(200).json({ ok: false, text: "Error publishing post." });
+    }
+  }
+
   return res.json({ ok: true, text: "More info needed." });
 }
