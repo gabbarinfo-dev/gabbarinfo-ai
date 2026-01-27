@@ -199,6 +199,65 @@ export default async function handler(req, res) {
     // 🔥 DEBUG LOGS FOR CONTEXT MISMATCH
     let { instruction = "", mode: bodyMode = body.mode } = body;
     const lowerInstruction = instruction.toLowerCase();
+    
+    // 1️⃣ HARD RESET MUST HAPPEN BEFORE MEMORY LOAD
+    // Rule: If instruction intent matches “create / run / start ads campaign”
+    // Then: Ignore any existing campaign_state, Force a fresh state, Do NOT load old plans
+    
+    const isNewMetaCampaignRequest =
+      (bodyMode === "meta_ads_plan" || bodyMode === "generic") &&
+      (
+        lowerInstruction.includes("create a meta ads campaign") ||
+        lowerInstruction.includes("create meta ads campaign") ||
+        lowerInstruction.includes("create an ad campaign") ||
+        lowerInstruction.includes("create an ads campaign") ||
+        lowerInstruction.includes("create a campaign for my business") ||
+        lowerInstruction.includes("create a meta campaign") ||
+        lowerInstruction.includes("run an ad") ||
+        lowerInstruction.includes("run ads for my business") ||
+        lowerInstruction.includes("ad run") ||
+        lowerInstruction.includes("start ads campaign")
+      );
+
+    let lockedCampaignState = null;
+
+    if (isNewMetaCampaignRequest) {
+      console.log("TRACE: HARD RESET TRIGGERED - IGNORING MEMORY");
+      const baseUrl = process.env.NEXT_PUBLIC_BASE_URL;
+      const resetState = {
+        objective: null,
+        destination: null,
+        performance_goal: null,
+        service: null,
+        service_confirmed: false,
+        location: null,
+        location_confirmed: false,
+        budget_per_day: null,
+        total_days: null,
+        budget_confirmed: false,
+        duration_confirmed: false,
+        landing_page: null,
+        landing_page_confirmed: false,
+        phone: null,
+        phone_confirmed: false,
+        whatsapp: null,
+        whatsapp_confirmed: false,
+        message_channel: null,
+        location_question_asked: false,
+        plan: null,
+        stage: null,
+        locked_at: new Date().toISOString(),
+      };
+
+      // We don't save yet, just set local state to clean
+      lockedCampaignState = resetState;
+      currentState = resetState;
+      
+      // We will save this clean state to memory later if we proceed, 
+      // or we can rely on saveAnswerMemory calls downstream. 
+      // But critical: lockedCampaignState is CLEAN now.
+    }
+
     console.log("🔥 REQUEST START");
     console.log("EMAIL:", __currentEmail);
     console.log("INSTRUCTION:", instruction.substring(0, 50));
@@ -321,7 +380,7 @@ export default async function handler(req, res) {
 
     // 🔍 READ LOCKED CAMPAIGN STATE (AUTHORITATIVE — SINGLE SOURCE)
     // 🛡️ PATCH: PREVENT INSTAGRAM MODE FROM READING META ADS MEMORY
-    if (body.mode !== "instagram_post") {
+    if (body.mode !== "instagram_post" && !lockedCampaignState) { // Only read if NOT already reset
       if (effectiveBusinessId) {
         try {
           const { data: memData } = await supabase
@@ -682,23 +741,11 @@ export default async function handler(req, res) {
       lockedCampaignState &&
       lockedCampaignState.objective &&
       lockedCampaignState.stage &&
-      lockedCampaignState.stage !== "COMPLETED"
+      lockedCampaignState.stage !== "COMPLETED" &&
+      !isNewMetaCampaignRequest // NEVER switch on new request
     ) {
       mode = "meta_ads_plan";
     }
-
-    const isNewMetaCampaignRequest =
-      mode === "meta_ads_plan" &&
-      (
-        lowerInstruction.includes("create a meta ads campaign") ||
-        lowerInstruction.includes("create meta ads campaign") ||
-        lowerInstruction.includes("create an ad campaign") ||
-        lowerInstruction.includes("create a campaign for my business") ||
-        lowerInstruction.includes("create a meta campaign") ||
-        lowerInstruction.includes("run an ad") ||
-        lowerInstruction.includes("run ads for my business") ||
-        lowerInstruction.includes("ad run")
-      );
 
     if (mode === "meta_ads_plan") {
       console.log("TRACE: ENTER META ADS HANDLER");
@@ -706,46 +753,6 @@ export default async function handler(req, res) {
       console.log("TRACE: INSTRUCTION =", instruction);
       console.log("TRACE: STAGE (initial) =", lockedCampaignState?.stage);
     }
-
-    if (isNewMetaCampaignRequest && effectiveBusinessId) {
-      const baseUrl = process.env.NEXT_PUBLIC_BASE_URL;
-      const resetState = {
-        objective: null,
-        destination: null,
-        performance_goal: null,
-        service: null,
-        service_confirmed: false,
-        location: null,
-        location_confirmed: false,
-        budget_per_day: null,
-        total_days: null,
-        budget_confirmed: false,
-        duration_confirmed: false,
-        landing_page: null,
-        landing_page_confirmed: false,
-        phone: null,
-        phone_confirmed: false,
-        whatsapp: null,
-        whatsapp_confirmed: false,
-        message_channel: null,
-        location_question_asked: false,
-        plan: null,
-        stage: null,
-        locked_at: new Date().toISOString(),
-      };
-
-      await saveAnswerMemory(
-        baseUrl,
-        effectiveBusinessId,
-        { campaign_state: resetState },
-        session.user.email.toLowerCase()
-      );
-
-      lockedCampaignState = resetState;
-      currentState = resetState;
-      console.log("TRACE: META STATE RESET FOR NEW CAMPAIGN REQUEST");
-    }
-
 
     if (!instruction || typeof instruction !== "string") {
       return res.status(400).json({
@@ -813,12 +820,28 @@ export default async function handler(req, res) {
 
         // Update local state reference to avoid stale reads downstream
         lockedCampaignState = nextState;
+        currentState = nextState;
 
         // 🚀 FALLTHROUGH: Do NOT return here. 
         // We want to immediately trigger the "Short-Circuit" waterfall below
         // so the user doesn't have to say "Ok" to start image generation.
         console.log("🚀 Immediate Fallthrough to Waterfall...");
       }
+    }
+    
+    // ============================================================
+    // 4️⃣ IMAGE GENERATION MUST BE EXPLICIT (Force Waterfall)
+    // ============================================================
+    // If we are in PLAN_CONFIRMED, we MUST generate image.
+    // The legacy "waterfall" below handles this if lockedCampaignState.stage === "PLAN_CONFIRMED".
+    // We just need to ensure nothing blocks it.
+    
+    // ============================================================
+    // 6️⃣ GUARANTEE: FIRST USER MESSAGE CAN NEVER SHOW A PLAN
+    // ============================================================
+    if (isNewMetaCampaignRequest && lockedCampaignState?.stage) {
+       console.error("❌ INVARIANT VIOLATION: New request but stage is not null. Resetting.");
+       lockedCampaignState = null; // Force reset
     }
 
     // ---------- MODE-SPECIFIC FOCUS ----------
