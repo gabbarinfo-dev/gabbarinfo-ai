@@ -4232,19 +4232,24 @@ async function handleInstagramPostOnly(req, res, session, body) {
   });
 
   // 1️⃣ HIGHEST PRIORITY: PUBLISH WHEN CONFIRMATION IS GIVEN
-  if (
-    creativeResult &&
-    creativeResult.assets &&
-    creativeResult.assets.imageUrl &&
-    creativeResult.assets.caption
-  ) {
+  if (creativeResult && creativeResult.assets) {
     const { imageUrl, caption } = creativeResult.assets;
+
+    if (!imageUrl) {
+      console.error("❌ Creative Result has assets but NO imageUrl:", creativeResult);
+      // Fallback to error message instead of generic "more info"
+      return res.status(200).json({
+        ok: false,
+        mode: "instagram_post",
+        text: "Something went wrong: Image URL is missing. Please try saying 'reset' to start over."
+      });
+    }
 
     try {
       const publishResult = await executeInstagramPost({
         userEmail: session.user.email.toLowerCase(),
         imageUrl,
-        caption,
+        caption: caption || "Check out this post!", // Fallback caption
       });
 
       await clearCreativeState(supabase, session.user.email.toLowerCase());
