@@ -78,10 +78,16 @@ async function saveAnswerMemory(baseUrl, business_id, answers, emailOverride = n
 
     if (answers.campaign_state && existingAnswers.campaign_state) {
       console.log(`🧠 [Deep Merge] Merging campaign_state for ${business_id}...`);
+      
+      // 🛡️ CRITICAL FIX: Ensure PLAN is never lost during merge
+      const newPlan = answers.campaign_state.plan;
+      const oldPlan = existingAnswers.campaign_state.plan;
+      const finalPlan = newPlan || oldPlan;
+
       finalAnswers.campaign_state = {
         ...existingAnswers.campaign_state,
         ...answers.campaign_state,
-        plan: answers.campaign_state.plan || existingAnswers.campaign_state.plan, // Explicitly preserve plan
+        plan: finalPlan, 
         stage: answers.campaign_state.stage || existingAnswers.campaign_state.stage
       };
     }
@@ -776,18 +782,37 @@ export default async function handler(req, res) {
           });
         }
 
+        // 🛡️ CRITICAL GUARD: Ensure we have a plan before confirming
+        if (!lockedCampaignState.plan) {
+            console.error("❌ CRITICAL: Attempting to confirm PLAN_PROPOSED but 'plan' is missing in state!");
+            // Revert to generating plan logic (or just error out gracefully)
+            return res.status(200).json({
+                ok: true,
+                mode,
+                text: "I seem to have lost the plan details. Let me regenerate it for you.\n\nReply **YES** to generate the plan again."
+            });
+        }
+
         // User confirmed
         console.log("✅ User Confirmed Plan. Transitioning: PLAN_PROPOSED -> PLAN_CONFIRMED");
-        lockedCampaignState.stage = "PLAN_CONFIRMED";
-        lockedCampaignState.auto_run = false;
-        lockedCampaignState.locked_at = new Date().toISOString();
+        
+        const nextState = {
+            ...lockedCampaignState,
+            stage: "PLAN_CONFIRMED",
+            auto_run: false,
+            locked_at: new Date().toISOString()
+        };
 
+        // Explicitly save the validated state
         await saveAnswerMemory(
           process.env.NEXT_PUBLIC_BASE_URL,
           effectiveBusinessId,
-          { campaign_state: lockedCampaignState },
+          { campaign_state: nextState },
           session.user.email.toLowerCase()
         );
+
+        // Update local state reference to avoid stale reads downstream
+        lockedCampaignState = nextState;
 
         return res.status(200).json({
           ok: true,
