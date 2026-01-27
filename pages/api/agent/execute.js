@@ -250,9 +250,18 @@ export default async function handler(req, res) {
         locked_at: new Date().toISOString(),
       };
 
-      // 🔒 RESET IS IN-MEMORY ONLY (Mandatory Fix 6)
+      // 🔒 RESET IS PERSISTED TO MEMORY (Mandatory Fix 1)
       lockedCampaignState = resetState;
       currentState = resetState;
+
+      // 💾 Save reset state to BOTH current ID and default_business to purge old plans
+      if (session.user.email) {
+        const resetPayload = { campaign_state: resetState };
+        await saveAnswerMemory(process.env.NEXT_PUBLIC_BASE_URL, effectiveBusinessId, resetPayload, session.user.email.toLowerCase());
+        if (effectiveBusinessId !== "default_business") {
+          await saveAnswerMemory(process.env.NEXT_PUBLIC_BASE_URL, "default_business", resetPayload, session.user.email.toLowerCase());
+        }
+      }
     }
 
     console.log("🔥 REQUEST START");
@@ -404,16 +413,15 @@ export default async function handler(req, res) {
             let bestMatch = null;
             let sourceKey = null;
 
+            // 🛡️ REFACTORED LOOKUP: Priority Sequential Search (No Plan-Preferring Loop)
+            // We search keys in order of specificity. We use the FIRST one that has ANY campaign_state.
+            // This prevents an empty state in a specific ID from being 'outvoted' by an old plan in default_business.
             for (const key of possibleKeys) {
               const state = answers[key]?.campaign_state;
-              if (state?.plan) {
+              if (state) {
                 bestMatch = state;
                 sourceKey = key;
-                break;
-              }
-              if (!bestMatch && state) {
-                bestMatch = state;
-                sourceKey = key;
+                break; // Found the most specific state available
               }
             }
 
@@ -1489,7 +1497,7 @@ You are in GENERIC DIGITAL MARKETING AGENT MODE.
           ok: true,
           mode,
           gated: true,
-          text: "Performance goal locked.\n\nNext, I will verify your website and service details to prepare the campaign plan. Please continue and answer the next question I ask.",
+          text: "Performance goal locked.\n\nNow, what is the specific **Service** or **Product** you want to promote with this campaign?",
         });
       } else {
         console.log("TRACE: ENTER META INTAKE FLOW");
@@ -1497,6 +1505,84 @@ You are in GENERIC DIGITAL MARKETING AGENT MODE.
         return res.status(200).json({
           ok: true, mode, gated: true,
           text: `What is your performance goal for these ads?\n\n` + goals.map((g, i) => `${i + 1}. ${g}`).join("\n")
+        });
+      }
+    }
+
+    // Step 4: Service Confirmation
+    if (!isPlanProposed && mode === "meta_ads_plan" && selectedPerformanceGoal && !lockedCampaignState?.service) {
+      const input = instruction.trim();
+      if (input.length > 2 && !input.includes("1") && !input.includes("2")) {
+        lockedCampaignState = { ...lockedCampaignState, service: input, service_confirmed: true, stage: "service_selected" };
+        currentState = lockedCampaignState;
+        await saveAnswerMemory(process.env.NEXT_PUBLIC_BASE_URL, effectiveBusinessId, { campaign_state: lockedCampaignState }, session.user.email.toLowerCase());
+        return res.status(200).json({
+          ok: true, mode, gated: true,
+          text: `Got it. Promoting: **${input}**.\n\nNext, what is the **Target Location** (City or Area) for these ads?`
+        });
+      } else {
+        return res.status(200).json({
+          ok: true, mode, gated: true,
+          text: "What is the specific **Service** or **Product** you want to promote? (e.g., 'Real Estate Consulting' or 'iPhone Repairs')"
+        });
+      }
+    }
+
+    // Step 5: Location Confirmation
+    if (!isPlanProposed && mode === "meta_ads_plan" && lockedCampaignState?.service && !lockedCampaignState?.location) {
+      const input = instruction.trim();
+      if (input.length > 2) {
+        lockedCampaignState = { ...lockedCampaignState, location: input, location_confirmed: true, stage: "location_selected" };
+        currentState = lockedCampaignState;
+        await saveAnswerMemory(process.env.NEXT_PUBLIC_BASE_URL, effectiveBusinessId, { campaign_state: lockedCampaignState }, session.user.email.toLowerCase());
+        return res.status(200).json({
+          ok: true, mode, gated: true,
+          text: `Target Location: **${input}**.\n\nAlmost done! What is your **DAILY budget** for this campaign in INR? (e.g., 500)`
+        });
+      } else {
+        return res.status(200).json({
+          ok: true, mode, gated: true,
+          text: "What is the **Target Location** (City or Area) for these ads?"
+        });
+      }
+    }
+
+    // Step 6: Budget Confirmation
+    if (!isPlanProposed && mode === "meta_ads_plan" && lockedCampaignState?.location && !lockedCampaignState?.budget_per_day) {
+      const budgetMatch = instruction.match(/(\d+)/);
+      if (budgetMatch) {
+        const amount = parseInt(budgetMatch[1], 10);
+        lockedCampaignState = { ...lockedCampaignState, budget_per_day: amount, budget_confirmed: true, stage: "budget_selected" };
+        currentState = lockedCampaignState;
+        await saveAnswerMemory(process.env.NEXT_PUBLIC_BASE_URL, effectiveBusinessId, { campaign_state: lockedCampaignState }, session.user.email.toLowerCase());
+        return res.status(200).json({
+          ok: true, mode, gated: true,
+          text: `Daily Budget: **₹${amount}**.\n\nFinally, for **how many days** should this campaign run? (e.g., 7)`
+        });
+      } else {
+        return res.status(200).json({
+          ok: true, mode, gated: true,
+          text: "What is your **DAILY budget** for this campaign in INR?"
+        });
+      }
+    }
+
+    // Step 7: Duration Confirmation
+    if (!isPlanProposed && mode === "meta_ads_plan" && lockedCampaignState?.budget_per_day && !lockedCampaignState?.total_days) {
+      const durationMatch = instruction.match(/(\d+)/);
+      if (durationMatch) {
+        const days = parseInt(durationMatch[1], 10);
+        lockedCampaignState = { ...lockedCampaignState, total_days: days, duration_confirmed: true, stage: "intake_complete" };
+        currentState = lockedCampaignState;
+        await saveAnswerMemory(process.env.NEXT_PUBLIC_BASE_URL, effectiveBusinessId, { campaign_state: lockedCampaignState }, session.user.email.toLowerCase());
+        return res.status(200).json({
+          ok: true, mode, gated: true,
+          text: `Duration: **${days} days**.\n\nAll details received! I am now generating your custom Meta Ads plan. Please reply with anything or just wait.`
+        });
+      } else {
+        return res.status(200).json({
+          ok: true, mode, gated: true,
+          text: "For **how many days** should this campaign run?"
         });
       }
     }
@@ -3963,16 +4049,38 @@ Reply **YES** to confirm this plan and proceed.
 
 async function generateMetaCampaignPlan({ lockedCampaignState, autoBusinessContext, verifiedMetaAssets, detectedLandingPage }) {
   console.log("🔄 Regenerating Meta Campaign Plan...");
+
+  const coreReady = !!lockedCampaignState?.objective && !!lockedCampaignState?.service && !!lockedCampaignState?.location;
+  if (!coreReady) {
+    console.error("❌ generateMetaCampaignPlan: Mission Core Fields Missing!", {
+      objective: !!lockedCampaignState?.objective,
+      service: !!lockedCampaignState?.service,
+      location: !!lockedCampaignState?.location
+    });
+    return null;
+  }
+
   const serviceName = lockedCampaignState?.service || "Digital Marketing";
+  const targetLocation = lockedCampaignState?.location || "India";
+  const dailyBudget = lockedCampaignState?.budget_per_day || 500;
+  const duration = lockedCampaignState?.total_days || 7;
+
   return {
-    campaign_name: `${serviceName} Campaign`,
-    objective: "OUTCOME_TRAFFIC",
-    performance_goal: "MAXIMIZE_LINK_CLICKS",
-    budget: { amount: 500, currency: "INR", type: "DAILY" },
-    targeting: { geo_locations: { countries: ["IN"], cities: [] }, age_min: 18, age_max: 65 },
+    campaign_name: `${serviceName} - ${targetLocation} - ${new Date().toLocaleDateString()}`,
+    objective: lockedCampaignState.objective || "OUTCOME_TRAFFIC",
+    performance_goal: lockedCampaignState.performance_goal || "MAXIMIZE_LINK_CLICKS",
+    budget: { amount: dailyBudget, currency: "INR", type: "DAILY" },
+    duration: duration,
+    targeting: { geo_locations: { countries: ["IN"], cities: [{ name: targetLocation }] }, age_min: 18, age_max: 65 },
     ad_sets: [{
       name: "Ad Set 1", status: "PAUSED", optimization_goal: "LINK_CLICKS", billing_event: "IMPRESSIONS", destination_type: "WEBSITE",
-      ad_creative: { imagePrompt: "ad", primary_text: "text", headline: "headline", call_to_action: "LEARN_MORE", destination_url: "https://gabbarinfo.com" }
+      ad_creative: {
+        imagePrompt: `professional high-quality photography of ${serviceName} in ${targetLocation}, modern lighting, cinematic`,
+        primary_text: `Looking for ${serviceName}? We provide the best solutions for your needs.`,
+        headline: `Best ${serviceName} in ${targetLocation}`,
+        call_to_action: "LEARN_MORE",
+        destination_url: detectedLandingPage || "https://gabbarinfo.com"
+      }
     }]
   };
 }
