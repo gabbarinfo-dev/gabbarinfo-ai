@@ -632,7 +632,12 @@ JSON.stringify(promoted_object));
 // UNIVERSAL CREATIVE BUILDER (Placement Safe & Strict Types)
 function buildCreativePayload(objective, creative, pageId, instagramActorId, accessToken, forcePhoto = false, placements = []) {
   if (!pageId) throw new Error("Page ID is required for Creative");
-  if (!creative || !creative.image_hash) throw new Error("Image Hash is required for Creative");
+  if (!creative || !creative.image_hash) {
+  return res.status(400).json({
+    ok: false,
+    message: "Image upload failed. Creative execution stopped."
+  });
+}
  
   let ctaType = "LEARN_MORE"; 
   let useLinkData = !forcePhoto; 
