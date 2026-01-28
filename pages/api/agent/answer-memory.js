@@ -22,6 +22,7 @@ export default async function handler(req, res) {
   const { 
     business_id, 
     answers = {}, // { budget_per_day, total_days, location, objective, approval } 
+   stage, //
   } = req.body || {}; 
  
   if (!business_id) { 
@@ -53,6 +54,7 @@ export default async function handler(req, res) {
   content.business_answers[business_id] = { 
     ...(content.business_answers[business_id] || {}), 
     ...answers, 
+   ...(stage ? { stage } : {}), //
     updated_at: new Date().toISOString(), 
   }; 
  
