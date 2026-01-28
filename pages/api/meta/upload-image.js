@@ -134,7 +134,25 @@ export default async function handler(req, res) {
 
     const firstKey = imageKeys[0];
     const imageHash = json.images[firstKey]?.hash;
+// 🔒 VERIFY IMAGE EXISTS IN AD ACCOUNT (HARD CHECK)
+const verifyRes = await fetch(
+  `https://graph.facebook.com/v24.0/act_${AD_ACCOUNT_ID}/adimages?hashes=["${imageHash}"]&access_token=${ACCESS_TOKEN}`
+);
 
+const verifyJson = await verifyRes.json();
+
+if (
+  !verifyRes.ok ||
+  !verifyJson?.data ||
+  !Array.isArray(verifyJson.data) ||
+  verifyJson.data.length === 0
+) {
+  return res.status(500).json({
+    ok: false,
+    message: "Image upload not confirmed in Meta ad account.",
+    details: verifyJson,
+  });
+}
     if (!imageHash) {
       return res.status(500).json({
         ok: false,
