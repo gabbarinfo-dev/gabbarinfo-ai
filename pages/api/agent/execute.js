@@ -2909,26 +2909,6 @@ Otherwise, respond with a full, clear explanation, and include example JSON only
         } 
       }
 
-      // 🔒 MICRO PATCH: FORCE STAGE ADVANCEMENT AFTER VERIFIED IMAGE UPLOAD
-      if (
-        state.stage === "PLAN_PROPOSED" &&
-        (state.meta?.uploadedImageHash || state.meta?.imageMediaId)
-      ) {
-        state = {
-          ...state,
-          stage: "READY_TO_LAUNCH",
-          locked_at: new Date().toISOString()
-        };
-        currentState = state; // Sync
-
-        await saveAnswerMemory(
-          process.env.NEXT_PUBLIC_BASE_URL,
-          effectiveBusinessId,
-          { campaign_state: state },
-          session.user.email.toLowerCase()
-        );
-      }
-
       // --- STEP 12: EXECUTION (Final Step) ---
       if (!errorOcurred) {
         // 🔒 PATCH: Execution requires READY_TO_LAUNCH strict
