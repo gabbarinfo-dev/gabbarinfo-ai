@@ -169,7 +169,7 @@ function normalizeServiceOptions(services, landingPage) {
 export default async function handler(req, res) {
   let currentState = null; // Default until loaded
   let planGeneratedThisTurn = false; // 🔒 Request-scoped flag for plan ownership
-
+let imageHash = null;
   if (req.method !== "POST") {
     console.log("TRACE: ENTER EXECUTE");
     console.log("TRACE: MODE =", req.body?.mode);
@@ -786,13 +786,7 @@ imageHash = uploadJson.imageHash;
 
           // 🔒 TAKE OWNER SHIP of this turn's action (Allows automation waterfall to run)
           planGeneratedThisTurn = true;
-if (!imageHash) {
-  return res.status(200).json({
-    ok: false,
-    gated: true,
-    text: "❌ Image was not uploaded successfully. Campaign execution stopped."
-  });
-}
+
           const nextState = {
             ...lockedCampaignState,
             stage: "PLAN_CONFIRMED",
