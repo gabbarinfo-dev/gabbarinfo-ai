@@ -50,7 +50,30 @@ export default async function handler(req, res) {
         message: "Missing or invalid JSON body.",
       });
     }
+// 🔥 ROUTE META PLAN CONFIRMATION TO EXECUTE.JS
+if (
+  body.message &&
+  typeof body.message === "string" &&
+  body.message.trim().toLowerCase() === "yes" &&
+  lockedCampaignState &&
+  lockedCampaignState.stage === "PLAN_PROPOSED"
+) {
+  const execRes = await fetch(`${BASE_URL}/api/agent/execute`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      Cookie: req.headers.cookie || "",
+    },
+    body: JSON.stringify({
+      instruction: body.message,
+      mode: "meta_ads_plan",
+      chatHistory: body.chatHistory || [],
+    }),
+  });
 
+  const execJson = await execRes.json();
+  return res.status(200).json(execJson);
+}
     /* ======================================================
        🔹 MODE 1: AGENT CHAT FLOW (NEW, SAFE)
        Triggered when message exists
