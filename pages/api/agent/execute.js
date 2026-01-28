@@ -3850,11 +3850,7 @@ Reply **YES** to confirm this plan and proceed.
           currentState.plan = regeneratedPlan;
           currentState.stage = "PLAN_PROPOSED";
           await saveAnswerMemory(process.env.NEXT_PUBLIC_BASE_URL, effectiveBusinessId, { campaign_state: currentState }, session.user.email.toLowerCase());
-          return res.status(200).json({
-            ok: true,
-            mode,
-            text: `**Plan Proposed: ${currentState.plan.campaign_name}**\nReply **YES** to confirm and proceed.`
-          });
+          
         }
 
         let waterfallLog = [];
