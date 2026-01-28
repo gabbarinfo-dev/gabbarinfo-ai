@@ -769,7 +769,13 @@ imageHash = uploadJson.imageHash;
 
       if (lockedCampaignState.stage === "PLAN_PROPOSED") {
         // 🔒 Only confirm if explicit YES. Otherwise fall through to Gemini (don't block).
-        if (lowerInstruction.includes("yes")) {
+        const isConfirm =
+  lowerInstruction.includes("yes") ||
+  lowerInstruction.includes("proceed") ||
+  lowerInstruction.includes("continue") ||
+  lowerInstruction.includes("ok");
+
+if (isConfirm) {
           // 🛡️ CRITICAL GUARD: Ensure we have a plan before confirming
           if (!lockedCampaignState.plan) {
             console.error("❌ CRITICAL: Attempting to confirm PLAN_PROPOSED but 'plan' is missing in state!");
@@ -782,10 +788,12 @@ imageHash = uploadJson.imageHash;
           }
 
           // User confirmed
-          console.log("✅ User Confirmed Plan. Transitioning: PLAN_PROPOSED -> PLAN_CONFIRMED");
+         console.log("✅ User Confirmed Plan. Transitioning: PLAN_PROPOSED -> PLAN_CONFIRMED");
 
-          // 🔒 TAKE OWNER SHIP of this turn's action (Allows automation waterfall to run)
-          planGeneratedThisTurn = true;
+lockedCampaignState.stage = "PLAN_CONFIRMED";
+
+// 🔐 TAKE OWNERSHIP of this turn's action (Allows automation waterfall to run)
+planGeneratedThisTurn = true;
 
           const nextState = {
             ...lockedCampaignState,
@@ -3857,7 +3865,10 @@ Reply **YES** to confirm this plan and proceed.
         const isImageGenerated = !!currentState.creative?.imageBase64 || !!currentState.creative?.imageUrl;
         const isImageUploaded = !!currentState.meta?.uploadedImageHash || !!currentState.meta?.imageMediaId || !!currentState.image_hash;
 
-        if (!isImageGenerated && (currentState.stage === "PLAN_CONFIRMED" || currentState.stage === "PLAN_PROPOSED")) {
+        if (
+  !isImageGenerated &&
+  currentState.stage === "PLAN_CONFIRMED"
+) {
           console.log("🚀 Waterfall: Starting Image Generation...");
           const plan = currentState.plan;
           const adSet0 = Array.isArray(plan.ad_sets) ? plan.ad_sets[0] : (plan.ad_sets || {});
@@ -3877,13 +3888,53 @@ Reply **YES** to confirm this plan and proceed.
               currentState.stage = "IMAGE_GENERATED";
               waterfallLog.push("✅ Step 9: Image Generated");
             } else {
-              errorOcurred = true;
+              errorOccurred = true;
               stopReason = "Image Generation Failed";
             }
           } catch (e) {
-            errorOcurred = true;
+            errorOccurred = true;
             stopReason = `Image Generation Error: ${e.message}`;
           }
+        }
+          // 🔧 FIX: FORCE IMAGE UPLOAD AFTER IMAGE_GENERATED
+if (
+  !errorOccurred &&
+  currentState.stage === "IMAGE_GENERATED" &&
+  currentState.creative?.imageBase64 &&
+  !currentState.meta?.uploadedImageHash
+) {
+  console.log("🚀 FIX: Uploading image to Meta");
+
+  const uploadRes = await fetch(
+    `${process.env.NEXT_PUBLIC_BASE_URL}/api/meta/upload-image`,
+    {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "x-client-email": currentEmail || "",
+      },
+      body: JSON.stringify({
+        imageBase64: currentState.creative.imageBase64,
+      }),
+    }
+  );
+
+  const uploadJson = await parseResponseSafe(uploadRes);
+  const iHash = uploadJson.imageHash || uploadJson.image_hash;
+
+  if (uploadJson.ok && iHash) {
+    currentState.image_hash = iHash;
+    currentState.meta = {
+      ...currentState.meta,
+      uploadedImageHash: iHash,
+      uploadedAt: new Date().toISOString(),
+    };
+    currentState.stage = "READY_TO_LAUNCH";
+  } else {
+    errorOccurred = true;
+    stopReason = `Meta Upload Failed: ${uploadJson.message || "Unknown error"}`;
+  }
+}
         } 
 
         // --- STEP 10: IMAGE UPLOAD ---
