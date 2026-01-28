@@ -665,11 +665,15 @@ export default async function handler(req, res) {
         );
 
         const uploadJson = await uploadResp.json();
-        if (!uploadJson?.ok || !uploadJson.image_hash) {
-          throw new Error(Messages.META_EXECUTION_FAILED);
-        }
+        if (!uploadJson || uploadJson.ok !== true || !uploadJson.imageHash) {
+  return res.status(200).json({
+    ok: false,
+    gated: true,
+    text: "❌ Image upload failed on your Meta ad account. Please try again or regenerate the image."
+  });
+}
 
-        imageHash = uploadJson.image_hash;
+imageHash = uploadJson.imageHash;
 
         const metaRes = await fetch(`${baseUrl}/api/ads/create-creative`, {
           method: "POST",
@@ -782,7 +786,13 @@ export default async function handler(req, res) {
 
           // 🔒 TAKE OWNER SHIP of this turn's action (Allows automation waterfall to run)
           planGeneratedThisTurn = true;
-
+if (!imageHash) {
+  return res.status(200).json({
+    ok: false,
+    gated: true,
+    text: "❌ Image was not uploaded successfully. Campaign execution stopped."
+  });
+}
           const nextState = {
             ...lockedCampaignState,
             stage: "PLAN_CONFIRMED",
@@ -822,10 +832,13 @@ export default async function handler(req, res) {
     // ============================================================
     // 6️⃣ GUARANTEE: FIRST USER MESSAGE CAN NEVER SHOW A PLAN
     // ============================================================
-    if (isNewMetaCampaignRequest && lockedCampaignState?.stage) {
-      console.error("❌ INVARIANT VIOLATION: New request but stage is not null. Resetting.");
-      lockedCampaignState = null; // Force reset
-    }
+   if (
+  isNewMetaCampaignRequest &&
+  lockedCampaignState?.stage &&
+  lockedCampaignState.stage !== "PLAN_CONFIRMED"
+) {
+  lockedCampaignState = null;
+}
 
     // ---------- MODE-SPECIFIC FOCUS ----------
     let modeFocus = "";
