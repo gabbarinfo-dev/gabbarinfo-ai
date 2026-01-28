@@ -2854,16 +2854,6 @@ Otherwise, respond with a full, clear explanation, and include example JSON only
           errorOcurred = true;
           stopReason = `Image Generation Error: ${e.message}`;
         }
-      } else if (
-        isImageGenerated &&
-        (stage === "PLAN_CONFIRMED" || stage === "IMAGE_GENERATED" || stage === "READY_TO_LAUNCH")
-      ) {
-        console.log("TRACE: PIPELINE STEP REPORT");
-        console.log("TRACE: STAGE (pipeline) =", state.stage);
-        console.log("TRACE: IMAGE EXISTS =", !!state.creative);
-        console.log("TRACE: IMAGE UPLOADED =", !!state.meta?.uploadedImageHash);
-
-        waterfallLog.push("⏭️ Step 9: Image Already Exists");
       }
 
       // --- STEP 10: IMAGE UPLOAD ---
@@ -2916,17 +2906,7 @@ Otherwise, respond with a full, clear explanation, and include example JSON only
             errorOcurred = true;
             stopReason = `Meta Upload Error: ${e.message}`;
           }
-        } else if (
-          isImageUploaded &&
-          (state.stage === "IMAGE_GENERATED" || state.stage === "READY_TO_LAUNCH")
-        ) {
-          console.log("TRACE: PIPELINE STEP REPORT");
-          console.log("TRACE: STAGE (pipeline) =", state.stage);
-          console.log("TRACE: IMAGE EXISTS =", !!state.creative);
-          console.log("TRACE: IMAGE UPLOADED =", !!state.meta?.uploadedImageHash);
-
-          waterfallLog.push("⏭️ Step 10: Image Already Uploaded");
-        }
+        } 
       }
 
       // 🔒 MICRO PATCH: FORCE STAGE ADVANCEMENT AFTER VERIFIED IMAGE UPLOAD
@@ -3924,9 +3904,7 @@ Reply **YES** to confirm this plan and proceed.
             errorOcurred = true;
             stopReason = `Image Generation Error: ${e.message}`;
           }
-        } else if (isImageGenerated) {
-          waterfallLog.push("⏭️ Step 9: Image Already Exists");
-        }
+        } 
 
         // --- STEP 10: IMAGE UPLOAD ---
         if (!errorOcurred && currentState.creative?.imageBase64 && !isImageUploaded) {
@@ -3953,9 +3931,6 @@ Reply **YES** to confirm this plan and proceed.
             errorOcurred = true;
             stopReason = `Meta Upload Error: ${e.message}`;
           }
-        } else if (isImageUploaded) {
-          waterfallLog.push("⏭️ Step 10: Image Already Uploaded");
-          if (currentState.stage !== "READY_TO_LAUNCH") currentState.stage = "READY_TO_LAUNCH";
         }
 
         // --- STEP 12: EXECUTION ---
