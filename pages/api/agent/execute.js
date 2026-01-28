@@ -3806,12 +3806,20 @@ Reply **YES** to confirm this plan and proceed.
       const stage = lockedCampaignState.stage || "PLANNING";
       const userSaysYes = lowerInstruction.includes("yes") || lowerInstruction.includes("approve") || lowerInstruction.includes("launch") || lowerInstruction.includes("ok");
 
-      // 🔒 HARD GATE: Memory plans are READ-ONLY (Mandatory Fix 1 & 3)
-      if (planGeneratedThisTurn === false && (stage === "PLAN_PROPOSED" || stage === "PLAN_CONFIRMED" || stage === "IMAGE_GENERATED" || stage === "READY_TO_LAUNCH")) {
-        console.log("TRACE: Memory plan detected. Bypassing automated pipeline.");
-        // We do NOT enter automation for memory-loaded plans. 
-        // Gemini will handle any questions or re-proposal.
-      } else if (stage !== "COMPLETED" && userSaysYes) {
+     // 🔓 ALLOW CONFIRMED PLAN TO ENTER WATERFALL (NO LOGIC REMOVAL)
+if (
+  planGeneratedThisTurn === false &&
+  stage === "PLAN_PROPOSED"
+) {
+  console.log("TRACE: PLAN_PROPOSED — waiting for YES");
+}
+else if (
+  planGeneratedThisTurn === false &&
+  stage === "PLAN_CONFIRMED"
+) {
+  console.log("TRACE: PLAN_CONFIRMED — entering waterfall");
+  planGeneratedThisTurn = true;
+} else if (stage !== "COMPLETED" && userSaysYes) {
 
         // 🛡️ IDEMPOTENCY PROTECTION
         const now = Date.now();
