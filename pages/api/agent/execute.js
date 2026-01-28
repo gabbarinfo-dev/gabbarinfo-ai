@@ -3888,17 +3888,17 @@ Reply **YES** to confirm this plan and proceed.
               currentState.stage = "IMAGE_GENERATED";
               waterfallLog.push("✅ Step 9: Image Generated");
             } else {
-              errorOccurred = true;
+              errorOcurred = true;
               stopReason = "Image Generation Failed";
             }
           } catch (e) {
-            errorOccurred = true;
+            errorOcurred = true;
             stopReason = `Image Generation Error: ${e.message}`;
           }
         }
           // 🔧 FIX: FORCE IMAGE UPLOAD AFTER IMAGE_GENERATED
 if (
-  !errorOccurred &&
+  !errorOcurred &&
   currentState.stage === "IMAGE_GENERATED" &&
   currentState.creative?.imageBase64 &&
   !currentState.meta?.uploadedImageHash
@@ -3931,7 +3931,7 @@ if (
     };
     currentState.stage = "READY_TO_LAUNCH";
   } else {
-    errorOccurred = true;
+    errorOcurred = true;
     stopReason = `Meta Upload Failed: ${uploadJson.message || "Unknown error"}`;
   }
 }
