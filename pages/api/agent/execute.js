@@ -3005,9 +3005,9 @@ Otherwise, respond with a full, clear explanation, and include example JSON only
         feedbackText = `❌ **Automation Interrupted**:\n\n**Error**: ${stopReason}\n\n**Pipeline Progress**:\n${waterfallLog.join("\n")}\n\nI've saved the progress so far. Please check the error above and reply to try again.`;
       } else if (state.stage === "IMAGE_GENERATED") {
         feedbackText = `✅ **Image Generated Successfully**\n\n[Image Generated]\n\n**Next Steps**:\n1. Upload image to Meta Assets\n2. Create paused campaign on Facebook/Instagram\n\nReply **LAUNCH** to complete these steps automatically.`;
-      } else if (state.stage === "READY_TO_LAUNCH") {
-        feedbackText = `✅ **Image Uploaded & Ready**\n\nEverything is set for campaign launch.\n\n**Details**:\n- Campaign: ${state.plan.campaign_name}\n- Budget: ${state.plan.budget?.amount || "500"} INR\n\nReply **LAUNCH** to publish the campaign to Meta.`;
-      } else {
+      } else if (state.stage === "READY_TO_LAUNCH" && state.creative?.imageHash) {
+  feedbackText = `✅ **Image Uploaded & Ready**\n\nEverything is set for campaign launch.\n\n**Details**:\n- Campaign: ${state.plan.campaign_name}\n`;
+} else {
         feedbackText = `**Current Pipeline Progress**:\n${waterfallLog.join("\n") || "No steps completed in this turn."}\n\n(Debug: Stage=${state.stage}, Plan=${state.plan ? "Yes" : "No"}, Image=${state.creative?.imageBase64 ? "Yes" : "No"}, Hash=${state.image_hash || "No"})\n\nWaiting for your confirmation...`;
       }
 
@@ -4011,9 +4011,12 @@ Reply **YES** to confirm this plan and proceed.
           feedbackText = `❌ **Automation Interrupted**:\n\n**Error**: ${stopReason}\n\n**Pipeline Progress**:\n${waterfallLog.join("\n")}\n\nI've saved the progress so far. Please check the error above and reply to try again.`;
         } else if (currentState?.stage === "IMAGE_GENERATED") {
           feedbackText = `✅ **Image Generated Successfully**\n\n[Image Generated]\n\n**Next Steps**:\n1. Upload image to Meta Assets\n2. Create paused campaign on Facebook/Instagram\n\nReply **LAUNCH** to complete these steps automatically.`;
-        } else if (currentState?.stage === "READY_TO_LAUNCH") {
-          feedbackText = `✅ **Image Uploaded & Ready**\n\nEverything is set for campaign launch.\n\n**Details**:\n- Campaign: ${currentState.plan?.campaign_name}\n- Budget: ${currentState.plan?.budget?.amount || "500"} INR\n\nReply **LAUNCH** to publish the campaign to Meta.`;
-        } else {
+        } else if (
+  currentState.stage === "READY_TO_LAUNCH" &&
+  currentState.creative?.imageHash
+) {
+  feedbackText = `✅ **Image Uploaded & Ready**\n\nEverything is set for campaign launch.\n\n**Details**:\n- Campaign: ${currentState.plan.campaign_name}`;
+} else {
           feedbackText = `**Current Pipeline Progress**:\n${waterfallLog.join("\n") || "No steps completed in this turn."}\n\n(Debug: Stage=${currentState?.stage})\n\nWaiting for your confirmation...`;
         }
 
