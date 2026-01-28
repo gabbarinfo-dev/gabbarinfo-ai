@@ -50,7 +50,37 @@ export default async function handler(req, res) {
         message: "Missing or invalid JSON body.",
       });
     }
-// 🔥 ROUTE META PLAN CONFIRMATION TO EXECUTE.JS
+
+// ======================= META PLAN CONFIRMATION ROUTING =======================
+
+// 1️⃣ Resolve active business (REQUIRED)
+let effectiveBusinessId = null;
+try {
+  const intakeRes = await fetch(`${BASE_URL}/api/agent/intake-business`, {
+    method: "GET",
+    headers: { Cookie: req.headers.cookie || "" },
+  });
+  const intakeJson = await intakeRes.json();
+  effectiveBusinessId = intakeJson?.intake?.business_id || null;
+} catch (_) {}
+
+// 2️⃣ Load campaign_state for that business
+let lockedCampaignState = null;
+try {
+  const memRes = await fetch(`${BASE_URL}/api/agent/read-memory`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      Cookie: req.headers.cookie || "",
+    },
+    body: JSON.stringify({ memory_type: "client" }),
+  });
+  const memJson = await memRes.json();
+  lockedCampaignState =
+    memJson?.business_answers?.[effectiveBusinessId]?.campaign_state || null;
+} catch (_) {}
+
+// 3️⃣ Route YES → execute.js
 if (
   body.message &&
   typeof body.message === "string" &&
@@ -74,6 +104,8 @@ if (
   const execJson = await execRes.json();
   return res.status(200).json(execJson);
 }
+
+// ======================= END META ROUTING =======================
     /* ======================================================
        🔹 MODE 1: AGENT CHAT FLOW (NEW, SAFE)
        Triggered when message exists
