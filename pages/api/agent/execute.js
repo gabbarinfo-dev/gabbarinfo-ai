@@ -762,68 +762,53 @@ imageHash = uploadJson.imageHash;
 
     // 🛡️ PATCH 2: Dedicated Confirmation Gate (Mandatory Fix 3)
     // 🔒 MODIFIED: Removed planGeneratedThisTurn requirement to allow confirming memory plans
-    if (lockedCampaignState && lockedCampaignState.plan && mode === "meta_ads_plan") {
-      console.log("TRACE: ENTER SHORT-CIRCUIT EXECUTION PATH");
-      console.log("TRACE: USER SAID YES =", lowerInstruction.includes("yes"));
-      console.log("TRACE: STAGE (before confirm) =", lockedCampaignState?.stage);
+ if (lockedCampaignState && lockedCampaignState.plan && mode === "meta_ads_plan") {
+  console.log("TRACE: ENTER SHORT-CIRCUIT EXECUTION PATH");
+  console.log("TRACE: USER SAID YES =", lowerInstruction.includes("yes"));
+  console.log("TRACE: STAGE (before confirm) =", lockedCampaignState?.stage);
 
-      if (lockedCampaignState.stage === "PLAN_PROPOSED") {
-        // 🔒 Only confirm if explicit YES. Otherwise fall through to Gemini (don't block).
-        const isConfirm =
-  lowerInstruction.includes("yes") ||
-  lowerInstruction.includes("proceed") ||
-  lowerInstruction.includes("continue") ||
-  lowerInstruction.includes("ok");
+  if (lockedCampaignState.stage === "PLAN_PROPOSED") {
+    const isConfirm =
+      lowerInstruction.includes("yes") ||
+      lowerInstruction.includes("proceed") ||
+      lowerInstruction.includes("continue") ||
+      lowerInstruction.includes("ok");
 
-if (isConfirm) {
-          // 🛡️ CRITICAL GUARD: Ensure we have a plan before confirming
-          if (!lockedCampaignState.plan) {
-            console.error("❌ CRITICAL: Attempting to confirm PLAN_PROPOSED but 'plan' is missing in state!");
-            // Revert to generating plan logic (or just error out gracefully)
-            return res.status(200).json({
-              ok: true,
-              mode,
-              text: "I seem to have lost the plan details. Let me regenerate it for you.\n\nReply **YES** to generate the plan again."
-            });
-          }
-
-          // User confirmed
-         console.log("✅ User Confirmed Plan. Transitioning: PLAN_PROPOSED -> PLAN_CONFIRMED");
-
-lockedCampaignState.stage = "PLAN_CONFIRMED";
-
-// 🔐 TAKE OWNERSHIP of this turn's action (Allows automation waterfall to run)
-planGeneratedThisTurn = true;
-
-          const nextState = {
-            ...lockedCampaignState,
-            stage: "PLAN_CONFIRMED",
-            auto_run: false,
-            locked_at: new Date().toISOString()
-          };
-
-          // Explicitly save the validated state
-          await saveAnswerMemory(
-            process.env.NEXT_PUBLIC_BASE_URL,
-            effectiveBusinessId,
-            { campaign_state: nextState },
-            session.user.email.toLowerCase()
-          );
-
-          // Update local state reference to avoid stale reads downstream
-          lockedCampaignState = nextState;
-          currentState = nextState;
-
-          // 🚀 FALLTHROUGH: Do NOT return here. 
-          // We want to immediately trigger the "Short-Circuit" waterfall below
-          // so the user doesn't have to say "Ok" to start image generation.
-          console.log("🚀 Immediate Fallthrough to Waterfall...");
-        } else {
-          console.log("TRACE: Plan proposed but not confirmed. Falling through to model...");
-        }
+    if (isConfirm) {
+      if (!lockedCampaignState.plan) {
+        return res.status(200).json({
+          ok: true,
+          mode,
+          text: "Plan missing. Regenerating. Reply YES again."
+        });
       }
-    }
 
+      const nextState = {
+        ...lockedCampaignState,
+        stage: "PLAN_CONFIRMED",
+        auto_run: true,
+        locked_at: new Date().toISOString()
+      };
+
+      await saveAnswerMemory(
+        process.env.NEXT_PUBLIC_BASE_URL,
+        effectiveBusinessId,
+        { campaign_state: nextState },
+        session.user.email.toLowerCase()
+      );
+
+      lockedCampaignState = nextState;
+      currentState = nextState;
+      planGeneratedThisTurn = true;
+
+      // ✅ PURPOSE: signal execution path
+      console.log("🚀 Immediate Fallthrough to Waterfall...");
+    } else {
+      // ✅ PURPOSE: allow Gemini to continue reasoning
+      console.log("TRACE: Plan proposed but not confirmed. Falling through to model...");
+    }
+  }
+}
     // ============================================================
     // 4️⃣ IMAGE GENERATION MUST BE EXPLICIT (Force Waterfall)
     // ============================================================
