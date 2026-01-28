@@ -3861,6 +3861,7 @@ Reply **YES** to confirm this plan and proceed.
         const isImageGenerated = !!currentState.creative?.imageBase64 || !!currentState.creative?.imageUrl;
         const isImageUploaded = !!currentState.meta?.uploadedImageHash || !!currentState.meta?.imageMediaId || !!currentState.image_hash;
 
+        console.log("🧪 DEBUG BEFORE STEP 9:", currentState.stage);
         if (
   !isImageGenerated &&
   currentState.stage === "PLAN_CONFIRMED"
