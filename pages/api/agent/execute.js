@@ -3935,7 +3935,6 @@ if (
     stopReason = `Meta Upload Failed: ${uploadJson.message || "Unknown error"}`;
   }
 }
-        } 
 
         // --- STEP 10: IMAGE UPLOAD ---
         if (!errorOcurred && currentState.creative?.imageBase64 && !isImageUploaded) {
