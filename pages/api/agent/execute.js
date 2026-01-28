@@ -3648,11 +3648,12 @@ Reply **YES** to confirm this plan and proceed.
     const isPlanText = /Plan Proposed|Proposed Plan|Campaign Plan|Creative Idea|Strategy Proposal|Campaign Name/i.test(text);
 
     // 🔒 SINGLE PROPOSER RULE (Mandatory Fix 4)
-    // Disable ALL fallback/self-healing if plan exists or stage is not null
+    // Disable ALL fallback/self-healing if plan exists
     const canProposePlan =
       !isNewMetaCampaignRequest &&
       !lockedCampaignState?.plan &&
-      !lockedCampaignState?.stage &&
+      !planGeneratedThisTurn && // 🛡️ Ensure we don't double-propose if JSON path already ran
+      // !lockedCampaignState?.stage && // 🗑️ REMOVED: Allow proposal even if stage exists (e.g. objective_selected)
       effectiveBusinessId &&
       !lowerInstruction.includes("yes");
 
@@ -3807,9 +3808,10 @@ Reply **YES** to confirm this plan and proceed.
       const userSaysYes = lowerInstruction.includes("yes") || lowerInstruction.includes("approve") || lowerInstruction.includes("launch") || lowerInstruction.includes("ok");
 
       // 🔒 HARD GATE: Memory plans are READ-ONLY (Mandatory Fix 1 & 3)
-      if (planGeneratedThisTurn === false && (stage === "PLAN_PROPOSED" || stage === "PLAN_CONFIRMED" || stage === "IMAGE_GENERATED" || stage === "READY_TO_LAUNCH")) {
+      // EXCEPTION: If user explicitly says YES, we allow the pipeline to proceed.
+      if (planGeneratedThisTurn === false && !userSaysYes && (stage === "PLAN_PROPOSED" || stage === "PLAN_CONFIRMED" || stage === "IMAGE_GENERATED" || stage === "READY_TO_LAUNCH")) {
         console.log("TRACE: Memory plan detected. Bypassing automated pipeline.");
-        // We do NOT enter automation for memory-loaded plans. 
+        // We do NOT enter automation for memory-loaded plans unless user confirms. 
         // Gemini will handle any questions or re-proposal.
       } else if (stage !== "COMPLETED" && userSaysYes) {
 
@@ -4099,5 +4101,3 @@ async function handleInstagramPostOnly(req, res, session, body) {
 
   return res.json({ ok: true, text: "More info needed." });
 }
-
-
