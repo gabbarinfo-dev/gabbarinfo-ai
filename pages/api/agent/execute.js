@@ -1506,9 +1506,12 @@ You are in GENERIC DIGITAL MARKETING AGENT MODE.
     }
 
     // Step 5: Location Confirmation
-    if (!isPlanProposed && mode === "meta_ads_plan" && lockedCampaignState?.service && !lockedCampaignState?.location) {
+    if (!isPlanProposed && mode === "meta_ads_plan" && lockedCampaignState?.service && !lockedCampaignState?.location && !lockedCampaignState?.location_confirmed) {
       const input = instruction.trim();
-      if (input.length > 2) {
+      // Ensure input isn't a budget number (digits) if we are mistakenly here
+      const looksLikeBudget = /^\d+$/.test(input);
+
+      if (input.length > 2 && !looksLikeBudget) {
         lockedCampaignState = { ...lockedCampaignState, location: input, location_confirmed: true, stage: "location_selected" };
         currentState = lockedCampaignState;
         await saveAnswerMemory(process.env.NEXT_PUBLIC_BASE_URL, effectiveBusinessId, { campaign_state: lockedCampaignState }, session.user.email.toLowerCase());
