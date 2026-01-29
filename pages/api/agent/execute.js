@@ -635,7 +635,7 @@ export default async function handler(req, res) {
       "Unknown type in legacy mode. Expected google_ads_campaign or meta_ads_creative.",
   });
 }
-
+    }
     // ============================================================
     // 2) NEW "AGENT MODE" – THINKING + JSON GENERATION VIA GEMINI
     // ============================================================
