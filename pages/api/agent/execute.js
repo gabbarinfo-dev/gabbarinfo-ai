@@ -3825,8 +3825,16 @@ Reply **YES** to confirm this plan and proceed.
         let errorOcurred = false;
         let stopReason = null;
 
+        // 🛡️ SANITY CHECK: Detect Internal MD5 hashes masquerading as Meta Hashes
+        if (typeof currentState.image_hash === "string" && currentState.image_hash.length === 32) {
+          console.log("⚠️ Internal MD5 detected in image_hash. Clearing to force re-upload.");
+          currentState.image_hash = null;
+          if (currentState.meta) currentState.meta.uploadedImageHash = null;
+        }
+
         // --- STEP 9: IMAGE GENERATION ---
         const isImageGenerated = !!currentState.creative?.imageBase64 || !!currentState.creative?.imageUrl;
+        // Re-evaluate check after clearing invalid hash
         const isImageUploaded = !!currentState.meta?.uploadedImageHash || !!currentState.meta?.imageMediaId || !!currentState.image_hash;
 
         if (currentState.stage === "PLAN_CONFIRMED") {
