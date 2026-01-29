@@ -626,7 +626,86 @@ export default async function handler(req, res) {
               "NEXT_PUBLIC_BASE_URL is not set. Cannot forward to ads/create-creative.",
           });
         }
-       
+        // ============================================================
+        // 🎨 CREATIVE GENERATION (AFTER COPY CONFIRMATION)
+        // ============================================================
+
+        let imageHash = null;
+
+        // 1️⃣ Generate image via OpenAI
+        const imageResp = await fetch(
+          `${process.env.NEXT_PUBLIC_BASE_URL}/api/images/generate`,
+          {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              prompt: body.data?.creative?.imagePrompt,
+            }),
+          }
+        );
+
+        const imageJson = await imageResp.json();
+        if (!imageJson?.ok || !imageJson.imageBase64) {
+          throw new Error(Messages.META_EXECUTION_FAILED);
+        }
+
+        // 2️⃣ Upload image directly to Meta
+        const uploadResp = await fetch(
+          `${process.env.NEXT_PUBLIC_BASE_URL}/api/meta/upload-image`,
+          {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              imageBase64: imageJson.imageBase64,
+            }),
+          }
+        );
+
+        const uploadJson = await uploadResp.json();
+        if (!uploadJson || uploadJson.ok !== true || !uploadJson.imageHash) {
+          return res.status(200).json({
+            ok: false,
+            gated: true,
+            text: "❌ Image upload failed on your Meta ad account. Please try again or regenerate the image."
+          });
+        }
+
+        imageHash = uploadJson.imageHash;
+
+        const metaRes = await fetch(`${baseUrl}/api/ads/create-creative`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            ...body.data,
+            creative: {
+              ...body.data.creative,
+              imageHash, // 👈 THIS IS WHERE IT GOES
+            },
+          }),
+        });
+        let metaJson = {};
+        try {
+          metaJson = await metaRes.json();
+        } catch (_) {
+          metaJson = { raw: await metaRes.text() };
+        }
+
+        return res.status(200).json({
+          ok: true,
+          mode: "router_legacy",
+          forwardedTo: "creative_service",
+          status: metaRes.status,
+          response: metaJson,
+        });
+      }
+
+      return res.status(400).json({
+        ok: false,
+        message:
+          "Unknown type in legacy mode. Expected google_ads_campaign or meta_ads_creative.",
+      });
+    }
+
     // ============================================================
     // 2) NEW "AGENT MODE" – THINKING + JSON GENERATION VIA GEMINI
     // ============================================================
@@ -3922,8 +4001,10 @@ Reply **YES** to confirm this plan and proceed.
         text = "I have processed your request based on the details provided. Please ask me in plain language if you want a summary of the plan.";
       }
     }
-        
-    } catch (err) {
+
+    return res.status(200).json({ ok: true, text, mode });
+
+  } catch (err) {
     console.error("Agent execution error:", err);
     return res.status(500).json({ ok: false, message: "Server error", error: err.message });
   }
