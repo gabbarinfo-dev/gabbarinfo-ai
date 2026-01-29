@@ -4057,21 +4057,43 @@ async function handleInstagramPostOnly(req, res, session, body) {
   const { instruction = "" } = body;
   const { data: metaRow } = await supabase.from("meta_connections").select("*").eq("email", session.user.email.toLowerCase()).maybeSingle();
   const activeBusinessId = metaRow?.fb_business_id || "default_business";
+
+  // 📝 Path A: Direct Asset Detection (Image URL + Caption/Hashtags)
   const urlMatch = instruction.match(/https?:\/\/[^\s]+/i);
   const imageUrl = urlMatch ? urlMatch[0] : null;
+
   if (imageUrl) {
     try {
+      // Extraction Priority: Regex for "Caption:" and "Hashtags:"
+      const captionMatch = instruction.match(/Caption:\s*(.*?)(?=\s*Hashtags:|$)/is);
+      const hashtagMatch = instruction.match(/Hashtags:\s*(.*)/is);
+
+      const rawCaption = captionMatch ? captionMatch[1].trim() : "";
+      const rawHashtags = hashtagMatch ? hashtagMatch[1].trim() : "";
+      const combinedCaption = `${rawCaption}\n\n${rawHashtags}`.trim() || "New Post from GabbarInfo Agent";
+
+      console.log(`[Path A] Direct Instagram Publish detected. URL: ${imageUrl}`);
+
       await clearCreativeState(supabase, session.user.email.toLowerCase());
-      const result = await executeInstagramPost({ userEmail: session.user.email.toLowerCase(), imageUrl, caption: "Post" });
+
+      const result = await executeInstagramPost({
+        userEmail: session.user.email.toLowerCase(),
+        imageUrl,
+        caption: combinedCaption
+      });
+
       return res.json({ ok: true, text: "🎉 Instagram Post Published!" });
     } catch (e) {
-      return res.status(200).json({ ok: false, text: "Error" });
+      console.error("[Path A] Direct Publish Error:", e);
+      return res.status(200).json({ ok: false, text: `Instagram publication failed: ${e.message}` });
     }
   }
+
+  // 🗣️ Path B: Interactive Creative Mode
   const creativeResult = await creativeEntry({ supabase, session, instruction, metaRow, effectiveBusinessId: activeBusinessId });
   if (creativeResult.response) return res.json(creativeResult.response);
 
-  // 🛡️ Path B: Final Confirmation Success
+  // Path B: Success Publication
   if (creativeResult.assets) {
     try {
       const postResult = await executeInstagramPost({
@@ -4081,12 +4103,12 @@ async function handleInstagramPostOnly(req, res, session, body) {
       });
       return res.json({ ok: true, text: "🎉 Instagram Post Published!" });
     } catch (e) {
-      console.error("Path B Publication Error:", e);
-      return res.status(200).json({ ok: false, text: "Error publishing post." });
+      console.error("[Path B] Publication Error:", e);
+      return res.status(200).json({ ok: false, text: `Instagram publication failed: ${e.message}` });
     }
   }
 
-  return res.json({ ok: true, text: "More info needed." });
+  return res.json({ ok: true, text: "Thinking..." });
 }
 
 
