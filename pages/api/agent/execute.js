@@ -169,6 +169,8 @@ function normalizeServiceOptions(services, landingPage) {
 export default async function handler(req, res) {
   let currentState = null; // Default until loaded
   let planGeneratedThisTurn = false; // 🔒 Request-scoped flag for plan ownership
+  let imageUploadedThisTurn = false; // 🔒 Request-scoped flag for upload verification
+  let campaignExecutedThisTurn = false; // 🔒 Request-scoped flag for execution verification
   let imageHash = null;
   if (req.method !== "POST") {
     console.log("TRACE: ENTER EXECUTE");
@@ -2787,7 +2789,6 @@ Otherwise, respond with a full, clear explanation, and include example JSON only
         }
       }
       let waterfallLog = [];
-      let imageUploadedThisTurn = false;
       let errorOcurred = false;
       let stopReason = null;
 
@@ -2939,6 +2940,7 @@ Otherwise, respond with a full, clear explanation, and include example JSON only
             const execJson = await execRes.json();
 
             if (execJson.ok) {
+              campaignExecutedThisTurn = true;
               await saveAnswerMemory(process.env.NEXT_PUBLIC_BASE_URL, effectiveBusinessId, {
                 campaign_state: { stage: "COMPLETED", final_result: execJson }
               }, session.user.email.toLowerCase());
@@ -2973,7 +2975,7 @@ Otherwise, respond with a full, clear explanation, and include example JSON only
         if (imageUploadedThisTurn) {
           feedbackText = `✅ **Image Uploaded & Ready**\n\nEverything is set for campaign launch.\n\n**Details**:\n- Campaign: ${state.plan.campaign_name}\n`;
         } else {
-          feedbackText = `**Current Pipeline Progress**:\n${waterfallLog.join("\n") || "Checking status..."}\n\n(Debug: Stage=${state.stage}, Hash=Yes)\n\nWaiting for your confirmation...`;
+          feedbackText = `⏳ **Uploading image to Meta. Please wait...**\n\n(Debug: Stage=${state.stage}, Hash=Yes)\n\nWaiting for upload to complete...`;
         }
       } else {
         feedbackText = `**Current Pipeline Progress**:\n${waterfallLog.join("\n") || "No steps completed in this turn."}\n\n(Debug: Stage=${state.stage}, Plan=${state.plan ? "Yes" : "No"}, Image=${state.creative?.imageBase64 ? "Yes" : "No"}, Hash=${state.image_hash || "No"})\n\nWaiting for your confirmation...`;
@@ -3855,7 +3857,6 @@ Reply **YES** to confirm this plan and proceed.
         }
 
         let waterfallLog = [];
-        let imageUploadedThisTurn = false;
         let errorOcurred = false;
         let stopReason = null;
 
@@ -3972,15 +3973,12 @@ Reply **YES** to confirm this plan and proceed.
               errorOcurred = true;
               stopReason = `Meta Upload Error: ${e.message}`;
             }
-          } else if (isImageUploaded) {
-            console.log("⏩ Waterfall: Image already uploaded. Fast-forwarding to READY_TO_LAUNCH");
-            currentState.stage = "READY_TO_LAUNCH";
           }
         }
 
         // --- STEP 12: EXECUTION ---
         if (!errorOcurred && currentState.stage === "READY_TO_LAUNCH" && currentState.image_hash) {
-          const wantsLaunch = lowerInstruction.includes("launch") || lowerInstruction.includes("execute") || lowerInstruction.includes("run") || lowerInstruction.includes("publish");
+          const wantsLaunch = lowerInstruction.includes("launch") || lowerInstruction.includes("execute") || lowerInstruction.includes("run") || lowerInstruction.includes("publish") || lowerInstruction.includes("yes") || lowerInstruction.includes("confirm") || lowerInstruction.includes("proceed");
 
           if (wantsLaunch) {
             console.log("🚀 Waterfall: Executing Campaign on Meta...");
@@ -4003,6 +4001,7 @@ Reply **YES** to confirm this plan and proceed.
               if (execJson.ok) {
                 currentState.stage = "COMPLETED";
                 currentState.final_result = execJson;
+                campaignExecutedThisTurn = true;
                 await saveAnswerMemory(process.env.NEXT_PUBLIC_BASE_URL, effectiveBusinessId, { campaign_state: currentState }, session.user.email.toLowerCase());
                 return res.status(200).json({
                   ok: true,
@@ -4038,7 +4037,7 @@ Reply **YES** to confirm this plan and proceed.
           if (imageUploadedThisTurn) {
             feedbackText = `✅ **Image Uploaded & Ready**\n\nEverything is set for campaign launch.\n\n**Details**:\n- Campaign: ${currentState.plan.campaign_name}`;
           } else {
-            feedbackText = `**Current Pipeline Progress**:\n${waterfallLog.join("\n") || "Checking status..."}\n\n(Debug: Stage=${currentState.stage}, Hash=Yes)\n\nWaiting for your confirmation...`;
+            feedbackText = `⏳ **Uploading image to Meta. Please wait...**\n\n(Debug: Stage=${currentState.stage}, Hash=Yes)\n\nWaiting for upload to complete...`;
           }
         } else {
           feedbackText = `**Current Pipeline Progress**:\n${waterfallLog.join("\n") || "No steps completed in this turn."}\n\n(Debug: Stage=${currentState?.stage})\n\nWaiting for your confirmation...`;
