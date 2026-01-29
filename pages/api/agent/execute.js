@@ -4066,6 +4066,20 @@ async function handleInstagramPostOnly(req, res, session, body) {
   const { data: metaRow } = await supabase.from("meta_connections").select("*").eq("email", session.user.email.toLowerCase()).maybeSingle();
   const activeBusinessId = metaRow?.fb_business_id || "default_business";
 
+  // Helper for retrying publication (handles "Media ID not available" latency)
+  const safePublish = async (params, retries = 1) => {
+    try {
+      return await executeInstagramPost(params);
+    } catch (e) {
+      if (retries > 0 && e.message.includes("Media ID")) {
+        console.warn(`[Instagram Retry] Media ID not ready. Waiting 5s... (${retries} retries left)`);
+        await new Promise(r => setTimeout(r, 5000));
+        return await executeInstagramPost(params);
+      }
+      throw e;
+    }
+  };
+
   // 📝 Path A: Direct Asset Detection (Image URL + Caption/Hashtags)
   const urlMatch = instruction.match(/https?:\/\/[^\s]+/i);
   const imageUrl = urlMatch ? urlMatch[0] : null;
@@ -4084,7 +4098,7 @@ async function handleInstagramPostOnly(req, res, session, body) {
 
       await clearCreativeState(supabase, session.user.email.toLowerCase());
 
-      const result = await executeInstagramPost({
+      const result = await safePublish({
         userEmail: session.user.email.toLowerCase(),
         imageUrl,
         caption: combinedCaption
@@ -4104,7 +4118,7 @@ async function handleInstagramPostOnly(req, res, session, body) {
   // Path B: Success Publication
   if (creativeResult.assets) {
     try {
-      const postResult = await executeInstagramPost({
+      const postResult = await safePublish({
         userEmail: session.user.email.toLowerCase(),
         imageUrl: creativeResult.assets.imageUrl,
         caption: creativeResult.assets.caption
