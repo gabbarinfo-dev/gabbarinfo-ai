@@ -3816,7 +3816,9 @@ Reply **YES** to confirm this plan and proceed.
 
           const imageJson = await imageResp.json();
 
-
+console.log("🧪 IMAGE GENERATE STATUS:", imageResp.status);
+console.log("🧪 IMAGE GENERATE RAW:", imageJson);
+console.log("🧪 IMAGE GENERATE KEYS:", Object.keys(imageJson || {}));
           if (!imageResp.ok || !imageJson?.imageBase64) {
             throw new Error("Agent image generation failed");
           }
