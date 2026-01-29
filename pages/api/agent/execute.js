@@ -3887,8 +3887,8 @@ Reply **YES** to confirm this plan and proceed.
           const imageJson = await imageResp.json();
 
 
-          if (!imageJson?.ok || !imageJson.imageBase64) {
-            throw new Error(Messages.META_EXECUTION_FAILED);
+          if (!imageResp.ok || !imageJson?.imageBase64) {
+            throw new Error("Agent image generation failed");
           }
 
 
@@ -3909,7 +3909,7 @@ Reply **YES** to confirm this plan and proceed.
           const uploadJson = await uploadResp.json();
 
 
-          if (!uploadJson || uploadJson.ok !== true || !uploadJson.imageHash) {
+          if (!uploadResp.ok || !uploadJson?.imageHash) {
             throw new Error("Agent image upload to Meta failed");
           }
 
