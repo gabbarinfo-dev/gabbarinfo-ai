@@ -3872,7 +3872,7 @@ Reply **YES** to confirm this plan and proceed.
         // ===============================
         if (!imageUploadedThisTurn) {
           // 1. Generate image using EXISTING OpenAI logic
-          const imageResp = await fetch("/api/images/generate", {
+          const imageResp = await fetch(`${process.env.NEXT_PUBLIC_BASE_URL}/api/images/generate`, {
             method: "POST",
             headers: {
               "Content-Type": "application/json",
@@ -3893,7 +3893,8 @@ Reply **YES** to confirm this plan and proceed.
 
 
           // 2. Upload image to Meta using EXISTING uploader
-          const uploadResp = await fetch("/api/meta/upload-image", {
+          console.log("UPLOAD IMAGE API HIT");
+          const uploadResp = await fetch(`${process.env.NEXT_PUBLIC_BASE_URL}/api/meta/upload-image`, {
             method: "POST",
             headers: {
               "Content-Type": "application/json",
