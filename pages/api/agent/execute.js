@@ -2778,6 +2778,7 @@ Otherwise, respond with a full, clear explanation, and include example JSON only
         }
       }
       let waterfallLog = [];
+      let imageUploadedThisTurn = false;
       let errorOcurred = false;
       let stopReason = null;
 
@@ -2793,7 +2794,7 @@ Otherwise, respond with a full, clear explanation, and include example JSON only
       }
 
       const isImageGenerated = !!state.creative?.imageBase64 || !!state.creative?.imageUrl;
-      const isImageUploaded = !!state.meta?.uploadedImageHash || !!state.meta?.imageMediaId || !!state.image_hash;
+      const isImageUploaded = !!state.meta?.uploadedImageHash || !!state.meta?.imageMediaId;
 
       if (!isImageGenerated && (stage === "PLAN_CONFIRMED")) {
         console.log("TRACE: IMAGE GENERATION ATTEMPT");
@@ -2891,6 +2892,7 @@ Otherwise, respond with a full, clear explanation, and include example JSON only
               );
 
               waterfallLog.push("✅ Step 10: Image Uploaded to Meta");
+              imageUploadedThisTurn = true;
             } else {
               errorOcurred = true;
               stopReason = `Meta Upload Failed: ${uploadJson.message || "Unknown error"}`;
@@ -2958,8 +2960,12 @@ Otherwise, respond with a full, clear explanation, and include example JSON only
         feedbackText = `❌ **Automation Interrupted**:\n\n**Error**: ${stopReason}\n\n**Pipeline Progress**:\n${waterfallLog.join("\n")}\n\nI've saved the progress so far. Please check the error above and reply to try again.`;
       } else if (state.stage === "IMAGE_GENERATED") {
         feedbackText = `✅ **Image Generated Successfully**\n\n[Image Generated]\n\n**Next Steps**:\n1. Upload image to Meta Assets\n2. Create paused campaign on Facebook/Instagram\n\nReply **LAUNCH** to complete these steps automatically.`;
-      } else if (state.stage === "READY_TO_LAUNCH" && state.creative?.imageHash) {
-        feedbackText = `✅ **Image Uploaded & Ready**\n\nEverything is set for campaign launch.\n\n**Details**:\n- Campaign: ${state.plan.campaign_name}\n`;
+      } else if (state.stage === "READY_TO_LAUNCH" && state.image_hash) {
+        if (imageUploadedThisTurn) {
+          feedbackText = `✅ **Image Uploaded & Ready**\n\nEverything is set for campaign launch.\n\n**Details**:\n- Campaign: ${state.plan.campaign_name}\n`;
+        } else {
+          feedbackText = `**Current Pipeline Progress**:\n${waterfallLog.join("\n") || "Checking status..."}\n\n(Debug: Stage=${state.stage}, Hash=Yes)\n\nWaiting for your confirmation...`;
+        }
       } else {
         feedbackText = `**Current Pipeline Progress**:\n${waterfallLog.join("\n") || "No steps completed in this turn."}\n\n(Debug: Stage=${state.stage}, Plan=${state.plan ? "Yes" : "No"}, Image=${state.creative?.imageBase64 ? "Yes" : "No"}, Hash=${state.image_hash || "No"})\n\nWaiting for your confirmation...`;
       }
@@ -3832,6 +3838,7 @@ Reply **YES** to confirm this plan and proceed.
         }
 
         let waterfallLog = [];
+        let imageUploadedThisTurn = false;
         let errorOcurred = false;
         let stopReason = null;
 
@@ -3845,7 +3852,7 @@ Reply **YES** to confirm this plan and proceed.
         // --- STEP 9: IMAGE GENERATION ---
         const isImageGenerated = !!currentState.creative?.imageBase64 || !!currentState.creative?.imageUrl;
         // Re-evaluate check after clearing invalid hash
-        const isImageUploaded = !!currentState.meta?.uploadedImageHash || !!currentState.meta?.imageMediaId || !!currentState.image_hash;
+        const isImageUploaded = !!currentState.meta?.uploadedImageHash || !!currentState.meta?.imageMediaId;
 
         if (currentState.stage === "PLAN_CONFIRMED") {
           if (!isImageGenerated) {
@@ -3914,6 +3921,7 @@ Reply **YES** to confirm this plan and proceed.
               uploadedAt: new Date().toISOString(),
             };
             currentState.stage = "READY_TO_LAUNCH";
+            imageUploadedThisTurn = true;
           } else {
             errorOcurred = true;
             stopReason = `Meta Upload Failed: ${uploadJson.message || "Unknown error"}`;
@@ -3938,6 +3946,7 @@ Reply **YES** to confirm this plan and proceed.
                 currentState.meta = { ...currentState.meta, uploadedImageHash: iHash, uploadedAt: new Date().toISOString() };
                 currentState.stage = "READY_TO_LAUNCH";
                 waterfallLog.push("✅ Step 10: Image Uploaded to Meta");
+                imageUploadedThisTurn = true;
               } else {
                 errorOcurred = true;
                 stopReason = `Meta Upload Failed: ${uploadJson.message || "Unknown error"}`;
@@ -4009,7 +4018,11 @@ Reply **YES** to confirm this plan and proceed.
           currentState.stage === "READY_TO_LAUNCH" &&
           currentState.image_hash
         ) {
-          feedbackText = `✅ **Image Uploaded & Ready**\n\nEverything is set for campaign launch.\n\n**Details**:\n- Campaign: ${currentState.plan.campaign_name}`;
+          if (imageUploadedThisTurn) {
+            feedbackText = `✅ **Image Uploaded & Ready**\n\nEverything is set for campaign launch.\n\n**Details**:\n- Campaign: ${currentState.plan.campaign_name}`;
+          } else {
+            feedbackText = `**Current Pipeline Progress**:\n${waterfallLog.join("\n") || "Checking status..."}\n\n(Debug: Stage=${currentState.stage}, Hash=Yes)\n\nWaiting for your confirmation...`;
+          }
         } else {
           feedbackText = `**Current Pipeline Progress**:\n${waterfallLog.join("\n") || "No steps completed in this turn."}\n\n(Debug: Stage=${currentState?.stage})\n\nWaiting for your confirmation...`;
         }
