@@ -2872,7 +2872,7 @@ Otherwise, respond with a full, clear explanation, and include example JSON only
           try {
             const uploadRes = await fetch(`${process.env.NEXT_PUBLIC_BASE_URL}/api/meta/upload-image`, {
               method: "POST",
-              headers: { "Content-Type": "application/json", "X-Client-Email": __currentEmail || "" },
+              headers: { "Content-Type": "application/json", "x-client-email": __currentEmail || "" },
               body: JSON.stringify({ imageBase64: state.creative.imageBase64 })
             });
             const uploadJson = await parseResponseSafe(uploadRes);
@@ -2934,7 +2934,7 @@ Otherwise, respond with a full, clear explanation, and include example JSON only
 
             const execRes = await fetch(`${process.env.NEXT_PUBLIC_BASE_URL}/api/meta/execute-campaign`, {
               method: "POST",
-              headers: { "Content-Type": "application/json", "X-Client-Email": __currentEmail || "" },
+              headers: { "Content-Type": "application/json", "x-client-email": __currentEmail || "" },
               body: JSON.stringify({ platform: "meta", payload: finalPayload })
             });
             const execJson = await execRes.json();
@@ -3867,114 +3867,61 @@ Reply **YES** to confirm this plan and proceed.
           if (currentState.meta) currentState.meta.uploadedImageHash = null;
         }
 
-        // --- STEP 9: IMAGE GENERATION ---
-        const isImageGenerated = !!currentState.creative?.imageBase64 || !!currentState.creative?.imageUrl;
-        // Re-evaluate check after clearing invalid hash
-        const isImageUploaded = !!currentState.meta?.uploadedImageHash || !!currentState.meta?.imageMediaId;
+        // ===============================
+        // AGENT MODE IMAGE GENERATION + UPLOAD
+        // ===============================
+        if (!imageUploadedThisTurn) {
+          // 1. Generate image using EXISTING OpenAI logic
+          const imageResp = await fetch("/api/images/generate", {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+              "x-client-email": session.user.email,
+            },
+            body: JSON.stringify({
+              prompt: lockedCampaignState.plan.image_concept,
+            }),
+          });
 
-        if (currentState.stage === "PLAN_CONFIRMED") {
-          if (!isImageGenerated) {
-            console.log("🚀 Waterfall: Starting Image Generation...");
-            const plan = currentState.plan;
-            const adSet0 = Array.isArray(plan.ad_sets) ? plan.ad_sets[0] : (plan.ad_sets || {});
-            const creativeResult = adSet0.ad_creative || adSet0.creative || {};
-            const imagePrompt = creativeResult.image_prompt || creativeResult.imagePrompt || creativeResult.primary_text || `${plan.campaign_name} ad image`;
 
-            try {
-              const imgRes = await fetch(`${process.env.NEXT_PUBLIC_BASE_URL}/api/images/generate`, {
-                method: "POST",
-                headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({ prompt: imagePrompt }),
-              });
-              const imgJson = await parseResponseSafe(imgRes);
+          const imageJson = await imageResp.json();
 
-              if (imgJson.imageBase64) {
-                currentState.creative = { ...creativeResult, imageBase64: imgJson.imageBase64, imageUrl: `data:image/png;base64,${imgJson.imageBase64}` };
-                currentState.stage = "IMAGE_GENERATED";
-                waterfallLog.push("✅ Step 9: Image Generated");
-              } else {
-                errorOcurred = true;
-                stopReason = "Image Generation Failed";
-              }
-            } catch (e) {
-              errorOcurred = true;
-              stopReason = `Image Generation Error: ${e.message}`;
-            }
-          } else {
-            console.log("⏩ Waterfall: Image already exists. Fast-forwarding to IMAGE_GENERATED");
-            currentState.stage = "IMAGE_GENERATED";
+
+          if (!imageResp.ok || !imageJson?.imageBase64) {
+            throw new Error("Agent image generation failed");
           }
-        }
-        // 🔧 FIX: FORCE IMAGE UPLOAD AFTER IMAGE_GENERATED
-        if (
-          !errorOcurred &&
-          currentState.stage === "IMAGE_GENERATED" &&
-          currentState.creative?.imageBase64 &&
-          !currentState.meta?.uploadedImageHash
-        ) {
-          console.log("🚀 FIX: Uploading image to Meta");
 
-          const uploadRes = await fetch(
-            `${process.env.NEXT_PUBLIC_BASE_URL}/api/meta/upload-image`,
-            {
-              method: "POST",
-              headers: {
-                "Content-Type": "application/json",
-                "x-client-email": session.user.email.toLowerCase() || "",
-              },
-              body: JSON.stringify({
-                imageBase64: currentState.creative.imageBase64,
-              }),
-            }
-          );
 
-          const uploadJson = await parseResponseSafe(uploadRes);
-          const iHash = uploadJson.imageHash || uploadJson.image_hash;
+          // 2. Upload image to Meta using EXISTING uploader
+          const uploadResp = await fetch("/api/meta/upload-image", {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+              "x-client-email": session.user.email,
+            },
+            body: JSON.stringify({
+              imageBase64: imageJson.imageBase64,
+            }),
+          });
 
-          if (uploadJson.ok && iHash) {
-            currentState.image_hash = iHash;
-            currentState.meta = {
-              ...currentState.meta,
-              uploadedImageHash: iHash,
-              uploadedAt: new Date().toISOString(),
-            };
-            currentState.stage = "READY_TO_LAUNCH";
-            imageUploadedThisTurn = true;
-          } else {
-            errorOcurred = true;
-            stopReason = `Meta Upload Failed: ${uploadJson.message || "Unknown error"}`;
+
+          const uploadJson = await uploadResp.json();
+
+
+          if (!uploadResp.ok || !uploadJson?.imageHash) {
+            throw new Error("Agent image upload to Meta failed");
           }
+
+
+          // 3. Persist truth
+          lockedCampaignState.imageHash = uploadJson.imageHash;
+          imageUploadedThisTurn = true;
+
+          // Sync with local waterfall state
+          currentState.image_hash = uploadJson.imageHash;
+          currentState.stage = "READY_TO_LAUNCH";
         }
 
-        // --- STEP 10: IMAGE UPLOAD ---
-        if (!errorOcurred && currentState.stage === "IMAGE_GENERATED") {
-          if (!isImageUploaded && currentState.creative?.imageBase64) {
-            console.log("🚀 Waterfall: Uploading Image to Meta...");
-            try {
-              const uploadRes = await fetch(`${process.env.NEXT_PUBLIC_BASE_URL}/api/meta/upload-image`, {
-                method: "POST",
-                headers: { "Content-Type": "application/json", "x-client-email": __currentEmail || "" },
-                body: JSON.stringify({ imageBase64: currentState.creative.imageBase64 })
-              });
-              const uploadJson = await parseResponseSafe(uploadRes);
-              const iHash = uploadJson.imageHash || uploadJson.image_hash;
-
-              if (uploadJson.ok && iHash) {
-                currentState.image_hash = iHash;
-                currentState.meta = { ...currentState.meta, uploadedImageHash: iHash, uploadedAt: new Date().toISOString() };
-                currentState.stage = "READY_TO_LAUNCH";
-                waterfallLog.push("✅ Step 10: Image Uploaded to Meta");
-                imageUploadedThisTurn = true;
-              } else {
-                errorOcurred = true;
-                stopReason = `Meta Upload Failed: ${uploadJson.message || "Unknown error"}`;
-              }
-            } catch (e) {
-              errorOcurred = true;
-              stopReason = `Meta Upload Error: ${e.message}`;
-            }
-          }
-        }
 
         // --- STEP 12: EXECUTION ---
         if (!errorOcurred && currentState.stage === "READY_TO_LAUNCH" && currentState.image_hash) {
