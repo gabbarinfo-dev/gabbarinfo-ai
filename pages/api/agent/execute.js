@@ -3797,11 +3797,7 @@ Reply **YES** to confirm this plan and proceed.
       const userSaysYes = lowerInstruction.includes("yes") || lowerInstruction.includes("approve") || lowerInstruction.includes("launch") || lowerInstruction.includes("ok");
 
       // 🔒 HARD GATE: Memory plans are READ-ONLY (Mandatory Fix 1 & 3)
-      if (planGeneratedThisTurn === false && (stage === "PLAN_PROPOSED" || stage === "PLAN_CONFIRMED" || stage === "IMAGE_GENERATED" || stage === "READY_TO_LAUNCH")) {
-        console.log("TRACE: Memory plan detected. Bypassing automated pipeline.");
-        // We do NOT enter automation for memory-loaded plans. 
-        // Gemini will handle any questions or re-proposal.
-      } else if (stage !== "COMPLETED" && userSaysYes) {
+      if (stage !== "COMPLETED" && userSaysYes) {
 
 
         let currentState = { ...lockedCampaignState, locked_at: new Date().toISOString() };
@@ -3833,36 +3829,37 @@ Reply **YES** to confirm this plan and proceed.
         const isImageGenerated = !!currentState.creative?.imageBase64 || !!currentState.creative?.imageUrl;
         const isImageUploaded = !!currentState.meta?.uploadedImageHash || !!currentState.meta?.imageMediaId || !!currentState.image_hash;
 
-        console.log("🧪 DEBUG BEFORE STEP 9:", currentState.stage);
-        if (
-          !isImageGenerated &&
-          currentState.stage === "PLAN_CONFIRMED"
-        ) {
-          console.log("🚀 Waterfall: Starting Image Generation...");
-          const plan = currentState.plan;
-          const adSet0 = Array.isArray(plan.ad_sets) ? plan.ad_sets[0] : (plan.ad_sets || {});
-          const creativeResult = adSet0.ad_creative || adSet0.creative || {};
-          const imagePrompt = creativeResult.image_prompt || creativeResult.imagePrompt || creativeResult.primary_text || `${plan.campaign_name} ad image`;
+        if (currentState.stage === "PLAN_CONFIRMED") {
+          if (!isImageGenerated) {
+            console.log("🚀 Waterfall: Starting Image Generation...");
+            const plan = currentState.plan;
+            const adSet0 = Array.isArray(plan.ad_sets) ? plan.ad_sets[0] : (plan.ad_sets || {});
+            const creativeResult = adSet0.ad_creative || adSet0.creative || {};
+            const imagePrompt = creativeResult.image_prompt || creativeResult.imagePrompt || creativeResult.primary_text || `${plan.campaign_name} ad image`;
 
-          try {
-            const imgRes = await fetch(`${process.env.NEXT_PUBLIC_BASE_URL}/api/images/generate`, {
-              method: "POST",
-              headers: { "Content-Type": "application/json" },
-              body: JSON.stringify({ prompt: imagePrompt }),
-            });
-            const imgJson = await parseResponseSafe(imgRes);
+            try {
+              const imgRes = await fetch(`${process.env.NEXT_PUBLIC_BASE_URL}/api/images/generate`, {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ prompt: imagePrompt }),
+              });
+              const imgJson = await parseResponseSafe(imgRes);
 
-            if (imgJson.imageBase64) {
-              currentState.creative = { ...creativeResult, imageBase64: imgJson.imageBase64, imageUrl: `data:image/png;base64,${imgJson.imageBase64}` };
-              currentState.stage = "IMAGE_GENERATED";
-              waterfallLog.push("✅ Step 9: Image Generated");
-            } else {
+              if (imgJson.imageBase64) {
+                currentState.creative = { ...creativeResult, imageBase64: imgJson.imageBase64, imageUrl: `data:image/png;base64,${imgJson.imageBase64}` };
+                currentState.stage = "IMAGE_GENERATED";
+                waterfallLog.push("✅ Step 9: Image Generated");
+              } else {
+                errorOcurred = true;
+                stopReason = "Image Generation Failed";
+              }
+            } catch (e) {
               errorOcurred = true;
-              stopReason = "Image Generation Failed";
+              stopReason = `Image Generation Error: ${e.message}`;
             }
-          } catch (e) {
-            errorOcurred = true;
-            stopReason = `Image Generation Error: ${e.message}`;
+          } else {
+            console.log("⏩ Waterfall: Image already exists. Fast-forwarding to IMAGE_GENERATED");
+            currentState.stage = "IMAGE_GENERATED";
           }
         }
         // 🔧 FIX: FORCE IMAGE UPLOAD AFTER IMAGE_GENERATED
@@ -3906,29 +3903,34 @@ Reply **YES** to confirm this plan and proceed.
         }
 
         // --- STEP 10: IMAGE UPLOAD ---
-        if (!errorOcurred && currentState.creative?.imageBase64 && !isImageUploaded) {
-          console.log("🚀 Waterfall: Uploading Image to Meta...");
-          try {
-            const uploadRes = await fetch(`${process.env.NEXT_PUBLIC_BASE_URL}/api/meta/upload-image`, {
-              method: "POST",
-              headers: { "Content-Type": "application/json", "x-client-email": __currentEmail || "" },
-              body: JSON.stringify({ imageBase64: currentState.creative.imageBase64 })
-            });
-            const uploadJson = await parseResponseSafe(uploadRes);
-            const iHash = uploadJson.imageHash || uploadJson.image_hash;
+        if (!errorOcurred && currentState.stage === "IMAGE_GENERATED") {
+          if (!isImageUploaded && currentState.creative?.imageBase64) {
+            console.log("🚀 Waterfall: Uploading Image to Meta...");
+            try {
+              const uploadRes = await fetch(`${process.env.NEXT_PUBLIC_BASE_URL}/api/meta/upload-image`, {
+                method: "POST",
+                headers: { "Content-Type": "application/json", "x-client-email": __currentEmail || "" },
+                body: JSON.stringify({ imageBase64: currentState.creative.imageBase64 })
+              });
+              const uploadJson = await parseResponseSafe(uploadRes);
+              const iHash = uploadJson.imageHash || uploadJson.image_hash;
 
-            if (uploadJson.ok && iHash) {
-              currentState.image_hash = iHash;
-              currentState.meta = { ...currentState.meta, uploadedImageHash: iHash, uploadedAt: new Date().toISOString() };
-              currentState.stage = "READY_TO_LAUNCH";
-              waterfallLog.push("✅ Step 10: Image Uploaded to Meta");
-            } else {
+              if (uploadJson.ok && iHash) {
+                currentState.image_hash = iHash;
+                currentState.meta = { ...currentState.meta, uploadedImageHash: iHash, uploadedAt: new Date().toISOString() };
+                currentState.stage = "READY_TO_LAUNCH";
+                waterfallLog.push("✅ Step 10: Image Uploaded to Meta");
+              } else {
+                errorOcurred = true;
+                stopReason = `Meta Upload Failed: ${uploadJson.message || "Unknown error"}`;
+              }
+            } catch (e) {
               errorOcurred = true;
-              stopReason = `Meta Upload Failed: ${uploadJson.message || "Unknown error"}`;
+              stopReason = `Meta Upload Error: ${e.message}`;
             }
-          } catch (e) {
-            errorOcurred = true;
-            stopReason = `Meta Upload Error: ${e.message}`;
+          } else if (isImageUploaded) {
+            console.log("⏩ Waterfall: Image already uploaded. Fast-forwarding to READY_TO_LAUNCH");
+            currentState.stage = "READY_TO_LAUNCH";
           }
         }
 
@@ -3987,7 +3989,7 @@ Reply **YES** to confirm this plan and proceed.
           feedbackText = `✅ **Image Generated Successfully**\n\n[Image Generated]\n\n**Next Steps**:\n1. Upload image to Meta Assets\n2. Create paused campaign on Facebook/Instagram\n\nReply **LAUNCH** to complete these steps automatically.`;
         } else if (
           currentState.stage === "READY_TO_LAUNCH" &&
-          currentState.creative?.imageHash
+          currentState.image_hash
         ) {
           feedbackText = `✅ **Image Uploaded & Ready**\n\nEverything is set for campaign launch.\n\n**Details**:\n- Campaign: ${currentState.plan.campaign_name}`;
         } else {
