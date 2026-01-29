@@ -3806,20 +3806,27 @@ if (!imageUploadedThisTurn) {
     "🧪 IMAGE PROMPT VALUE:",
     lockedCampaignState?.plan?.image_concept
   );
+const imagePrompt =
+  lockedCampaignState?.plan?.ad_sets?.[0]?.ad_creative?.imagePrompt;
 
-  const imageResp = await fetch(
-    `${process.env.NEXT_PUBLIC_BASE_URL}/api/images/generate`,
-    {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        "x-client-email": session.user.email,
-      },
-      body: JSON.stringify({
-        prompt: lockedCampaignState.plan.image_concept,
-      }),
-    }
-  );
+console.log("🧪 FINAL IMAGE PROMPT:", imagePrompt);
+
+if (!imagePrompt) {
+  throw new Error("Image prompt missing in campaign plan");
+}
+ const imageResp = await fetch(
+  `${process.env.NEXT_PUBLIC_BASE_URL}/api/images/generate`,
+  {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      "x-client-email": session.user.email,
+    },
+    body: JSON.stringify({
+      prompt: imagePrompt,
+    }),
+  }
+);
 
   const imageJson = await imageResp.json();
 
