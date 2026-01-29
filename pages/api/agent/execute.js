@@ -3922,8 +3922,6 @@ Reply **YES** to confirm this plan and proceed.
         text = "I have processed your request based on the details provided. Please ask me in plain language if you want a summary of the plan.";
       }
     }
-
-    return res.status(200).json({ ok: true, text, mode });
         
     } catch (err) {
     console.error("Agent execution error:", err);
