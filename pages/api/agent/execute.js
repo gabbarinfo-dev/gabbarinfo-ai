@@ -3885,7 +3885,7 @@ Reply **YES** to confirm this plan and proceed.
               method: "POST",
               headers: {
                 "Content-Type": "application/json",
-                "x-client-email": currentEmail || "",
+                "x-client-email": session.user.email.toLowerCase() || "",
               },
               body: JSON.stringify({
                 imageBase64: currentState.creative.imageBase64,
