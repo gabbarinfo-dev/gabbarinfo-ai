@@ -2695,6 +2695,15 @@ Otherwise, respond with a full, clear explanation, and include example JSON only
       // 🔒 SINGLE SOURCE OF TRUTH — waterfall must ONLY use currentState (mutated as state)
       let state = currentState;
 
+      // 🛡️ SANITY CHECK: Detect Internal MD5 hashes masquerading as Meta Hashes (MUST RUN FIRST)
+      if (typeof state.image_hash === "string" && state.image_hash.length === 32) {
+        console.log("⚠️ Internal MD5 detected in image_hash. Clearing to force re-upload.");
+        state.image_hash = null;
+        currentState.image_hash = null;
+        if (state.meta) state.meta.uploadedImageHash = null;
+        if (currentState.meta) currentState.meta.uploadedImageHash = null;
+      }
+
       if (!state.plan || !state.plan.campaign_name) {
         const hasLockedBudgetForRegen =
           !!lockedCampaignState?.budget_per_day &&
@@ -3816,7 +3825,15 @@ Reply **YES** to confirm this plan and proceed.
       if (stage !== "COMPLETED" && userSaysYes) {
 
 
+
         let currentState = { ...lockedCampaignState, locked_at: new Date().toISOString() };
+
+        // 🛡️ SANITY CHECK: Detect Internal MD5 hashes masquerading as Meta Hashes (MUST RUN FIRST)
+        if (typeof currentState.image_hash === "string" && currentState.image_hash.length === 32) {
+          console.log("⚠️ Internal MD5 detected in image_hash. Clearing to force re-upload.");
+          currentState.image_hash = null;
+          if (currentState.meta) currentState.meta.uploadedImageHash = null;
+        }
 
         // 🛡️ DEFENSIVE: Ensure plan exists before proceeding
         if (!currentState.plan || !currentState.plan.campaign_name) {
