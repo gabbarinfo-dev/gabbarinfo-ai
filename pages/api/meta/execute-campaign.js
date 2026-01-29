@@ -374,7 +374,7 @@ placements: ["facebook"], igActor: null, forcePhoto: true });
       let finalAdSetId = asJson.id; // Initialize with the first one  
  
       // Track AdSets by their placement signature to avoid redundant 
-creation 
+ 
       const adSetsByPlacements = { [JSON.stringify(placements)]: 
 asJson.id }; 
  
