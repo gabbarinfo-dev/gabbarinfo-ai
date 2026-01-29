@@ -498,7 +498,7 @@ export default async function handler(req, res) {
     // 🛡️ PATCH: PLATFORM OVERRIDE GUARD
     // Only allow manual platform selection in Instagram Post mode.
     // Meta Ads mode must determine platforms based on connected assets and campaign rules.
-    if (body.mode === "instagram_post") {
+    if (body.mode === "instagram_post" && mode === "instagram_post") {
       if (instructionText.includes("only instagram")) {
         if (!hasInstagram) {
           return res.status(200).json({
@@ -2782,8 +2782,15 @@ Otherwise, respond with a full, clear explanation, and include example JSON only
       console.log("📍 Waterfall Check - Stage:", stage);
       console.log("📍 Waterfall Check - Plan Name:", state.plan.campaign_name);
 
+      // 🛡️ SANITY CHECK: Detect Internal MD5 hashes masquerading as Meta Hashes
+      if (typeof state.image_hash === "string" && state.image_hash.length === 32) {
+        console.log("⚠️ Internal MD5 detected in image_hash. Clearing to force re-upload.");
+        state.image_hash = null;
+        if (state.meta) state.meta.uploadedImageHash = null;
+      }
+
       const isImageGenerated = !!state.creative?.imageBase64 || !!state.creative?.imageUrl;
-      const isImageUploaded = !!state.meta?.uploadedImageHash || !!state.meta?.imageMediaId;
+      const isImageUploaded = !!state.meta?.uploadedImageHash || !!state.meta?.imageMediaId || !!state.image_hash;
 
       if (!isImageGenerated && (stage === "PLAN_CONFIRMED")) {
         console.log("TRACE: IMAGE GENERATION ATTEMPT");
@@ -2896,7 +2903,7 @@ Otherwise, respond with a full, clear explanation, and include example JSON only
       if (!errorOcurred) {
         // 🔒 PATCH: Execution requires READY_TO_LAUNCH strict
         const isReady = state.stage === "READY_TO_LAUNCH" && state.image_hash;
-        const wantsLaunch = lowerInstruction.includes("launch") || lowerInstruction.includes("execute") || lowerInstruction.includes("run") || lowerInstruction.includes("publish") || lowerInstruction.includes("yes") || lowerInstruction.includes("ok");
+        const wantsLaunch = lowerInstruction.includes("launch") || lowerInstruction.includes("execute") || lowerInstruction.includes("run") || lowerInstruction.includes("publish") || lowerInstruction.includes("yes") || lowerInstruction.includes("ok") || lowerInstruction.includes("proceed") || lowerInstruction.includes("confirm") || lowerInstruction.includes("go");
 
         if (isReady && wantsLaunch) {
           console.log("🚀 Waterfall: Executing Campaign on Meta...");
@@ -4096,7 +4103,9 @@ async function handleInstagramPostOnly(req, res, session, body) {
 
       console.log(`[Path A] Direct Instagram Publish detected. URL: ${imageUrl}`);
 
-      await clearCreativeState(supabase, session.user.email.toLowerCase());
+      if (body.mode === "instagram_post") {
+        await clearCreativeState(supabase, session.user.email.toLowerCase());
+      }
 
       const result = await safePublish({
         userEmail: session.user.email.toLowerCase(),
