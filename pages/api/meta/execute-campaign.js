@@ -371,8 +371,7 @@ placements: ["facebook"], igActor: null, forcePhoto: true });
  
       let creativeId = null; 
       let lastCreativeError = null; 
-      let finalAdSetId = asJson.id; // Initialize with the first one 
-created 
+      let finalAdSetId = asJson.id; // Initialize with the first one  
  
       // Track AdSets by their placement signature to avoid redundant 
 creation 
