@@ -3924,8 +3924,8 @@ Reply **YES** to confirm this plan and proceed.
     }
 
     return res.status(200).json({ ok: true, text, mode });
-      }
-  } catch (err) {
+      }  
+   catch (err) {
     console.error("Agent execution error:", err);
     return res.status(500).json({ ok: false, message: "Server error", error: err.message });
   }
