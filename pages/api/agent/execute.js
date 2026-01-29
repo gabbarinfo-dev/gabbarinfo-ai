@@ -3797,24 +3797,31 @@ Reply **YES** to confirm this plan and proceed.
           if (currentState.meta) currentState.meta.uploadedImageHash = null;
         }
 
-        // ===============================
-        // AGENT MODE IMAGE GENERATION + UPLOAD
-        // ===============================
-        if (!imageUploadedThisTurn) {
-          // 1. Generate image using EXISTING OpenAI logic
-          const imageResp = await fetch(`${process.env.NEXT_PUBLIC_BASE_URL}/api/images/generate`, {
-            method: "POST",
-            headers: {
-              "Content-Type": "application/json",
-              "x-client-email": session.user.email,
-            },
-            body: JSON.stringify({
-              prompt: lockedCampaignState.plan.image_concept,
-            }),
-          });
+       // ===============================
+// AGENT MODE IMAGE GENERATION + UPLOAD
+// ===============================
+if (!imageUploadedThisTurn) {
 
+  console.log(
+    "🧪 IMAGE PROMPT VALUE:",
+    lockedCampaignState?.plan?.image_concept
+  );
 
-          const imageJson = await imageResp.json();
+  const imageResp = await fetch(
+    `${process.env.NEXT_PUBLIC_BASE_URL}/api/images/generate`,
+    {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "x-client-email": session.user.email,
+      },
+      body: JSON.stringify({
+        prompt: lockedCampaignState.plan.image_concept,
+      }),
+    }
+  );
+
+  const imageJson = await imageResp.json();
 
 console.log("🧪 IMAGE GENERATE STATUS:", imageResp.status);
 console.log("🧪 IMAGE GENERATE RAW:", imageJson);
