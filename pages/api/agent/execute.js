@@ -205,6 +205,11 @@ let imageHash = null;
       if (isMetaIntent) {
         mode = "meta_ads_plan";
       }
+      
+      // 🛡️ INSTAGRAM INTENT (Fix for Path B Loop)
+      if (intentSource.includes("instagram post") || intentSource.includes("post to instagram") || intentSource.includes("create a post")) {
+         mode = "instagram_post";
+      }
     }
 
     // 🔒 MODE AUTHORITY GATE — INSTAGRAM ISOLATION
@@ -293,8 +298,16 @@ let imageHash = null;
       };
 
       // 🔒 RESET IS PERSISTED TO MEMORY (Mandatory Fix 1)
-      lockedCampaignState = resetState;
-      currentState = resetState;
+      // 🛡️ CRITICAL FIX: Explicitly nullify creative/meta to prevent phantom state
+      const cleanResetState = {
+        ...resetState,
+        creative: null,
+        meta: null,
+        final_result: null
+      };
+
+      lockedCampaignState = cleanResetState;
+      currentState = cleanResetState;
 
       // 💾 Save reset state to BOTH current ID and default_business to purge old plans
       if (session.user.email) {
