@@ -85,31 +85,34 @@ useEffect(() => {
             filter: hue-rotate(8deg);
           }
         }
-/* 🌙 Soft Moon */
+/* 🌙 Distant Moon */
 .moon {
   position: absolute;
-  top: 8%;
-  right: 10%;
-  width: 140px;
-  height: 140px;
+  top: 10%;
+  right: 12%;
+
+  width: 72px;
+  height: 72px;
   border-radius: 50%;
 
   background: radial-gradient(
-    circle at 30% 30%,
+    circle at 35% 35%,
     rgba(255,255,255,0.95),
-    rgba(220,230,255,0.85),
-    rgba(180,200,255,0.6) 60%,
-    rgba(140,160,220,0.25) 75%,
-    transparent 78%
+    rgba(220,225,245,0.85) 45%,
+    rgba(180,190,220,0.6) 60%,
+    rgba(140,150,200,0.25) 72%,
+    transparent 76%
   );
 
   box-shadow:
-    0 0 40px rgba(180,200,255,0.35),
-    0 0 80px rgba(140,160,255,0.25);
+    0 0 12px rgba(200,210,255,0.35),
+    0 0 28px rgba(160,170,220,0.25);
 
+  opacity: 0.9;
   pointer-events: none;
   z-index: 2;
 }
+
 
         /* ☀️ Dreamy Sun Glow */
         .sun-glow {
