@@ -8,14 +8,11 @@ export default async function handler(req, res) {
   }
 
   const session = await getServerSession(req, res, authOptions);
-  if (!session) {
+  if (!session || !session.user?.email) {
     return res.status(401).json({ error: "Unauthorized" });
   }
 
-  const { email } = req.body;
-  if (!email) {
-    return res.status(400).json({ error: "Email is required" });
-  }
+  const email = session.user.email;
 
   try {
     const { data, error } = await supabaseServer
@@ -50,7 +47,7 @@ export default async function handler(req, res) {
     // Filter ONLY pages whose ID exists in fb_page_id
     // fb_page_id could be a single ID or comma-separated
     const allowedIds = fb_page_id ? fb_page_id.split(",").map(id => id.trim()) : [];
-    
+
     const filteredPages = (result.data || []).filter(page => allowedIds.includes(page.id));
 
     return res.status(200).json({ pages: filteredPages });
