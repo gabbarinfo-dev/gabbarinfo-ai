@@ -2,7 +2,13 @@ import { useState, useEffect } from "react";
 
 /**
  * BoostModal - A self-contained component for boosting a Facebook Page post.
- * Steps: 1. Select Page, 2. Select Post, 3. Boost Settings, 4. Final Create
+ * Steps: 1. Select Page, 2. Select Post, 3. Boost Settings, 4. Final Result
+ * 
+ * Rules strictly followed:
+ * - list-pages → GET
+ * - list-posts → GET
+ * - create-boost → POST
+ * - No email/identity data sent from frontend
  */
 export default function BoostModal({ isOpen, onClose }) {
     const [step, setStep] = useState(1);
@@ -22,7 +28,7 @@ export default function BoostModal({ isOpen, onClose }) {
     // Result
     const [result, setResult] = useState(null);
 
-    // Reset state when modal opens
+    // Initial fetch on mount or when modal opens
     useEffect(() => {
         if (isOpen) {
             setStep(1);
@@ -30,8 +36,6 @@ export default function BoostModal({ isOpen, onClose }) {
             setResult(null);
             setSelectedPageId("");
             setSelectedPostId("");
-            setBudget(500);
-            setDuration(7);
             fetchPages();
         }
     }, [isOpen]);
@@ -40,15 +44,18 @@ export default function BoostModal({ isOpen, onClose }) {
         setLoading(true);
         setError(null);
         try {
-            const res = await fetch("/api/meta/boost/list-pages");
+            const res = await fetch("/api/meta/boost/list-pages", {
+                method: "GET",
+                headers: { "Content-Type": "application/json" },
+            });
             const data = await res.json();
-            if (data.ok) {
-                setPages(data.pages || []);
-                if (data.pages?.length === 1) {
+            if (res.ok && data.pages) {
+                setPages(data.pages);
+                if (data.pages.length === 1) {
                     setSelectedPageId(data.pages[0].id);
                 }
             } else {
-                setError(data.message || "Failed to load pages.");
+                setError(data.error || data.message || "Failed to load pages.");
             }
         } catch (err) {
             setError("Network error loading pages.");
@@ -61,12 +68,15 @@ export default function BoostModal({ isOpen, onClose }) {
         setLoading(true);
         setError(null);
         try {
-            const res = await fetch(`/api/meta/boost/list-posts?page_id=${pageId}`);
+            const res = await fetch(`/api/meta/boost/list-posts?page_id=${pageId}`, {
+                method: "GET",
+                headers: { "Content-Type": "application/json" },
+            });
             const data = await res.json();
-            if (data.ok) {
-                setPosts(data.posts || []);
+            if (res.ok && data.posts) {
+                setPosts(data.posts);
             } else {
-                setError(data.message || "Failed to load posts.");
+                setError(data.error || data.message || "Failed to load posts.");
             }
         } catch (err) {
             setError("Network error loading posts.");
@@ -76,10 +86,12 @@ export default function BoostModal({ isOpen, onClose }) {
     }
 
     const handleNextStep = () => {
-        if (step === 1 && selectedPageId) {
+        if (step === 1) {
+            if (!selectedPageId) return;
             fetchPosts(selectedPageId);
             setStep(2);
-        } else if (step === 2 && selectedPostId) {
+        } else if (step === 2) {
+            if (!selectedPostId) return;
             setStep(3);
         } else if (step === 3) {
             handleCreateBoost();
@@ -101,11 +113,11 @@ export default function BoostModal({ isOpen, onClose }) {
                 }),
             });
             const data = await res.json();
-            if (data.ok) {
+            if (res.ok) {
                 setResult(data);
                 setStep(4);
             } else {
-                setError(data.message || "Failed to create boost.");
+                setError(data.error || data.message || "Failed to create boost.");
             }
         } catch (err) {
             setError("Network error creating boost.");
@@ -121,7 +133,7 @@ export default function BoostModal({ isOpen, onClose }) {
             <div style={styles.modal}>
                 <div style={styles.header}>
                     <h2 style={styles.title}>Boost a Facebook Page Post</h2>
-                    <button onClick={onClose} style={styles.closeBtn}>×</button>
+                    <button onClick={onClose} style={styles.closeBtn} disabled={loading}>×</button>
                 </div>
 
                 <div style={styles.progress}>
@@ -143,13 +155,14 @@ export default function BoostModal({ isOpen, onClose }) {
                     {step === 1 && (
                         <div>
                             <p style={styles.label}>Select Facebook Page</p>
-                            {loading ? (
+                            {loading && pages.length === 0 ? (
                                 <p>Loading pages...</p>
                             ) : pages.length > 0 ? (
                                 <select
                                     value={selectedPageId}
                                     onChange={(e) => setSelectedPageId(e.target.value)}
                                     style={styles.select}
+                                    disabled={loading}
                                 >
                                     <option value="">-- Select a Page --</option>
                                     {pages.map((p) => (
@@ -159,7 +172,7 @@ export default function BoostModal({ isOpen, onClose }) {
                                     ))}
                                 </select>
                             ) : (
-                                <p>No pages found with management permissions.</p>
+                                <p>No managed Facebook pages found.</p>
                             )}
                         </div>
                     )}
@@ -168,25 +181,27 @@ export default function BoostModal({ isOpen, onClose }) {
                     {step === 2 && (
                         <div>
                             <p style={styles.label}>Select Post to Boost</p>
-                            {loading ? (
+                            {loading && posts.length === 0 ? (
                                 <p>Loading posts...</p>
                             ) : posts.length > 0 ? (
                                 <div style={styles.postList}>
                                     {posts.map((post) => (
                                         <div
                                             key={post.id}
-                                            onClick={() => setSelectedPostId(post.id)}
+                                            onClick={() => !loading && setSelectedPostId(post.id)}
                                             style={{
                                                 ...styles.postItem,
                                                 borderColor: selectedPostId === post.id ? "#1877F2" : "#eee",
                                                 backgroundColor: selectedPostId === post.id ? "#f0f7ff" : "#fff",
+                                                opacity: loading ? 0.7 : 1,
+                                                cursor: loading ? "not-allowed" : "pointer",
                                             }}
                                         >
                                             <div style={styles.postMeta}>
                                                 {new Date(post.created_time).toLocaleDateString()}
                                             </div>
                                             <div style={styles.postText}>
-                                                {post.message || post.story || "[No text]"}
+                                                {post.message || post.story || "[No text content]"}
                                             </div>
                                         </div>
                                     ))}
@@ -207,6 +222,7 @@ export default function BoostModal({ isOpen, onClose }) {
                                 onChange={(e) => setBudget(e.target.value)}
                                 style={styles.input}
                                 min="100"
+                                disabled={loading}
                             />
                             <p style={styles.label}>Duration (Days)</p>
                             <input
@@ -215,6 +231,7 @@ export default function BoostModal({ isOpen, onClose }) {
                                 onChange={(e) => setDuration(e.target.value)}
                                 style={styles.input}
                                 min="1"
+                                disabled={loading}
                             />
                             <p style={styles.hint}>
                                 Note: Targeting is set to India. The post will be boosted to a broad audience.
@@ -222,7 +239,7 @@ export default function BoostModal({ isOpen, onClose }) {
                         </div>
                     )}
 
-                    {/* STEP 4: SUCCESS */}
+                    {/* STEP 4: RESULT */}
                     {step === 4 && result && (
                         <div style={styles.successBox}>
                             <div style={styles.successIcon}>✅</div>
@@ -231,8 +248,8 @@ export default function BoostModal({ isOpen, onClose }) {
                                 Your post is now being promoted. You can monitor its performance in your Meta Ads Manager.
                             </p>
                             <div style={styles.details}>
-                                <div><strong>Ad ID:</strong> {result.ad_id}</div>
-                                <div><strong>Status:</strong> {result.status}</div>
+                                <div><strong>Ad ID:</strong> {result.id || result.ad_id}</div>
+                                <div><strong>Status:</strong> Successfully Promoted</div>
                             </div>
                         </div>
                     )}
@@ -294,7 +311,6 @@ const styles = {
         display: "flex",
         flexDirection: "column",
         boxShadow: "0 10px 25px rgba(0,0,0,0.2)",
-        animation: "modalFadeIn 0.3s ease-out",
     },
     header: {
         padding: "16px 20px",
@@ -332,7 +348,7 @@ const styles = {
     },
     content: {
         padding: "20px",
-        minHeight: "200px",
+        minHeight: "220px",
         maxHeight: "60vh",
         overflowY: "auto",
     },
@@ -368,7 +384,6 @@ const styles = {
         padding: "12px",
         borderRadius: "8px",
         border: "2px solid #eee",
-        cursor: "pointer",
         transition: "all 0.2s ease",
     },
     postMeta: {
