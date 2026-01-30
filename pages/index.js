@@ -75,9 +75,55 @@ if (!session) {
             text-shadow: 0 0 10px rgba(255,255,255,0.15);
           }
         `}</style>
+/* ⚡ Electric current flowing through AI name */
+.ai-electric {
+  position: relative;
+  display: inline-block;
+}
+
+/* moving electric shimmer */
+.ai-electric::after {
+  content: "";
+  position: absolute;
+  inset: -6px -10px;
+  border-radius: 12px;
+
+  background: linear-gradient(
+    120deg,
+    transparent 20%,
+    rgba(120,180,255,0.9) 40%,
+    rgba(180,220,255,0.9) 50%,
+    rgba(120,180,255,0.9) 60%,
+    transparent 80%
+  );
+
+  opacity: 0.6;
+  filter: blur(8px);
+  mix-blend-mode: screen;
+
+  animation: electricFlow 3s linear infinite;
+  pointer-events: none;
+}
+
+/* subtle power pulse */
+@keyframes electricFlow {
+  0% {
+    transform: translateX(-120%);
+    opacity: 0.2;
+  }
+  50% {
+    opacity: 0.8;
+  }
+  100% {
+    transform: translateX(120%);
+    opacity: 0.2;
+  }
+}
 
         <div style={{ padding: 40, textAlign: "center" }}>
-          <h1 className="hero-title">GabbarInfo AI</h1>
+          <h1 className="hero-title">
+  <span className="ai-electric">GabbarInfo AI</span>
+</h1>
 
           <p className="hero-subtitle">
             Please sign in to use GabbarInfo AI.
