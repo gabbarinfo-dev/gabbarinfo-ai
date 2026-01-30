@@ -49,10 +49,10 @@ export default function HomePage() {
     );
   }
 
-  /* -------------------------
-     NOT LOGGED IN
-  ------------------------- */
- if (!session) {
+/* -------------------------
+   NOT LOGGED IN
+------------------------- */
+if (!session) {
   return (
     <AnimatedSkyBackground>
       <>
@@ -82,58 +82,66 @@ export default function HomePage() {
           <p className="hero-subtitle">
             Please sign in to use GabbarInfo AI.
           </p>
-        <button
-          onClick={() => signIn("google")}
-          style={{
-            marginTop: 16,
-            padding: "10px 16px",
-            borderRadius: 6,
-            border: "1px solid #ddd",
-            background: "#fff",
-            cursor: "pointer",
-          }}
-        >
-          Sign in with Google
-        </button>
-        <div style={{ height: 8 }} />
-        <button
-          onClick={() => signIn("facebook")}
-          style={{
-            padding: "10px 16px",
-            borderRadius: 6,
-            border: "1px solid #ddd",
-            background: "#1877F2",
-            color: "#fff",
-            cursor: "pointer",
-          }}
-        >
-          Continue with Facebook
-        </button>
 
-        {/* FOOTER */}
-        <footer
-          style={{
-            marginTop: 60,
-            fontSize: 13,
-            color: "#888",
-          }}
-        >
-          &copy; 2026 GabbarInfo AI &middot;{" "}
-          <a
-            href="https://gabbarinfo.com/privacy-policy"
-            target="_blank"
-            rel="noopener noreferrer"
-            style={{ color: "#888", textDecoration: "none" }}
-            onMouseOver={(e) => (e.currentTarget.style.textDecoration = "underline")}
-            onMouseOut={(e) => (e.currentTarget.style.textDecoration = "none")}
+          <button
+            onClick={() => signIn("google")}
+            style={{
+              marginTop: 16,
+              padding: "10px 16px",
+              borderRadius: 6,
+              border: "1px solid #ddd",
+              background: "#fff",
+              cursor: "pointer",
+            }}
           >
-            Privacy Policy
-          </a>
-        </footer>
-      </div>
+            Sign in with Google
+          </button>
+
+          <div style={{ height: 8 }} />
+
+          <button
+            onClick={() => signIn("facebook")}
+            style={{
+              padding: "10px 16px",
+              borderRadius: 6,
+              border: "1px solid #ddd",
+              background: "#1877F2",
+              color: "#fff",
+              cursor: "pointer",
+            }}
+          >
+            Continue with Facebook
+          </button>
+
+          {/* FOOTER */}
+          <footer
+            style={{
+              marginTop: 60,
+              fontSize: 13,
+              color: "#888",
+            }}
+          >
+            &copy; 2026 GabbarInfo AI &middot;{" "}
+            <a
+              href="https://gabbarinfo.com/privacy-policy"
+              target="_blank"
+              rel="noopener noreferrer"
+              style={{ color: "#888", textDecoration: "none" }}
+              onMouseOver={(e) =>
+                (e.currentTarget.style.textDecoration = "underline")
+              }
+              onMouseOut={(e) =>
+                (e.currentTarget.style.textDecoration = "none")
+              }
+            >
+              Privacy Policy
+            </a>
+          </footer>
+        </div>
+      </>
     </AnimatedSkyBackground>
-    );
-  }
+  );
+}
 
   /* -------------------------
      LOGGED IN VIEW
