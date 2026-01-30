@@ -8,13 +8,15 @@ export default async function handler(req, res) {
     }
 
     const session = await getServerSession(req, res, authOptions);
-    if (!session) {
+    if (!session || !session.user?.email) {
         return res.status(401).json({ error: "Unauthorized" });
     }
 
-    const { email, page_id } = req.body;
-    if (!email || !page_id) {
-        return res.status(400).json({ error: "Email and page_id are required" });
+    const email = session.user.email;
+    const { page_id } = req.body;
+
+    if (!page_id) {
+        return res.status(400).json({ error: "page_id is required" });
     }
 
     try {
