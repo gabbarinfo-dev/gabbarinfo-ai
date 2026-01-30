@@ -12,6 +12,9 @@ useEffect(() => {
     <div className="sky-root">
       {/* Dawn gradient */}
       <div className="sky-gradient" />
+    {/* Moon */}
+<div className="moon" />
+
 
       {/* Sun glow */}
 
@@ -82,6 +85,31 @@ useEffect(() => {
             filter: hue-rotate(8deg);
           }
         }
+/* 🌙 Soft Moon */
+.moon {
+  position: absolute;
+  top: 8%;
+  right: 10%;
+  width: 140px;
+  height: 140px;
+  border-radius: 50%;
+
+  background: radial-gradient(
+    circle at 30% 30%,
+    rgba(255,255,255,0.95),
+    rgba(220,230,255,0.85),
+    rgba(180,200,255,0.6) 60%,
+    rgba(140,160,220,0.25) 75%,
+    transparent 78%
+  );
+
+  box-shadow:
+    0 0 40px rgba(180,200,255,0.35),
+    0 0 80px rgba(140,160,255,0.25);
+
+  pointer-events: none;
+  z-index: 2;
+}
 
         /* ☀️ Dreamy Sun Glow */
         .sun-glow {
