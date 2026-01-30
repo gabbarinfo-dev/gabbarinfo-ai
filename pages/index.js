@@ -75,46 +75,49 @@ if (!session) {
             text-shadow: 0 0 10px rgba(255,255,255,0.15);
           }
 
-          /* ⚡ Electric current flowing through AI name */
+          /* ⚡ REAL ELECTRIC CURRENT INSIDE TEXT */
           .ai-electric {
             position: relative;
             display: inline-block;
+            background: linear-gradient(
+              90deg,
+              #ffffff,
+              #9ecbff,
+              #ffffff,
+              #9ecbff,
+              #ffffff
+            );
+            background-size: 300% 100%;
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            animation: electricText 2.2s linear infinite;
           }
 
+          /* micro lightning flicker */
           .ai-electric::after {
             content: "";
             position: absolute;
-            inset: -6px -10px;
-            border-radius: 12px;
-
-            background: linear-gradient(
+            inset: 0;
+            background: repeating-linear-gradient(
               120deg,
-              transparent 20%,
-              rgba(120,180,255,0.9) 40%,
-              rgba(180,220,255,0.9) 50%,
-              rgba(120,180,255,0.9) 60%,
-              transparent 80%
+              transparent 0%,
+              rgba(180,220,255,0.9) 2%,
+              transparent 4%
             );
-
-            opacity: 0.6;
-            filter: blur(8px);
+            opacity: 0.25;
             mix-blend-mode: screen;
-            animation: electricFlow 3s linear infinite;
+            animation: sparkFlicker 0.15s infinite alternate;
             pointer-events: none;
           }
 
-          @keyframes electricFlow {
-            0% {
-              transform: translateX(-120%);
-              opacity: 0.2;
-            }
-            50% {
-              opacity: 0.8;
-            }
-            100% {
-              transform: translateX(120%);
-              opacity: 0.2;
-            }
+          @keyframes electricText {
+            0% { background-position: 0% 50%; }
+            100% { background-position: 300% 50%; }
+          }
+
+          @keyframes sparkFlicker {
+            from { opacity: 0.15; }
+            to { opacity: 0.35; }
           }
         `}</style>
 
@@ -170,12 +173,6 @@ if (!session) {
               target="_blank"
               rel="noopener noreferrer"
               style={{ color: "#888", textDecoration: "none" }}
-              onMouseOver={(e) =>
-                (e.currentTarget.style.textDecoration = "underline")
-              }
-              onMouseOut={(e) =>
-                (e.currentTarget.style.textDecoration = "none")
-              }
             >
               Privacy Policy
             </a>
@@ -185,6 +182,7 @@ if (!session) {
     </AnimatedSkyBackground>
   );
 }
+
 
   /* -------------------------
      LOGGED IN VIEW
