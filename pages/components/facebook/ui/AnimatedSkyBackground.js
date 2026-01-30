@@ -1,4 +1,13 @@
+  import { useEffect } from "react";
 export default function AnimatedSkyBackground({ children }) {
+useEffect(() => {
+  const flash = document.createElement("div");
+  flash.className = "lightning-flash";
+  document.body.appendChild(flash);
+
+  setTimeout(() => flash.remove(), 300);
+}, []);
+
   return (
     <div className="sky-root">
       {/* Dawn gradient */}
@@ -37,7 +46,11 @@ export default function AnimatedSkyBackground({ children }) {
   }
 `}</style>
 
-      <div className="sky-content">{children}</div>
+      <div className="sky-content">
+  <div className="ai-glow">
+    {children}
+  </div>
+</div>
 
       <style jsx>{`
         .sky-root {
@@ -168,6 +181,35 @@ animation: "dawnShift 40s ease-in-out infinite alternate",
     100% {
       filter: hue-rotate(8deg) brightness(1.05);
     }
+  }
+`}</style>
+<style jsx global>{`
+  .ai-glow {
+    animation: glowPulse 6s ease-in-out infinite;
+  }
+
+  @keyframes glowPulse {
+    0%, 100% {
+      filter: drop-shadow(0 0 6px rgba(255,255,255,0.15));
+    }
+    50% {
+      filter: drop-shadow(0 0 14px rgba(255,255,255,0.3));
+    }
+  }
+`}</style>
+<style jsx global>{`
+  .lightning-flash {
+    position: fixed;
+    inset: 0;
+    background: rgba(255,255,255,0.15);
+    animation: flashFade 0.3s ease-out;
+    pointer-events: none;
+    z-index: 9999;
+  }
+
+  @keyframes flashFade {
+    from { opacity: 1; }
+    to { opacity: 0; }
   }
 `}</style>
 
