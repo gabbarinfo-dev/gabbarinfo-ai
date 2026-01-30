@@ -180,6 +180,14 @@ export default function FacebookBusinessConnect() {
     }
   };
 
+  const handleBoostClick = () => {
+    if (meta?.business_info_synced !== true) {
+      alert("Please sync business info first");
+      return;
+    }
+    setShowBoostModal(true);
+  };
+
   // 👆 ADDED AD LOGIC HERE
   return (
     <div
@@ -264,7 +272,7 @@ export default function FacebookBusinessConnect() {
             </button>
 
             <button
-              onClick={() => setShowBoostModal(true)}
+              onClick={handleBoostClick}
               style={{
                 padding: "8px 12px",
                 background: "#1877F2",
