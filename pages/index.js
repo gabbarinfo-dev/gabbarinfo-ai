@@ -52,13 +52,36 @@ export default function HomePage() {
   /* -------------------------
      NOT LOGGED IN
   ------------------------- */
-  if (!session) {
-    return (
-      <AnimatedSkyBackground>
-      <div style={{ padding: 40, fontFamily: "Inter, Arial" }}>
-        <h1>GabbarInfo AI</h1>
-        <p>Please sign in to use GabbarInfo AI.</p>
+ if (!session) {
+  return (
+    <AnimatedSkyBackground>
+      <>
+        <style jsx>{`
+          .hero-title {
+            font-size: 42px;
+            font-weight: 600;
+            letter-spacing: 0.6px;
+            color: #ffffff;
+            margin-bottom: 10px;
+            text-shadow:
+              0 0 20px rgba(255,255,255,0.25),
+              0 0 40px rgba(140,180,255,0.25);
+          }
 
+          .hero-subtitle {
+            font-size: 16px;
+            color: rgba(255,255,255,0.75);
+            margin-bottom: 26px;
+            text-shadow: 0 0 10px rgba(255,255,255,0.15);
+          }
+        `}</style>
+
+        <div style={{ padding: 40, textAlign: "center" }}>
+          <h1 className="hero-title">GabbarInfo AI</h1>
+
+          <p className="hero-subtitle">
+            Please sign in to use GabbarInfo AI.
+          </p>
         <button
           onClick={() => signIn("google")}
           style={{
