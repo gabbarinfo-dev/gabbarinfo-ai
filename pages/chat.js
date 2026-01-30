@@ -315,6 +315,7 @@ export default function ChatPage() {
   const [agentError, setAgentError] = useState("");
 
   // Meta Boost State
+  const [isBoostModalOpen, setIsBoostModalOpen] = useState(false);
   const [boostPages, setBoostPages] = useState([]);
   const [selectedPage, setSelectedPage] = useState("");
   const [boostPosts, setBoostPosts] = useState([]);
@@ -701,7 +702,9 @@ Now respond as GabbarInfo AI.
     setBoostLoading(true);
     setBoostResult("");
     try {
-      const res = await fetch("/api/meta/boost/list-pages");
+      const email = session?.user?.email;
+      if (!email) throw new Error("User email not found");
+      const res = await fetch(`/api/meta/boost/list-pages?email=${encodeURIComponent(email)}`);
       if (!res.ok) throw new Error(await res.text());
       const data = await res.json();
       setBoostPages(data.pages || []);
@@ -718,7 +721,9 @@ Now respond as GabbarInfo AI.
     setBoostResult("");
     setBoostPosts([]);
     try {
-      const res = await fetch(`/api/meta/boost/list-posts?page_id=${pageId}`);
+      const email = session?.user?.email;
+      if (!email) throw new Error("User email not found");
+      const res = await fetch(`/api/meta/boost/list-posts?page_id=${pageId}&email=${encodeURIComponent(email)}`);
       if (!res.ok) throw new Error(await res.text());
       const data = await res.json();
       setBoostPosts(data.posts || []);
@@ -737,6 +742,9 @@ Now respond as GabbarInfo AI.
     setBoostLoading(true);
     setBoostResult("");
     try {
+      const email = session?.user?.email;
+      if (!email) throw new Error("User email not found");
+      
       const res = await fetch("/api/meta/boost/create-boost", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -745,7 +753,8 @@ Now respond as GabbarInfo AI.
             post_id: selectedPost,
             goal: boostGoal,
             budget: boostBudget,
-            duration: boostDuration
+            duration: boostDuration,
+            email
         })
       });
       
@@ -1370,222 +1379,272 @@ Now respond as GabbarInfo AI.
                   <option value="social_plan">Social Media calendar</option>
                   <option value="seo_blog">SEO / Blog planner</option>
                   <option value="instagram_post">Instagram Post Publish</option>
-                  <option value="meta_boost_post">Meta – Boost Page Post</option>
                 </select>
 
-                {agentMode === "meta_boost_post" ? (
-                  <div style={{ marginTop: 10, display: "flex", flexDirection: "column", gap: 10, flex: 1, overflowY: "auto" }}>
-                    <div style={{ fontSize: 13, fontWeight: 600 }}>1. Select Page</div>
-                    <div style={{ display: "flex", gap: 5 }}>
-                      <select
-                        value={selectedPage}
-                        onChange={(e) => {
-                          setSelectedPage(e.target.value);
-                          fetchBoostPosts(e.target.value);
-                        }}
-                        style={{ flex: 1, padding: 8, borderRadius: 8, border: "1px solid #ddd" }}
-                      >
-                        <option value="">-- Select Page --</option>
-                        {boostPages.map((p) => (
-                          <option key={p.id} value={p.id}>{p.name}</option>
-                        ))}
-                      </select>
-                      <button
-                        onClick={fetchBoostPages}
-                        style={{ padding: "6px 10px", borderRadius: 6, border: "1px solid #ddd", background: "#f0f0f0", cursor: "pointer" }}
-                      >
-                        ↻
-                      </button>
-                    </div>
+                <label
+                  style={{
+                    fontSize: 12,
+                    fontWeight: 600,
+                    textTransform: "uppercase",
+                    letterSpacing: 0.4,
+                    color: "#555",
+                    marginTop: 8,
+                  }}
+                >
+                  Instruction
+                </label>
+                <textarea
+                  value={agentInstruction}
+                  onChange={(e) => setAgentInstruction(e.target.value)}
+                  rows={6}
+                  placeholder="Example: Create a Google Search campaign for my dental clinic in Ahmedabad with ₹700/day budget, JSON only. Or plan a 30-day Instagram calendar for Bella & Diva Jewellery UK."
+                  style={{
+                    resize: "vertical",
+                    padding: 8,
+                    borderRadius: 8,
+                    border: "1px solid #ddd",
+                    fontSize: 13,
+                    minHeight: 120,
+                  }}
+                />
 
-                    {selectedPage && (
-                      <>
-                        <div style={{ fontSize: 13, fontWeight: 600, marginTop: 5 }}>2. Select Post (Last 3 Eligible)</div>
-                        <div style={{ display: "flex", flexDirection: "column", gap: 5 }}>
-                          {boostPosts.length === 0 && !boostLoading && (
-                            <div style={{ fontSize: 12, color: "#777" }}>No eligible posts found or loading...</div>
-                          )}
-                          {boostPosts.map((post) => (
-                            <label
-                              key={post.id}
-                              style={{
-                                display: "flex",
-                                gap: 8,
-                                alignItems: "center",
-                                fontSize: 12,
-                                border: "1px solid #eee",
-                                padding: 6,
-                                borderRadius: 6,
-                                cursor: "pointer",
-                                background: selectedPost === post.id ? "#e8f0fe" : "transparent"
-                              }}
-                            >
-                              <input
-                                type="radio"
-                                name="boost_post"
-                                value={post.id}
-                                checked={selectedPost === post.id}
-                                onChange={() => setSelectedPost(post.id)}
-                              />
-                              <div style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-                                {post.message ? (post.message.length > 30 ? post.message.slice(0,30)+"..." : post.message) : "[No text]"} <br />
-                                <span style={{ color: "#999", fontSize: 10 }}>
-                                  {new Date(post.created_time).toLocaleDateString()}
-                                </span>
-                              </div>
-                            </label>
-                          ))}
-                        </div>
-                      </>
-                    )}
+                {agentError && (
+                  <div
+                    style={{
+                      fontSize: 12,
+                      color: "#b00020",
+                      background: "#fde7e9",
+                      borderRadius: 6,
+                      padding: 8,
+                    }}
+                  >
+                    {agentError}
+                  </div>
+                )}
 
-                    {selectedPost && (
-                      <>
-                        <div style={{ fontSize: 13, fontWeight: 600, marginTop: 5 }}>3. Boost Settings</div>
-                        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
-                          <div>
-                            <label style={{ fontSize: 11, color: "#666" }}>Budget (INR)</label>
-                            <input
-                              type="number"
-                              value={boostBudget}
-                              onChange={(e) => setBoostBudget(e.target.value)}
-                              style={{ width: "100%", padding: 6, borderRadius: 6, border: "1px solid #ddd" }}
-                            />
-                          </div>
-                          <div>
-                            <label style={{ fontSize: 11, color: "#666" }}>Duration (Days)</label>
-                            <input
-                              type="number"
-                              value={boostDuration}
-                              onChange={(e) => setBoostDuration(e.target.value)}
-                              style={{ width: "100%", padding: 6, borderRadius: 6, border: "1px solid #ddd" }}
-                            />
-                          </div>
-                        </div>
-                        <div>
-                          <label style={{ fontSize: 11, color: "#666" }}>Goal</label>
-                          <select
-                            value={boostGoal}
-                            onChange={(e) => setBoostGoal(e.target.value)}
-                            style={{ width: "100%", padding: 6, borderRadius: 6, border: "1px solid #ddd" }}
-                          >
-                            <option value="PAGE_POST_ENGAGEMENT">Engagement</option>
-                            <option value="LINK_CLICKS">Link Clicks</option>
-                            <option value="MESSAGES">Messages</option>
-                          </select>
-                        </div>
+                <div style={{ flex: 1 }} />
 
-                        <button
-                          onClick={handleBoostSubmit}
-                          disabled={boostLoading}
+                <button
+                  type="button"
+                  onClick={handleRunAgent}
+                  disabled={agentLoading}
+                  style={{
+                    width: "100%",
+                    padding: "10px 14px",
+                    borderRadius: 8,
+                    fontSize: 14,
+                    border: "none",
+                    background: "#1a73e8",
+                    color: "#fff",
+                    cursor: agentLoading ? "default" : "pointer",
+                    marginTop: 8,
+                  }}
+                >
+                  {agentLoading ? "Running Agent…" : "Run Agent"}
+                </button>
+
+                <div
+                  style={{
+                    fontSize: 11,
+                    color: "#777",
+                    marginTop: 6,
+                  }}
+                >
+                  Tip: Use Agent for bigger tasks like full campaign plans,
+                  JSON payloads, social calendars or SEO briefs. The answer will
+                  appear in the main chat as a <b>GabbarInfo Agent</b> message.
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* BOOST MODAL */}
+          {isBoostModalOpen && (
+            <div
+              style={{
+                position: "fixed",
+                top: 0,
+                right: 0,
+                bottom: 0,
+                width: isMobile ? "100%" : 360,
+                background: "#ffffff",
+                boxShadow: "-4px 0 12px rgba(0,0,0,0.12)",
+                zIndex: 45,
+                display: "flex",
+                flexDirection: "column",
+                boxSizing: "border-box",
+              }}
+            >
+               <div
+                style={{
+                  padding: 16,
+                  borderBottom: "1px solid #eee",
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "space-between",
+                }}
+              >
+                <div>
+                  <div style={{ fontWeight: 600, fontSize: 15 }}>
+                    Boost Page Post
+                  </div>
+                  <div
+                    style={{
+                      fontSize: 12,
+                      color: "#666",
+                      marginTop: 2,
+                    }}
+                  >
+                    Promote Facebook posts directly.
+                  </div>
+                </div>
+                <button
+                  onClick={() => setIsBoostModalOpen(false)}
+                  style={{
+                    border: "none",
+                    background: "transparent",
+                    fontSize: 18,
+                    cursor: "pointer",
+                  }}
+                >
+                  ×
+                </button>
+              </div>
+
+              <div style={{ padding: 16, display: "flex", flexDirection: "column", gap: 10, flex: 1, overflowY: "auto" }}>
+                <div style={{ fontSize: 13, fontWeight: 600 }}>1. Select Page</div>
+                <div style={{ display: "flex", gap: 5 }}>
+                  <select
+                    value={selectedPage}
+                    onChange={(e) => {
+                      setSelectedPage(e.target.value);
+                      fetchBoostPosts(e.target.value);
+                    }}
+                    style={{ flex: 1, padding: 8, borderRadius: 8, border: "1px solid #ddd" }}
+                  >
+                    <option value="">-- Select Page --</option>
+                    {boostPages.map((p) => (
+                      <option key={p.id} value={p.id}>{p.name}</option>
+                    ))}
+                  </select>
+                  <button
+                    onClick={fetchBoostPages}
+                    style={{ padding: "6px 10px", borderRadius: 6, border: "1px solid #ddd", background: "#f0f0f0", cursor: "pointer" }}
+                  >
+                    ↻
+                  </button>
+                </div>
+
+                {selectedPage && (
+                  <>
+                    <div style={{ fontSize: 13, fontWeight: 600, marginTop: 5 }}>2. Select Post (Last 3 Eligible)</div>
+                    <div style={{ display: "flex", flexDirection: "column", gap: 5 }}>
+                      {boostPosts.length === 0 && !boostLoading && (
+                        <div style={{ fontSize: 12, color: "#777" }}>No eligible posts found or loading...</div>
+                      )}
+                      {boostPosts.map((post) => (
+                        <label
+                          key={post.id}
                           style={{
-                            marginTop: 10,
-                            padding: 10,
-                            borderRadius: 8,
-                            border: "none",
-                            background: "#1a73e8",
-                            color: "#fff",
-                            cursor: boostLoading ? "default" : "pointer",
+                            display: "flex",
+                            gap: 8,
+                            alignItems: "center",
+                            fontSize: 12,
+                            border: "1px solid #eee",
+                            padding: 6,
+                            borderRadius: 6,
+                            cursor: "pointer",
+                            background: selectedPost === post.id ? "#e8f0fe" : "transparent"
                           }}
                         >
-                          {boostLoading ? "Boosting..." : "Boost Post Now"}
-                        </button>
-                      </>
-                    )}
+                          <input
+                            type="radio"
+                            name="boost_post"
+                            value={post.id}
+                            checked={selectedPost === post.id}
+                            onChange={() => setSelectedPost(post.id)}
+                          />
+                          <div style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                            {post.message ? (post.message.length > 30 ? post.message.slice(0,30)+"..." : post.message) : "[No text]"} <br />
+                            <span style={{ color: "#999", fontSize: 10 }}>
+                              {new Date(post.created_time).toLocaleDateString()}
+                            </span>
+                          </div>
+                        </label>
+                      ))}
+                    </div>
+                  </>
+                )}
 
-                    {boostResult && (
-                      <div
-                        style={{
-                          marginTop: 10,
-                          padding: 8,
-                          background: boostResult.startsWith("✅") ? "#e6fffa" : "#fff5f5",
-                          color: boostResult.startsWith("✅") ? "#006644" : "#c53030",
-                          borderRadius: 6,
-                          fontSize: 12,
-                          whiteSpace: "pre-wrap",
-                          wordBreak: "break-word"
-                        }}
-                      >
-                        {boostResult}
-                      </div>
-                    )}
-                  </div>
-                ) : (
+                {selectedPost && (
                   <>
-                    <label
-                      style={{
-                        fontSize: 12,
-                        fontWeight: 600,
-                        textTransform: "uppercase",
-                        letterSpacing: 0.4,
-                        color: "#555",
-                        marginTop: 8,
-                      }}
-                    >
-                      Instruction
-                    </label>
-                    <textarea
-                      value={agentInstruction}
-                      onChange={(e) => setAgentInstruction(e.target.value)}
-                      rows={6}
-                      placeholder="Example: Create a Google Search campaign for my dental clinic in Ahmedabad with ₹700/day budget, JSON only. Or plan a 30-day Instagram calendar for Bella & Diva Jewellery UK."
-                      style={{
-                        resize: "vertical",
-                        padding: 8,
-                        borderRadius: 8,
-                        border: "1px solid #ddd",
-                        fontSize: 13,
-                        minHeight: 120,
-                      }}
-                    />
-
-                    {agentError && (
-                      <div
-                        style={{
-                          fontSize: 12,
-                          color: "#b00020",
-                          background: "#fde7e9",
-                          borderRadius: 6,
-                          padding: 8,
-                        }}
-                      >
-                        {agentError}
+                    <div style={{ fontSize: 13, fontWeight: 600, marginTop: 5 }}>3. Boost Settings</div>
+                    <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
+                      <div>
+                        <label style={{ fontSize: 11, color: "#666" }}>Budget (INR)</label>
+                        <input
+                          type="number"
+                          value={boostBudget}
+                          onChange={(e) => setBoostBudget(e.target.value)}
+                          style={{ width: "100%", padding: 6, borderRadius: 6, border: "1px solid #ddd" }}
+                        />
                       </div>
-                    )}
-
-                    <div style={{ flex: 1 }} />
+                      <div>
+                        <label style={{ fontSize: 11, color: "#666" }}>Duration (Days)</label>
+                        <input
+                          type="number"
+                          value={boostDuration}
+                          onChange={(e) => setBoostDuration(e.target.value)}
+                          style={{ width: "100%", padding: 6, borderRadius: 6, border: "1px solid #ddd" }}
+                        />
+                      </div>
+                    </div>
+                    <div>
+                      <label style={{ fontSize: 11, color: "#666" }}>Goal</label>
+                      <select
+                        value={boostGoal}
+                        onChange={(e) => setBoostGoal(e.target.value)}
+                        style={{ width: "100%", padding: 6, borderRadius: 6, border: "1px solid #ddd" }}
+                      >
+                        <option value="PAGE_POST_ENGAGEMENT">Engagement</option>
+                        <option value="LINK_CLICKS">Link Clicks</option>
+                        <option value="MESSAGES">Messages</option>
+                      </select>
+                    </div>
 
                     <button
-                      type="button"
-                      onClick={handleRunAgent}
-                      disabled={agentLoading}
+                      onClick={handleBoostSubmit}
+                      disabled={boostLoading}
                       style={{
-                        width: "100%",
-                        padding: "10px 14px",
+                        marginTop: 10,
+                        padding: 10,
                         borderRadius: 8,
-                        fontSize: 14,
                         border: "none",
                         background: "#1a73e8",
                         color: "#fff",
-                        cursor: agentLoading ? "default" : "pointer",
-                        marginTop: 8,
+                        cursor: boostLoading ? "default" : "pointer",
                       }}
                     >
-                      {agentLoading ? "Running Agent…" : "Run Agent"}
+                      {boostLoading ? "Boosting..." : "Boost Post Now"}
                     </button>
-
-                    <div
-                      style={{
-                        fontSize: 11,
-                        color: "#777",
-                        marginTop: 6,
-                      }}
-                    >
-                      Tip: Use Agent for bigger tasks like full campaign plans,
-                      JSON payloads, social calendars or SEO briefs. The answer will
-                      appear in the main chat as a <b>GabbarInfo Agent</b> message.
-                    </div>
                   </>
+                )}
+
+                {boostResult && (
+                  <div
+                    style={{
+                      marginTop: 10,
+                      padding: 8,
+                      background: boostResult.startsWith("✅") ? "#e6fffa" : "#fff5f5",
+                      color: boostResult.startsWith("✅") ? "#006644" : "#c53030",
+                      borderRadius: 6,
+                      fontSize: 12,
+                      whiteSpace: "pre-wrap",
+                      wordBreak: "break-word"
+                    }}
+                  >
+                    {boostResult}
+                  </div>
                 )}
               </div>
             </div>
