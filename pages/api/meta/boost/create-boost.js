@@ -8,12 +8,13 @@ export default async function handler(req, res) {
     }
 
     const session = await getServerSession(req, res, authOptions);
-    if (!session) {
+    if (!session || !session.user?.email) {
         return res.status(401).json({ error: "Unauthorized" });
     }
 
-    const { email, page_id, post_id, goal, daily_budget, duration } = req.body;
-    if (!email || !page_id || !post_id) {
+    const email = session.user.email;
+    const { page_id, post_id, goal, daily_budget, duration } = req.body;
+    if (!page_id || !post_id) {
         return res.status(400).json({ error: "Missing required fields" });
     }
 
