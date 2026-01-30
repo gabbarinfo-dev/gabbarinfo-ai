@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react";
 import { useSession, signIn, signOut } from "next-auth/react";
 import FacebookBusinessConnect from "./components/facebook/FacebookBusinessConnect";
-import AnimatedSkyBackground from "./components/ui/AnimatedSkyBackground";
+import AnimatedSkyBackground from "./components/facebook/ui/AnimatedSkyBackground";
 
 export default function HomePage() {
   const { data: session, status } = useSession();
