@@ -1,10 +1,12 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import BoostModal from "../meta/BoostModal";
 
 export default function FacebookBusinessConnect() {
   const [status, setStatus] = useState("idle"); // idle | connected | loading
   const [meta, setMeta] = useState(null);
+  const [showBoostModal, setShowBoostModal] = useState(false);
   const isLocked = status === "connected";
   useEffect(() => {
     const interval = setInterval(() => {
@@ -262,6 +264,20 @@ export default function FacebookBusinessConnect() {
             </button>
 
             <button
+              onClick={() => setShowBoostModal(true)}
+              style={{
+                padding: "8px 12px",
+                background: "#1877F2",
+                color: "#fff",
+                border: "none",
+                borderRadius: "6px",
+                cursor: "pointer",
+              }}
+            >
+              Boost a Page Post
+            </button>
+
+            <button
               onClick={handleDisconnect}
               style={{
                 padding: "8px 12px",
@@ -279,6 +295,12 @@ export default function FacebookBusinessConnect() {
           <p style={{ fontSize: 12, color: "#555", marginTop: 10 }}>
             You can reconnect anytime and add new Facebook Pages or grant access to other assets.
           </p>
+
+          {/* BOOST MODAL */}
+          <BoostModal
+            isOpen={showBoostModal}
+            onClose={() => setShowBoostModal(false)}
+          />
 
           {/* PAGE CONSENT MODAL */}
           {showConsentModal && (
