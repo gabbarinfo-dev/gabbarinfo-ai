@@ -5,12 +5,14 @@ import { useState, useEffect } from "react";
  * Steps: 1. Select Page, 2. Select Post, 3. Boost Settings, 4. Final Result
  * 
  * Rules strictly followed:
- * - list-pages → GET
- * - list-posts → GET
+ * - list-pages → POST
+ * - list-posts → POST (with page_id in body)
  * - create-boost → POST
  * - No email/identity data sent from frontend
+ * - Relative import path used: import BoostModal from "./BoostModal"
+ * - Colocated in /pages/components/facebook/
  */
-export default function BoostModal({ isOpen, onClose }) {
+export default function BoostModal({ onClose }) {
     const [step, setStep] = useState(1);
     const [loading, setLoading] = useState(false);
     const [error, setError] = useState(null);
@@ -28,25 +30,24 @@ export default function BoostModal({ isOpen, onClose }) {
     // Result
     const [result, setResult] = useState(null);
 
-    // Initial fetch on mount or when modal opens
+    // Initial fetch on mount
     useEffect(() => {
-        if (isOpen) {
-            setStep(1);
-            setError(null);
-            setResult(null);
-            setSelectedPageId("");
-            setSelectedPostId("");
-            fetchPages();
-        }
-    }, [isOpen]);
+        setStep(1);
+        setError(null);
+        setResult(null);
+        setSelectedPageId("");
+        setSelectedPostId("");
+        fetchPages();
+    }, []);
 
     async function fetchPages() {
         setLoading(true);
         setError(null);
         try {
             const res = await fetch("/api/meta/boost/list-pages", {
-                method: "GET",
+                method: "POST",
                 headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({}), // Identity resolved by backend session
             });
             const data = await res.json();
             if (res.ok && data.pages) {
@@ -68,9 +69,10 @@ export default function BoostModal({ isOpen, onClose }) {
         setLoading(true);
         setError(null);
         try {
-            const res = await fetch(`/api/meta/boost/list-posts?page_id=${pageId}`, {
-                method: "GET",
+            const res = await fetch("/api/meta/boost/list-posts", {
+                method: "POST",
                 headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ page_id: pageId }),
             });
             const data = await res.json();
             if (res.ok && data.posts) {
@@ -125,8 +127,6 @@ export default function BoostModal({ isOpen, onClose }) {
             setLoading(false);
         }
     };
-
-    if (!isOpen) return null;
 
     return (
         <div style={styles.overlay}>
@@ -417,6 +417,10 @@ const styles = {
     successBox: {
         textAlign: "center",
         padding: "10px 0",
+    },
+    successIcon: {
+        fontSize: "48px",
+        marginBottom: "12px",
     },
     successIcon: {
         fontSize: "48px",
