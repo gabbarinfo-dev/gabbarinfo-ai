@@ -235,9 +235,32 @@ export default function HomePage() {
           }}
         >
           <h2 style={{ marginTop: 0 }}>Facebook Business</h2>
-<FacebookBusinessConnect />
+          <FacebookBusinessConnect />
         </section>
       </main>
+
+      {/* FOOTER */}
+      <footer
+        style={{
+          marginTop: 40,
+          textAlign: "center",
+          fontSize: 13,
+          color: "#888",
+          paddingBottom: 20,
+        }}
+      >
+        &copy; 2026 GabbarInfo AI &middot;{" "}
+        <a
+          href="https://gabbarinfo.com/privacy-policy"
+          target="_blank"
+          rel="noopener noreferrer"
+          style={{ color: "#888", textDecoration: "none" }}
+          onMouseOver={(e) => (e.currentTarget.style.textDecoration = "underline")}
+          onMouseOut={(e) => (e.currentTarget.style.textDecoration = "none")}
+        >
+          Privacy Policy
+        </a>
+      </footer>
     </div>
   );
 }
