@@ -14,7 +14,6 @@ useEffect(() => {
       <div className="sky-gradient" />
 
       {/* Sun glow */}
-      <div className="sun-glow" />
 
       {/* Snow / particles */}
       <div className="snow slow" />
@@ -28,9 +27,9 @@ useEffect(() => {
     position: absolute;
     inset: 0;
     background-image:
-      radial-gradient(2px 2px at 20% 30%, rgba(255,255,255,.6) 50%, transparent 51%),
-      radial-gradient(1.5px 1.5px at 60% 10%, rgba(255,255,255,.4) 50%, transparent 51%),
-      radial-gradient(1px 1px at 80% 50%, rgba(255,255,255,.3) 50%, transparent 51%);
+      radial-gradient(2px 2px at 20% 30%, rgba(255,255,255,.8) 50%, transparent 51%),
+      radial-gradient(1.5px 1.5px at 60% 10%, rgba(255,255,255,.6) 50%, transparent 51%),
+      radial-gradient(1px 1px at 80% 50%, rgba(255,255,255,.5) 50%, transparent 51%);
     background-size: 300px 300px;
     animation: snowDrift 60s linear infinite;
     pointer-events: none;
@@ -64,13 +63,13 @@ useEffect(() => {
         .sky-gradient {
           position: absolute;
           inset: 0;
-          background: linear-gradient(
-            180deg,
-            #0b1026 0%,
-            #1b2a4e 35%,
-            #4b3f72 60%,
-            #ffcf9f 100%
-          );
+         background: linear-gradient(
+  180deg,
+  #060b1f 0%,
+  #0b1435 40%,
+  #121b3d 70%,
+  #1a2248 100%
+);
           animation: hueShift 30s ease-in-out infinite alternate;
         }
 
