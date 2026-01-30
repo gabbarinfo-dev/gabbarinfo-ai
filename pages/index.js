@@ -84,6 +84,27 @@ export default function HomePage() {
         >
           Continue with Facebook
         </button>
+
+        {/* FOOTER */}
+        <footer
+          style={{
+            marginTop: 60,
+            fontSize: 13,
+            color: "#888",
+          }}
+        >
+          &copy; 2026 GabbarInfo AI &middot;{" "}
+          <a
+            href="https://gabbarinfo.com/privacy-policy"
+            target="_blank"
+            rel="noopener noreferrer"
+            style={{ color: "#888", textDecoration: "none" }}
+            onMouseOver={(e) => (e.currentTarget.style.textDecoration = "underline")}
+            onMouseOut={(e) => (e.currentTarget.style.textDecoration = "none")}
+          >
+            Privacy Policy
+          </a>
+        </footer>
       </div>
     );
   }
