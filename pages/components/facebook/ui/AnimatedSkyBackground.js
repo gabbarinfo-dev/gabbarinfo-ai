@@ -13,6 +13,30 @@ export default function AnimatedSkyBackground({ children }) {
       <div className="snow fast" />
 
       {/* Content */}
+    <div className="snow-layer" />
+<style jsx global>{`
+  .snow-layer {
+    position: absolute;
+    inset: 0;
+    background-image:
+      radial-gradient(2px 2px at 20% 30%, rgba(255,255,255,.6) 50%, transparent 51%),
+      radial-gradient(1.5px 1.5px at 60% 10%, rgba(255,255,255,.4) 50%, transparent 51%),
+      radial-gradient(1px 1px at 80% 50%, rgba(255,255,255,.3) 50%, transparent 51%);
+    background-size: 300px 300px;
+    animation: snowDrift 60s linear infinite;
+    pointer-events: none;
+  }
+
+  @keyframes snowDrift {
+    from {
+      transform: translateY(-100px);
+    }
+    to {
+      transform: translateY(100px);
+    }
+  }
+`}</style>
+
       <div className="sky-content">{children}</div>
 
       <style jsx>{`
