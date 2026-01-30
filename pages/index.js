@@ -57,74 +57,60 @@ if (!session) {
     <AnimatedSkyBackground>
       <>
         <style jsx>{`
-          .hero-title {
-            font-size: 42px;
-            font-weight: 600;
-            letter-spacing: 0.6px;
-            color: #ffffff;
-            margin-bottom: 10px;
-            text-shadow:
-              0 0 20px rgba(255,255,255,0.25),
-              0 0 40px rgba(140,180,255,0.25);
-          }
+  .hero-title {
+    font-size: 44px;
+    font-weight: 600;
+    letter-spacing: 0.6px;
+    color: #ffffff;
+    margin-bottom: 10px;
+    position: relative;
+  }
 
-          .hero-subtitle {
-            font-size: 16px;
-            color: rgba(255,255,255,0.75);
-            margin-bottom: 26px;
-            text-shadow: 0 0 10px rgba(255,255,255,0.15);
-          }
+  /* AI energy text */
+  .ai-electric {
+    position: relative;
+    display: inline-block;
+    background: linear-gradient(
+      120deg,
+      #ffffff 20%,
+      #9ecbff 40%,
+      #ffffff 60%
+    );
+    background-size: 200% auto;
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    animation: energyFlow 3s linear infinite;
+    text-shadow:
+      0 0 12px rgba(140,180,255,0.6),
+      0 0 22px rgba(120,160,255,0.4);
+  }
 
-          /* ⚡ REAL ELECTRIC CURRENT INSIDE TEXT */
-          .ai-electric {
-            position: relative;
-            display: inline-block;
-            background: linear-gradient(
-              90deg,
-              #ffffff,
-              #9ecbff,
-              #ffffff,
-              #9ecbff,
-              #ffffff
-            );
-            background-size: 300% 100%;
-            -webkit-background-clip: text;
-            -webkit-text-fill-color: transparent;
-            animation: electricText 2.2s linear infinite;
-          }
+  @keyframes energyFlow {
+    from {
+      background-position: 0% center;
+      filter: brightness(1);
+    }
+    50% {
+      filter: brightness(1.25);
+    }
+    to {
+      background-position: 200% center;
+      filter: brightness(1);
+    }
+  }
 
-          /* micro lightning flicker */
-          .ai-electric::after {
-            content: "";
-            position: absolute;
-            inset: 0;
-            background: repeating-linear-gradient(
-              120deg,
-              transparent 0%,
-              rgba(180,220,255,0.9) 2%,
-              transparent 4%
-            );
-            opacity: 0.25;
-            mix-blend-mode: screen;
-            animation: sparkFlicker 0.15s infinite alternate;
-            pointer-events: none;
-          }
-
-          @keyframes electricText {
-            0% { background-position: 0% 50%; }
-            100% { background-position: 300% 50%; }
-          }
-
-          @keyframes sparkFlicker {
-            from { opacity: 0.15; }
-            to { opacity: 0.35; }
-          }
-        `}</style>
+  .hero-subtitle {
+    font-size: 16px;
+    color: rgba(255,255,255,0.75);
+    margin-bottom: 26px;
+    text-shadow: 0 0 10px rgba(255,255,255,0.15);
+  }
+`}</style>
 
         <div style={{ padding: 40, textAlign: "center" }}>
           <h1 className="hero-title">
-            <span className="ai-electric">GabbarInfo AI</span>
-          </h1>
+  <span className="ai-electric">GabbarInfo AI</span>
+</h1>
 
           <p className="hero-subtitle">
             Please sign in to use GabbarInfo AI.
