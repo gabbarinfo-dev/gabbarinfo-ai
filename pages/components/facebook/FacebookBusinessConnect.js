@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import BoostModal from "./BoostModal";
+import BoostModal from "./meta/BoostModal";
 
 export default function FacebookBusinessConnect() {
   const [status, setStatus] = useState("idle"); // idle | connected | loading
