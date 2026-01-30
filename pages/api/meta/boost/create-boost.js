@@ -1,5 +1,3 @@
-import { getServerSession } from "next-auth";
-import { authOptions } from "../../../auth/[...nextauth]";
 import { createClient } from "@supabase/supabase-js";
 
 const supabase = createClient(
@@ -13,18 +11,14 @@ export default async function handler(req, res) {
   }
 
   try {
-    const session = await getServerSession(req, res, authOptions);
-    if (!session?.user?.email) {
-      return res.status(401).json({ error: "Not authenticated" });
+    const { page_id, post_id, goal, budget, duration, email } = req.body;
+
+    if (!email) {
+      return res.status(400).json({ error: "Missing email parameter" });
     }
-
-    const { page_id, post_id, goal, budget, duration } = req.body;
-
     if (!page_id || !post_id) {
       return res.status(400).json({ error: "Missing page_id or post_id" });
     }
-
-    const email = session.user.email.toLowerCase().trim();
 
     const { data: connection, error: dbError } = await supabase
       .from("meta_connections")
@@ -42,11 +36,8 @@ export default async function handler(req, res) {
       return res.status(400).json({ error: "Missing Token or Ad Account ID" });
     }
 
-    // Payload construction
-    const object_story_id = `${page_id}_${post_id}`;
-    
     const payload = {
-      object_story_id,
+      object_story_id: `${page_id}_${post_id}`,
       goal: goal || "PAGE_POST_ENGAGEMENT",
       budget_type: "DAILY",
       daily_budget: Number(budget) || 500,
