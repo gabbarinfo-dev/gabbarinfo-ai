@@ -57,68 +57,69 @@ if (!session) {
     <AnimatedSkyBackground>
       <>
         <style jsx>{`
+          .hero-title {
+            font-size: 44px;
+            font-weight: 600;
+            color: #ffffff;
+            margin-bottom: 12px;
+            position: relative;
+            text-shadow:
+              0 0 12px rgba(140,180,255,0.35),
+              0 0 26px rgba(120,160,255,0.25);
+          }
+
+          /* ELECTRIC TEXT CORE */
+          .ai-electric {
+            position: relative;
+            display: inline-block;
+          }
+
+          /* ELECTRIC EDGE SPARKS */
+          .ai-electric::before,
+          .ai-electric::after {
+            content: attr(data-text);
+            position: absolute;
+            inset: 0;
+            color: transparent;
+            -webkit-text-stroke: 1px rgba(160,200,255,0.9);
+            opacity: 0;
+            pointer-events: none;
+            animation: spark 3.2s infinite steps(1);
+          }
+
+          .ai-electric::after {
+            -webkit-text-stroke: 1px rgba(210,230,255,0.9);
+            animation-delay: 1.6s;
+          }
+
+          @keyframes spark {
+            0% { opacity: 0; transform: translate(0,0); }
+            4% { opacity: 1; transform: translate(-1px,1px); }
+            5% { opacity: 0; }
+            22% { opacity: 0; }
+            26% { opacity: 1; transform: translate(1px,-1px); }
+            27% { opacity: 0; }
+            100% { opacity: 0; }
+          }
+
           .hero-subtitle {
             font-size: 16px;
             color: rgba(255,255,255,0.75);
             margin-bottom: 26px;
             text-shadow: 0 0 10px rgba(255,255,255,0.15);
           }
-
-          .electric-title {
-            margin-bottom: 14px;
-            text-shadow:
-              0 0 18px rgba(140,180,255,0.35),
-              0 0 32px rgba(120,160,255,0.2);
-          }
-
-          .electric-title svg {
-            overflow: visible;
-          }
         `}</style>
 
         <div style={{ padding: 40, textAlign: "center" }}>
           {/* ⚡ ELECTRIC AI TITLE */}
-          <div className="electric-title">
-            <svg width="520" height="90" viewBox="0 0 520 90">
-              <defs>
-                <filter id="electric">
-                  <feTurbulence
-                    type="fractalNoise"
-                    baseFrequency="0.012"
-                    numOctaves="3"
-                    seed="2"
-                    result="noise"
-                  >
-                    <animate
-                      attributeName="baseFrequency"
-                      dur="2s"
-                      values="0.01;0.02;0.01"
-                      repeatCount="indefinite"
-                    />
-                  </feTurbulence>
-
-                  <feDisplacementMap
-                    in="SourceGraphic"
-                    in2="noise"
-                    scale="14"
-                  />
-                </filter>
-              </defs>
-
-              <text
-                x="50%"
-                y="65%"
-                textAnchor="middle"
-                fill="#ffffff"
-                fontSize="44"
-                fontWeight="600"
-                fontFamily="Inter, Arial"
-                filter="url(#electric)"
-              >
-                GabbarInfo AI
-              </text>
-            </svg>
-          </div>
+          <h1 className="hero-title">
+            <span
+              className="ai-electric"
+              data-text="GabbarInfo AI"
+            >
+              GabbarInfo AI
+            </span>
+          </h1>
 
           <p className="hero-subtitle">
             Please sign in to use GabbarInfo AI.
@@ -161,7 +162,7 @@ if (!session) {
               color: "#888",
             }}
           >
-            &copy; 2026 GabbarInfo AI &middot;{" "}
+            © 2026 GabbarInfo AI ·{" "}
             <a
               href="https://gabbarinfo.com/privacy-policy"
               target="_blank"
@@ -176,8 +177,6 @@ if (!session) {
     </AnimatedSkyBackground>
   );
 }
-
-
   /* -------------------------
      LOGGED IN VIEW
   ------------------------- */
