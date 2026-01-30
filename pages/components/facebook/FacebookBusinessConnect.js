@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import BoostModal from "../meta/BoostModal";
+import BoostModal from "./BoostModal";
 
 export default function FacebookBusinessConnect() {
   const [status, setStatus] = useState("idle"); // idle | connected | loading
@@ -297,10 +297,12 @@ export default function FacebookBusinessConnect() {
           </p>
 
           {/* BOOST MODAL */}
-          <BoostModal
-            isOpen={showBoostModal}
-            onClose={() => setShowBoostModal(false)}
-          />
+          {showBoostModal && (
+            <BoostModal
+              isOpen={showBoostModal}
+              onClose={() => setShowBoostModal(false)}
+            />
+          )}
 
           {/* PAGE CONSENT MODAL */}
           {showConsentModal && (
