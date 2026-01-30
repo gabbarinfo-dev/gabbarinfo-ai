@@ -298,10 +298,7 @@ export default function FacebookBusinessConnect() {
 
           {/* BOOST MODAL */}
           {showBoostModal && (
-            <BoostModal
-              isOpen={showBoostModal}
-              onClose={() => setShowBoostModal(false)}
-            />
+            <BoostModal onClose={() => setShowBoostModal(false)} />
           )}
 
           {/* PAGE CONSENT MODAL */}
