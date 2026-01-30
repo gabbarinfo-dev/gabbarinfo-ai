@@ -57,60 +57,68 @@ if (!session) {
     <AnimatedSkyBackground>
       <>
         <style jsx>{`
-  .hero-title {
-    font-size: 44px;
-    font-weight: 600;
-    letter-spacing: 0.6px;
-    color: #ffffff;
-    margin-bottom: 10px;
-    position: relative;
-  }
+          .hero-subtitle {
+            font-size: 16px;
+            color: rgba(255,255,255,0.75);
+            margin-bottom: 26px;
+            text-shadow: 0 0 10px rgba(255,255,255,0.15);
+          }
 
-  /* AI energy text */
-  .ai-electric {
-    position: relative;
-    display: inline-block;
-    background: linear-gradient(
-      120deg,
-      #ffffff 20%,
-      #9ecbff 40%,
-      #ffffff 60%
-    );
-    background-size: 200% auto;
-    -webkit-background-clip: text;
-    -webkit-text-fill-color: transparent;
-    animation: energyFlow 3s linear infinite;
-    text-shadow:
-      0 0 12px rgba(140,180,255,0.6),
-      0 0 22px rgba(120,160,255,0.4);
-  }
+          .electric-title {
+            margin-bottom: 14px;
+            text-shadow:
+              0 0 18px rgba(140,180,255,0.35),
+              0 0 32px rgba(120,160,255,0.2);
+          }
 
-  @keyframes energyFlow {
-    from {
-      background-position: 0% center;
-      filter: brightness(1);
-    }
-    50% {
-      filter: brightness(1.25);
-    }
-    to {
-      background-position: 200% center;
-      filter: brightness(1);
-    }
-  }
-
-  .hero-subtitle {
-    font-size: 16px;
-    color: rgba(255,255,255,0.75);
-    margin-bottom: 26px;
-    text-shadow: 0 0 10px rgba(255,255,255,0.15);
-  }
-`}</style>
+          .electric-title svg {
+            overflow: visible;
+          }
+        `}</style>
 
         <div style={{ padding: 40, textAlign: "center" }}>
-          <h1 className="hero-title">
-  <span className="ai-electric">GabbarInfo AI</span>
-</h1>
+          {/* ⚡ ELECTRIC AI TITLE */}
+          <div className="electric-title">
+            <svg width="520" height="90" viewBox="0 0 520 90">
+              <defs>
+                <filter id="electric">
+                  <feTurbulence
+                    type="fractalNoise"
+                    baseFrequency="0.012"
+                    numOctaves="3"
+                    seed="2"
+                    result="noise"
+                  >
+                    <animate
+                      attributeName="baseFrequency"
+                      dur="2s"
+                      values="0.01;0.02;0.01"
+                      repeatCount="indefinite"
+                    />
+                  </feTurbulence>
+
+                  <feDisplacementMap
+                    in="SourceGraphic"
+                    in2="noise"
+                    scale="14"
+                  />
+                </filter>
+              </defs>
+
+              <text
+                x="50%"
+                y="65%"
+                textAnchor="middle"
+                fill="#ffffff"
+                fontSize="44"
+                fontWeight="600"
+                fontFamily="Inter, Arial"
+                filter="url(#electric)"
+              >
+                GabbarInfo AI
+              </text>
+            </svg>
+          </div>
 
           <p className="hero-subtitle">
             Please sign in to use GabbarInfo AI.
