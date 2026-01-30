@@ -704,7 +704,13 @@ Now respond as GabbarInfo AI.
     try {
       const email = session?.user?.email;
       if (!email) throw new Error("User email not found");
-      const res = await fetch(`/api/meta/boost/list-pages?email=${encodeURIComponent(email)}`);
+      
+      const res = await fetch("/api/meta/boost/list-pages", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email })
+      });
+
       if (!res.ok) throw new Error(await res.text());
       const data = await res.json();
       setBoostPages(data.pages || []);
@@ -723,7 +729,13 @@ Now respond as GabbarInfo AI.
     try {
       const email = session?.user?.email;
       if (!email) throw new Error("User email not found");
-      const res = await fetch(`/api/meta/boost/list-posts?page_id=${pageId}&email=${encodeURIComponent(email)}`);
+
+      const res = await fetch("/api/meta/boost/list-posts", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ page_id: pageId, email })
+      });
+
       if (!res.ok) throw new Error(await res.text());
       const data = await res.json();
       setBoostPosts(data.posts || []);
