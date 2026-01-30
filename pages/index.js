@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import { useSession, signIn, signOut } from "next-auth/react";
 import FacebookBusinessConnect from "./components/facebook/FacebookBusinessConnect";
+import AnimatedSkyBackground from "./components/ui/AnimatedSkyBackground";
 
 export default function HomePage() {
   const { data: session, status } = useSession();
@@ -53,6 +54,7 @@ export default function HomePage() {
   ------------------------- */
   if (!session) {
     return (
+      <AnimatedSkyBackground>
       <div style={{ padding: 40, fontFamily: "Inter, Arial" }}>
         <h1>GabbarInfo AI</h1>
         <p>Please sign in to use GabbarInfo AI.</p>
@@ -106,6 +108,7 @@ export default function HomePage() {
           </a>
         </footer>
       </div>
+    </AnimatedSkyBackground>
     );
   }
 
