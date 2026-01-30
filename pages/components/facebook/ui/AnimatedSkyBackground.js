@@ -63,13 +63,14 @@ useEffect(() => {
         .sky-gradient {
           position: absolute;
           inset: 0;
-         background: linear-gradient(
-  180deg,
-  #060b1f 0%,
-  #0b1435 40%,
-  #121b3d 70%,
-  #1a2248 100%
-);
+        background: linear-gradient(
+    to bottom,
+    #030617 0%,     /* deep night */
+    #070c26 35%,    /* dark indigo */
+    #101a3f 60%,    /* calm blue */
+    #2a244a 80%,    /* subtle dawn violet */
+    #3a2a2a 100%    /* faint warm horizon */
+  );
           animation: hueShift 30s ease-in-out infinite alternate;
         }
 
@@ -198,18 +199,19 @@ animation: "dawnShift 40s ease-in-out infinite alternate",
 `}</style>
 <style jsx global>{`
   .lightning-flash {
-    position: fixed;
-    inset: 0;
-    background: rgba(255,255,255,0.15);
-    animation: flashFade 0.3s ease-out;
-    pointer-events: none;
-    z-index: 9999;
-  }
+  position: fixed;
+  inset: 0;
+  background: rgba(255, 255, 255, 0.12);
+  animation: flashFade 0.3s ease-out;
+  pointer-events: none;
+  z-index: 9999;
+}
 
-  @keyframes flashFade {
-    from { opacity: 1; }
-    to { opacity: 0; }
-  }
+@keyframes flashFade {
+  from { opacity: 1; }
+  to { opacity: 0; }
+}
+
 `}</style>
 
     </div>
