@@ -121,6 +121,32 @@ export default function AnimatedSkyBackground({ children }) {
           }
         }
       `}</style>
+  background: `
+  radial-gradient(
+    1200px 600px at 50% 80%,
+    rgba(255, 200, 150, 0.25),
+    transparent 60%
+  ),
+  linear-gradient(
+    180deg,
+    #0b163f 0%,
+    #2b2d6b 40%,
+    #6b4e71 70%,
+    #f2c49b 100%
+  )
+`,
+animation: "dawnShift 40s ease-in-out infinite alternate",
+    <style jsx global>{`
+  @keyframes dawnShift {
+    0% {
+      filter: hue-rotate(0deg) brightness(1);
+    }
+    100% {
+      filter: hue-rotate(8deg) brightness(1.05);
+    }
+  }
+`}</style>
+
     </div>
   );
 }
