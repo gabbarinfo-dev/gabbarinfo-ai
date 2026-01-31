@@ -23,7 +23,7 @@ const supabaseClient =
 
 export const authOptions = {
   providers: [
-    // ✅ GOOGLE (unchanged)
+    // ✅ GOOGLE
     GoogleProvider({
       clientId: process.env.GOOGLE_CLIENT_ID,
       clientSecret: process.env.GOOGLE_CLIENT_SECRET,
@@ -38,16 +38,16 @@ export const authOptions = {
       },
     }),
 
-    // ✅ FACEBOOK (fixed + clean)
+    // ✅ FACEBOOK
     FacebookProvider({
-  clientId: process.env.FACEBOOK_CLIENT_ID,
-  clientSecret: process.env.FACEBOOK_CLIENT_SECRET,
-  authorization: {
-    params: {
-      scope: "email public_profile",
-    },
-  },
-}),
+      clientId: process.env.FACEBOOK_CLIENT_ID,
+      clientSecret: process.env.FACEBOOK_CLIENT_SECRET,
+      authorization: {
+        params: {
+          scope: "email public_profile",
+        },
+      },
+    }),
   ],
 
   secret: process.env.NEXTAUTH_SECRET,
@@ -55,23 +55,17 @@ export const authOptions = {
   callbacks: {
     // 🔐 SIGN-IN CONTROL
     async signIn({ user, account }) {
-      // ✅ Allow ALL Facebook logins (reviewers / testers)
+      // ✅ Allow Facebook logins
       if (account?.provider === "facebook") {
         return true;
       }
 
-      // 🔒 Google login → whitelist check
-      const email = user?.email?.toLowerCase().trim();
-      if (!email || !supabaseClient) return false;
+      // ✅ Allow Google logins (auto-register handled in events.signIn)
+      if (account?.provider === "google") {
+        return true;
+      }
 
-      const { data, error } = await supabaseClient
-        .from("allowed_users")
-        .select("role")
-        .eq("email", email)
-        .maybeSingle();
-
-      if (error || !data) return false;
-      return true;
+      return false;
     },
 
     // 🧠 JWT
@@ -114,36 +108,78 @@ export const authOptions = {
   },
 
   events: {
-    // 💾 SAVE GOOGLE REFRESH TOKEN (unchanged logic, safer guards)
+    // 🔁 Runs on EVERY successful login
     async signIn({ user, account }) {
-      if (
-        account?.provider !== "google" ||
-        !account?.refresh_token ||
-        !user?.email ||
-        !supabaseServer
-      )
-        return;
+      if (!user?.email || !supabaseServer) return;
 
       const email = user.email.toLowerCase().trim();
 
-      const upsertObj = {
-        email,
-        refresh_token: account.refresh_token,
-        access_token: null,
-        customer_id: null,
-        updated_at: new Date().toISOString(),
-      };
+      /* ------------------------------
+         1️⃣ AUTO-REGISTER USER
+      ------------------------------ */
+      try {
+        const { data: existingUser } = await supabaseServer
+          .from("allowed_users")
+          .select("email")
+          .eq("email", email)
+          .maybeSingle();
 
-      const { error } = await supabaseServer
-        .from("google_connections")
-        .upsert(upsertObj, { onConflict: ["email"] });
+        if (!existingUser) {
+          await supabaseServer.from("allowed_users").insert({
+            email,
+            role: "client",
+          });
+        }
+      } catch (e) {
+        console.error("Auto user creation failed:", e);
+      }
 
-      if (error) {
-        console.error("Google refresh token save failed:", error);
+      /* ------------------------------
+         2️⃣ AUTO-GRANT 30 CREDITS (ONCE)
+      ------------------------------ */
+      try {
+        const { data: creditRow } = await supabaseServer
+          .from("credits")
+          .select("id")
+          .eq("email", email)
+          .maybeSingle();
+
+        if (!creditRow) {
+          await supabaseServer.from("credits").insert({
+            email,
+            credits_left: 30,
+          });
+        }
+      } catch (e) {
+        console.error("Auto credit grant failed:", e);
+      }
+
+      /* ------------------------------
+         3️⃣ SAVE GOOGLE REFRESH TOKEN
+         (UNCHANGED LOGIC)
+      ------------------------------ */
+      if (
+        account?.provider === "google" &&
+        account.refresh_token
+      ) {
+        const upsertObj = {
+          email,
+          refresh_token: account.refresh_token,
+          access_token: null,
+          customer_id: null,
+          updated_at: new Date().toISOString(),
+        };
+
+        const { error } = await supabaseServer
+          .from("google_connections")
+          .upsert(upsertObj, { onConflict: ["email"] });
+
+        if (error) {
+          console.error("Google refresh token save failed:", error);
+        }
       }
     },
   },
 };
 
 export default NextAuth(authOptions);
-
