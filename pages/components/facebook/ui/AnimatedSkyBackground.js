@@ -87,6 +87,7 @@ useEffect(() => {
         }
 
 /* 🌙 Half Moon */
+/* 🌙 Half Moon */
 .moon {
   position: absolute;
   top: 60px;
@@ -104,14 +105,17 @@ useEffect(() => {
     0 0 18px rgba(180,200,255,0.35),
     0 0 40px rgba(120,160,255,0.25);
   z-index: 2;
+
+  /* 👇 THIS IS THE KEY */
+  transform: rotate(-45deg);
 }
 
-/* Moon shadow to create half shape */
+/* Moon shadow */
 .moon::after {
   content: "";
   position: absolute;
   top: 0;
-  left: 22px;
+  left: 28px; /* moved slightly more */
   width: 90px;
   height: 90px;
   background: #060b1f;
