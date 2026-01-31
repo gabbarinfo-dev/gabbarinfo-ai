@@ -3,77 +3,74 @@ import { authOptions } from "../../auth/[...nextauth]";
 import { supabaseServer } from "../../../../lib/supabaseServer";
 
 export default async function handler(req, res) {
-    if (req.method !== "POST") {
-        return res.status(405).json({ error: "Method not allowed" });
+  if (req.method !== "POST") {
+    return res.status(405).json({ error: "Method not allowed" });
+  }
+
+  const session = await getServerSession(req, res, authOptions);
+  if (!session || !session.user?.email) {
+    return res.status(401).json({ error: "Unauthorized" });
+  }
+
+  const email = session.user.email;
+  const { page_id, post_id, goal, daily_budget, duration } = req.body;
+
+  if (!page_id || !post_id) {
+    return res.status(400).json({ error: "Missing required fields" });
+  }
+
+  try {
+    const { data, error } = await supabaseServer
+      .from("meta_connections")
+      .select("system_user_token, fb_ad_account_id")
+      .eq("email", email)
+      .single();
+
+    if (error || !data) {
+      return res.status(404).json({ error: "Meta connection not found" });
     }
 
-    const session = await getServerSession(req, res, authOptions);
-    if (!session || !session.user?.email) {
-        return res.status(401).json({ error: "Unauthorized" });
+    const { system_user_token, fb_ad_account_id } = data;
+    const token = system_user_token || process.env.META_SYSTEM_USER_TOKEN;
+
+    if (!token) {
+      return res.status(400).json({ error: "System user token missing" });
     }
 
-    const email = session.user.email;
-    const { page_id, post_id, goal, daily_budget, duration } = req.body;
-    if (!page_id || !post_id) {
-        return res.status(400).json({ error: "Missing required fields" });
+    if (!fb_ad_account_id) {
+      return res.status(400).json({ error: "Ad account ID missing" });
     }
 
-    try {
-        const { data, error } = await supabaseServer
-            .from("meta_connections")
-            .select("system_user_token, fb_ad_account_id")
-            .eq("email", email)
-            .single();
+    // Ensure ad account ID has act_ prefix
+    const adAccountId = fb_ad_account_id.startsWith("act_")
+      ? fb_ad_account_id
+      : `act_${fb_ad_account_id}`;
 
-        if (error || !data) {
-            return res.status(404).json({ error: "Meta connection not found" });
-        }
+    const url = `https://graph.facebook.com/v19.0/${adAccountId}/promoted_posts`;
 
-        const { system_user_token, fb_ad_account_id } = data;
-        const token = system_user_token || process.env.META_SYSTEM_USER_TOKEN;
+    // ✅ META-CORRECT FORM BODY (NO NESTED OBJECTS)
+    const formBody = new URLSearchParams({
+      object_story_id: `${page_id}_${post_id}`,
+      goal: goal || "PAGE_POST_ENGAGEMENT",
+      budget_type: "DAILY",
+      daily_budget: String((daily_budget || 500) * 100),
+      duration: String(duration || 5),
+      access_token: token,
+    });
 
-        if (!token) {
-            return res.status(400).json({ error: "System user token missing" });
-        }
+    const response = await fetch(url, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/x-www-form-urlencoded",
+      },
+      body: formBody.toString(),
+    });
 
-        if (!fb_ad_account_id) {
-            return res.status(400).json({ error: "Ad account ID missing" });
-        }
+    const result = await response.json();
 
-        const payload = {
-            object_story_id: `${page_id}_${post_id}`,
-            goal: goal || "PAGE_POST_ENGAGEMENT",
-            budget_type: "DAILY",
-            daily_budget: (daily_budget || 500) * 100,
-            duration: duration || 5,
-            targeting: {
-                geo_locations: {
-                    countries: ["IN"]
-                }
-            },
-            access_token: token
-        };
-
-        // Ensure ad account ID has 'act_' prefix
-        const adAccountId = fb_ad_account_id.startsWith("act_") ? fb_ad_account_id : `act_${fb_ad_account_id}`;
-        const url = `https://graph.facebook.com/v19.0/${adAccountId}/promoted_posts`;
-
-        const formBody = new URLSearchParams(payload);
-
-const response = await fetch(url, {
-  method: "POST",
-  headers: {
-    "Content-Type": "application/x-www-form-urlencoded",
-  },
-  body: formBody.toString(),
-});
-
-
-        const result = await response.json();
-
-        return res.status(response.status).json(result);
-    } catch (err) {
-        console.error("Create boost error:", err);
-        return res.status(500).json({ error: "Internal server error" });
-    }
+    return res.status(response.status).json(result);
+  } catch (err) {
+    console.error("Create boost error:", err);
+    return res.status(500).json({ error: "Internal server error" });
+  }
 }
