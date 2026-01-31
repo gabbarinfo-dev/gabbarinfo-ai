@@ -86,7 +86,7 @@ useEffect(() => {
           }
         }
 
-/* 🌙 Half Moon */
+
 /* 🌙 Half Moon */
 .moon {
   position: absolute;
@@ -95,6 +95,7 @@ useEffect(() => {
   width: 90px;
   height: 90px;
   border-radius: 50%;
+  transform: rotate(-45deg);
   background: radial-gradient(
     circle at 30% 30%,
     #ffffff,
@@ -115,7 +116,7 @@ useEffect(() => {
   content: "";
   position: absolute;
   top: 0;
-  left: 28px; /* moved slightly more */
+  right: 28px; /* moved slightly more */
   width: 90px;
   height: 90px;
   background: #060b1f;
