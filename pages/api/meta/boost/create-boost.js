@@ -44,7 +44,7 @@ export default async function handler(req, res) {
             object_story_id: `${page_id}_${post_id}`,
             goal: goal || "PAGE_POST_ENGAGEMENT",
             budget_type: "DAILY",
-            daily_budget: daily_budget || 500,
+            daily_budget: (daily_budget || 500) * 100,
             duration: duration || 5,
             targeting: {
                 geo_locations: {
@@ -58,13 +58,16 @@ export default async function handler(req, res) {
         const adAccountId = fb_ad_account_id.startsWith("act_") ? fb_ad_account_id : `act_${fb_ad_account_id}`;
         const url = `https://graph.facebook.com/v19.0/${adAccountId}/promoted_posts`;
 
-        const response = await fetch(url, {
-            method: "POST",
-            headers: {
-                "Content-Type": "application/json",
-            },
-            body: JSON.stringify(payload),
-        });
+        const formBody = new URLSearchParams(payload);
+
+const response = await fetch(url, {
+  method: "POST",
+  headers: {
+    "Content-Type": "application/x-www-form-urlencoded",
+  },
+  body: formBody.toString(),
+});
+
 
         const result = await response.json();
 
