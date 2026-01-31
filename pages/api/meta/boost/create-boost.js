@@ -12,77 +12,112 @@ export default async function handler(req, res) {
     return res.status(401).json({ error: "Unauthorized" });
   }
 
+  const email = session.user.email;
   const { page_id, post_id, daily_budget = 500, duration = 7 } = req.body;
+
+  if (!page_id || !post_id) {
+    return res.status(400).json({ error: "Missing page or post" });
+  }
 
   try {
     const { data } = await supabaseServer
       .from("meta_connections")
-      .select("fb_ad_account_id")
-      .eq("email", session.user.email)
+      .select("system_user_token, fb_ad_account_id")
+      .eq("email", email)
       .single();
 
     if (!data?.fb_ad_account_id) {
       return res.status(400).json({ error: "Ad account not connected" });
     }
 
-    const token = process.env.META_SYSTEM_USER_TOKEN;
+    const token = data.system_user_token || process.env.META_SYSTEM_USER_TOKEN;
     const adAccountId = data.fb_ad_account_id.startsWith("act_")
       ? data.fb_ad_account_id
       : `act_${data.fb_ad_account_id}`;
 
-    /* 1️⃣ CAMPAIGN */
+    /* =======================
+       1️⃣ CREATE CAMPAIGN
+    ======================= */
     const campaignRes = await fetch(
       `https://graph.facebook.com/v19.0/${adAccountId}/campaigns`,
       {
         method: "POST",
-        headers: { "Content-Type": "application/x-www-form-urlencoded" },
-        body: new URLSearchParams({
-          name: "Post Boost Campaign",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          name: "Boosted Page Post (Engagement)",
           objective: "POST_ENGAGEMENT",
           status: "PAUSED",
           access_token: token,
         }),
       }
     );
-    const campaign = await campaignRes.json();
 
-    /* 2️⃣ AD SET */
-    const adsetRes = await fetch(
+    const campaign = await campaignRes.json();
+    if (!campaign.id) {
+      return res.status(400).json(campaign);
+    }
+
+    /* =======================
+       2️⃣ CREATE AD SET
+    ======================= */
+    const adSetRes = await fetch(
       `https://graph.facebook.com/v19.0/${adAccountId}/adsets`,
       {
         method: "POST",
-        headers: { "Content-Type": "application/x-www-form-urlencoded" },
-        body: new URLSearchParams({
-          name: "Post Boost AdSet",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          name: "Boost Ad Set",
           campaign_id: campaign.id,
           daily_budget: daily_budget * 100,
           billing_event: "IMPRESSIONS",
           optimization_goal: "POST_ENGAGEMENT",
-          promoted_object: JSON.stringify({
-            page_id,
-          }),
-          targeting: JSON.stringify({
+          bid_strategy: "LOWEST_COST_WITHOUT_CAP",
+          targeting: {
             geo_locations: { countries: ["IN"] },
-          }),
+          },
           status: "PAUSED",
           access_token: token,
         }),
       }
     );
-    const adset = await adsetRes.json();
 
-    /* 3️⃣ AD */
+    const adSet = await adSetRes.json();
+    if (!adSet.id) {
+      return res.status(400).json(adSet);
+    }
+
+    /* =======================
+       3️⃣ CREATE CREATIVE
+    ======================= */
+    const creativeRes = await fetch(
+      `https://graph.facebook.com/v19.0/${adAccountId}/adcreatives`,
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          object_story_id: `${page_id}_${post_id}`,
+          access_token: token,
+        }),
+      }
+    );
+
+    const creative = await creativeRes.json();
+    if (!creative.id) {
+      return res.status(400).json(creative);
+    }
+
+    /* =======================
+       4️⃣ CREATE AD
+    ======================= */
     const adRes = await fetch(
       `https://graph.facebook.com/v19.0/${adAccountId}/ads`,
       {
         method: "POST",
-        headers: { "Content-Type": "application/x-www-form-urlencoded" },
-        body: new URLSearchParams({
-          name: "Post Boost Ad",
-          adset_id: adset.id,
-          creative: JSON.stringify({
-            object_story_id: `${page_id}_${post_id}`,
-          }),
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          name: "Boosted Post Ad",
+          adset_id: adSet.id,
+          creative: { creative_id: creative.id },
           status: "PAUSED",
           access_token: token,
         }),
@@ -90,15 +125,18 @@ export default async function handler(req, res) {
     );
 
     const ad = await adRes.json();
+    if (!ad.id) {
+      return res.status(400).json(ad);
+    }
 
     return res.json({
       success: true,
       campaign_id: campaign.id,
-      adset_id: adset.id,
+      adset_id: adSet.id,
       ad_id: ad.id,
     });
-  } catch (e) {
-    console.error(e);
+  } catch (err) {
+    console.error("BOOST ERROR:", err);
     return res.status(500).json({ error: "Boost failed" });
   }
 }
