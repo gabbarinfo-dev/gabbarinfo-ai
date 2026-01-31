@@ -186,7 +186,10 @@ if (!session) {
         fontFamily: "Inter, Arial",
         minHeight: "100vh",
         padding: 32,
-        background: "#fafafa",
+        backgroundImage: "url('/backgrounds/dashboard-bg.jpg')",
+backgroundSize: "cover",
+backgroundPosition: "center",
+backgroundRepeat: "no-repeat",
       }}
     >
       {/* HEADER */}
