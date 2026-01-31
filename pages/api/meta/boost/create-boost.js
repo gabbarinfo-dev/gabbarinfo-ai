@@ -8,95 +8,123 @@ export default async function handler(req, res) {
   }
 
   const session = await getServerSession(req, res, authOptions);
-  if (!session?.user?.email) {
+  if (!session || !session.user?.email) {
     return res.status(401).json({ error: "Unauthorized" });
   }
 
-  const { page_id, post_id, daily_budget = 500, duration = 5 } = req.body;
+  const email = session.user.email;
+  const { page_id, post_id, daily_budget = 500, duration = 7 } = req.body;
 
   if (!page_id || !post_id) {
     return res.status(400).json({ error: "Missing page or post" });
   }
 
-  const { data } = await supabaseServer
-    .from("meta_connections")
-    .select("system_user_token, fb_ad_account_id")
-    .eq("email", session.user.email)
-    .single();
-
-  if (!data?.system_user_token || !data?.fb_ad_account_id) {
-    return res.status(400).json({ error: "Meta account not connected" });
-  }
-
-  const token = data.system_user_token;
-  const adAccountId = data.fb_ad_account_id.startsWith("act_")
-    ? data.fb_ad_account_id
-    : `act_${data.fb_ad_account_id}`;
-
-  const graph = "https://graph.facebook.com/v19.0";
-
   try {
-    // 1️⃣ Campaign
-    const campaignRes = await fetch(`${graph}/${adAccountId}/campaigns`, {
-      method: "POST",
-      headers: { "Content-Type": "application/x-www-form-urlencoded" },
-      body: new URLSearchParams({
-        name: "Post Boost Campaign",
-        objective: "POST_ENGAGEMENT",
-        status: "PAUSED",
-        access_token: token,
-      }),
-    });
+    const { data, error } = await supabaseServer
+      .from("meta_connections")
+      .select("system_user_token, fb_ad_account_id")
+      .eq("email", email)
+      .single();
+
+    if (error || !data) {
+      return res.status(404).json({ error: "Meta connection not found" });
+    }
+
+    const token = data.system_user_token || process.env.META_SYSTEM_USER_TOKEN;
+    const adAccountId = data.fb_ad_account_id?.startsWith("act_")
+      ? data.fb_ad_account_id
+      : `act_${data.fb_ad_account_id}`;
+
+    if (!token || !adAccountId) {
+      return res.status(400).json({ error: "Meta setup incomplete" });
+    }
+
+    // STEP 1: Campaign
+    const campaignRes = await fetch(
+      `https://graph.facebook.com/v19.0/${adAccountId}/campaigns`,
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/x-www-form-urlencoded" },
+        body: new URLSearchParams({
+          name: "Boosted Post Campaign",
+          objective: "POST_ENGAGEMENT",
+          status: "PAUSED",
+          access_token: token,
+        }),
+      }
+    );
+
     const campaign = await campaignRes.json();
+    if (!campaign.id) return res.status(400).json(campaign);
 
-    // 2️⃣ Ad Set
-    const adsetRes = await fetch(`${graph}/${adAccountId}/adsets`, {
-      method: "POST",
-      headers: { "Content-Type": "application/x-www-form-urlencoded" },
-      body: new URLSearchParams({
-        name: "Post Boost AdSet",
-        campaign_id: campaign.id,
-        daily_budget: String(daily_budget * 100),
-        billing_event: "IMPRESSIONS",
-        optimization_goal: "POST_ENGAGEMENT",
-        bid_strategy: "LOWEST_COST_WITHOUT_CAP",
-        targeting: JSON.stringify({
-          geo_locations: { countries: ["IN"] },
+    // STEP 2: Ad Set
+    const adsetRes = await fetch(
+      `https://graph.facebook.com/v19.0/${adAccountId}/adsets`,
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/x-www-form-urlencoded" },
+        body: new URLSearchParams({
+          name: "Boosted Post AdSet",
+          campaign_id: campaign.id,
+          daily_budget: daily_budget * 100,
+          billing_event: "IMPRESSIONS",
+          optimization_goal: "POST_ENGAGEMENT",
+          bid_strategy: "LOWEST_COST_WITHOUT_CAP",
+          targeting: JSON.stringify({
+            geo_locations: { countries: ["IN"] },
+          }),
+          start_time: new Date().toISOString(),
+          end_time: new Date(Date.now() + duration * 86400000).toISOString(),
+          status: "PAUSED",
+          access_token: token,
         }),
-        promoted_object: JSON.stringify({
-          page_id,
-        }),
-        status: "PAUSED",
-        access_token: token,
-      }),
-    });
+      }
+    );
+
     const adset = await adsetRes.json();
+    if (!adset.id) return res.status(400).json(adset);
 
-    // 3️⃣ Ad (existing post)
-    const adRes = await fetch(`${graph}/${adAccountId}/ads`, {
-      method: "POST",
-      headers: { "Content-Type": "application/x-www-form-urlencoded" },
-      body: new URLSearchParams({
-        name: "Post Boost Ad",
-        adset_id: adset.id,
-        creative: JSON.stringify({
+    // STEP 3: Creative
+    const creativeRes = await fetch(
+      `https://graph.facebook.com/v19.0/${adAccountId}/adcreatives`,
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/x-www-form-urlencoded" },
+        body: new URLSearchParams({
           object_story_id: `${page_id}_${post_id}`,
+          access_token: token,
         }),
-        status: "PAUSED",
-        access_token: token,
-      }),
-    });
+      }
+    );
+
+    const creative = await creativeRes.json();
+    if (!creative.id) return res.status(400).json(creative);
+
+    // STEP 4: Ad
+    const adRes = await fetch(
+      `https://graph.facebook.com/v19.0/${adAccountId}/ads`,
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/x-www-form-urlencoded" },
+        body: new URLSearchParams({
+          name: "Boosted Post Ad",
+          adset_id: adset.id,
+          creative: JSON.stringify({ creative_id: creative.id }),
+          status: "PAUSED",
+          access_token: token,
+        }),
+      }
+    );
 
     const ad = await adRes.json();
-
     return res.status(200).json({
       success: true,
       campaign_id: campaign.id,
       adset_id: adset.id,
       ad_id: ad.id,
     });
-  } catch (e) {
-    console.error(e);
-    return res.status(500).json({ error: "Boost failed" });
+  } catch (err) {
+    console.error(err);
+    return res.status(500).json({ error: "Internal server error" });
   }
 }
