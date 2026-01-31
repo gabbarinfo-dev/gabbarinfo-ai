@@ -95,11 +95,10 @@ useEffect(() => {
   width: 90px;
   height: 90px;
   border-radius: 50%;
-  transform: rotate(-45deg);
   background: radial-gradient(
-    circle at 30% 30%,
+    circle at 35% 35%,
     #ffffff,
-    #d9e2ff 60%,
+    #e2e8ff 60%,
     #b8c6ff 100%
   );
   box-shadow:
@@ -107,7 +106,7 @@ useEffect(() => {
     0 0 40px rgba(120,160,255,0.25);
   z-index: 2;
 
-  /* 👇 THIS IS THE KEY */
+  /* 🔥 THIS IS THE KEY */
   transform: rotate(-45deg);
 }
 
@@ -115,13 +114,14 @@ useEffect(() => {
 .moon::after {
   content: "";
   position: absolute;
-  top: 0;
-  right: 28px; /* moved slightly more */
+  top: 10px;
+  left: 35px;
   width: 90px;
   height: 90px;
   background: #060b1f;
   border-radius: 50%;
 }
+
 
         /* ☀️ Dreamy Sun Glow */
         .sun-glow {
