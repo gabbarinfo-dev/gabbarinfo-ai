@@ -1,4 +1,5 @@
 // pages/api/credits/get.js
+
 import { getServerSession } from "next-auth/next";
 import { authOptions } from "../auth/[...nextauth]";
 import { createClient } from "@supabase/supabase-js";
@@ -19,31 +20,43 @@ export default async function handler(req, res) {
       return res.status(401).json({ error: "Not authenticated" });
     }
 
-    const email = session.user?.email?.toLowerCase().trim();
     const role = session.user?.role || "client";
+    const rawEmail = session.user?.email;
+    const email = rawEmail ? rawEmail.toLowerCase().trim() : null;
 
-    // Owner: treat as unlimited
+    // Owners have unlimited credits
     if (role === "owner") {
       return res.status(200).json({ credits: null, unlimited: true });
     }
 
-    const { data, error } = await supabase
-      .from("credits")
-      .select("credits_left")
-      .eq("email", email)
-      .maybeSingle();
+    // 🔹 If email exists, check DB normally
+    if (email) {
+      const { data, error } = await supabase
+        .from("credits")
+        .select("credits_left")
+        .eq("email", email)
+        .maybeSingle();
 
-    if (error) {
-      console.error("credits/get error:", error);
-      return res.status(500).json({ error: "Database error" });
+      if (error) {
+        console.error("credits/get error:", error);
+        return res.status(500).json({ error: "Database error" });
+      }
+
+      const credits = data?.credits_left ?? 0;
+      return res.status(200).json({
+        credits,
+        unlimited: false,
+      });
     }
 
-    const credits = data?.credits_left ?? 0;
-
+    // 🔹 Facebook phone-login case (no email)
+    // Show starter credits, actual row will be created on first spend
     return res.status(200).json({
-      credits,
+      credits: 30,
       unlimited: false,
+      provisional: true,
     });
+
   } catch (err) {
     console.error("credits/get exception:", err);
     return res.status(500).json({ error: "Server error" });
