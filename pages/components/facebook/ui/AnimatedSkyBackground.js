@@ -85,34 +85,38 @@ useEffect(() => {
             filter: hue-rotate(8deg);
           }
         }
-/* 🌙 Distant Moon */
+
+/* 🌙 Half Moon */
 .moon {
   position: absolute;
-  top: 10%;
-  right: 12%;
-
-  width: 72px;
-  height: 72px;
+  top: 60px;
+  right: 80px;
+  width: 90px;
+  height: 90px;
   border-radius: 50%;
-
   background: radial-gradient(
-    circle at 35% 35%,
-    rgba(255,255,255,0.95),
-    rgba(220,225,245,0.85) 45%,
-    rgba(180,190,220,0.6) 60%,
-    rgba(140,150,200,0.25) 72%,
-    transparent 76%
+    circle at 30% 30%,
+    #ffffff,
+    #d9e2ff 60%,
+    #b8c6ff 100%
   );
-
   box-shadow:
-    0 0 12px rgba(200,210,255,0.35),
-    0 0 28px rgba(160,170,220,0.25);
-
-  opacity: 0.9;
-  pointer-events: none;
+    0 0 18px rgba(180,200,255,0.35),
+    0 0 40px rgba(120,160,255,0.25);
   z-index: 2;
 }
 
+/* Moon shadow to create half shape */
+.moon::after {
+  content: "";
+  position: absolute;
+  top: 0;
+  left: 22px;
+  width: 90px;
+  height: 90px;
+  background: #060b1f;
+  border-radius: 50%;
+}
 
         /* ☀️ Dreamy Sun Glow */
         .sun-glow {
@@ -139,28 +143,42 @@ useEffect(() => {
         }
 
         .snow.slow {
-          background-image: radial-gradient(2px 2px at 20px 30px, white, transparent),
-            radial-gradient(2px 2px at 200px 150px, white, transparent),
-            radial-gradient(1px 1px at 400px 80px, white, transparent);
-          animation: snowDrift 60s linear infinite;
-          opacity: 0.15;
-        }
+  background-image:
+    radial-gradient(2px 2px at 20px 30px, white, transparent),
+    radial-gradient(2px 2px at 120px 80px, white, transparent),
+    radial-gradient(1.5px 1.5px at 240px 160px, white, transparent),
+    radial-gradient(1px 1px at 360px 40px, white, transparent),
+    radial-gradient(2px 2px at 480px 200px, white, transparent),
+    radial-gradient(1px 1px at 600px 120px, white, transparent);
+  animation: snowDrift 60s linear infinite;
+  opacity: 0.18;
+}
+
 
         .snow.medium {
-          background-image: radial-gradient(2px 2px at 50px 100px, white, transparent),
-            radial-gradient(1px 1px at 300px 200px, white, transparent),
-            radial-gradient(2px 2px at 500px 50px, white, transparent);
-          animation: snowDrift 40s linear infinite;
-          opacity: 0.25;
-        }
+  background-image:
+    radial-gradient(2px 2px at 40px 100px, white, transparent),
+    radial-gradient(1.5px 1.5px at 180px 60px, white, transparent),
+    radial-gradient(2px 2px at 300px 180px, white, transparent),
+    radial-gradient(1px 1px at 420px 20px, white, transparent),
+    radial-gradient(1.5px 1.5px at 540px 140px, white, transparent),
+    radial-gradient(2px 2px at 660px 90px, white, transparent);
+  animation: snowDrift 40s linear infinite;
+  opacity: 0.28;
+}
 
         .snow.fast {
-          background-image: radial-gradient(1px 1px at 100px 50px, white, transparent),
-            radial-gradient(2px 2px at 350px 120px, white, transparent),
-            radial-gradient(1px 1px at 600px 200px, white, transparent);
-          animation: snowDrift 25s linear infinite;
-          opacity: 0.35;
-        }
+  background-image:
+    radial-gradient(1px 1px at 60px 40px, white, transparent),
+    radial-gradient(1.5px 1.5px at 160px 120px, white, transparent),
+    radial-gradient(2px 2px at 260px 70px, white, transparent),
+    radial-gradient(1px 1px at 360px 180px, white, transparent),
+    radial-gradient(1.5px 1.5px at 460px 30px, white, transparent),
+    radial-gradient(2px 2px at 560px 150px, white, transparent);
+  animation: snowDrift 25s linear infinite;
+  opacity: 0.38;
+}
+
 
         @keyframes snowDrift {
           from {
@@ -189,21 +207,7 @@ useEffect(() => {
           }
         }
       `}</style>
-  background: `
-  radial-gradient(
-    1200px 600px at 50% 80%,
-    rgba(255, 200, 150, 0.25),
-    transparent 60%
-  ),
-  linear-gradient(
-    180deg,
-    #0b163f 0%,
-    #2b2d6b 40%,
-    #6b4e71 70%,
-    #f2c49b 100%
-  )
-`,
-animation: "dawnShift 40s ease-in-out infinite alternate",
+ 
     <style jsx global>{`
   @keyframes dawnShift {
     0% {
