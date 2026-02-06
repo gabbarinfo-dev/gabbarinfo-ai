@@ -117,6 +117,9 @@ export default async function handler(req, res) {
     return res.json({
       ok: true,
       message: "Business info synced successfully",
+      fb_business_id: businessId,
+      fb_page_id: page.id,
+      fb_ad_account_id: adAccountId,
     });
 
   } catch (err) {
