@@ -65,7 +65,7 @@ export default async function handler(req, res) {
             body: JSON.stringify({
                 name: `Boost_Post_${post_id}_${Date.now()}`,
                 objective: "OUTCOME_ENGAGEMENT",
-                special_ad_categories: [], // Must be an empty array
+                special_ad_categories: ["NONE"], // Must be ["NONE"] for non-special categories
                 status: "PAUSED",
                 access_token: token
             }),
