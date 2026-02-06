@@ -111,11 +111,14 @@ export default async function handler(req, res) {
 
         // 3. Create AdCreative
         const creativeUrl = `https://graph.facebook.com/v21.0/${adAccountId}/adcreatives`;
+        // Normalize post_id in case it's already composite (pageId_postId)
+        const normalizedPostId = post_id.includes("_") ? post_id.split("_")[1] : post_id;
+
         const creativeRes = await fetch(creativeUrl, {
             method: "POST",
             body: new URLSearchParams({
                 name: `Creative_Boost_${post_id}`,
-                object_story_id: `${page_id}_${post_id}`,
+                object_story_id: `${page_id}_${normalizedPostId}`,
                 access_token: token
             }),
         });
