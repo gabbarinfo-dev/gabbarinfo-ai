@@ -66,6 +66,15 @@ export default function FacebookBusinessConnect() {
       return;
     }
 
+    // Refresh meta info to show new IDs
+    setMeta(prev => ({
+      ...prev,
+      fb_business_id: data.fb_business_id,
+      fb_page_id: data.fb_page_id,
+      fb_ad_account_id: data.fb_ad_account_id,
+      business_info_synced: true,
+    }));
+
     alert("Business info synced successfully.");
   };
 
@@ -208,11 +217,25 @@ export default function FacebookBusinessConnect() {
             ✅ Facebook Business Connected
           </p>
 
-          <ul style={{ fontSize: 14, paddingLeft: 18 }}>
-            {meta?.fb_business_id && <li>Business Connected</li>}
-            {meta?.fb_page_id && <li>Facebook Page Connected</li>}
-            {meta?.ig_business_id && <li>Instagram Business Connected</li>}
-            {meta?.fb_ad_account_id && <li>Ad Account Connected</li>}
+          <ul style={{ fontSize: 13, paddingLeft: 18, listStyleType: "none" }}>
+            {meta?.fb_business_id && (
+              <li style={{ marginBottom: 4 }}>
+                <span style={{ fontWeight: 600 }}>Business ID:</span>{" "}
+                <code style={{ background: "#f3f4f6", padding: "2px 4px", borderRadius: 4 }}>{meta.fb_business_id}</code>
+              </li>
+            )}
+            {meta?.fb_page_id && (
+              <li style={{ marginBottom: 4 }}>
+                <span style={{ fontWeight: 600 }}>Page ID:</span>{" "}
+                <code style={{ background: "#f3f4f6", padding: "2px 4px", borderRadius: 4 }}>{meta.fb_page_id}</code>
+              </li>
+            )}
+            {meta?.fb_ad_account_id && (
+              <li>
+                <span style={{ fontWeight: 600 }}>Ad Account ID:</span>{" "}
+                <code style={{ background: "#f3f4f6", padding: "2px 4px", borderRadius: 4 }}>{meta.fb_ad_account_id}</code>
+              </li>
+            )}
           </ul>
           <div style={{ display: "flex", gap: "10px", flexWrap: "wrap", marginTop: "10px" }}>
             <button
