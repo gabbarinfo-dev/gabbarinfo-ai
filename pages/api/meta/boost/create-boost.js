@@ -92,7 +92,7 @@ export default async function handler(req, res) {
                 campaign_id: campaignId,
                 promoted_object: JSON.stringify({ page_id: page_id }), // Must be stringified for form-encoded
                 optimization_goal: "POST_ENGAGEMENT",
-                billing_event: "POST_ENGAGEMENT",
+                billing_event: "IMPRESSIONS",
                 bid_strategy: "LOWEST_COST_WITHOUT_CAP",
                 daily_budget: Math.max(100, (daily_budget || 500) * 100), // Min 100 units
                 start_time: startTime,
