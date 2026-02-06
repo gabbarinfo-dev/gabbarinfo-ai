@@ -91,7 +91,7 @@ export default async function handler(req, res) {
                 name: `AdSet_Boost_${post_id}`,
                 campaign_id: campaignId,
                 promoted_object: JSON.stringify({ page_id: page_id }), // Must be stringified for form-encoded
-                optimization_goal: "POST_ENGAGEMENT",
+                optimization_goal: "IMPRESSIONS",
                 billing_event: "IMPRESSIONS",
                 bid_strategy: "LOWEST_COST_WITHOUT_CAP",
                 daily_budget: Math.max(100, (daily_budget || 500) * 100), // Min 100 units
