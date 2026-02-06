@@ -465,7 +465,19 @@ export default function FacebookBusinessConnect() {
           {showAdInsightsModal && (
             <div style={modalOverlayStyle}>
               <div style={modalContentStyle}>
-                <h3>Ad Account Insights</h3>
+                <h3 style={{ marginBottom: adData?.account_id ? "4px" : "16px" }}>
+                  {adData?.account_name ? `${adData.account_name} ` : ""}Ad Account Insights
+                </h3>
+                {adData?.account_id && (
+                  <p style={{ fontSize: 13, color: "#666", marginBottom: "4px" }}>
+                    Ad Account ID: {adData.account_id}
+                  </p>
+                )}
+                {adData?.currency && (
+                  <p style={{ fontSize: 13, color: "#666", marginBottom: "16px" }}>
+                    Currency: {adData.currency}
+                  </p>
+                )}
                 {adLoading ? (
                   <p>Fetching ad performance...</p>
                 ) : adData ? (
@@ -490,6 +502,9 @@ export default function FacebookBusinessConnect() {
                     )}
                     <p style={{ fontSize: 12, color: "#666", marginTop: 20 }}>
                       * Insights are shown for the most recent campaign in this ad account.
+                    </p>
+                    <p style={{ fontSize: 11, color: "#aaa", marginTop: 4, borderTop: "1px solid #eee", paddingTop: "8px" }}>
+                      Data fetched using Facebook Ads API.
                     </p>
                   </div>
                 ) : (
