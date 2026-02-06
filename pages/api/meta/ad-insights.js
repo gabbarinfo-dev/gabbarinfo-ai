@@ -34,7 +34,17 @@ export default async function handler(req, res) {
             return res.status(400).json({ ok: false, message: "Meta access token not found." });
         }
 
-        // 2. Fetch Latest Campaign
+        // 2. Fetch Ad Account Details (name, currency)
+        const accountRes = await fetch(
+            `https://graph.facebook.com/v21.0/${adAccountNode}?fields=name,currency&access_token=${accessToken}`
+        );
+        const accountJson = await accountRes.json();
+
+        if (accountJson.error) {
+            throw new Error(accountJson.error.message);
+        }
+
+        // 3. Fetch Latest Campaign
         const campaignRes = await fetch(
             `https://graph.facebook.com/v21.0/${adAccountNode}/campaigns?limit=1&fields=name&access_token=${accessToken}`
         );
@@ -47,7 +57,12 @@ export default async function handler(req, res) {
         if (!campaignJson.data || campaignJson.data.length === 0) {
             return res.json({
                 ok: true,
-                data: null,
+                data: {
+                    account_name: accountJson.name,
+                    account_id: adAccountNode,
+                    currency: accountJson.currency,
+                    campaign_name: null
+                },
                 message: "No campaigns found for this ad account."
             });
         }
@@ -55,7 +70,7 @@ export default async function handler(req, res) {
         const campaignId = campaignJson.data[0].id;
         const campaignName = campaignJson.data[0].name;
 
-        // 3. Fetch Campaign Insights (Lifetime)
+        // 4. Fetch Campaign Insights (Lifetime)
         const insightsRes = await fetch(
             `https://graph.facebook.com/v21.0/${campaignId}/insights?fields=impressions,reach&period=lifetime&access_token=${accessToken}`
         );
@@ -76,6 +91,9 @@ export default async function handler(req, res) {
         return res.json({
             ok: true,
             data: {
+                account_name: accountJson.name,
+                account_id: adAccountNode,
+                currency: accountJson.currency,
                 campaign_name: campaignName,
                 impressions: impressions,
                 reach: reach
