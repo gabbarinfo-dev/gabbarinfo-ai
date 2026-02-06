@@ -56,22 +56,90 @@ export default async function handler(req, res) {
 
         // Ensure ad account ID has 'act_' prefix
         const adAccountId = fb_ad_account_id.startsWith("act_") ? fb_ad_account_id : `act_${fb_ad_account_id}`;
-        const url = `https://graph.facebook.com/v19.0/${adAccountId}/promoted_posts`;
 
-        const response = await fetch(url, {
+        // 1. Create Campaign
+        const campaignUrl = `https://graph.facebook.com/v21.0/${adAccountId}/campaigns`;
+        const campaignRes = await fetch(campaignUrl, {
             method: "POST",
-            headers: {
-                "Content-Type": "application/json",
-            },
-            body: JSON.stringify(payload),
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+                name: `Boost_Post_${post_id}_${Date.now()}`,
+                objective: "OUTCOME_ENGAGEMENT",
+                special_ad_categories: "NONE",
+                status: "PAUSED", // Safety: Keep PAUSED for review
+                access_token: token
+            }),
         });
+        const campaignData = await campaignRes.json();
+        if (campaignData.error) throw new Error(`Campaign error: ${campaignData.error.message}`);
+        const campaignId = campaignData.id;
 
-        const result = await response.json();
+        // 2. Create AdSet
+        const adSetUrl = `https://graph.facebook.com/v21.0/${adAccountId}/adsets`;
+        const startTime = Math.floor(Date.now() / 1000);
+        const endTime = startTime + (duration || 7) * 86400;
 
-        return res.status(response.status).json(result);
+        const adSetRes = await fetch(adSetUrl, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+                name: `AdSet_Boost_${post_id}`,
+                campaign_id: campaignId,
+                optimization_goal: "POST_ENGAGEMENT",
+                billing_event: "IMPRESSIONS",
+                bid_strategy: "LOWEST_COST_WITHOUT_CAP",
+                daily_budget: (daily_budget || 500) * 100, // In paise/cents
+                start_time: startTime,
+                end_time: endTime,
+                targeting: { geo_locations: { countries: ["IN"] } },
+                status: "PAUSED",
+                access_token: token
+            }),
+        });
+        const adSetData = await adSetRes.json();
+        if (adSetData.error) throw new Error(`AdSet error: ${adSetData.error.message}`);
+        const adSetId = adSetData.id;
+
+        // 3. Create AdCreative
+        const creativeUrl = `https://graph.facebook.com/v21.0/${adAccountId}/adcreatives`;
+        const creativeRes = await fetch(creativeUrl, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+                name: `Creative_Boost_${post_id}`,
+                object_story_id: `${page_id}_${post_id}`,
+                access_token: token
+            }),
+        });
+        const creativeData = await creativeRes.json();
+        if (creativeData.error) throw new Error(`Creative error: ${creativeData.error.message}`);
+        const creativeId = creativeData.id;
+
+        // 4. Create Ad
+        const adUrl = `https://graph.facebook.com/v21.0/${adAccountId}/ads`;
+        const adRes = await fetch(adUrl, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+                name: `Ad_Boost_${post_id}`,
+                adset_id: adSetId,
+                creative: { creative_id: creativeId },
+                status: "PAUSED",
+                access_token: token
+            }),
+        });
+        const adData = await adRes.json();
+        if (adData.error) throw new Error(`Ad error: ${adData.error.message}`);
+
+        return res.status(200).json({
+            success: true,
+            id: adData.id,
+            campaign_id: campaignId,
+            adset_id: adSetId,
+            creative_id: creativeId
+        });
     } catch (err) {
-        console.error("Create boost error:", err);
-        return res.status(500).json({ error: "Internal server error" });
+        console.error("Create boost error:", err.message);
+        return res.status(500).json({ error: err.message || "Internal server error" });
     }
 }
-
