@@ -64,7 +64,7 @@ export default async function handler(req, res) {
             body: new URLSearchParams({
                 name: `Boost_Post_${post_id}_${Date.now()}`,
                 objective: "OUTCOME_ENGAGEMENT",
-                special_ad_categories: "NONE", // Now a string
+                special_ad_categories: JSON.stringify([]), // Must be stringified empty array for form-encoded
                 status: "PAUSED",
                 access_token: token
             }),
@@ -90,7 +90,7 @@ export default async function handler(req, res) {
                     page_id: page_id,
                     post_id: post_id
                 }), // Must be stringified for form-encoded
-                optimization_goal: "ENGAGEMENT",
+                optimization_goal: "POST_ENGAGEMENT",
                 billing_event: "IMPRESSIONS",
                 bid_strategy: "LOWEST_COST_WITHOUT_CAP",
                 daily_budget: Math.max(100, (daily_budget || 500) * 100), // Min 100 units
