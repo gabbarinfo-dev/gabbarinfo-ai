@@ -32,9 +32,9 @@ export default async function handler(req, res) {
             return res.status(400).json({ ok: false, message: "Meta access token not found." });
         }
 
-        // 2. Fetch Instagram Basic Metrics (followers_count, media_count)
+        // 2. Fetch Instagram Basic Metrics (name, followers_count, media_count)
         const apiRes = await fetch(
-            `https://graph.facebook.com/v21.0/${igBusinessId}?fields=followers_count,media_count&access_token=${accessToken}`
+            `https://graph.facebook.com/v21.0/${igBusinessId}?fields=name,username,followers_count,media_count&access_token=${accessToken}`
         );
         const data = await apiRes.json();
 
@@ -45,6 +45,8 @@ export default async function handler(req, res) {
         return res.json({
             ok: true,
             data: {
+                name: data.name || data.username || "Instagram Account",
+                id: igBusinessId,
                 followers_count: data.followers_count || 0,
                 media_count: data.media_count || 0
             }
