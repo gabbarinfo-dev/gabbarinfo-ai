@@ -70,7 +70,10 @@ export default async function handler(req, res) {
             }),
         });
         const campaignData = await campaignRes.json();
-        if (campaignData.error) throw new Error(`Campaign error: ${campaignData.error.message}`);
+        if (campaignData.error) {
+            console.error("META CAMPAIGN ERROR:", campaignData.error);
+            return res.status(500).json({ error: "Campaign error", meta: campaignData.error });
+        }
         const campaignId = campaignData.id;
 
         // 2. Create AdSet
@@ -102,7 +105,10 @@ export default async function handler(req, res) {
             }),
         });
         const adSetData = await adSetRes.json();
-        if (adSetData.error) throw new Error(`AdSet error: ${adSetData.error.message}`);
+        if (adSetData.error) {
+            console.error("META ADSET ERROR:", adSetData.error);
+            return res.status(500).json({ error: "AdSet error", meta: adSetData.error });
+        }
         const adSetId = adSetData.id;
 
         // 3. Create AdCreative
@@ -116,7 +122,10 @@ export default async function handler(req, res) {
             }),
         });
         const creativeData = await creativeRes.json();
-        if (creativeData.error) throw new Error(`Creative error: ${creativeData.error.message}`);
+        if (creativeData.error) {
+            console.error("META CREATIVE ERROR:", creativeData.error);
+            return res.status(500).json({ error: "Creative error", meta: creativeData.error });
+        }
         const creativeId = creativeData.id;
 
         // 4. Create Ad
@@ -132,7 +141,10 @@ export default async function handler(req, res) {
             }),
         });
         const adData = await adRes.json();
-        if (adData.error) throw new Error(`Ad error: ${adData.error.message}`);
+        if (adData.error) {
+            console.error("META AD ERROR:", adData.error);
+            return res.status(500).json({ error: "Ad error", meta: adData.error });
+        }
 
         return res.status(200).json({
             success: true,
