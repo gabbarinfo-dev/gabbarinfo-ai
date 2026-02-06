@@ -61,11 +61,10 @@ export default async function handler(req, res) {
         const campaignUrl = `https://graph.facebook.com/v21.0/${adAccountId}/campaigns`;
         const campaignRes = await fetch(campaignUrl, {
             method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({
+            body: new URLSearchParams({
                 name: `Boost_Post_${post_id}_${Date.now()}`,
                 objective: "OUTCOME_ENGAGEMENT",
-                special_ad_categories: ["NONE"], // Must be ["NONE"] for non-special categories
+                special_ad_categories: "NONE", // Now a string
                 status: "PAUSED",
                 access_token: token
             }),
@@ -84,21 +83,20 @@ export default async function handler(req, res) {
 
         const adSetRes = await fetch(adSetUrl, {
             method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({
+            body: new URLSearchParams({
                 name: `AdSet_Boost_${post_id}`,
                 campaign_id: campaignId,
-                promoted_object: {
+                promoted_object: JSON.stringify({
                     page_id: page_id,
                     post_id: post_id
-                }, // Required for Page Post boosts
+                }), // Must be stringified for form-encoded
                 optimization_goal: "ENGAGEMENT",
                 billing_event: "IMPRESSIONS",
                 bid_strategy: "LOWEST_COST_WITHOUT_CAP",
                 daily_budget: Math.max(100, (daily_budget || 500) * 100), // Min 100 units
                 start_time: startTime,
                 end_time: endTime,
-                targeting: { geo_locations: { countries: ["IN"] } },
+                targeting: JSON.stringify({ geo_locations: { countries: ["IN"] } }), // Must be stringified
                 status: "PAUSED",
                 access_token: token
             }),
@@ -111,8 +109,7 @@ export default async function handler(req, res) {
         const creativeUrl = `https://graph.facebook.com/v21.0/${adAccountId}/adcreatives`;
         const creativeRes = await fetch(creativeUrl, {
             method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({
+            body: new URLSearchParams({
                 name: `Creative_Boost_${post_id}`,
                 object_story_id: `${page_id}_${post_id}`,
                 access_token: token
@@ -126,11 +123,10 @@ export default async function handler(req, res) {
         const adUrl = `https://graph.facebook.com/v21.0/${adAccountId}/ads`;
         const adRes = await fetch(adUrl, {
             method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({
+            body: new URLSearchParams({
                 name: `Ad_Boost_${post_id}`,
                 adset_id: adSetId,
-                creative: { creative_id: creativeId },
+                creative: JSON.stringify({ creative_id: creativeId }), // Must be stringified
                 status: "PAUSED",
                 access_token: token
             }),
