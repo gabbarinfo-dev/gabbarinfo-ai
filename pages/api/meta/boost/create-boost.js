@@ -63,7 +63,7 @@ export default async function handler(req, res) {
             method: "POST",
             body: new URLSearchParams({
                 name: `Boost_Post_${post_id}_${Date.now()}`,
-                objective: "OUTCOME_ENGAGEMENT",
+                objective: "OUTCOME_AWARENESS",
                 special_ad_categories: JSON.stringify([]), // Must be stringified empty array for form-encoded
                 is_adset_budget_sharing_enabled: false, // Campaign Budget Optimization off
                 status: "PAUSED",
