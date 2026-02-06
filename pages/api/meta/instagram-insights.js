@@ -45,7 +45,8 @@ export default async function handler(req, res) {
         return res.json({
             ok: true,
             data: {
-                name: data.name || data.username || "Instagram Account",
+                name: data.name || "Instagram Account",
+                username: data.username || null,
                 id: igBusinessId,
                 followers_count: data.followers_count || 0,
                 media_count: data.media_count || 0
