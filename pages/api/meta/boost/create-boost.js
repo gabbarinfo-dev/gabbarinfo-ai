@@ -90,10 +90,7 @@ export default async function handler(req, res) {
             body: new URLSearchParams({
                 name: `AdSet_Boost_${post_id}`,
                 campaign_id: campaignId,
-                promoted_object: JSON.stringify({
-                    page_id: page_id,
-                    post_id: post_id
-                }), // Must be stringified for form-encoded
+                promoted_object: JSON.stringify({ page_id: page_id }), // Must be stringified for form-encoded
                 optimization_goal: "POST_ENGAGEMENT",
                 billing_event: "IMPRESSIONS",
                 bid_strategy: "LOWEST_COST_WITHOUT_CAP",
