@@ -64,9 +64,9 @@ export default async function handler(req, res) {
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({
                 name: `Boost_Post_${post_id}_${Date.now()}`,
-                objective: "OUTCOME_ENGAGEMENT",
-                special_ad_categories: "NONE",
-                status: "PAUSED", // Safety: Keep PAUSED for review
+                objective: "POST_ENGAGEMENT",
+                special_ad_categories: [], // Must be an empty array
+                status: "PAUSED",
                 access_token: token
             }),
         });
@@ -76,8 +76,11 @@ export default async function handler(req, res) {
 
         // 2. Create AdSet
         const adSetUrl = `https://graph.facebook.com/v21.0/${adAccountId}/adsets`;
-        const startTime = Math.floor(Date.now() / 1000);
-        const endTime = startTime + (duration || 7) * 86400;
+        // Convert to ISO 8601 strings (required by some versions/flows)
+        const startTime = new Date().toISOString();
+        const endDt = new Date();
+        endDt.setDate(endDt.getDate() + (duration || 7));
+        const endTime = endDt.toISOString();
 
         const adSetRes = await fetch(adSetUrl, {
             method: "POST",
@@ -85,10 +88,11 @@ export default async function handler(req, res) {
             body: JSON.stringify({
                 name: `AdSet_Boost_${post_id}`,
                 campaign_id: campaignId,
+                promoted_object: { page_id: page_id }, // Required for Page Post boosts
                 optimization_goal: "POST_ENGAGEMENT",
                 billing_event: "IMPRESSIONS",
                 bid_strategy: "LOWEST_COST_WITHOUT_CAP",
-                daily_budget: (daily_budget || 500) * 100, // In paise/cents
+                daily_budget: Math.max(100, (daily_budget || 500) * 100), // Min 100 units
                 start_time: startTime,
                 end_time: endTime,
                 targeting: { geo_locations: { countries: ["IN"] } },
