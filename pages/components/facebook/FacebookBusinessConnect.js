@@ -217,26 +217,28 @@ export default function FacebookBusinessConnect() {
             ✅ Facebook Business Connected
           </p>
 
-          <ul style={{ fontSize: 13, paddingLeft: 18, listStyleType: "none" }}>
-            {meta?.fb_business_id && (
-              <li style={{ marginBottom: 4 }}>
-                <span style={{ fontWeight: 600 }}>Business ID:</span>{" "}
-                <code style={{ background: "#f3f4f6", padding: "2px 4px", borderRadius: 4 }}>{meta.fb_business_id}</code>
-              </li>
-            )}
-            {meta?.fb_page_id && (
-              <li style={{ marginBottom: 4 }}>
-                <span style={{ fontWeight: 600 }}>Page ID:</span>{" "}
-                <code style={{ background: "#f3f4f6", padding: "2px 4px", borderRadius: 4 }}>{meta.fb_page_id}</code>
-              </li>
-            )}
-            {meta?.fb_ad_account_id && (
-              <li>
-                <span style={{ fontWeight: 600 }}>Ad Account ID:</span>{" "}
-                <code style={{ background: "#f3f4f6", padding: "2px 4px", borderRadius: 4 }}>{meta.fb_ad_account_id}</code>
-              </li>
-            )}
-          </ul>
+          {meta?.business_info_synced === true && (
+            <ul style={{ fontSize: 13, paddingLeft: 18, listStyleType: "none" }}>
+              {meta?.fb_business_id && (
+                <li style={{ marginBottom: 4 }}>
+                  <span style={{ fontWeight: 600 }}>Business ID:</span>{" "}
+                  <code style={{ background: "#f3f4f6", padding: "2px 4px", borderRadius: 4 }}>{meta.fb_business_id}</code>
+                </li>
+              )}
+              {meta?.fb_page_id && (
+                <li style={{ marginBottom: 4 }}>
+                  <span style={{ fontWeight: 600 }}>Page ID:</span>{" "}
+                  <code style={{ background: "#f3f4f6", padding: "2px 4px", borderRadius: 4 }}>{meta.fb_page_id}</code>
+                </li>
+              )}
+              {meta?.fb_ad_account_id && (
+                <li>
+                  <span style={{ fontWeight: 600 }}>Ad Account ID:</span>{" "}
+                  <code style={{ background: "#f3f4f6", padding: "2px 4px", borderRadius: 4 }}>{meta.fb_ad_account_id}</code>
+                </li>
+              )}
+            </ul>
+          )}
           <div style={{ display: "flex", gap: "10px", flexWrap: "wrap", marginTop: "10px" }}>
             <button
               onClick={handleSyncBusinessInfo}
