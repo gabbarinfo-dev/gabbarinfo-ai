@@ -65,6 +65,7 @@ export default async function handler(req, res) {
                 name: `Boost_Post_${post_id}_${Date.now()}`,
                 objective: "OUTCOME_ENGAGEMENT",
                 special_ad_categories: JSON.stringify([]), // Must be stringified empty array for form-encoded
+                is_adset_budget_sharing_enabled: false, // Campaign Budget Optimization off
                 status: "PAUSED",
                 access_token: token
             }),
