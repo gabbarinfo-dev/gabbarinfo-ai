@@ -352,7 +352,14 @@ export default function FacebookBusinessConnect() {
           {showEngagementModal && (
             <div style={modalOverlayStyle}>
               <div style={modalContentStyle}>
-                <h3>Page Performance Insights</h3>
+                <h3 style={{ marginBottom: meta?.fb_page_id ? "4px" : "16px" }}>
+                  {meta?.business_name ? `${meta.business_name} ` : ""}Page Performance Insights
+                </h3>
+                {meta?.fb_page_id && (
+                  <p style={{ fontSize: 13, color: "#666", marginBottom: "16px" }}>
+                    Page ID: {meta.fb_page_id}
+                  </p>
+                )}
                 {engagementLoading ? (
                   <p>Fetching latest metrics...</p>
                 ) : engagementData ? (
