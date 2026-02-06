@@ -64,7 +64,7 @@ export default async function handler(req, res) {
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({
                 name: `Boost_Post_${post_id}_${Date.now()}`,
-                objective: "POST_ENGAGEMENT",
+                objective: "OUTCOME_ENGAGEMENT",
                 special_ad_categories: [], // Must be an empty array
                 status: "PAUSED",
                 access_token: token
