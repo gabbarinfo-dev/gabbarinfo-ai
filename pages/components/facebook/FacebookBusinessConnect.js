@@ -408,7 +408,14 @@ export default function FacebookBusinessConnect() {
           {showIgInsightsModal && (
             <div style={modalOverlayStyle}>
               <div style={modalContentStyle}>
-                <h3>Instagram Business Insights</h3>
+                <h3 style={{ marginBottom: igData?.id ? "4px" : "16px" }}>
+                  {igData?.name ? `${igData.name} ` : ""}Instagram Business Insights
+                </h3>
+                {igData?.id && (
+                  <p style={{ fontSize: 13, color: "#666", marginBottom: "16px" }}>
+                    Instagram Business ID: {igData.id}
+                  </p>
+                )}
                 {igLoading ? (
                   <p>Fetching Instagram metrics...</p>
                 ) : igData ? (
