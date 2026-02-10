@@ -27,17 +27,20 @@ export default async function handler(req, res) {
       });
     }
 
-    // 2) Exchange refresh token -> access token
-    const tokenResp = await fetch("https://oauth2.googleapis.com/token", {
-      method: "POST",
-      headers: { "Content-Type": "application/x-www-form-urlencoded" },
-      body: new URLSearchParams({
-        client_id: GOOGLE_CLIENT_ID,
-        client_secret: GOOGLE_CLIENT_SECRET,
-        refresh_token: GOOGLE_ADS_REFRESH_TOKEN,
-        grant_type: "refresh_token",
-      }),
-    });
+   // 2) Exchange refresh token -> access token
+const tokenResp = await fetch("https://oauth2.googleapis.com/token", {
+  method: "POST",
+  headers: { "Content-Type": "application/x-www-form-urlencoded" },
+  body: new URLSearchParams({
+    client_id: GOOGLE_CLIENT_ID,
+    client_secret: GOOGLE_CLIENT_SECRET,
+    refresh_token: GOOGLE_ADS_REFRESH_TOKEN,
+    grant_type: "refresh_token",
+  }),
+});
+
+console.log("TOKEN RESP STATUS:", tokenResp.status);   // <<< YE LINE
+
 
     const tokenJson = await tokenResp.json();
 
@@ -78,6 +81,7 @@ export default async function handler(req, res) {
         body: JSON.stringify({ query }),
       }
     );
+console.log("ADS RESP STATUS:", adsResp.status);   // <<< YE LINE
 
     const text = await adsResp.text();
     let parsed;
