@@ -72,7 +72,7 @@ console.log("TOKEN RESP STATUS:", tokenResp.status);   // <<< YE LINE
 
  // 1. Log the URL first to verify it
    // 1. Log the URL first to verify it
-const targetUrl = `https://googleads.googleapis.com/v18/customers:listAccessibleCustomers`;
+const targetUrl = `https://googleads.googleapis.com/v16/customers/${customerId}/googleAds:search`;
 console.log("DEBUG URL:", targetUrl);
 
 // 2. Then call fetch with that URL
