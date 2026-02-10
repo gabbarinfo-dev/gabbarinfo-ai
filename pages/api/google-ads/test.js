@@ -71,19 +71,21 @@ console.log("TOKEN RESP STATUS:", tokenResp.status);   // <<< YE LINE
 `;
 
  // 1. Log the URL first to verify it
-   const adsResp = await fetch(
-  `https://googleads.googleapis.com/v16/customers/${customerId}/googleAds:searchStream`,
-  {
-    method: "POST",
-        headers: {
-          Authorization: `Bearer ${accessToken}`,
-          "developer-token": GOOGLE_ADS_DEVELOPER_TOKEN,
-          "login-customer-id": GOOGLE_ADS_LOGIN_CUSTOMER_ID, // Points to your MCC
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({ query }),
-      }
-    );
+   // 1. Log the URL first to verify it
+const targetUrl = `https://googleads.googleapis.com/v18/customers:listAccessibleCustomers`;
+console.log("DEBUG URL:", targetUrl);
+
+// 2. Then call fetch with that URL
+const adsResp = await fetch(targetUrl, {
+  method: "POST",
+  headers: {
+    "Authorization": `Bearer ${accessToken}`,
+    "developer-token": GOOGLE_ADS_DEVELOPER_TOKEN,
+    "login-customer-id": GOOGLE_ADS_LOGIN_CUSTOMER_ID,
+    "Content-Type": "application/json",
+  },
+  body: JSON.stringify({ query }),
+});
 console.log("ADS RESP STATUS:", adsResp.status);   // <<< YE LINE
 
 
