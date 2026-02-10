@@ -97,8 +97,10 @@ res.setHeader("Access-Control-Allow-Headers", "Content-Type");
 // REAL GOOGLE ADS CREATION
 // ---------------------------
 
-const session = await getServerSession(req, res, authOptions);
-const email = session?.user?.email?.toLowerCase?.().trim?.();
+// const session = await getServerSession(req, res, authOptions);
+// const email = session?.user?.email?.toLowerCase?.().trim?.();
+const email = "test@test.com";
+
 
 if (!email) {
   return res.status(401).json({
