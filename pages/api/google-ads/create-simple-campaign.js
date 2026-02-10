@@ -29,15 +29,25 @@ if (!SUPABASE_URL || !SUPABASE_SERVICE_ROLE_KEY) {
 const supabaseServer = createClient(SUPABASE_URL || "", SUPABASE_SERVICE_ROLE_KEY || "");
 
 export default async function handler(req, res) {
+  // Allow OPTIONS (preflight) + POST
+  if (req.method === "OPTIONS") {
+    return res.status(200).end();
+  }
+
   if (req.method !== "POST") {
     return res.status(405).json({ ok: false, message: "Only POST is allowed." });
   }
 
   try {
     const body = req.body;
+
     if (!body || typeof body !== "object") {
-      return res.status(400).json({ ok: false, message: "Missing or invalid JSON body." });
+      return res.status(400).json({
+        ok: false,
+        message: "Missing or invalid JSON body.",
+      });
     }
+
 
     const { customerId, campaign, adGroups, refreshToken: incomingRefreshToken } = body;
 
