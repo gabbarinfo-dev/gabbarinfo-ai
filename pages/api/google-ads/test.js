@@ -60,15 +60,7 @@ console.log("TOKEN RESP STATUS:", tokenResp.status);   // <<< YE LINE
     // POST https://googleads.googleapis.com/v18/customers/{customerId}/googleAds:search
     const customerId = GOOGLE_ADS_CLIENT_ACCOUNT_ID; // The account with the ads
 
-    const query = `
-      SELECT
-        customer.id,
-        customer.descriptive_name,
-        customer.currency_code,
-        customer.time_zone
-      FROM customer
-      LIMIT 1
-    `;
+   const query = `SELECT customer.resource_name FROM customer LIMIT 1`;
 
  // 1. Log the URL first to verify it
 const targetUrl = `https://googleads.googleapis.com/v18/customers/${customerId}/googleAds:searchStream`;
