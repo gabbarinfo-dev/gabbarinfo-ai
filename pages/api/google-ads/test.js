@@ -71,19 +71,21 @@ console.log("TOKEN RESP STATUS:", tokenResp.status);   // <<< YE LINE
 `;
 
  // 1. Log the URL first to verify it
-const adsResp = await fetch(
-  `https://googleads.googleapis.com/v18/customers/8060320443/googleAds:searchStream`,
-  {
-    method: "POST",
-    headers: {
-      "Authorization": `Bearer ${accessToken}`,
-      "developer-token": GOOGLE_ADS_DEVELOPER_TOKEN,
-      "login-customer-id": "8060320443",
-      "Content-Type": "application/json",
-    },
-    body: JSON.stringify({ query: "SELECT customer.id FROM customer LIMIT 1" }),
-  }
-);   // <<< YE LINE
+customers/${customerId}/googleAds:searchStream`;
+console.log("DEBUG URL:", targetUrl);
+
+// 2. Then call fetch with that URL
+const adsResp = await fetch(targetUrl, {
+  method: "POST",
+  headers: {
+    "Authorization": `Bearer ${accessToken}`,
+    "developer-token": GOOGLE_ADS_DEVELOPER_TOKEN,
+    "login-customer-id": GOOGLE_ADS_LOGIN_CUSTOMER_ID,
+    "Content-Type": "application/json",
+  },
+  body: JSON.stringify({ query }),
+});
+console.log("ADS RESP STATUS:", adsResp.status);     // <<< YE LINE
 
     const text = await adsResp.text();
     let parsed;
