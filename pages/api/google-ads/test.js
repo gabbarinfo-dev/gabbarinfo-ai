@@ -70,7 +70,7 @@ console.log("TOKEN RESP STATUS:", tokenResp.status);   // <<< YE LINE
     `;
 
     const adsResp = await fetch(
-  `https://googleads.googleapis.com/v18/customers/${customerId}/googleAds:search`,
+  `https://googleads.googleapis.com/v16/customers/${customerId}/googleAds:searchStream`,
   {
     method: "POST",
         headers: {
