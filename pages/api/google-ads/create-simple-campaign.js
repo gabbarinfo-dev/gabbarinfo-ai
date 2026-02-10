@@ -11,7 +11,7 @@
 // NOTE: this file expects you already created lib/googleAdsHelper.js which
 // exports listAccessibleCustomers({ refreshToken }) -> { ok, status, json }
 // (the earlier helper you added).
-
+import { getGoogleAdsCustomerForEmail } from "../../../lib/googleAdsClient";
 import { getServerSession } from "next-auth/next";
 import { authOptions } from "../auth/[...nextauth]"; // path relative to this file
 import { createClient } from "@supabase/supabase-js";
@@ -78,18 +78,90 @@ export default async function handler(req, res) {
     if (errors.length > 0) {
       return res.status(400).json({ ok: false, message: "Validation failed.", errors });
     }
+    // ---------------------------
+// REAL GOOGLE ADS CREATION
+// ---------------------------
 
-    // If basic access flag isn't turned on, keep acting as the safe stub (echo)
-    const basicAccessFlag = String(process.env.GOOGLE_ADS_BASIC_ACCESS || "false").toLowerCase();
-    if (basicAccessFlag !== "true") {
-      return res.status(200).json({
-        ok: true,
-        stub: true,
-        message:
-          "Stub only: campaign payload received. Set GOOGLE_ADS_BASIC_ACCESS=true to run verification checks.",
-        received: body,
-      });
-    }
+const session = await getServerSession(req, res, authOptions);
+const email = session?.user?.email?.toLowerCase?.().trim?.();
+
+if (!email) {
+  return res.status(401).json({
+    ok: false,
+    message: "No user email found in session.",
+  });
+}
+
+const customer = await getGoogleAdsCustomerForEmail(email);
+
+// 1. Budget
+const budget = await customer.campaignBudgets.create({
+  name: `Budget ${Date.now()}`,
+  amount_micros: campaign.dailyBudgetMicros,
+  delivery_method: "STANDARD",
+});
+
+// 2. Campaign
+const createdCampaign = await customer.campaigns.create({
+  name: campaign.name,
+  advertising_channel_type: "SEARCH",
+  status: "PAUSED",
+  campaign_budget: budget.resource_name,
+  network_settings: {
+    target_google_search: true,
+    target_search_network: true,
+    target_content_network: false,
+    target_partner_search_network: false,
+  },
+});
+
+// 3. Ad Groups
+for (const ag of adGroups) {
+  const createdAdGroup = await customer.adGroups.create({
+    name: ag.name,
+    campaign: createdCampaign.resource_name,
+    cpc_bid_micros: ag.cpcBidMicros,
+  });
+
+  // 4. Keywords
+  for (const kw of ag.keywords) {
+    await customer.adGroupCriteria.create({
+      ad_group: createdAdGroup.resource_name,
+      keyword: {
+        text: kw,
+        match_type: "PHRASE",
+      },
+      status: "ENABLED",
+    });
+  }
+
+  // 5. Ads
+  for (const ad of ag.ads) {
+    await customer.adGroupAds.create({
+      ad_group: createdAdGroup.resource_name,
+      ad: {
+        final_urls: [campaign.finalUrl],
+        responsive_search_ad: {
+          headlines: [
+            { text: ad.headline1 },
+            { text: ad.headline2 },
+            { text: ad.headline3 },
+          ],
+          descriptions: [
+            { text: ad.description1 },
+            { text: ad.description2 },
+          ],
+        },
+      },
+      status: "PAUSED",
+    });
+  }
+}
+
+return res.status(200).json({
+  ok: true,
+  message: "Search campaign created successfully (PAUSED).",
+});
 
     // ---------------------------
     // GOOGLE ADS BASIC ACCESS FLOW
