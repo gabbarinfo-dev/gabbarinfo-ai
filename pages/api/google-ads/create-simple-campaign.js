@@ -93,6 +93,11 @@ res.setHeader("Access-Control-Allow-Headers", "Content-Type");
     if (errors.length > 0) {
       return res.status(400).json({ ok: false, message: "Validation failed.", errors });
     }
+    return res.status(200).json({
+  ok: true,
+  message: "API working. Google block skipped.",
+});
+
     // ---------------------------
 // REAL GOOGLE ADS CREATION
 // ---------------------------
