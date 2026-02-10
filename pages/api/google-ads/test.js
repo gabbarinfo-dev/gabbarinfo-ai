@@ -2,9 +2,10 @@
 
 export default async function handler(req, res) {
   try {
-    const {
+   const {
       GOOGLE_ADS_DEVELOPER_TOKEN,
-      GOOGLE_ADS_LOGIN_CUSTOMER_ID,
+      GOOGLE_ADS_LOGIN_CUSTOMER_ID, // Your MCC (Manager) ID: 8060320443
+      GOOGLE_ADS_CLIENT_ACCOUNT_ID, // ADD THIS: Your Ads Account ID from your 4th screenshot
       GOOGLE_ADS_REFRESH_TOKEN,
       GOOGLE_CLIENT_ID,
       GOOGLE_CLIENT_SECRET,
@@ -57,7 +58,7 @@ console.log("TOKEN RESP STATUS:", tokenResp.status);   // <<< YE LINE
 
     // 3) Call Google Ads GAQL search using REST:
     // POST https://googleads.googleapis.com/v18/customers/{customerId}/googleAds:search
-    const customerId = GOOGLE_ADS_LOGIN_CUSTOMER_ID; // e.g. "8060320443"
+    const customerId = GOOGLE_ADS_CLIENT_ACCOUNT_ID; // The account with the ads
 
     const query = `
       SELECT
@@ -76,6 +77,7 @@ console.log("TOKEN RESP STATUS:", tokenResp.status);   // <<< YE LINE
         headers: {
           Authorization: `Bearer ${accessToken}`,
           "developer-token": GOOGLE_ADS_DEVELOPER_TOKEN,
+          "login-customer-id": GOOGLE_ADS_LOGIN_CUSTOMER_ID, // Points to your MCC
           "Content-Type": "application/json",
         },
         body: JSON.stringify({ query }),
