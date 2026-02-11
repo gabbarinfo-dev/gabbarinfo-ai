@@ -1,11 +1,12 @@
 import axios from "axios";
 import { getAccessToken } from "../../../lib/googleAdsClient";
+
 export default async function handler(req, res) {
   try {
     const token = await getAccessToken();
 
-    const customerId = process.env.GOOGLE_ADS_CLIENT_ACCOUNT_ID.replace(/-/g, "");
-    const loginCustomerId = process.env.GOOGLE_ADS_LOGIN_CUSTOMER_ID.replace(/-/g, "");
+    const customerId = process.env.GOOGLE_ADS_CLIENT_ACCOUNT_ID;
+    const loginCustomerId = process.env.GOOGLE_ADS_LOGIN_CUSTOMER_ID;
 
     const query = `
       SELECT
@@ -17,21 +18,24 @@ export default async function handler(req, res) {
     `;
 
     const response = await axios.post(
-      `https://googleads.googleapis.com/v14/customers/${customerId}/googleAds:search`,
+      `https://googleads.googleapis.com/v14/customers/${customerId}/googleAds:searchStream`,
       { query },
       {
         headers: {
           Authorization: `Bearer ${token}`,
           "developer-token": process.env.GOOGLE_ADS_DEVELOPER_TOKEN,
           "login-customer-id": loginCustomerId,
-          "Content-Type": "application/json",
-        },
+          "Content-Type": "application/json"
+        }
       }
     );
 
+    // searchStream returns array of batches
+    const results = response.data.flatMap(batch => batch.results || []);
+
     return res.status(200).json({
       ok: true,
-      results: response.data.results,
+      results
     });
 
   } catch (err) {
@@ -39,7 +43,7 @@ export default async function handler(req, res) {
 
     return res.status(500).json({
       ok: false,
-      error: err.response?.data || err.message,
+      error: err.response?.data || err.message
     });
   }
 }
