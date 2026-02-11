@@ -18,10 +18,8 @@ const query = `
 `;
 
 const response = await axios.post(
-  `https://googleads.googleapis.com/v16/customers/${customerId}/googleAds:search`,
-  {
-    query
-  },
+  `https://www.googleapis.com/googleads/v16/customers/${customerId}/googleAds:search`,
+  { query },
   {
     headers: {
       Authorization: `Bearer ${token}`,
@@ -31,6 +29,7 @@ const response = await axios.post(
     }
   }
 );
+
 
 
 
