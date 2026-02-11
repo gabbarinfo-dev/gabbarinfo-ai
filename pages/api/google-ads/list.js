@@ -9,13 +9,10 @@ export default async function handler(req, res) {
     const loginCustomerId = process.env.GOOGLE_ADS_LOGIN_CUSTOMER_ID;
 
     const query = `
-      SELECT
-        campaign.id,
-        campaign.name,
-        campaign.status
-      FROM campaign
-      LIMIT 20
-    `;
+  SELECT customer.id, customer.descriptive_name
+  FROM customer
+`;
+
 
 const response = await axios.post(
   `https://googleads.googleapis.com/v16/customers/${customerId}/googleAds:searchStream`,
