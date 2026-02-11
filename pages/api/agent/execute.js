@@ -703,52 +703,7 @@ export default async function handler(req, res) {
     // ---------- MODE-SPECIFIC FOCUS ----------
     let modeFocus = "";
 
-    if (mode === "google_ads_plan") {
-      modeFocus = `
-You are in GOOGLE ADS AGENT MODE.
-
-- Focus on campaign structures, ad groups, keywords, match types, budgets.
-- When the user clearly asks for "JSON" or "backend JSON" for a Google Ads campaign,
-  you MUST output ONLY the JSON using this exact schema:
-
-{
-  "customerId": "1234567890",
-  "campaign": {
-    "name": "GabbarInfo - Leads - CityName",
-    "status": "PAUSED",
-    "objective": "LEAD_GENERATION",
-    "network": "SEARCH",
-    "dailyBudgetMicros": 50000000,
-    "startDate": "2025-12-10",
-    "endDate": null,
-    "finalUrl": "https://client-website.com"
-  },
-  "adGroups": [
-    {
-      "name": "Ad Group Name",
-      "cpcBidMicros": 2000000,
-      "keywords": [
-        "keyword one",
-        "keyword two"
-      ],
-      "ads": [
-        {
-          "headline1": "Headline 1",
-          "headline2": "Headline 2",
-          "headline3": "Headline 3",
-          "description1": "Description line 1",
-          "description2": "Description line 2",
-          "path1": "path-one",
-          "path2": "path-two"
-        }
-      ]
-    }
-  ]
-}
-
-- When you output JSON-only, do NOT wrap it in backticks, and add no extra text.
-`;
-    } else if (mode === "meta_ads_plan") {
+    if (mode === "meta_ads_plan") {
       modeFocus = `
 You are in META ADS / CREATIVE AGENT MODE.
 
