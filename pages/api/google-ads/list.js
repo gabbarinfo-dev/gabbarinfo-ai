@@ -17,7 +17,7 @@ export default async function handler(req, res) {
     `;
 
     const response = await axios.post(
-      `https://googleads.googleapis.com/v16/customers/${customerId}/googleAds:search`,
+      `https://googleads.googleapis.com/v14/customers/${customerId}/googleAds:search`,
       { query },
       {
         headers: {
