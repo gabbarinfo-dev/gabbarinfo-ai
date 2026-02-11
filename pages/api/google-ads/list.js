@@ -17,18 +17,19 @@ export default async function handler(req, res) {
       LIMIT 20
     `;
 
-    const response = await axios.post(
-      `https://googleads.googleapis.com/v14/customers/${customerId}/googleAds:searchStream`,
-      { query },
-      {
-        headers: {
-          Authorization: `Bearer ${token}`,
-          "developer-token": process.env.GOOGLE_ADS_DEVELOPER_TOKEN,
-          "login-customer-id": loginCustomerId,
-          "Content-Type": "application/json"
-        }
-      }
-    );
+const response = await axios.post(
+  `https://googleads.googleapis.com/v14/customers/${customerId}/googleAds:searchStream`,
+  { query },
+  {
+    headers: {
+      Authorization: `Bearer ${token}`,
+      "developer-token": process.env.GOOGLE_ADS_DEVELOPER_TOKEN,
+      "login-customer-id": loginCustomerId,
+      "Content-Type": "application/json"
+    }
+  }
+);
+
 
     // searchStream returns array of batches
     const results = response.data.flatMap(batch => batch.results || []);
