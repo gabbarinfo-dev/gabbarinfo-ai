@@ -18,10 +18,8 @@ export default async function handler(req, res) {
     `;
 
 const response = await axios.post(
-  `https://googleads.googleapis.com/v16/customers/${customerId}/googleAds:search`,
-  {
-    query: query
-  },
+  `https://googleads.googleapis.com/v16/customers/${customerId}/googleAds:searchStream`,
+  { query },
   {
     headers: {
       Authorization: `Bearer ${token}`,
@@ -31,6 +29,7 @@ const response = await axios.post(
     }
   }
 );
+
 
 
 
