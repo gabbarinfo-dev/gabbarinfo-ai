@@ -16,7 +16,8 @@ export default async function handler(req, res) {
       LIMIT 20
     `;
 
-    const url = `https://googleads.googleapis.com/v16/customers/${customerId}/googleAds:search`;
+    // ---- CORRECT ENDPOINT ----
+    const url = `https://googleads.googleapis.com/v16/customers/${customerId}/googleAds:searchStream`;
 
     console.log("GOOGLE ADS URL:", url);
 
@@ -32,22 +33,35 @@ export default async function handler(req, res) {
       body: JSON.stringify({ query })
     });
 
-    const data = await response.json();
+    // ---- TEXT MODE ----
+    const raw = await response.text();
+    console.log("GOOGLE RAW RESPONSE:", raw);
+
+    let data;
+    try {
+      data = JSON.parse(raw);
+    } catch (e) {
+      throw new Error(
+        "Google returned HTML → endpoint wrong OR developer token not approved"
+      );
+    }
 
     if (!response.ok) {
-      return res.status(500).json({
-        ok: false,
-        error: data
-      });
+      throw new Error(JSON.stringify(data));
     }
+
+    // ---- searchStream returns array of batches ----
+    const results = Array.isArray(data)
+      ? data.flatMap(batch => batch.results || [])
+      : [];
 
     return res.status(200).json({
       ok: true,
-      results: data.results || []
+      results
     });
 
   } catch (err) {
-    console.error("GOOGLE ADS LIST ERROR:", err);
+    console.error("GOOGLE ADS LIST ERROR:", err.message);
 
     return res.status(500).json({
       ok: false,
