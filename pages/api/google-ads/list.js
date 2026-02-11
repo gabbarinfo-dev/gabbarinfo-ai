@@ -17,6 +17,13 @@ const query = `
   LIMIT 20
 `;
 
+function formatId(id) {
+  return id.replace(/(\d{3})(\d{3})(\d{4})/, "$1-$2-$3");
+}
+
+const customerId = formatId(process.env.GOOGLE_ADS_CLIENT_ACCOUNT_ID);
+const loginCustomerId = formatId(process.env.GOOGLE_ADS_LOGIN_CUSTOMER_ID);
+
 const url = `https://googleads.googleapis.com/v16/customers/${customerId}/googleAds:search`;
 
 const body = JSON.stringify({ query });
@@ -35,7 +42,6 @@ const response = await axios({
     "Content-Length": Buffer.byteLength(body)
   }
 });
-
 
 
 
