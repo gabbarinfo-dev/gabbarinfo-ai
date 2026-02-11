@@ -1,6 +1,5 @@
 import axios from "axios";
-import { getAccessToken } from "../../lib/googleAdsClient";
-
+import { getAccessToken } from "../../../lib/googleAdsClient";
 export default async function handler(req, res) {
   try {
     const token = await getAccessToken();
