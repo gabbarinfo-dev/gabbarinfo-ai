@@ -19,14 +19,16 @@ export default async function handler(req, res) {
 
 const response = await axios.post(
   `https://googleads.googleapis.com/v14/customers/${customerId}/googleAds:searchStream`,
-  { query },
+  { query: query },
   {
-    headers: {
-      Authorization: `Bearer ${token}`,
-      "developer-token": process.env.GOOGLE_ADS_DEVELOPER_TOKEN,
-      "login-customer-id": loginCustomerId,
-      "Content-Type": "application/json"
-    }
+   headers: {
+  Authorization: `Bearer ${token}`,
+  "developer-token": process.env.GOOGLE_ADS_DEVELOPER_TOKEN,
+  "login-customer-id": loginCustomerId,
+  "Content-Type": "application/json",
+  "x-goog-api-client": "rest"
+}
+
   }
 );
 
