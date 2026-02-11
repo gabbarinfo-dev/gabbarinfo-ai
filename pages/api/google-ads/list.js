@@ -19,10 +19,11 @@ export default async function handler(req, res) {
       campaigns,
     });
   } catch (err) {
-    console.error("Google Ads List Error:", err);
-    return res.status(500).json({
-      ok: false,
-      error: err.message,
-    });
-  }
+  console.error("GOOGLE ADS LIST FULL ERROR:", err);
+  return res.status(500).json({
+    ok: false,
+    error: err.message,
+    stack: err.stack
+  });
+}
 }
