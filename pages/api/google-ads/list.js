@@ -18,11 +18,16 @@ const query = `
 `;
 
 function formatId(id) {
+  if (!id) return "";
   return id.replace(/(\d{3})(\d{3})(\d{4})/, "$1-$2-$3");
 }
 
-const customerId = formatId(process.env.GOOGLE_ADS_CLIENT_ACCOUNT_ID);
-const loginCustomerId = formatId(process.env.GOOGLE_ADS_LOGIN_CUSTOMER_ID);
+const rawCustomerId = process.env.GOOGLE_ADS_CLIENT_ACCOUNT_ID;
+const rawLoginCustomerId = process.env.GOOGLE_ADS_LOGIN_CUSTOMER_ID;
+
+const customerId = formatId(rawCustomerId);
+const loginCustomerId = formatId(rawLoginCustomerId);
+
 
 const url = `https://googleads.googleapis.com/v16/customers/${customerId}/googleAds:search`;
 
