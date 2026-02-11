@@ -14,7 +14,6 @@
     "react-dom": "18.2.0",
     "next-auth": "^4.24.0",
     "@supabase/supabase-js": "^2.48.0",
-    "google-ads-api": "^1.0.0",
     "openai": "^4.73.0",
     "formidable": "^3.5.0",
     "pdf-parse": "^1.1.1",
