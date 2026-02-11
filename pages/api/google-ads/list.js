@@ -5,49 +5,45 @@ export default async function handler(req, res) {
   try {
     const token = await getAccessToken();
 
-   const customerId = process.env.GOOGLE_ADS_CLIENT_ACCOUNT_ID;
-const loginCustomerId = process.env.GOOGLE_ADS_LOGIN_CUSTOMER_ID;
+    const query = `
+      SELECT
+        campaign.id,
+        campaign.name,
+        campaign.status
+      FROM campaign
+      LIMIT 20
+    `;
 
-const query = `
-  SELECT
-    campaign.id,
-    campaign.name,
-    campaign.status
-  FROM campaign
-  LIMIT 20
-`;
+    function formatId(id) {
+      if (!id) return "";
+      return id.replace(/(\d{3})(\d{3})(\d{4})/, "$1-$2-$3");
+    }
 
-function formatId(id) {
-  if (!id) return "";
-  return id.replace(/(\d{3})(\d{3})(\d{4})/, "$1-$2-$3");
-}
+    const rawCustomerId = process.env.GOOGLE_ADS_CLIENT_ACCOUNT_ID;
+    const rawLoginCustomerId = process.env.GOOGLE_ADS_LOGIN_CUSTOMER_ID;
 
-const rawCustomerId = process.env.GOOGLE_ADS_CLIENT_ACCOUNT_ID;
-const rawLoginCustomerId = process.env.GOOGLE_ADS_LOGIN_CUSTOMER_ID;
+    const customerId = formatId(rawCustomerId);
+    const loginCustomerId = formatId(rawLoginCustomerId);
 
-const customerId = formatId(rawCustomerId);
-const loginCustomerId = formatId(rawLoginCustomerId);
+    const url = `https://googleads.googleapis.com/v16/customers/${customerId}/googleAds:search`;
 
+    const body = JSON.stringify({ query });
 
-const url = `https://googleads.googleapis.com/v16/customers/${customerId}/googleAds:search`;
+    console.log("GOOGLE ADS URL:", url);
 
-const body = JSON.stringify({ query });
-
-console.log("GOOGLE ADS URL:", url);
-
-const response = await axios({
-  method: "post",
-  url: url,
-  data: body,
-  headers: {
-    Authorization: `Bearer ${token}`,
-    "developer-token": process.env.GOOGLE_ADS_DEVELOPER_TOKEN,
-    "login-customer-id": loginCustomerId,
-    "Content-Type": "application/json",
-    "Content-Length": Buffer.byteLength(body),
-    "x-goog-user-project": process.env.GOOGLE_CLOUD_PROJECT_ID
-  }
-});
+    const response = await axios({
+      method: "post",
+      url: url,
+      data: body,
+      headers: {
+        Authorization: `Bearer ${token}`,
+        "developer-token": process.env.GOOGLE_ADS_DEVELOPER_TOKEN,
+        "login-customer-id": loginCustomerId,
+        "Content-Type": "application/json",
+        "Content-Length": Buffer.byteLength(body),
+        "x-goog-user-project": process.env.GOOGLE_CLOUD_PROJECT_ID
+      }
+    });
 
 
 
