@@ -570,52 +570,6 @@ export default async function handler(req, res) {
     const isAdmin = ADMIN_EMAILS.includes(
       (session.user.email || "").toLowerCase()
     );
-    // ============================================================
-    // 1) LEGACY ROUTER MODE (your existing behaviour)
-    // ============================================================
-    //
-    // If the caller sends a "type" field (your old design),
-    // we keep that behaviour exactly so nothing breaks.
-    //
-    // type: "google_ads_campaign"  -> forwards to /api/google-ads/create-simple-campaign
-    // type: "meta_ads_creative"    -> forwards to /api/ads/create-creative
-    //
-    if (body.type) {
-      // old behaviour path
-      if (body.type === "google_ads_campaign") {
-        const baseUrl = process.env.NEXT_PUBLIC_BASE_URL;
-        if (!baseUrl) {
-          return res.status(500).json({
-            ok: false,
-            message:
-              "NEXT_PUBLIC_BASE_URL is not set. Cannot forward to google-ads endpoint.",
-          });
-        }
-
-        const gaRes = await fetch(
-          `${baseUrl}/api/google-ads/create-simple-campaign`,
-          {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify(body.data || {}),
-          }
-        );
-
-        let gaJson = {};
-        try {
-          gaJson = await gaRes.json();
-        } catch (_) {
-          gaJson = { raw: await gaRes.text() };
-        }
-
-        return res.status(200).json({
-          ok: true,
-          mode: "router_legacy",
-          forwardedTo: "google_ads",
-          status: gaRes.status,
-          response: gaJson,
-        });
-      }
 
       if (body.type === "meta_ads_creative") {
   const baseUrl = process.env.NEXT_PUBLIC_BASE_URL;
@@ -627,15 +581,7 @@ export default async function handler(req, res) {
         "NEXT_PUBLIC_BASE_URL is not set. Cannot forward to ads/create-creative.",
     });
   }
-
-  // legacy meta_ads_creative is intentionally disabled
-  return res.status(400).json({
-    ok: false,
-    message:
-      "Unknown type in legacy mode. Expected google_ads_campaign or meta_ads_creative.",
-  });
 }
-    }
     // ============================================================
     // 2) NEW "AGENT MODE" – THINKING + JSON GENERATION VIA GEMINI
     // ============================================================
