@@ -16,23 +16,26 @@ const query = `
   FROM campaign
   LIMIT 20
 `;
-  // 👇 PUT LOG HERE
-    console.log(
-      "GOOGLE ADS URL:",
-      `https://googleads.googleapis.com/v16/customers/${customerId}/googleAds:search`
-    );
-const response = await axios.post(
-  `https://googleads.googleapis.com/v16/customers/${customerId}/googleAds:search`,
-  { query },
-  {
-    headers: {
-      Authorization: `Bearer ${token}`,
-      "developer-token": process.env.GOOGLE_ADS_DEVELOPER_TOKEN,
-      "login-customer-id": loginCustomerId,
-      "Content-Type": "application/json"
-    }
+
+const url = `https://googleads.googleapis.com/v16/customers/${customerId}/googleAds:search`;
+
+const body = JSON.stringify({ query });
+
+console.log("GOOGLE ADS URL:", url);
+
+const response = await axios({
+  method: "post",
+  url: url,
+  data: body,
+  headers: {
+    Authorization: `Bearer ${token}`,
+    "developer-token": process.env.GOOGLE_ADS_DEVELOPER_TOKEN,
+    "login-customer-id": loginCustomerId,
+    "Content-Type": "application/json",
+    "Content-Length": Buffer.byteLength(body)
   }
-);
+});
+
 
 
 
