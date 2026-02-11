@@ -39,9 +39,11 @@ const response = await axios({
     "developer-token": process.env.GOOGLE_ADS_DEVELOPER_TOKEN,
     "login-customer-id": loginCustomerId,
     "Content-Type": "application/json",
-    "Content-Length": Buffer.byteLength(body)
+    "Content-Length": Buffer.byteLength(body),
+    "x-goog-user-project": process.env.GOOGLE_CLOUD_PROJECT_ID
   }
 });
+
 
 
 
