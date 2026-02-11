@@ -16,9 +16,13 @@ const query = `
   FROM campaign
   LIMIT 20
 `;
-
+  // 👇 PUT LOG HERE
+    console.log(
+      "GOOGLE ADS URL:",
+      `https://googleads.googleapis.com/v16/customers/${customerId}/googleAds:search`
+    );
 const response = await axios.post(
-  `https://www.googleapis.com/googleads/v16/customers/${customerId}/googleAds:search`,
+  `https://googleads.googleapis.com/v16/customers/${customerId}/googleAds:search`,
   { query },
   {
     headers: {
