@@ -1,5 +1,9 @@
 import { getAccessToken } from "../../../lib/googleAdsClient";
 
+export const config = {
+  runtime: "nodejs"
+};
+
 export default async function handler(req, res) {
   try {
     const token = await getAccessToken();
