@@ -14,30 +14,25 @@ export default async function handler(req, res) {
       LIMIT 20
     `;
 
-    const customerId = process.env.GOOGLE_ADS_CLIENT_ACCOUNT_ID;
+const customerId = process.env.GOOGLE_ADS_CLIENT_ACCOUNT_ID;
 const loginCustomerId = process.env.GOOGLE_ADS_LOGIN_CUSTOMER_ID;
 
+const url = `https://googleads.googleapis.com/v16/customers/${customerId}/googleAds:search`;
 
-    const url = `https://googleads.googleapis.com/v16/customers/${customerId}/googleAds:search`;
+console.log("GOOGLE ADS URL:", url);
 
-    const body = JSON.stringify({ query });
-
-    console.log("GOOGLE ADS URL:", url);
-
-    const response = await axios({
-      method: "post",
-      url: url,
-      data: body,
-      headers: {
-        Authorization: `Bearer ${token}`,
-        "developer-token": process.env.GOOGLE_ADS_DEVELOPER_TOKEN,
-        "login-customer-id": loginCustomerId,
-        "Content-Type": "application/json",
-        "Content-Length": Buffer.byteLength(body),
-        "x-goog-user-project": process.env.GOOGLE_CLOUD_PROJECT_ID
-      }
-    });
-
+const response = await axios({
+  method: "post",
+  url: url,
+  data: { query },
+  headers: {
+    Authorization: `Bearer ${token}`,
+    "developer-token": process.env.GOOGLE_ADS_DEVELOPER_TOKEN,
+    "login-customer-id": loginCustomerId,
+    "Content-Type": "application/json",
+    "x-goog-user-project": process.env.GOOGLE_CLOUD_PROJECT_ID
+  }
+});
 
 
 
