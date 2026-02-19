@@ -571,17 +571,17 @@ export default async function handler(req, res) {
       (session.user.email || "").toLowerCase()
     );
 
-      if (body.type === "meta_ads_creative") {
-  const baseUrl = process.env.NEXT_PUBLIC_BASE_URL;
+    if (body.type === "meta_ads_creative") {
+      const baseUrl = process.env.NEXT_PUBLIC_BASE_URL;
 
-  if (!baseUrl) {
-    return res.status(500).json({
-      ok: false,
-      message:
-        "NEXT_PUBLIC_BASE_URL is not set. Cannot forward to ads/create-creative.",
-    });
-  }
-}
+      if (!baseUrl) {
+        return res.status(500).json({
+          ok: false,
+          message:
+            "NEXT_PUBLIC_BASE_URL is not set. Cannot forward to ads/create-creative.",
+        });
+      }
+    }
     // ============================================================
     // 2) NEW "AGENT MODE" – THINKING + JSON GENERATION VIA GEMINI
     // ============================================================
@@ -3698,42 +3698,42 @@ Reply **YES** to confirm this plan and proceed.
           if (currentState.meta) currentState.meta.uploadedImageHash = null;
         }
 
-       // ===============================
-// AGENT MODE IMAGE GENERATION + UPLOAD
-// ===============================
-if (!imageUploadedThisTurn) {
+        // ===============================
+        // AGENT MODE IMAGE GENERATION + UPLOAD
+        // ===============================
+        if (!imageUploadedThisTurn) {
 
-  console.log(
-    "🧪 IMAGE PROMPT VALUE:",
-    lockedCampaignState?.plan?.image_concept
-  );
-const imagePrompt =
-  lockedCampaignState?.plan?.ad_sets?.[0]?.ad_creative?.imagePrompt;
+          console.log(
+            "🧪 IMAGE PROMPT VALUE:",
+            lockedCampaignState?.plan?.image_concept
+          );
+          const imagePrompt =
+            lockedCampaignState?.plan?.ad_sets?.[0]?.ad_creative?.imagePrompt;
 
-console.log("🧪 FINAL IMAGE PROMPT:", imagePrompt);
+          console.log("🧪 FINAL IMAGE PROMPT:", imagePrompt);
 
-if (!imagePrompt) {
-  throw new Error("Image prompt missing in campaign plan");
-}
- const imageResp = await fetch(
-  `${process.env.NEXT_PUBLIC_BASE_URL}/api/images/generate`,
-  {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      "x-client-email": session.user.email,
-    },
-    body: JSON.stringify({
-      prompt: imagePrompt,
-    }),
-  }
-);
+          if (!imagePrompt) {
+            throw new Error("Image prompt missing in campaign plan");
+          }
+          const imageResp = await fetch(
+            `${process.env.NEXT_PUBLIC_BASE_URL}/api/images/generate`,
+            {
+              method: "POST",
+              headers: {
+                "Content-Type": "application/json",
+                "x-client-email": session.user.email,
+              },
+              body: JSON.stringify({
+                prompt: imagePrompt,
+              }),
+            }
+          );
 
-  const imageJson = await imageResp.json();
+          const imageJson = await imageResp.json();
 
-console.log("🧪 IMAGE GENERATE STATUS:", imageResp.status);
-console.log("🧪 IMAGE GENERATE RAW:", imageJson);
-console.log("🧪 IMAGE GENERATE KEYS:", Object.keys(imageJson || {}));
+          console.log("🧪 IMAGE GENERATE STATUS:", imageResp.status);
+          console.log("🧪 IMAGE GENERATE RAW:", imageJson);
+          console.log("🧪 IMAGE GENERATE KEYS:", Object.keys(imageJson || {}));
           if (!imageResp.ok || !imageJson?.imageBase64) {
             throw new Error("Agent image generation failed");
           }
@@ -3940,7 +3940,16 @@ async function handleInstagramPostOnly(req, res, session, body) {
         caption: combinedCaption
       });
 
-      return res.json({ ok: true, text: "🎉 Instagram Post Published!" });
+      const containerId = result.mediaResponseJson?.id;
+      const publishId = result.publishResponseJson?.id;
+
+      return res.status(200).json({
+        ok: true,
+        text: "🎉 Instagram Post Published!",
+        container_id: containerId,
+        publish_id: publishId,
+        graph_status: "200 OK"
+      });
     } catch (e) {
       console.error("[Path A] Direct Publish Error:", e);
       return res.status(200).json({ ok: false, text: `Instagram publication failed: ${e.message}` });
@@ -3959,7 +3968,17 @@ async function handleInstagramPostOnly(req, res, session, body) {
         imageUrl: creativeResult.assets.imageUrl,
         caption: creativeResult.assets.caption
       });
-      return res.json({ ok: true, text: "🎉 Instagram Post Published!" });
+
+      const containerId = postResult.mediaResponseJson?.id;
+      const publishId = postResult.publishResponseJson?.id;
+
+      return res.status(200).json({
+        ok: true,
+        text: "🎉 Instagram Post Published!",
+        container_id: containerId,
+        publish_id: publishId,
+        graph_status: "200 OK"
+      });
     } catch (e) {
       console.error("[Path B] Publication Error:", e);
       return res.status(200).json({ ok: false, text: `Instagram publication failed: ${e.message}` });
@@ -3968,6 +3987,3 @@ async function handleInstagramPostOnly(req, res, session, body) {
 
   return res.json({ ok: true, text: "Thinking..." });
 }
-
-
-
