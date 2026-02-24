@@ -21,7 +21,7 @@ export default async function handler(req, res) {
     try {
         const { data, error } = await supabaseServer
             .from("meta_connections")
-            .select("system_user_token, fb_ad_account_id")
+            .select("fb_user_access_token, fb_ad_account_id")
             .eq("email", email)
             .single();
 
@@ -29,8 +29,8 @@ export default async function handler(req, res) {
             return res.status(404).json({ error: "Meta connection not found" });
         }
 
-        const { system_user_token, fb_ad_account_id } = data;
-        const token = system_user_token || process.env.META_SYSTEM_USER_TOKEN;
+        const { fb_user_access_token, fb_ad_account_id } = data;
+const token = fb_user_access_token;
 
         if (!token) {
             return res.status(400).json({ error: "System user token missing" });
