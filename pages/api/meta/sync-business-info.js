@@ -9,7 +9,13 @@ export default async function handler(req, res) {
       return res.status(401).json({ ok: false });
     }
 
-    const user_access_token = process.env.META_SYSTEM_USER_TOKEN;
+    const { data: metaRow } = await supabaseServer
+  .from("meta_connections")
+  .select("fb_business_id, fb_user_access_token")
+  .eq("email", session.user.email)
+  .single();
+
+const user_access_token = metaRow?.fb_user_access_token;
 
     // 0️⃣ Get existing Meta connection for fb_business_id
     const { data: metaRow } = await supabaseServer
