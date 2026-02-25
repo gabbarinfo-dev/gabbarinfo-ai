@@ -899,6 +899,16 @@ You are in GENERIC DIGITAL MARKETING AGENT MODE.
       mode !== "meta_ads_plan" ||
       !!(lockedCampaignState?.objective && lockedCampaignState?.destination);
 
+    console.log("=== DEBUG SAFETY ===");
+console.log("mode:", mode);
+console.log("stage:", lockedCampaignState?.stage);
+console.log("objective:", lockedCampaignState?.objective);
+console.log("destination:", lockedCampaignState?.destination);
+console.log("performance_goal:", lockedCampaignState?.performance_goal);
+console.log("isPlanProposed:", isPlanProposed);
+console.log("safetyGateMessage:", safetyGateMessage);
+console.log("canApplySafetyGate:", canApplySafetyGate);
+console.log("====================");
     if (!isPlanProposed && safetyGateMessage && canApplySafetyGate) {
       const baseUrl = process.env.NEXT_PUBLIC_BASE_URL;
 
