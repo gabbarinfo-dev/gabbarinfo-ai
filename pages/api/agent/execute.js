@@ -3811,7 +3811,7 @@ Reply **YES** to confirm this plan and proceed.
                 await saveAnswerMemory(process.env.NEXT_PUBLIC_BASE_URL, effectiveBusinessId, { campaign_state: currentState }, session.user.email.toLowerCase());
                 return res.status(200).json({
                   ok: true,
-                  text: `🎉 **Campaign Published Successfully!**\n\n**Meta Details**:\n- **Campaign Name**: ${plan.campaign_name}\n- **Campaign ID**: \`${execJson.id || "N/A"}\`\n\nYour campaign is now waiting in Meta Ads Manager (PAUSED).`
+                  text: `🎉 **Campaign Published Successfully!**\n\n**Meta Details**:\n- **Campaign Name**: ${plan.campaign_name}\n- **Campaign ID**: \`${execJson.id || "N/A"}\`\n\n🚀 Your campaign is now LIVE and active in Meta Ads Manager.`
                 });
               } else {
                 errorOcurred = true;
