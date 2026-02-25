@@ -2781,16 +2781,30 @@ Otherwise, respond with a full, clear explanation, and include example JSON only
             });
             const execJson = await execRes.json();
 
-            if (execJson.ok) {
-              campaignExecutedThisTurn = true;
-              await saveAnswerMemory(process.env.NEXT_PUBLIC_BASE_URL, effectiveBusinessId, {
-                campaign_state: { stage: "COMPLETED", final_result: execJson }
-              }, session.user.email.toLowerCase());
-              return res.status(200).json({
-                ok: true,
-                text: `🎉 **Campaign Published Successfully!**\n\n**Pipeline Status**:\n${waterfallLog.join("\n")}\n✅ Step 12: Campaign Created (PAUSED)\n\n**Meta Details**:\n- **Campaign Name**: ${plan.campaign_name}\n- **Campaign ID**: \`${execJson.id || "N/A"}\`\n- **Ad Account ID**: \`${verifiedMetaAssets?.ad_account?.id || "N/A"}\`\n- **Status**: PAUSED\n\nYour campaign is now waiting in your Meta Ads Manager for final review.`
-              });
-            } else {
+          if (execJson.ok) {
+    currentState.stage = "COMPLETED";
+    currentState.final_result = execJson;
+    campaignExecutedThisTurn = true;
+
+    await saveAnswerMemory(
+      process.env.NEXT_PUBLIC_BASE_URL,
+      effectiveBusinessId,
+      { campaign_state: currentState },
+      session.user.email.toLowerCase()
+    );
+
+    // 🔥 DELETE AGENT MEMORY ROW AFTER SUCCESS
+    await supabase
+      .from("agent_memory")
+      .delete()
+      .eq("email", session.user.email.toLowerCase())
+      .eq("memory_type", "client");
+
+    return res.status(200).json({
+      ok: true,
+      text: `🎉 **Campaign Published Successfully!**\n\n**Meta Details**:\n- **Campaign Name**: ${plan.campaign_name}\n- **Campaign ID**: \`${execJson.id || "N/A"}\`\n\n🚀 Your campaign is now LIVE and active in Meta Ads Manager.`
+    });
+} else {
               errorOcurred = true;
               stopReason = `Meta Execution Failed: ${execJson.message || "Unknown error"}`;
             }
