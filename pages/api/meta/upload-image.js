@@ -33,10 +33,10 @@ export default async function handler(req, res) {
   }
 
   const { data: meta, error } = await supabase
-    .from("meta_connections")
-    .select("fb_ad_account_id")
-    .eq("email", clientEmail)
-    .single();
+  .from("meta_connections")
+  .select("fb_ad_account_id, fb_user_access_token")
+  .eq("email", clientEmail)
+  .single();
 
   if (error || !meta?.fb_ad_account_id) {
     return res.status(400).json({
@@ -46,7 +46,14 @@ export default async function handler(req, res) {
   }
 
   const AD_ACCOUNT_ID = (meta.fb_ad_account_id || "").toString().replace(/^act_/, "");
-  const ACCESS_TOKEN = process.env.META_SYSTEM_USER_TOKEN;
+  const ACCESS_TOKEN = meta.fb_user_access_token;
+
+if (!ACCESS_TOKEN) {
+  return res.status(400).json({
+    ok: false,
+    message: "Missing Facebook user access token for this user.",
+  });
+}
 
   try {
     const { imageUrl, imageBase64 } = req.body || {};
@@ -176,3 +183,4 @@ if (
     });
   }
 }
+
