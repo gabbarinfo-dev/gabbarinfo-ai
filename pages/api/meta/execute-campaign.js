@@ -69,10 +69,10 @@ export default async function handler(req, res) {
       : ["facebook"]; // default safe fallback 
  
   const { data: meta, error } = await supabase 
-    .from("meta_connections") 
-    .select("fb_ad_account_id, fb_page_id, ig_business_id, instagram_actor_id, business_website") 
-    .eq("email", clientEmail) 
-    .single(); 
+  .from("meta_connections") 
+  .select("fb_ad_account_id, fb_page_id, ig_business_id, instagram_actor_id, business_website, fb_user_access_token") 
+  .eq("email", clientEmail) 
+  .single();
  
   if (error || !meta) { 
     return res.status(400).json({ ok: false, message: "Meta connection not found" }); 
@@ -80,7 +80,14 @@ export default async function handler(req, res) {
  
   const AD_ACCOUNT_ID = (meta.fb_ad_account_id || 
 "").toString().replace(/^act_/, ""); 
-  const ACCESS_TOKEN = process.env.META_SYSTEM_USER_TOKEN; 
+  const ACCESS_TOKEN = meta.fb_user_access_token;
+
+if (!ACCESS_TOKEN) {
+  return res.status(400).json({
+    ok: false,
+    message: "Missing Facebook user access token"
+  });
+} 
   const PAGE_ID = meta.fb_page_id; 
   const API_VERSION = "v21.0"; 
  
