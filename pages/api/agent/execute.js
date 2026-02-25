@@ -231,14 +231,14 @@ export default async function handler(req, res) {
 
       metaRow = row;
 
-      if (metaRow && metaRow.system_user_token) {
-        metaConnected = true;
-        activeBusinessId =
-          metaRow.fb_business_id ||
-          metaRow.fb_page_id ||
-          metaRow.ig_business_id ||
-          null;
-      }
+      if (metaRow && (metaRow.fb_ad_account_id || metaRow.fb_page_id)) {
+  metaConnected = true;
+  activeBusinessId =
+    metaRow.fb_business_id ||
+    metaRow.fb_page_id ||
+    metaRow.ig_business_id ||
+    null;
+}
     } catch (e) {
       console.warn("Meta connection lookup failed:", e.message);
     }
