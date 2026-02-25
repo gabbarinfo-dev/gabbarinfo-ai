@@ -211,7 +211,7 @@ order: ${objectivesToTry.join(" -> ")}`);
         const campaignParams = new URLSearchParams();
         campaignParams.append("name", payload.campaign_name);
         campaignParams.append("objective", objParam);
-        campaignParams.append("status", "PAUSED");
+        campaignParams.append("status", "ACTIVE");
 
         // FORCE-INJECT ODAX FLAGS (Strict Enforcement)
         if (objParam && objParam.startsWith("OUTCOME_")) { 
@@ -491,7 +491,7 @@ ${JSON.stringify(lastCreativeError, null, 2)}`);
       adParams.append("adset_id", finalAdSetId); 
       adParams.append("creative", JSON.stringify({ creative_id: 
 creativeId })); 
-      adParams.append("status", "PAUSED"); 
+      adParams.append("status", "ACTIVE"); 
       adParams.append("access_token", ACCESS_TOKEN); 
  
       const adRes = await 
@@ -510,7 +510,7 @@ ${adJson.error?.message} (Account: ${AD_ACCOUNT_ID})`);
     return res.status(200).json({ 
       ok: true, 
       id: campaignId, 
-      status: "PAUSED", 
+      status: "ACTIVE", 
       details: createdAssets 
     }); 
  
@@ -527,7 +527,7 @@ function buildAdSetPayload(objective, adSet, campaignId, accessToken, placements
   // 1. Identity & Time
   params.append("name", adSet.name || "Ad Set 1");
   params.append("campaign_id", campaignId);
-  params.append("status", "PAUSED");
+  params.append("status", "ACTIVE");
   params.append("access_token", accessToken);
   params.append("bid_strategy", "LOWEST_COST_WITHOUT_CAP");
  
