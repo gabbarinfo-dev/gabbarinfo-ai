@@ -338,7 +338,7 @@ export default async function handler(req, res) {
       console.log("TRACE: META CONNECTION RESULT =", meta);
       console.log("TRACE: RESOLVED AD ACCOUNT ID =", meta?.fb_ad_account_id);
 console.log("DEBUG META ROW:", meta);
-      if (!meta?.fb_ad_account_id || (!meta?.system_user_token && !meta?.fb_user_access_token)) {
+      if (!meta?.fb_ad_account_id || (!meta?.fb_user_access_token)) {
         console.log("TRACE: RETURNING RESPONSE — STAGE =", currentState?.stage);
         return res.json({
           ok: true,
@@ -348,7 +348,7 @@ console.log("DEBUG META ROW:", meta);
         });
       }
 
-      const token = meta.system_user_token || meta.fb_user_access_token;
+      const token = meta.fb_user_access_token;
 
       // Facebook Page
       const fbPageRes = await fetch(
