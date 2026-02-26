@@ -26,7 +26,7 @@ export default async function handler(req, res) {
 
         const igBusinessId = meta.ig_business_id;
         // Existing project token pattern: Use system token if available, else user token
-        const accessToken = process.env.META_SYSTEM_USER_TOKEN || meta.fb_user_access_token;
+        const accessToken = meta.fb_user_access_token;
 
         if (!accessToken) {
             return res.status(400).json({ ok: false, message: "Meta access token not found." });
