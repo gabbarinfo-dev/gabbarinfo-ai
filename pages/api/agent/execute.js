@@ -348,7 +348,7 @@ console.log("DEBUG META ROW:", meta);
         });
       }
 
-      const token = meta.system_user_token;
+      const token = meta.system_user_token || meta.fb_user_access_token;
 
       // Facebook Page
       const fbPageRes = await fetch(
