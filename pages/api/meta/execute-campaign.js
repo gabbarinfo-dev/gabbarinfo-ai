@@ -489,25 +489,35 @@ ${JSON.stringify(lastCreativeError, null, 2)}`);
       } 
  
       // 5. Create Ad 
-      const adParams = new URLSearchParams(); 
-      adParams.append("name", creative.headline || "Ad"); 
-      adParams.append("adset_id", finalAdSetId); 
-      adParams.append("creative", JSON.stringify({ creative_id: 
-creativeId })); 
-      adParams.append("status", "ACTIVE"); 
-      adParams.append("access_token", ACCESS_TOKEN); 
- 
-      const adRes = await 
-fetch(`https://graph.facebook.com/${API_VERSION}/act_${AD_ACCOUNT_ID}/a
-ds`, { 
-        method: "POST", 
-        body: adParams 
-      }); 
-      const adJson = await adRes.json(); 
-      if (!adRes.ok) throw new Error(`Ad Create Failed: 
-${adJson.error?.message} (Account: ${AD_ACCOUNT_ID})`); 
- 
-      createdAssets.ads.push(adJson.id); 
+const adBody = {
+  name: creative.headline || "Ad",
+  adset_id: finalAdSetId,
+  creative: {
+    creative_id: creativeId
+  },
+  status: "ACTIVE"
+};
+
+const adRes = await fetch(
+  `https://graph.facebook.com/${API_VERSION}/act_${AD_ACCOUNT_ID}/ads?access_token=${ACCESS_TOKEN}`,
+  {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json"
+    },
+    body: JSON.stringify(adBody)
+  }
+);
+
+const adJson = await adRes.json();
+
+if (!adRes.ok) {
+  throw new Error(
+    `Ad Create Failed: ${JSON.stringify(adJson.error)} (Account: ${AD_ACCOUNT_ID})`
+  );
+}
+
+createdAssets.ads.push(adJson.id);
     } 
  
     return res.status(200).json({ 
