@@ -547,7 +547,7 @@ createdAssets.ads.push(adJson.id);
 } 
  
 // UNIVERSAL AD SET BUILDER (Strict ODAX Compliance)
-function buildAdSetPayload(objective, adSet, campaignId, accessToken, placements) {
+function buildAdSetPayload(objective, adSet, campaignId, accessToken, placements, pageId) {
   const params = new URLSearchParams();
 
   params.append("name", adSet.name || "Ad Set 1");
@@ -588,11 +588,11 @@ function buildAdSetPayload(objective, adSet, campaignId, accessToken, placements
         optimization_goal = "LEAD_GENERATION";
         billing_event = "IMPRESSIONS";
         
-        // CRITICAL: For Leads/Calls, the promoted_object is the PAGE ID, not a pixel
-        promoted_object = {
-          page_id: meta.fb_page_id || pageId // Ensure you have access to pageId here
-        };
-      } else {
+       // Use the pageId passed into the function
+      promoted_object = {
+        page_id: pageId 
+      };
+    } else {
         destination_type = undefined; // Default for Instant Forms
         optimization_goal = "LEAD_GENERATION";
         billing_event = "IMPRESSIONS";
