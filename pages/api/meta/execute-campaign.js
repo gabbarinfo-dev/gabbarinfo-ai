@@ -196,7 +196,13 @@ Check Failed: ${e.message}` });
     // 1. Map Objective 
     const rawObjective = payload.objective || ""; 
     let finalObjective = mapObjectiveToODAX(rawObjective); 
- 
+ // FIX: LEADS + CALLS is not allowed under ODAX
+if (
+  finalObjective === "OUTCOME_LEADS" &&
+  (payload.conversion_location || "").toUpperCase() === "CALLS"
+) {
+  finalObjective = "OUTCOME_TRAFFIC";
+}
     console.log(`
 🚀
  [Campaign Creator] Objective: ${finalObjective} 
