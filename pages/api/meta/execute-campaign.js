@@ -575,11 +575,17 @@ function buildAdSetPayload(objective, adSet, campaignId, accessToken, placements
       } 
       break; 
  
-    case "OUTCOME_LEADS": 
-      optimization_goal = "LEAD_GENERATION"; 
-      billing_event = "IMPRESSIONS"; 
-      destination_type = undefined; // On-Ad (Forms) 
-      break; 
+    case "OUTCOME_LEADS":
+  if (adSet.destination_type === "CALLS") {
+    optimization_goal = "CALLS";
+    billing_event = "IMPRESSIONS";
+    destination_type = "CALLS";
+  } else {
+    optimization_goal = "LEAD_GENERATION";
+    billing_event = "IMPRESSIONS";
+    destination_type = undefined; // On-Ad (Forms)
+  }
+  break;
  
     case "OUTCOME_SALES": 
       optimization_goal = "OFFSITE_CONVERSIONS"; 
