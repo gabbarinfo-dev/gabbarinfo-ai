@@ -710,10 +710,9 @@ function buildCreativePayload(objective, creative, pageId, instagramActorId, acc
       message: creative.primary_text || "",
       name: creative.headline || "Ad",
       call_to_action: {
-        type: "CALL_NOW",
-        value: {
-          // This nested 'value' object is what Meta was missing
-          phone_number: validPhone 
+      type: "CALL_NOW",
+      value: {
+        link: `tel:${validPhone}` 
         }
       }
     };
