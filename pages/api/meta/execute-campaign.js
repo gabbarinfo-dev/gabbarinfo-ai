@@ -439,9 +439,16 @@ AdSet
           const finalForcePhoto = strat.forcePhoto || 
 requiresPhotoOnly; 
  
-          const crParams = buildCreativePayload(finalObjective, 
-creative, PAGE_ID, strat.igActor, ACCESS_TOKEN, finalForcePhoto, 
-strat.placements); 
+          const crParams = buildCreativePayload(
+  finalObjective,
+  creative,
+  PAGE_ID,
+  strat.igActor,
+  ACCESS_TOKEN,
+  finalForcePhoto,
+  strat.placements,
+  meta.business_phone
+); 
           const crRes = await 
 fetch(`https://graph.facebook.com/${API_VERSION}/act_${AD_ACCOUNT_ID}/a
 dcreatives?debug=all`, { 
@@ -637,7 +644,7 @@ JSON.stringify(promoted_object));
 }
 
 // UNIVERSAL CREATIVE BUILDER (Placement Safe & Strict Types)
-function buildCreativePayload(objective, creative, pageId, instagramActorId, accessToken, forcePhoto = false, placements = []) {
+function buildCreativePayload(objective, creative, pageId, instagramActorId, accessToken, forcePhoto = false, placements = [], businessPhone = null) {
   if (!pageId) throw new Error("Page ID is required for Creative");
   if (!creative || !creative.image_hash) {
   return res.status(400).json({
@@ -695,7 +702,7 @@ null;
     ...(finalInstagramActor ? { instagram_actor_id: finalInstagramActor 
 } : {}) 
   }; 
- 
+ console.log("PHONE NUMBER BEING USED:", meta.business_phone);
   // 4. Data Block Construction 
  if (useLinkData) {
   objectStorySpec.link_data = {
@@ -711,7 +718,7 @@ null;
     objectStorySpec.link_data.call_to_action = {
       type: "CALL_NOW",
       value: {
-  link: creative.phone_number.replace(/\s+/g, "")
+  link: (creative.phone_number || "").replace(/\s+/g, "")
 }
     };
   } else if (ctaType !== "NO_BUTTON") {
