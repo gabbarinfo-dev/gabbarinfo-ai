@@ -583,16 +583,16 @@ function buildAdSetPayload(objective, adSet, campaignId, accessToken, placements
 
     case "OUTCOME_LEADS":
       if (conversionLocation === "CALLS") {
-        // For Leads + Calls, Meta expects these specific settings:
-        destination_type = "CALLS"; 
+        // Change from "CALLS" to "FACEBOOK_PAGE"
+        destination_type = "FACEBOOK_PAGE"; 
         optimization_goal = "LEAD_GENERATION";
         billing_event = "IMPRESSIONS";
         
-       // Use the pageId passed into the function
-      promoted_object = {
-        page_id: pageId 
-      };
-    } else {
+        // This remains critical
+        promoted_object = {
+          page_id: pageId 
+        };
+      } else {
         destination_type = undefined; // Default for Instant Forms
         optimization_goal = "LEAD_GENERATION";
         billing_event = "IMPRESSIONS";
