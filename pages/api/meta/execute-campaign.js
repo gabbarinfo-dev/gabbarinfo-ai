@@ -582,27 +582,25 @@ function buildAdSetPayload(objective, adSet, campaignId, accessToken, placements
   break;
 
     case "OUTCOME_LEADS":
-      if (conversionLocation === "CALLS") {
-        // FOR CALL LEADS:
-        // 'ON_AD' tells Meta the lead action happens on the ad itself (the Call button)
-        destination_type = "ON_AD"; 
-        optimization_goal = "LEAD_GENERATION"; 
-        billing_event = "IMPRESSIONS";
-        
-        // Critical: You MUST provide the page_id in promoted_object 
-        // and specify the product_type for Calls.
-        promoted_object = {
-          page_id: pageId,
-          product_set_id: null // Explicitly null helps sometimes
-        };
-      } else {
-        // Default for Instant Forms/Website
-        destination_type = undefined; 
-        optimization_goal = "LEAD_GENERATION";
-        billing_event = "IMPRESSIONS";
-        promoted_object = { page_id: pageId };
-      }
-      break;
+  if (conversionLocation === "CALLS") {
+    destination_type = "ON_AD"; 
+    optimization_goal = "LEAD_GENERATION"; 
+    billing_event = "IMPRESSIONS";
+    
+    // ADJUSTED PROMOTED OBJECT
+    promoted_object = {
+      page_id: pageId,
+      // Adding call_to_action_id or specifying the intent helps 
+      // but strictly defining the Page is often enough IF 
+      // the destination_type is supported by the account.
+    };
+  } else {
+    destination_type = undefined; // For Instant Forms
+    optimization_goal = "LEAD_GENERATION";
+    billing_event = "IMPRESSIONS";
+    promoted_object = { page_id: pageId };
+  }
+  break;
 
     case "OUTCOME_AWARENESS":
       optimization_goal = "REACH";
