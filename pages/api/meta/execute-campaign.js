@@ -692,28 +692,37 @@ function buildCreativePayload(objective, creative, pageId, instagramActorId, acc
     ...(finalInstagramActor ? { instagram_actor_id: finalInstagramActor } : {})
   };
 
-  // ===========================
-  // CALL ADS LOGIC (NEW FIX)
+ // ===========================
+  // CALL ADS LOGIC (FIXED)
   // ===========================
   if (conversionLocation === "CALLS") {
+    // 1. Get the number from the payload or the database
+    const rawPhone = creative.phone_number || "";
+    const validPhone = normalizePhoneNumber(rawPhone);
+
+    if (!validPhone) {
+      throw new Error("A valid phone number is required for Call Ads.");
+    }
 
     objectStorySpec.link_data = {
-  image_hash: creative.image_hash,
-  link: creative.destination_url || "https://www.facebook.com/",
-  message: creative.primary_text || "",
-  name: creative.headline || "Ad",
-  call_to_action: {
-    type: "CALL_NOW"
-  }
-};
+      image_hash: creative.image_hash,
+      link: creative.destination_url || "https://www.facebook.com/",
+      message: creative.primary_text || "",
+      name: creative.headline || "Ad",
+      call_to_action: {
+        type: "CALL_NOW",
+        value: {
+          // This nested 'value' object is what Meta was missing
+          app_destination_number: validPhone 
+        }
+      }
+    };
 
   } else {
-
+    // Standard Ads (No changes needed here unless you want different CTAs)
     let ctaType = "LEARN_MORE";
-    let useLinkData = !forcePhoto;
-
+    
     if (!forcePhoto && (objective === "OUTCOME_TRAFFIC" || objective === "OUTCOME_SALES" || objective === "OUTCOME_LEADS")) {
-
       if (!creative.destination_url) {
         throw new Error(`${objective} requires a destination_url for link_data creatives.`);
       }
@@ -725,14 +734,11 @@ function buildCreativePayload(objective, creative, pageId, instagramActorId, acc
         name: creative.headline || "Ad",
         call_to_action: { type: ctaType }
       };
-
     } else {
-
       objectStorySpec.photo_data = {
         image_hash: creative.image_hash,
         caption: creative.primary_text || creative.headline || ""
       };
-
     }
   }
 
