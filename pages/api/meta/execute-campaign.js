@@ -62,21 +62,11 @@ export default async function handler(req, res) {
   } 
  
   // 1⃣Resolve placements explicitly
-let placements = Array.isArray(platform)
+const placements = Array.isArray(platform)
   ? platform
   : typeof platform === "string"
   ? [platform]
-  : ["facebook"]; // default safe fallback
-
-// 🚨 FORCE FACEBOOK ONLY FOR CALL CAMPAIGNS
-if (
-  payload?.conversion_location === "CALLS" ||
-  payload?.conversion_location === "CALL" ||
-  payload?.ad_sets?.[0]?.destination_type === "CALL"
-) {
-  console.log("🚨 Call campaign detected. Forcing Facebook-only placements.");
-  placements = ["facebook"];
-} 
+  : ["facebook"]; // default safe fallback 
  
   const { data: meta, error } = await supabase 
   .from("meta_connections") 
@@ -436,8 +426,7 @@ AdSet
           // Compute creative mode from objective 
           const isMessagingOrCall = 
             adSet.destination_type === "MESSAGING_APPS" || 
-            ["WHATSAPP", "MESSENGER", "INSTAGRAM_DIRECT", 
-"CALLS"].includes(payload.conversion_location); 
+            ["WHATSAPP", "MESSENGER", "INSTAGRAM_DIRECT"].includes(payload.conversion_location); 
  
           const requiresPhotoOnly = 
             finalObjective === "OUTCOME_AWARENESS" || 
@@ -575,16 +564,10 @@ function buildAdSetPayload(objective, adSet, campaignId, accessToken, placements
       } 
       break; 
  
-    case "OUTCOME_LEADS":
-  if (adSet.destination_type === "CALLS") {
-    optimization_goal = "CALLS";
-    billing_event = "IMPRESSIONS";
-    destination_type = "CALLS";
-  } else {
-    optimization_goal = "LEAD_GENERATION";
-    billing_event = "IMPRESSIONS";
-    destination_type = undefined; // On-Ad (Forms)
-  }
+case "OUTCOME_LEADS":
+  optimization_goal = "LEAD_GENERATION";
+  billing_event = "IMPRESSIONS";
+  destination_type = undefined; // On-Ad (Forms)
   break;
  
     case "OUTCOME_SALES": 
@@ -665,18 +648,14 @@ function buildCreativePayload(objective, creative, pageId, instagramActorId, acc
   let useLinkData = !forcePhoto; 
  
   // 1. Strict Type Switching 
-  if (!forcePhoto && (objective === "OUTCOME_TRAFFIC" || objective === 
-"OUTCOME_SALES" || objective === "OUTCOME_LEADS")) { 
-    ctaType = "LEARN_MORE"; 
-    useLinkData = true; // MUST use link_data 
- 
-    // HARD FAIL: Destination URL Required 
-    if (!creative.destination_url) { 
-      throw new Error(`${objective} requires a destination_url for 
-link_data creatives.`); 
-    } 
- 
-  } else if (forcePhoto || objective === "OUTCOME_AWARENESS") { 
+if (!forcePhoto && (objective === "OUTCOME_TRAFFIC" || objective === "OUTCOME_SALES")) { 
+  ctaType = "LEARN_MORE"; 
+  useLinkData = true;
+
+  if (!creative.destination_url) { 
+    throw new Error(`${objective} requires a destination_url for link_data creatives.`);
+  }
+} else if (forcePhoto || objective === "OUTCOME_AWARENESS") { 
     ctaType = "NO_BUTTON"; 
     useLinkData = false; // MUST use photo_data 
  
