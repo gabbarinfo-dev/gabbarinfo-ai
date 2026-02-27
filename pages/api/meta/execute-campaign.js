@@ -547,29 +547,29 @@ function buildAdSetPayload(objective, adSet, campaignId, accessToken, placements
 
     case "OUTCOME_TRAFFIC":
 
-      if (conversionLocation === "CALLS") {
-        destination_type = "CALL";
-        optimization_goal = "LINK_CLICKS";
-      } else {
-        destination_type = "WEBSITE";
-        optimization_goal = "LINK_CLICKS";
-      }
+  if (conversionLocation === "CALLS") {
+    destination_type = "WEBSITE";
+    optimization_goal = "LINK_CLICKS";
+  } else {
+    destination_type = "WEBSITE";
+    optimization_goal = "LINK_CLICKS";
+  }
 
-      billing_event = "IMPRESSIONS";
-      break;
+  billing_event = "IMPRESSIONS";
+  break;
 
     case "OUTCOME_LEADS":
 
-      if (conversionLocation === "CALLS") {
-        destination_type = "CALL";
-        optimization_goal = "LINK_CLICKS";
-      } else {
-        destination_type = undefined;
-        optimization_goal = "LEAD_GENERATION";
-      }
+  if (conversionLocation === "CALLS") {
+    destination_type = "WEBSITE";
+    optimization_goal = "LINK_CLICKS";
+  } else {
+    destination_type = undefined;
+    optimization_goal = "LEAD_GENERATION";
+  }
 
-      billing_event = "IMPRESSIONS";
-      break;
+  billing_event = "IMPRESSIONS";
+  break;
 
     case "OUTCOME_AWARENESS":
       optimization_goal = "REACH";
