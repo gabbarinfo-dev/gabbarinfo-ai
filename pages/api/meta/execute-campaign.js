@@ -674,15 +674,9 @@ function buildCreativePayload(objective, creative, pageId, instagramActorId, acc
   // ===========================
   if (conversionLocation === "CALLS") {
 
-    const phone = normalizePhoneNumber(creative.phone_number);
-
-    if (!phone) {
-      throw new Error("Phone number required for Call Ads.");
-    }
-
     objectStorySpec.link_data = {
   image_hash: creative.image_hash,
-  link: `tel:${phone}`,
+  link: creative.destination_url || "https://www.facebook.com/",
   message: creative.primary_text || "",
   name: creative.headline || "Ad",
   call_to_action: {
