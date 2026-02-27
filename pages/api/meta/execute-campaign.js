@@ -695,18 +695,25 @@ null;
   }; 
  
   // 4. Data Block Construction 
-  if (useLinkData) { 
-    objectStorySpec.link_data = { 
-      image_hash: creative.image_hash, 
-      link: creative.destination_url || "https://gabbarinfo.com", 
-      message: creative.primary_text || "", 
-      name: creative.headline || "Ad", 
-    }; 
- 
-    if (ctaType !== "NO_BUTTON") { 
-      objectStorySpec.link_data.call_to_action = { type: ctaType }; 
-    } 
-  } else { 
+  if (useLinkData) {
+  objectStorySpec.link_data = {
+    image_hash: creative.image_hash,
+    link: creative.destination_url || "https://gabbarinfo.com",
+    message: creative.primary_text || "",
+    name: creative.headline || "Ad",
+  };
+
+  if (ctaType === "CALL_NOW" && creative.phone_number) {
+    objectStorySpec.link_data.call_to_action = {
+      type: "CALL_NOW",
+      value: {
+        link: "tel:" + creative.phone_number
+      }
+    };
+  } else if (ctaType !== "NO_BUTTON") {
+    objectStorySpec.link_data.call_to_action = { type: ctaType };
+  }
+} else { 
     // Photo Data (Awareness/Engagement) 
     objectStorySpec.photo_data = { 
       image_hash: creative.image_hash, 
