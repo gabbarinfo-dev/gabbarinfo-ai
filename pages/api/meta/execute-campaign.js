@@ -9,8 +9,21 @@ const supabase = createClient(
 ); 
 function normalizePhoneNumber(number) {
   if (!number) return null;
-  return number.replace(/\D/g, ""); // removes +, spaces, dashes
-} 
+
+  const cleaned = number.replace(/\D/g, "");
+
+  // Force India country code with +
+  if (cleaned.startsWith("91")) {
+    return "+" + cleaned;
+  }
+
+  // If number is 10 digits, assume India
+  if (cleaned.length === 10) {
+    return "+91" + cleaned;
+  }
+
+  return "+" + cleaned;
+}
 // THE GOLDEN RULE MAPPER (ODAX / Outcome-Based) 
 function mapObjectiveToODAX(obj) { 
   const o = (obj || "").toString().toUpperCase(); 
