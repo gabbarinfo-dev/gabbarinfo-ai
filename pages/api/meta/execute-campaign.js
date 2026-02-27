@@ -7,7 +7,10 @@ const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL, 
   process.env.SUPABASE_SERVICE_ROLE_KEY 
 ); 
- 
+function normalizePhoneNumber(number) {
+  if (!number) return null;
+  return number.replace(/\D/g, ""); // removes +, spaces, dashes
+} 
 // THE GOLDEN RULE MAPPER (ODAX / Outcome-Based) 
 function mapObjectiveToODAX(obj) { 
   const o = (obj || "").toString().toUpperCase(); 
@@ -309,8 +312,8 @@ Error: ${lastError?.message}`);
 "lifetime_budget"; 
  
       // Build AdSet Payload 
-      const p = buildAdSetPayload(finalObjective, adSet, campaignId, 
-ACCESS_TOKEN, placements); 
+      adSet.conversion_location = payload.conversion_location;
+const p = buildAdSetPayload(finalObjective, adSet, campaignId, ACCESS_TOKEN, placements);
  
       // Append Budget 
       p.append(budgetType, String(Math.floor(Number(budgetAmount) * 
@@ -438,9 +441,9 @@ AdSet
           const finalForcePhoto = strat.forcePhoto || 
 requiresPhotoOnly; 
  
-          const crParams = buildCreativePayload(finalObjective, 
-creative, PAGE_ID, strat.igActor, ACCESS_TOKEN, finalForcePhoto, 
-strat.placements); 
+          creative.conversion_location = payload.conversion_location;
+creative.phone_number = payload.phone_number;
+const crParams = buildCreativePayload(finalObjective, creative, PAGE_ID, strat.igActor, ACCESS_TOKEN, finalForcePhoto, strat.placements); 
           const crRes = await 
 fetch(`https://graph.facebook.com/${API_VERSION}/act_${AD_ACCOUNT_ID}/a
 dcreatives?debug=all`, { 
@@ -524,207 +527,206 @@ ${adJson.error?.message} (Account: ${AD_ACCOUNT_ID})`);
 function buildAdSetPayload(objective, adSet, campaignId, accessToken, placements) {
   const params = new URLSearchParams();
 
-  // 1. Identity & Time
   params.append("name", adSet.name || "Ad Set 1");
   params.append("campaign_id", campaignId);
   params.append("status", "ACTIVE");
   params.append("access_token", accessToken);
   params.append("bid_strategy", "LOWEST_COST_WITHOUT_CAP");
- 
-  // Start Time: Now + 5 mins (Safety Buffer) 
-  const startTime = new Date(Date.now() + 5 * 60 * 1000); 
-  params.append("start_time", startTime.toISOString()); 
- 
-  // 2. ODAX Parameter Matrix 
-  let optimization_goal = "LINK_CLICKS"; 
-  let billing_event = "IMPRESSIONS"; 
-  let destination_type = "WEBSITE"; 
-  let promoted_object = null; 
- 
-  switch (objective) { 
-    case "OUTCOME_TRAFFIC": 
-      optimization_goal = "LINK_CLICKS"; 
-      billing_event = "IMPRESSIONS"; 
-      destination_type = "WEBSITE"; 
-      break; 
- 
-    case "OUTCOME_AWARENESS": 
-      optimization_goal = "REACH"; 
-      billing_event = "IMPRESSIONS"; 
-      destination_type = undefined; // NONE allowed 
-      break; 
- 
-    case "OUTCOME_ENGAGEMENT": 
-      if (adSet.destination_type === "MESSAGING_APPS") { 
-        optimization_goal = "CONVERSATIONS"; 
-        destination_type = "MESSAGING_APPS"; 
-      } else { 
-        optimization_goal = "POST_ENGAGEMENT"; 
-        billing_event = "IMPRESSIONS"; 
-        destination_type = undefined; // On-Ad 
-      } 
-      break; 
- 
-case "OUTCOME_LEADS":
-  optimization_goal = "LEAD_GENERATION";
-  billing_event = "IMPRESSIONS";
-  destination_type = undefined; // On-Ad (Forms)
-  break;
- 
-    case "OUTCOME_SALES": 
-      optimization_goal = "OFFSITE_CONVERSIONS"; 
-      billing_event = "IMPRESSIONS"; 
-      destination_type = "WEBSITE"; 
- 
-      // HARD FAIL: Pixel Required 
-      if (!adSet.promoted_object || !adSet.promoted_object.pixel_id) { 
-        throw new Error("OUTCOME_SALES requires a Pixel ID (promoted_object.pixel_id)."); 
-      } 
-      promoted_object = { 
-        pixel_id: adSet.promoted_object.pixel_id, 
-        custom_event_type: adSet.promoted_object.custom_event_type || 
-"PURCHASE" 
-      }; 
-      break; 
- 
-    case "OUTCOME_APP_PROMOTION": 
-      optimization_goal = "APP_INSTALLS"; 
-      billing_event = "IMPRESSIONS"; 
-      destination_type = undefined; 
- 
-      // HARD FAIL: App ID Required 
-      if (!adSet.promoted_object || 
-!adSet.promoted_object.application_id) { 
-        throw new Error("OUTCOME_APP_PROMOTION requires an Application ID."); 
-      } 
-      promoted_object = adSet.promoted_object; 
-      break; 
- 
-    default: 
-      console.warn(`
-⚠
- Unmapped Objective ${objective}. Defaulting to 
-Traffic.`); 
-      break; 
-  } 
- 
-  // 3. Apply Parameters (Implicit Enforce) 
-  params.append("optimization_goal", optimization_goal); 
-  params.append("billing_event", billing_event); 
-  if (destination_type) params.append("destination_type", 
-destination_type); 
-  if (promoted_object) params.append("promoted_object", 
-JSON.stringify(promoted_object)); 
- 
-  // 4. Targeting 
-  const targeting = adSet.targeting || { geo_locations: { countries: 
-["IN"] }, age_min: 18, age_max: 65 }; 
-  params.append("targeting", JSON.stringify(targeting)); 
- 
-  // 5. Placements 
-  params.append("publisher_platforms", JSON.stringify(placements)); 
- 
-  if (placements.includes("facebook")) { 
-    params.append("facebook_positions", JSON.stringify(["feed"])); 
-  } 
- 
-  if (placements.includes("instagram")) { 
-    params.append("instagram_positions", JSON.stringify(["stream"])); 
-  } 
- 
+
+  const startTime = new Date(Date.now() + 5 * 60 * 1000);
+  params.append("start_time", startTime.toISOString());
+
+  let optimization_goal = "LINK_CLICKS";
+  let billing_event = "IMPRESSIONS";
+  let destination_type = "WEBSITE";
+  let promoted_object = null;
+
+  const conversionLocation = (adSet.conversion_location || "").toUpperCase();
+
+  switch (objective) {
+
+    case "OUTCOME_TRAFFIC":
+
+      if (conversionLocation === "CALLS") {
+        destination_type = "CALL";
+        optimization_goal = "LINK_CLICKS";
+      } else {
+        destination_type = "WEBSITE";
+        optimization_goal = "LINK_CLICKS";
+      }
+
+      billing_event = "IMPRESSIONS";
+      break;
+
+    case "OUTCOME_LEADS":
+
+      if (conversionLocation === "CALLS") {
+        destination_type = "CALL";
+        optimization_goal = "LINK_CLICKS";
+      } else {
+        destination_type = undefined;
+        optimization_goal = "LEAD_GENERATION";
+      }
+
+      billing_event = "IMPRESSIONS";
+      break;
+
+    case "OUTCOME_AWARENESS":
+      optimization_goal = "REACH";
+      billing_event = "IMPRESSIONS";
+      destination_type = undefined;
+      break;
+
+    case "OUTCOME_ENGAGEMENT":
+      if (adSet.destination_type === "MESSAGING_APPS") {
+        optimization_goal = "CONVERSATIONS";
+        destination_type = "MESSAGING_APPS";
+      } else {
+        optimization_goal = "POST_ENGAGEMENT";
+        destination_type = undefined;
+      }
+      billing_event = "IMPRESSIONS";
+      break;
+
+    case "OUTCOME_SALES":
+      optimization_goal = "OFFSITE_CONVERSIONS";
+      billing_event = "IMPRESSIONS";
+      destination_type = "WEBSITE";
+
+      if (!adSet.promoted_object || !adSet.promoted_object.pixel_id) {
+        throw new Error("OUTCOME_SALES requires a Pixel ID (promoted_object.pixel_id).");
+      }
+
+      promoted_object = {
+        pixel_id: adSet.promoted_object.pixel_id,
+        custom_event_type: adSet.promoted_object.custom_event_type || "PURCHASE"
+      };
+      break;
+
+    case "OUTCOME_APP_PROMOTION":
+      optimization_goal = "APP_INSTALLS";
+      billing_event = "IMPRESSIONS";
+      destination_type = undefined;
+
+      if (!adSet.promoted_object || !adSet.promoted_object.application_id) {
+        throw new Error("OUTCOME_APP_PROMOTION requires an Application ID.");
+      }
+
+      promoted_object = adSet.promoted_object;
+      break;
+
+    default:
+      break;
+  }
+
+  params.append("optimization_goal", optimization_goal);
+  params.append("billing_event", billing_event);
+
+  if (destination_type) {
+    params.append("destination_type", destination_type);
+  }
+
+  if (promoted_object) {
+    params.append("promoted_object", JSON.stringify(promoted_object));
+  }
+
+  const targeting = adSet.targeting || {
+    geo_locations: { countries: ["IN"] },
+    age_min: 18,
+    age_max: 65
+  };
+
+  params.append("targeting", JSON.stringify(targeting));
+
+  params.append("publisher_platforms", JSON.stringify(placements));
+
+  if (placements.includes("facebook")) {
+    params.append("facebook_positions", JSON.stringify(["feed"]));
+  }
+
+  if (placements.includes("instagram")) {
+    params.append("instagram_positions", JSON.stringify(["stream"]));
+  }
+
   return params;
 }
 
 // UNIVERSAL CREATIVE BUILDER (Placement Safe & Strict Types)
 function buildCreativePayload(objective, creative, pageId, instagramActorId, accessToken, forcePhoto = false, placements = []) {
+
   if (!pageId) throw new Error("Page ID is required for Creative");
   if (!creative || !creative.image_hash) {
-  return res.status(400).json({
-    ok: false,
-    message: "Image upload failed. Creative execution stopped."
-  });
-}
- 
-  let ctaType = "LEARN_MORE"; 
-  let useLinkData = !forcePhoto; 
- 
-  // 1. Strict Type Switching 
-  if (!forcePhoto && (objective === "OUTCOME_TRAFFIC" || objective === 
-"OUTCOME_SALES" || objective === "OUTCOME_LEADS")) { 
-    ctaType = "LEARN_MORE"; 
-    useLinkData = true; // MUST use link_data 
- 
-    // HARD FAIL: Destination URL Required 
-    if (!creative.destination_url) { 
-      throw new Error(`${objective} requires a destination_url for 
-link_data creatives.`); 
-    } 
- 
-  } else if (forcePhoto || objective === "OUTCOME_AWARENESS") { 
-    ctaType = "NO_BUTTON"; 
-    useLinkData = false; // MUST use photo_data 
- 
-  } else if (objective === "OUTCOME_ENGAGEMENT") { 
-    if (creative.destination_type === "MESSAGING_APPS") { 
-      ctaType = "SEND_MESSAGE"; 
-      useLinkData = true; 
-    } else { 
-      ctaType = "NO_BUTTON"; // Post Engagement 
-      useLinkData = false; 
-    } 
-  } 
- 
-  // 2. Override Logic (Guardrails applied) 
-  if (creative.call_to_action) { 
-    if (objective === "OUTCOME_AWARENESS" || (objective === 
-"OUTCOME_ENGAGEMENT" && !useLinkData)) { 
-      console.warn(`
-⚠
- [Creative] Ignoring user CTA 
-'${creative.call_to_action}' for ${objective}. Enforcing NO_BUTTON.`); 
-      ctaType = "NO_BUTTON"; 
-    } else { 
-      ctaType = creative.call_to_action; 
-    } 
-  } 
- 
-  // 3. Build Object Story Spec 
-  const isInstagramPlacement = placements.includes("instagram"); 
-  const finalInstagramActor = isInstagramPlacement ? instagramActorId : 
-null; 
- 
-  const objectStorySpec = { 
-    page_id: pageId, 
-    ...(finalInstagramActor ? { instagram_actor_id: finalInstagramActor 
-} : {}) 
-  }; 
- 
-  // 4. Data Block Construction 
-  if (useLinkData) { 
-    objectStorySpec.link_data = { 
-      image_hash: creative.image_hash, 
-      link: creative.destination_url || "https://gabbarinfo.com", 
-      message: creative.primary_text || "", 
-      name: creative.headline || "Ad", 
-    }; 
- 
-    if (ctaType !== "NO_BUTTON") { 
-      objectStorySpec.link_data.call_to_action = { type: ctaType }; 
-    } 
-  } else { 
-    // Photo Data (Awareness/Engagement) 
-    objectStorySpec.photo_data = { 
-      image_hash: creative.image_hash, 
-      caption: creative.primary_text || creative.headline || "", 
-    }; 
-    // Implicit NO_BUTTON by nature of photo_data structure used here 
-  } 
- 
-  const params = new URLSearchParams(); 
-  params.append("name", creative.headline || "Creative"); 
-  params.append("object_story_spec", JSON.stringify(objectStorySpec)); 
-  params.append("access_token", accessToken); 
- 
+    throw new Error("Image upload failed. Creative execution stopped.");
+  }
+
+  const conversionLocation = (creative.conversion_location || "").toUpperCase();
+
+  const isInstagramPlacement = placements.includes("instagram");
+  const finalInstagramActor = isInstagramPlacement ? instagramActorId : null;
+
+  const objectStorySpec = {
+    page_id: pageId,
+    ...(finalInstagramActor ? { instagram_actor_id: finalInstagramActor } : {})
+  };
+
+  // ===========================
+  // CALL ADS LOGIC (NEW FIX)
+  // ===========================
+  if (conversionLocation === "CALLS") {
+
+    const phone = normalizePhoneNumber(creative.phone_number);
+
+    if (!phone) {
+      throw new Error("Phone number required for Call Ads.");
+    }
+
+    objectStorySpec.link_data = {
+      image_hash: creative.image_hash,
+      link: "https://www.facebook.com/",
+      message: creative.primary_text || "",
+      name: creative.headline || "Ad",
+      call_to_action: {
+        type: "CALL_NOW",
+        value: {
+          phone_number: phone
+        }
+      }
+    };
+
+  } else {
+
+    let ctaType = "LEARN_MORE";
+    let useLinkData = !forcePhoto;
+
+    if (!forcePhoto && (objective === "OUTCOME_TRAFFIC" || objective === "OUTCOME_SALES" || objective === "OUTCOME_LEADS")) {
+
+      if (!creative.destination_url) {
+        throw new Error(`${objective} requires a destination_url for link_data creatives.`);
+      }
+
+      objectStorySpec.link_data = {
+        image_hash: creative.image_hash,
+        link: creative.destination_url,
+        message: creative.primary_text || "",
+        name: creative.headline || "Ad",
+        call_to_action: { type: ctaType }
+      };
+
+    } else {
+
+      objectStorySpec.photo_data = {
+        image_hash: creative.image_hash,
+        caption: creative.primary_text || creative.headline || ""
+      };
+
+    }
+  }
+
+  const params = new URLSearchParams();
+  params.append("name", creative.headline || "Creative");
+  params.append("object_story_spec", JSON.stringify(objectStorySpec));
+  params.append("access_token", accessToken);
+
   return params;
 }
 
