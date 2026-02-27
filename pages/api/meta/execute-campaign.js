@@ -338,7 +338,9 @@ ${asJson.error?.message} (Account: ${AD_ACCOUNT_ID})`);
  
       // 4. Create Creative with Fallbacks
       const creative = adSet.ad_creative || {};
-
+      creative.phone_number = meta.business_phone;
+creative.call_to_action = "CALL_NOW";
+     
       // Website Destination URL Resolution (Strict - Website Only)
       const isWebsiteConversion = adSet.destination_type === "WEBSITE" 
 || payload.conversion_location === "WEBSITE"; 
@@ -695,15 +697,15 @@ null;
   }; 
  
   // 4. Data Block Construction 
-  if (useLinkData) {
+ if (useLinkData) {
   objectStorySpec.link_data = {
     image_hash: creative.image_hash,
-    link: creative.destination_url || "https://gabbarinfo.com",
+    link: creative.destination_url,
     message: creative.primary_text || "",
     name: creative.headline || "Ad",
   };
 
-  if (ctaType === "CALL_NOW" && creative.phone_number) {
+  if (ctaType === "CALL_NOW") {
     objectStorySpec.link_data.call_to_action = {
       type: "CALL_NOW",
       value: {
@@ -711,7 +713,9 @@ null;
       }
     };
   } else if (ctaType !== "NO_BUTTON") {
-    objectStorySpec.link_data.call_to_action = { type: ctaType };
+    objectStorySpec.link_data.call_to_action = {
+      type: ctaType
+    };
   }
 } else { 
     // Photo Data (Awareness/Engagement) 
