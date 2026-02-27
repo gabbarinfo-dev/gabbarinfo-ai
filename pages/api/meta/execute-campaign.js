@@ -338,9 +338,7 @@ ${asJson.error?.message} (Account: ${AD_ACCOUNT_ID})`);
  
       // 4. Create Creative with Fallbacks
       const creative = adSet.ad_creative || {};
-      creative.phone_number = meta.business_phone;
-creative.call_to_action = "CALL_NOW";
-     
+
       // Website Destination URL Resolution (Strict - Website Only)
       const isWebsiteConversion = adSet.destination_type === "WEBSITE" 
 || payload.conversion_location === "WEBSITE"; 
@@ -428,7 +426,8 @@ AdSet
           // Compute creative mode from objective 
           const isMessagingOrCall = 
             adSet.destination_type === "MESSAGING_APPS" || 
-            ["WHATSAPP", "MESSENGER", "INSTAGRAM_DIRECT"].includes(payload.conversion_location); 
+            ["WHATSAPP", "MESSENGER", "INSTAGRAM_DIRECT", 
+"CALLS"].includes(payload.conversion_location); 
  
           const requiresPhotoOnly = 
             finalObjective === "OUTCOME_AWARENESS" || 
@@ -439,16 +438,9 @@ AdSet
           const finalForcePhoto = strat.forcePhoto || 
 requiresPhotoOnly; 
  
-          const crParams = buildCreativePayload(
-  finalObjective,
-  creative,
-  PAGE_ID,
-  strat.igActor,
-  ACCESS_TOKEN,
-  finalForcePhoto,
-  strat.placements,
-  meta.business_phone
-); 
+          const crParams = buildCreativePayload(finalObjective, 
+creative, PAGE_ID, strat.igActor, ACCESS_TOKEN, finalForcePhoto, 
+strat.placements); 
           const crRes = await 
 fetch(`https://graph.facebook.com/${API_VERSION}/act_${AD_ACCOUNT_ID}/a
 dcreatives?debug=all`, { 
@@ -644,7 +636,7 @@ JSON.stringify(promoted_object));
 }
 
 // UNIVERSAL CREATIVE BUILDER (Placement Safe & Strict Types)
-function buildCreativePayload(objective, creative, pageId, instagramActorId, accessToken, forcePhoto = false, placements = [], businessPhone = null) {
+function buildCreativePayload(objective, creative, pageId, instagramActorId, accessToken, forcePhoto = false, placements = []) {
   if (!pageId) throw new Error("Page ID is required for Creative");
   if (!creative || !creative.image_hash) {
   return res.status(400).json({
@@ -657,14 +649,18 @@ function buildCreativePayload(objective, creative, pageId, instagramActorId, acc
   let useLinkData = !forcePhoto; 
  
   // 1. Strict Type Switching 
-if (!forcePhoto && (objective === "OUTCOME_TRAFFIC" || objective === "OUTCOME_SALES")) { 
-  ctaType = "LEARN_MORE"; 
-  useLinkData = true;
-
-  if (!creative.destination_url) { 
-    throw new Error(`${objective} requires a destination_url for link_data creatives.`);
-  }
-} else if (forcePhoto || objective === "OUTCOME_AWARENESS") { 
+  if (!forcePhoto && (objective === "OUTCOME_TRAFFIC" || objective === 
+"OUTCOME_SALES" || objective === "OUTCOME_LEADS")) { 
+    ctaType = "LEARN_MORE"; 
+    useLinkData = true; // MUST use link_data 
+ 
+    // HARD FAIL: Destination URL Required 
+    if (!creative.destination_url) { 
+      throw new Error(`${objective} requires a destination_url for 
+link_data creatives.`); 
+    } 
+ 
+  } else if (forcePhoto || objective === "OUTCOME_AWARENESS") { 
     ctaType = "NO_BUTTON"; 
     useLinkData = false; // MUST use photo_data 
  
@@ -702,31 +698,20 @@ null;
     ...(finalInstagramActor ? { instagram_actor_id: finalInstagramActor 
 } : {}) 
   }; 
- console.log("PHONE NUMBER BEING USED:", meta.business_phone);
+ 
   // 4. Data Block Construction 
- if (useLinkData) {
-  objectStorySpec.link_data = {
-    image_hash: creative.image_hash,
-    link: ctaType === "CALL_NOW"
-      ? "https://facebook.com"
-      : creative.destination_url,
-    message: creative.primary_text || "",
-    name: creative.headline || "Ad",
-  };
-
-  if (ctaType === "CALL_NOW") {
-    objectStorySpec.link_data.call_to_action = {
-      type: "CALL_NOW",
-      value: {
-  link: (creative.phone_number || "").replace(/\s+/g, "")
-}
-    };
-  } else if (ctaType !== "NO_BUTTON") {
-    objectStorySpec.link_data.call_to_action = {
-      type: ctaType
-    };
-  }
-} else { 
+  if (useLinkData) { 
+    objectStorySpec.link_data = { 
+      image_hash: creative.image_hash, 
+      link: creative.destination_url || "https://gabbarinfo.com", 
+      message: creative.primary_text || "", 
+      name: creative.headline || "Ad", 
+    }; 
+ 
+    if (ctaType !== "NO_BUTTON") { 
+      objectStorySpec.link_data.call_to_action = { type: ctaType }; 
+    } 
+  } else { 
     // Photo Data (Awareness/Engagement) 
     objectStorySpec.photo_data = { 
       image_hash: creative.image_hash, 
@@ -742,3 +727,6 @@ null;
  
   return params;
 }
+
+
+
