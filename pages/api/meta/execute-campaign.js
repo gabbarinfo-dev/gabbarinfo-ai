@@ -61,12 +61,22 @@ export default async function handler(req, res) {
     return res.status(400).json({ ok: false, message: "Invalid payload: campaign_name required" }); 
   } 
  
-  // 1⃣ Resolve placements explicitly 
-  const placements = Array.isArray(platform) 
-    ? platform 
-    : typeof platform === "string" 
-      ? [platform] 
-      : ["facebook"]; // default safe fallback 
+  // 1⃣Resolve placements explicitly
+let placements = Array.isArray(platform)
+  ? platform
+  : typeof platform === "string"
+  ? [platform]
+  : ["facebook"]; // default safe fallback
+
+// 🚨 FORCE FACEBOOK ONLY FOR CALL CAMPAIGNS
+if (
+  payload?.conversion_location === "CALLS" ||
+  payload?.conversion_location === "CALL" ||
+  payload?.ad_sets?.[0]?.destination_type === "CALL"
+) {
+  console.log("🚨 Call campaign detected. Forcing Facebook-only placements.");
+  placements = ["facebook"];
+} 
  
   const { data: meta, error } = await supabase 
   .from("meta_connections") 
