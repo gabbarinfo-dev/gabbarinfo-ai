@@ -681,17 +681,14 @@ function buildCreativePayload(objective, creative, pageId, instagramActorId, acc
     }
 
     objectStorySpec.link_data = {
-      image_hash: creative.image_hash,
-      link: "https://www.facebook.com/",
-      message: creative.primary_text || "",
-      name: creative.headline || "Ad",
-      call_to_action: {
-        type: "CALL_NOW",
-        value: {
-          phone_number: phone
-        }
-      }
-    };
+  image_hash: creative.image_hash,
+  link: `tel:${phone}`,
+  message: creative.primary_text || "",
+  name: creative.headline || "Ad",
+  call_to_action: {
+    type: "CALL_NOW"
+  }
+};
 
   } else {
 
