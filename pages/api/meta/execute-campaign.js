@@ -73,7 +73,7 @@ const placements = Array.isArray(platform)
  
   const { data: meta, error } = await supabase 
   .from("meta_connections") 
-  .select("fb_ad_account_id, fb_page_id, ig_business_id, instagram_actor_id, business_website, fb_user_access_token") 
+  .select("fb_ad_account_id, fb_page_id, ig_business_id, instagram_actor_id, business_website, business_phone, fb_user_access_token") 
   .eq("email", clientEmail) 
   .single();
  
@@ -313,7 +313,7 @@ Error: ${lastError?.message}`);
  
       // Build AdSet Payload 
       adSet.conversion_location = payload.conversion_location;
-const p = buildAdSetPayload(finalObjective, adSet, campaignId, ACCESS_TOKEN, placements);
+const p = buildAdSetPayload(finalObjective, adSet, campaignId, ACCESS_TOKEN, strat.placements);
  
       // Append Budget 
       p.append(budgetType, String(Math.floor(Number(budgetAmount) * 
@@ -442,7 +442,7 @@ AdSet
 requiresPhotoOnly; 
  
           creative.conversion_location = payload.conversion_location;
-creative.phone_number = payload.phone_number;
+creative.phone_number = payload.phone_number || meta.business_phone;
 const crParams = buildCreativePayload(finalObjective, creative, PAGE_ID, strat.igActor, ACCESS_TOKEN, finalForcePhoto, strat.placements); 
           const crRes = await 
 fetch(`https://graph.facebook.com/${API_VERSION}/act_${AD_ACCOUNT_ID}/a
