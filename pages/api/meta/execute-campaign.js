@@ -700,7 +700,9 @@ null;
  if (useLinkData) {
   objectStorySpec.link_data = {
     image_hash: creative.image_hash,
-    link: creative.destination_url,
+    link: ctaType === "CALL_NOW"
+  ? "https://facebook.com"
+  : creative.destination_url,
     message: creative.primary_text || "",
     name: creative.headline || "Ad",
   };
