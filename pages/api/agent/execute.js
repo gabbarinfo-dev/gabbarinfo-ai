@@ -1518,7 +1518,7 @@ console.log("====================");
         ok: true,
         mode,
         gated: true,
-        text: "Phone number confirmed for Call Ads.",
+        text: "Phone number confirmed for Call Ads. Reply OK to continue",
       });
     }
 
@@ -2826,7 +2826,7 @@ Otherwise, respond with a full, clear explanation, and include example JSON only
       if (errorOcurred) {
         feedbackText = `❌ **Automation Interrupted**:\n\n**Error**: ${stopReason}\n\n**Pipeline Progress**:\n${waterfallLog.join("\n")}\n\nI've saved the progress so far. Please check the error above and reply to try again.`;
       } else if (state.stage === "IMAGE_GENERATED") {
-        feedbackText = `✅ **Image Generated Successfully**\n\n[Image Generated]\n\n**Next Steps**:\n1. Upload image to Meta Assets\n2. Create paused campaign on Facebook/Instagram\n\nReply **LAUNCH** to complete these steps automatically.`;
+        feedbackText = `✅ **Image Generated Successfully**\n\n[Image Generated]\n\n**Next Steps**:\n1. Upload image to Meta Assets\n2. Create active campaign on Facebook/Instagram\n\nReply **LAUNCH** to complete these steps automatically.`;
       } else if (state.stage === "READY_TO_LAUNCH" && state.image_hash) {
         if (imageUploadedThisTurn) {
           feedbackText = `✅ **Image Uploaded & Ready**\n\nEverything is set for campaign launch.\n\n**Details**:\n- Campaign: ${state.plan.campaign_name}\n`;
@@ -2834,7 +2834,7 @@ Otherwise, respond with a full, clear explanation, and include example JSON only
           feedbackText = `⏳ **Uploading image to Meta. Please wait...**\n\n(Debug: Stage=${state.stage}, Hash=Yes)\n\nWaiting for upload to complete...`;
         }
       } else {
-        feedbackText = `**Current Pipeline Progress**:\n${waterfallLog.join("\n") || "No steps completed in this turn."}\n\n(Debug: Stage=${state.stage}, Plan=${state.plan ? "Yes" : "No"}, Image=${state.creative?.imageBase64 ? "Yes" : "No"}, Hash=${state.image_hash || "No"})\n\nWaiting for your confirmation...`;
+        feedbackText = `**Current Pipeline Progress**:\n${waterfallLog.join("\n") || "No steps completed in this turn."}\n\n(Debug: Stage=${state.stage}, Plan=${state.plan ? "Yes" : "No"}, Image=${state.creative?.imageBase64 ? "Yes" : "No"}, Hash=${state.image_hash || "No"})\n\nWaiting for your confirmation...Say YES for final publishing of active campaign`;
       }
 
       return res.status(200).json({ ok: true, text: feedbackText, imageUrl: state.creative?.imageUrl, mode });
