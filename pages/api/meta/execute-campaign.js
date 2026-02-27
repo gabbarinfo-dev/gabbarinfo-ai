@@ -713,7 +713,7 @@ function buildCreativePayload(objective, creative, pageId, instagramActorId, acc
         type: "CALL_NOW",
         value: {
           // This nested 'value' object is what Meta was missing
-          app_destination_number: validPhone 
+          lead_gen_phone_number: validPhone 
         }
       }
     };
