@@ -2166,24 +2166,57 @@ Please choose ONE option:
       });
     }
 
-    // Handle follow-up selection
-    if (selectedDestination === "messages") {
-      if (lowerInstruction === "1" || lowerInstruction.includes("instagram")) {
-        selectedMessageChannel = ["instagram"];
-      }
+  // Handle follow-up selection
+if (selectedDestination === "messages") {
+  if (lowerInstruction === "1" || lowerInstruction.includes("instagram")) {
+    selectedMessageChannel = ["instagram"];
+  }
 
-      if (lowerInstruction === "2" || lowerInstruction.includes("facebook")) {
-        selectedMessageChannel = ["facebook"];
-      }
+  if (lowerInstruction === "2" || lowerInstruction.includes("facebook")) {
+    selectedMessageChannel = ["facebook"];
+  }
 
-      if (lowerInstruction === "3" || lowerInstruction.includes("whatsapp")) {
-        selectedMessageChannel = ["whatsapp"];
-      }
+  if (lowerInstruction === "3" || lowerInstruction.includes("whatsapp")) {
+    selectedMessageChannel = ["whatsapp"];
+  }
 
-      if (lowerInstruction === "4" || lowerInstruction.includes("all")) {
-        selectedMessageChannel = ["instagram", "facebook", "whatsapp"];
-      }
-    }
+  if (lowerInstruction === "4" || lowerInstruction.includes("all")) {
+    selectedMessageChannel = ["instagram", "facebook", "whatsapp"];
+  }
+}
+
+if (
+  mode === "meta_ads_plan" &&
+  selectedDestination === "messages" &&
+  selectedMessageChannel &&
+  effectiveBusinessId
+) {
+  const baseUrl = process.env.NEXT_PUBLIC_BASE_URL;
+
+  const newState = {
+    ...lockedCampaignState,
+    message_channel: selectedMessageChannel,
+    stage: "message_channel_selected",
+    locked_at: new Date().toISOString()
+  };
+
+  await saveAnswerMemory(
+    baseUrl,
+    effectiveBusinessId,
+    { campaign_state: newState },
+    session.user.email.toLowerCase()
+  );
+
+  lockedCampaignState = newState;
+
+  // 🔥 THIS RETURN IS MANDATORY
+  return res.status(200).json({
+    ok: true,
+    mode,
+    gated: false,
+    text: "Message channel locked. Continuing..."
+  });
+}
     // ============================================================
     // ✏️ CTA OVERRIDE (USER CORRECTION MODE)
     // ============================================================
