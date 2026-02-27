@@ -326,7 +326,7 @@ Error: ${lastError?.message}`);
  
       // Build AdSet Payload 
       adSet.conversion_location = payload.conversion_location;
-const p = buildAdSetPayload(finalObjective, adSet, campaignId, ACCESS_TOKEN, placements);
+const p = buildAdSetPayload(finalObjective, adSet, campaignId, ACCESS_TOKEN, placements, PAGE_ID);
  
       // Append Budget 
       p.append(budgetType, String(Math.floor(Number(budgetAmount) * 
@@ -418,7 +418,7 @@ creation...`);
  [AdSet] Creating NEW Ad Set for fallback 
 with placements ${platKey}...`); 
             adSet.conversion_location = payload.conversion_location;
-const p = buildAdSetPayload(finalObjective, adSet, campaignId, ACCESS_TOKEN, strat.placements); 
+const p = buildAdSetPayload(finalObjective, adSet, campaignId, ACCESS_TOKEN, strat.placements, PAGE_ID); 
             const asRes = await 
 fetch(`https://graph.facebook.com/${API_VERSION}/act_${AD_ACCOUNT_ID}/a
 dsets`, { 
