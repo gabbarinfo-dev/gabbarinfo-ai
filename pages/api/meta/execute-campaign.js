@@ -582,17 +582,22 @@ function buildAdSetPayload(objective, adSet, campaignId, accessToken, placements
   break;
 
     case "OUTCOME_LEADS":
-
-  if (conversionLocation === "CALLS") {
-    destination_type = "WEBSITE";
-    optimization_goal = "LINK_CLICKS";
-  } else {
-    destination_type = undefined;
-    optimization_goal = "LEAD_GENERATION";
-  }
-
-  billing_event = "IMPRESSIONS";
-  break;
+      if (conversionLocation === "CALLS") {
+        // For Leads + Calls, Meta expects these specific settings:
+        destination_type = "CALLS"; 
+        optimization_goal = "LEAD_GENERATION";
+        billing_event = "IMPRESSIONS";
+        
+        // CRITICAL: For Leads/Calls, the promoted_object is the PAGE ID, not a pixel
+        promoted_object = {
+          page_id: meta.fb_page_id || pageId // Ensure you have access to pageId here
+        };
+      } else {
+        destination_type = undefined; // Default for Instant Forms
+        optimization_goal = "LEAD_GENERATION";
+        billing_event = "IMPRESSIONS";
+      }
+      break;
 
     case "OUTCOME_AWARENESS":
       optimization_goal = "REACH";
