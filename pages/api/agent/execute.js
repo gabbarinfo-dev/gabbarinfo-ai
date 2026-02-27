@@ -1401,7 +1401,7 @@ console.log("====================");
         await saveAnswerMemory(process.env.NEXT_PUBLIC_BASE_URL, effectiveBusinessId, { campaign_state: lockedCampaignState }, session.user.email.toLowerCase());
         return res.status(200).json({
           ok: true, mode, gated: true,
-          text: `Duration: **${days} days**.\n\nAll details received! I am now generating your custom Meta Ads plan. Please reply with anything or just wait.`
+          text: `Duration: **${days} days**.\n\nAll details received! I am now generating your custom Meta Ads plan. Please reply OK to continue.`
         });
       } else {
         return res.status(200).json({
@@ -1645,7 +1645,7 @@ console.log("====================");
         lockedCampaignState = nextState;
         console.log("TRACE: ENTER META INTAKE FLOW");
         console.log("TRACE: RETURNING RESPONSE — STAGE =", currentState?.stage);
-        let nextText = "Website confirmed as your landing page.";
+        let nextText = "Website confirmed, say OK to continue.";
 
         if (!lockedCampaignState?.service) {
           const rawServices =
