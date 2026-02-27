@@ -711,8 +711,8 @@ null;
     objectStorySpec.link_data.call_to_action = {
       type: "CALL_NOW",
       value: {
-        link: "tel:" + creative.phone_number
-      }
+  link: creative.phone_number.replace(/\s+/g, "")
+}
     };
   } else if (ctaType !== "NO_BUTTON") {
     objectStorySpec.link_data.call_to_action = {
