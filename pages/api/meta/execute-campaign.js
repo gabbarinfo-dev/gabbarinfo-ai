@@ -203,7 +203,15 @@ if (
 ) {
   finalObjective = "OUTCOME_TRAFFIC";
 }
-    console.log(`
+ 
+   // FIX: TRAFFIC + MESSAGES must use ENGAGEMENT objective
+if (
+  finalObjective === "OUTCOME_TRAFFIC" &&
+  (payload.conversion_location || "").toUpperCase() === "MESSAGES"
+) {
+  finalObjective = "OUTCOME_ENGAGEMENT";
+}
+   console.log(`
 🚀
  [Campaign Creator] Objective: ${finalObjective} 
 (from raw: ${rawObjective})`); 
@@ -613,15 +621,17 @@ function buildAdSetPayload(objective, adSet, campaignId, accessToken, placements
       break;
 
     case "OUTCOME_ENGAGEMENT":
-      if (adSet.destination_type === "MESSAGING_APPS") {
-        optimization_goal = "CONVERSATIONS";
-        destination_type = "MESSAGING_APPS";
-      } else {
-        optimization_goal = "POST_ENGAGEMENT";
-        destination_type = undefined;
-      }
-      billing_event = "IMPRESSIONS";
-      break;
+
+  if (conversionLocation === "MESSAGES") {
+    optimization_goal = "CONVERSATIONS";
+    destination_type = "MESSAGING_APPS";
+  } else {
+    optimization_goal = "POST_ENGAGEMENT";
+    destination_type = undefined;
+  }
+
+  billing_event = "IMPRESSIONS";
+  break;
 
     case "OUTCOME_SALES":
       optimization_goal = "OFFSITE_CONVERSIONS";
