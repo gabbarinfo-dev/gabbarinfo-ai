@@ -621,15 +621,16 @@ function buildAdSetPayload(objective, adSet, campaignId, accessToken, placements
       break;
 
     case "OUTCOME_ENGAGEMENT":
-
-  if (conversionLocation === "MESSAGES") {
+  if (
+    conversionLocation === "MESSAGES" ||
+    conversionLocation === "WHATSAPP"
+  ) {
     optimization_goal = "CONVERSATIONS";
     destination_type = "MESSAGING_APPS";
   } else {
     optimization_goal = "POST_ENGAGEMENT";
     destination_type = undefined;
   }
-
   billing_event = "IMPRESSIONS";
   break;
 
@@ -742,6 +743,13 @@ function buildCreativePayload(objective, creative, pageId, instagramActorId, acc
   } else {
     // Standard Ads (No changes needed here unless you want different CTAs)
     let ctaType = "LEARN_MORE";
+
+if (conversionLocation === "WHATSAPP") {
+  ctaType = "WHATSAPP_MESSAGE";
+}
+else if (conversionLocation === "MESSAGES") {
+  ctaType = "SEND_MESSAGE";
+}
     
     if (!forcePhoto && (objective === "OUTCOME_TRAFFIC" || objective === "OUTCOME_SALES" || objective === "OUTCOME_LEADS")) {
       if (!creative.destination_url) {
