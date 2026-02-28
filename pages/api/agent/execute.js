@@ -2884,6 +2884,12 @@ if (
 
 // Override safely before execution
 plan.conversion_location = conversionLocation;
+
+// ALSO update every adset explicitly
+plan.ad_sets = plan.ad_sets.map(adset => ({
+  ...adset,
+  conversion_location: conversionLocation
+}));
             const finalPayload = {
               ...plan,
               ad_sets: plan.ad_sets.map(adset => ({
