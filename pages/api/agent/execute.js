@@ -1656,7 +1656,7 @@ else if (lowerInstruction.includes("4") || lowerInstruction.includes("all")) {
     );
 
     lockedCampaignState = newState;
-
+currentState = newState;
     return res.status(200).json({
       ok: true,
       mode,
@@ -2179,106 +2179,7 @@ else if (lowerInstruction.includes("4") || lowerInstruction.includes("all")) {
       lockedCampaignState = newState;
     }
 
-    // ============================================================
-    // 🔘 META CTA RESOLUTION — FORCED MODE
-    // ============================================================
-
-    let resolvedCTA = null;
-
-    // FORCE CTA based on destination
-    if (selectedDestination === "call") {
-      resolvedCTA = "CALL_NOW";
-    }
-
-    if (
-      selectedDestination === "whatsapp" ||
-      selectedDestination === "messages"
-    ) {
-      resolvedCTA = "SEND_MESSAGE";
-    }
-
-    // Traffic / profile visits handled separately (NOT forced)
-
-    // ============================================================
-    // 💬 MESSAGE DESTINATION SELECTION (USER MUST CHOOSE)
-    // ============================================================
-
-    let selectedMessageChannel = null;
-
-    // If user chose "messages", we must ask WHERE
-    if (selectedDestination === "messages" && !lockedCampaignState?.message_channel) {
-      const msg = `
-Where do you want people to message you?
-
-Please choose ONE option:
-
-1. Instagram messages
-2. Facebook Messenger
-3. WhatsApp
-4. All available
-`.trim();
-
-      console.log("TRACE: ENTER META INTAKE FLOW");
-      console.log("TRACE: RETURNING RESPONSE — STAGE =", currentState?.stage);
-      return res.status(200).json({
-        ok: true,
-        mode,
-        gated: true,
-        text: msg,
-      });
-    }
-
-  // Handle follow-up selection
-if (selectedDestination === "messages") {
-  if (lowerInstruction === "1" || lowerInstruction.includes("instagram")) {
-    selectedMessageChannel = ["instagram"];
-  }
-
-  if (lowerInstruction === "2" || lowerInstruction.includes("facebook")) {
-    selectedMessageChannel = ["facebook"];
-  }
-
-  if (lowerInstruction === "3" || lowerInstruction.includes("whatsapp")) {
-    selectedMessageChannel = ["whatsapp"];
-  }
-
-  if (lowerInstruction === "4" || lowerInstruction.includes("all")) {
-    selectedMessageChannel = ["instagram", "facebook", "whatsapp"];
-  }
-}
-
-if (
-  mode === "meta_ads_plan" &&
-  selectedDestination === "messages" &&
-  selectedMessageChannel &&
-  effectiveBusinessId
-) {
-  const baseUrl = process.env.NEXT_PUBLIC_BASE_URL;
-
-  const newState = {
-    ...lockedCampaignState,
-    message_channel: selectedMessageChannel,
-    stage: "message_channel_selected",
-    locked_at: new Date().toISOString()
-  };
-
-  await saveAnswerMemory(
-    baseUrl,
-    effectiveBusinessId,
-    { campaign_state: newState },
-    session.user.email.toLowerCase()
-  );
-
-  lockedCampaignState = newState;
-
-  // 🔥 THIS RETURN IS MANDATORY
-  return res.status(200).json({
-    ok: true,
-    mode,
-    gated: false,
-    text: "Message channel locked. Continuing..."
-  });
-}
+   
     // ============================================================
     // ✏️ CTA OVERRIDE (USER CORRECTION MODE)
     // ============================================================
