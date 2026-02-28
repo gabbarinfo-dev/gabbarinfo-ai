@@ -786,8 +786,6 @@ function buildCreativePayload(objective, creative, pageId, instagramActorId, acc
     ctaType = "WHATSAPP_MESSAGE";
   }
 
-}
-
 // ==============================
 // TRAFFIC / SALES / LEADS
 // ==============================
