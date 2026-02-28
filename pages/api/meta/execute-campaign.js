@@ -626,12 +626,14 @@ function buildAdSetPayload(objective, adSet, campaignId, accessToken, placements
       break;
 
     case "OUTCOME_ENGAGEMENT":
-  if (
-    conversionLocation === "MESSAGES" ||
-    conversionLocation === "WHATSAPP"
-  ) {
+  if (conversionLocation === "MESSAGES" || conversionLocation === "WHATSAPP") {
     optimization_goal = "CONVERSATIONS";
     destination_type = "MESSAGING_APPS";
+    
+    // THIS IS THE FIX: Meta needs to know WHICH page the messages are for
+    promoted_object = { 
+      page_id: pageId 
+    };
   } else {
     optimization_goal = "POST_ENGAGEMENT";
     destination_type = undefined;
