@@ -1611,7 +1611,74 @@ console.log("====================");
           "Example: +91XXXXXXXXXX",
       });
     }
+// ============================================================
+// 💬 MESSAGE CHANNEL CONFIRMATION + LOCK (FIX LOOP)
+// ============================================================
+console.log("DEBUG selectedDestination:", selectedDestination);
+console.log("DEBUG lockedCampaignState:", lockedCampaignState);
+    
+if (
+  !isPlanProposed &&
+  selectedDestination === "messages" &&
+  !lockedCampaignState?.message_channel_confirmed
+) {
+  let selectedMessageChannel = null;
 
+  if (lowerInstruction.includes("1") || lowerInstruction.includes("instagram")) {
+    selectedMessageChannel = ["instagram"];
+  } 
+  else if (lowerInstruction.includes("2") || lowerInstruction.includes("facebook")) {
+    selectedMessageChannel = ["facebook"];
+  } 
+  else if (lowerInstruction.includes("3") || lowerInstruction.includes("whatsapp")) {
+    selectedMessageChannel = ["whatsapp"];
+  } 
+  else if (lowerInstruction.includes("4") || lowerInstruction.includes("all")) {
+    selectedMessageChannel = ["instagram", "facebook", "whatsapp"];
+  }
+
+  // ✅ IF USER SELECTED OPTION → LOCK IT
+  if (selectedMessageChannel && effectiveBusinessId) {
+    const baseUrl = process.env.NEXT_PUBLIC_BASE_URL;
+
+    const newState = {
+      ...lockedCampaignState,
+      message_channel: selectedMessageChannel,
+      message_channel_confirmed: true,
+      locked_at: new Date().toISOString()
+    };
+
+    await saveAnswerMemory(
+      baseUrl,
+      effectiveBusinessId,
+      { campaign_state: newState },
+      session.user.email.toLowerCase()
+    );
+
+    lockedCampaignState = newState;
+
+    return res.status(200).json({
+      ok: true,
+      mode,
+      gated: true,
+      text: "Message channel locked. Reply OK to continue."
+    });
+  }
+
+  // ❓ IF USER HAS NOT SELECTED YET → ASK QUESTION
+  return res.status(200).json({
+    ok: true,
+    mode,
+    gated: true,
+    text:
+      "Where do you want people to message you?\n\n" +
+      "1. Instagram messages\n" +
+      "2. Facebook Messenger\n" +
+      "3. WhatsApp\n" +
+      "4. All available",
+  });
+}
+    
     // ============================================================
     // 🌐 LANDING PAGE CONFIRMATION GATE (TRAFFIC ONLY)
     // ============================================================
