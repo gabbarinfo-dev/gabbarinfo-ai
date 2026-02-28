@@ -627,23 +627,41 @@ function buildAdSetPayload(objective, adSet, campaignId, accessToken, placements
       break;
 
     case "OUTCOME_ENGAGEMENT":
-  if (
-  conversionLocation === "MESSAGES" ||
-  conversionLocation === "WHATSAPP" ||
-  conversionLocation === "MESSAGING_APPS"
-) {
-    optimization_goal = "CONVERSATIONS";
-    destination_type = "MESSAGING_APPS";
-    
-    // THIS IS THE FIX: Meta needs to know WHICH page the messages are for
-    promoted_object = { 
-      page_id: pageId 
-    };
-  } else {
-    optimization_goal = "POST_ENGAGEMENT";
-    destination_type = undefined;
-  }
+
+  optimization_goal = "CONVERSATIONS";
   billing_event = "IMPRESSIONS";
+
+  if (conversionLocation === "WHATSAPP") {
+    destination_type = "WHATSAPP";
+  }
+
+  else if (conversionLocation === "MESSAGING_APPS" || conversionLocation === "MESSAGES") {
+
+    // Determine specific channel from adSet
+    const channel = (adSet.message_channel || "").toUpperCase();
+
+    if (channel === "INSTAGRAM_MESSAGES") {
+      destination_type = "INSTAGRAM_DIRECT";
+    }
+
+    else if (channel === "FACEBOOK_MESSENGER") {
+      destination_type = "MESSENGER";
+    }
+
+    else if (channel === "ALL_MESSAGES") {
+      destination_type = "MESSAGING_INSTAGRAM_DIRECT_MESSENGER_WHATSAPP";
+    }
+
+    else {
+      // default safe fallback
+      destination_type = "MESSENGER";
+    }
+  }
+
+  promoted_object = {
+    page_id: pageId
+  };
+
   break;
 
     case "OUTCOME_SALES":
