@@ -1625,17 +1625,17 @@ if (
   let selectedMessageChannel = null;
 
   if (lowerInstruction.includes("1") || lowerInstruction.includes("instagram")) {
-    selectedMessageChannel = ["instagram"];
-  } 
-  else if (lowerInstruction.includes("2") || lowerInstruction.includes("facebook")) {
-    selectedMessageChannel = ["facebook"];
-  } 
-  else if (lowerInstruction.includes("3") || lowerInstruction.includes("whatsapp")) {
-    selectedMessageChannel = ["whatsapp"];
-  } 
-  else if (lowerInstruction.includes("4") || lowerInstruction.includes("all")) {
-    selectedMessageChannel = ["instagram", "facebook", "whatsapp"];
-  }
+  selectedMessageChannel = "INSTAGRAM_MESSAGES";
+}
+else if (lowerInstruction.includes("2") || lowerInstruction.includes("facebook")) {
+  selectedMessageChannel = "FACEBOOK_MESSENGER";
+}
+else if (lowerInstruction.includes("3") || lowerInstruction.includes("whatsapp")) {
+  selectedMessageChannel = "WHATSAPP";
+}
+else if (lowerInstruction.includes("4") || lowerInstruction.includes("all")) {
+  selectedMessageChannel = "ALL_MESSAGES";
+}
 
   // ✅ IF USER SELECTED OPTION → LOCK IT
   if (selectedMessageChannel && effectiveBusinessId) {
@@ -2861,6 +2861,29 @@ Otherwise, respond with a full, clear explanation, and include example JSON only
           console.log("🚀 Waterfall: Executing Campaign on Meta...");
           try {
             const plan = state.plan;
+            
+// ============================================================
+// 🔄 CONVERSION LOCATION MAPPING (CRITICAL FIX)
+// ============================================================
+
+let conversionLocation = plan.conversion_location;
+
+// If user selected WhatsApp
+if (state.message_channel === "WHATSAPP") {
+  conversionLocation = "WHATSAPP";
+}
+
+// If Instagram, Facebook or All → treat as MESSAGES
+if (
+  state.message_channel === "INSTAGRAM_MESSAGES" ||
+  state.message_channel === "FACEBOOK_MESSENGER" ||
+  state.message_channel === "ALL_MESSAGES"
+) {
+  conversionLocation = "MESSAGES";
+}
+
+// Override safely before execution
+plan.conversion_location = conversionLocation;
             const finalPayload = {
               ...plan,
               ad_sets: plan.ad_sets.map(adset => ({
