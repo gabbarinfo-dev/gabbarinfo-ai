@@ -776,11 +776,11 @@ function buildCreativePayload(objective, creative, pageId, instagramActorId, acc
 
   // Messaging logic based ONLY on conversion location
   if (
-    conversionLocation === "MESSAGES" ||
-    conversionLocation === "MESSAGING_APPS"
-  ) {
-    ctaType = "SEND_MESSAGE";
-  }
+  conversionLocation === "MESSAGES" ||
+  conversionLocation === "MESSAGING_APPS"
+) {
+  ctaType = "MESSAGE_PAGE";
+}
 
   if (conversionLocation === "WHATSAPP") {
     ctaType = "WHATSAPP_MESSAGE";
