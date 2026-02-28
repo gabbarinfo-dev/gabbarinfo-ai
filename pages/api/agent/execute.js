@@ -2139,7 +2139,7 @@ console.log("====================");
     let selectedMessageChannel = null;
 
     // If user chose "messages", we must ask WHERE
-    if (!isPlanProposed && selectedDestination === "messages" && !lockedCampaignState?.message_channel) {
+    if (selectedDestination === "messages" && !lockedCampaignState?.message_channel) {
       const msg = `
 Where do you want people to message you?
 
