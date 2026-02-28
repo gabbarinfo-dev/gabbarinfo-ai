@@ -208,7 +208,11 @@ if (
    // FIX: TRAFFIC + MESSAGES must use ENGAGEMENT objective
 if (
   finalObjective === "OUTCOME_TRAFFIC" &&
-  (payload.conversion_location || "").toUpperCase() === "MESSAGES"
+  (
+    (payload.conversion_location || "").toUpperCase() === "MESSAGES" ||
+    (payload.conversion_location || "").toUpperCase() === "MESSAGING_APPS" ||
+    (payload.conversion_location || "").toUpperCase() === "WHATSAPP"
+  )
 ) {
   finalObjective = "OUTCOME_ENGAGEMENT";
 }
