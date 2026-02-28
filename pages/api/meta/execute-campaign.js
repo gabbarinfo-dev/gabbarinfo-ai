@@ -771,17 +771,21 @@ function buildCreativePayload(objective, creative, pageId, instagramActorId, acc
     };
 
   } else {
-    // Standard Ads (No changes needed here unless you want different CTAs)
-    let ctaType = "LEARN_MORE";
-    
-    // Check if it's a Messaging Ad
-    const isMessaging = conversionLocation === "MESSAGES" || conversionLocation === "WHATSAPP";
 
-    // Check if it's a Messaging Ad
-if (conversionLocation === "WHATSAPP") {
-  ctaType = "WHATSAPP_MESSAGE";
-} else if (conversionLocation === "MESSAGES") {
-  ctaType = "SEND_MESSAGE";
+  let ctaType = "LEARN_MORE";
+
+  // Messaging logic based ONLY on conversion location
+  if (
+    conversionLocation === "MESSAGES" ||
+    conversionLocation === "MESSAGING_APPS"
+  ) {
+    ctaType = "SEND_MESSAGE";
+  }
+
+  if (conversionLocation === "WHATSAPP") {
+    ctaType = "WHATSAPP_MESSAGE";
+  }
+
 }
 
 // ==============================
