@@ -774,17 +774,21 @@ function buildCreativePayload(objective, creative, pageId, instagramActorId, acc
 
   let ctaType = "LEARN_MORE";
 
-  // Messaging logic based ONLY on conversion location
-  if (
+// Messaging CTA selection based on placement
+if (
   conversionLocation === "MESSAGES" ||
   conversionLocation === "MESSAGING_APPS"
 ) {
-  ctaType = "MESSAGE_PAGE";
+  if (placements.includes("instagram")) {
+    ctaType = "INSTAGRAM_MESSAGE";
+  } else {
+    ctaType = "MESSAGE_PAGE";
+  }
 }
 
-  if (conversionLocation === "WHATSAPP") {
-    ctaType = "WHATSAPP_MESSAGE";
-  }
+if (conversionLocation === "WHATSAPP") {
+  ctaType = "WHATSAPP_MESSAGE";
+}
 
 // ==============================
 // TRAFFIC / SALES / LEADS
