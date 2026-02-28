@@ -813,8 +813,13 @@ else if (!forcePhoto && objective === "OUTCOME_ENGAGEMENT") {
 
   objectStorySpec.link_data = {
     image_hash: creative.image_hash,
+
+    // REQUIRED for Messenger ads
+    link: `https://www.facebook.com/${pageId}`,
+
     message: creative.primary_text || "",
     name: creative.headline || "Chat with us",
+
     call_to_action: {
       type: ctaType
     }
