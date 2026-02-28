@@ -748,25 +748,28 @@ function buildCreativePayload(objective, creative, pageId, instagramActorId, acc
   } else {
     // Standard Ads (No changes needed here unless you want different CTAs)
     let ctaType = "LEARN_MORE";
-
-if (conversionLocation === "WHATSAPP") {
-  ctaType = "WHATSAPP_MESSAGE";
-}
-else if (conversionLocation === "MESSAGES") {
-  ctaType = "SEND_MESSAGE";
-}
     
-    if (!forcePhoto && (objective === "OUTCOME_TRAFFIC" || objective === "OUTCOME_SALES" || objective === "OUTCOME_LEADS")) {
-      if (!creative.destination_url) {
-        throw new Error(`${objective} requires a destination_url for link_data creatives.`);
-      }
+    // Check if it's a Messaging Ad
+    const isMessaging = conversionLocation === "MESSAGES" || conversionLocation === "WHATSAPP";
 
+    if (conversionLocation === "WHATSAPP") {
+      ctaType = "WHATSAPP_MESSAGE";
+    } else if (conversionLocation === "MESSAGES") {
+      ctaType = "SEND_MESSAGE";
+    }
+
+    if (!forcePhoto && (objective === "OUTCOME_TRAFFIC" || objective === "OUTCOME_SALES" || objective === "OUTCOME_LEADS" || objective === "OUTCOME_ENGAGEMENT")) {
+      
       objectStorySpec.link_data = {
         image_hash: creative.image_hash,
-        link: creative.destination_url,
+        // FOR MESSAGING: The 'link' must be your Facebook Page URL, NOT a website
+        link: `https://www.facebook.com/${pageId}`, 
         message: creative.primary_text || "",
-        name: creative.headline || "Ad",
-        call_to_action: { type: ctaType }
+        name: creative.headline || "Chat with us",
+        call_to_action: { 
+          type: ctaType,
+          // For messaging, we often don't need the 'value' field like Call Ads do
+        }
       };
     } else {
       objectStorySpec.photo_data = {
@@ -775,7 +778,6 @@ else if (conversionLocation === "MESSAGES") {
       };
     }
   }
-
   const params = new URLSearchParams();
   params.append("name", creative.headline || "Creative");
   params.append("object_story_spec", JSON.stringify(objectStorySpec));
