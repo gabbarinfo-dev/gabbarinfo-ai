@@ -627,7 +627,11 @@ function buildAdSetPayload(objective, adSet, campaignId, accessToken, placements
       break;
 
     case "OUTCOME_ENGAGEMENT":
-  if (conversionLocation === "MESSAGES" || conversionLocation === "WHATSAPP") {
+  if (
+  conversionLocation === "MESSAGES" ||
+  conversionLocation === "WHATSAPP" ||
+  conversionLocation === "MESSAGING_APPS"
+) {
     optimization_goal = "CONVERSATIONS";
     destination_type = "MESSAGING_APPS";
     
