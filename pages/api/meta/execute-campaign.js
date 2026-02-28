@@ -74,6 +74,7 @@ export default async function handler(req, res) {
  
   const { platform, payload } = req.body || {}; 
  console.log("🔥 FINAL PAYLOAD RECEIVED:", JSON.stringify(payload, null, 2));
+ console.log("🔥 FINAL conversion_location:", payload.conversion_location);
   if (!payload || !payload.campaign_name) { 
     return res.status(400).json({ ok: false, message: "Invalid payload: campaign_name required" }); 
   } 
