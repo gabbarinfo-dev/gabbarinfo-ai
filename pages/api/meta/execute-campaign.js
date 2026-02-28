@@ -777,32 +777,62 @@ function buildCreativePayload(objective, creative, pageId, instagramActorId, acc
     // Check if it's a Messaging Ad
     const isMessaging = conversionLocation === "MESSAGES" || conversionLocation === "WHATSAPP";
 
-    if (conversionLocation === "WHATSAPP") {
-      ctaType = "WHATSAPP_MESSAGE";
-    } else if (conversionLocation === "MESSAGES") {
-      ctaType = "SEND_MESSAGE";
-    }
+    // Check if it's a Messaging Ad
+if (conversionLocation === "WHATSAPP") {
+  ctaType = "WHATSAPP_MESSAGE";
+} else if (conversionLocation === "MESSAGES") {
+  ctaType = "SEND_MESSAGE";
+}
 
-    if (!forcePhoto && (objective === "OUTCOME_TRAFFIC" || objective === "OUTCOME_SALES" || objective === "OUTCOME_LEADS" || objective === "OUTCOME_ENGAGEMENT")) {
-      
-      objectStorySpec.link_data = {
-        image_hash: creative.image_hash,
-        // FOR MESSAGING: The 'link' must be your Facebook Page URL, NOT a website
-        link: `https://www.facebook.com/${pageId}`, 
-        message: creative.primary_text || "",
-        name: creative.headline || "Chat with us",
-        call_to_action: { 
-          type: ctaType,
-          // For messaging, we often don't need the 'value' field like Call Ads do
-        }
-      };
-    } else {
-      objectStorySpec.photo_data = {
-        image_hash: creative.image_hash,
-        caption: creative.primary_text || creative.headline || ""
-      };
+// ==============================
+// TRAFFIC / SALES / LEADS
+// ==============================
+if (
+  !forcePhoto &&
+  (objective === "OUTCOME_TRAFFIC" ||
+   objective === "OUTCOME_SALES" ||
+   objective === "OUTCOME_LEADS")
+) {
+
+  objectStorySpec.link_data = {
+    image_hash: creative.image_hash,
+    link: creative.destination_url || `https://www.facebook.com/${pageId}`,
+    message: creative.primary_text || "",
+    name: creative.headline || "Learn more",
+    call_to_action: {
+      type: ctaType
     }
-  }
+  };
+
+}
+
+// ==============================
+// ENGAGEMENT (MESSAGING)
+// ==============================
+else if (!forcePhoto && objective === "OUTCOME_ENGAGEMENT") {
+
+  objectStorySpec.link_data = {
+    image_hash: creative.image_hash,
+    message: creative.primary_text || "",
+    name: creative.headline || "Chat with us",
+    call_to_action: {
+      type: ctaType
+    }
+  };
+
+}
+
+// ==============================
+// PHOTO ONLY (Fallback)
+// ==============================
+else {
+
+  objectStorySpec.photo_data = {
+    image_hash: creative.image_hash,
+    caption: creative.primary_text || creative.headline || ""
+  };
+
+}
   const params = new URLSearchParams();
   params.append("name", creative.headline || "Creative");
   params.append("object_story_spec", JSON.stringify(objectStorySpec));
