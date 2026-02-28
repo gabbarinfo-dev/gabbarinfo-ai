@@ -1140,16 +1140,11 @@ console.log("====================");
     let selectedDestination = null;
     let selectedPerformanceGoal = null;
 
-    if (lockedCampaignState) {
-      const stage = lockedCampaignState.stage;
-      const isCompletedCycle =
-        stage === "COMPLETED" || stage === "READY_TO_LAUNCH";
-      if (!isCompletedCycle && !isNewMetaCampaignRequest) {
-        selectedMetaObjective = lockedCampaignState.objective || null;
-        selectedDestination = lockedCampaignState.destination || null;
-        selectedPerformanceGoal = lockedCampaignState.performance_goal || null;
-      }
-    }
+ if (lockedCampaignState) {
+  selectedMetaObjective = lockedCampaignState.objective || null;
+  selectedDestination = lockedCampaignState.destination || null;
+  selectedPerformanceGoal = lockedCampaignState.performance_goal || null;
+}
 
     // 🧑‍💬 Interactive Sequence: Objective -> Destination -> Goal
 
