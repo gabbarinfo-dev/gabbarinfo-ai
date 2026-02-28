@@ -2888,7 +2888,8 @@ plan.conversion_location = conversionLocation;
 // ALSO update every adset explicitly
 plan.ad_sets = plan.ad_sets.map(adset => ({
   ...adset,
-  conversion_location: conversionLocation
+  conversion_location: conversionLocation,
+  message_channel: state.message_channel
 }));
             const finalPayload = {
               ...plan,
