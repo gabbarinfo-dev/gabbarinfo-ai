@@ -831,7 +831,7 @@ else {
     image_hash: creative.image_hash,
     caption: creative.primary_text || creative.headline || ""
   };
-
+}
 }
   const params = new URLSearchParams();
   params.append("name", creative.headline || "Creative");
