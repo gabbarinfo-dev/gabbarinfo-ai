@@ -1230,8 +1230,12 @@ console.log("====================");
         selectedDestination = "website";
       } else if (input.includes("2") || input.includes("call") || input.includes("phone")) {
         selectedDestination = "call";
-      } else if (input.includes("3") || input.includes("whatsapp") || input.includes("message") || input.includes("messages") || input.includes("chat") || input.includes("dm")) {
-        selectedDestination = "messages";
+      } else if (input.includes("whatsapp")) {
+    selectedDestination = "whatsapp";
+}
+else if (input.includes("message") || input.includes("messages") || input.includes("chat") || input.includes("dm")) {
+    selectedDestination = "messages";
+}
       } else if (selectedMetaObjective === "OUTCOME_LEADS") {
         if (input.includes("whatsapp")) selectedDestination = "whatsapp";
         else if (input.includes("call") || input.includes("phone")) selectedDestination = "call";
