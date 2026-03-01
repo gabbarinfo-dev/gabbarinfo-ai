@@ -2763,7 +2763,7 @@ Otherwise, respond with a full, clear explanation, and include example JSON only
         if (isReady && wantsLaunch) {
           console.log("🚀 Waterfall: Executing Campaign on Meta...");
           try {
-            const plan = currentState.plan;
+            const plan = state.plan;
             
 // ============================================================
 // 🔄 CONVERSION LOCATION MAPPING (CRITICAL FIX)
@@ -2772,7 +2772,7 @@ Otherwise, respond with a full, clear explanation, and include example JSON only
 let conversionLocation = plan.conversion_location;
 
 // If user selected WhatsApp
-if (currentState.message_channel === "WHATSAPP") {
+if (state.message_channel === "WHATSAPP") {
   conversionLocation = "WHATSAPP";
 }
 
