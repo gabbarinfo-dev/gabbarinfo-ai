@@ -598,21 +598,26 @@ function buildAdSetPayload(objective, adSet, campaignId, accessToken, placements
  case "OUTCOME_TRAFFIC":
 
   if (conversionLocation === "WHATSAPP") {
-    destination_type = "WHATSAPP";
+    destination_type = "MESSAGING_APPS";
     optimization_goal = "CONVERSATIONS";
     billing_event = "IMPRESSIONS";
+
     promoted_object = {
       page_id: pageId
     };
+
+    // 👇 ADD THIS
+    params.append("messaging_destinations", JSON.stringify(["WHATSAPP"]));
   }
 
   else if (
     conversionLocation === "MESSAGES" ||
     conversionLocation === "MESSAGING_APPS"
   ) {
-    destination_type = "MESSENGER";
+    destination_type = "MESSAGING_APPS";
     optimization_goal = "CONVERSATIONS";
     billing_event = "IMPRESSIONS";
+
     promoted_object = { page_id: pageId };
   }
 
