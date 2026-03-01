@@ -476,6 +476,7 @@ AdSet
 requiresPhotoOnly; 
  
           creative.conversion_location = payload.conversion_location;
+         creative.message_channel = payload.message_channel;
 creative.phone_number = payload.phone_number || meta.business_phone;
 const crParams = buildCreativePayload(finalObjective, creative, PAGE_ID, strat.igActor, ACCESS_TOKEN, finalForcePhoto, strat.placements); 
           const crRes = await 
@@ -779,14 +780,24 @@ function buildCreativePayload(objective, creative, pageId, instagramActorId, acc
 
   let ctaType = "LEARN_MORE";
 
-// Messaging CTA selection based on placement
+// Messaging CTA selection based on actual selected channel
 if (
   conversionLocation === "MESSAGES" ||
   conversionLocation === "MESSAGING_APPS"
 ) {
-  if (placements.includes("instagram")) {
+
+  const channel = (creative.message_channel || "").toUpperCase();
+
+  if (channel === "INSTAGRAM_MESSAGES") {
     ctaType = "INSTAGRAM_MESSAGE";
-  } else {
+  }
+  else if (channel === "FACEBOOK_MESSENGER") {
+    ctaType = "MESSAGE_PAGE";
+  }
+  else if (channel === "ALL_MESSAGES") {
+    ctaType = "MESSAGE_PAGE";
+  }
+  else {
     ctaType = "MESSAGE_PAGE";
   }
 }
