@@ -1235,7 +1235,6 @@ console.log("====================");
 }
 else if (input.includes("message") || input.includes("messages") || input.includes("chat") || input.includes("dm")) {
     selectedDestination = "messages";
-}
       } else if (selectedMetaObjective === "OUTCOME_LEADS") {
         if (input.includes("whatsapp")) selectedDestination = "whatsapp";
         else if (input.includes("call") || input.includes("phone")) selectedDestination = "call";
