@@ -2710,7 +2710,7 @@ Otherwise, respond with a full, clear explanation, and include example JSON only
           try {
             const uploadRes = await fetch(`${process.env.NEXT_PUBLIC_BASE_URL}/api/meta/upload-image`, {
               method: "POST",
-              headers: { "Content-Type": "application/json", "x-client-email": __currentEmail || "" },
+              headers: { "Content-Type": "application/json", "x-client-email": session.user.email.toLowerCase() },
               body: JSON.stringify({ imageBase64: state.creative.imageBase64 })
             });
             const uploadJson = await parseResponseSafe(uploadRes);
@@ -2793,19 +2793,32 @@ plan.ad_sets = plan.ad_sets.map(adset => ({
   message_channel: state.message_channel
 }));
             const finalPayload = {
-              ...plan,
-              ad_sets: plan.ad_sets.map(adset => ({
-                ...adset,
-                ad_creative: { ...adset.ad_creative, image_hash: state.image_hash }
-              }))
-            };
+  ...plan,
+  ad_sets: plan.ad_sets.map(adset => ({
+    ...adset,
+    ad_creative: { 
+      ...adset.ad_creative, 
+      image_hash: state.image_hash 
+    }
+  }))
+};
 
-            const execRes = await fetch(`${process.env.NEXT_PUBLIC_BASE_URL}/api/meta/execute-campaign`, {
-              method: "POST",
-              headers: { "Content-Type": "application/json", "x-client-email": __currentEmail || "" },
-              body: JSON.stringify({ platform: "meta", payload: finalPayload })
-            });
-            const execJson = await execRes.json();
+const execRes = await fetch(
+  `${process.env.NEXT_PUBLIC_BASE_URL}/api/meta/execute-campaign`,
+  {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      "x-client-email": session.user.email.toLowerCase()
+    },
+    body: JSON.stringify({
+      platform: "meta",
+      payload: finalPayload
+    })
+  }
+);
+
+const execJson = await execRes.json();
 
           if (execJson.ok) {
     currentState.stage = "COMPLETED";
@@ -3844,7 +3857,7 @@ Reply **YES** to confirm this plan and proceed.
 };
               const execRes = await fetch(`${process.env.NEXT_PUBLIC_BASE_URL}/api/meta/execute-campaign`, {
                 method: "POST",
-                headers: { "Content-Type": "application/json", "x-client-email": __currentEmail || "" },
+                headers: { "Content-Type": "application/json", "x-client-email": session.user.email.toLowerCase() },
                 body: JSON.stringify({ platform: "meta", payload: finalPayload })
               });
               const execJson = await execRes.json();
