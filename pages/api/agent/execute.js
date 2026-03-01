@@ -973,8 +973,8 @@ console.log("====================");
     }
     const phoneMatch = instruction.match(/phone[^\d]*(\+?\d[\d\s-]{8,15})/i) || instruction.match(/(\+?\d[\d\s-]{8,15})/);
     if (phoneMatch) extractedData.phone = phoneMatch[1];
-    const waMatch = instruction.match(/whatsapp[^\d]*(\+?\d[\d\s-]{8,15})/i);
-    if (waMatch) extractedData.whatsapp = phoneMatch[1];
+   const waMatch = instruction.match(/whatsapp[^\d]*(\+?\d[\d\s-]{8,15})/i);
+if (waMatch) extractedData.whatsapp = waMatch[1];
 
     // Budget & Duration (parsing only)
     const budgetMatch = instruction.match(/(?:budget|amount|day):\s*(\d+)/i) || instruction.match(/(?:₹|rs\.?)\s*(\d+)/i);
