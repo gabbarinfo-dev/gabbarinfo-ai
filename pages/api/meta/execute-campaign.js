@@ -346,6 +346,7 @@ Error: ${lastError?.message}`);
  
       // Build AdSet Payload 
       adSet.conversion_location = payload.conversion_location;
+     adSet.message_channel = payload.message_channel;
 const p = buildAdSetPayload(finalObjective, adSet, campaignId, ACCESS_TOKEN, placements, PAGE_ID);
  
       // Append Budget 
