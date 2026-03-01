@@ -2763,7 +2763,7 @@ Otherwise, respond with a full, clear explanation, and include example JSON only
         if (isReady && wantsLaunch) {
           console.log("🚀 Waterfall: Executing Campaign on Meta...");
           try {
-            const plan = state.plan;
+            const plan = currentState.plan;
             
 // ============================================================
 // 🔄 CONVERSION LOCATION MAPPING (CRITICAL FIX)
