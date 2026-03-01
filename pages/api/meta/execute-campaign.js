@@ -347,6 +347,7 @@ Error: ${lastError?.message}`);
       // Build AdSet Payload 
       adSet.conversion_location = payload.conversion_location;
      adSet.message_channel = payload.message_channel;
+     adSet.phone_number = payload.phone_number || meta.business_phone;
 const p = buildAdSetPayload(finalObjective, adSet, campaignId, ACCESS_TOKEN, placements, PAGE_ID);
  
       // Append Budget 
@@ -638,8 +639,13 @@ function buildAdSetPayload(objective, adSet, campaignId, accessToken, placements
   billing_event = "IMPRESSIONS";
 
   if (conversionLocation === "WHATSAPP") {
-    destination_type = "WHATSAPP";
-  }
+  destination_type = "WHATSAPP";
+
+  promoted_object = {
+    page_id: pageId,
+    whatsapp_number: adSet.phone_number || null
+  };
+}
 
   else if (conversionLocation === "MESSAGING_APPS" || conversionLocation === "MESSAGES") {
 
@@ -664,9 +670,11 @@ function buildAdSetPayload(objective, adSet, campaignId, accessToken, placements
     }
   }
 
+  if (!promoted_object) {
   promoted_object = {
     page_id: pageId
   };
+}
 
   break;
 
