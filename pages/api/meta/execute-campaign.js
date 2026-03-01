@@ -524,12 +524,16 @@ ${JSON.stringify(lastCreativeError, null, 2)}`);
  
       // 5. Create Ad 
 const adBody = {
-  name: creative.headline || "Ad",
-  adset_id: finalAdSetId,
-  creative: {
-    creative_id: creativeId
-  },
-  status: "ACTIVE"
+ name: creative.headline || "Ad",
+ adset_id: finalAdSetId,
+ creative: {
+   creative_id: creativeId
+ },
+ status: "ACTIVE",
+ ...(payload.message_channel === "INSTAGRAM_MESSAGES" &&
+   validatedInstagramActorId
+   ? { instagram_actor_id: validatedInstagramActorId }
+   : {})
 };
 
 const adRes = await fetch(
