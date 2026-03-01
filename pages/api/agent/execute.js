@@ -2520,7 +2520,7 @@ Otherwise, respond with a full, clear explanation, and include example JSON only
     if (
       (lockedCampaignState?.stage === "PLAN_CONFIRMED" || lockedCampaignState?.stage === "IMAGE_GENERATED" || lockedCampaignState?.stage === "READY_TO_LAUNCH") &&
       lockedCampaignState?.plan &&
-      planGeneratedThisTurn === true && // 🔒 HARD GATE
+      
       (lowerInstruction.includes("yes") ||
         lowerInstruction.includes("approve") ||
         lowerInstruction.includes("confirm") ||
