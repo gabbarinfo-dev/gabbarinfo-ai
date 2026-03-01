@@ -602,8 +602,7 @@ function buildAdSetPayload(objective, adSet, campaignId, accessToken, placements
     optimization_goal = "CONVERSATIONS";
     billing_event = "IMPRESSIONS";
     promoted_object = {
-      page_id: pageId,
-      whatsapp_number: adSet.phone_number
+      page_id: pageId
     };
   }
 
@@ -632,8 +631,7 @@ function buildAdSetPayload(objective, adSet, campaignId, accessToken, placements
     optimization_goal = "CONVERSATIONS";
     billing_event = "IMPRESSIONS";
     promoted_object = {
-      page_id: pageId,
-      whatsapp_number: adSet.phone_number
+      page_id: pageId
     };
   }
   else if (conversionLocation === "CALLS") {
