@@ -595,17 +595,29 @@ function buildAdSetPayload(objective, adSet, campaignId, accessToken, placements
 
   switch (objective) {
 
-    case "OUTCOME_TRAFFIC":
+  case "OUTCOME_TRAFFIC":
 
-  if (conversionLocation === "CALLS") {
+  optimization_goal = "LINK_CLICKS";
+  billing_event = "IMPRESSIONS";
+
+  if (conversionLocation === "WHATSAPP") {
+
+    destination_type = "MESSAGING_APPS";
+
+    promoted_object = {
+      page_id: pageId
+    };
+
+  } else if (conversionLocation === "CALLS") {
+
     destination_type = "WEBSITE";
-    optimization_goal = "LINK_CLICKS";
+
   } else {
+
     destination_type = "WEBSITE";
-    optimization_goal = "LINK_CLICKS";
+
   }
 
-  billing_event = "IMPRESSIONS";
   break;
 
     case "OUTCOME_LEADS":
