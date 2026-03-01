@@ -595,27 +595,32 @@ function buildAdSetPayload(objective, adSet, campaignId, accessToken, placements
 
   switch (objective) {
 
-  case "OUTCOME_TRAFFIC":
-
-  optimization_goal = "LINK_CLICKS";
-  billing_event = "IMPRESSIONS";
+ case "OUTCOME_TRAFFIC":
 
   if (conversionLocation === "WHATSAPP") {
-
-    destination_type = "MESSAGING_APPS";
-
+    destination_type = "WHATSAPP";
+    optimization_goal = "CONVERSATIONS";
+    billing_event = "IMPRESSIONS";
     promoted_object = {
-      page_id: pageId
+      page_id: pageId,
+      whatsapp_number: adSet.phone_number
     };
+  }
 
-  } else if (conversionLocation === "CALLS") {
+  else if (
+    conversionLocation === "MESSAGES" ||
+    conversionLocation === "MESSAGING_APPS"
+  ) {
+    destination_type = "MESSENGER";
+    optimization_goal = "CONVERSATIONS";
+    billing_event = "IMPRESSIONS";
+    promoted_object = { page_id: pageId };
+  }
 
+  else {
     destination_type = "WEBSITE";
-
-  } else {
-
-    destination_type = "WEBSITE";
-
+    optimization_goal = "LINK_CLICKS";
+    billing_event = "IMPRESSIONS";
   }
 
   break;
