@@ -1578,8 +1578,7 @@ else if (input.includes("message") || input.includes("messages") || input.includ
       !isPlanProposed &&
       selectedDestination === "whatsapp" &&
       extractedData.whatsapp &&
-      !lockedCampaignState?.whatsapp_confirmed &&
-      false
+      !lockedCampaignState?.whatsapp_confirmed 
     ) {
       const baseUrl = process.env.NEXT_PUBLIC_BASE_URL;
       const nextState = {
