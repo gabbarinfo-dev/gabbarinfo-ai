@@ -598,7 +598,39 @@ function buildAdSetPayload(objective, adSet, campaignId, accessToken, placements
  case "OUTCOME_TRAFFIC":
 
   if (conversionLocation === "WHATSAPP") {
-    destination_type = "MESSAGING_APPS";
+    destination_type = "WHATSAPP";
+    optimization_goal = "CONVERSATIONS";
+    billing_event = "IMPRESSIONS";
+    promoted_object = {
+      page_id: pageId
+    };
+  }
+
+  else if (conversionLocation === "MESSAGES") {
+    destination_type = "MESSENGER";
+    optimization_goal = "CONVERSATIONS";
+    billing_event = "IMPRESSIONS";
+    promoted_object = { page_id: pageId };
+  }
+
+  else if (conversionLocation === "CALLS") {
+    destination_type = "WEBSITE";
+    optimization_goal = "LINK_CLICKS";
+    billing_event = "IMPRESSIONS";
+  }
+
+  else {
+    destination_type = "WEBSITE";
+    optimization_goal = "LINK_CLICKS";
+    billing_event = "IMPRESSIONS";
+  }
+
+break;
+    case "OUTCOME_LEADS":
+
+  if (conversionLocation === "WHATSAPP") {
+
+    destination_type = "WHATSAPP";
     optimization_goal = "CONVERSATIONS";
     billing_event = "IMPRESSIONS";
 
@@ -606,54 +638,29 @@ function buildAdSetPayload(objective, adSet, campaignId, accessToken, placements
       page_id: pageId
     };
 
-    // 👇 ADD THIS
-    params.append("messaging_destinations", JSON.stringify(["WHATSAPP"]));
   }
 
-  else if (
-    conversionLocation === "MESSAGES" ||
-    conversionLocation === "MESSAGING_APPS"
-  ) {
-    destination_type = "MESSAGING_APPS";
-    optimization_goal = "CONVERSATIONS";
-    billing_event = "IMPRESSIONS";
-
-    promoted_object = { page_id: pageId };
-  }
-
-  else {
-    destination_type = "WEBSITE";
-    optimization_goal = "LINK_CLICKS";
-    billing_event = "IMPRESSIONS";
-  }
-
-  break;
-
-    case "OUTCOME_LEADS":
-
- if (conversionLocation === "WHATSAPP") {
-  destination_type = "MESSAGING_APPS";   // ❗ NOT "WHATSAPP"
-  optimization_goal = "CONVERSATIONS";
-  billing_event = "IMPRESSIONS";
-
-  promoted_object = {
-    page_id: pageId
-  };
-}
   else if (conversionLocation === "CALLS") {
+
     destination_type = "WEBSITE";
     optimization_goal = "LINK_CLICKS";
     billing_event = "IMPRESSIONS";
+
   }
+
   else {
-    destination_type = undefined;
+
     optimization_goal = "LEAD_GENERATION";
     billing_event = "IMPRESSIONS";
-    promoted_object = { page_id: pageId };
+
+    promoted_object = {
+      page_id: pageId
+    };
+
   }
 
-  break;
-
+break;
+    
     case "OUTCOME_AWARENESS":
       optimization_goal = "REACH";
       billing_event = "IMPRESSIONS";
@@ -669,8 +676,7 @@ function buildAdSetPayload(objective, adSet, campaignId, accessToken, placements
   destination_type = "WHATSAPP";
 
   promoted_object = {
-    page_id: pageId,
-    whatsapp_number: adSet.phone_number || null
+    page_id: pageId
   };
 }
 
