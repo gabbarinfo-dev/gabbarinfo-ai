@@ -610,19 +610,25 @@ function buildAdSetPayload(objective, adSet, campaignId, accessToken, placements
 
     case "OUTCOME_LEADS":
 
-  if (conversionLocation === "CALLS") {
-
+  if (conversionLocation === "WHATSAPP") {
+    destination_type = "WHATSAPP";
+    optimization_goal = "CONVERSATIONS";
+    billing_event = "IMPRESSIONS";
+    promoted_object = {
+      page_id: pageId,
+      whatsapp_number: adSet.phone_number
+    };
+  }
+  else if (conversionLocation === "CALLS") {
     destination_type = "WEBSITE";
     optimization_goal = "LINK_CLICKS";
     billing_event = "IMPRESSIONS";
-
-  } else {
-
+  }
+  else {
     destination_type = undefined;
     optimization_goal = "LEAD_GENERATION";
     billing_event = "IMPRESSIONS";
     promoted_object = { page_id: pageId };
-
   }
 
   break;
@@ -841,20 +847,27 @@ if (
 // ==============================
 else if (!forcePhoto && objective === "OUTCOME_ENGAGEMENT") {
 
-  objectStorySpec.link_data = {
-    image_hash: creative.image_hash,
-
-    // REQUIRED for Messenger ads
-    link: `https://www.facebook.com/${pageId}`,
-
-    message: creative.primary_text || "",
-    name: creative.headline || "Chat with us",
-
-    call_to_action: {
-      type: ctaType
-    }
-  };
-
+  if (conversionLocation === "WHATSAPP") {
+    objectStorySpec.link_data = {
+      image_hash: creative.image_hash,
+      link: creative.destination_url || "https://example.com",
+      message: creative.primary_text || "",
+      name: creative.headline || "Chat on WhatsApp",
+      call_to_action: {
+        type: "WHATSAPP_MESSAGE"
+      }
+    };
+  } else {
+    objectStorySpec.link_data = {
+      image_hash: creative.image_hash,
+      link: `https://www.facebook.com/${pageId}`,
+      message: creative.primary_text || "",
+      name: creative.headline || "Chat with us",
+      call_to_action: {
+        type: ctaType
+      }
+    };
+  }
 }
 
 // ==============================
