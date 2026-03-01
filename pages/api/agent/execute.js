@@ -3831,12 +3831,17 @@ Reply **YES** to confirm this plan and proceed.
             try {
               const plan = currentState.plan;
               const finalPayload = {
-                ...plan,
-                ad_sets: plan.ad_sets.map(adset => ({
-                  ...adset,
-                  ad_creative: { ...adset.ad_creative, image_hash: currentState.image_hash }
-                }))
-              };
+  ...plan,
+  message_channel: currentState.message_channel || null,
+  ad_sets: plan.ad_sets.map(adset => ({
+    ...adset,
+    message_channel: currentState.message_channel || null,
+    ad_creative: {
+      ...adset.ad_creative,
+      image_hash: currentState.image_hash
+    }
+  }))
+};
               const execRes = await fetch(`${process.env.NEXT_PUBLIC_BASE_URL}/api/meta/execute-campaign`, {
                 method: "POST",
                 headers: { "Content-Type": "application/json", "x-client-email": __currentEmail || "" },
