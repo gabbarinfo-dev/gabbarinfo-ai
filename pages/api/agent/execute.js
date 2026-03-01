@@ -1574,6 +1574,49 @@ else if (input.includes("message") || input.includes("messages") || input.includ
       detectedWhatsappNumber = autoBusinessContext.business_phone;
     }
 
+    // ✅ FIX: Capture manual WhatsApp number input to prevent loop
+if (
+  !isPlanProposed &&
+  selectedDestination === "whatsapp" &&
+  !lockedCampaignState?.whatsapp_confirmed
+) {
+  const manualWhatsappInput = instruction.trim();
+
+  const isValidNumber = /^\+?\d{10,15}$/.test(
+    manualWhatsappInput.replace(/\s+/g, "")
+  );
+
+  if (isValidNumber && effectiveBusinessId) {
+    const cleaned = manualWhatsappInput.replace(/\s+/g, "");
+
+    const baseUrl = process.env.NEXT_PUBLIC_BASE_URL;
+
+    const newState = {
+      ...lockedCampaignState,
+      whatsapp: cleaned,
+      whatsapp_confirmed: true,
+      locked_at: new Date().toISOString()
+    };
+
+    await saveAnswerMemory(
+      baseUrl,
+      effectiveBusinessId,
+      { campaign_state: newState },
+      session.user.email.toLowerCase()
+    );
+
+    lockedCampaignState = newState;
+    currentState = newState;
+
+    return res.status(200).json({
+      ok: true,
+      mode,
+      gated: true,
+      text: "WhatsApp number saved. Reply OK to continue."
+    });
+  }
+}
+    
     if (
       !isPlanProposed &&
       selectedDestination === "whatsapp" &&
