@@ -2772,7 +2772,7 @@ Otherwise, respond with a full, clear explanation, and include example JSON only
 let conversionLocation = plan.conversion_location;
 
 // If user selected WhatsApp
-if (state.message_channel === "WHATSAPP") {
+if (currentState.message_channel === "WHATSAPP") {
   conversionLocation = "WHATSAPP";
 }
 
