@@ -630,7 +630,7 @@ break;
 
   if (conversionLocation === "WHATSAPP") {
 
-    destination_type = "WHATSAPP";
+    destination_type = "MESSAGING_APPS";
     optimization_goal = "LEAD_GENERATION";
     billing_event = "IMPRESSIONS";
 
