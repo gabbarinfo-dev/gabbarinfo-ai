@@ -689,28 +689,20 @@ break;
   };
 }
 
-  else if (conversionLocation === "MESSAGING_APPS" || conversionLocation === "MESSAGES") {
+  else if (conversionLocation === "MESSAGING_APPS" || conversionLocation === "MESSAGES" || conversionLocation === "WHATSAPP") {
+  const channel = (adSet.message_channel || "").toUpperCase();
 
-    // Determine specific channel from adSet
-    const channel = (adSet.message_channel || "").toUpperCase();
-
-    if (channel === "INSTAGRAM_MESSAGES") {
-      destination_type = "INSTAGRAM_DIRECT";
-    }
-
-    else if (channel === "FACEBOOK_MESSENGER") {
-      destination_type = "MESSENGER";
-    }
-
-    else if (channel === "ALL_MESSAGES") {
-      destination_type = "MESSAGING_INSTAGRAM_DIRECT_MESSENGER_WHATSAPP";
-    }
-
-    else {
-      // default safe fallback
-      destination_type = "MESSENGER";
-    }
+  if (channel === "INSTAGRAM_MESSAGES") {
+    destination_type = "INSTAGRAM_DIRECT";
+  } else if (channel === "FACEBOOK_MESSENGER") {
+    destination_type = "MESSENGER";
+  } else if (channel === "WHATSAPP_MESSAGES" || conversionLocation === "WHATSAPP") {
+    destination_type = "WHATSAPP";
+  } else if (channel === "ALL_MESSAGES" || !channel) {
+    // This targets Instagram, Messenger, and WhatsApp all at once
+    destination_type = "MESSAGING_INSTAGRAM_DIRECT_MESSENGER_WHATSAPP";
   }
+}
 
   if (!promoted_object) {
   promoted_object = {
