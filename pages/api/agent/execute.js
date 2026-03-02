@@ -3526,7 +3526,7 @@ else if (cleanObjective === "OUTCOME_AWARENESS") {
 
               return {
                 ...adset,
-                optimization_goal: adset.optimization_goal || optGoal,
+                optimization_goal: optGoal,
                 destination_type: adset.destination_type || null, // Default to Website
                 billing_event: "IMPRESSIONS" // Safe default
               };
