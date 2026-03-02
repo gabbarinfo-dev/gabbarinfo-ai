@@ -777,27 +777,27 @@ break;
 
 // UNIVERSAL CREATIVE BUILDER (Placement Safe & Strict Types)
 function buildCreativePayload(objective, creative, pageId, instagramActorId, accessToken, forcePhoto = false, placements = []) {
-
   if (!pageId) throw new Error("Page ID is required for Creative");
   if (!creative || !creative.image_hash) {
     throw new Error("Image upload failed. Creative execution stopped.");
   }
 
   const conversionLocation = (creative.conversion_location || "").toUpperCase();
-
   const isInstagramPlacement = placements.includes("instagram");
+  
+  // CRITICAL: If Instagram is selected, we MUST have an actor ID
   const finalInstagramActor = isInstagramPlacement ? instagramActorId : null;
 
   const objectStorySpec = {
     page_id: pageId,
+    // This tells FB which IG account to show the ad as
     ...(finalInstagramActor ? { instagram_actor_id: finalInstagramActor } : {})
   };
 
- // ===========================
-  // CALL ADS LOGIC (FIXED)
+  // ===========================
+  // CALL ADS LOGIC
   // ===========================
   if (conversionLocation === "CALLS") {
-    // 1. Get the number from the payload or the database
     const rawPhone = creative.phone_number || "";
     const validPhone = normalizePhoneNumber(rawPhone);
 
@@ -807,17 +807,17 @@ function buildCreativePayload(objective, creative, pageId, instagramActorId, acc
 
     objectStorySpec.link_data = {
       image_hash: creative.image_hash,
-      link: creative.destination_url || "https://www.facebook.com/",
+      // For Call Ads, the link MUST be the Page URL or a valid Website
+      link: creative.destination_url || `https://www.facebook.com/${pageId}`,
       message: creative.primary_text || "",
-      name: creative.headline || "Ad",
+      name: creative.headline || "Call Us",
       call_to_action: {
-      type: "CALL_NOW",
-      value: {
-        link: `tel:${validPhone}` 
+        type: "CALL_NOW",
+        value: {
+          link: `tel:${validPhone}` 
         }
       }
     };
-
   } else {
 
   let ctaType = "LEARN_MORE";
