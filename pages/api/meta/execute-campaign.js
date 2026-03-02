@@ -206,7 +206,7 @@ if (
   finalObjective = "OUTCOME_TRAFFIC";
 }
  
-   // FIX: TRAFFIC + MESSAGES must use ENGAGEMENT objective
+// FIX: TRAFFIC + MESSAGES must use ENGAGEMENT objective
 if (
   finalObjective === "OUTCOME_TRAFFIC" &&
   (
@@ -215,6 +215,15 @@ if (
     (payload.conversion_location || "").toUpperCase() === "WHATSAPP"
   )
 ) {
+  finalObjective = "OUTCOME_ENGAGEMENT";
+}
+
+// NEW FIX: LEADS + WHATSAPP is not allowed under ODAX
+if (
+  finalObjective === "OUTCOME_LEADS" &&
+  (payload.conversion_location || "").toUpperCase() === "WHATSAPP"
+) {
+  console.log("🔄 Re-mapping LEADS + WHATSAPP to OUTCOME_ENGAGEMENT for ODAX compliance");
   finalObjective = "OUTCOME_ENGAGEMENT";
 }
    console.log(`
@@ -630,7 +639,7 @@ break;
 
   if (conversionLocation === "WHATSAPP") {
 
-    destination_type = "MESSAGING_APPS";
+    destination_type = "WHATSAPP";
     optimization_goal = "LEAD_GENERATION";
     billing_event = "IMPRESSIONS";
 
