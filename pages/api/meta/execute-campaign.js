@@ -631,7 +631,7 @@ break;
   if (conversionLocation === "WHATSAPP") {
 
     destination_type = "WHATSAPP";
-    optimization_goal = "CONVERSATIONS";
+    optimization_goal = "LEAD_GENERATION";
     billing_event = "IMPRESSIONS";
 
     promoted_object = {
