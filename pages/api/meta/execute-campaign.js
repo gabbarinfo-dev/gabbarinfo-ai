@@ -850,11 +850,16 @@ if (conversionLocation === "WHATSAPP") {
 // ==============================
 // TRAFFIC / SALES / LEADS
 // ==============================
+// ==============================
+// TRAFFIC / SALES / LEADS (EXCEPT LEADS + WHATSAPP)
+// ==============================
 if (
   !forcePhoto &&
-  (objective === "OUTCOME_TRAFFIC" ||
-   objective === "OUTCOME_SALES" ||
-   objective === "OUTCOME_LEADS")
+  (
+    objective === "OUTCOME_TRAFFIC" ||
+    objective === "OUTCOME_SALES" ||
+    (objective === "OUTCOME_LEADS" && conversionLocation !== "WHATSAPP")
+  )
 ) {
 
   objectStorySpec.link_data = {
@@ -867,8 +872,27 @@ if (
     }
   };
 
-}
+} 
+// ==============================
+// LEADS + WHATSAPP
+// ==============================
+else if (
+  !forcePhoto &&
+  objective === "OUTCOME_LEADS" &&
+  conversionLocation === "WHATSAPP"
+) {
 
+  objectStorySpec.link_data = {
+    image_hash: creative.image_hash,
+    link: `https://www.facebook.com/${pageId}`, // NOT wa.me
+    message: creative.primary_text || "",
+    name: creative.headline || "Chat with us",
+    call_to_action: {
+      type: "WHATSAPP_MESSAGE"
+    }
+  };
+
+}
 // ==============================
 // ENGAGEMENT (MESSAGING)
 // ==============================
