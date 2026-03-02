@@ -3504,18 +3504,26 @@ const execJson = await execRes.json();
               const perfGoal = (planJson.performance_goal || adset.performance_goal || "LINK_CLICKS").toString().toUpperCase();
               let optGoal = "LINK_CLICKS";
 
-              if (cleanObjective === "OUTCOME_TRAFFIC") {
-                optGoal = perfGoal.includes("LANDING") ? "LANDING_PAGE_VIEWS" : "LINK_CLICKS";
-              } else if (cleanObjective === "OUTCOME_LEADS") {
-                optGoal = "LEADS"; // Simplified
-              } else if (cleanObjective === "OUTCOME_SALES") {
-                optGoal = "CONVERSIONS"; // Simplified
-              }
+            if (cleanObjective === "OUTCOME_TRAFFIC") {
+  optGoal = perfGoal.includes("LANDING") ? "LANDING_PAGE_VIEWS" : "LINK_CLICKS";
+}
+else if (cleanObjective === "OUTCOME_LEADS") {
+  optGoal = "LEAD_GENERATION";
+}
+else if (cleanObjective === "OUTCOME_SALES") {
+  optGoal = "CONVERSIONS";
+}
+else if (cleanObjective === "OUTCOME_ENGAGEMENT") {
+  optGoal = "CONVERSATIONS";
+}
+else if (cleanObjective === "OUTCOME_AWARENESS") {
+  optGoal = "REACH";
+}
 
               return {
                 ...adset,
                 optimization_goal: adset.optimization_goal || optGoal,
-                destination_type: adset.destination_type || "WEBSITE", // Default to Website
+                destination_type: adset.destination_type || null, // Default to Website
                 billing_event: "IMPRESSIONS" // Safe default
               };
             });
