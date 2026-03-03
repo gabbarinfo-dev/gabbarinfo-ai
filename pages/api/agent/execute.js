@@ -757,9 +757,7 @@ You MUST ALWAYS output BOTH a human-readable summary AND the JSON using this exa
     "type": "DAILY"
   },
   "targeting": {
-    "geo_locations": { 
-  "cities": [ ${ (lockedCampaignState?.location || "").split(',').filter(Boolean).map(c => `{"name": "${c.trim()}"}`).join(', ') || '{"name": "Mumbai"}' } ] 
-},
+   "geo_locations": { "location_name": "${lockedCampaignState?.location || ''}" },
     "age_min": 18,
     "age_max": 65,
     "targeting_suggestions": {
