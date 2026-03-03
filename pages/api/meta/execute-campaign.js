@@ -824,7 +824,8 @@ break;
   }
 
   return params;
-// --- END REPLACEMENT ---
+}
+ // --- END REPLACEMENT ---
 
 // UNIVERSAL CREATIVE BUILDER (Placement Safe & Strict Types)
 function buildCreativePayload(objective, creative, pageId, instagramActorId, accessToken, forcePhoto = false, placements = []) {
