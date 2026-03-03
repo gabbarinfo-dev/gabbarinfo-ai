@@ -79,12 +79,25 @@ export default async function handler(req, res) {
     return res.status(400).json({ ok: false, message: "Invalid payload: campaign_name required" }); 
   } 
  
-  // 1⃣Resolve placements explicitly
-const placements = Array.isArray(platform)
-  ? platform
-  : typeof platform === "string"
-  ? [platform]
-  : ["facebook"]; // default safe fallback 
+ let placements = [];
+
+if (Array.isArray(platform)) {
+  placements = platform;
+} else if (typeof platform === "string") {
+  placements = [platform];
+}
+
+// 🔥 Sanitize allowed values only
+placements = placements.filter(p =>
+  ["facebook", "instagram", "messenger", "audience_network"].includes(p)
+);
+
+// Default fallback
+if (placements.length === 0) {
+  placements = ["facebook"];
+}
+
+console.log("✅ FINAL SANITIZED PLACEMENTS:", placements);
  
   const { data: meta, error } = await supabase 
   .from("meta_connections") 
@@ -799,7 +812,7 @@ if (payload.targeting?.gender) {
 console.log("FINAL TARGETING SENT TO META:", JSON.stringify(targeting, null, 2));
 
 params.append("targeting", JSON.stringify(targeting));
-  params.append("publisher_platforms", JSON.stringify(placements));
+  
 
   // Placement positions
   if (placements.includes("facebook")) {
