@@ -372,7 +372,7 @@ Error: ${lastError?.message}`);
       adSet.conversion_location = payload.conversion_location;
      adSet.message_channel = payload.message_channel;
      adSet.phone_number = payload.phone_number || meta.business_phone;
-const p = buildAdSetPayload(finalObjective, adSet, campaignId, ACCESS_TOKEN, placements, PAGE_ID, activePixelId);
+const p = buildAdSetPayload(finalObjective, adSet, campaignId, ACCESS_TOKEN, placements, PAGE_ID, activePixelId, payload);
  
       // Append Budget 
       p.append(budgetType, String(Math.floor(Number(budgetAmount) * 
@@ -464,7 +464,7 @@ creation...`);
  [AdSet] Creating NEW Ad Set for fallback 
 with placements ${platKey}...`); 
             adSet.conversion_location = payload.conversion_location;
-const p = buildAdSetPayload(finalObjective, adSet, campaignId, ACCESS_TOKEN, strat.placements, PAGE_ID, activePixelId);
+const p = buildAdSetPayload(finalObjective, adSet, campaignId, ACCESS_TOKEN, strat.placements, PAGE_ID, activePixelId, payload);
             const asRes = await 
 fetch(`https://graph.facebook.com/${API_VERSION}/act_${AD_ACCOUNT_ID}/a
 dsets`, { 
@@ -598,7 +598,7 @@ createdAssets.ads.push(adJson.id);
 } 
  
 // UNIVERSAL AD SET BUILDER (Strict ODAX Compliance)
-function buildAdSetPayload(objective, adSet, campaignId, accessToken, placements, pageId, metaPixelId) {
+function buildAdSetPayload(objective, adSet, campaignId, accessToken, placements, pageId, metaPixelId, payload) {
   const params = new URLSearchParams();
 
   params.append("name", adSet.name || "Ad Set 1");
