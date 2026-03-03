@@ -1013,12 +1013,14 @@ if (waMatch) extractedData.whatsapp = waMatch[1];
           const v = value.toLowerCase();
           if (v.includes("traffic")) candidate.objective = "OUTCOME_TRAFFIC";
           else if (v.includes("lead")) candidate.objective = "OUTCOME_LEADS";
+          // FIXED: Added Sales and Engagement
           else if (v.includes("sale") || v.includes("conversion")) candidate.objective = "OUTCOME_SALES";
+          else if (v.includes("engagement") || v.includes("engage")) candidate.objective = "OUTCOME_ENGAGEMENT";
         } else if (rawKey === "conversion location" || rawKey === "conversion_location" || rawKey === "destination") {
           const v = value.toLowerCase();
           if (v.includes("website")) candidate.destination = "website";
-          else if (v.includes("instagram")) candidate.destination = "instagram_profile";
-          else if (v.includes("facebook")) candidate.destination = "facebook_page";
+          else if (v.includes("instagram")) candidate.destination = "messages"; // Mapping profile visit intent to messaging
+          else if (v.includes("facebook")) candidate.destination = "messages";
           else if (v.includes("call") || v.includes("phone")) candidate.destination = "call";
           else if (v.includes("whatsapp")) candidate.destination = "whatsapp";
           else if (v.includes("message")) candidate.destination = "messages";
@@ -1026,8 +1028,9 @@ if (waMatch) extractedData.whatsapp = waMatch[1];
           const v = value.toLowerCase();
           if (v.includes("link") && v.includes("click")) candidate.performance_goal = "MAXIMIZE_LINK_CLICKS";
           else if (v.includes("landing") && v.includes("page")) candidate.performance_goal = "MAXIMIZE_LANDING_PAGE_VIEWS";
-          else if (v.includes("conversation")) candidate.performance_goal = "MAXIMIZE_CONVERSATIONS";
+          else if (v.includes("conversation") || v.includes("message")) candidate.performance_goal = "MAXIMIZE_CONVERSATIONS";
           else if (v.includes("call")) candidate.performance_goal = "MAXIMIZE_CALLS";
+          else if (v.includes("conversion") || v.includes("purchase")) candidate.performance_goal = "MAXIMIZE_CONVERSATIONS"; // For Sales
         } else if (rawKey === "website") {
           let urlVal = value.trim();
           if (urlVal && !urlVal.startsWith("http")) urlVal = "https://" + urlVal;
@@ -1039,7 +1042,8 @@ if (waMatch) extractedData.whatsapp = waMatch[1];
         } else if (rawKey === "service") {
           candidate.service = value.trim();
         } else if (rawKey === "location") {
-          candidate.location = value.trim();
+          // FIXED: Clean up multiple locations (Mumbai, Ahmedabad)
+          candidate.location = value.split(',').map(l => l.trim()).filter(l => l.length > 0).join(', ');
         } else if (rawKey === "daily budget" || rawKey === "budget" || rawKey === "daily_budget") {
           const num = parseInt(value.replace(/[^\d]/g, ""), 10);
           if (!Number.isNaN(num) && num > 0) candidate.budget_per_day = num;
@@ -1186,12 +1190,18 @@ if (waMatch) extractedData.whatsapp = waMatch[1];
             "1. WhatsApp\n" +
             "2. Calls\n" +
             "3. Messenger / Instagram Direct";
+        } else if (selectedMetaObjective === "OUTCOME_ENGAGEMENT") {
+          // FIXED: Added specific options for Engagement
+          nextQuestion =
+            "Now, where should people engage with you?\n\n" +
+            "1. Messenger / Instagram Direct\n" +
+            "2. WhatsApp\n" +
+            "3. Calls";
         } else {
           nextQuestion =
             "Now, where should people complete this action?\n\n" +
             "1. Website";
         }
-
         return res.status(200).json({
           ok: true,
           mode,
@@ -1218,46 +1228,59 @@ if (waMatch) extractedData.whatsapp = waMatch[1];
       }
     }
 
-    // Step 2: Conversion Location
+   // Step 2: Conversion Location
     if (!isPlanProposed && mode === "meta_ads_plan" && selectedMetaObjective && !selectedDestination) {
       let options = [];
+      
+      // 1. Define Options to show user
       if (selectedMetaObjective === "OUTCOME_TRAFFIC") {
         options = ["Website", "Calls", "Messages (WhatsApp / Messenger / Instagram)"];
       } else if (selectedMetaObjective === "OUTCOME_LEADS") {
-        options = ["WhatsApp", "Calls", "Messenger/Instagram Direct"];
+        options = ["WhatsApp", "Calls", "Messenger / Instagram Direct"];
+      } else if (selectedMetaObjective === "OUTCOME_ENGAGEMENT") {
+        options = ["Messenger / Instagram Direct", "WhatsApp", "Calls"];
       } else {
+        // Sales and others default to Website
         options = ["Website"];
       }
 
-      const input = lowerInstruction;
-      if (input.includes("1") || input.includes("website") || input.includes("site")) {
+      const input = lowerInstruction.trim();
+      
+      // 2. Map user input to internal destination string
+      if (selectedMetaObjective === "OUTCOME_TRAFFIC") {
+        if (input === "1" || input.includes("website")) selectedDestination = "website";
+        else if (input === "2" || input.includes("call")) selectedDestination = "call";
+        else if (input === "3" || input.includes("message") || input.includes("whatsapp")) selectedDestination = "messages";
+      } 
+      else if (selectedMetaObjective === "OUTCOME_LEADS") {
+        if (input === "1" || input.includes("whatsapp")) selectedDestination = "whatsapp";
+        else if (input === "2" || input.includes("call")) selectedDestination = "call";
+        else if (input === "3" || input.includes("messenger") || input.includes("direct")) selectedDestination = "messages";
+      } 
+      else if (selectedMetaObjective === "OUTCOME_ENGAGEMENT") {
+        if (input === "1" || input.includes("messenger") || input.includes("direct")) selectedDestination = "messages";
+        else if (input === "2" || input.includes("whatsapp")) selectedDestination = "whatsapp";
+        else if (input === "3" || input.includes("call")) selectedDestination = "call";
+      } 
+      else {
+        // Default for Sales or any other fallback
         selectedDestination = "website";
-      } else if (input.includes("2") || input.includes("call") || input.includes("phone")) {
-        selectedDestination = "call";
-      } else if (input.includes("whatsapp")) {
-    selectedDestination = "whatsapp";
-}
-else if (input.includes("message") || input.includes("messages") || input.includes("chat") || input.includes("dm")) {
-    selectedDestination = "messages";
-      } else if (selectedMetaObjective === "OUTCOME_LEADS") {
-        if (input.includes("whatsapp")) selectedDestination = "whatsapp";
-        else if (input.includes("call") || input.includes("phone")) selectedDestination = "call";
-        else if (input.includes("messenger") || input.includes("instagram")) selectedDestination = "messages";
       }
 
       if (!isPlanProposed && selectedDestination) {
         lockedCampaignState = { ...lockedCampaignState, destination: selectedDestination, stage: "destination_selected" };
         currentState = lockedCampaignState;
         await saveAnswerMemory(process.env.NEXT_PUBLIC_BASE_URL, effectiveBusinessId, { campaign_state: lockedCampaignState }, session.user.email.toLowerCase());
-        console.log("TRACE: ENTER META INTAKE FLOW");
-        console.log("TRACE: RETURNING RESPONSE — STAGE =", currentState?.stage);
 
         let followupText = "Conversion location saved.";
 
+        // Performance Goal Logic
         if (!lockedCampaignState.performance_goal) {
           let goals = [];
           if (selectedDestination === "website") {
-            goals = ["Maximize Number of Link Clicks", "Maximize Number of Landing Page Views"];
+            goals = (selectedMetaObjective === "OUTCOME_SALES") 
+                    ? ["Maximize Number of Conversions (Sales)"] 
+                    : ["Maximize Number of Link Clicks", "Maximize Number of Landing Page Views"];
           } else if (selectedDestination === "call") {
             goals = ["Maximize Number of Calls"];
           } else if (selectedDestination === "whatsapp" || selectedDestination === "messages") {
@@ -1278,22 +1301,26 @@ else if (input.includes("message") || input.includes("messages") || input.includ
           text: followupText,
         });
       } else {
-        console.log("TRACE: ENTER META INTAKE FLOW");
-        console.log("TRACE: RETURNING RESPONSE — STAGE =", currentState?.stage);
         return res.status(200).json({
           ok: true,
           mode,
           gated: true,
-          text: `Where should we drive this ${selectedMetaObjective.toLowerCase()}?\n\n` + options.map((o, i) => `${i + 1}. ${o}`).join("\n")
+          text: `Where should we drive this ${selectedMetaObjective.replace("OUTCOME_", "").toLowerCase()}?\n\n` + options.map((o, i) => `${i + 1}. ${o}`).join("\n")
         });
       }
     }
 
-    // Step 3: Performance Goal
+   // Step 3: Performance Goal
     if (!isPlanProposed && mode === "meta_ads_plan" && selectedMetaObjective && selectedDestination && !selectedPerformanceGoal) {
       let goals = [];
+      
+      // 1. Define goals to show user (Sync with Step 2)
       if (selectedDestination === "website") {
-        goals = ["Maximize Number of Link Clicks", "Maximize Number of Landing Page Views"];
+        if (selectedMetaObjective === "OUTCOME_SALES") {
+          goals = ["Maximize Number of Conversions"];
+        } else {
+          goals = ["Maximize Number of Link Clicks", "Maximize Number of Landing Page Views"];
+        }
       } else if (selectedDestination === "call") {
         goals = ["Maximize Number of Calls"];
       } else if (selectedDestination === "whatsapp" || selectedDestination === "messages") {
@@ -1302,20 +1329,29 @@ else if (input.includes("message") || input.includes("messages") || input.includ
         goals = ["Maximize Reach / Visits"];
       }
 
-      const input = lowerInstruction;
-      if (input.includes("link click")) selectedPerformanceGoal = "MAXIMIZE_LINK_CLICKS";
-      else if (input.includes("landing page view")) selectedPerformanceGoal = "MAXIMIZE_LANDING_PAGE_VIEWS";
-      else if (input.includes("conversation")) selectedPerformanceGoal = "MAXIMIZE_CONVERSATIONS";
-      else if (input.includes("call")) selectedPerformanceGoal = "MAXIMIZE_CALLS";
-      else if (input === "1") selectedPerformanceGoal = goals[0].toUpperCase().replace(/ /g, "_");
-      else if (input === "2" && goals[1]) selectedPerformanceGoal = goals[1].toUpperCase().replace(/ /g, "_");
+      const input = lowerInstruction.trim();
+      
+      // 2. Map user input to Meta internal strings
+      if (input.includes("link click") || (selectedDestination === "website" && input === "1" && selectedMetaObjective !== "OUTCOME_SALES")) {
+        selectedPerformanceGoal = "MAXIMIZE_LINK_CLICKS";
+      } else if (input.includes("landing page view") || (selectedDestination === "website" && input === "2")) {
+        selectedPerformanceGoal = "MAXIMIZE_LANDING_PAGE_VIEWS";
+      } else if (input.includes("conversation") || (["whatsapp", "messages"].includes(selectedDestination) && input === "1")) {
+        selectedPerformanceGoal = "MAXIMIZE_CONVERSATIONS";
+      } else if (input.includes("call") || (selectedDestination === "call" && input === "1")) {
+        selectedPerformanceGoal = "MAXIMIZE_CALLS";
+      } else if (selectedMetaObjective === "OUTCOME_SALES" && (input.includes("conversion") || input === "1")) {
+        selectedPerformanceGoal = "MAXIMIZE_CONVERSIONS";
+      } else if (input === "1") {
+        // Generic fallback for Option 1
+        selectedPerformanceGoal = "MAXIMIZE_REACH";
+      }
 
       if (!isPlanProposed && selectedPerformanceGoal) {
         lockedCampaignState = { ...lockedCampaignState, performance_goal: selectedPerformanceGoal, stage: "goal_selected" };
         currentState = lockedCampaignState;
         await saveAnswerMemory(process.env.NEXT_PUBLIC_BASE_URL, effectiveBusinessId, { campaign_state: lockedCampaignState }, session.user.email.toLowerCase());
-        console.log("TRACE: ENTER META INTAKE FLOW");
-        console.log("TRACE: RETURNING RESPONSE — STAGE =", currentState?.stage);
+
         return res.status(200).json({
           ok: true,
           mode,
@@ -1323,97 +1359,181 @@ else if (input.includes("message") || input.includes("messages") || input.includ
           text: "Performance goal locked.\n\nNow, what is the specific **Service** or **Product** you want to promote with this campaign?",
         });
       } else {
-        console.log("TRACE: ENTER META INTAKE FLOW");
-        console.log("TRACE: RETURNING RESPONSE — STAGE =", currentState?.stage);
         return res.status(200).json({
-          ok: true, mode, gated: true,
+          ok: true, 
+          mode, 
+          gated: true,
           text: `What is your performance goal for these ads?\n\n` + goals.map((g, i) => `${i + 1}. ${g}`).join("\n")
         });
       }
     }
-
-    // Step 4: Service Confirmation
+    
+   // Step 4: Service Confirmation
     if (!isPlanProposed && mode === "meta_ads_plan" && selectedPerformanceGoal && !lockedCampaignState?.service) {
       const input = instruction.trim();
-      if (input.length > 2 && !input.includes("1") && !input.includes("2")) {
-        lockedCampaignState = { ...lockedCampaignState, service: input, service_confirmed: true, stage: "service_selected" };
+
+      // Check if input is a reasonable length and not just a single digit left over from previous step
+      if (input.length >= 2 && !/^\d$/.test(input)) {
+        lockedCampaignState = { 
+          ...lockedCampaignState, 
+          service: input, 
+          service_confirmed: true, 
+          stage: "service_selected" 
+        };
         currentState = lockedCampaignState;
-        await saveAnswerMemory(process.env.NEXT_PUBLIC_BASE_URL, effectiveBusinessId, { campaign_state: lockedCampaignState }, session.user.email.toLowerCase());
+        
+        await saveAnswerMemory(
+          process.env.NEXT_PUBLIC_BASE_URL, 
+          effectiveBusinessId, 
+          { campaign_state: lockedCampaignState }, 
+          session.user.email.toLowerCase()
+        );
+
         return res.status(200).json({
-          ok: true, mode, gated: true,
-          text: `Got it. Promoting: **${input}**.\n\nNext, what is the **Target Location** (City or Area) for these ads?`
+          ok: true, 
+          mode, 
+          gated: true,
+          text: `Got it. Promoting: **${input}**.\n\nNext, what is the **Target Location** (City, State, or Country) for these ads?`
         });
       } else {
         return res.status(200).json({
-          ok: true, mode, gated: true,
+          ok: true, 
+          mode, 
+          gated: true,
           text: "What is the specific **Service** or **Product** you want to promote? (e.g., 'Real Estate Consulting' or 'iPhone Repairs')"
         });
       }
     }
 
-    // Step 5: Location Confirmation
+   // Step 5: Location Confirmation
     if (!isPlanProposed && mode === "meta_ads_plan" && lockedCampaignState?.service && !lockedCampaignState?.location && !lockedCampaignState?.location_confirmed) {
       const input = instruction.trim();
-      // Ensure input isn't a budget number (digits) if we are mistakenly here
-      const looksLikeBudget = /^\d+$/.test(input);
+      
+      const isPureNumber = /^\d+$/.test(input);
 
-      if (input.length > 2 && !looksLikeBudget) {
-        lockedCampaignState = { ...lockedCampaignState, location: input, location_confirmed: true, stage: "location_selected" };
+      if (input.length >= 2 && !isPureNumber) {
+        // CLEANUP: If user gave "Mumbai, Ahmedabad ", turn it into "Mumbai, Ahmedabad"
+        const cleanedLocation = input.split(',').map(loc => loc.trim()).filter(loc => loc.length > 0).join(', ');
+
+        lockedCampaignState = { 
+          ...lockedCampaignState, 
+          location: cleanedLocation, 
+          location_confirmed: true, 
+          stage: "location_selected" 
+        };
         currentState = lockedCampaignState;
-        await saveAnswerMemory(process.env.NEXT_PUBLIC_BASE_URL, effectiveBusinessId, { campaign_state: lockedCampaignState }, session.user.email.toLowerCase());
+        
+        await saveAnswerMemory(
+          process.env.NEXT_PUBLIC_BASE_URL, 
+          effectiveBusinessId, 
+          { campaign_state: lockedCampaignState }, 
+          session.user.email.toLowerCase()
+        );
+
+        const locationCount = cleanedLocation.split(',').length;
+        const locationText = locationCount > 1 ? "multiple locations" : "location";
+
         return res.status(200).json({
-          ok: true, mode, gated: true,
-          text: `Target Location: **${input}**.\n\nAlmost done! What is your **DAILY budget** for this campaign in INR? (e.g., 500)`
+          ok: true, 
+          mode, 
+          gated: true,
+          text: `Target ${locationText} set: **${cleanedLocation}**.\n\nAlmost done! What is your **DAILY budget** for this campaign in INR? (e.g., 500)`
         });
       } else {
         return res.status(200).json({
-          ok: true, mode, gated: true,
-          text: "What is the **Target Location** (City or Area) for these ads?"
+          ok: true, 
+          mode, 
+          gated: true,
+          text: "What is the **Target Location**? You can enter one or more cities separated by commas (e.g., 'Mumbai, Ahmedabad')."
         });
       }
     }
 
-    // Step 6: Budget Confirmation
+   // Step 6: Budget Confirmation
     if (!isPlanProposed && mode === "meta_ads_plan" && lockedCampaignState?.location && !lockedCampaignState?.budget_per_day) {
       const budgetMatch = instruction.match(/(\d+)/);
+      
       if (budgetMatch) {
         const amount = parseInt(budgetMatch[1], 10);
-        lockedCampaignState = { ...lockedCampaignState, budget_per_day: amount, budget_confirmed: true, stage: "budget_selected" };
+
+        // Validation: Ensure budget isn't too low for Meta
+        if (amount < 100) {
+          return res.status(200).json({
+            ok: true, mode, gated: true,
+            text: `₹${amount} might be too low. Meta Ads usually require at least **₹100 per day** to deliver results. \n\nPlease enter a higher daily budget.`
+          });
+        }
+
+        lockedCampaignState = { 
+          ...lockedCampaignState, 
+          budget_per_day: amount, 
+          budget_confirmed: true, 
+          stage: "budget_selected" 
+        };
         currentState = lockedCampaignState;
-        await saveAnswerMemory(process.env.NEXT_PUBLIC_BASE_URL, effectiveBusinessId, { campaign_state: lockedCampaignState }, session.user.email.toLowerCase());
+        
+        await saveAnswerMemory(
+          process.env.NEXT_PUBLIC_BASE_URL, 
+          effectiveBusinessId, 
+          { campaign_state: lockedCampaignState }, 
+          session.user.email.toLowerCase()
+        );
+
         return res.status(200).json({
           ok: true, mode, gated: true,
-          text: `Daily Budget: **₹${amount}**.\n\nFinally, for **how many days** should this campaign run? (e.g., 7)`
+          text: `Daily Budget: **₹${amount}**.\n\nFinally, for **how many days** should this campaign run? (e.g., 7 or 30)`
         });
       } else {
         return res.status(200).json({
           ok: true, mode, gated: true,
-          text: "What is your **DAILY budget** for this campaign in INR?"
+          text: "Please enter your **DAILY budget** as a number (e.g., 500)."
         });
       }
     }
 
-    // Step 7: Duration Confirmation
+   // Step 7: Duration Confirmation
     if (!isPlanProposed && mode === "meta_ads_plan" && lockedCampaignState?.budget_per_day && !lockedCampaignState?.total_days) {
       const durationMatch = instruction.match(/(\d+)/);
+      
       if (durationMatch) {
-        const days = parseInt(durationMatch[1], 10);
-        lockedCampaignState = { ...lockedCampaignState, total_days: days, duration_confirmed: true, stage: "intake_complete" };
+        let days = parseInt(durationMatch[1], 10);
+
+        // Validation: Ensure duration is at least 1 day
+        if (days < 1) {
+          return res.status(200).json({
+            ok: true, mode, gated: true,
+            text: "Please enter a valid number of days (minimum 1)."
+          });
+        }
+
+        lockedCampaignState = { 
+          ...lockedCampaignState, 
+          total_days: days, 
+          duration_confirmed: true, 
+          stage: "intake_complete" 
+        };
         currentState = lockedCampaignState;
-        await saveAnswerMemory(process.env.NEXT_PUBLIC_BASE_URL, effectiveBusinessId, { campaign_state: lockedCampaignState }, session.user.email.toLowerCase());
+        
+        await saveAnswerMemory(
+          process.env.NEXT_PUBLIC_BASE_URL, 
+          effectiveBusinessId, 
+          { campaign_state: lockedCampaignState }, 
+          session.user.email.toLowerCase()
+        );
+
         return res.status(200).json({
           ok: true, mode, gated: true,
-          text: `Duration: **${days} days**.\n\nAll details received! I am now generating your custom Meta Ads plan. Please reply OK to continue.`
+          text: `Duration: **${days} days**.\n\nGreat! I have all the details. I am now preparing your Meta Ads Strategy. **Reply "OK" or "Proceed" to see the full campaign plan.**`
         });
       } else {
         return res.status(200).json({
           ok: true, mode, gated: true,
-          text: "For **how many days** should this campaign run?"
+          text: "For **how many days** should this campaign run? (e.g., 7)"
         });
       }
     }
 
-    // ============================================================
+   // ============================================================
     // 🔁 OBJECTIVE OVERRIDE (EXPLICIT USER INTENT ONLY)
     // ============================================================
 
@@ -1423,23 +1543,29 @@ else if (input.includes("message") || input.includes("messages") || input.includ
       "use objective",
       "make it",
       "instead of",
+      "reset",
     ];
 
+    const lowerInput = instruction.toLowerCase();
+    
     const wantsObjectiveChange =
-      objectiveOverrideKeywords.some((k) =>
-        instruction.toLowerCase().includes(k)
-      ) &&
+      objectiveOverrideKeywords.some((k) => lowerInput.includes(k)) &&
       (
-        instruction.toLowerCase().includes("website") ||
-        instruction.toLowerCase().includes("call") ||
-        instruction.toLowerCase().includes("whatsapp") ||
-        instruction.toLowerCase().includes("message") ||
-        instruction.toLowerCase().includes("traffic")
+        lowerInput.includes("website") ||
+        lowerInput.includes("call") ||
+        lowerInput.includes("whatsapp") ||
+        lowerInput.includes("message") ||
+        lowerInput.includes("traffic") ||
+        lowerInput.includes("engagement") || // ADDED
+        lowerInput.includes("leads") ||      // ADDED
+        lowerInput.includes("sales")         // ADDED
       );
 
     if (mode === "meta_ads_plan" && wantsObjectiveChange) {
+      // Clear the selections to force the flow back to Step 1
       selectedMetaObjective = null;
       selectedDestination = null;
+      selectedPerformanceGoal = null;
 
       // 🛠️ CLEAR LOCKED OBJECTIVE IN DB
       if (lockedCampaignState) {
@@ -1447,16 +1573,24 @@ else if (input.includes("message") || input.includes("messages") || input.includ
           ...lockedCampaignState,
           objective: null,
           destination: null,
+          performance_goal: null, // Also reset goal
           stage: "reset_objective"
         };
         const baseUrl = process.env.NEXT_PUBLIC_BASE_URL;
         await saveAnswerMemory(baseUrl, effectiveBusinessId, {
           campaign_state: newState
         }, session.user.email.toLowerCase());
-        lockedCampaignState = newState; // Update local
+        lockedCampaignState = newState; 
+        
+        // Return a quick confirmation so the user knows they can restart
+        return res.status(200).json({
+          ok: true,
+          mode,
+          text: "I've reset your campaign objectives. What would you like the new primary objective to be?\n\n1. Traffic\n2. Leads\n3. Sales\n4. Engagement"
+        });
       }
     }
-
+    
     // ============================================================
     // 🎯 META OBJECTIVE SELECTION — HARD BLOCK (STATE AWARE)
     // ============================================================
@@ -1466,22 +1600,17 @@ else if (input.includes("message") || input.includes("messages") || input.includ
       mode === "meta_ads_plan" &&
       !selectedMetaObjective
     ) {
-      console.log("TRACE: ENTER META INTAKE FLOW");
-      console.log("TRACE: RETURNING RESPONSE — STAGE =", currentState?.stage);
-
       return res.status(200).json({
         ok: true,
         mode,
         gated: true,
         text:
-          "What do you want people to do after seeing your ad?\n\n" +
+          "What is the primary objective of this campaign?\n\n" +
           "Please choose ONE option:\n\n" +
-          "1. Visit your website\n" +
-          "2. Visit your Instagram profile\n" +
-          "3. Visit your Facebook page\n" +
-          "4. Call you\n" +
-          "5. WhatsApp you\n" +
-          "6. Send you messages on Facebook or Instagram",
+          "1. Traffic – Get more website visits or calls\n" +
+          "2. Leads – Get more enquiries via WhatsApp or calls\n" +
+          "3. Sales – Drive purchases on your website\n" +
+          "4. Engagement – Get more messages or profile interactions",
       });
     }
 
@@ -1578,48 +1707,48 @@ else if (input.includes("message") || input.includes("messages") || input.includ
       detectedWhatsappNumber = autoBusinessContext.business_phone;
     }
 
-    // ✅ FIX: Capture manual WhatsApp number input to prevent loop
-if (
-  !isPlanProposed &&
-  selectedDestination === "whatsapp" &&
-  !lockedCampaignState?.whatsapp_confirmed
-) {
-  const manualWhatsappInput = instruction.trim();
+// ✅ FIX: Capture manual WhatsApp number input to prevent loop
+    if (
+      !isPlanProposed &&
+      selectedDestination === "whatsapp" &&
+      !lockedCampaignState?.whatsapp_confirmed
+    ) {
+      const manualWhatsappInput = instruction.trim();
+      
+      // Look for a phone number inside the text (handles "Use +91..." or just "+91...")
+      const extractedPhone = manualWhatsappInput.match(/(\+?\d[\d\s-]{8,15})/);
 
-  const isValidNumber = /^\+?\d{10,15}$/.test(
-    manualWhatsappInput.replace(/\s+/g, "")
-  );
+      if (extractedPhone && effectiveBusinessId) {
+        const cleaned = extractedPhone[1].replace(/\s+/g, "");
 
-  if (isValidNumber && effectiveBusinessId) {
-    const cleaned = manualWhatsappInput.replace(/\s+/g, "");
+        const baseUrl = process.env.NEXT_PUBLIC_BASE_URL;
 
-    const baseUrl = process.env.NEXT_PUBLIC_BASE_URL;
+        const newState = {
+          ...lockedCampaignState,
+          whatsapp: cleaned,
+          whatsapp_confirmed: true,
+          locked_at: new Date().toISOString(),
+          stage: "whatsapp_confirmed" // Setting stage explicitly
+        };
 
-    const newState = {
-      ...lockedCampaignState,
-      whatsapp: cleaned,
-      whatsapp_confirmed: true,
-      locked_at: new Date().toISOString()
-    };
+        await saveAnswerMemory(
+          baseUrl,
+          effectiveBusinessId,
+          { campaign_state: newState },
+          session.user.email.toLowerCase()
+        );
 
-    await saveAnswerMemory(
-      baseUrl,
-      effectiveBusinessId,
-      { campaign_state: newState },
-      session.user.email.toLowerCase()
-    );
+        lockedCampaignState = newState;
+        currentState = newState;
 
-    lockedCampaignState = newState;
-    currentState = newState;
-
-    return res.status(200).json({
-      ok: true,
-      mode,
-      gated: true,
-      text: "WhatsApp number saved. Reply OK to continue."
-    });
-  }
-}
+        return res.status(200).json({
+          ok: true,
+          mode,
+          gated: true,
+          text: `WhatsApp number **${cleaned}** saved. Reply OK to generate your campaign plan.`
+        });
+      }
+    }
     
     if (
       !isPlanProposed &&
@@ -1663,8 +1792,6 @@ if (
 // ============================================================
 // 💬 MESSAGE CHANNEL CONFIRMATION + LOCK (FIX LOOP)
 // ============================================================
-console.log("DEBUG selectedDestination:", selectedDestination);
-console.log("DEBUG lockedCampaignState:", lockedCampaignState);
     
 if (
   !isPlanProposed &&
@@ -1673,18 +1800,18 @@ if (
 ) {
   let selectedMessageChannel = null;
 
-  if (lowerInstruction.includes("1") || lowerInstruction.includes("instagram")) {
-  selectedMessageChannel = "INSTAGRAM_MESSAGES";
-}
-else if (lowerInstruction.includes("2") || lowerInstruction.includes("facebook")) {
-  selectedMessageChannel = "FACEBOOK_MESSENGER";
-}
-else if (lowerInstruction.includes("3") || lowerInstruction.includes("whatsapp")) {
-  selectedMessageChannel = "WHATSAPP";
-}
-else if (lowerInstruction.includes("4") || lowerInstruction.includes("all")) {
-  selectedMessageChannel = "ALL_MESSAGES";
-}
+  // Use trim and lowercase for better matching
+  const input = lowerInstruction.trim();
+
+  if (input.includes("1") || input.includes("instagram")) {
+    selectedMessageChannel = "INSTAGRAM_MESSAGES";
+  } else if (input.includes("2") || input.includes("facebook") || input.includes("messenger")) {
+    selectedMessageChannel = "FACEBOOK_MESSENGER";
+  } else if (input.includes("3") || input.includes("whatsapp")) {
+    selectedMessageChannel = "WHATSAPP";
+  } else if (input.includes("4") || input.includes("all")) {
+    selectedMessageChannel = "ALL_MESSAGES";
+  }
 
   // ✅ IF USER SELECTED OPTION → LOCK IT
   if (selectedMessageChannel && effectiveBusinessId) {
@@ -1694,6 +1821,7 @@ else if (lowerInstruction.includes("4") || lowerInstruction.includes("all")) {
       ...lockedCampaignState,
       message_channel: selectedMessageChannel,
       message_channel_confirmed: true,
+      stage: "message_channel_selected", // Track progress
       locked_at: new Date().toISOString()
     };
 
@@ -1705,36 +1833,41 @@ else if (lowerInstruction.includes("4") || lowerInstruction.includes("all")) {
     );
 
     lockedCampaignState = newState;
-currentState = newState;
+    currentState = newState;
+
     return res.status(200).json({
       ok: true,
       mode,
       gated: true,
-      text: "Message channel locked. Reply OK to continue."
+      text: `Message channel set to **${selectedMessageChannel.replace("_", " ")}**. Reply OK to generate your campaign plan.`
     });
   }
 
   // ❓ IF USER HAS NOT SELECTED YET → ASK QUESTION
+  // We can customize the text slightly if it's an Engagement objective
+  const objectiveNote = selectedMetaObjective === "OUTCOME_ENGAGEMENT" 
+    ? "To maximize engagement, where should we direct your messages?" 
+    : "Where do you want people to message you?";
+
   return res.status(200).json({
     ok: true,
     mode,
     gated: true,
     text:
-      "Where do you want people to message you?\n\n" +
+      `${objectiveNote}\n\n` +
       "1. Instagram messages\n" +
       "2. Facebook Messenger\n" +
       "3. WhatsApp\n" +
       "4. All available",
   });
-}
-    
-    // ============================================================
-    // 🌐 LANDING PAGE CONFIRMATION GATE (TRAFFIC ONLY)
+}    
+  // ============================================================
+    // 🌐 LANDING PAGE CONFIRMATION GATE (TRAFFIC & SALES)
     // ============================================================
 
     let landingPageConfirmed = !!lockedCampaignState?.landing_page_confirmed;
 
-    // Detect confirmation from user reply (only during intake, before plan proposal)
+    // 1. Handle "YES" confirmation to use the detected website
     if (
       !isPlanProposed &&
       mode === "meta_ads_plan" &&
@@ -1743,8 +1876,8 @@ currentState = newState;
         instruction.toLowerCase().includes("use this") ||
         instruction.toLowerCase().includes("correct"))
     ) {
-      landingPageConfirmed = true;
       if (effectiveBusinessId && detectedLandingPage) {
+        landingPageConfirmed = true;
         const baseUrl = process.env.NEXT_PUBLIC_BASE_URL;
         const nextState = {
           ...lockedCampaignState,
@@ -1754,13 +1887,11 @@ currentState = newState;
         };
         await saveAnswerMemory(baseUrl, effectiveBusinessId, { campaign_state: nextState }, session.user.email.toLowerCase());
         lockedCampaignState = nextState;
-        console.log("TRACE: ENTER META INTAKE FLOW");
-        console.log("TRACE: RETURNING RESPONSE — STAGE =", currentState?.stage);
-        let nextText = "Website confirmed, say OK to continue.";
+
+        let nextText = "Website confirmed.";
 
         if (!lockedCampaignState?.service) {
-          const rawServices =
-            autoBusinessContext?.detected_services || [];
+          const rawServices = autoBusinessContext?.detected_services || [];
           const normalizedServices = normalizeServiceOptions(
             rawServices,
             detectedLandingPage ||
@@ -1769,14 +1900,12 @@ currentState = newState;
             null
           );
           const serviceOptions = normalizedServices.length
-            ? normalizedServices
-              .map((s, i) => `${i + 1}. ${s}`)
-              .join("\n")
+            ? normalizedServices.map((s, i) => `${i + 1}. ${s}`).join("\n")
             : "- Type your service name";
 
-          nextText +=
-            "\n\nWhich service do you want to promote?\n\n" +
-            serviceOptions;
+          nextText += "\n\nWhich service do you want to promote?\n\n" + serviceOptions;
+        } else {
+          nextText += " Reply OK to continue.";
         }
 
         return res.status(200).json({
@@ -1788,11 +1917,12 @@ currentState = newState;
       }
     }
 
+    // 2. Handle manual URL entry (Fixed the "false" loop and enabled for Sales)
     if (
       !landingPageConfirmed &&
       selectedDestination === "website" &&
       extractedData.website_url &&
-      false
+      !lockedCampaignState?.landing_page_confirmed
     ) {
       if (effectiveBusinessId) {
         const baseUrl = process.env.NEXT_PUBLIC_BASE_URL;
@@ -1805,6 +1935,13 @@ currentState = newState;
         await saveAnswerMemory(baseUrl, effectiveBusinessId, { campaign_state: nextState }, session.user.email.toLowerCase());
         lockedCampaignState = nextState;
         landingPageConfirmed = true;
+
+        return res.status(200).json({
+          ok: true,
+          mode,
+          gated: true,
+          text: `Website saved: **${extractedData.website_url}**. Reply OK to continue.`
+        });
       }
     }
 
@@ -1898,6 +2035,15 @@ currentState = newState;
       await saveAnswerMemory(baseUrl, effectiveBusinessId, {
         campaign_state: newState,
       }, session.user.email.toLowerCase());
+
+      // Add this right after your await saveAnswerMemory call:
+      lockedCampaignState = newState;
+      return res.status(200).json({
+        ok: true,
+        mode,
+        gated: true,
+        text: `Service set to: **${selectedService}**.\n\nWhat is the **Target Location** (City or Area) for these ads?`
+      });
 
       // Update local state so subsequent logic works in THIS turn
       lockedCampaignState = newState;
@@ -2014,7 +2160,7 @@ currentState = newState;
       instruction.length > 2 &&
       !instruction.match(/^\d+$/)
     ) {
-      selectedLocation = instruction.trim();
+      selectedLocation = instruction.split(',').map(l => l.trim()).filter(l => l.length > 0).join(', ');
     }
 
     if (
@@ -2065,36 +2211,26 @@ currentState = newState;
 
       let hasAsset = true;
       if (lockedCampaignState?.destination === "website") {
-        hasAsset =
-          !!lockedCampaignState?.landing_page &&
-          !!lockedCampaignState?.landing_page_confirmed;
+        hasAsset = !!lockedCampaignState?.landing_page && !!lockedCampaignState?.landing_page_confirmed;
       } else if (lockedCampaignState?.destination === "call") {
-        hasAsset =
-          !!lockedCampaignState?.phone &&
-          !!lockedCampaignState?.phone_confirmed;
+        hasAsset = !!lockedCampaignState?.phone && !!lockedCampaignState?.phone_confirmed;
       } else if (lockedCampaignState?.destination === "whatsapp") {
-        hasAsset =
-          !!lockedCampaignState?.whatsapp &&
-          !!lockedCampaignState?.whatsapp_confirmed;
+        hasAsset = !!lockedCampaignState?.whatsapp && !!lockedCampaignState?.whatsapp_confirmed;
+      } else if (lockedCampaignState?.destination === "messages") {
+        // FIXED: Added check for Engagement/Message channels
+        hasAsset = !!lockedCampaignState?.message_channel && !!lockedCampaignState?.message_channel_confirmed;
       }
 
-      const prerequisitesMet =
-        hasObjective &&
-        hasDestination &&
-        hasPerformanceGoal &&
-        hasService &&
-        hasLocation &&
-        hasAsset;
+      const prerequisitesMet = hasObjective && hasDestination && hasPerformanceGoal && hasService && hasLocation && hasAsset;
 
       if (!isPlanProposed && prerequisitesMet) {
         let budgetPerDay = lockedCampaignState?.budget_per_day || null;
         let totalDays = lockedCampaignState?.total_days || null;
 
-        // STEP A — Budget (explicit confirmation required)
+        // STEP A — Budget (Improved detection)
         if (!budgetPerDay) {
-          const budgetAnswerMatch = instruction.match(
-            /^\s*(?:₹\s*)?(\d+)\s*(?:inr)?\s*$/i
-          );
+          // This regex now finds the number even if they type "₹500" or "500 per day"
+          const budgetAnswerMatch = instruction.match(/(\d+)/);
 
           if (budgetAnswerMatch) {
             const numericBudget = parseInt(budgetAnswerMatch[1], 10);
@@ -2106,44 +2242,29 @@ currentState = newState;
                 budget_confirmed: true,
                 locked_at: new Date().toISOString(),
               };
-              await saveAnswerMemory(
-                baseUrl,
-                effectiveBusinessId,
-                { campaign_state: newState },
-                session.user.email.toLowerCase()
-              );
+              await saveAnswerMemory(baseUrl, effectiveBusinessId, { campaign_state: newState }, session.user.email.toLowerCase());
               lockedCampaignState = newState;
               budgetPerDay = numericBudget;
-              console.log("TRACE: ENTER META INTAKE FLOW");
-              console.log(
-                "TRACE: RETURNING RESPONSE — STAGE =",
-                currentState?.stage
-              );
+              
               return res.status(200).json({
                 ok: true,
                 mode,
                 gated: true,
-                text: `Daily budget locked at ₹${numericBudget}.`,
+                text: `Daily budget locked at ₹${numericBudget}. \n\n**For how many days** do you want to run this campaign? (e.g., 7 or 30)`,
               });
             }
           }
 
-          if (!budgetPerDay) {
-            const suggestionText = extractedData.budget
-              ? `\n\nI detected a possible daily budget of ₹${extractedData.budget}. If this is correct, please type that amount again.`
-              : "";
-            console.log("TRACE: ENTER META INTAKE FLOW");
-            console.log(
-              "TRACE: RETURNING RESPONSE — STAGE =",
-              currentState?.stage
-            );
-            return res.status(200).json({
-              ok: true,
-              mode,
-              gated: true,
-              text: `What is your DAILY budget in INR?${suggestionText}`,
-            });
-          }
+          const suggestionText = extractedData.budget
+            ? `\n\nI detected a possible daily budget of ₹${extractedData.budget}. Is this correct? If so, please type it.`
+            : "";
+
+          return res.status(200).json({
+            ok: true,
+            mode,
+            gated: true,
+            text: `What is your DAILY budget in INR?${suggestionText}`,
+          });
         }
 
         // STEP B — Duration (explicit confirmation required)
@@ -2209,12 +2330,25 @@ currentState = newState;
     // 🔒 LOCK CAMPAIGN STATE — OBJECTIVE & DESTINATION FINAL
     // ============================================================
 
+    // ✅ FIX: Only set stage to "objective_selected" if we aren't already further ahead
     if (!isPlanProposed && mode === "meta_ads_plan" && selectedMetaObjective && effectiveBusinessId) {
       const baseUrl = process.env.NEXT_PUBLIC_BASE_URL;
+      
+      // Determine what the next stage should be. 
+      // If we already have a service/location (Expert Mode), we go further.
+      // If we are just starting, we go to "objective_selected".
+      const currentStage = lockedCampaignState?.stage || "start";
+      let targetStage = "objective_selected";
+      
+      if (lockedCampaignState?.total_days) {
+          targetStage = "intake_complete";
+      } else if (lockedCampaignState?.service) {
+          targetStage = "service_selected";
+      }
 
       const newState = {
-        ...lockedCampaignState, // Preserve existing state (service/location if any)
-        stage: "objective_selected",
+        ...lockedCampaignState,
+        stage: targetStage, 
         objective: selectedMetaObjective,
         destination: selectedDestination,
         locked_at: new Date().toISOString(),
@@ -2224,10 +2358,8 @@ currentState = newState;
         campaign_state: newState,
       }, session.user.email.toLowerCase());
 
-      // Update local state
       lockedCampaignState = newState;
     }
-
    
     // ============================================================
     // ✏️ CTA OVERRIDE (USER CORRECTION MODE)
@@ -2260,26 +2392,25 @@ currentState = newState;
 
     // Meta-approved CTA options per objective
     const META_CTA_MAP = {
-      TRAFFIC: {
-        options: ["LEARN_MORE", "SIGN_UP", "VIEW_MORE"],
+      OUTCOME_TRAFFIC: {
+        options: ["LEARN_MORE", "SIGN_UP", "BOOK_NOW"],
         recommended: "LEARN_MORE",
       },
-      LEAD_GENERATION: {
-        options: ["SIGN_UP", "APPLY_NOW", "GET_QUOTE"],
+      OUTCOME_LEADS: {
+        options: ["SIGN_UP", "GET_QUOTE", "LEARN_MORE"],
         recommended: "SIGN_UP",
       },
-      MESSAGES: {
-        options: ["SEND_MESSAGE"],
+      OUTCOME_SALES: {
+        options: ["SHOP_NOW", "ORDER_NOW", "GET_OFFER"],
+        recommended: "SHOP_NOW",
+      },
+      OUTCOME_ENGAGEMENT: {
+        options: ["SEND_MESSAGE", "WHATSAPP_MESSAGE", "LEARN_MORE"],
         recommended: "SEND_MESSAGE",
       },
-      CALLS: {
-        options: ["CALL_NOW"],
-        recommended: "CALL_NOW",
-      },
-      WHATSAPP: {
-        options: ["WHATSAPP"],
-        recommended: "WHATSAPP",
-      },
+      // Keep these for backward compatibility
+      TRAFFIC: { options: ["LEARN_MORE"], recommended: "LEARN_MORE" },
+      WHATSAPP: { options: ["WHATSAPP"], recommended: "WHATSAPP" }
     };
 
     // Check if CTA already stored in memory (simple heuristic)
@@ -2402,19 +2533,21 @@ currentState = newState;
       if (!isCompletedCycle && hasCoreLock) {
         lockedContext = `
 LOCKED CAMPAIGN STATE (DO NOT CHANGE OR RE-ASK):
-- Objective: ${lockedCampaignState.objective || "N/A"} (Auction)
+- Objective: ${lockedCampaignState.objective || "N/A"}
 - Conversion Location: ${lockedCampaignState.destination || "N/A"}
+- Message Channel: ${lockedCampaignState.message_channel || "N/A"} 
 - Performance Goal: ${lockedCampaignState.performance_goal || "N/A"}
 - Service: ${lockedCampaignState.service || "N/A"}
 - Location: ${lockedCampaignState.location || "N/A"}
 - Daily Budget (INR): ${lockedCampaignState.budget_per_day || "N/A"}
 - Duration (days): ${lockedCampaignState.total_days || "N/A"}
+- Website/Landing Page: ${lockedCampaignState.landing_page || "N/A"}
 
 RULES:
 - You MUST NOT ask again for these locked fields.
-- You MUST use these as FINAL.
+- Use the Landing Page to understand the business and generate high-converting ad copy.
 - All campaigns are created as **PAUSED** (Off) by default.
-- Only suggest: budget, targeting, creatives, duration.
+- Create a complete Meta Ads Strategy based on these exact parameters.
 `;
       }
     }
@@ -2459,7 +2592,8 @@ IF LOCKED CONTEXT EXISTS (Service + Location + Objective):
   - Budget (Daily, INR)
   - Targeting (Location from Locked Context)
   - Targeting Suggestions (interests, demographics)
-  - Creative (Headline, Primary Text, Image Prompt)
+  - Message Channel (If Objective is Engagement: WhatsApp/Instagram/Messenger)
+  - Creative (Headline, Primary Text, Image Prompt tailored to the Objective)
 
 IF NO LOCKED CONTEXT:
 - You are likely in Steps 1-7.
@@ -2502,7 +2636,7 @@ ${ragContext || "(none)"}
 
     let finalLandingPage = null;
 
-    if (selectedDestination === "website") {
+    if (selectedDestination === "website" || selectedMetaObjective === "OUTCOME_SALES") {
       if (!detectedLandingPage) {
         return res.status(200).json({
           ok: true,
@@ -2536,7 +2670,7 @@ Otherwise, respond with a full, clear explanation, and include example JSON only
 
     const model = genAI.getGenerativeModel({ model: GEMINI_MODEL });
 
-    // 🛑 BLOCK GEMINI IF GATES ARE NOT PASSED (Double Safety)
+   // 🛑 BLOCK GEMINI IF GATES ARE NOT PASSED (Improved Fallback)
     if (
       !lockedCampaignState?.plan &&
       !isPlanProposed &&
@@ -2548,18 +2682,21 @@ Otherwise, respond with a full, clear explanation, and include example JSON only
         !lockedCampaignState?.service ||
         !lockedCampaignState?.location ||
         !lockedCampaignState?.budget_per_day ||
-        !lockedCampaignState?.total_days ||
-        !lockedCampaignState?.budget_confirmed ||
-        !lockedCampaignState?.duration_confirmed
+        !lockedCampaignState?.total_days 
       )
     ) {
-      // Technically unreachable if gates are working, but safe fallback
-      let fallbackText = "Before I can draft your Meta campaign plan, I still need your daily budget and total duration in days.";
-      if (!lockedCampaignState?.budget_per_day || !lockedCampaignState?.budget_confirmed) {
-        fallbackText = "Before I draft the Meta campaign plan, what is your DAILY budget in INR?";
-      } else if (!lockedCampaignState?.total_days || !lockedCampaignState?.duration_confirmed) {
-        fallbackText = "Before I draft the Meta campaign plan, for how many days should this campaign run?";
+      let fallbackText = "I'm almost ready to draft your plan.";
+      
+      if (!lockedCampaignState?.service) {
+        fallbackText = "Which service or product are we promoting today?";
+      } else if (!lockedCampaignState?.location) {
+        fallbackText = "In which city or area should these ads run?";
+      } else if (!lockedCampaignState?.budget_per_day) {
+        fallbackText = "What is your DAILY budget in INR for this campaign?";
+      } else if (!lockedCampaignState?.total_days) {
+        fallbackText = "For how many days would you like to run these ads?";
       }
+      
       return res.status(200).json({ ok: true, mode, gated: true, text: fallbackText });
     }
 
@@ -2702,8 +2839,10 @@ Otherwise, respond with a full, clear explanation, and include example JSON only
         const adSet0 = (Array.isArray(plan.ad_sets) ? plan.ad_sets[0] : (plan.ad_sets || {}));
         const creativeResult = adSet0.ad_creative || adSet0.creative || adSet0.ads?.[0]?.creative || {};
 
-        const imagePrompt = creativeResult.image_prompt || creativeResult.image_generation_prompt || creativeResult.imagePrompt || creativeResult.primary_text || `${plan.campaign_name || "New Campaign"} ad image`;
-
+        const imagePrompt = 
+  creativeResult.image_prompt || 
+  creativeResult.image_generation_prompt || 
+  `${state.service} professional ad for ${state.location}. Style: clean, high-conversion, marketing photography.`;
         try {
           const imgRes = await fetch(`${process.env.NEXT_PUBLIC_BASE_URL}/api/images/generate`, {
             method: "POST",
@@ -3120,165 +3259,7 @@ const execJson = await execRes.json();
             };
           }
 
-          // 🔄 NORMALIZE JSON: Variation 5 (campaigns array structure)
-          if (planJson.campaigns && Array.isArray(planJson.campaigns)) {
-            console.log("🔄 Normalizing Gemini JSON Variation 5 (campaigns array)...");
-            const c = planJson.campaigns[0];
-            const adSet = c.adSets?.[0] || {};
-            const creative = adSet.adCreatives?.[0]?.creative || {};
-            const tgt = adSet.targeting || {};
-
-            // Map Objective
-            let rawObj = c.objective || "OUTCOME_TRAFFIC";
-            let objective = (rawObj.includes("LEAD") || rawObj.includes("PROSPECT")) ? "OUTCOME_LEADS" : (rawObj.includes("SALE") || rawObj.includes("CONVERSION") ? "OUTCOME_SALES" : "OUTCOME_TRAFFIC");
-
-            planJson = {
-              campaign_name: c.name || "New Campaign",
-              objective: objective,
-              performance_goal: c.performance_goal || adSet.performance_goal || lockedCampaignState?.performance_goal || "MAXIMIZE_LINK_CLICKS",
-              budget: {
-                amount: adSet.daily_budget || 500,
-                currency: adSet.currency || "INR",
-                type: "DAILY"
-              },
-              targeting: {
-                geo_locations: {
-                  countries: ["IN"],
-                  cities: tgt.geo_locations?.cities?.map(city => ({ name: city.name })) || []
-                },
-                age_min: tgt.age_min || 18,
-                age_max: tgt.age_max || 65
-              },
-              ad_sets: [
-                {
-                  name: adSet.name || "Ad Set 1",
-                  status: c.status || "PAUSED",
-                  ad_creative: {
-                    imagePrompt: creative.image_prompt || creative.imagePrompt || "Ad Image",
-                    primary_text: creative.primaryText_options?.[0] || "",
-                    headline: creative.headline_options?.[0] || "",
-                    call_to_action: creative.call_to_action || "LEARN_MORE",
-                    destination_url: creative.destination_url || "https://gabbarinfo.com"
-                  }
-                }
-              ]
-            };
-          }
-
-          // 🔄 NORMALIZE JSON: Variation 8 (User Reported meta_campaign_plan)
-          if (planJson.meta_campaign_plan || planJson.campaign_creation_flow_step) {
-            console.log("🔄 Normalizing reported Meta Campaign Plan structure...");
-            const mcp = planJson.meta_campaign_plan || {};
-            const adSetInput = mcp.ad_set || {};
-            const creativeInput = mcp.creative || {};
-            const tgt = adSetInput.targeting || {};
-            const budget = mcp.budget || {};
-
-            planJson = {
-              campaign_name: mcp.campaign_name || "New Campaign",
-              objective: (mcp.campaign_objective === "TRAFFIC" || (mcp.campaign_objective && mcp.campaign_objective.includes("CLICK"))) ? "OUTCOME_TRAFFIC" : (mcp.campaign_objective || "OUTCOME_TRAFFIC"),
-              performance_goal: adSetInput.performance_goal || "MAXIMIZE_LINK_CLICKS",
-              budget: {
-                amount: budget.amount || 500,
-                currency: budget.currency || "INR",
-                type: budget.type || "DAILY"
-              },
-              targeting: {
-                geo_locations: {
-                  countries: ["IN"],
-                  cities: tgt.geo_locations?.map(c => {
-                    if (typeof c === "string") {
-                      const parts = c.split(",");
-                      return { name: parts[0].trim() };
-                    }
-                    return null;
-                  }).filter(Boolean) || []
-                },
-                age_min: parseInt(tgt.age_range?.split("-")[0]) || 18,
-                age_max: parseInt(tgt.age_range?.split("-")[1]?.replace("+", "")) || 65,
-                targeting_suggestions: {
-                  interests: tgt.detailed_targeting_suggestions || []
-                }
-              },
-              ad_sets: [
-                {
-                  name: "Ad Set 1",
-                  status: "PAUSED",
-                  ad_creative: {
-                    imagePrompt: creativeInput.imagePrompt || creativeInput.image_prompt || "Ad Image",
-                    primary_text: creativeInput.primary_text || "",
-                    headline: creativeInput.headline || "",
-                    call_to_action: creativeInput.call_to_action || "LEARN_MORE",
-                    destination_url: creativeInput.destination_url || "https://gabbarinfo.com"
-                  }
-                }
-              ]
-            };
-          }
-
-          // 🔄 NORMALIZE JSON: Variation 9 (Step 8 flat shape: step_flow + creative_assets)
-          if (planJson.step_flow && planJson.campaign_name && planJson.creative_assets) {
-            console.log("🔄 Normalizing Gemini JSON Variation 9 (step_flow + creative_assets)...");
-
-            const tgt = planJson.targeting || {};
-            const rawLoc = tgt.location || [];
-            const locArray = Array.isArray(rawLoc) ? rawLoc : [rawLoc].filter(Boolean);
-            const cities = locArray.map((l) => {
-              if (typeof l === "string") {
-                return { name: l };
-              }
-              return null;
-            }).filter(Boolean);
-
-            const creativeInput = planJson.creative_assets || {};
-
-            const rawObj = (planJson.campaign_objective || "").toString().toUpperCase();
-            let objective = "OUTCOME_TRAFFIC";
-            if (rawObj.includes("LEAD")) objective = "OUTCOME_LEADS";
-            else if (rawObj.includes("SALE") || rawObj.includes("CONVERSION")) objective = "OUTCOME_SALES";
-
-            const perfGoalRaw = (planJson.optimization_goal || "").toString().toUpperCase();
-
-            let destUrl = planJson.destination_url || "";
-            if (typeof destUrl === "string") {
-              destUrl = destUrl.toString().replace(/[`]/g, "").trim();
-            } else {
-              destUrl = "https://gabbarinfo.com";
-            }
-
-            planJson = {
-              campaign_name: planJson.campaign_name || "New Campaign",
-              objective,
-              performance_goal: perfGoalRaw || lockedCampaignState?.performance_goal || "MAXIMIZE_LINK_CLICKS",
-              budget: {
-                amount: planJson.budget_daily_inr || 500,
-                currency: "INR",
-                type: "DAILY"
-              },
-              targeting: {
-                geo_locations: {
-                  countries: ["IN"],
-                  cities: cities
-                },
-                age_min: 25,
-                age_max: 55
-              },
-              ad_sets: [
-                {
-                  name: "Ad Set 1",
-                  status: "PAUSED",
-                  ad_creative: {
-                    imagePrompt: creativeInput.image_prompt || creativeInput.imagePrompt || "Ad Image",
-                    primary_text: creativeInput.primary_text || "",
-                    headline: creativeInput.headline || "",
-                    call_to_action: creativeInput.call_to_action || "LEARN_MORE",
-                    destination_url: destUrl || "https://gabbarinfo.com"
-                  }
-                }
-              ]
-            };
-          }
-
+         
           // 🔄 NORMALIZE JSON: Variation 6 (campaign + adSets + ads structure)
           if (planJson.campaign && planJson.adSets && Array.isArray(planJson.adSets)) {
             console.log("🔄 Normalizing Gemini JSON Variation 6 (campaign/adSets/ads)...");
@@ -3346,107 +3327,7 @@ const execJson = await execRes.json();
             };
           }
 
-          // 🔄 NORMALIZE JSON: Variation 7 (Step 8 Flow - "campaign_plan" object)
-          if (planJson.campaign_plan || (planJson.step === 8)) {
-            console.log("🔄 Normalizing Gemini JSON Variation 7 (Campaign Plan / Step 8)...");
-
-            const cp = planJson.campaign_plan || planJson;
-            const adSetsStr = planJson.ad_set_strategy || planJson.ad_sets || [];
-            const creativesStr = planJson.creative_strategy || planJson.ad_creatives || [];
-
-            // Extract first items
-            const adSetItem = Array.isArray(adSetsStr) ? adSetsStr[0] : (adSetsStr || {});
-            const creativeItem = Array.isArray(creativesStr) ? creativesStr[0] : (creativesStr || {});
-
-            const cName = cp.campaign_name || "New Campaign";
-            // Map Objective
-            let obj = cp.objective || "OUTCOME_TRAFFIC";
-            if (obj.includes("LINK") || obj.includes("TRAFFIC")) obj = "OUTCOME_TRAFFIC";
-            else if (obj.includes("LEAD")) obj = "OUTCOME_LEADS";
-            else obj = "OUTCOME_TRAFFIC";
-
-            const budgetAmount = cp.budget_daily_inr || cp.budget?.amount || 500;
-
-            // Map Location
-            const geo = adSetItem.geo_targeting || {};
-            const cities = Array.isArray(geo.cities)
-              ? geo.cities.map(c => ({ name: c }))
-              : (geo.cities ? [{ name: geo.cities }] : [{ name: "India" }]);
-
-            planJson = {
-              campaign_name: cName,
-              objective: obj,
-              performance_goal: cp.performance_goal || adSetItem.performance_goal || lockedCampaignState?.performance_goal || "MAXIMIZE_LINK_CLICKS",
-              budget: {
-                amount: budgetAmount,
-                currency: "INR",
-                type: "DAILY"
-              },
-              targeting: {
-                geo_locations: {
-                  countries: ["IN"],
-                  cities: cities
-                },
-                age_min: 18,
-                age_max: 65
-              },
-              ad_sets: [
-                {
-                  name: adSetItem.ad_set_name || "Ad Set 1",
-                  status: "PAUSED",
-                  ad_creative: {
-                    imagePrompt: creativeItem.image_prompt || "Ad Image",
-                    primary_text: creativeItem.primary_text || "",
-                    headline: creativeItem.headline || "",
-                    call_to_action: creativeItem.call_to_action || "LEARN_MORE",
-                    destination_url: creativeItem.destination_url || "https://gabbarinfo.com"
-                  }
-                }
-              ]
-            };
-          }
-
-          // 🔄 NORMALIZE JSON: Variation 4 (Flat META plan shape)
-          if (!planJson.campaign_name && (planJson.name || planJson.objective || planJson.ad_creative)) {
-            const d = planJson;
-            const tgt = d.targeting || {};
-            const dest = d.destination || {};
-            const cr = d.ad_creative || {};
-            const urlCandidate = (dest.url || cr.landing_page || "https://gabbarinfo.com").toString();
-            const cleanUrl = urlCandidate.replace(/[`]/g, "").trim();
-            const cities = Array.isArray(tgt.geo_locations)
-              ? tgt.geo_locations.map((g) => (g.location_name ? { name: g.location_name } : null)).filter(Boolean)
-              : [];
-            planJson = {
-              campaign_name: d.name || "New Campaign",
-              objective: (d.objective && (d.objective.includes("CLICK") || d.objective.includes("TRAFFIC"))) ? "OUTCOME_TRAFFIC" : (d.objective?.includes("LEAD") ? "OUTCOME_LEADS" : (d.objective || "OUTCOME_TRAFFIC")),
-              performance_goal: d.performance_goal || cr.performance_goal || lockedCampaignState?.performance_goal || "MAXIMIZE_LINK_CLICKS",
-              budget: {
-                amount: d.budget?.daily_budget_inr || d.budget_daily_inr || 500,
-                currency: "INR",
-                type: "DAILY"
-              },
-              targeting: {
-                geo_locations: { countries: ["IN"], cities },
-                age_min: 18,
-                age_max: 65
-              },
-              ad_sets: [
-                {
-                  name: "Ad Set 1",
-                  status: "PAUSED",
-                  ad_creative: {
-                    imagePrompt: cr.image_prompt || "Ad Image",
-                    primary_text: cr.primary_text || "",
-                    headline: cr.headline || "",
-                    call_to_action: dest.call_to_action || cr.call_to_action || "LEARN_MORE",
-                    destination_url: cleanUrl || "https://gabbarinfo.com"
-                  }
-                }
-              ]
-            };
-          }
-
+         
           // Basic validation (is it a campaign plan?)
           if (planJson.campaign_name && planJson.ad_sets) {
 
@@ -3502,35 +3383,29 @@ const execJson = await execRes.json();
             console.log(`🛡️ Sanitized Objective: ${planJson.objective} -> ${cleanObjective}`);
             planJson.objective = cleanObjective;
 
-            // Ensure Ad Sets have correct structure
-            planJson.ad_sets = planJson.ad_sets.map(adset => {
-              // Map Performance Goal -> Optimization Goal
-              const perfGoal = (planJson.performance_goal || adset.performance_goal || "LINK_CLICKS").toString().toUpperCase();
-              let optGoal = "LINK_CLICKS";
+           // Ensure Ad Sets have correct structure
+planJson.ad_sets = planJson.ad_sets.map(adset => {
+    const perfGoal = (planJson.performance_goal || adset.performance_goal || "LINK_CLICKS").toString().toUpperCase();
+    let optGoal = "LINK_CLICKS";
 
-            if (cleanObjective === "OUTCOME_TRAFFIC") {
-  optGoal = perfGoal.includes("LANDING") ? "LANDING_PAGE_VIEWS" : "LINK_CLICKS";
-}
-else if (cleanObjective === "OUTCOME_LEADS") {
-  optGoal = "LEAD_GENERATION";
-}
-else if (cleanObjective === "OUTCOME_SALES") {
-  optGoal = "CONVERSIONS";
-}
-else if (cleanObjective === "OUTCOME_ENGAGEMENT") {
-  optGoal = "CONVERSATIONS";
-}
-else if (cleanObjective === "OUTCOME_AWARENESS") {
-  optGoal = "REACH";
-}
+    if (cleanObjective === "OUTCOME_TRAFFIC") {
+        optGoal = perfGoal.includes("LANDING") ? "LANDING_PAGE_VIEWS" : "LINK_CLICKS";
+    } else if (cleanObjective === "OUTCOME_LEADS") {
+        optGoal = "LEAD_GENERATION";
+    } else if (cleanObjective === "OUTCOME_SALES") {
+        optGoal = "OFFSITE_CONVERSIONS"; // Corrected for Sales
+    } else if (cleanObjective === "OUTCOME_ENGAGEMENT") {
+        optGoal = "CONVERSATIONS"; // Corrected for WhatsApp/Messenger
+    } else if (cleanObjective === "OUTCOME_AWARENESS") {
+        optGoal = "REACH";
+    }
 
-              return {
-                ...adset,
-                optimization_goal: optGoal,
-                destination_type: adset.destination_type || null, // Default to Website
-                billing_event: "IMPRESSIONS" // Safe default
-              };
-            });
+    return {
+        ...adset,
+        optimization_goal: optGoal,
+        billing_event: "IMPRESSIONS"
+    };
+});
 
             const newState = {
               ...lockedCampaignState, // Preserve verified assets
