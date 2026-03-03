@@ -774,42 +774,48 @@ break;
   }
 
 // --- START REPLACEMENT (FIXED) ---
-  
-  // 1. Initialize with a safe fallback (India)
-  let geo_locations = { countries: ["IN"] };
 
-  // 2. Try to extract specific cities from the Structured Targeting object first
-  if (payload.targeting?.geo_locations?.cities?.length > 0) {
+  let geo_locations = {};
+
+  // Check if we have cities in the payload targeting
+  const hasCities = payload.targeting?.geo_locations?.cities?.length > 0;
+  
+  if (hasCities) {
+    // If we have cities, ONLY send cities (No countries array)
     geo_locations = {
       cities: payload.targeting.geo_locations.cities.map(city => ({
         name: city.name,
         country: "IN"
       }))
     };
-  } 
-  // 3. Fallback to raw string logic if structured targeting isn't there
-  else {
+  } else {
+    // Check for raw string location (like "Ahmedabad")
     const rawLocation = adSet.targeting?.location || payload.location || "IN";
-    if (rawLocation && !["IN", "INDIA"].includes(rawLocation.toUpperCase())) {
+    const isSpecificCity = rawLocation && !["IN", "INDIA"].includes(rawLocation.toUpperCase());
+
+    if (isSpecificCity) {
       const cityNames = rawLocation.split(',').map(c => c.trim()).filter(Boolean);
-      if (cityNames.length > 0) {
-        geo_locations = {
-          cities: cityNames.map(name => ({
-            name: name,
-            country: "IN"
-          }))
-        };
-      }
+      geo_locations = {
+        cities: cityNames.map(name => ({
+          name: name,
+          country: "IN"
+        }))
+      };
+    } else {
+      // Fallback to whole country ONLY if no cities are found
+      geo_locations = { countries: ["IN"] };
     }
   }
 
-  // 4. Construct the final targeting object (Combining city, age, and gender)
+  // Final targeting construction
   const targeting = {
     geo_locations: geo_locations,
     age_min: payload.targeting?.age_min || adSet.targeting?.age_min || 18,
     age_max: payload.targeting?.age_max || adSet.targeting?.age_max || 65,
-    publisher_platforms: placements
+    publisher_platforms: placements,
+    device_platforms: ["mobile", "desktop"]
   };
+// --- END REPLACEMENT ---
 
   // 5. Special Fix for Gender (important for Men's/Women's salons)
   if (payload.targeting?.gender) {
