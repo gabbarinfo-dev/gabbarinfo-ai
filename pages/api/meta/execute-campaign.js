@@ -776,55 +776,42 @@ break;
 // --- START REPLACEMENT (FIXED) ---
 
   let geo_locations = {};
+  const rawLocation = payload.location || adSet.targeting?.location || "";
 
-  // Check if we have cities in the payload targeting
-  const hasCities = payload.targeting?.geo_locations?.cities?.length > 0;
-  
-  if (hasCities) {
-    // If we have cities, ONLY send cities (No countries array)
-    geo_locations = {
-      cities: payload.targeting.geo_locations.cities.map(city => ({
-        name: city.name,
-        country: "IN"
-      }))
-    };
-  } else {
-    // Check for raw string location (like "Ahmedabad")
-    const rawLocation = adSet.targeting?.location || payload.location || "IN";
-    const isSpecificCity = rawLocation && !["IN", "INDIA"].includes(rawLocation.toUpperCase());
-
-    if (isSpecificCity) {
-      const cityNames = rawLocation.split(',').map(c => c.trim()).filter(Boolean);
+  // Check if we have a specific location string
+  if (rawLocation && !["IN", "INDIA", "INTERNATIONAL"].includes(rawLocation.toUpperCase())) {
+    const cityNames = rawLocation.split(',').map(c => c.trim()).filter(Boolean);
+    
+    if (cityNames.length > 0) {
       geo_locations = {
         cities: cityNames.map(name => ({
-          name: name,
-          country: "IN"
+          name: name
+          // Removed hardcoded "IN" so Meta finds the best match globally (London UK vs London Ontario)
         }))
       };
-    } else {
-      // Fallback to whole country ONLY if no cities are found
-      geo_locations = { countries: ["IN"] };
     }
+  } else {
+    // Fallback if no specific city is provided
+    geo_locations = { countries: ["IN"] }; 
   }
 
   // Final targeting construction
   const targeting = {
     geo_locations: geo_locations,
-    age_min: payload.targeting?.age_min || adSet.targeting?.age_min || 18,
-    age_max: payload.targeting?.age_max || adSet.targeting?.age_max || 65,
+    age_min: parseInt(payload.targeting?.age_min || 18),
+    age_max: parseInt(payload.targeting?.age_max || 65),
     publisher_platforms: placements,
     device_platforms: ["mobile", "desktop"]
   };
-// --- END REPLACEMENT ---
 
-  // 5. Special Fix for Gender (important for Men's/Women's salons)
+  // Special Fix for Gender
   if (payload.targeting?.gender) {
     targeting.genders = Array.isArray(payload.targeting.gender) 
       ? payload.targeting.gender 
       : [payload.targeting.gender];
   }
 
-  // 6. Append everything to Meta params
+  // Append everything to Meta params
   params.append("targeting", JSON.stringify(targeting));
   params.append("publisher_platforms", JSON.stringify(placements));
 
@@ -837,7 +824,6 @@ break;
   }
 
   return params;
-}
 // --- END REPLACEMENT ---
 
 // UNIVERSAL CREATIVE BUILDER (Placement Safe & Strict Types)
