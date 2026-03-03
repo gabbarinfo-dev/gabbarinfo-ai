@@ -780,22 +780,31 @@ params.append("optimization_goal", optimization_goal);
   if (destination_type) params.append("destination_type", destination_type);
   if (promoted_object) params.append("promoted_object", JSON.stringify(promoted_object));
 
-  // --- FIXED GEO TARGETING LOGIC ---
-  // --- SURGICAL FIX: LOCATION & AGE CLEANING ---
-  let geo_locations = {};
-  const rawCities = payload.targeting?.geo_locations?.cities || [];
-  
-  // If we have cities (even just names), use them. Otherwise default to India.
-  if (rawCities.length > 0) {
+  // --- SURGICAL FIX: NO KEY REQUIRED ---
+  let geo_locations = { countries: ["IN"] };
+  const locTarget = payload.targeting?.location_name || payload.location || "";
+
+  if (locTarget && !["IN", "INDIA"].includes(locTarget.toUpperCase())) {
+    // Agar city name hai par key nahi, toh hum use 'custom_locations' mein bhejenge radius ke saath
     geo_locations = {
-      cities: rawCities.map(c => {
-        if (c.key) return { key: c.key };
-        return { name: c.name }; // Allows targeting by name if key isn't present
-      })
+      custom_locations: [
+        {
+          address_string: locTarget,
+          radius: 20,
+          distance_unit: "kilometer"
+        }
+      ]
     };
-  } else {
-    geo_locations = { countries: ["IN"] };
   }
+
+  const targeting = {
+    geo_locations: geo_locations,
+    // Age cleaning to stop AdSet Error
+    age_min: parseInt(payload.targeting?.age_min?.toString().replace(/\D/g, '') || "18"),
+    age_max: parseInt(payload.targeting?.age_max?.toString().replace(/\D/g, '') || "65"),
+    publisher_platforms: placements,
+    device_platforms: ["mobile", "desktop"]
+  };
 
   // Clean Age: Force numbers only to prevent "Invalid Parameter" AdSet error
   const cleanAgeMin = parseInt(payload.targeting?.age_min?.toString().replace(/\D/g, '') || "18");
