@@ -788,9 +788,14 @@ break;
 
 // --- CLEAN GEO HANDLER ---
 
-let geo_locations = payload.targeting?.geo_locations;
+let geo_locations = payload.targeting?.geo_locations || {};
 
-if (!geo_locations || Object.keys(geo_locations).length === 0) {
+if (geo_locations.cities && geo_locations.cities.length > 0) {
+  geo_locations = {
+    countries: ["IN"],
+    cities: geo_locations.cities
+  };
+} else {
   geo_locations = { countries: ["IN"] };
 }
 
