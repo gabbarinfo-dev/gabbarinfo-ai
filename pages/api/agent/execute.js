@@ -1197,7 +1197,14 @@ if (waMatch) extractedData.whatsapp = waMatch[1];
             "1. Messenger / Instagram Direct\n" +
             "2. WhatsApp\n" +
             "3. Calls";
+        } else if (selectedMetaObjective === "OUTCOME_SALES") {
+          // ADD THIS SPECIFIC BLOCK FOR SALES
+          nextQuestion =
+            "Excellent. **I see you want Sales—I'll optimize this campaign for Purchases using your connected Meta Pixel.**\n\n" +
+            "Now, where should people complete their purchase?\n\n" +
+            "1. Website";
         } else {
+          // Generic fallback for Awareness or App Promotion
           nextQuestion =
             "Now, where should people complete this action?\n\n" +
             "1. Website";
