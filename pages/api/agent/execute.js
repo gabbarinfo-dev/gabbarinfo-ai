@@ -1418,22 +1418,24 @@ if (!isPlanProposed && mode === "meta_ads_plan" && lockedCampaignState?.service 
   const isPureNumber = /^\d+$/.test(input);
 
   if (input.length >= 2 && !isPureNumber) {
-    const cleanedLocation = input.split(',').map(loc => loc.trim()).filter(loc => loc.length > 0).join(', ');
+  const cleanedLocation = input.split(',').map(loc => loc.trim()).filter(loc => loc.length > 0).join(', ');
 
-    lockedCampaignState = { 
-      ...lockedCampaignState, 
-      location: cleanedLocation, 
-      // ADD THIS: Explicitly tell the AI targeting to use this city
-      targeting: {
-        ...lockedCampaignState.targeting,
-        geo_locations: {
-          countries: ["IN"],
-          cities: cleanedLocation.split(',').map(name => ({ name: name.trim() }))
-        }
-      },
-      location_confirmed: true, 
-      stage: "location_selected" 
-    };
+  lockedCampaignState = { 
+    ...lockedCampaignState, 
+    location: cleanedLocation, 
+    // We explicitly structure the targeting here so the Agent "sees" it for the preview
+    targeting: {
+      ...lockedCampaignState.targeting,
+      geo_locations: {
+        cities: cleanedLocation.split(',').map(name => ({
+          name: name.trim(),
+          country: "IN"
+        }))
+      }
+    },
+    location_confirmed: true, 
+    stage: "location_selected" 
+  };
         currentState = lockedCampaignState;
         
         await saveAnswerMemory(
