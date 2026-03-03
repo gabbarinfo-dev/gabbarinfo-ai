@@ -1413,21 +1413,27 @@ if (waMatch) extractedData.whatsapp = waMatch[1];
     }
 
    // Step 5: Location Confirmation
-    if (!isPlanProposed && mode === "meta_ads_plan" && lockedCampaignState?.service && !lockedCampaignState?.location && !lockedCampaignState?.location_confirmed) {
-      const input = instruction.trim();
-      
-      const isPureNumber = /^\d+$/.test(input);
+if (!isPlanProposed && mode === "meta_ads_plan" && lockedCampaignState?.service && !lockedCampaignState?.location && !lockedCampaignState?.location_confirmed) {
+  const input = instruction.trim();
+  const isPureNumber = /^\d+$/.test(input);
 
-      if (input.length >= 2 && !isPureNumber) {
-        // CLEANUP: If user gave "Mumbai, Ahmedabad ", turn it into "Mumbai, Ahmedabad"
-        const cleanedLocation = input.split(',').map(loc => loc.trim()).filter(loc => loc.length > 0).join(', ');
+  if (input.length >= 2 && !isPureNumber) {
+    const cleanedLocation = input.split(',').map(loc => loc.trim()).filter(loc => loc.length > 0).join(', ');
 
-        lockedCampaignState = { 
-          ...lockedCampaignState, 
-          location: cleanedLocation, 
-          location_confirmed: true, 
-          stage: "location_selected" 
-        };
+    lockedCampaignState = { 
+      ...lockedCampaignState, 
+      location: cleanedLocation, 
+      // ADD THIS: Explicitly tell the AI targeting to use this city
+      targeting: {
+        ...lockedCampaignState.targeting,
+        geo_locations: {
+          countries: ["IN"],
+          cities: cleanedLocation.split(',').map(name => ({ name: name.trim() }))
+        }
+      },
+      location_confirmed: true, 
+      stage: "location_selected" 
+    };
         currentState = lockedCampaignState;
         
         await saveAnswerMemory(
