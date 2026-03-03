@@ -773,49 +773,32 @@ break;
     params.append("promoted_object", JSON.stringify(promoted_object));
   }
 
-// --- START REPLACEMENT (FIXED) ---
+// --- CLEAN GEO HANDLER ---
 
-  let geo_locations = {};
-  const rawLocation = payload.location || adSet.targeting?.location || "";
+let geo_locations = payload.targeting?.geo_locations;
 
-  // Handle Location: Any city, any country, single or multiple.
-  if (rawLocation && !["IN", "INDIA", "INTERNATIONAL"].includes(rawLocation.toUpperCase())) {
-    const locationItems = rawLocation.split(',').map(loc => loc.trim()).filter(Boolean);
-    
-    if (locationItems.length > 0) {
-      // We send these as 'cities'. Meta's global search will match "London" or "Mumbai" 
-      // based on the name alone without requiring a hardcoded country code.
-      geo_locations = {
-        cities: locationItems.map(name => ({
-          name: name
-        }))
-      };
-    }
-  } else {
-    // Fallback only if the user specifically wants India or didn't provide a city.
-    geo_locations = { countries: ["IN"] }; 
-  }
+if (!geo_locations || Object.keys(geo_locations).length === 0) {
+  geo_locations = { countries: ["IN"] };
+}
 
-  // Final targeting construction
-  const targeting = {
-    geo_locations: geo_locations,
-    // FIX: .replace(/\D/g, '') ensures "45+" becomes "45". 
-    // Without this, the AdSet creation fails with "Invalid Parameter".
-    age_min: parseInt(payload.targeting?.age_min?.toString().replace(/\D/g, '') || "18"),
-    age_max: parseInt(payload.targeting?.age_max?.toString().replace(/\D/g, '') || "65"),
-    publisher_platforms: placements,
-    device_platforms: ["mobile", "desktop"]
-  };
+const targeting = {
+  geo_locations: geo_locations,
+  age_min: parseInt(payload.targeting?.age_min?.toString().replace(/\D/g, '') || "18"),
+  age_max: parseInt(payload.targeting?.age_max?.toString().replace(/\D/g, '') || "65"),
+  publisher_platforms: placements,
+  device_platforms: ["mobile", "desktop"]
+};
 
-  // Special Fix for Gender
-  if (payload.targeting?.gender) {
-    targeting.genders = Array.isArray(payload.targeting.gender) 
-      ? payload.targeting.gender 
-      : [payload.targeting.gender];
-  }
+if (payload.targeting?.gender) {
+  targeting.genders = Array.isArray(payload.targeting.gender)
+    ? payload.targeting.gender
+    : [payload.targeting.gender];
+}
 
-  // Append everything to Meta params
-  params.append("targeting", JSON.stringify(targeting));
+// 🔎 DEBUG LOG
+console.log("FINAL TARGETING SENT TO META:", JSON.stringify(targeting, null, 2));
+
+params.append("targeting", JSON.stringify(targeting));
   params.append("publisher_platforms", JSON.stringify(placements));
 
   // Placement positions
