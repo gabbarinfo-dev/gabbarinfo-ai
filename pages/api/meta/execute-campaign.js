@@ -778,28 +778,31 @@ break;
   let geo_locations = {};
   const rawLocation = payload.location || adSet.targeting?.location || "";
 
-  // Check if we have a specific location string
+  // Handle Location: Any city, any country, single or multiple.
   if (rawLocation && !["IN", "INDIA", "INTERNATIONAL"].includes(rawLocation.toUpperCase())) {
-    const cityNames = rawLocation.split(',').map(c => c.trim()).filter(Boolean);
+    const locationItems = rawLocation.split(',').map(loc => loc.trim()).filter(Boolean);
     
-    if (cityNames.length > 0) {
+    if (locationItems.length > 0) {
+      // We send these as 'cities'. Meta's global search will match "London" or "Mumbai" 
+      // based on the name alone without requiring a hardcoded country code.
       geo_locations = {
-        cities: cityNames.map(name => ({
+        cities: locationItems.map(name => ({
           name: name
-          // Removed hardcoded "IN" so Meta finds the best match globally (London UK vs London Ontario)
         }))
       };
     }
   } else {
-    // Fallback if no specific city is provided
+    // Fallback only if the user specifically wants India or didn't provide a city.
     geo_locations = { countries: ["IN"] }; 
   }
 
   // Final targeting construction
   const targeting = {
     geo_locations: geo_locations,
-    age_min: parseInt(payload.targeting?.age_min || 18),
-    age_max: parseInt(payload.targeting?.age_max || 65),
+    // FIX: .replace(/\D/g, '') ensures "45+" becomes "45". 
+    // Without this, the AdSet creation fails with "Invalid Parameter".
+    age_min: parseInt(payload.targeting?.age_min?.toString().replace(/\D/g, '') || "18"),
+    age_max: parseInt(payload.targeting?.age_max?.toString().replace(/\D/g, '') || "65"),
     publisher_platforms: placements,
     device_platforms: ["mobile", "desktop"]
   };
@@ -815,6 +818,7 @@ break;
   params.append("targeting", JSON.stringify(targeting));
   params.append("publisher_platforms", JSON.stringify(placements));
 
+  // Placement positions
   if (placements.includes("facebook")) {
     params.append("facebook_positions", JSON.stringify(["feed"]));
   }
@@ -825,7 +829,7 @@ break;
 
   return params;
 }
- // --- END REPLACEMENT ---
+// --- END REPLACEMENT ---
 
 // UNIVERSAL CREATIVE BUILDER (Placement Safe & Strict Types)
 function buildCreativePayload(objective, creative, pageId, instagramActorId, accessToken, forcePhoto = false, placements = []) {
