@@ -704,8 +704,15 @@ console.log("DEBUG META ROW:", meta);
     // ---------- MODE-SPECIFIC FOCUS ----------
     let modeFocus = "";
 
-    if (mode === "meta_ads_plan") {
+   if (mode === "meta_ads_plan") {
+      // SURGICAL FIX: Capture actual state. If null, AI will ask, but we don't force 'TRAFFIC'.
+      const currentObjective = lockedCampaignState?.objective || "the selected objective";
+      const currentLocation = lockedCampaignState?.location || "the selected location";
+      const currentService = lockedCampaignState?.service || "the business service";
+      const currentBudget = lockedCampaignState?.budget_per_day || "the specified budget";
+
       modeFocus = `
+        
 You are in META ADS / CREATIVE AGENT MODE.
 
 *** CRITICAL: FOLLOW THIS 3-STEP DECISION HIERARCHY ***
@@ -739,25 +746,25 @@ You are in META ADS / CREATIVE AGENT MODE.
      - "Maximize Reach" (Goal: REACH)
 
 *** REQUIRED JSON SCHEMA ***
-You MUST ALWAYS output BOTH a human-readable summary AND the JSON using this exact schema whenever you propose a campaign plan:
+You MUST ALWAYS output BOTH a human-readable summary AND the JSON using this exact schema:
 
 {
-  "campaign_name": "Dentist Clinic – Mumbai – Jan 2026",
-  "objective": "OUTCOME_TRAFFIC",
+  "campaign_name": "${currentService} – ${currentLocation} – ${currentObjective}",
+  "objective": "${currentObjective}",
   "performance_goal": "MAXIMIZE_LINK_CLICKS",
   "conversion_location": "WEBSITE",
   "budget": {
-    "amount": 500,
+    "amount": ${currentBudget},
     "currency": "INR",
     "type": "DAILY"
   },
   "targeting": {
-    "geo_locations": { "countries": ["IN"], "cities": [{"name": "Mumbai"}] },
-    "age_min": 25,
-    "age_max": 55,
+    "geo_locations": { "cities": [{"name": "${currentLocation}"}] },
+    "age_min": 18,
+    "age_max": 65,
     "targeting_suggestions": {
-      "interests": ["Dentistry", "Oral Hygiene"],
-      "demographics": ["Parents"]
+      "interests": ["${currentService}"],
+      "demographics": ["Relevant Audience"]
     }
   },
   "ad_sets": [
@@ -767,9 +774,9 @@ You MUST ALWAYS output BOTH a human-readable summary AND the JSON using this exa
       "optimization_goal": "LINK_CLICKS",
       "destination_type": "WEBSITE",
       "ad_creative": {
-        "imagePrompt": "a modern clinic exterior at dusk, vibrant lighting, professional photographer",
-        "primary_text": "Trusted by 5000+ patients. Painless treatments.",
-        "headline": "Best Dental Clinic in Mumbai",
+        "imagePrompt": "Professional visual for ${currentService} in ${currentLocation}",
+        "primary_text": "Experience the best ${currentService} in ${currentLocation}.",
+        "headline": "Top ${currentService} in ${currentLocation}",
         "call_to_action": "LEARN_MORE",
         "destination_url": "https://client-website.com"
       }
