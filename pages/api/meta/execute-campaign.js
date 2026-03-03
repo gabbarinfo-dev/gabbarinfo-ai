@@ -822,7 +822,7 @@ params.append("targeting", JSON.stringify(targeting));
   if (placements.includes("instagram")) {
     params.append("instagram_positions", JSON.stringify(["stream"]));
   }
-
+console.log("🔥 FULL ADSET PARAMS:", params.toString());
   return params;
 }
 // --- END REPLACEMENT ---
