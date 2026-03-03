@@ -88,7 +88,7 @@ const placements = Array.isArray(platform)
  
   const { data: meta, error } = await supabase 
   .from("meta_connections") 
-  .select("fb_ad_account_id, fb_page_id, ig_business_id, instagram_actor_id, business_website, business_phone, fb_user_access_token") 
+  .select("fb_ad_account_id, fb_page_id, ig_business_id, instagram_actor_id, business_website, business_phone, fb_user_access_token, fb_pixel_id") 
   .eq("email", clientEmail) 
   .single();
  
@@ -343,7 +343,22 @@ Error: ${lastError?.message}`);
     } 
  
     createdAssets.campaign_id = campaignId; 
- 
+ // --- PIXEL DISCOVERY START ---
+    let activePixelId = meta.fb_pixel_id;
+
+    // If it's a Sales campaign and we don't have a Pixel ID, find it automatically
+    if (!activePixelId && finalObjective === "OUTCOME_SALES") {
+      activePixelId = await getAutoPixelId(AD_ACCOUNT_ID, ACCESS_TOKEN, API_VERSION);
+      
+      // Save it to Supabase so we have it for next time
+      if (activePixelId) {
+        await supabase
+          .from("meta_connections")
+          .update({ fb_pixel_id: activePixelId })
+          .eq("email", clientEmail);
+      }
+    }
+    // --- PIXEL DISCOVERY END ---
     // 3. Create Ad Set(s) 
     const adSets = payload.ad_sets || [{ name: "Ad Set 1" }]; 
     for (const adSet of adSets) { 
@@ -357,7 +372,7 @@ Error: ${lastError?.message}`);
       adSet.conversion_location = payload.conversion_location;
      adSet.message_channel = payload.message_channel;
      adSet.phone_number = payload.phone_number || meta.business_phone;
-const p = buildAdSetPayload(finalObjective, adSet, campaignId, ACCESS_TOKEN, placements, PAGE_ID);
+const p = buildAdSetPayload(finalObjective, adSet, campaignId, ACCESS_TOKEN, placements, PAGE_ID, activePixelId);
  
       // Append Budget 
       p.append(budgetType, String(Math.floor(Number(budgetAmount) * 
@@ -449,7 +464,7 @@ creation...`);
  [AdSet] Creating NEW Ad Set for fallback 
 with placements ${platKey}...`); 
             adSet.conversion_location = payload.conversion_location;
-const p = buildAdSetPayload(finalObjective, adSet, campaignId, ACCESS_TOKEN, strat.placements, PAGE_ID); 
+const p = buildAdSetPayload(finalObjective, adSet, campaignId, ACCESS_TOKEN, strat.placements, PAGE_ID, activePixelId);
             const asRes = await 
 fetch(`https://graph.facebook.com/${API_VERSION}/act_${AD_ACCOUNT_ID}/a
 dsets`, { 
@@ -583,7 +598,7 @@ createdAssets.ads.push(adJson.id);
 } 
  
 // UNIVERSAL AD SET BUILDER (Strict ODAX Compliance)
-function buildAdSetPayload(objective, adSet, campaignId, accessToken, placements, pageId) {
+function buildAdSetPayload(objective, adSet, campaignId, accessToken, placements, pageId, metaPixelId) {
   const params = new URLSearchParams();
 
   params.append("name", adSet.name || "Ad Set 1");
@@ -967,6 +982,25 @@ else {
 
   return params;
 }
-
+// HELPER: Auto-discover Pixel if missing from DB
+async function getAutoPixelId(adAccountId, accessToken, apiVersion) {
+  try {
+    console.log(`🔍 [Pixel Discovery] Searching for pixels in act_${adAccountId}...`);
+    const res = await fetch(
+      `https://graph.facebook.com/${apiVersion}/act_${adAccountId}/adspixels?access_token=${accessToken}`
+    );
+    const json = await res.json();
+    
+    if (json.data && json.data.length > 0) {
+      const foundId = json.data[0].id;
+      console.log(`✅ [Pixel Discovery] Found Pixel ID: ${foundId}`);
+      return foundId;
+    }
+    return null;
+  } catch (e) {
+    console.error("❌ [Pixel Discovery] Failed:", e.message);
+    return null;
+  }
+}
 
 
