@@ -705,14 +705,12 @@ console.log("DEBUG META ROW:", meta);
     let modeFocus = "";
 
    if (mode === "meta_ads_plan") {
-      // SURGICAL FIX: Capture actual state. If null, AI will ask, but we don't force 'TRAFFIC'.
       const currentObjective = lockedCampaignState?.objective || "the selected objective";
       const currentLocation = lockedCampaignState?.location || "the selected location";
       const currentService = lockedCampaignState?.service || "the business service";
       const currentBudget = lockedCampaignState?.budget_per_day || "the specified budget";
 
       modeFocus = `
-        
 You are in META ADS / CREATIVE AGENT MODE.
 
 *** CRITICAL: FOLLOW THIS 3-STEP DECISION HIERARCHY ***
@@ -789,6 +787,8 @@ You MUST ALWAYS output BOTH a human-readable summary AND the JSON using this exa
 - destination_type should be set (e.g., WEBSITE, MESSAGING_APPS).
 - When you output JSON, wrap it in a proper JSON code block. Do NOT add extra text inside the JSON block.
 - ALWAYS propose a plan if you have enough info (objective, location, service, budget).
+- **LOCATION RULE**: Use exactly "${currentLocation}". DO NOT default to India.
+- **AGE RULE**: NEVER include the "+" symbol in age_max. Use numbers only (e.g., 65).
 `;
     } else if (mode === "social_plan") {
       modeFocus = `
