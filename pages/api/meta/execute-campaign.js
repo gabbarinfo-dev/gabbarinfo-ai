@@ -781,27 +781,34 @@ params.append("optimization_goal", optimization_goal);
   if (promoted_object) params.append("promoted_object", JSON.stringify(promoted_object));
 
   // --- FIXED GEO TARGETING LOGIC ---
-  let geo_locations = { countries: ["IN"] };
+  // --- SURGICAL FIX: LOCATION & AGE CLEANING ---
+  let geo_locations = {};
   const rawCities = payload.targeting?.geo_locations?.cities || [];
-
-  // Meta API CRASHES if you send a "name" instead of a "key" for a city.
-  // This filter ensures we only send cities that have a valid Meta ID Key.
-  const validCities = rawCities.filter(c => c.key); 
-
-  if (validCities.length > 0) {
+  
+  // If we have cities (even just names), use them. Otherwise default to India.
+  if (rawCities.length > 0) {
     geo_locations = {
-      cities: validCities.map(c => ({ key: c.key }))
+      cities: rawCities.map(c => {
+        if (c.key) return { key: c.key };
+        return { name: c.name }; // Allows targeting by name if key isn't present
+      })
     };
-    // Note: We REMOVE "countries" when targeting specific cities to avoid overlap errors.
+  } else {
+    geo_locations = { countries: ["IN"] };
   }
+
+  // Clean Age: Force numbers only to prevent "Invalid Parameter" AdSet error
+  const cleanAgeMin = parseInt(payload.targeting?.age_min?.toString().replace(/\D/g, '') || "18");
+  const cleanAgeMax = parseInt(payload.targeting?.age_max?.toString().replace(/\D/g, '') || "65");
 
   const targeting = {
     geo_locations: geo_locations,
-    age_min: parseInt(payload.targeting?.age_min || "18"),
-    age_max: parseInt(payload.targeting?.age_max || "65"),
+    age_min: cleanAgeMin,
+    age_max: cleanAgeMax,
     publisher_platforms: placements,
     device_platforms: ["mobile", "desktop"]
   };
+  // --- END FIX ---
 
   console.log("✅ FIXED TARGETING:", JSON.stringify(targeting));
   params.append("targeting", JSON.stringify(targeting));
