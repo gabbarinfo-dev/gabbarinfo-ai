@@ -773,37 +773,53 @@ break;
     params.append("promoted_object", JSON.stringify(promoted_object));
   }
 
-// --- START REPLACEMENT ---
-  // 1. Get location string from payload or adSet targeting
-  const rawLocation = adSet.targeting?.location || payload.location || "IN";
+// --- START REPLACEMENT (FIXED) ---
   
-  let geo_locations = { countries: ["IN"] }; // Default fallback to India
+  // 1. Initialize with a safe fallback (India)
+  let geo_locations = { countries: ["IN"] };
 
-  // 2. If the location is specific (not just "IN" or "India"), split it into cities
-  if (rawLocation && !["IN", "INDIA"].includes(rawLocation.toUpperCase())) {
-    const cityNames = rawLocation.split(',').map(c => c.trim()).filter(Boolean);
-    
-    if (cityNames.length > 0) {
-      geo_locations = {
-        cities: cityNames.map(name => ({
-          name: name,
-          country: "IN" // Mapping to India; change if you target multiple countries
-        }))
-      };
+  // 2. Try to extract specific cities from the Structured Targeting object first
+  if (payload.targeting?.geo_locations?.cities?.length > 0) {
+    geo_locations = {
+      cities: payload.targeting.geo_locations.cities.map(city => ({
+        name: city.name,
+        country: "IN"
+      }))
+    };
+  } 
+  // 3. Fallback to raw string logic if structured targeting isn't there
+  else {
+    const rawLocation = adSet.targeting?.location || payload.location || "IN";
+    if (rawLocation && !["IN", "INDIA"].includes(rawLocation.toUpperCase())) {
+      const cityNames = rawLocation.split(',').map(c => c.trim()).filter(Boolean);
+      if (cityNames.length > 0) {
+        geo_locations = {
+          cities: cityNames.map(name => ({
+            name: name,
+            country: "IN"
+          }))
+        };
+      }
     }
   }
 
-  // 3. Construct the final targeting object
+  // 4. Construct the final targeting object (Combining city, age, and gender)
   const targeting = {
     geo_locations: geo_locations,
-    age_min: adSet.targeting?.age_min || payload.age_min || 18,
-    age_max: adSet.targeting?.age_max || payload.age_max || 65,
+    age_min: payload.targeting?.age_min || adSet.targeting?.age_min || 18,
+    age_max: payload.targeting?.age_max || adSet.targeting?.age_max || 65,
     publisher_platforms: placements
   };
 
-  params.append("targeting", JSON.stringify(targeting));
-  // --- END REPLACEMENT ---
+  // 5. Special Fix for Gender (important for Men's/Women's salons)
+  if (payload.targeting?.gender) {
+    targeting.genders = Array.isArray(payload.targeting.gender) 
+      ? payload.targeting.gender 
+      : [payload.targeting.gender];
+  }
 
+  // 6. Append everything to Meta params
+  params.append("targeting", JSON.stringify(targeting));
   params.append("publisher_platforms", JSON.stringify(placements));
 
   if (placements.includes("facebook")) {
@@ -816,6 +832,7 @@ break;
 
   return params;
 }
+// --- END REPLACEMENT ---
 
 // UNIVERSAL CREATIVE BUILDER (Placement Safe & Strict Types)
 function buildCreativePayload(objective, creative, pageId, instagramActorId, accessToken, forcePhoto = false, placements = []) {
