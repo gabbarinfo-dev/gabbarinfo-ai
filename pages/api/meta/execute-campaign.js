@@ -797,34 +797,21 @@ params.append("optimization_goal", optimization_goal);
     };
   }
 
+  // YAHAN EK HI BAAR DECLARE KARO
   const targeting = {
     geo_locations: geo_locations,
-    // Age cleaning to stop AdSet Error
+    // Clean Age: Force numbers only to prevent "Invalid Parameter" AdSet error
     age_min: parseInt(payload.targeting?.age_min?.toString().replace(/\D/g, '') || "18"),
     age_max: parseInt(payload.targeting?.age_max?.toString().replace(/\D/g, '') || "65"),
     publisher_platforms: placements,
     device_platforms: ["mobile", "desktop"]
   };
 
-  // Clean Age: Force numbers only to prevent "Invalid Parameter" AdSet error
-  const cleanAgeMin = parseInt(payload.targeting?.age_min?.toString().replace(/\D/g, '') || "18");
-  const cleanAgeMax = parseInt(payload.targeting?.age_max?.toString().replace(/\D/g, '') || "65");
-
-  const targeting = {
-    geo_locations: geo_locations,
-    age_min: cleanAgeMin,
-    age_max: cleanAgeMax,
-    publisher_platforms: placements,
-    device_platforms: ["mobile", "desktop"]
-  };
-  // --- END FIX ---
-
   console.log("✅ FIXED TARGETING:", JSON.stringify(targeting));
   params.append("targeting", JSON.stringify(targeting));
 
   return params;
 }
-
 
 // UNIVERSAL CREATIVE BUILDER (Placement Safe & Strict Types)
 function buildCreativePayload(objective, creative, pageId, instagramActorId, accessToken, forcePhoto = false, placements = []) {
