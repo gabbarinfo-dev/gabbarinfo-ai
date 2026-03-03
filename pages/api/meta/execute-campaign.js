@@ -775,7 +775,7 @@ break;
       break;
   }
 
-  params.append("optimization_goal", optimization_goal);
+params.append("optimization_goal", optimization_goal);
   params.append("billing_event", billing_event);
 
   if (destination_type) {
@@ -786,40 +786,16 @@ break;
     params.append("promoted_object", JSON.stringify(promoted_object));
   }
 
-// --- CLEAN GEO HANDLER ---
-
-let geo_locations = payload.targeting?.geo_locations || {};
-
-if (geo_locations.cities && geo_locations.cities.length > 0) {
-  geo_locations = {
-    countries: ["IN"],
-    cities: geo_locations.cities
+  const targeting = adSet.targeting || {
+    geo_locations: { countries: ["IN"] },
+    age_min: 18,
+    age_max: 65
   };
-} else {
-  geo_locations = { countries: ["IN"] };
-}
 
-const targeting = {
-  geo_locations: geo_locations,
-  age_min: parseInt(payload.targeting?.age_min?.toString().replace(/\D/g, '') || "18"),
-  age_max: parseInt(payload.targeting?.age_max?.toString().replace(/\D/g, '') || "65"),
-  publisher_platforms: placements,
-  device_platforms: ["mobile", "desktop"]
-};
+  params.append("targeting", JSON.stringify(targeting));
 
-if (payload.targeting?.gender) {
-  targeting.genders = Array.isArray(payload.targeting.gender)
-    ? payload.targeting.gender
-    : [payload.targeting.gender];
-}
+  params.append("publisher_platforms", JSON.stringify(placements));
 
-// 🔎 DEBUG LOG
-console.log("FINAL TARGETING SENT TO META:", JSON.stringify(targeting, null, 2));
-
-params.append("targeting", JSON.stringify(targeting));
-  
-
-  // Placement positions
   if (placements.includes("facebook")) {
     params.append("facebook_positions", JSON.stringify(["feed"]));
   }
@@ -827,10 +803,10 @@ params.append("targeting", JSON.stringify(targeting));
   if (placements.includes("instagram")) {
     params.append("instagram_positions", JSON.stringify(["stream"]));
   }
-console.log("🔥 FULL ADSET PARAMS:", params.toString());
+
   return params;
 }
-// --- END REPLACEMENT ---
+
 
 // UNIVERSAL CREATIVE BUILDER (Placement Safe & Strict Types)
 function buildCreativePayload(objective, creative, pageId, instagramActorId, accessToken, forcePhoto = false, placements = []) {
