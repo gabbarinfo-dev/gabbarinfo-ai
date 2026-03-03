@@ -777,32 +777,34 @@ break;
 
 params.append("optimization_goal", optimization_goal);
   params.append("billing_event", billing_event);
+  if (destination_type) params.append("destination_type", destination_type);
+  if (promoted_object) params.append("promoted_object", JSON.stringify(promoted_object));
 
-  if (destination_type) {
-    params.append("destination_type", destination_type);
+  // --- FIXED GEO TARGETING LOGIC ---
+  let geo_locations = { countries: ["IN"] };
+  const rawCities = payload.targeting?.geo_locations?.cities || [];
+
+  // Meta API CRASHES if you send a "name" instead of a "key" for a city.
+  // This filter ensures we only send cities that have a valid Meta ID Key.
+  const validCities = rawCities.filter(c => c.key); 
+
+  if (validCities.length > 0) {
+    geo_locations = {
+      cities: validCities.map(c => ({ key: c.key }))
+    };
+    // Note: We REMOVE "countries" when targeting specific cities to avoid overlap errors.
   }
 
-  if (promoted_object) {
-    params.append("promoted_object", JSON.stringify(promoted_object));
-  }
-
-  const targeting = adSet.targeting || {
-    geo_locations: { countries: ["IN"] },
-    age_min: 18,
-    age_max: 65
+  const targeting = {
+    geo_locations: geo_locations,
+    age_min: parseInt(payload.targeting?.age_min || "18"),
+    age_max: parseInt(payload.targeting?.age_max || "65"),
+    publisher_platforms: placements,
+    device_platforms: ["mobile", "desktop"]
   };
 
+  console.log("✅ FIXED TARGETING:", JSON.stringify(targeting));
   params.append("targeting", JSON.stringify(targeting));
-
-  params.append("publisher_platforms", JSON.stringify(placements));
-
-  if (placements.includes("facebook")) {
-    params.append("facebook_positions", JSON.stringify(["feed"]));
-  }
-
-  if (placements.includes("instagram")) {
-    params.append("instagram_positions", JSON.stringify(["stream"]));
-  }
 
   return params;
 }
