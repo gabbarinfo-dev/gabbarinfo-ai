@@ -1412,47 +1412,47 @@ if (waMatch) extractedData.whatsapp = waMatch[1];
       }
     }
 
-  // Step 5: Location Confirmation
-if (!isPlanProposed && mode === "meta_ads_plan" && lockedCampaignState?.service && !lockedCampaignState?.location && !lockedCampaignState?.location_confirmed) {
-  const input = instruction.trim();
-  const isPureNumber = /^\d+$/.test(input);
+ // Step 5: Location Confirmation
+  if (!isPlanProposed && mode === "meta_ads_plan" && lockedCampaignState?.service && !lockedCampaignState?.location && !lockedCampaignState?.location_confirmed) {
+    const input = instruction.trim();
+    const isPureNumber = /^\d+$/.test(input);
 
-  if (input.length >= 2 && !isPureNumber) {
-    const cleanedLocation = input.split(',').map(loc => loc.trim()).filter(loc => loc.length > 0).join(', ');
+    if (input.length >= 2 && !isPureNumber) {
+      const cleanedLocation = input.split(',').map(loc => loc.trim()).filter(loc => loc.length > 0).join(', ');
 
-    lockedCampaignState = { 
-      ...lockedCampaignState, 
-      location: cleanedLocation, 
-      location_confirmed: true, 
-      stage: "location_selected" 
-    };
-    currentState = lockedCampaignState;
-    
-    await saveAnswerMemory(
-      process.env.NEXT_PUBLIC_BASE_URL, 
-      effectiveBusinessId, 
-      { campaign_state: lockedCampaignState }, 
-      session.user.email.toLowerCase()
-    );
+      lockedCampaignState = { 
+        ...lockedCampaignState, 
+        location: cleanedLocation, 
+        location_confirmed: true, 
+        stage: "location_selected" 
+      };
+      currentState = lockedCampaignState;
+      
+      await saveAnswerMemory(
+        process.env.NEXT_PUBLIC_BASE_URL, 
+        effectiveBusinessId, 
+        { campaign_state: lockedCampaignState }, 
+        session.user.email.toLowerCase()
+      );
 
-    const locationCount = cleanedLocation.split(',').length;
-    const locationText = locationCount > 1 ? "multiple locations" : "location";
+      const locationCount = cleanedLocation.split(',').length;
+      const locationText = locationCount > 1 ? "multiple locations" : "location";
 
-    return res.status(200).json({
-      ok: true, 
-      mode, 
-      gated: true,
-      text: `Target ${locationText} set: **${cleanedLocation}**.\n\nAlmost done! What is your **DAILY budget** for this campaign in INR? (e.g., 500)`
-    });
-  } else {
-    return res.status(200).json({
-      ok: true, 
-      mode, 
-      gated: true,
-      text: "What is the **Target Location**? You can enter one or more cities separated by commas (e.g., 'Mumbai, Ahmedabad' or 'London, New York')."
-    });
+      return res.status(200).json({
+        ok: true, 
+        mode, 
+        gated: true,
+        text: `Target ${locationText} set: **${cleanedLocation}**.\n\nAlmost done! What is your **DAILY budget** for this campaign in INR? (e.g., 500)`
+      });
+    } else {
+      return res.status(200).json({
+        ok: true, 
+        mode, 
+        gated: true,
+        text: "What is the **Target Location**? You can enter one or more cities separated by commas (e.g., 'Mumbai, Ahmedabad' or 'London, New York')."
+      });
+    }
   }
-}
    // Step 6: Budget Confirmation
     if (!isPlanProposed && mode === "meta_ads_plan" && lockedCampaignState?.location && !lockedCampaignState?.budget_per_day) {
       const budgetMatch = instruction.match(/(\d+)/);
