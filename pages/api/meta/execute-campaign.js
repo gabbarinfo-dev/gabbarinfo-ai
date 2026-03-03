@@ -713,19 +713,23 @@ break;
   break;
 
     case "OUTCOME_SALES":
-      optimization_goal = "OFFSITE_CONVERSIONS";
-      billing_event = "IMPRESSIONS";
-      destination_type = "WEBSITE";
+  optimization_goal = "OFFSITE_CONVERSIONS";
+  billing_event = "IMPRESSIONS";
+  destination_type = "WEBSITE";
 
-      if (!adSet.promoted_object || !adSet.promoted_object.pixel_id) {
-        throw new Error("OUTCOME_SALES requires a Pixel ID (promoted_object.pixel_id).");
-      }
+  // Use the Pixel ID from the payload OR fallback to a meta variable 
+  // (You'll need to pass the pixel_id into this function from the main handler)
+  const pixelId = adSet.promoted_object?.pixel_id || metaPixelId; 
 
-      promoted_object = {
-        pixel_id: adSet.promoted_object.pixel_id,
-        custom_event_type: adSet.promoted_object.custom_event_type || "PURCHASE"
-      };
-      break;
+  if (!pixelId) {
+    throw new Error("OUTCOME_SALES requires a Meta Pixel. Please ensure your Pixel is connected in Settings.");
+  }
+
+  promoted_object = {
+    pixel_id: pixelId,
+    custom_event_type: adSet.promoted_object?.custom_event_type || "PURCHASE"
+  };
+  break;
 
     case "OUTCOME_APP_PROMOTION":
       optimization_goal = "APP_INSTALLS";
@@ -754,13 +758,36 @@ break;
     params.append("promoted_object", JSON.stringify(promoted_object));
   }
 
-  const targeting = adSet.targeting || {
-    geo_locations: { countries: ["IN"] },
-    age_min: 18,
-    age_max: 65
+// --- START REPLACEMENT ---
+  // 1. Get location string from payload or adSet targeting
+  const rawLocation = adSet.targeting?.location || payload.location || "IN";
+  
+  let geo_locations = { countries: ["IN"] }; // Default fallback to India
+
+  // 2. If the location is specific (not just "IN" or "India"), split it into cities
+  if (rawLocation && !["IN", "INDIA"].includes(rawLocation.toUpperCase())) {
+    const cityNames = rawLocation.split(',').map(c => c.trim()).filter(Boolean);
+    
+    if (cityNames.length > 0) {
+      geo_locations = {
+        cities: cityNames.map(name => ({
+          name: name,
+          country: "IN" // Mapping to India; change if you target multiple countries
+        }))
+      };
+    }
+  }
+
+  // 3. Construct the final targeting object
+  const targeting = {
+    geo_locations: geo_locations,
+    age_min: adSet.targeting?.age_min || payload.age_min || 18,
+    age_max: adSet.targeting?.age_max || payload.age_max || 65,
+    publisher_platforms: placements
   };
 
   params.append("targeting", JSON.stringify(targeting));
+  // --- END REPLACEMENT ---
 
   params.append("publisher_platforms", JSON.stringify(placements));
 
