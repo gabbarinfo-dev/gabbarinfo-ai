@@ -3013,7 +3013,7 @@ const execRes = await fetch(
       "x-client-email": session.user.email.toLowerCase()
     },
     body: JSON.stringify({
-      platform: "meta",
+      platform: resolvedPlatforms,
       payload: finalPayload
     })
   }
@@ -3803,7 +3803,7 @@ Reply **YES** to confirm this plan and proceed.
               const execRes = await fetch(`${process.env.NEXT_PUBLIC_BASE_URL}/api/meta/execute-campaign`, {
                 method: "POST",
                 headers: { "Content-Type": "application/json", "x-client-email": session.user.email.toLowerCase() },
-                body: JSON.stringify({ platform: "meta", payload: finalPayload })
+                body: JSON.stringify({ platform: resolvedPlatforms, payload: finalPayload })
               });
               const execJson = await execRes.json();
 
