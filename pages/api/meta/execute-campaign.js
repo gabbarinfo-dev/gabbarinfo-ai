@@ -782,35 +782,37 @@ params.append("optimization_goal", optimization_goal);
   if (destination_type) params.append("destination_type", destination_type);
   if (promoted_object) params.append("promoted_object", JSON.stringify(promoted_object));
 
-  // --- SURGICAL FIX: NO KEY REQUIRED ---
-  let geo_locations = { countries: ["IN"] };
-  const locTarget = payload.targeting?.location_name || payload.location || "";
+ // --- SURGICAL FIX: NO KEY REQUIRED ---
+let geo_locations = { countries: ["IN"] };
 
-  if (locTarget && !["IN", "INDIA"].includes(locTarget.toUpperCase())) {
-    // Agar city name hai par key nahi, toh hum use 'custom_locations' mein bhejenge radius ke saath
-    geo_locations = {
-      custom_locations: [
-        {
-          address_string: locTarget,
-          radius: 20,
-          distance_unit: "kilometer"
-        }
-      ]
-    };
-  }
+const locTarget =
+  payload.targeting?.geo_locations?.cities?.[0]?.name ||
+  payload.location ||
+  "";
 
-  // YAHAN EK HI BAAR DECLARE KARO
-  const targeting = {
-    geo_locations: geo_locations,
-    // Clean Age: Force numbers only to prevent "Invalid Parameter" AdSet error
-    age_min: parseInt(payload.targeting?.age_min?.toString().replace(/\D/g, '') || "18"),
-    age_max: parseInt(payload.targeting?.age_max?.toString().replace(/\D/g, '') || "65"),
-    publisher_platforms: placements,
-    device_platforms: ["mobile", "desktop"]
+if (locTarget && !["IN", "INDIA"].includes(locTarget.toUpperCase())) {
+  geo_locations = {
+    custom_locations: [
+      {
+        address_string: locTarget,
+        radius: 20,
+        distance_unit: "kilometer"
+      }
+    ]
   };
+}
 
-  console.log("✅ FIXED TARGETING:", JSON.stringify(targeting));
-  params.append("targeting", JSON.stringify(targeting));
+// YAHAN EK HI BAAR DECLARE KARO
+const targeting = {
+  geo_locations: geo_locations,
+  age_min: parseInt(payload.targeting?.age_min?.toString().replace(/\D/g, '') || "18"),
+  age_max: parseInt(payload.targeting?.age_max?.toString().replace(/\D/g, '') || "65"),
+  publisher_platforms: placements,
+  device_platforms: ["mobile", "desktop"]
+};
+
+console.log("✅ FIXED TARGETING:", JSON.stringify(targeting));
+params.append("targeting", JSON.stringify(targeting));
 
   return params;
 }
