@@ -1,3 +1,5 @@
+
+
 import { getServerSession } from "next-auth/next"; 
 import { authOptions } from "../auth/[...nextauth]"; 
 import { createClient } from "@supabase/supabase-js"; 
@@ -79,16 +81,29 @@ export default async function handler(req, res) {
     return res.status(400).json({ ok: false, message: "Invalid payload: campaign_name required" }); 
   } 
  
-  // 1⃣Resolve placements explicitly
-const placements = Array.isArray(platform)
-  ? platform
-  : typeof platform === "string"
-  ? [platform]
-  : ["facebook"]; // default safe fallback 
+ let placements = [];
+
+if (Array.isArray(platform)) {
+  placements = platform;
+} else if (typeof platform === "string") {
+  placements = [platform];
+}
+
+// 🔥 Sanitize allowed values only
+placements = placements.filter(p =>
+  ["facebook", "instagram", "messenger", "audience_network"].includes(p)
+);
+
+// Default fallback
+if (placements.length === 0) {
+  placements = ["facebook"];
+}
+
+console.log("✅ FINAL SANITIZED PLACEMENTS:", placements);
  
   const { data: meta, error } = await supabase 
   .from("meta_connections") 
-  .select("fb_ad_account_id, fb_page_id, ig_business_id, instagram_actor_id, business_website, business_phone, fb_user_access_token") 
+  .select("fb_ad_account_id, fb_page_id, ig_business_id, instagram_actor_id, business_website, business_phone, fb_user_access_token, fb_pixel_id") 
   .eq("email", clientEmail) 
   .single();
  
@@ -343,7 +358,22 @@ Error: ${lastError?.message}`);
     } 
  
     createdAssets.campaign_id = campaignId; 
- 
+ // --- PIXEL DISCOVERY START ---
+    let activePixelId = meta.fb_pixel_id;
+
+    // If it's a Sales campaign and we don't have a Pixel ID, find it automatically
+    if (!activePixelId && finalObjective === "OUTCOME_SALES") {
+      activePixelId = await getAutoPixelId(AD_ACCOUNT_ID, ACCESS_TOKEN, API_VERSION);
+      
+      // Save it to Supabase so we have it for next time
+      if (activePixelId) {
+        await supabase
+          .from("meta_connections")
+          .update({ fb_pixel_id: activePixelId })
+          .eq("email", clientEmail);
+      }
+    }
+    // --- PIXEL DISCOVERY END ---
     // 3. Create Ad Set(s) 
     const adSets = payload.ad_sets || [{ name: "Ad Set 1" }]; 
     for (const adSet of adSets) { 
@@ -357,7 +387,7 @@ Error: ${lastError?.message}`);
       adSet.conversion_location = payload.conversion_location;
      adSet.message_channel = payload.message_channel;
      adSet.phone_number = payload.phone_number || meta.business_phone;
-const p = buildAdSetPayload(finalObjective, adSet, campaignId, ACCESS_TOKEN, placements, PAGE_ID);
+const p = buildAdSetPayload(finalObjective, adSet, campaignId, ACCESS_TOKEN, placements, PAGE_ID, activePixelId, payload);
  
       // Append Budget 
       p.append(budgetType, String(Math.floor(Number(budgetAmount) * 
@@ -449,7 +479,7 @@ creation...`);
  [AdSet] Creating NEW Ad Set for fallback 
 with placements ${platKey}...`); 
             adSet.conversion_location = payload.conversion_location;
-const p = buildAdSetPayload(finalObjective, adSet, campaignId, ACCESS_TOKEN, strat.placements, PAGE_ID); 
+const p = buildAdSetPayload(finalObjective, adSet, campaignId, ACCESS_TOKEN, strat.placements, PAGE_ID, activePixelId, payload);
             const asRes = await 
 fetch(`https://graph.facebook.com/${API_VERSION}/act_${AD_ACCOUNT_ID}/a
 dsets`, { 
@@ -583,7 +613,7 @@ createdAssets.ads.push(adJson.id);
 } 
  
 // UNIVERSAL AD SET BUILDER (Strict ODAX Compliance)
-function buildAdSetPayload(objective, adSet, campaignId, accessToken, placements, pageId) {
+function buildAdSetPayload(objective, adSet, campaignId, accessToken, placements, pageId, metaPixelId, payload) {
   const params = new URLSearchParams();
 
   params.append("name", adSet.name || "Ad Set 1");
@@ -713,19 +743,23 @@ break;
   break;
 
     case "OUTCOME_SALES":
-      optimization_goal = "OFFSITE_CONVERSIONS";
-      billing_event = "IMPRESSIONS";
-      destination_type = "WEBSITE";
+  optimization_goal = "OFFSITE_CONVERSIONS";
+  billing_event = "IMPRESSIONS";
+  destination_type = "WEBSITE";
 
-      if (!adSet.promoted_object || !adSet.promoted_object.pixel_id) {
-        throw new Error("OUTCOME_SALES requires a Pixel ID (promoted_object.pixel_id).");
-      }
+  // Use the Pixel ID from the payload OR fallback to a meta variable 
+  // (You'll need to pass the pixel_id into this function from the main handler)
+  const pixelId = adSet.promoted_object?.pixel_id || metaPixelId; 
 
-      promoted_object = {
-        pixel_id: adSet.promoted_object.pixel_id,
-        custom_event_type: adSet.promoted_object.custom_event_type || "PURCHASE"
-      };
-      break;
+  if (!pixelId) {
+    throw new Error("OUTCOME_SALES requires a Meta Pixel. Please ensure your Pixel is connected in Settings.");
+  }
+
+  promoted_object = {
+    pixel_id: pixelId,
+    custom_event_type: adSet.promoted_object?.custom_event_type || "PURCHASE"
+  };
+  break;
 
     case "OUTCOME_APP_PROMOTION":
       optimization_goal = "APP_INSTALLS";
@@ -743,34 +777,40 @@ break;
       break;
   }
 
-  params.append("optimization_goal", optimization_goal);
+params.append("optimization_goal", optimization_goal);
   params.append("billing_event", billing_event);
+  if (destination_type) params.append("destination_type", destination_type);
+  if (promoted_object) params.append("promoted_object", JSON.stringify(promoted_object));
 
-  if (destination_type) {
-    params.append("destination_type", destination_type);
+  // --- SURGICAL FIX: NO KEY REQUIRED ---
+  let geo_locations = { countries: ["IN"] };
+  const locTarget = payload.targeting?.location_name || payload.location || "";
+
+  if (locTarget && !["IN", "INDIA"].includes(locTarget.toUpperCase())) {
+    // Agar city name hai par key nahi, toh hum use 'custom_locations' mein bhejenge radius ke saath
+    geo_locations = {
+      custom_locations: [
+        {
+          address_string: locTarget,
+          radius: 20,
+          distance_unit: "kilometer"
+        }
+      ]
+    };
   }
 
-  if (promoted_object) {
-    params.append("promoted_object", JSON.stringify(promoted_object));
-  }
-
-  const targeting = adSet.targeting || {
-    geo_locations: { countries: ["IN"] },
-    age_min: 18,
-    age_max: 65
+  // YAHAN EK HI BAAR DECLARE KARO
+  const targeting = {
+    geo_locations: geo_locations,
+    // Clean Age: Force numbers only to prevent "Invalid Parameter" AdSet error
+    age_min: parseInt(payload.targeting?.age_min?.toString().replace(/\D/g, '') || "18"),
+    age_max: parseInt(payload.targeting?.age_max?.toString().replace(/\D/g, '') || "65"),
+    publisher_platforms: placements,
+    device_platforms: ["mobile", "desktop"]
   };
 
+  console.log("✅ FIXED TARGETING:", JSON.stringify(targeting));
   params.append("targeting", JSON.stringify(targeting));
-
-  params.append("publisher_platforms", JSON.stringify(placements));
-
-  if (placements.includes("facebook")) {
-    params.append("facebook_positions", JSON.stringify(["feed"]));
-  }
-
-  if (placements.includes("instagram")) {
-    params.append("instagram_positions", JSON.stringify(["stream"]));
-  }
 
   return params;
 }
@@ -940,7 +980,26 @@ else {
 
   return params;
 }
-
+// HELPER: Auto-discover Pixel if missing from DB
+async function getAutoPixelId(adAccountId, accessToken, apiVersion) {
+  try {
+    console.log(`🔍 [Pixel Discovery] Searching for pixels in act_${adAccountId}...`);
+    const res = await fetch(
+      `https://graph.facebook.com/${apiVersion}/act_${adAccountId}/adspixels?access_token=${accessToken}`
+    );
+    const json = await res.json();
+    
+    if (json.data && json.data.length > 0) {
+      const foundId = json.data[0].id;
+      console.log(`✅ [Pixel Discovery] Found Pixel ID: ${foundId}`);
+      return foundId;
+    }
+    return null;
+  } catch (e) {
+    console.error("❌ [Pixel Discovery] Failed:", e.message);
+    return null;
+  }
+}
 
 
 
