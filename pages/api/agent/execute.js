@@ -3223,9 +3223,11 @@ const execJson = await execRes.json();
               },
               targeting: {
                 geo_locations: {
-                  countries: d.targeting?.location === "India" ? ["IN"] : ["IN"],
-                  cities: []
-                },
+  countries: ["IN"],
+  cities: lockedCampaignState?.location
+    ? [{ name: lockedCampaignState.location }]
+    : []
+},
                 age_min: d.targeting?.age_min || 18,
                 age_max: d.targeting?.age_max || 65
               },
@@ -3264,9 +3266,11 @@ const execJson = await execRes.json();
               },
               targeting: {
                 geo_locations: {
-                  countries: d.targeting?.location === "India" ? ["IN"] : ["IN"],
-                  cities: []
-                },
+  countries: ["IN"],
+  cities: lockedCampaignState?.location
+    ? [{ name: lockedCampaignState.location }]
+    : []
+},
                 age_min: d.targeting?.age_min || 18,
                 age_max: d.targeting?.age_max || 65
               },
