@@ -3001,12 +3001,7 @@ plan.ad_sets = plan.ad_sets.map(adset => ({
 
   targeting: {
     ...plan.targeting,
-    geo_locations: {
-      countries: ["IN"],
-      cities: plan.targeting?.geo_locations?.location_name
-        ? [{ name: plan.targeting.geo_locations.location_name }]
-        : []
-    }
+    geo_locations: plan.targeting?.geo_locations || { countries: ["IN"] }
   },
 
   ad_sets: plan.ad_sets.map(adset => ({
@@ -3830,12 +3825,7 @@ const finalPayload = {
 
   targeting: {
     ...plan.targeting,
-    geo_locations: {
-      countries: ["IN"],
-      cities: plan.targeting?.geo_locations?.location_name
-        ? [{ name: plan.targeting.geo_locations.location_name }]
-        : []
-    }
+  geo_locations: plan.targeting?.geo_locations || { countries: ["IN"] }
   },
 
   ad_sets: plan.ad_sets.map(adset => ({
