@@ -3017,7 +3017,7 @@ plan.ad_sets = plan.ad_sets.map(adset => ({
     }
   }))
 };
-
+console.log("🧪 FINAL PAYLOAD PATH 1:", JSON.stringify(finalPayload, null, 2));
 const execRes = await fetch(
   `${process.env.NEXT_PUBLIC_BASE_URL}/api/meta/execute-campaign`,
   {
@@ -3814,7 +3814,7 @@ Reply **YES** to confirm this plan and proceed.
             console.log("🚀 Waterfall: Executing Campaign on Meta...");
             try {
               const plan = currentState.plan;
-
+console.log("🧪 PLAN BEFORE PAYLOAD:", JSON.stringify(plan, null, 2));
 // 🔧 FORCE CITY TARGETING BEFORE BUILDING PAYLOAD
 if (currentState.location) {
   plan.targeting = plan.targeting || {};
@@ -3847,6 +3847,7 @@ const finalPayload = {
     }
   }))
 };
+              console.log("🧪 FINAL PAYLOAD PATH 2:", JSON.stringify(finalPayload, null, 2));
               const execRes = await fetch(`${process.env.NEXT_PUBLIC_BASE_URL}/api/meta/execute-campaign`, {
                 method: "POST",
                 headers: { "Content-Type": "application/json", "x-client-email": session.user.email.toLowerCase() },
