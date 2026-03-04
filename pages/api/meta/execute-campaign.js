@@ -792,7 +792,6 @@ const locTarget =
 
 if (locTarget && !["IN", "INDIA"].includes(locTarget.toUpperCase())) {
   geo_locations = {
-  countries: ["IN"],
   custom_locations: [
     {
       address_string: locTarget,
