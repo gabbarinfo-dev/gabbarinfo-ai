@@ -3165,7 +3165,15 @@ const execJson = await execRes.json();
 
         try {
           let planJson = JSON.parse(jsonString);
+// 🔧 FIX: Convert location_name into Meta cities format
+if (planJson.targeting?.geo_locations?.location_name) {
+  const cityName = planJson.targeting.geo_locations.location_name;
 
+  planJson.targeting.geo_locations = {
+    countries: ["IN"],
+    cities: [{ name: cityName }]
+  };
+}
           // 🔄 NORMALIZE JSON: If Gemini gave the "Nested" structure, flatten it to our Standard Schema
           if (planJson.campaign_data) {
             console.log("🔄 Normalizing Gemini Nested JSON Plan...");
