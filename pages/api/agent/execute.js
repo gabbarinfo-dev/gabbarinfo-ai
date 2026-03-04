@@ -3802,7 +3802,17 @@ Reply **YES** to confirm this plan and proceed.
             console.log("🚀 Waterfall: Executing Campaign on Meta...");
             try {
               const plan = currentState.plan;
-              const finalPayload = {
+
+// 🔧 FORCE CITY TARGETING BEFORE BUILDING PAYLOAD
+if (currentState.location) {
+  plan.targeting = plan.targeting || {};
+  plan.targeting.geo_locations = {
+    countries: ["IN"],
+    cities: [{ name: currentState.location }]
+  };
+}
+
+const finalPayload = {
   ...plan,
   message_channel: currentState.message_channel || null,
 
