@@ -2995,6 +2995,17 @@ plan.ad_sets = plan.ad_sets.map(adset => ({
 }));
             const finalPayload = {
   ...plan,
+
+  targeting: {
+    ...plan.targeting,
+    geo_locations: {
+      countries: ["IN"],
+      cities: plan.targeting?.geo_locations?.location_name
+        ? [{ name: plan.targeting.geo_locations.location_name }]
+        : []
+    }
+  },
+
   ad_sets: plan.ad_sets.map(adset => ({
     ...adset,
     ad_creative: { 
@@ -3791,6 +3802,17 @@ Reply **YES** to confirm this plan and proceed.
               const finalPayload = {
   ...plan,
   message_channel: currentState.message_channel || null,
+
+  targeting: {
+    ...plan.targeting,
+    geo_locations: {
+      countries: ["IN"],
+      cities: plan.targeting?.geo_locations?.location_name
+        ? [{ name: plan.targeting.geo_locations.location_name }]
+        : []
+    }
+  },
+
   ad_sets: plan.ad_sets.map(adset => ({
     ...adset,
     message_channel: currentState.message_channel || null,
