@@ -792,14 +792,15 @@ const locTarget =
 
 if (locTarget && !["IN", "INDIA"].includes(locTarget.toUpperCase())) {
   geo_locations = {
-  custom_locations: [
-    {
-      address_string: locTarget,
-      radius: 20,
-      distance_unit: "kilometer"
-    }
-  ]
-};
+    countries: ["IN"],
+    custom_locations: [
+      {
+        address_string: locTarget,
+        radius: 20,
+        distance_unit: "kilometer"
+      }
+    ]
+  };
 }
 
 // YAHAN EK HI BAAR DECLARE KARO
