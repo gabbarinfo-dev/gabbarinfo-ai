@@ -3017,6 +3017,14 @@ plan.ad_sets = plan.ad_sets.map(adset => ({
     }
   }))
 };
+
+           // 🚩 FINAL SAFETY CHECK: Ensure the Universal Location is in the payload
+if (currentState.location && !finalPayload.targeting?.universal_locations) {
+  finalPayload.targeting = finalPayload.targeting || {};
+  finalPayload.targeting.universal_locations = currentState.location.split(',').map(l => l.trim());
+  delete finalPayload.targeting.geo_locations;
+}
+            
 console.log("🧪 FINAL PAYLOAD PATH 1:", JSON.stringify(finalPayload, null, 2));
 const execRes = await fetch(
   `${process.env.NEXT_PUBLIC_BASE_URL}/api/meta/execute-campaign`,
@@ -3815,15 +3823,27 @@ Reply **YES** to confirm this plan and proceed.
             try {
               const plan = currentState.plan;
 console.log("🧪 PLAN BEFORE PAYLOAD:", JSON.stringify(plan, null, 2));
-// 🔧 FORCE CITY TARGETING BEFORE BUILDING PAYLOAD
+// 🌍 UNIVERSAL LOCATION HANDLER (Starts here)
 if (currentState.location) {
   plan.targeting = plan.targeting || {};
-  plan.targeting.geo_locations = {
-    countries: ["IN"],
-    cities: [{ name: currentState.location }]
-  };
-}
+  
+  // 1. We split the input by commas so "Mumbai, London, Texas" becomes a list
+  const locationList = currentState.location.split(',')
+    .map(loc => loc.trim())
+    .filter(loc => loc.length > 0);
+  
+  // 2. We store this as 'universal_locations' so the next file knows to perform a deep search
+  plan.targeting.universal_locations = locationList;
 
+  // 3. We remove any hardcoded "IN" (India) overrides here 
+  // so the executor isn't forced to only look in India if the user said "London"
+  if (plan.targeting.geo_locations) {
+    delete plan.targeting.geo_locations;
+  }
+  
+  console.log("📍 Prepared Universal Locations for Executor:", plan.targeting.universal_locations);
+}
+// 🌍 UNIVERSAL LOCATION HANDLER (Ends here)
 const finalPayload = {
   ...plan,
   message_channel: currentState.message_channel || null,
@@ -3847,6 +3867,14 @@ const finalPayload = {
     }
   }))
 };
+
+              // 🚩 FINAL SAFETY CHECK: Ensure the Universal Location is in the payload
+if (currentState.location && !finalPayload.targeting?.universal_locations) {
+  finalPayload.targeting = finalPayload.targeting || {};
+  finalPayload.targeting.universal_locations = currentState.location.split(',').map(l => l.trim());
+  delete finalPayload.targeting.geo_locations;
+} 
+              
               console.log("🧪 FINAL PAYLOAD PATH 2:", JSON.stringify(finalPayload, null, 2));
               const execRes = await fetch(`${process.env.NEXT_PUBLIC_BASE_URL}/api/meta/execute-campaign`, {
                 method: "POST",
