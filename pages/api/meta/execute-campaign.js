@@ -387,7 +387,7 @@ Error: ${lastError?.message}`);
       adSet.conversion_location = payload.conversion_location;
      adSet.message_channel = payload.message_channel;
      adSet.phone_number = payload.phone_number || meta.business_phone;
-const p = buildAdSetPayload(finalObjective, adSet, campaignId, ACCESS_TOKEN, placements, PAGE_ID, activePixelId, payload);
+const p = await buildAdSetPayload(finalObjective, adSet, campaignId, ACCESS_TOKEN, placements, PAGE_ID, activePixelId, payload);
  
       // Append Budget 
       p.append(budgetType, String(Math.floor(Number(budgetAmount) * 
@@ -479,7 +479,7 @@ creation...`);
  [AdSet] Creating NEW Ad Set for fallback 
 with placements ${platKey}...`); 
             adSet.conversion_location = payload.conversion_location;
-const p = buildAdSetPayload(finalObjective, adSet, campaignId, ACCESS_TOKEN, strat.placements, PAGE_ID, activePixelId, payload);
+const p = await buildAdSetPayload(finalObjective, adSet, campaignId, ACCESS_TOKEN, strat.placements, PAGE_ID, activePixelId, payload);
             const asRes = await 
 fetch(`https://graph.facebook.com/${API_VERSION}/act_${AD_ACCOUNT_ID}/a
 dsets`, { 
@@ -613,7 +613,7 @@ createdAssets.ads.push(adJson.id);
 } 
  
 // UNIVERSAL AD SET BUILDER (Strict ODAX Compliance)
-function buildAdSetPayload(objective, adSet, campaignId, accessToken, placements, pageId, metaPixelId, payload) {
+async function buildAdSetPayload(objective, adSet, campaignId, accessToken, placements, pageId, metaPixelId, payload) {
   const params = new URLSearchParams();
 
   params.append("name", adSet.name || "Ad Set 1");
@@ -782,34 +782,62 @@ params.append("optimization_goal", optimization_goal);
   if (destination_type) params.append("destination_type", destination_type);
   if (promoted_object) params.append("promoted_object", JSON.stringify(promoted_object));
 
- // --- SURGICAL FIX: NO KEY REQUIRED ---
-let geo_locations = { countries: ["IN"] };
+// 🌍 UNIVERSAL LOCATION RESOLVER (Replaces Surgical Fix)
+  let geo_locations = { countries: ["IN"] }; // Default fallback if search fails
 
-const locTarget =
-  payload.targeting?.geo_locations?.cities?.[0]?.name ||
-  payload.location ||
-  "";
+  // Check if execute.js sent us a list of locations
+  const locationQuery = payload.targeting?.universal_locations || [];
+  
+  if (locationQuery.length > 0) {
+    console.log("🔍 Universal Search for:", locationQuery);
+    
+    const resolvedCities = [];
+    const resolvedRegions = [];
+    const resolvedCountries = [];
 
-if (locTarget && !["IN", "INDIA"].includes(locTarget.toUpperCase())) {
-  geo_locations = {
-    countries: ["IN"],
-    custom_locations: [
-      {
-        address_string: locTarget,
-        radius: 20,
-        distance_unit: "kilometer"
+    for (const locName of locationQuery) {
+      try {
+        // We search Meta for the exact string (e.g., "Bilaspur" or "Texas")
+        const searchRes = await fetch(
+          `https://graph.facebook.com/v21.0/search?type=adgeolocation&q=${encodeURIComponent(locName)}&access_token=${accessToken}`
+        );
+        const searchJson = await searchRes.json();
+
+        if (searchJson.data && searchJson.data.length > 0) {
+          // BILASPUR/AMBIGUITY FIX: We take the first result Meta gives as the best match
+          const match = searchJson.data[0]; 
+          console.log(`✅ Meta Match: ${locName} -> ${match.name} (${match.type})`);
+
+          if (match.type === 'city') {
+            resolvedCities.push({ key: match.key, radius: 20, distance_unit: 'kilometer' });
+          } else if (match.type === 'region' || match.type === 'state') {
+            resolvedRegions.push({ key: match.key });
+          } else if (match.type === 'country') {
+            resolvedCountries.push(match.key);
+          }
+        }
+      } catch (err) {
+        console.error(`❌ Search failed for ${locName}:`, err);
       }
-    ]
+    }
+
+    // If we found ANY valid Meta IDs, we use them instead of the India default
+    if (resolvedCities.length > 0 || resolvedRegions.length > 0 || resolvedCountries.length > 0) {
+      geo_locations = {}; 
+      if (resolvedCities.length > 0) geo_locations.cities = resolvedCities;
+      if (resolvedRegions.length > 0) geo_locations.regions = resolvedRegions;
+      if (resolvedCountries.length > 0) geo_locations.countries = resolvedCountries;
+    }
+  }
+
+  // The final targeting object Meta actually receives
+  const targeting = {
+    geo_locations: geo_locations,
+    age_min: parseInt(payload.targeting?.age_min?.toString().replace(/\D/g, '') || "18"),
+    age_max: parseInt(payload.targeting?.age_max?.toString().replace(/\D/g, '') || "65"),
+    publisher_platforms: placements,
+    device_platforms: ["mobile", "desktop"]
   };
-}
-// YAHAN EK HI BAAR DECLARE KARO
-const targeting = {
-  geo_locations: geo_locations,
-  age_min: parseInt(payload.targeting?.age_min?.toString().replace(/\D/g, '') || "18"),
-  age_max: parseInt(payload.targeting?.age_max?.toString().replace(/\D/g, '') || "65"),
-  publisher_platforms: placements,
-  device_platforms: ["mobile", "desktop"]
-};
 
 console.log("✅ FIXED TARGETING:", JSON.stringify(targeting));
 params.append("targeting", JSON.stringify(targeting));
