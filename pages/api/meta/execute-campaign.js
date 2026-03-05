@@ -496,6 +496,10 @@ creation...`);
 with placements ${platKey}...`);
             adSet.conversion_location = payload.conversion_location;
             const p = await buildAdSetPayload(finalObjective, adSet, campaignId, ACCESS_TOKEN, strat.placements, PAGE_ID, activePixelId, payload);
+            // Append budget (same as primary AdSet)
+            const fbBudgetAmount = payload.budget?.amount || 500;
+            const fbBudgetType = (payload.budget?.type || "DAILY").toUpperCase() === "DAILY" ? "daily_budget" : "lifetime_budget";
+            p.append(fbBudgetType, String(Math.floor(Number(fbBudgetAmount) * 100)));
             const asRes = await
               fetch(`https://graph.facebook.com/${API_VERSION}/act_${AD_ACCOUNT_ID}/a
 dsets`, {
@@ -739,7 +743,7 @@ async function buildAdSetPayload(objective, adSet, campaignId, accessToken, plac
           destination_type = "INSTAGRAM_DIRECT";
         } else if (channel === "FACEBOOK_MESSENGER") {
           destination_type = "MESSENGER";
-        } else if (channel === "WHATSAPP_MESSAGES" || conversionLocation === "WHATSAPP") {
+        } else if (channel === "WHATSAPP_MESSAGES" || channel === "WHATSAPP" || conversionLocation === "WHATSAPP") {
           destination_type = "WHATSAPP";
         } else if (channel === "ALL_MESSAGES" || !channel) {
           // This targets Instagram, Messenger, and WhatsApp all at once
@@ -874,6 +878,12 @@ function buildCreativePayload(objective, creative, pageId, instagramActorId, acc
   if (!pageId) throw new Error("Page ID is required for Creative");
   if (!creative || !creative.image_hash) {
     throw new Error("Image upload failed. Creative execution stopped.");
+  }
+
+  // URL Sanitization — Gemini sometimes outputs "N/A" or invalid URLs
+  if (creative.destination_url && (creative.destination_url === "N/A" || creative.destination_url === "n/a" || !creative.destination_url.startsWith("http"))) {
+    console.log(`⚠️ [Creative] Invalid destination_url "${creative.destination_url}" — clearing to null`);
+    creative.destination_url = null;
   }
 
   const conversionLocation = (creative.conversion_location || "").toUpperCase();
