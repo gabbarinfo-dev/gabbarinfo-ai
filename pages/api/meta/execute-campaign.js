@@ -1,4 +1,5 @@
 
+// pages/api/meta/execute-campaign.js
 
 import { getServerSession } from "next-auth/next";
 import { authOptions } from "../auth/[...nextauth]";
@@ -647,7 +648,26 @@ async function buildAdSetPayload(objective, adSet, campaignId, accessToken, plac
   let destination_type = "WEBSITE";
   let promoted_object = null;
 
-  const conversionLocation = (adSet.conversion_location || "").toUpperCase();
+  let conversionLocation = (adSet.conversion_location || "").toUpperCase();
+
+  // MESSAGING_APPS Normalization: When conversion_location is generic "MESSAGING_APPS",
+  // try to determine the specific channel from message_channel or creative CTA
+  if (conversionLocation === "MESSAGING_APPS" || conversionLocation === "MESSAGES") {
+    const channel = (adSet.message_channel || "").toUpperCase();
+    const creativeCTA = (adSet.ad_creative?.call_to_action || "").toUpperCase();
+
+    if (channel === "WHATSAPP" || channel === "WHATSAPP_MESSAGES" || creativeCTA === "WHATSAPP_MESSAGE") {
+      conversionLocation = "WHATSAPP";
+      console.log("📍 [AdSet] Normalized MESSAGING_APPS → WHATSAPP (from channel/CTA)");
+    } else if (channel === "INSTAGRAM_MESSAGES" || creativeCTA === "INSTAGRAM_MESSAGE") {
+      conversionLocation = "INSTAGRAM_DIRECT";
+      console.log("📍 [AdSet] Normalized MESSAGING_APPS → INSTAGRAM_DIRECT");
+    } else if (channel === "FACEBOOK_MESSENGER" || creativeCTA === "MESSAGE_PAGE") {
+      conversionLocation = "MESSENGER";
+      console.log("📍 [AdSet] Normalized MESSAGING_APPS → MESSENGER");
+    }
+    // If still MESSAGING_APPS after normalization, channel-based routing in switch will handle it
+  }
 
   switch (objective) {
 
@@ -703,6 +723,20 @@ async function buildAdSetPayload(objective, adSet, campaignId, accessToken, plac
           page_id: pageId
         };
 
+      }
+
+      else if (conversionLocation === "MESSAGING_APPS" || conversionLocation === "MESSAGES" || conversionLocation === "MESSENGER" || conversionLocation === "INSTAGRAM_DIRECT") {
+        const channel = (adSet.message_channel || "").toUpperCase();
+        if (channel === "WHATSAPP" || channel === "WHATSAPP_MESSAGES") {
+          destination_type = "WHATSAPP";
+        } else if (channel === "INSTAGRAM_MESSAGES") {
+          destination_type = "INSTAGRAM_DIRECT";
+        } else {
+          destination_type = "MESSENGER";
+        }
+        optimization_goal = "LEAD_GENERATION";
+        billing_event = "IMPRESSIONS";
+        promoted_object = { page_id: pageId };
       }
 
       else if (conversionLocation === "CALLS") {
@@ -895,7 +929,21 @@ function buildCreativePayload(objective, creative, pageId, instagramActorId, acc
     creative.destination_url = null;
   }
 
-  const conversionLocation = (creative.conversion_location || "").toUpperCase();
+  let conversionLocation = (creative.conversion_location || "").toUpperCase();
+
+  // MESSAGING_APPS Normalization — same logic as buildAdSetPayload
+  if (conversionLocation === "MESSAGING_APPS" || conversionLocation === "MESSAGES") {
+    const channel = (creative.message_channel || "").toUpperCase();
+    const creativeCTA = (creative.call_to_action || "").toUpperCase();
+
+    if (channel === "WHATSAPP" || channel === "WHATSAPP_MESSAGES" || creativeCTA === "WHATSAPP_MESSAGE") {
+      conversionLocation = "WHATSAPP";
+    } else if (channel === "INSTAGRAM_MESSAGES" || creativeCTA === "INSTAGRAM_MESSAGE") {
+      conversionLocation = "INSTAGRAM_DIRECT";
+    }
+    // else stays as MESSAGES/MESSAGING_APPS → will route to MESSAGE_PAGE CTA
+  }
+
   const isInstagramPlacement = placements.includes("instagram");
 
   // CRITICAL: If Instagram is selected, we MUST have an actor ID
