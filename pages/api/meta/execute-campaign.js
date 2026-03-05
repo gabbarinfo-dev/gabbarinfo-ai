@@ -786,41 +786,48 @@ if (promoted_object) params.append("promoted_object", JSON.stringify(promoted_ob
 let geo_locations = { countries: ["IN"] };
 
 const cityName =
-payload.targeting?.geo_locations?.cities?.[0]?.name ||
-payload.location ||
-"";
+  payload.targeting?.geo_locations?.cities?.[0]?.name ||
+  payload.location ||
+  "";
 
 if (cityName && !["IN","INDIA"].includes(cityName.toUpperCase())) {
 
   console.log("🔎 Looking up city key for:", cityName);
-  const cityKey = await getCityKey(cityName, accessToken);
-  console.log("🔎 City key result:", cityKey);
 
-  if (cityKey) {
-    geo_locations = {
-      countries:["IN"],
-      cities:[
-        {
-          key: cityKey,
-          radius: 20,
-          distance_unit: "kilometer"
-        }
-      ]
-    };
-  }
-}// YAHAN EK HI BAAR DECLARE KARO
-const targeting = {
-  geo_locations: geo_locations,
-  age_min: parseInt(payload.targeting?.age_min?.toString().replace(/\D/g, '') || "18"),
-  age_max: parseInt(payload.targeting?.age_max?.toString().replace(/\D/g, '') || "65"),
-  publisher_platforms: placements,
-  device_platforms: ["mobile", "desktop"]
-};
+  // fetch city key without using await
+  return fetch(`https://graph.facebook.com/v19.0/search?type=adgeolocation&q=${encodeURIComponent(cityName)}&access_token=${accessToken}`)
+    .then(r => r.json())
+    .then(data => {
 
-console.log("✅ FIXED TARGETING:", JSON.stringify(targeting));
-params.append("targeting", JSON.stringify(targeting));
+      const cityKey = data?.data?.[0]?.key;
+      console.log("🔎 City key result:", cityKey);
 
-return params;
+      if (cityKey) {
+        geo_locations = {
+          countries: ["IN"],
+          cities: [
+            {
+              key: cityKey,
+              radius: 20,
+              distance_unit: "kilometer"
+            }
+          ]
+        };
+      }
+
+      const targeting = {
+        geo_locations: geo_locations,
+        age_min: parseInt(payload.targeting?.age_min?.toString().replace(/\D/g,'') || "18"),
+        age_max: parseInt(payload.targeting?.age_max?.toString().replace(/\D/g,'') || "65"),
+        publisher_platforms: placements,
+        device_platforms: ["mobile","desktop"]
+      };
+
+      console.log("✅ FIXED TARGETING:", JSON.stringify(targeting));
+
+      params.append("targeting", JSON.stringify(targeting));
+      return params;
+    });
 }
 // UNIVERSAL CREATIVE BUILDER (Placement Safe & Strict Types)
 function buildCreativePayload(objective, creative, pageId, instagramActorId, accessToken, forcePhoto = false, placements = []) {
