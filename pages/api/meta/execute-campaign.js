@@ -1,4 +1,3 @@
-
 // pages/api/meta/execute-campaign.js
 
 import { getServerSession } from "next-auth/next";
@@ -863,16 +862,40 @@ async function buildAdSetPayload(objective, adSet, campaignId, accessToken, plac
         const searchJson = await searchRes.json();
 
         if (searchJson.data && searchJson.data.length > 0) {
-          const match = searchJson.data[0];
-          console.log(`✅ Meta Match: ${locName} -> ${match.name} (${match.type})`);
+          // Priority: city > region/state > country > neighborhood/subcity > zip > geo_market
+          // Scan all results for the best match instead of just using [0]
+          const priorityOrder = ['city', 'region', 'state', 'country', 'subcity', 'neighborhood', 'zip', 'geo_market'];
+          let bestMatch = searchJson.data[0]; // fallback to first result
 
-          if (match.type === 'city') {
+          for (const preferredType of priorityOrder) {
+            const found = searchJson.data.find(r => r.type === preferredType);
+            if (found) { bestMatch = found; break; }
+          }
+
+          const match = bestMatch;
+          console.log(`✅ Meta Match: ${locName} -> ${match.name} (${match.type}, key: ${match.key})`);
+
+          if (match.type === 'city' || match.type === 'subcity' || match.type === 'neighborhood') {
+            // All city-like types use the same format with key + radius
             resolvedCities.push({ key: match.key, radius: 20, distance_unit: 'kilometer' });
           } else if (match.type === 'region' || match.type === 'state') {
             resolvedRegions.push({ key: match.key });
           } else if (match.type === 'country') {
             resolvedCountries.push(match.key);
+          } else if (match.type === 'zip') {
+            // Zip/postal codes go into their own array
+            if (!geo_locations.zips) geo_locations.zips = [];
+            geo_locations.zips.push({ key: match.key });
+          } else if (match.type === 'geo_market') {
+            if (!geo_locations.geo_markets) geo_locations.geo_markets = [];
+            geo_locations.geo_markets.push({ key: match.key });
+          } else {
+            // Unknown type — treat like a city as safe fallback
+            console.warn(`⚠️ Unknown geo type "${match.type}" for "${locName}" — treating as city`);
+            resolvedCities.push({ key: match.key, radius: 20, distance_unit: 'kilometer' });
           }
+        } else {
+          console.warn(`⚠️ No Meta results for location: ${locName}`);
         }
       } catch (err) {
         console.error(`❌ Search failed for ${locName}:`, err);
