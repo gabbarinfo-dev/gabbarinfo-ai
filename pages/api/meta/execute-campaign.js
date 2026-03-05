@@ -798,7 +798,7 @@ if (cityName && !["IN","INDIA"].includes(cityName.toUpperCase())) {
     ]
   };
 }
-
+}
 // YAHAN EK HI BAAR DECLARE KARO
 const targeting = {
   geo_locations: geo_locations,
