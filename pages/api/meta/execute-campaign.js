@@ -154,8 +154,11 @@ authorized for this Ad Account.`);
         console.warn(`
 ⚠
  [Meta API] Actor ${storedActorId} NOT 
-authorized for Ad Account act_${AD_ACCOUNT_ID}. IG placements may be 
-restricted.`);
+authorized for Ad Account act_${AD_ACCOUNT_ID}. Removing instagram from 
+placements.`);
+        // Remove instagram from placements if IG actor isn't authorized
+        placements = placements.filter(p => p !== "instagram");
+        if (placements.length === 0) placements = ["facebook"];
       }
     } catch (e) {
       console.error(`
@@ -403,9 +406,7 @@ Error: ${lastError?.message}`);
         p.append("end_time", endDate.toISOString());
       }
 
-      console.log(`
-🛠
- [AdSet] Creating AdSet...`);
+      console.log(`📋 [AdSet] Full params being sent:`, p.toString());
       const asRes = await
         fetch(`https://graph.facebook.com/${API_VERSION}/act_${AD_ACCOUNT_ID}/a
 dsets`, {
@@ -413,9 +414,11 @@ dsets`, {
           body: p
         });
       const asJson = await asRes.json();
-      if (!asRes.ok) throw new Error(`AdSet Create Failed: 
-${asJson.error?.message} (Account: ${AD_ACCOUNT_ID})`);
-
+      if (!asRes.ok) {
+        const errDetail = asJson.error || {};
+        console.error(`❌ [AdSet] Full Meta Error:`, JSON.stringify(asJson.error, null, 2));
+        throw new Error(`AdSet Create Failed: ${errDetail.message || 'Unknown'} | SubCode: ${errDetail.error_subcode || 'N/A'} | Detail: ${errDetail.error_user_msg || errDetail.error_user_title || 'N/A'} (Account: ${AD_ACCOUNT_ID})`);
+      }
       // 4. Create Creative with Fallbacks
       const creative = adSet.ad_creative || {};
 
@@ -501,10 +504,7 @@ dsets`, {
               });
             const asJson = await asRes.json();
             if (!asRes.ok) {
-              console.warn(`
-⚠
- [AdSet] New AdSet failed: 
-${asJson.error?.message}`);
+              console.warn(`\n⚠\n [AdSet] New AdSet failed:`, JSON.stringify(asJson.error, null, 2));
               continue; // Skip this strategy if we can't create the 
               AdSet
             }
