@@ -3979,6 +3979,7 @@ Reply **YES** to confirm this plan and proceed.
               // 🌍 UNIVERSAL LOCATION HANDLER (Ends here)
               const finalPayload = {
                 ...plan,
+                conversion_location: currentState.conversion_location || plan.conversion_location || null,
                 message_channel: currentState.message_channel || null,
 
                 targeting: {
@@ -3991,14 +3992,19 @@ Reply **YES** to confirm this plan and proceed.
                   genders: currentState.target_gender || plan.targeting?.genders || "all",
                 },
 
-                ad_sets: plan.ad_sets.map(adset => ({
-                  ...adset,
-                  message_channel: currentState.message_channel || null,
-                  ad_creative: {
-                    ...adset.ad_creative,
-                    image_hash: currentState.image_hash
+                ad_sets: plan.ad_sets.map(adset => {
+                  // Sanitize destination_url — Gemini sometimes outputs "N/A"
+                  const adCreative = { ...adset.ad_creative, image_hash: currentState.image_hash };
+                  if (adCreative.destination_url && (adCreative.destination_url === "N/A" || adCreative.destination_url === "n/a" || !adCreative.destination_url.startsWith("http"))) {
+                    adCreative.destination_url = null;
                   }
-                }))
+                  return {
+                    ...adset,
+                    conversion_location: currentState.conversion_location || plan.conversion_location || null,
+                    message_channel: currentState.message_channel || null,
+                    ad_creative: adCreative
+                  };
+                })
               };
 
               // Remove any leftover hardcoded geo_locations from plan
