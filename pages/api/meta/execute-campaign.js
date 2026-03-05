@@ -662,8 +662,17 @@ async function buildAdSetPayload(objective, adSet, campaignId, accessToken, plac
         };
       }
 
-      else if (conversionLocation === "MESSAGES") {
-        destination_type = "MESSENGER";
+      else if (conversionLocation === "MESSAGES" || conversionLocation === "MESSAGING_APPS") {
+        const channel = (adSet.message_channel || "").toUpperCase();
+        if (channel === "WHATSAPP" || channel === "WHATSAPP_MESSAGES") {
+          destination_type = "WHATSAPP";
+        } else if (channel === "INSTAGRAM_MESSAGES") {
+          destination_type = "INSTAGRAM_DIRECT";
+        } else if (channel === "FACEBOOK_MESSENGER") {
+          destination_type = "MESSENGER";
+        } else {
+          destination_type = "MESSENGER";
+        }
         optimization_goal = "CONVERSATIONS";
         billing_event = "IMPRESSIONS";
         promoted_object = { page_id: pageId };
@@ -924,110 +933,74 @@ function buildCreativePayload(objective, creative, pageId, instagramActorId, acc
     };
   } else {
 
-    let ctaType = "LEARN_MORE";
-
-    // Messaging CTA selection based on actual selected channel
-    if (
+    // ===================================================================
+    // ODAX CREATIVE ROUTING — Messaging vs Website
+    // ===================================================================
+    const isMessagingDestination =
+      conversionLocation === "WHATSAPP" ||
       conversionLocation === "MESSAGES" ||
-      conversionLocation === "MESSAGING_APPS"
-    ) {
+      conversionLocation === "MESSAGING_APPS";
 
-      const channel = (creative.message_channel || "").toUpperCase();
+    const pageUrl = `https://www.facebook.com/${pageId}`;
+    const channel = (creative.message_channel || "").toUpperCase();
 
-      if (channel === "INSTAGRAM_MESSAGES") {
+    // ==============================
+    // MESSAGING DESTINATIONS (WhatsApp / Messenger / IG / All)
+    // ODAX Rule: link MUST be Page URL, CTA MUST match destination
+    // ==============================
+    if (!forcePhoto && isMessagingDestination) {
+
+      // Determine the correct CTA for the messaging channel
+      let ctaType = "MESSAGE_PAGE"; // default for Messenger
+
+      if (conversionLocation === "WHATSAPP" || channel === "WHATSAPP" || channel === "WHATSAPP_MESSAGES") {
+        ctaType = "WHATSAPP_MESSAGE";
+      } else if (channel === "INSTAGRAM_MESSAGES") {
         ctaType = "INSTAGRAM_MESSAGE";
-      }
-      else if (channel === "FACEBOOK_MESSENGER") {
+      } else if (channel === "FACEBOOK_MESSENGER") {
+        ctaType = "MESSAGE_PAGE";
+      } else if (channel === "ALL_MESSAGES" || !channel) {
         ctaType = "MESSAGE_PAGE";
       }
-      else if (channel === "ALL_MESSAGES") {
-        ctaType = "MESSAGE_PAGE";
-      }
-      else {
-        ctaType = "MESSAGE_PAGE";
-      }
-    }
-
-    if (conversionLocation === "WHATSAPP") {
-      ctaType = "WHATSAPP_MESSAGE";
-    }
-
-    // ==============================
-    // TRAFFIC / SALES / LEADS
-    // ==============================
-    // ==============================
-    // TRAFFIC / SALES / LEADS (EXCEPT LEADS + WHATSAPP)
-    // ==============================
-    if (
-      !forcePhoto &&
-      (
-        objective === "OUTCOME_TRAFFIC" ||
-        objective === "OUTCOME_SALES" ||
-        (objective === "OUTCOME_LEADS" && conversionLocation !== "WHATSAPP")
-      )
-    ) {
 
       objectStorySpec.link_data = {
         image_hash: creative.image_hash,
-        link: creative.destination_url || `https://www.facebook.com/${pageId}`,
+        link: pageUrl, // ALWAYS Page URL for messaging — never a website URL
         message: creative.primary_text || "",
-        name: creative.headline || "Learn more",
+        name: creative.headline || "Chat with us",
         call_to_action: {
           type: ctaType
         }
       };
 
+      console.log(`📨 [Creative] Messaging mode: CTA=${ctaType}, link=${pageUrl}`);
     }
+
     // ==============================
-    // LEADS + WHATSAPP
+    // WEBSITE DESTINATIONS (Traffic / Sales / Leads with website)
     // ==============================
     else if (
       !forcePhoto &&
-      objective === "OUTCOME_LEADS" &&
-      conversionLocation === "WHATSAPP"
+      (
+        objective === "OUTCOME_TRAFFIC" ||
+        objective === "OUTCOME_SALES" ||
+        objective === "OUTCOME_LEADS" ||
+        objective === "OUTCOME_ENGAGEMENT"
+      )
     ) {
-
       objectStorySpec.link_data = {
         image_hash: creative.image_hash,
-        link: `https://www.facebook.com/${pageId}`, // NOT wa.me
+        link: creative.destination_url || pageUrl,
         message: creative.primary_text || "",
-        name: creative.headline || "Chat with us",
+        name: creative.headline || "Learn more",
         call_to_action: {
-          type: "WHATSAPP_MESSAGE"
+          type: creative.call_to_action || "LEARN_MORE"
         }
       };
-
-    }
-    // ==============================
-    // ENGAGEMENT (MESSAGING)
-    // ==============================
-    else if (!forcePhoto && objective === "OUTCOME_ENGAGEMENT") {
-
-      if (conversionLocation === "WHATSAPP") {
-        objectStorySpec.link_data = {
-          image_hash: creative.image_hash,
-          link: creative.destination_url || "https://example.com",
-          message: creative.primary_text || "",
-          name: creative.headline || "Chat on WhatsApp",
-          call_to_action: {
-            type: "WHATSAPP_MESSAGE"
-          }
-        };
-      } else {
-        objectStorySpec.link_data = {
-          image_hash: creative.image_hash,
-          link: `https://www.facebook.com/${pageId}`,
-          message: creative.primary_text || "",
-          name: creative.headline || "Chat with us",
-          call_to_action: {
-            type: ctaType
-          }
-        };
-      }
     }
 
     // ==============================
-    // PHOTO ONLY (Fallback)
+    // PHOTO ONLY (Fallback — Awareness etc.)
     // ==============================
     else {
 
