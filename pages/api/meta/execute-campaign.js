@@ -785,33 +785,23 @@ params.append("optimization_goal", optimization_goal);
  // --- SURGICAL FIX: NO KEY REQUIRED ---
 let geo_locations = { countries: ["IN"] };
 
-let locTarget =
+const locTarget =
   payload.targeting?.geo_locations?.cities?.[0]?.name ||
   payload.location ||
   "";
 
-// fallback: extract city from campaign name if missing
-if (!locTarget && payload.campaign_name) {
-  const parts = payload.campaign_name.split("–");
-  if (parts.length >= 2) locTarget = parts[1].trim();
-}
-
- if (locTarget) {
-  locTarget =
-    locTarget.charAt(0).toUpperCase() +
-    locTarget.slice(1).toLowerCase();
-}
-console.log("📍 FINAL CITY DETECTED:", locTarget);
 if (locTarget && !["IN", "INDIA"].includes(locTarget.toUpperCase())) {
-  const cityKey = await getCityKey(locTarget, accessToken);
-
-if (cityKey) {
   geo_locations = {
-    cities: [{ key: cityKey }]
+    countries: ["IN"],
+    custom_locations: [
+      {
+        address_string: locTarget,
+        radius: 20,
+        distance_unit: "kilometer"
+      }
+    ]
   };
 }
-}
-
 // YAHAN EK HI BAAR DECLARE KARO
 const targeting = {
   geo_locations: geo_locations,
