@@ -778,30 +778,27 @@ break;
   }
 
 params.append("optimization_goal", optimization_goal);
-  params.append("billing_event", billing_event);
-  if (destination_type) params.append("destination_type", destination_type);
-  if (promoted_object) params.append("promoted_object", JSON.stringify(promoted_object));
+params.append("billing_event", billing_event);
+if (destination_type) params.append("destination_type", destination_type);
+if (promoted_object) params.append("promoted_object", JSON.stringify(promoted_object));
 
- // --- SURGICAL FIX: NO KEY REQUIRED ---
+// --- CITY TARGETING FIX ---
 let geo_locations = { countries: ["IN"] };
 
-const locTarget =
+const cityName =
   payload.targeting?.geo_locations?.cities?.[0]?.name ||
   payload.location ||
   "";
 
-if (locTarget && !["IN", "INDIA"].includes(locTarget.toUpperCase())) {
+if (cityName && !["IN","INDIA"].includes(cityName.toUpperCase())) {
   geo_locations = {
     countries: ["IN"],
-    custom_locations: [
-      {
-        address_string: locTarget,
-        radius: 20,
-        distance_unit: "kilometer"
-      }
+    cities: [
+      { name: cityName }
     ]
   };
 }
+
 // YAHAN EK HI BAAR DECLARE KARO
 const targeting = {
   geo_locations: geo_locations,
@@ -814,8 +811,7 @@ const targeting = {
 console.log("✅ FIXED TARGETING:", JSON.stringify(targeting));
 params.append("targeting", JSON.stringify(targeting));
 
-  return params;
-}
+return params;
 
 // UNIVERSAL CREATIVE BUILDER (Placement Safe & Strict Types)
 function buildCreativePayload(objective, creative, pageId, instagramActorId, accessToken, forcePhoto = false, placements = []) {
