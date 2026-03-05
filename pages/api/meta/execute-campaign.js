@@ -778,31 +778,32 @@ break;
   }
 
 params.append("optimization_goal", optimization_goal);
-params.append("billing_event", billing_event);
-if (destination_type) params.append("destination_type", destination_type);
-if (promoted_object) params.append("promoted_object", JSON.stringify(promoted_object));
+  params.append("billing_event", billing_event);
+  if (destination_type) params.append("destination_type", destination_type);
+  if (promoted_object) params.append("promoted_object", JSON.stringify(promoted_object));
 
-// --- CITY TARGETING FIX ---
+ // --- SURGICAL FIX: NO KEY REQUIRED ---
 let geo_locations = { countries: ["IN"] };
 
-const cityName =
+const locTarget =
   payload.targeting?.geo_locations?.cities?.[0]?.name ||
   payload.location ||
   "";
 
-if (cityName && !["IN","INDIA"].includes(cityName.toUpperCase())) {
+if (locTarget && !["IN", "INDIA"].includes(locTarget.toUpperCase())) {
   geo_locations = {
     countries: ["IN"],
-    cities: [
+    custom_locations: [
       {
-        name: cityName,
-        country: "IN"
+        address_string: locTarget,
+        radius: 20,
+        distance_unit: "kilometer"
       }
     ]
   };
 }
-
-     const targeting = {
+// YAHAN EK HI BAAR DECLARE KARO
+const targeting = {
   geo_locations: geo_locations,
   age_min: parseInt(payload.targeting?.age_min?.toString().replace(/\D/g, '') || "18"),
   age_max: parseInt(payload.targeting?.age_max?.toString().replace(/\D/g, '') || "65"),
@@ -813,8 +814,9 @@ if (cityName && !["IN","INDIA"].includes(cityName.toUpperCase())) {
 console.log("✅ FIXED TARGETING:", JSON.stringify(targeting));
 params.append("targeting", JSON.stringify(targeting));
 
-return params;
+  return params;
 }
+
 // UNIVERSAL CREATIVE BUILDER (Placement Safe & Strict Types)
 function buildCreativePayload(objective, creative, pageId, instagramActorId, accessToken, forcePhoto = false, placements = []) {
   if (!pageId) throw new Error("Page ID is required for Creative");
@@ -1018,5 +1020,4 @@ async function getCityKey(city, accessToken) {
     return null;
   }
 }
-
 
