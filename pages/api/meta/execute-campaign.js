@@ -790,31 +790,16 @@ const cityName =
   payload.location ||
   "";
 
-let cityKey = null;
-
 if (cityName && !["IN","INDIA"].includes(cityName.toUpperCase())) {
-  console.log("🔎 Looking up city key for:", cityName);
-
-  try {
-    cityKey = getCityKey(cityName, accessToken);
-  } catch (e) {
-    console.log("⚠️ City key lookup failed:", e.message);
-  }
-
-  console.log("🔎 City key result:", cityKey);
-
-  if (cityKey) {
-    geo_locations = {
-      countries: ["IN"],
-      cities: [
-        {
-          key: cityKey,
-          radius: 20,
-          distance_unit: "kilometer"
-        }
-      ]
-    };
-  }
+  geo_locations = {
+    countries: ["IN"],
+    cities: [
+      {
+        name: cityName,
+        country: "IN"
+      }
+    ]
+  };
 }
 
      const targeting = {
