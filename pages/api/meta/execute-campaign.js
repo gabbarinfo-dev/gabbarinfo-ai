@@ -786,20 +786,29 @@ if (promoted_object) params.append("promoted_object", JSON.stringify(promoted_ob
 let geo_locations = { countries: ["IN"] };
 
 const cityName =
-  payload.targeting?.geo_locations?.cities?.[0]?.name ||
-  payload.location ||
-  "";
+payload.targeting?.geo_locations?.cities?.[0]?.name ||
+payload.location ||
+"";
 
 if (cityName && !["IN","INDIA"].includes(cityName.toUpperCase())) {
-  geo_locations = {
-    countries: ["IN"],
-    cities: [
-      { name: cityName }
-    ]
-  };
-}
 
-// YAHAN EK HI BAAR DECLARE KARO
+  console.log("🔎 Looking up city key for:", cityName);
+  const cityKey = await getCityKey(cityName, accessToken);
+  console.log("🔎 City key result:", cityKey);
+
+  if (cityKey) {
+    geo_locations = {
+      countries:["IN"],
+      cities:[
+        {
+          key: cityKey,
+          radius: 20,
+          distance_unit: "kilometer"
+        }
+      ]
+    };
+  }
+}// YAHAN EK HI BAAR DECLARE KARO
 const targeting = {
   geo_locations: geo_locations,
   age_min: parseInt(payload.targeting?.age_min?.toString().replace(/\D/g, '') || "18"),
