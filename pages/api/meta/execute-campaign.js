@@ -860,6 +860,9 @@ async function buildAdSetPayload(objective, adSet, campaignId, accessToken, plac
   }
   // "all" → omit genders key entirely (Meta default = all genders)
 
+  // Advantage Audience (Required by Meta ODAX API — 0 = use exact targeting, 1 = let Meta expand)
+  targeting.targeting_automation = { advantage_audience: 0 };
+
   console.log("✅ UNIVERSAL TARGETING:", JSON.stringify(targeting));
   params.append("targeting", JSON.stringify(targeting));
 
