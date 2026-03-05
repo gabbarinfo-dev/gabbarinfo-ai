@@ -785,11 +785,23 @@ params.append("optimization_goal", optimization_goal);
  // --- SURGICAL FIX: NO KEY REQUIRED ---
 let geo_locations = { countries: ["IN"] };
 
-const locTarget =
+let locTarget =
   payload.targeting?.geo_locations?.cities?.[0]?.name ||
   payload.location ||
   "";
 
+// fallback: extract city from campaign name if missing
+if (!locTarget && payload.campaign_name) {
+  const parts = payload.campaign_name.split("–");
+  if (parts.length >= 2) locTarget = parts[1].trim();
+}
+
+ if (locTarget) {
+  locTarget =
+    locTarget.charAt(0).toUpperCase() +
+    locTarget.slice(1).toLowerCase();
+}
+console.log("📍 FINAL CITY DETECTED:", locTarget);
 if (locTarget && !["IN", "INDIA"].includes(locTarget.toUpperCase())) {
   geo_locations = {
     custom_locations: [
