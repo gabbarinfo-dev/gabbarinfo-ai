@@ -790,44 +790,45 @@ const cityName =
   payload.location ||
   "";
 
-if (cityName && !["IN","INDIA"].includes(cityName.toUpperCase())) {
+let cityKey = null;
 
+if (cityName && !["IN","INDIA"].includes(cityName.toUpperCase())) {
   console.log("🔎 Looking up city key for:", cityName);
 
-  // fetch city key without using await
-  return fetch(`https://graph.facebook.com/v19.0/search?type=adgeolocation&q=${encodeURIComponent(cityName)}&access_token=${accessToken}`)
-    .then(r => r.json())
-    .then(data => {
+  try {
+    cityKey = getCityKey(cityName, accessToken);
+  } catch (e) {
+    console.log("⚠️ City key lookup failed:", e.message);
+  }
 
-      const cityKey = data?.data?.[0]?.key;
-      console.log("🔎 City key result:", cityKey);
+  console.log("🔎 City key result:", cityKey);
 
-      if (cityKey) {
-        geo_locations = {
-          countries: ["IN"],
-          cities: [
-            {
-              key: cityKey,
-              radius: 20,
-              distance_unit: "kilometer"
-            }
-          ]
-        };
-      }
+  if (cityKey) {
+    geo_locations = {
+      countries: ["IN"],
+      cities: [
+        {
+          key: cityKey,
+          radius: 20,
+          distance_unit: "kilometer"
+        }
+      ]
+    };
+  }
+}
 
-      const targeting = {
-        geo_locations: geo_locations,
-        age_min: parseInt(payload.targeting?.age_min?.toString().replace(/\D/g,'') || "18"),
-        age_max: parseInt(payload.targeting?.age_max?.toString().replace(/\D/g,'') || "65"),
-        publisher_platforms: placements,
-        device_platforms: ["mobile","desktop"]
-      };
+     const targeting = {
+  geo_locations: geo_locations,
+  age_min: parseInt(payload.targeting?.age_min?.toString().replace(/\D/g, '') || "18"),
+  age_max: parseInt(payload.targeting?.age_max?.toString().replace(/\D/g, '') || "65"),
+  publisher_platforms: placements,
+  device_platforms: ["mobile", "desktop"]
+};
 
-      console.log("✅ FIXED TARGETING:", JSON.stringify(targeting));
+console.log("✅ FIXED TARGETING:", JSON.stringify(targeting));
+params.append("targeting", JSON.stringify(targeting));
 
-      params.append("targeting", JSON.stringify(targeting));
-      return params;
-    });
+return params;
 }
 // UNIVERSAL CREATIVE BUILDER (Placement Safe & Strict Types)
 function buildCreativePayload(objective, creative, pageId, instagramActorId, accessToken, forcePhoto = false, placements = []) {
