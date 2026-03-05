@@ -798,7 +798,7 @@ if (cityName && !["IN","INDIA"].includes(cityName.toUpperCase())) {
     ]
   };
 }
-}
+
 // YAHAN EK HI BAAR DECLARE KARO
 const targeting = {
   geo_locations: geo_locations,
@@ -812,7 +812,7 @@ console.log("✅ FIXED TARGETING:", JSON.stringify(targeting));
 params.append("targeting", JSON.stringify(targeting));
 
 return params;
-
+}
 // UNIVERSAL CREATIVE BUILDER (Placement Safe & Strict Types)
 function buildCreativePayload(objective, creative, pageId, instagramActorId, accessToken, forcePhoto = false, placements = []) {
   if (!pageId) throw new Error("Page ID is required for Creative");
