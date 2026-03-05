@@ -803,15 +803,13 @@ if (!locTarget && payload.campaign_name) {
 }
 console.log("📍 FINAL CITY DETECTED:", locTarget);
 if (locTarget && !["IN", "INDIA"].includes(locTarget.toUpperCase())) {
+  const cityKey = await getCityKey(locTarget, accessToken);
+
+if (cityKey) {
   geo_locations = {
-    custom_locations: [
-      {
-        address_string: locTarget + ", India",
-        radius: 20,
-        distance_unit: "kilometer"
-      }
-    ]
+    cities: [{ key: cityKey }]
   };
+}
 }
 
 // YAHAN EK HI BAAR DECLARE KARO
@@ -1014,6 +1012,23 @@ async function getAutoPixelId(adAccountId, accessToken, apiVersion) {
     return null;
   }
 }
+async function getCityKey(city, accessToken) {
+  try {
+    const res = await fetch(
+      `https://graph.facebook.com/v21.0/search?type=adgeolocation&q=${encodeURIComponent(city)}&location_types=["city"]&access_token=${accessToken}`
+    );
 
+    const json = await res.json();
+
+    if (json.data && json.data.length > 0) {
+      return json.data[0].key;
+    }
+
+    return null;
+  } catch (err) {
+    console.error("City key lookup failed:", err);
+    return null;
+  }
+}
 
 
