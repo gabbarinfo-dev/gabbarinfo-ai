@@ -3039,7 +3039,7 @@ Otherwise, respond with a full, clear explanation, and include example JSON only
       const isImageGenerated = !!state.creative?.imageBase64 || !!state.creative?.imageUrl;
       const isImageUploaded = !!state.meta?.uploadedImageHash || !!state.meta?.imageMediaId;
 
-      if (!isImageGenerated && (stage === "PLAN_CONFIRMED")) {
+      if (!isImageGenerated && (stage === "PLAN_CONFIRMED") && lockedCampaignState.destination !== "catalogue") {
         console.log("TRACE: IMAGE GENERATION ATTEMPT");
         console.log("TRACE: IMAGE EXISTS =", !!state.creative);
 
@@ -3093,6 +3093,14 @@ Otherwise, respond with a full, clear explanation, and include example JSON only
           errorOcurred = true;
           stopReason = `Image Generation Error: ${e.message}`;
         }
+      }
+
+      // --- AUTO-SKIP IMAGE GENERATION FOR CATALOGUE ---
+      if (!errorOcurred && stage === "PLAN_CONFIRMED" && lockedCampaignState.destination === "catalogue") {
+        console.log("🚀 Catalogue Mode: Skipping Image Generation and moving to READY_TO_LAUNCH");
+        lockedCampaignState.stage = "READY_TO_LAUNCH";
+        currentState = lockedCampaignState;
+        await saveAnswerMemory(process.env.NEXT_PUBLIC_BASE_URL, effectiveBusinessId, { campaign_state: lockedCampaignState }, session.user.email.toLowerCase());
       }
 
       // --- STEP 10: IMAGE UPLOAD ---
