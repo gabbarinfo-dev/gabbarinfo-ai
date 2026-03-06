@@ -1,5 +1,5 @@
-// pages/api/meta/execute-campaign.js
 
+// pages/api/meta/execute-campaign.js
 import { getServerSession } from "next-auth/next";
 import { authOptions } from "../auth/[...nextauth]";
 import { createClient } from "@supabase/supabase-js";
@@ -380,6 +380,17 @@ Error: ${lastError?.message}`);
       }
     }
     // --- PIXEL DISCOVERY END ---
+
+    // --- CATALOGUE DISCOVERY START ---
+    let catalogInfo = null;
+    if (finalObjective === "OUTCOME_SALES") {
+      catalogInfo = await getProductCatalogAndSet(AD_ACCOUNT_ID, ACCESS_TOKEN, API_VERSION);
+    }
+    // --- CATALOGUE DISCOVERY END ---
+
+    // --- CURRENCY DETECTION ---
+    const accountCurrency = await getAdAccountCurrency(AD_ACCOUNT_ID, ACCESS_TOKEN, API_VERSION);
+
     // 3. Create Ad Set(s) 
     const adSets = payload.ad_sets || [{ name: "Ad Set 1" }];
     for (const adSet of adSets) {
@@ -388,11 +399,13 @@ Error: ${lastError?.message}`);
       const budgetType = (payload.budget?.type ||
         "DAILY").toUpperCase() === "DAILY" ? "daily_budget" :
         "lifetime_budget";
+      console.log(`💰 [Budget] ${budgetAmount} ${accountCurrency} (${budgetType})`);
 
       // Build AdSet Payload 
       adSet.conversion_location = payload.conversion_location;
       adSet.message_channel = payload.message_channel;
       adSet.phone_number = payload.phone_number || meta.business_phone;
+      adSet._catalogInfo = catalogInfo; // Pass catalogue info for OUTCOME_SALES
       const p = await buildAdSetPayload(finalObjective, adSet, campaignId, ACCESS_TOKEN, placements, PAGE_ID, activePixelId, payload);
 
       // Append Budget 
@@ -535,6 +548,7 @@ dsets`, {
           creative.conversion_location = payload.conversion_location;
           creative.message_channel = payload.message_channel;
           creative.phone_number = payload.phone_number || meta.business_phone;
+          creative._catalogInfo = catalogInfo; // Pass catalogue info for OUTCOME_SALES
           const crParams = buildCreativePayload(finalObjective, creative, PAGE_ID, strat.igActor, ACCESS_TOKEN, finalForcePhoto, strat.placements);
           const crRes = await
             fetch(`https://graph.facebook.com/${API_VERSION}/act_${AD_ACCOUNT_ID}/a
@@ -806,18 +820,27 @@ async function buildAdSetPayload(objective, adSet, campaignId, accessToken, plac
       billing_event = "IMPRESSIONS";
       destination_type = "WEBSITE";
 
-      // Use the Pixel ID from the payload OR fallback to a meta variable 
-      // (You'll need to pass the pixel_id into this function from the main handler)
       const pixelId = adSet.promoted_object?.pixel_id || metaPixelId;
+      const catInfo = adSet._catalogInfo;
 
       if (!pixelId) {
         throw new Error("OUTCOME_SALES requires a Meta Pixel. Please ensure your Pixel is connected in Settings.");
       }
 
-      promoted_object = {
-        pixel_id: pixelId,
-        custom_event_type: adSet.promoted_object?.custom_event_type || "PURCHASE"
-      };
+      if (catInfo && catInfo.productSetId) {
+        // Advantage+ Catalog Ads — use product set in promoted_object
+        promoted_object = {
+          product_set_id: catInfo.productSetId,
+          custom_event_type: "PURCHASE"
+        };
+        console.log(`🛍️ [AdSet] Catalogue mode: product_set_id=${catInfo.productSetId}`);
+      } else {
+        // Standard pixel-based sales (no catalogue)
+        promoted_object = {
+          pixel_id: pixelId,
+          custom_event_type: adSet.promoted_object?.custom_event_type || "PURCHASE"
+        };
+      }
       break;
 
     case "OUTCOME_APP_PROMOTION":
@@ -856,16 +879,43 @@ async function buildAdSetPayload(objective, adSet, campaignId, accessToken, plac
 
     for (const locName of locationQuery) {
       try {
-        const searchRes = await fetch(
-          `https://graph.facebook.com/v21.0/search?type=adgeolocation&q=${encodeURIComponent(locName)}&access_token=${accessToken}`
-        );
+        // Check for / qualifier (e.g., "London/UK", "Delhi/India")
+        let cityQuery = locName.trim();
+        let countryFilter = null;
+
+        if (cityQuery.includes('/')) {
+          const parts = cityQuery.split('/').map(p => p.trim());
+          cityQuery = parts[0]; // "London"
+          const countryHint = parts[1]; // "UK"
+
+          // Resolve country hint to ISO code via Meta API
+          try {
+            const countryRes = await fetch(
+              `https://graph.facebook.com/v21.0/search?type=adgeolocation&location_types=["country"]&q=${encodeURIComponent(countryHint)}&access_token=${accessToken}`
+            );
+            const countryJson = await countryRes.json();
+            if (countryJson.data && countryJson.data.length > 0) {
+              countryFilter = countryJson.data[0].country_code || countryJson.data[0].key;
+              console.log(`🌍 Country qualifier: "${countryHint}" → ${countryJson.data[0].name} (${countryFilter})`);
+            }
+          } catch (e) {
+            console.warn(`⚠️ Could not resolve country qualifier "${countryHint}":`, e.message);
+          }
+        }
+
+        // Build the search URL with optional country filter
+        let searchUrl = `https://graph.facebook.com/v21.0/search?type=adgeolocation&q=${encodeURIComponent(cityQuery)}&access_token=${accessToken}`;
+        if (countryFilter) {
+          searchUrl += `&country_code=${countryFilter}`;
+        }
+
+        const searchRes = await fetch(searchUrl);
         const searchJson = await searchRes.json();
 
         if (searchJson.data && searchJson.data.length > 0) {
           // Priority: city > region/state > country > neighborhood/subcity > zip > geo_market
-          // Scan all results for the best match instead of just using [0]
           const priorityOrder = ['city', 'region', 'state', 'country', 'subcity', 'neighborhood', 'zip', 'geo_market'];
-          let bestMatch = searchJson.data[0]; // fallback to first result
+          let bestMatch = searchJson.data[0];
 
           for (const preferredType of priorityOrder) {
             const found = searchJson.data.find(r => r.type === preferredType);
@@ -873,24 +923,21 @@ async function buildAdSetPayload(objective, adSet, campaignId, accessToken, plac
           }
 
           const match = bestMatch;
-          console.log(`✅ Meta Match: ${locName} -> ${match.name} (${match.type}, key: ${match.key})`);
+          console.log(`✅ Meta Match: ${locName} -> ${match.name} (${match.type}, key: ${match.key}${match.country_name ? ', ' + match.country_name : ''})`);
 
           if (match.type === 'city' || match.type === 'subcity' || match.type === 'neighborhood') {
-            // All city-like types use the same format with key + radius
             resolvedCities.push({ key: match.key, radius: 20, distance_unit: 'kilometer' });
           } else if (match.type === 'region' || match.type === 'state') {
             resolvedRegions.push({ key: match.key });
           } else if (match.type === 'country') {
             resolvedCountries.push(match.key);
           } else if (match.type === 'zip') {
-            // Zip/postal codes go into their own array
             if (!geo_locations.zips) geo_locations.zips = [];
             geo_locations.zips.push({ key: match.key });
           } else if (match.type === 'geo_market') {
             if (!geo_locations.geo_markets) geo_locations.geo_markets = [];
             geo_locations.geo_markets.push({ key: match.key });
           } else {
-            // Unknown type — treat like a city as safe fallback
             console.warn(`⚠️ Unknown geo type "${match.type}" for "${locName}" — treating as city`);
             resolvedCities.push({ key: match.key, radius: 20, distance_unit: 'kilometer' });
           }
@@ -942,6 +989,39 @@ async function buildAdSetPayload(objective, adSet, campaignId, accessToken, plac
 // UNIVERSAL CREATIVE BUILDER (Placement Safe & Strict Types)
 function buildCreativePayload(objective, creative, pageId, instagramActorId, accessToken, forcePhoto = false, placements = []) {
   if (!pageId) throw new Error("Page ID is required for Creative");
+
+  // --- CATALOGUE CREATIVE PATH (Advantage+ Catalog Ads) ---
+  // Must be before image_hash check — catalogue ads don't need an uploaded image
+  const catInfo = creative._catalogInfo;
+  if (catInfo && catInfo.productSetId && objective === "OUTCOME_SALES") {
+    console.log(`🛍️ [Creative] Catalogue mode — building template creative for catalog: ${catInfo.catalogName}`);
+
+    const params = new URLSearchParams();
+    params.append("access_token", accessToken);
+
+    // For catalogue ads, the creative uses product_set_id + template
+    const objectStorySpec = {
+      page_id: pageId,
+      ...(instagramActorId ? { instagram_actor_id: instagramActorId } : {}),
+      template_data: {
+        call_to_action: { type: "SHOP_NOW" },
+        link: creative.destination_url || `https://www.facebook.com/${pageId}`,
+        message: creative.primary_text || "Check out our products!",
+        name: creative.headline || "Shop Now",
+        multi_share_end_card: false,
+        description: "{{product.description}}"
+      }
+    };
+
+    params.append("name", `Catalog Creative - ${creative.headline || 'Products'}`);
+    params.append("product_set_id", catInfo.productSetId);
+    params.append("object_story_spec", JSON.stringify(objectStorySpec));
+
+    console.log(`📨 [Creative] Catalogue mode: product_set_id=${catInfo.productSetId}`);
+    return params;
+  }
+  // --- END CATALOGUE CREATIVE PATH ---
+
   if (!creative || !creative.image_hash) {
     throw new Error("Image upload failed. Creative execution stopped.");
   }
@@ -1106,6 +1186,65 @@ async function getAutoPixelId(adAccountId, accessToken, apiVersion) {
   } catch (e) {
     console.error("❌ [Pixel Discovery] Failed:", e.message);
     return null;
+  }
+}
+
+// --- PRODUCT CATALOGUE DISCOVERY ---
+async function getProductCatalogAndSet(adAccountId, accessToken, apiVersion) {
+  try {
+    console.log(`🛍️ [Catalogue Discovery] Searching for product catalogs in act_${adAccountId}...`);
+    const res = await fetch(
+      `https://graph.facebook.com/${apiVersion}/act_${adAccountId}/product_catalogs?fields=id,name,product_count&access_token=${accessToken}`
+    );
+    const json = await res.json();
+
+    if (!json.data || json.data.length === 0) {
+      console.log("ℹ️ [Catalogue Discovery] No product catalogs found.");
+      return null;
+    }
+
+    const catalog = json.data[0];
+    console.log(`✅ [Catalogue Discovery] Found: "${catalog.name}" (ID: ${catalog.id}, Products: ${catalog.product_count || '?'})`);
+
+    // Get the default product set for this catalog
+    let productSetId = null;
+    try {
+      const psRes = await fetch(
+        `https://graph.facebook.com/${apiVersion}/${catalog.id}/product_sets?fields=id,name,product_count&access_token=${accessToken}`
+      );
+      const psJson = await psRes.json();
+
+      if (psJson.data && psJson.data.length > 0) {
+        // Use the first (default/all products) set
+        productSetId = psJson.data[0].id;
+        console.log(`✅ [Catalogue Discovery] Product Set: "${psJson.data[0].name}" (ID: ${productSetId}, Products: ${psJson.data[0].product_count || '?'})`);
+      }
+    } catch (e) {
+      console.warn("⚠️ [Catalogue Discovery] Could not fetch product sets:", e.message);
+    }
+
+    return { catalogId: catalog.id, catalogName: catalog.name, productSetId };
+  } catch (e) {
+    console.error("❌ [Catalogue Discovery] Failed:", e.message);
+    return null;
+  }
+}
+
+// --- AD ACCOUNT CURRENCY DETECTION ---
+async function getAdAccountCurrency(adAccountId, accessToken, apiVersion) {
+  try {
+    const res = await fetch(
+      `https://graph.facebook.com/${apiVersion}/act_${adAccountId}?fields=currency&access_token=${accessToken}`
+    );
+    const json = await res.json();
+    if (json.currency) {
+      console.log(`💱 [Currency] Ad Account currency: ${json.currency}`);
+      return json.currency; // ISO 4217 code e.g. "GBP", "INR", "USD"
+    }
+    return "INR"; // Default fallback
+  } catch (e) {
+    console.warn("⚠️ [Currency] Could not detect currency:", e.message);
+    return "INR";
   }
 }
 // getCityKey removed — superseded by Universal Location Resolver in buildAdSetPayload
