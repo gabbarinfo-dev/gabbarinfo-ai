@@ -1288,9 +1288,14 @@ You are in GENERIC DIGITAL MARKETING AGENT MODE.
         else if (input === "3" || input.includes("call")) selectedDestination = "call";
       }
       else if (selectedMetaObjective === "OUTCOME_SALES") {
-        if (input === "1" || input.includes("website")) selectedDestination = "website";
-        else if (input === "2" || input.includes("catalogue") || input.includes("catalog") || input.includes("product")) selectedDestination = "catalogue";
-        else selectedDestination = "website"; // Default for Sales
+        // Prioritize catalogue match
+        if (input.includes("catalogue") || input.includes("catalog") || input.includes("product") || input === "2") {
+          selectedDestination = "catalogue";
+        } else if (input === "1" || input.includes("website")) {
+          selectedDestination = "website";
+        } else {
+          selectedDestination = "website"; // Final fallback
+        }
       }
       else {
         selectedDestination = "website";
@@ -1565,8 +1570,11 @@ You are in GENERIC DIGITAL MARKETING AGENT MODE.
         );
 
         // Detect ad account currency before showing budget prompt
+        // RETRY if currently INR to ensure UK accounts get fixed
+        let isDefaultOrInr = !lockedCampaignState.account_currency || lockedCampaignState.account_currency === "INR";
         let accountCurrency = lockedCampaignState.account_currency || "INR";
-        if (!lockedCampaignState.account_currency && metaRow?.fb_ad_account_id && metaRow?.fb_user_access_token) {
+
+        if (isDefaultOrInr && metaRow?.fb_ad_account_id && metaRow?.fb_user_access_token) {
           try {
             const currRes = await fetch(`https://graph.facebook.com/v21.0/act_${metaRow.fb_ad_account_id}?fields=currency&access_token=${metaRow.fb_user_access_token}`);
             const currJson = await currRes.json();
@@ -1620,8 +1628,10 @@ You are in GENERIC DIGITAL MARKETING AGENT MODE.
         );
 
         // Detect ad account currency
+        let isDefaultOrInr2 = !lockedCampaignState.account_currency || lockedCampaignState.account_currency === "INR";
         let accountCurrency2 = lockedCampaignState.account_currency || "INR";
-        if (!lockedCampaignState.account_currency && metaRow?.fb_ad_account_id && metaRow?.fb_user_access_token) {
+
+        if (isDefaultOrInr2 && metaRow?.fb_ad_account_id && metaRow?.fb_user_access_token) {
           try {
             const currRes = await fetch(`https://graph.facebook.com/v21.0/act_${metaRow.fb_ad_account_id}?fields=currency&access_token=${metaRow.fb_user_access_token}`);
             const currJson = await currRes.json();
