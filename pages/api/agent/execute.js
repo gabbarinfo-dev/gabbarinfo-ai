@@ -1261,8 +1261,10 @@ You are in GENERIC DIGITAL MARKETING AGENT MODE.
         options = ["WhatsApp", "Calls", "Messenger / Instagram Direct"];
       } else if (selectedMetaObjective === "OUTCOME_ENGAGEMENT") {
         options = ["Messenger / Instagram Direct", "WhatsApp", "Calls"];
+      } else if (selectedMetaObjective === "OUTCOME_SALES") {
+        // Sales: Website (manual image) or Catalogue (dynamic product ads)
+        options = ["Website", "Catalogue Sales (Products from your catalogue)"];
       } else {
-        // Sales and others default to Website
         options = ["Website"];
       }
 
@@ -1284,8 +1286,12 @@ You are in GENERIC DIGITAL MARKETING AGENT MODE.
         else if (input === "2" || input.includes("whatsapp")) selectedDestination = "whatsapp";
         else if (input === "3" || input.includes("call")) selectedDestination = "call";
       }
+      else if (selectedMetaObjective === "OUTCOME_SALES") {
+        if (input === "1" || input.includes("website")) selectedDestination = "website";
+        else if (input === "2" || input.includes("catalogue") || input.includes("catalog") || input.includes("product")) selectedDestination = "catalogue";
+        else selectedDestination = "website"; // Default for Sales
+      }
       else {
-        // Default for Sales or any other fallback
         selectedDestination = "website";
       }
 
@@ -1307,6 +1313,8 @@ You are in GENERIC DIGITAL MARKETING AGENT MODE.
             goals = ["Maximize Number of Calls"];
           } else if (selectedDestination === "whatsapp" || selectedDestination === "messages") {
             goals = ["Maximize Number of Conversations"];
+          } else if (selectedDestination === "catalogue") {
+            goals = ["Maximize Number of Conversions (Catalogue Sales)"];
           } else {
             goals = ["Maximize Reach / Visits"];
           }
@@ -1557,9 +1565,9 @@ You are in GENERIC DIGITAL MARKETING AGENT MODE.
 
         // Detect ad account currency before showing budget prompt
         let accountCurrency = lockedCampaignState.account_currency || "INR";
-        if (!lockedCampaignState.account_currency && metaRow?.fb_ad_account_id && metaRow?.fb_access_token) {
+        if (!lockedCampaignState.account_currency && metaRow?.fb_ad_account_id && metaRow?.fb_user_access_token) {
           try {
-            const currRes = await fetch(`https://graph.facebook.com/v21.0/act_${metaRow.fb_ad_account_id}?fields=currency&access_token=${metaRow.fb_access_token}`);
+            const currRes = await fetch(`https://graph.facebook.com/v21.0/act_${metaRow.fb_ad_account_id}?fields=currency&access_token=${metaRow.fb_user_access_token}`);
             const currJson = await currRes.json();
             if (currJson.currency) {
               accountCurrency = currJson.currency;
@@ -1612,9 +1620,9 @@ You are in GENERIC DIGITAL MARKETING AGENT MODE.
 
         // Detect ad account currency
         let accountCurrency2 = lockedCampaignState.account_currency || "INR";
-        if (!lockedCampaignState.account_currency && metaRow?.fb_ad_account_id && metaRow?.fb_access_token) {
+        if (!lockedCampaignState.account_currency && metaRow?.fb_ad_account_id && metaRow?.fb_user_access_token) {
           try {
-            const currRes = await fetch(`https://graph.facebook.com/v21.0/act_${metaRow.fb_ad_account_id}?fields=currency&access_token=${metaRow.fb_access_token}`);
+            const currRes = await fetch(`https://graph.facebook.com/v21.0/act_${metaRow.fb_ad_account_id}?fields=currency&access_token=${metaRow.fb_user_access_token}`);
             const currJson = await currRes.json();
             if (currJson.currency) {
               accountCurrency2 = currJson.currency;
@@ -2413,6 +2421,9 @@ You are in GENERIC DIGITAL MARKETING AGENT MODE.
       } else if (lockedCampaignState?.destination === "messages") {
         // FIXED: Added check for Engagement/Message channels
         hasAsset = !!lockedCampaignState?.message_channel && !!lockedCampaignState?.message_channel_confirmed;
+      } else if (lockedCampaignState?.destination === "catalogue") {
+        // Catalogue Sales — no extra asset needed, products come from Meta catalogue
+        hasAsset = true;
       }
 
       const prerequisitesMet = hasObjective && hasDestination && hasPerformanceGoal && hasService && hasLocation && hasAsset;
@@ -3980,7 +3991,7 @@ Reply **YES** to confirm this plan and proceed.
 
 
         // --- STEP 12: EXECUTION ---
-        if (!errorOcurred && currentState.stage === "READY_TO_LAUNCH" && currentState.image_hash) {
+        if (!errorOcurred && currentState.stage === "READY_TO_LAUNCH" && (currentState.image_hash || currentState.destination === "catalogue")) {
           const wantsLaunch = lowerInstruction.includes("launch") || lowerInstruction.includes("execute") || lowerInstruction.includes("run") || lowerInstruction.includes("publish") || lowerInstruction.includes("yes") || lowerInstruction.includes("confirm") || lowerInstruction.includes("proceed");
 
           if (wantsLaunch) {
@@ -4011,7 +4022,7 @@ Reply **YES** to confirm this plan and proceed.
               // 🌍 UNIVERSAL LOCATION HANDLER (Ends here)
               const finalPayload = {
                 ...plan,
-                conversion_location: currentState.conversion_location || plan.conversion_location || null,
+                conversion_location: currentState.destination === "catalogue" ? "CATALOGUE" : (currentState.conversion_location || plan.conversion_location || null),
                 message_channel: currentState.message_channel || null,
 
                 targeting: {
@@ -4026,13 +4037,13 @@ Reply **YES** to confirm this plan and proceed.
 
                 ad_sets: plan.ad_sets.map(adset => {
                   // Sanitize destination_url — Gemini sometimes outputs "N/A"
-                  const adCreative = { ...adset.ad_creative, image_hash: currentState.image_hash };
+                  const adCreative = { ...adset.ad_creative, image_hash: currentState.image_hash || null };
                   if (adCreative.destination_url && (adCreative.destination_url === "N/A" || adCreative.destination_url === "n/a" || !adCreative.destination_url.startsWith("http"))) {
                     adCreative.destination_url = null;
                   }
                   return {
                     ...adset,
-                    conversion_location: currentState.conversion_location || plan.conversion_location || null,
+                    conversion_location: currentState.destination === "catalogue" ? "CATALOGUE" : (currentState.conversion_location || plan.conversion_location || null),
                     message_channel: currentState.message_channel || null,
                     ad_creative: adCreative
                   };
