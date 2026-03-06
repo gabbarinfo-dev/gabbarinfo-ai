@@ -1,3 +1,6 @@
+
+
+
 // pages/api/agent/execute.js
 
 import { GoogleGenerativeAI } from "@google/generative-ai";
@@ -383,6 +386,9 @@ export default async function handler(req, res) {
       await supabase.from("agent_meta_assets").upsert(verifiedMetaAssets);
     }
 
+    const activeCurrency = verifiedMetaAssets?.ad_account?.currency || "INR";
+    console.log(`🏢 [Currency] Active Account Currency: ${activeCurrency}`);
+
     console.log(`🏢 Effective Business ID: ${effectiveBusinessId} (Active: ${activeBusinessId})`);
 
     let forcedBusinessContext = null;
@@ -752,7 +758,7 @@ You MUST ALWAYS output BOTH a human-readable summary AND the JSON using this exa
   "conversion_location": "WEBSITE",
   "budget": {
     "amount": ${currentBudget},
-    "currency": "INR",
+    "currency": "${activeCurrency}",
     "type": "DAILY"
   },
   "targeting": {
@@ -785,11 +791,13 @@ You MUST ALWAYS output BOTH a human-readable summary AND the JSON using this exa
 - Meta Objectives must be one of: OUTCOME_TRAFFIC, OUTCOME_LEADS, OUTCOME_SALES, OUTCOME_AWARENESS, OUTCOME_ENGAGEMENT, OUTCOME_APP_PROMOTION.
 - optimization_goal must match the performance goal (e.g., LINK_CLICKS, LANDING_PAGE_VIEWS).
 - destination_type should be set (e.g., WEBSITE, MESSAGING_APPS).
+- **CATALOGUE RULE**: If the user selects 'Catalogue Sales', set 'destination_type': 'CATALOGUE', remove 'imagePrompt' and 'destination_url', and add '_isCatalogue': true.
 - When you output JSON, wrap it in a proper JSON code block. Do NOT add extra text inside the JSON block.
 - ALWAYS propose a plan if you have enough info (objective, location, service, budget).
 - **LOCATION RULE**: Use exactly "${currentLocation}" in universal_locations. DO NOT default to India.
 - **AGE RULE**: NEVER include the "+" symbol in age_max. Use numbers only (e.g., 65).
 - **GENDER RULE**: Use exactly "${lockedCampaignState?.target_gender || 'all'}" for genders. Do NOT change it.
+- **CURRENCY RULE**: Always use "${activeCurrency}" for the budget currency.
 `;
     } else if (mode === "social_plan") {
       modeFocus = `
@@ -2810,7 +2818,7 @@ IF LOCKED CONTEXT EXISTS (Service + Location + Objective):
 - Use the JSON schema defined in your Mode Focus.
 - The plan MUST include:
   - Campaign Name (Creative & Descriptive)
-  - Budget (Daily, ${lockedCampaignState.account_currency || "INR"})
+  - Budget (Daily, ${activeCurrency})
   - Targeting (Location from Locked Context)
   - Targeting Suggestions (interests, demographics)
   - Message Channel (If Objective is Engagement: WhatsApp/Instagram/Messenger)
@@ -3234,9 +3242,21 @@ Otherwise, respond with a full, clear explanation, and include example JSON only
               }))
             };
 
-            // Remove any leftover hardcoded geo_locations from plan
             if (finalPayload.targeting.geo_locations) {
               delete finalPayload.targeting.geo_locations;
+            }
+
+            // 🛡️ WATERFALL BYPASS: Force Catalogue Settings for Sales
+            if (lockedCampaignState?.destination === "Catalogue Sales" || lockedCampaignState?.destination === "catalogue" || lockedCampaignState?.objective === "OUTCOME_SALES") {
+              console.log("🚀 [Bypass] Forcing Catalogue Payload for Sales Advantage+...");
+              if (finalPayload.ad_sets && finalPayload.ad_sets[0]) {
+                finalPayload.ad_sets[0]._catalogInfo = { productSetId: "default" };
+                finalPayload.budget.currency = activeCurrency;
+                // Force delete the image hash to prevent single-image fallback
+                if (finalPayload.ad_sets[0].ad_creative) {
+                  delete finalPayload.ad_sets[0].ad_creative.image_hash;
+                }
+              }
             }
 
             console.log("🧪 FINAL PAYLOAD PATH 1:", JSON.stringify(finalPayload, null, 2));
