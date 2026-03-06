@@ -847,7 +847,7 @@ async function buildAdSetPayload(objective, adSet, campaignId, accessToken, plac
         console.log(`🛍️ [AdSet] Catalogue mode: product_set_id=${catInfo.productSetId}`);
       } else if (isCatalogueMode) {
         // Validation Fallback: Clear error if catalogue discovery failed or returned "default"
-        throw new Error(`I found your London account and GBP currency, but I cannot see your Product Catalogue. Please ensure your Catalogue is connected to Ad Account ${AD_ACCOUNT_ID}. If you have a specific Catalogue ID, please provide it.`);
+        throw new Error(`I found your London account and GBP currency, but I cannot see your Product Catalogue. Please ensure your Catalogue is connected to Ad Account ${payload.ad_account_id}. If you have a specific Catalogue ID, please provide it.`);
       } else if (pixelId) {
         // Standard pixel-based sales with website
         destination_type = "WEBSITE";
