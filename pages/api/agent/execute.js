@@ -195,6 +195,13 @@ export default async function handler(req, res) {
     let mode = body.mode || "generic";
     const lowerInstruction = instruction.toLowerCase();
 
+    // 🛍️ MANUAL CATALOGUE ID CAPTURE (15-16 digit check)
+    const catalogIdMatch = instruction.match(/\b\d{15,16}\b/);
+    let capturedCatalogId = catalogIdMatch ? catalogIdMatch[0] : null;
+    if (capturedCatalogId) {
+      console.log(`🎯 [Manual Capture] Found Catalogue ID candidate: ${capturedCatalogId}`);
+    }
+
     // 💡 INTENT DETECTION: If in generic mode, check if user wants Meta Ads
     if (mode === "generic") {
       const historyTextForIntent = Array.isArray(chatHistory)
@@ -793,7 +800,7 @@ You MUST ALWAYS output BOTH a human-readable summary AND the JSON using this exa
 - Meta Objectives must be one of: OUTCOME_TRAFFIC, OUTCOME_LEADS, OUTCOME_SALES, OUTCOME_AWARENESS, OUTCOME_ENGAGEMENT, OUTCOME_APP_PROMOTION.
 - optimization_goal must match the performance goal (e.g., LINK_CLICKS, LANDING_PAGE_VIEWS).
 - destination_type should be set (e.g., WEBSITE, MESSAGING_APPS).
-- **CATALOGUE RULE**: If the user selects 'Catalogue Sales', set 'destination_type': 'CATALOGUE', remove 'imagePrompt' and 'destination_url', and add '_isCatalogue': true. If the user provides a specific Catalogue ID or Product Set ID in the chat, capture them in 'catalogId' and 'productSetId'.
+- **CATALOGUE RULE**: If the user selects 'Catalogue Sales', set 'destination_type': 'CATALOGUE', remove 'imagePrompt' and 'destination_url', and add '_isCatalogue': true. If the user provides a specific Catalogue ID or Product Set ID in the chat, capture them in 'catalogId' and 'productSetId'. If you do not have a Catalogue ID and discovery fails (returns "default"), you MUST ask the user: "I'm ready to launch your Sales Carousel, but I need your Catalogue ID to pull the products. You can find this in Meta Commerce Manager > Settings."
 - When you output JSON, wrap it in a proper JSON code block. Do NOT add extra text inside the JSON block.
 - ALWAYS propose a plan if you have enough info (objective, location, service, budget).
 - **LOCATION RULE**: Use exactly "${currentLocation}" in universal_locations. DO NOT default to India.
@@ -4072,12 +4079,14 @@ Reply **YES** to confirm this plan and proceed.
                     delete adCreative.image_hash;
                   }
 
+                  const finalCatalogId = adset.catalogId || capturedCatalogId || null;
                   return {
                     ...adset,
                     _catalogInfo: isCatalogueMode ? {
                       productSetId: adset.productSetId || "default",
-                      catalogId: adset.catalogId || null
+                      catalogId: finalCatalogId
                     } : (adset._catalogInfo || null),
+                    catalogId: finalCatalogId,
                     conversion_location: isCatalogueMode ? "CATALOGUE" : (currentState.conversion_location || plan.conversion_location || null),
                     message_channel: currentState.message_channel || null,
                     ad_creative: adCreative
