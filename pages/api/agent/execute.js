@@ -1,6 +1,3 @@
-
-
-
 // pages/api/agent/execute.js
 
 import { GoogleGenerativeAI } from "@google/generative-ai";
