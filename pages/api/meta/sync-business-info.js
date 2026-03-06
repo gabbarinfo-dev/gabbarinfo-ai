@@ -94,71 +94,7 @@ export default async function handler(req, res) {
       instagram = await igInfoRes.json();
     }
 
-    // 4️⃣ Fetch Ad Account Currency
-    let accountCurrency = null;
-    try {
-      const currRes = await fetch(
-        `https://graph.facebook.com/v21.0/${adAccountId}?fields=currency&access_token=${user_access_token}`
-      );
-      const currJson = await currRes.json();
-      if (currJson.currency) {
-        accountCurrency = currJson.currency;
-        console.log(`💱 [Sync] Currency detected: ${accountCurrency}`);
-      }
-    } catch (e) {
-      console.warn(`⚠️ [Sync] Currency detection failed: ${e.message}`);
-    }
-
-    // 5️⃣ Fetch Pixel ID
-    let pixelId = null;
-    try {
-      const pixRes = await fetch(
-        `https://graph.facebook.com/v21.0/${adAccountId}/adspixels?fields=id,name&access_token=${user_access_token}`
-      );
-      const pixJson = await pixRes.json();
-      if (pixJson?.data?.length) {
-        pixelId = pixJson.data[0].id;
-        console.log(`🎯 [Sync] Pixel found: ${pixelId}`);
-      }
-    } catch (e) {
-      console.warn(`⚠️ [Sync] Pixel discovery failed: ${e.message}`);
-    }
-
-    // 6️⃣ Deep Catalogue Scan
-    let catalogId = null;
-    try {
-      const cleanAdId = (adAccountId || "").toString().replace(/^act_/, "");
-      const catalogEndpoints = [
-        businessId ? `https://graph.facebook.com/v21.0/${businessId}/owned_product_catalogs?fields=id,name,product_count&access_token=${user_access_token}` : null,
-        `https://graph.facebook.com/v21.0/${adAccountId}/product_catalogs?fields=id,name,product_count&access_token=${user_access_token}`,
-        `https://graph.facebook.com/v21.0/${adAccountId}/client_product_catalogs?fields=id,name,product_count&access_token=${user_access_token}`,
-        `https://graph.facebook.com/v21.0/act_${cleanAdId}/assigned_product_catalogs?fields=id,name,product_count&access_token=${user_access_token}`,
-        page.id ? `https://graph.facebook.com/v21.0/${page.id}/product_catalogs?fields=id,name,product_count&access_token=${user_access_token}` : null,
-        businessId ? `https://graph.facebook.com/v21.0/${businessId}/assigned_product_catalogs?fields=id,name,product_count&access_token=${user_access_token}` : null,
-        businessId ? `https://graph.facebook.com/v21.0/${businessId}/client_product_catalogs?fields=id,name,product_count&access_token=${user_access_token}` : null,
-      ].filter(Boolean);
-
-      const allCatalogs = [];
-      for (const url of catalogEndpoints) {
-        try {
-          const catRes = await fetch(url);
-          const catJson = await catRes.json();
-          if (catJson?.data?.length) allCatalogs.push(...catJson.data);
-        } catch (_) { /* skip failed endpoint */ }
-      }
-
-      // De-duplicate and pick the one with the most products
-      const unique = Array.from(new Map(allCatalogs.map(c => [c.id, c])).values());
-      if (unique.length > 0) {
-        unique.sort((a, b) => (b.product_count || 0) - (a.product_count || 0));
-        catalogId = unique[0].id;
-        console.log(`🛍️ [Sync] Best catalogue: "${unique[0].name}" (ID: ${catalogId}, Products: ${unique[0].product_count || 0})`);
-      }
-    } catch (e) {
-      console.warn(`⚠️ [Sync] Catalogue discovery failed: ${e.message}`);
-    }
-
-    // 7️⃣ Store extracted data
+    // 4️⃣ Store extracted data
     await supabaseServer
       .from("meta_connections")
       .update({
@@ -175,11 +111,6 @@ export default async function handler(req, res) {
         instagram_bio: instagram?.biography || null,
         instagram_website: instagram?.website || null,
         business_info_synced: true,
-        // NEW: Synced Meta Assets
-        account_currency: accountCurrency || undefined,
-        fb_pixel_id: pixelId || undefined,
-        fb_catalog_id: catalogId || undefined,
-        catalog_last_synced_at: catalogId ? new Date().toISOString() : undefined,
       })
       .eq("email", session.user.email);
 
