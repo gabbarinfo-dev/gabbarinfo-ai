@@ -384,7 +384,19 @@ Error: ${lastError?.message}`);
     // --- CATALOGUE DISCOVERY START ---
     let catalogInfo = null;
     if (finalObjective === "OUTCOME_SALES") {
-      catalogInfo = await getProductCatalogAndSet(AD_ACCOUNT_ID, ACCESS_TOKEN, API_VERSION, meta.fb_business_id, PAGE_ID);
+      // Pick up manual IDs from the first ad set if provided
+      const firstAdSet = payload.ad_sets?.[0] || {};
+      const manualCatId = firstAdSet.catalogId || firstAdSet.productSetId || null;
+
+      catalogInfo = await getProductCatalogAndSet(
+        AD_ACCOUNT_ID,
+        ACCESS_TOKEN,
+        API_VERSION,
+        meta.fb_business_id,
+        PAGE_ID,
+        firstAdSet.catalogId,
+        firstAdSet.productSetId
+      );
     }
     // --- CATALOGUE DISCOVERY END ---
 
@@ -823,7 +835,7 @@ async function buildAdSetPayload(objective, adSet, campaignId, accessToken, plac
       const catInfo = adSet._catalogInfo;
       const isCatalogueMode = conversionLocation === "CATALOGUE" || (catInfo && catInfo.productSetId);
 
-      if (isCatalogueMode && catInfo && catInfo.productSetId) {
+      if (isCatalogueMode && catInfo && catInfo.productSetId && catInfo.productSetId !== "default") {
         // Surgical Fix: Force billing/optimization and promoted_object
         optimization_goal = "OFFSITE_CONVERSIONS";
         billing_event = "IMPRESSIONS";
@@ -833,6 +845,9 @@ async function buildAdSetPayload(objective, adSet, campaignId, accessToken, plac
           custom_event_type: "PURCHASE"
         };
         console.log(`🛍️ [AdSet] Catalogue mode: product_set_id=${catInfo.productSetId}`);
+      } else if (isCatalogueMode) {
+        // Validation Fallback: Clear error if catalogue discovery failed or returned "default"
+        throw new Error(`I found your London account and GBP currency, but I cannot see your Product Catalogue. Please ensure your Catalogue is connected to Ad Account ${AD_ACCOUNT_ID}. If you have a specific Catalogue ID, please provide it.`);
       } else if (pixelId) {
         // Standard pixel-based sales with website
         destination_type = "WEBSITE";
@@ -1190,9 +1205,15 @@ async function getAutoPixelId(adAccountId, accessToken, apiVersion) {
 }
 
 // --- PRODUCT CATALOGUE DISCOVERY ---
-async function getProductCatalogAndSet(adAccountId, accessToken, apiVersion, businessId, pageId) {
+async function getProductCatalogAndSet(adAccountId, accessToken, apiVersion, businessId, pageId, manualCatalogId = null, manualProductSetId = null) {
   try {
     let json = null;
+
+    // Strategy 0: Manual ID provided by user
+    if (manualCatalogId && manualCatalogId !== "default") {
+      console.log(`🛍️ [Catalogue Discovery] Using manual Catalog ID: ${manualCatalogId}`);
+      json = { data: [{ id: manualCatalogId, name: "Manual/Captured Catalogue" }] };
+    }
 
     // Strategy 1: Search at Business level (correct endpoint per Meta API)
     if (businessId) {
@@ -1221,7 +1242,7 @@ async function getProductCatalogAndSet(adAccountId, accessToken, apiVersion, bus
       json = await res3.json();
     }
 
-    // Strategy 4: Search at Business level for ASSIGNED catalogs
+    // Strategy 4: Search at Business level for ASSIGNED catalogs (Business Asset Groups)
     if ((!json?.data || json.data.length === 0) && businessId) {
       console.log(`🛍️ [Catalogue Discovery] Trying business/${businessId}/assigned_product_catalogs...`);
       const res4 = await fetch(
@@ -1229,6 +1250,16 @@ async function getProductCatalogAndSet(adAccountId, accessToken, apiVersion, bus
       );
       const json4 = await res4.json();
       if (json4.data && json4.data.length > 0) json = json4;
+
+      // Also try 'client_product_catalogs' at business level if above fails
+      if (!json?.data || json.data.length === 0) {
+        console.log(`🛍️ [Catalogue Discovery] Trying business/${businessId}/client_product_catalogs...`);
+        const res4b = await fetch(
+          `https://graph.facebook.com/${apiVersion}/${businessId}/client_product_catalogs?fields=id,name,product_count&access_token=${accessToken}`
+        );
+        const json4b = await res4b.json();
+        if (json4b.data && json4b.data.length > 0) json = json4b;
+      }
     }
 
     // Strategy 5: Search at Page level (sometimes catalogs are tied to the page)
@@ -1249,7 +1280,16 @@ async function getProductCatalogAndSet(adAccountId, accessToken, apiVersion, bus
     }
 
     const catalog = json.data[0];
-    console.log(`✅ [Catalogue Discovery] Found: "${catalog.name}" (ID: ${catalog.id}, Products: ${catalog.product_count || '?'})`);
+    // If we have multiple, try to find one matching name "Bella & Diva" or similar if requested
+    // We search across all returned catalogs for brand keywords
+    const brandMatch = json.data.find(c =>
+      c.name?.toLowerCase().includes("bella") ||
+      c.name?.toLowerCase().includes("diva")
+    );
+
+    const finalCatalog = brandMatch || catalog;
+
+    console.log(`✅ [Catalogue Discovery] Found: "${finalCatalog.name}" (ID: ${finalCatalog.id}, Products: ${finalCatalog.product_count || '?'})`);
 
     // Get the default product set for this catalog
     let productSetId = null;
@@ -1259,7 +1299,10 @@ async function getProductCatalogAndSet(adAccountId, accessToken, apiVersion, bus
       );
       const psJson = await psRes.json();
 
-      if (psJson.data && psJson.data.length > 0) {
+      if (manualProductSetId && manualProductSetId !== "default") {
+        console.log(`✅ [Catalogue Discovery] Using manual Product Set ID: ${manualProductSetId}`);
+        productSetId = manualProductSetId;
+      } else if (psJson.data && psJson.data.length > 0) {
         productSetId = psJson.data[0].id;
         console.log(`✅ [Catalogue Discovery] Product Set: "${psJson.data[0].name}" (ID: ${productSetId}, Products: ${psJson.data[0].product_count || '?'})`);
       }
@@ -1267,7 +1310,7 @@ async function getProductCatalogAndSet(adAccountId, accessToken, apiVersion, bus
       console.warn("⚠️ [Catalogue Discovery] Could not fetch product sets:", e.message);
     }
 
-    return { catalogId: catalog.id, catalogName: catalog.name, productSetId };
+    return { catalogId: finalCatalog.id, catalogName: finalCatalog.name, productSetId };
   } catch (e) {
     console.error("❌ [Catalogue Discovery] Failed:", e.message);
     return null;
