@@ -9,23 +9,17 @@ export default async function handler(req, res) {
       return res.status(401).json({ ok: false });
     }
 
- // 🔥 Get user-specific access token
-const { data: metaRow } = await supabaseServer
-  .from("meta_connections")
-  .select("fb_business_id, fb_user_access_token")
-  .eq("email", session.user.email)
-  .single();
+    const user_access_token = process.env.META_SYSTEM_USER_TOKEN;
 
-const businessId = metaRow?.fb_business_id;
-const user_access_token = metaRow?.fb_user_access_token;
+    // 0️⃣ Get existing Meta connection for fb_business_id
+    const { data: metaRow } = await supabaseServer
+      .from("meta_connections")
+      .select("fb_business_id")
+      .eq("email", session.user.email)
+      .single();
+
+    const businessId = metaRow?.fb_business_id;
     let adAccountId = null;
-
-    if (!businessId || !user_access_token) {
-  return res.status(400).json({
-    ok: false,
-    message: "Missing business ID or user access token",
-  });
-}
 
     // Fetch Ad Accounts (Strictly Business-owned)
     try {
@@ -48,35 +42,7 @@ const user_access_token = metaRow?.fb_user_access_token;
     } catch (e) {
       return res.status(500).json({ ok: false, message: `AdAccount Sync Failed: ${e.message}` });
     }
-// 🔥 DEEP SCAN: Find Catalogue & Pixel
-    let catalogId = null;
-    let pixelId = null;
 
-    try {
-      // 1. Check Ad Account for Product Catalogues (Crucial for Shopify/Partner syncs)
-      const adAssetsRes = await fetch(
-        `https://graph.facebook.com/v21.0/act_${adAccountId}?fields=product_catalogs,ads_pixels&access_token=${user_access_token}`
-      );
-      const adAssetsJson = await adAssetsRes.json();
-
-      // Get Catalog ID
-      if (adAssetsJson?.product_catalogs?.data?.length) {
-        catalogId = adAssetsJson.product_catalogs.data[0].id;
-      } 
-      // Fallback: If not in Ad Account, check Business Portfolio
-      else if (businessId) {
-        const bizCatRes = await fetch(`https://graph.facebook.com/v21.0/${businessId}/owned_product_catalogs?access_token=${user_access_token}`);
-        const bizCatJson = await bizCatRes.json();
-        if (bizCatJson?.data?.length) catalogId = bizCatJson.data[0].id;
-      }
-
-      // Get Pixel ID
-      if (adAssetsJson?.ads_pixels?.data?.length) {
-        pixelId = adAssetsJson.ads_pixels.data[0].id;
-      }
-    } catch (e) {
-      console.warn(`[Asset Sync Failed] ${e.message}`);
-    }
     // 1️⃣ Get Pages user manages
     const pagesRes = await fetch(
       `https://graph.facebook.com/v21.0/me/accounts?access_token=${user_access_token}`
@@ -128,16 +94,77 @@ const user_access_token = metaRow?.fb_user_access_token;
       instagram = await igInfoRes.json();
     }
 
-    // 4️⃣ Store extracted data
+    // 4️⃣ Fetch Ad Account Currency
+    let accountCurrency = null;
+    try {
+      const currRes = await fetch(
+        `https://graph.facebook.com/v21.0/${adAccountId}?fields=currency&access_token=${user_access_token}`
+      );
+      const currJson = await currRes.json();
+      if (currJson.currency) {
+        accountCurrency = currJson.currency;
+        console.log(`💱 [Sync] Currency detected: ${accountCurrency}`);
+      }
+    } catch (e) {
+      console.warn(`⚠️ [Sync] Currency detection failed: ${e.message}`);
+    }
+
+    // 5️⃣ Fetch Pixel ID
+    let pixelId = null;
+    try {
+      const pixRes = await fetch(
+        `https://graph.facebook.com/v21.0/${adAccountId}/adspixels?fields=id,name&access_token=${user_access_token}`
+      );
+      const pixJson = await pixRes.json();
+      if (pixJson?.data?.length) {
+        pixelId = pixJson.data[0].id;
+        console.log(`🎯 [Sync] Pixel found: ${pixelId}`);
+      }
+    } catch (e) {
+      console.warn(`⚠️ [Sync] Pixel discovery failed: ${e.message}`);
+    }
+
+    // 6️⃣ Deep Catalogue Scan
+    let catalogId = null;
+    try {
+      const cleanAdId = (adAccountId || "").toString().replace(/^act_/, "");
+      const catalogEndpoints = [
+        businessId ? `https://graph.facebook.com/v21.0/${businessId}/owned_product_catalogs?fields=id,name,product_count&access_token=${user_access_token}` : null,
+        `https://graph.facebook.com/v21.0/${adAccountId}/product_catalogs?fields=id,name,product_count&access_token=${user_access_token}`,
+        `https://graph.facebook.com/v21.0/${adAccountId}/client_product_catalogs?fields=id,name,product_count&access_token=${user_access_token}`,
+        `https://graph.facebook.com/v21.0/act_${cleanAdId}/assigned_product_catalogs?fields=id,name,product_count&access_token=${user_access_token}`,
+        page.id ? `https://graph.facebook.com/v21.0/${page.id}/product_catalogs?fields=id,name,product_count&access_token=${user_access_token}` : null,
+        businessId ? `https://graph.facebook.com/v21.0/${businessId}/assigned_product_catalogs?fields=id,name,product_count&access_token=${user_access_token}` : null,
+        businessId ? `https://graph.facebook.com/v21.0/${businessId}/client_product_catalogs?fields=id,name,product_count&access_token=${user_access_token}` : null,
+      ].filter(Boolean);
+
+      const allCatalogs = [];
+      for (const url of catalogEndpoints) {
+        try {
+          const catRes = await fetch(url);
+          const catJson = await catRes.json();
+          if (catJson?.data?.length) allCatalogs.push(...catJson.data);
+        } catch (_) { /* skip failed endpoint */ }
+      }
+
+      // De-duplicate and pick the one with the most products
+      const unique = Array.from(new Map(allCatalogs.map(c => [c.id, c])).values());
+      if (unique.length > 0) {
+        unique.sort((a, b) => (b.product_count || 0) - (a.product_count || 0));
+        catalogId = unique[0].id;
+        console.log(`🛍️ [Sync] Best catalogue: "${unique[0].name}" (ID: ${catalogId}, Products: ${unique[0].product_count || 0})`);
+      }
+    } catch (e) {
+      console.warn(`⚠️ [Sync] Catalogue discovery failed: ${e.message}`);
+    }
+
+    // 7️⃣ Store extracted data
     await supabaseServer
       .from("meta_connections")
       .update({
         fb_ad_account_id: adAccountId || undefined,
-        fb_page_id: page.id || null, // Ensure Page ID is persisted
-        fb_page_access_token: pageInfo.access_token || null, // Persist Page Token
-        fb_catalog_id: catalogId || null, // <--- ADD THIS LINE
-        fb_pixel_id: pixelId,      // This will fix the NULL pixel issue too
-        catalog_last_synced_at: new Date().toISOString(), // <--- ADD THIS LINE
+        fb_page_id: page.id || null,
+        fb_page_access_token: pageInfo.access_token || null,
         ig_business_id: igJson?.instagram_business_account?.id || null,
         instagram_actor_id: instagramActorId,
         business_name: pageInfo.name || null,
@@ -148,15 +175,17 @@ const user_access_token = metaRow?.fb_user_access_token;
         instagram_bio: instagram?.biography || null,
         instagram_website: instagram?.website || null,
         business_info_synced: true,
+        // NEW: Synced Meta Assets
+        account_currency: accountCurrency || undefined,
+        fb_pixel_id: pixelId || undefined,
+        fb_catalog_id: catalogId || undefined,
+        catalog_last_synced_at: catalogId ? new Date().toISOString() : undefined,
       })
       .eq("email", session.user.email);
 
     return res.json({
       ok: true,
       message: "Business info synced successfully",
-      fb_business_id: businessId,
-      fb_page_id: page.id,
-      fb_ad_account_id: adAccountId,
     });
 
   } catch (err) {
