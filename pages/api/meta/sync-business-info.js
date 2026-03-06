@@ -9,17 +9,23 @@ export default async function handler(req, res) {
       return res.status(401).json({ ok: false });
     }
 
-    const user_access_token = process.env.META_SYSTEM_USER_TOKEN;
+ // 🔥 Get user-specific access token
+const { data: metaRow } = await supabaseServer
+  .from("meta_connections")
+  .select("fb_business_id, fb_user_access_token")
+  .eq("email", session.user.email)
+  .single();
 
-    // 0️⃣ Get existing Meta connection for fb_business_id
-    const { data: metaRow } = await supabaseServer
-      .from("meta_connections")
-      .select("fb_business_id")
-      .eq("email", session.user.email)
-      .single();
-
-    const businessId = metaRow?.fb_business_id;
+const businessId = metaRow?.fb_business_id;
+const user_access_token = metaRow?.fb_user_access_token;
     let adAccountId = null;
+
+    if (!businessId || !user_access_token) {
+  return res.status(400).json({
+    ok: false,
+    message: "Missing business ID or user access token",
+  });
+}
 
     // Fetch Ad Accounts (Strictly Business-owned)
     try {
@@ -117,6 +123,9 @@ export default async function handler(req, res) {
     return res.json({
       ok: true,
       message: "Business info synced successfully",
+      fb_business_id: businessId,
+      fb_page_id: page.id,
+      fb_ad_account_id: adAccountId,
     });
 
   } catch (err) {
