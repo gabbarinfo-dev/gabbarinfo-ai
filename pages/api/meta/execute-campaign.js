@@ -818,28 +818,28 @@ async function buildAdSetPayload(objective, adSet, campaignId, accessToken, plac
     case "OUTCOME_SALES":
       optimization_goal = "OFFSITE_CONVERSIONS";
       billing_event = "IMPRESSIONS";
-      destination_type = "WEBSITE";
 
       const pixelId = adSet.promoted_object?.pixel_id || metaPixelId;
       const catInfo = adSet._catalogInfo;
+      const isCatalogueMode = conversionLocation === "CATALOGUE" || (catInfo && catInfo.productSetId);
 
-      if (!pixelId) {
-        throw new Error("OUTCOME_SALES requires a Meta Pixel. Please ensure your Pixel is connected in Settings.");
-      }
-
-      if (catInfo && catInfo.productSetId) {
-        // Advantage+ Catalog Ads — use product set in promoted_object
+      if (isCatalogueMode && catInfo && catInfo.productSetId) {
+        // Advantage+ Catalog Ads — products come from catalogue, no website needed
+        destination_type = undefined; // Let Meta determine from catalogue
         promoted_object = {
           product_set_id: catInfo.productSetId,
           custom_event_type: "PURCHASE"
         };
         console.log(`🛍️ [AdSet] Catalogue mode: product_set_id=${catInfo.productSetId}`);
-      } else {
-        // Standard pixel-based sales (no catalogue)
+      } else if (pixelId) {
+        // Standard pixel-based sales with website
+        destination_type = "WEBSITE";
         promoted_object = {
           pixel_id: pixelId,
           custom_event_type: adSet.promoted_object?.custom_event_type || "PURCHASE"
         };
+      } else {
+        throw new Error("OUTCOME_SALES requires a Meta Pixel or Product Catalogue. Please ensure your Pixel is connected or a Catalogue is linked to your Ad Account.");
       }
       break;
 
