@@ -11,20 +11,19 @@ export default async function handler(req, res) {
 
     const user_access_token = process.env.META_SYSTEM_USER_TOKEN;
 
-    // 0️⃣ Get existing Meta connection
+    // 0️⃣ Get existing Meta connection for fb_business_id
     const { data: metaRow } = await supabaseServer
       .from("meta_connections")
-      .select("*")
+      .select("fb_business_id")
       .eq("email", session.user.email)
       .single();
 
     const businessId = metaRow?.fb_business_id;
-    let adAccountId = metaRow?.fb_ad_account_id || null; // Use existing value as baseline
+    let adAccountId = null;
 
-    // Fetch Ad Accounts (try multiple strategies)
+    // Fetch Ad Accounts (Strictly Business-owned)
     try {
-      // Strategy 1: Business-owned ad accounts
-      if (businessId && !adAccountId) {
+      if (businessId) {
         const bizAdRes = await fetch(
           `https://graph.facebook.com/v21.0/${businessId}/owned_ad_accounts?access_token=${user_access_token}`
         );
@@ -34,23 +33,10 @@ export default async function handler(req, res) {
         }
       }
 
-      // Strategy 2: Client ad accounts (for agency/partner setups)
-      if (!adAccountId && businessId) {
-        try {
-          const clientAdRes = await fetch(
-            `https://graph.facebook.com/v21.0/${businessId}/client_ad_accounts?access_token=${user_access_token}`
-          );
-          const clientAdJson = await clientAdRes.json();
-          if (clientAdJson?.data?.length) {
-            adAccountId = clientAdJson.data[0].id;
-          }
-        } catch (_) { /* skip */ }
-      }
-
       if (!adAccountId) {
         return res.status(400).json({
           ok: false,
-          message: "No ad accounts found. Please ensure your Meta Business has an ad account connected.",
+          message: "No business-owned ad accounts found. A Meta Business account is required.",
         });
       }
     } catch (e) {
@@ -177,8 +163,8 @@ export default async function handler(req, res) {
       .from("meta_connections")
       .update({
         fb_ad_account_id: adAccountId || undefined,
-        fb_page_id: page.id || null,
-        fb_page_access_token: pageInfo.access_token || null,
+        fb_page_id: page.id || null, // Ensure Page ID is persisted
+        fb_page_access_token: pageInfo.access_token || null, // Persist Page Token
         ig_business_id: igJson?.instagram_business_account?.id || null,
         instagram_actor_id: instagramActorId,
         business_name: pageInfo.name || null,
