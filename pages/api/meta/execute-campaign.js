@@ -824,7 +824,9 @@ async function buildAdSetPayload(objective, adSet, campaignId, accessToken, plac
       const isCatalogueMode = conversionLocation === "CATALOGUE" || (catInfo && catInfo.productSetId);
 
       if (isCatalogueMode && catInfo && catInfo.productSetId) {
-        // Advantage+ Catalog Ads — products come from catalogue, no website needed
+        // Surgical Fix: Force billing/optimization and promoted_object
+        optimization_goal = "OFFSITE_CONVERSIONS";
+        billing_event = "IMPRESSIONS";
         destination_type = undefined; // Let Meta determine from catalogue
         promoted_object = {
           product_set_id: catInfo.productSetId,
@@ -991,35 +993,30 @@ function buildCreativePayload(objective, creative, pageId, instagramActorId, acc
   if (!pageId) throw new Error("Page ID is required for Creative");
 
   // --- CATALOGUE CREATIVE PATH (Advantage+ Catalog Ads) ---
-  // Must be before image_hash check — catalogue ads don't need an uploaded image
   const catInfo = creative._catalogInfo;
   if (catInfo && catInfo.productSetId && objective === "OUTCOME_SALES") {
-    console.log(`🛍️ [Creative] Catalogue mode — building template creative for catalog: ${catInfo.catalogName}`);
+    // Surgical Fix: Force object_story_spec + template_data for Carousels as requested
+    console.log(`🛍️ [Creative] Catalogue mode — forcing Advantage+ Carousel format`);
 
     const params = new URLSearchParams();
     params.append("access_token", accessToken);
 
-    // For Advantage+ Catalogue Ads, the modern way is template_url_spec
-    params.append("template_url_spec", JSON.stringify({
+    const objectStorySpec = {
+      page_id: pageId,
+      ...(instagramActorId ? { instagram_actor_id: instagramActorId } : {}),
       template_data: {
-        call_to_action: { type: "SHOP_NOW" },
-        link: creative.destination_url || `https://www.facebook.com/${pageId}`,
-        message: creative.primary_text || "Discover our collection!",
-        name: "{{product.name}}",
-        description: "{{product.description}}",
-        multi_share_end_card: false,
-        // Force carousel format by specifying format
-        format: "CAROUSEL"
+        multi_share_optimized: true,
+        multi_share_end_card: true,
+        link: `https://www.facebook.com/${pageId}`,
+        call_to_action: { type: "SHOP_NOW" }
       }
-    }));
+    };
 
+    params.append("template_url_spec", JSON.stringify(objectStorySpec));
     params.append("product_set_id", catInfo.productSetId);
     params.append("name", `Catalog Creative - ${creative.headline || 'Products'}`);
-    if (instagramActorId) {
-      params.append("instagram_actor_id", instagramActorId);
-    }
 
-    console.log(`📨 [Creative] Catalogue mode: product_set_id=${catInfo.productSetId} (using template_url_spec)`);
+    console.log(`📨 [Creative] Catalogue mode: product_set_id=${catInfo.productSetId} using surgical object_story_spec`);
     return params;
   }
   // --- END CATALOGUE CREATIVE PATH ---
