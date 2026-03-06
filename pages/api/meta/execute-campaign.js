@@ -384,7 +384,7 @@ Error: ${lastError?.message}`);
     // --- CATALOGUE DISCOVERY START ---
     let catalogInfo = null;
     if (finalObjective === "OUTCOME_SALES") {
-      catalogInfo = await getProductCatalogAndSet(AD_ACCOUNT_ID, ACCESS_TOKEN, API_VERSION, meta.fb_business_id);
+      catalogInfo = await getProductCatalogAndSet(AD_ACCOUNT_ID, ACCESS_TOKEN, API_VERSION, meta.fb_business_id, PAGE_ID);
     }
     // --- CATALOGUE DISCOVERY END ---
 
@@ -405,7 +405,7 @@ Error: ${lastError?.message}`);
       adSet.conversion_location = payload.conversion_location;
       adSet.message_channel = payload.message_channel;
       adSet.phone_number = payload.phone_number || meta.business_phone;
-      adSet._catalogInfo = catalogInfo; // Pass catalogue info for OUTCOME_SALES
+      if (catalogInfo) adSet._catalogInfo = catalogInfo; // Honor discovery but don't overwrite if present
       const p = await buildAdSetPayload(finalObjective, adSet, campaignId, ACCESS_TOKEN, placements, PAGE_ID, activePixelId, payload);
 
       // Append Budget 
@@ -548,7 +548,7 @@ dsets`, {
           creative.conversion_location = payload.conversion_location;
           creative.message_channel = payload.message_channel;
           creative.phone_number = payload.phone_number || meta.business_phone;
-          creative._catalogInfo = catalogInfo; // Pass catalogue info for OUTCOME_SALES
+          if (catalogInfo) creative._catalogInfo = catalogInfo;
           const crParams = buildCreativePayload(finalObjective, creative, PAGE_ID, strat.igActor, ACCESS_TOKEN, finalForcePhoto, strat.placements);
           const crRes = await
             fetch(`https://graph.facebook.com/${API_VERSION}/act_${AD_ACCOUNT_ID}/a
@@ -1020,8 +1020,9 @@ function buildCreativePayload(objective, creative, pageId, instagramActorId, acc
     return params;
   }
   // --- END CATALOGUE CREATIVE PATH ---
+  const isCatalogueMode = creative._isCatalogue || objective === "OUTCOME_SALES" || creative.destination_type === "CATALOGUE";
 
-  if (!creative || !creative.image_hash) {
+  if (!isCatalogueMode && (!creative || !creative.image_hash)) {
     throw new Error("Image upload failed. Creative execution stopped.");
   }
 
@@ -1189,7 +1190,7 @@ async function getAutoPixelId(adAccountId, accessToken, apiVersion) {
 }
 
 // --- PRODUCT CATALOGUE DISCOVERY ---
-async function getProductCatalogAndSet(adAccountId, accessToken, apiVersion, businessId) {
+async function getProductCatalogAndSet(adAccountId, accessToken, apiVersion, businessId, pageId) {
   try {
     let json = null;
 
@@ -1218,6 +1219,28 @@ async function getProductCatalogAndSet(adAccountId, accessToken, apiVersion, bus
         `https://graph.facebook.com/${apiVersion}/act_${adAccountId}/client_product_catalogs?fields=id,name,product_count&access_token=${accessToken}`
       );
       json = await res3.json();
+    }
+
+    // Strategy 4: Search at Business level for ASSIGNED catalogs
+    if ((!json?.data || json.data.length === 0) && businessId) {
+      console.log(`🛍️ [Catalogue Discovery] Trying business/${businessId}/assigned_product_catalogs...`);
+      const res4 = await fetch(
+        `https://graph.facebook.com/${apiVersion}/${businessId}/assigned_product_catalogs?fields=id,name,product_count&access_token=${accessToken}`
+      );
+      const json4 = await res4.json();
+      if (json4.data && json4.data.length > 0) json = json4;
+    }
+
+    // Strategy 5: Search at Page level (sometimes catalogs are tied to the page)
+    if ((!json?.data || json.data.length === 0)) {
+      if (pageId) {
+        console.log(`🛍️ [Catalogue Discovery] Trying page/${pageId}/product_catalogs...`);
+        const res5 = await fetch(
+          `https://graph.facebook.com/${apiVersion}/${pageId}/product_catalogs?fields=id,name,product_count&access_token=${accessToken}`
+        );
+        const json5 = await res5.json();
+        if (json5.data && json5.data.length > 0) json = json5;
+      }
     }
 
     if (!json?.data || json.data.length === 0) {
