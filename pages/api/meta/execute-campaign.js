@@ -847,7 +847,9 @@ async function buildAdSetPayload(objective, adSet, campaignId, accessToken, plac
         console.log(`🛍️ [AdSet] Catalogue mode: product_set_id=${catInfo.productSetId}`);
       } else if (isCatalogueMode) {
         // Validation Fallback: Clear error if catalogue discovery failed or returned "default"
-        throw new Error(`I found your London account and GBP currency, but I cannot see your Product Catalogue. Please ensure your Catalogue is connected to Ad Account ${payload.ad_account_id}. If you have a specific Catalogue ID, please provide it.`);
+        // Use the passed adAccountId or extract from payload
+        const displayAccountId = adSet.ad_account_id || campaignId.split('_')[0] || "your account";
+        throw new Error(`I found your London account and GBP currency, but I cannot see your Product Catalogue. Please ensure your Catalogue is connected to Ad Account ${displayAccountId}. If you have a specific Catalogue ID, please provide it.`);
       } else if (pixelId) {
         // Standard pixel-based sales with website
         destination_type = "WEBSITE";
@@ -1205,114 +1207,93 @@ async function getAutoPixelId(adAccountId, accessToken, apiVersion) {
 }
 
 // --- PRODUCT CATALOGUE DISCOVERY ---
+async function findCatalogs(endpoint, accessToken) {
+  try {
+    const res = await fetch(endpoint);
+    const json = await res.json();
+    return json.data || [];
+  } catch (e) {
+    console.warn(`⚠️ [Catalogue Search] Failed endpoint ${endpoint}:`, e.message);
+    return [];
+  }
+}
+
 async function getProductCatalogAndSet(adAccountId, accessToken, apiVersion, businessId, pageId, manualCatalogId = null, manualProductSetId = null) {
   try {
-    let json = null;
-
-    // Strategy 0: Manual ID provided by user
+    // Strategy 0: Manual ID override
     if (manualCatalogId && manualCatalogId !== "default") {
       console.log(`🛍️ [Catalogue Discovery] Using manual Catalog ID: ${manualCatalogId}`);
-      json = { data: [{ id: manualCatalogId, name: "Manual/Captured Catalogue" }] };
+      return { catalogId: manualCatalogId, catalogName: "Manual Catalogue", productSetId: manualProductSetId || null };
     }
 
-    // Strategy 1: Search at Business level (correct endpoint per Meta API)
-    if (businessId) {
-      console.log(`🛍️ [Catalogue Discovery] Searching business ${businessId} for owned_product_catalogs...`);
-      const res = await fetch(
-        `https://graph.facebook.com/${apiVersion}/${businessId}/owned_product_catalogs?fields=id,name,product_count&access_token=${accessToken}`
-      );
-      json = await res.json();
+    console.log(`🔎 [Deep Discovery] Starting exhaustive search for act_${adAccountId}...`);
+    const allCatalogs = [];
+
+    // Define all possible discovery endpoints
+    const endpoints = [
+      businessId ? `https://graph.facebook.com/${apiVersion}/${businessId}/owned_product_catalogs?fields=id,name,product_count&access_token=${accessToken}` : null,
+      businessId ? `https://graph.facebook.com/${apiVersion}/${businessId}/assigned_product_catalogs?fields=id,name,product_count&access_token=${accessToken}` : null,
+      businessId ? `https://graph.facebook.com/${apiVersion}/${businessId}/client_product_catalogs?fields=id,name,product_count&access_token=${accessToken}` : null,
+      `https://graph.facebook.com/${apiVersion}/act_${adAccountId}/product_catalogs?fields=id,name,product_count&access_token=${accessToken}`,
+      `https://graph.facebook.com/${apiVersion}/act_${adAccountId}/client_product_catalogs?fields=id,name,product_count&access_token=${accessToken}`,
+      pageId ? `https://graph.facebook.com/${apiVersion}/${pageId}/product_catalogs?fields=id,name,product_count&access_token=${accessToken}` : null
+    ].filter(Boolean);
+
+    // Deep Search Loop
+    for (const url of endpoints) {
+      const found = await findCatalogs(url, accessToken);
+      allCatalogs.push(...found);
     }
 
-    // Strategy 2: Search at Ad Account level (direct owner)
-    if (!json?.data || json.data.length === 0) {
-      console.log(`🛍️ [Catalogue Discovery] Trying act_${adAccountId}/product_catalogs...`);
-      const res2 = await fetch(
-        `https://graph.facebook.com/${apiVersion}/act_${adAccountId}/product_catalogs?fields=id,name,product_count&access_token=${accessToken}`
-      );
-      json = await res2.json();
-    }
+    // De-duplicate by ID
+    const uniqueCatalogs = Array.from(new Map(allCatalogs.map(c => [c.id, c])).values());
 
-    // Strategy 3: Search for catalogs SHARED with the ad account (client_product_catalogs)
-    if (!json?.data || json.data.length === 0) {
-      console.log(`🛍️ [Catalogue Discovery] Trying act_${adAccountId}/client_product_catalogs...`);
-      const res3 = await fetch(
-        `https://graph.facebook.com/${apiVersion}/act_${adAccountId}/client_product_catalogs?fields=id,name,product_count&access_token=${accessToken}`
-      );
-      json = await res3.json();
-    }
-
-    // Strategy 4: Search at Business level for ASSIGNED catalogs (Business Asset Groups)
-    if ((!json?.data || json.data.length === 0) && businessId) {
-      console.log(`🛍️ [Catalogue Discovery] Trying business/${businessId}/assigned_product_catalogs...`);
-      const res4 = await fetch(
-        `https://graph.facebook.com/${apiVersion}/${businessId}/assigned_product_catalogs?fields=id,name,product_count&access_token=${accessToken}`
-      );
-      const json4 = await res4.json();
-      if (json4.data && json4.data.length > 0) json = json4;
-
-      // Also try 'client_product_catalogs' at business level if above fails
-      if (!json?.data || json.data.length === 0) {
-        console.log(`🛍️ [Catalogue Discovery] Trying business/${businessId}/client_product_catalogs...`);
-        const res4b = await fetch(
-          `https://graph.facebook.com/${apiVersion}/${businessId}/client_product_catalogs?fields=id,name,product_count&access_token=${accessToken}`
-        );
-        const json4b = await res4b.json();
-        if (json4b.data && json4b.data.length > 0) json = json4b;
-      }
-    }
-
-    // Strategy 5: Search at Page level (sometimes catalogs are tied to the page)
-    if ((!json?.data || json.data.length === 0)) {
-      if (pageId) {
-        console.log(`🛍️ [Catalogue Discovery] Trying page/${pageId}/product_catalogs...`);
-        const res5 = await fetch(
-          `https://graph.facebook.com/${apiVersion}/${pageId}/product_catalogs?fields=id,name,product_count&access_token=${accessToken}`
-        );
-        const json5 = await res5.json();
-        if (json5.data && json5.data.length > 0) json = json5;
-      }
-    }
-
-    if (!json?.data || json.data.length === 0) {
-      console.log("ℹ️ [Catalogue Discovery] No product catalogs found.");
+    if (uniqueCatalogs.length === 0) {
+      console.log("ℹ️ [Deep Discovery] No catalogs found across any endpoint.");
       return null;
     }
 
-    const catalog = json.data[0];
-    // If we have multiple, try to find one matching name "Bella & Diva" or similar if requested
-    // We search across all returned catalogs for brand keywords
-    const brandMatch = json.data.find(c =>
-      c.name?.toLowerCase().includes("bella") ||
-      c.name?.toLowerCase().includes("diva")
-    );
+    console.log(`📊 [Deep Discovery] Found ${uniqueCatalogs.length} potential catalogs. Ranking...`);
 
-    const finalCatalog = brandMatch || catalog;
+    // Ranking Logic:
+    // 1. Prioritize Catalogs with products > 0
+    // 2. Prioritize Catalogs with "Bella" or "Diva" in name
+    uniqueCatalogs.sort((a, b) => {
+      const aCount = a.product_count || 0;
+      const bCount = b.product_count || 0;
+      const aBrand = (a.name || "").toLowerCase().includes("bella") || (a.name || "").toLowerCase().includes("diva");
+      const bBrand = (b.name || "").toLowerCase().includes("bella") || (b.name || "").toLowerCase().includes("diva");
 
-    console.log(`✅ [Catalogue Discovery] Found: "${finalCatalog.name}" (ID: ${finalCatalog.id}, Products: ${finalCatalog.product_count || '?'})`);
+      if (aBrand && !bBrand) return -1;
+      if (!aBrand && bBrand) return 1;
+      if (aCount > 0 && bCount === 0) return -1;
+      if (aCount === 0 && bCount > 0) return 1;
+      return bCount - aCount; // Finally sort by count descending
+    });
 
-    // Get the default product set for this catalog
-    let productSetId = null;
-    try {
-      const psRes = await fetch(
-        `https://graph.facebook.com/${apiVersion}/${catalog.id}/product_sets?fields=id,name,product_count&access_token=${accessToken}`
-      );
-      const psJson = await psRes.json();
+    const finalCatalog = uniqueCatalogs[0];
+    console.log(`✅ [Deep Discovery] Winner: "${finalCatalog.name}" (ID: ${finalCatalog.id}, Products: ${finalCatalog.product_count || 0})`);
 
-      if (manualProductSetId && manualProductSetId !== "default") {
-        console.log(`✅ [Catalogue Discovery] Using manual Product Set ID: ${manualProductSetId}`);
-        productSetId = manualProductSetId;
-      } else if (psJson.data && psJson.data.length > 0) {
-        productSetId = psJson.data[0].id;
-        console.log(`✅ [Catalogue Discovery] Product Set: "${psJson.data[0].name}" (ID: ${productSetId}, Products: ${psJson.data[0].product_count || '?'})`);
+    // Get product set for the winner
+    let productSetId = manualProductSetId || null;
+    if (!productSetId || productSetId === "default") {
+      try {
+        const psRes = await fetch(`https://graph.facebook.com/${apiVersion}/${finalCatalog.id}/product_sets?fields=id,name,product_count&access_token=${accessToken}`);
+        const psJson = await psRes.json();
+        if (psJson.data && psJson.data.length > 0) {
+          // Rank product sets (look for "All Products" or first one with products > 0)
+          const bestPS = psJson.data.find(ps => ps.name?.toLowerCase().includes("all product")) || psJson.data[0];
+          productSetId = bestPS.id;
+          console.log(`✅ [Deep Discovery] Product Set: "${bestPS.name}" (ID: ${productSetId})`);
+        }
+      } catch (e) {
+        console.warn("⚠️ [Deep Discovery] Product set fetch failed:", e.message);
       }
-    } catch (e) {
-      console.warn("⚠️ [Catalogue Discovery] Could not fetch product sets:", e.message);
     }
 
     return { catalogId: finalCatalog.id, catalogName: finalCatalog.name, productSetId };
   } catch (e) {
-    console.error("❌ [Catalogue Discovery] Failed:", e.message);
+    console.error("❌ [Deep Discovery] Failed:", e.message);
     return null;
   }
 }
