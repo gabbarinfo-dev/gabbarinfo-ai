@@ -48,24 +48,34 @@ const user_access_token = metaRow?.fb_user_access_token;
     } catch (e) {
       return res.status(500).json({ ok: false, message: `AdAccount Sync Failed: ${e.message}` });
     }
-// 🔥 NEW: Catalogue Discovery
+// 🔥 DEEP SCAN: Find Catalogue & Pixel
     let catalogId = null;
+    let pixelId = null;
+
     try {
-      if (businessId) {
-        const catRes = await fetch(
-          `https://graph.facebook.com/v21.0/${businessId}/owned_product_catalogs?fields=id,name,product_count&access_token=${user_access_token}`
-        );
-        const catJson = await catRes.json();
-        if (catJson?.data?.length) {
-          // Auto-pick the catalog with the most products
-          const bestCat = catJson.data.reduce((prev, curr) => 
-            ((prev.product_count || 0) > (curr.product_count || 0)) ? prev : curr
-          );
-          catalogId = bestCat.id;
-        }
+      // 1. Check Ad Account for Product Catalogues (Crucial for Shopify/Partner syncs)
+      const adAssetsRes = await fetch(
+        `https://graph.facebook.com/v21.0/act_${adAccountId}?fields=product_catalogs,ads_pixels&access_token=${user_access_token}`
+      );
+      const adAssetsJson = await adAssetsRes.json();
+
+      // Get Catalog ID
+      if (adAssetsJson?.product_catalogs?.data?.length) {
+        catalogId = adAssetsJson.product_catalogs.data[0].id;
+      } 
+      // Fallback: If not in Ad Account, check Business Portfolio
+      else if (businessId) {
+        const bizCatRes = await fetch(`https://graph.facebook.com/v21.0/${businessId}/owned_product_catalogs?access_token=${user_access_token}`);
+        const bizCatJson = await bizCatRes.json();
+        if (bizCatJson?.data?.length) catalogId = bizCatJson.data[0].id;
+      }
+
+      // Get Pixel ID
+      if (adAssetsJson?.ads_pixels?.data?.length) {
+        pixelId = adAssetsJson.ads_pixels.data[0].id;
       }
     } catch (e) {
-      console.warn(`[Catalogue Sync Failed] ${e.message}`);
+      console.warn(`[Asset Sync Failed] ${e.message}`);
     }
     // 1️⃣ Get Pages user manages
     const pagesRes = await fetch(
@@ -126,6 +136,7 @@ const user_access_token = metaRow?.fb_user_access_token;
         fb_page_id: page.id || null, // Ensure Page ID is persisted
         fb_page_access_token: pageInfo.access_token || null, // Persist Page Token
         fb_catalog_id: catalogId || null, // <--- ADD THIS LINE
+        fb_pixel_id: pixelId,      // This will fix the NULL pixel issue too
         catalog_last_synced_at: new Date().toISOString(), // <--- ADD THIS LINE
         ig_business_id: igJson?.instagram_business_account?.id || null,
         instagram_actor_id: instagramActorId,
