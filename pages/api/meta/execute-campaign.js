@@ -386,7 +386,6 @@ Error: ${lastError?.message}`);
     if (finalObjective === "OUTCOME_SALES") {
       // Pick up manual IDs from the first ad set if provided
       const firstAdSet = payload.ad_sets?.[0] || {};
-      const manualCatId = firstAdSet.catalogId || firstAdSet.productSetId || null;
 
       catalogInfo = await getProductCatalogAndSet(
         AD_ACCOUNT_ID,
@@ -397,6 +396,33 @@ Error: ${lastError?.message}`);
         firstAdSet.catalogId,
         firstAdSet.productSetId
       );
+
+      // FALLBACK: If Deep Scan found nothing, check Supabase table
+      if (!catalogInfo && meta.fb_catalog_id) {
+        console.log(`🛍️ [Catalogue Fallback] Using synced catalogue from Supabase: ${meta.fb_catalog_id}`);
+        catalogInfo = { catalogId: meta.fb_catalog_id, catalogName: "Synced Catalogue", productSetId: null };
+
+        // Try to fetch the product set for this synced catalogue
+        try {
+          const psRes = await fetch(`https://graph.facebook.com/${API_VERSION}/${meta.fb_catalog_id}/product_sets?fields=id,name,product_count&access_token=${ACCESS_TOKEN}`);
+          const psJson = await psRes.json();
+          if (psJson?.data?.length) {
+            const bestPS = psJson.data.find(ps => ps.name?.toLowerCase().includes("all product")) || psJson.data[0];
+            catalogInfo.productSetId = bestPS.id;
+            console.log(`✅ [Catalogue Fallback] Product Set from synced catalogue: "${bestPS.name}" (ID: ${bestPS.id})`);
+          }
+        } catch (e) {
+          console.warn("⚠️ [Catalogue Fallback] Product set fetch failed:", e.message);
+        }
+      }
+
+      // Save discovered catalogue back to Supabase for future use
+      if (catalogInfo?.catalogId && !meta.fb_catalog_id) {
+        await supabase
+          .from("meta_connections")
+          .update({ fb_catalog_id: catalogInfo.catalogId, catalog_last_synced_at: new Date().toISOString() })
+          .eq("email", clientEmail);
+      }
     }
     // --- CATALOGUE DISCOVERY END ---
 
