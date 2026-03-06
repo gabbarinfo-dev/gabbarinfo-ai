@@ -1576,9 +1576,11 @@ You are in GENERIC DIGITAL MARKETING AGENT MODE.
 
         if (isDefaultOrInr && metaRow?.fb_ad_account_id && metaRow?.fb_user_access_token) {
           try {
-            const currRes = await fetch(`https://graph.facebook.com/v21.0/act_${metaRow.fb_ad_account_id}?fields=currency&access_token=${metaRow.fb_user_access_token}`);
+            console.log(`🔍 [Currency] Detecting currency for act_${metaRow.fb_ad_account_id}...`);
+            const currRes = await fetch(`https://graph.facebook.com/v25.0/act_${metaRow.fb_ad_account_id}?fields=currency&access_token=${metaRow.fb_user_access_token}`);
             const currJson = await currRes.json();
             if (currJson.currency) {
+              console.log(`✅ [Currency] Detected: ${currJson.currency}`);
               accountCurrency = currJson.currency;
               lockedCampaignState.account_currency = accountCurrency;
               currentState = lockedCampaignState;
@@ -1633,9 +1635,11 @@ You are in GENERIC DIGITAL MARKETING AGENT MODE.
 
         if (isDefaultOrInr2 && metaRow?.fb_ad_account_id && metaRow?.fb_user_access_token) {
           try {
-            const currRes = await fetch(`https://graph.facebook.com/v21.0/act_${metaRow.fb_ad_account_id}?fields=currency&access_token=${metaRow.fb_user_access_token}`);
+            console.log(`🔍 [Currency] Detecting currency for act_${metaRow.fb_ad_account_id}... (Custom Age Path)`);
+            const currRes = await fetch(`https://graph.facebook.com/v25.0/act_${metaRow.fb_ad_account_id}?fields=currency&access_token=${metaRow.fb_user_access_token}`);
             const currJson = await currRes.json();
             if (currJson.currency) {
+              console.log(`✅ [Currency] Detected: ${currJson.currency}`);
               accountCurrency2 = currJson.currency;
               lockedCampaignState.account_currency = accountCurrency2;
               currentState = lockedCampaignState;
@@ -2757,7 +2761,7 @@ LOCKED CAMPAIGN STATE (DO NOT CHANGE OR RE-ASK):
 - Location: ${lockedCampaignState.location || "N/A"}
 - Target Gender: ${lockedCampaignState.target_gender || "all"}
 - Age Range: ${lockedCampaignState.target_age_min || 18}-${lockedCampaignState.target_age_max || 65}
-- Daily Budget (INR): ${lockedCampaignState.budget_per_day || "N/A"}
+- Daily Budget (${lockedCampaignState.account_currency || "INR"}): ${lockedCampaignState.budget_per_day || "N/A"}
 - Duration (days): ${lockedCampaignState.total_days || "N/A"}
 - Website/Landing Page: ${lockedCampaignState.landing_page || "N/A"}
 
@@ -2809,7 +2813,7 @@ IF LOCKED CONTEXT EXISTS (Service + Location + Objective):
 - Use the JSON schema defined in your Mode Focus.
 - The plan MUST include:
   - Campaign Name (Creative & Descriptive)
-  - Budget (Daily, INR)
+  - Budget (Daily, ${lockedCampaignState.account_currency || "INR"})
   - Targeting (Location from Locked Context)
   - Targeting Suggestions (interests, demographics)
   - Message Channel (If Objective is Engagement: WhatsApp/Instagram/Messenger)
@@ -2825,7 +2829,7 @@ CRITICAL BUSINESS RULES
 ====================================================
 - If "Forced Meta Business Context" is present, use it.
 - NEVER invent URLs. Use verified landing pages only.
-- Assume India/INR defaults.
+- Assume detected account currency defaults.
 - For Step 8 (Strategy), output JSON ONLY if you have all details.
 - For Step 12 (Execution), NEVER simulate the output or say it is completed unless you see the REAL API output with a Campaign ID. If the pipeline is processing, tell the user to wait or that "Execution is handled by the system".
 - IMPORTANT: If a user says "YES" or "LAUNCH", the backend code handles the execution. You should NOT hallucinate a success message with fake IDs.
@@ -3110,12 +3114,15 @@ Otherwise, respond with a full, clear explanation, and include example JSON only
       if (!errorOcurred && stage === "PLAN_CONFIRMED" && lockedCampaignState.destination === "catalogue") {
         console.log("🚀 Catalogue Mode: Skipping Image Generation and moving to READY_TO_LAUNCH");
         lockedCampaignState.stage = "READY_TO_LAUNCH";
+        lockedCampaignState.image_hash = null; // Explicitly null for dynamic ads
+        if (lockedCampaignState.meta) lockedCampaignState.meta.uploadedImageHash = null;
+
         currentState = lockedCampaignState;
         await saveAnswerMemory(process.env.NEXT_PUBLIC_BASE_URL, effectiveBusinessId, { campaign_state: lockedCampaignState }, session.user.email.toLowerCase());
       }
 
       // --- STEP 10: IMAGE UPLOAD ---
-      if (!errorOcurred) {
+      if (!errorOcurred && lockedCampaignState.destination !== "catalogue") {
         // 🔒 PATCH: Use strict upload check
         if (state.creative?.imageBase64 && !isImageUploaded) {
           console.log("TRACE: IMAGE UPLOAD ATTEMPT");
