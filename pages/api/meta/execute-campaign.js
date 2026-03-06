@@ -104,7 +104,7 @@ export default async function handler(req, res) {
 
   const { data: meta, error } = await supabase
     .from("meta_connections")
-    .select("fb_ad_account_id, fb_page_id, ig_business_id, instagram_actor_id, business_website, business_phone, fb_user_access_token, fb_pixel_id")
+    .select("fb_ad_account_id, fb_page_id, ig_business_id, instagram_actor_id, business_website, business_phone, fb_user_access_token, fb_pixel_id, fb_business_id")
     .eq("email", clientEmail)
     .single();
 
@@ -384,7 +384,7 @@ Error: ${lastError?.message}`);
     // --- CATALOGUE DISCOVERY START ---
     let catalogInfo = null;
     if (finalObjective === "OUTCOME_SALES") {
-      catalogInfo = await getProductCatalogAndSet(AD_ACCOUNT_ID, ACCESS_TOKEN, API_VERSION);
+      catalogInfo = await getProductCatalogAndSet(AD_ACCOUNT_ID, ACCESS_TOKEN, API_VERSION, meta.fb_business_id);
     }
     // --- CATALOGUE DISCOVERY END ---
 
@@ -999,25 +999,27 @@ function buildCreativePayload(objective, creative, pageId, instagramActorId, acc
     const params = new URLSearchParams();
     params.append("access_token", accessToken);
 
-    // For catalogue ads, the creative uses product_set_id + template
-    const objectStorySpec = {
-      page_id: pageId,
-      ...(instagramActorId ? { instagram_actor_id: instagramActorId } : {}),
+    // For Advantage+ Catalogue Ads, the modern way is template_url_spec
+    params.append("template_url_spec", JSON.stringify({
       template_data: {
         call_to_action: { type: "SHOP_NOW" },
         link: creative.destination_url || `https://www.facebook.com/${pageId}`,
-        message: creative.primary_text || "Check out our products!",
-        name: creative.headline || "Shop Now",
+        message: creative.primary_text || "Discover our collection!",
+        name: "{{product.name}}",
+        description: "{{product.description}}",
         multi_share_end_card: false,
-        description: "{{product.description}}"
+        // Force carousel format by specifying format
+        format: "CAROUSEL"
       }
-    };
+    }));
 
-    params.append("name", `Catalog Creative - ${creative.headline || 'Products'}`);
     params.append("product_set_id", catInfo.productSetId);
-    params.append("object_story_spec", JSON.stringify(objectStorySpec));
+    params.append("name", `Catalog Creative - ${creative.headline || 'Products'}`);
+    if (instagramActorId) {
+      params.append("instagram_actor_id", instagramActorId);
+    }
 
-    console.log(`📨 [Creative] Catalogue mode: product_set_id=${catInfo.productSetId}`);
+    console.log(`📨 [Creative] Catalogue mode: product_set_id=${catInfo.productSetId} (using template_url_spec)`);
     return params;
   }
   // --- END CATALOGUE CREATIVE PATH ---
@@ -1190,15 +1192,38 @@ async function getAutoPixelId(adAccountId, accessToken, apiVersion) {
 }
 
 // --- PRODUCT CATALOGUE DISCOVERY ---
-async function getProductCatalogAndSet(adAccountId, accessToken, apiVersion) {
+async function getProductCatalogAndSet(adAccountId, accessToken, apiVersion, businessId) {
   try {
-    console.log(`🛍️ [Catalogue Discovery] Searching for product catalogs in act_${adAccountId}...`);
-    const res = await fetch(
-      `https://graph.facebook.com/${apiVersion}/act_${adAccountId}/product_catalogs?fields=id,name,product_count&access_token=${accessToken}`
-    );
-    const json = await res.json();
+    let json = null;
 
-    if (!json.data || json.data.length === 0) {
+    // Strategy 1: Search at Business level (correct endpoint per Meta API)
+    if (businessId) {
+      console.log(`🛍️ [Catalogue Discovery] Searching business ${businessId} for owned_product_catalogs...`);
+      const res = await fetch(
+        `https://graph.facebook.com/${apiVersion}/${businessId}/owned_product_catalogs?fields=id,name,product_count&access_token=${accessToken}`
+      );
+      json = await res.json();
+    }
+
+    // Strategy 2: Search at Ad Account level (direct owner)
+    if (!json?.data || json.data.length === 0) {
+      console.log(`🛍️ [Catalogue Discovery] Trying act_${adAccountId}/product_catalogs...`);
+      const res2 = await fetch(
+        `https://graph.facebook.com/${apiVersion}/act_${adAccountId}/product_catalogs?fields=id,name,product_count&access_token=${accessToken}`
+      );
+      json = await res2.json();
+    }
+
+    // Strategy 3: Search for catalogs SHARED with the ad account (client_product_catalogs)
+    if (!json?.data || json.data.length === 0) {
+      console.log(`🛍️ [Catalogue Discovery] Trying act_${adAccountId}/client_product_catalogs...`);
+      const res3 = await fetch(
+        `https://graph.facebook.com/${apiVersion}/act_${adAccountId}/client_product_catalogs?fields=id,name,product_count&access_token=${accessToken}`
+      );
+      json = await res3.json();
+    }
+
+    if (!json?.data || json.data.length === 0) {
       console.log("ℹ️ [Catalogue Discovery] No product catalogs found.");
       return null;
     }
@@ -1215,7 +1240,6 @@ async function getProductCatalogAndSet(adAccountId, accessToken, apiVersion) {
       const psJson = await psRes.json();
 
       if (psJson.data && psJson.data.length > 0) {
-        // Use the first (default/all products) set
         productSetId = psJson.data[0].id;
         console.log(`✅ [Catalogue Discovery] Product Set: "${psJson.data[0].name}" (ID: ${productSetId}, Products: ${psJson.data[0].product_count || '?'})`);
       }
