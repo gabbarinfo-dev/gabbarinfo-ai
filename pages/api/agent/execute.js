@@ -3974,7 +3974,7 @@ Reply **YES** to confirm this plan and proceed.
 
           console.log("🧪 FINAL IMAGE PROMPT:", imagePrompt);
 
-          if (!imagePrompt) {
+          if (!imagePrompt && currentState.destination !== 'catalogue' && currentState.objective !== 'OUTCOME_SALES') {
             throw new Error("Image prompt missing in campaign plan");
           }
           const imageResp = await fetch(
