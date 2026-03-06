@@ -783,7 +783,9 @@ You MUST ALWAYS output BOTH a human-readable summary AND the JSON using this exa
         "headline": "Top ${currentService} in ${currentLocation}",
         "call_to_action": "LEARN_MORE",
         "destination_url": "https://client-website.com"
-      }
+      },
+      "catalogId": null,
+      "productSetId": null
     }
   ]
 }
@@ -791,7 +793,7 @@ You MUST ALWAYS output BOTH a human-readable summary AND the JSON using this exa
 - Meta Objectives must be one of: OUTCOME_TRAFFIC, OUTCOME_LEADS, OUTCOME_SALES, OUTCOME_AWARENESS, OUTCOME_ENGAGEMENT, OUTCOME_APP_PROMOTION.
 - optimization_goal must match the performance goal (e.g., LINK_CLICKS, LANDING_PAGE_VIEWS).
 - destination_type should be set (e.g., WEBSITE, MESSAGING_APPS).
-- **CATALOGUE RULE**: If the user selects 'Catalogue Sales', set 'destination_type': 'CATALOGUE', remove 'imagePrompt' and 'destination_url', and add '_isCatalogue': true.
+- **CATALOGUE RULE**: If the user selects 'Catalogue Sales', set 'destination_type': 'CATALOGUE', remove 'imagePrompt' and 'destination_url', and add '_isCatalogue': true. If the user provides a specific Catalogue ID or Product Set ID in the chat, capture them in 'catalogId' and 'productSetId'.
 - When you output JSON, wrap it in a proper JSON code block. Do NOT add extra text inside the JSON block.
 - ALWAYS propose a plan if you have enough info (objective, location, service, budget).
 - **LOCATION RULE**: Use exactly "${currentLocation}" in universal_locations. DO NOT default to India.
@@ -4072,7 +4074,10 @@ Reply **YES** to confirm this plan and proceed.
 
                   return {
                     ...adset,
-                    _catalogInfo: isCatalogueMode ? { productSetId: "default" } : (adset._catalogInfo || null),
+                    _catalogInfo: isCatalogueMode ? {
+                      productSetId: adset.productSetId || "default",
+                      catalogId: adset.catalogId || null
+                    } : (adset._catalogInfo || null),
                     conversion_location: isCatalogueMode ? "CATALOGUE" : (currentState.conversion_location || plan.conversion_location || null),
                     message_channel: currentState.message_channel || null,
                     ad_creative: adCreative
