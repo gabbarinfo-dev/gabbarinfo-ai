@@ -1229,14 +1229,21 @@ async function getProductCatalogAndSet(adAccountId, accessToken, apiVersion, bus
     console.log(`🔎 [Deep Discovery] Starting exhaustive search for act_${adAccountId}...`);
     const allCatalogs = [];
 
-    // Define all possible discovery endpoints
+    // Define all possible discovery endpoints (ordered per specification)
     const endpoints = [
+      // Step 1: Business-owned catalogues (Standard)
       businessId ? `https://graph.facebook.com/${apiVersion}/${businessId}/owned_product_catalogs?fields=id,name,product_count&access_token=${accessToken}` : null,
-      businessId ? `https://graph.facebook.com/${apiVersion}/${businessId}/assigned_product_catalogs?fields=id,name,product_count&access_token=${accessToken}` : null,
-      businessId ? `https://graph.facebook.com/${apiVersion}/${businessId}/client_product_catalogs?fields=id,name,product_count&access_token=${accessToken}` : null,
+      // Step 2: Ad Account direct (Directly owned)
       `https://graph.facebook.com/${apiVersion}/act_${adAccountId}/product_catalogs?fields=id,name,product_count&access_token=${accessToken}`,
+      // Step 3: Ad Account client (Shopify/Partner Syncs)
       `https://graph.facebook.com/${apiVersion}/act_${adAccountId}/client_product_catalogs?fields=id,name,product_count&access_token=${accessToken}`,
-      pageId ? `https://graph.facebook.com/${apiVersion}/${pageId}/product_catalogs?fields=id,name,product_count&access_token=${accessToken}` : null
+      // Step 4: Ad Account assigned (Shared Assets)
+      `https://graph.facebook.com/${apiVersion}/act_${adAccountId}/assigned_product_catalogs?fields=id,name,product_count&access_token=${accessToken}`,
+      // Step 5: Page-linked catalogues
+      pageId ? `https://graph.facebook.com/${apiVersion}/${pageId}/product_catalogs?fields=id,name,product_count&access_token=${accessToken}` : null,
+      // Bonus: Business-level assigned & client (extra coverage)
+      businessId ? `https://graph.facebook.com/${apiVersion}/${businessId}/assigned_product_catalogs?fields=id,name,product_count&access_token=${accessToken}` : null,
+      businessId ? `https://graph.facebook.com/${apiVersion}/${businessId}/client_product_catalogs?fields=id,name,product_count&access_token=${accessToken}` : null
     ].filter(Boolean);
 
     // Deep Search Loop
@@ -1309,10 +1316,10 @@ async function getAdAccountCurrency(adAccountId, accessToken, apiVersion) {
       console.log(`💱 [Currency] Ad Account currency: ${json.currency}`);
       return json.currency; // ISO 4217 code e.g. "GBP", "INR", "USD"
     }
-    return "INR"; // Default fallback
+    return "USD"; // Default fallback (never INR)
   } catch (e) {
     console.warn("⚠️ [Currency] Could not detect currency:", e.message);
-    return "INR";
+    return "USD";
   }
 }
 // getCityKey removed — superseded by Universal Location Resolver in buildAdSetPayload
