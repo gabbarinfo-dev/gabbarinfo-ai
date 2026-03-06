@@ -3963,74 +3963,54 @@ Reply **YES** to confirm this plan and proceed.
         // ===============================
         // AGENT MODE IMAGE GENERATION + UPLOAD
         // ===============================
+        const isCatalogueMode = currentState.destination === "catalogue" || currentState.destination === "Catalogue Sales" || currentState.objective === "OUTCOME_SALES";
+
         if (!imageUploadedThisTurn) {
+          if (isCatalogueMode) {
+            console.log("🚀 [Waterfall 2] Catalogue Mode: Skipping Image Generation and Upload");
+            currentState.image_hash = null;
+            currentState.stage = "READY_TO_LAUNCH";
+          } else {
+            console.log("🧪 IMAGE PROMPT VALUE:", lockedCampaignState?.plan?.image_concept);
+            const imagePrompt = lockedCampaignState?.plan?.ad_sets?.[0]?.ad_creative?.imagePrompt;
+            console.log("🧪 FINAL IMAGE PROMPT:", imagePrompt);
 
-          console.log(
-            "🧪 IMAGE PROMPT VALUE:",
-            lockedCampaignState?.plan?.image_concept
-          );
-          const imagePrompt =
-            lockedCampaignState?.plan?.ad_sets?.[0]?.ad_creative?.imagePrompt;
-
-          console.log("🧪 FINAL IMAGE PROMPT:", imagePrompt);
-
-          if (!imagePrompt && currentState.destination !== 'catalogue' && currentState.objective !== 'OUTCOME_SALES') {
-            throw new Error("Image prompt missing in campaign plan");
-          }
-          const imageResp = await fetch(
-            `${process.env.NEXT_PUBLIC_BASE_URL}/api/images/generate`,
-            {
-              method: "POST",
-              headers: {
-                "Content-Type": "application/json",
-                "x-client-email": session.user.email,
-              },
-              body: JSON.stringify({
-                prompt: imagePrompt,
-              }),
+            if (!imagePrompt && currentState.destination !== 'catalogue' && currentState.objective !== 'OUTCOME_SALES') {
+              throw new Error("Image prompt missing in campaign plan");
             }
-          );
+            const imageResp = await fetch(`${process.env.NEXT_PUBLIC_BASE_URL}/api/images/generate`, {
+              method: "POST",
+              headers: { "Content-Type": "application/json", "x-client-email": session.user.email },
+              body: JSON.stringify({ prompt: imagePrompt }),
+            });
 
-          const imageJson = await imageResp.json();
+            const imageJson = await imageResp.json();
+            if (!imageResp.ok || !imageJson?.imageBase64) {
+              throw new Error("Agent image generation failed");
+            }
 
-          console.log("🧪 IMAGE GENERATE STATUS:", imageResp.status);
-          console.log("🧪 IMAGE GENERATE RAW:", imageJson);
-          console.log("🧪 IMAGE GENERATE KEYS:", Object.keys(imageJson || {}));
-          if (!imageResp.ok || !imageJson?.imageBase64) {
-            throw new Error("Agent image generation failed");
+            // 2. Upload image to Meta using EXISTING uploader
+            console.log("UPLOAD IMAGE API HIT");
+            const uploadResp = await fetch(`${process.env.NEXT_PUBLIC_BASE_URL}/api/meta/upload-image`, {
+              method: "POST",
+              headers: { "Content-Type": "application/json", "x-client-email": session.user.email },
+              body: JSON.stringify({ imageBase64: imageJson.imageBase64 }),
+            });
+
+            const uploadJson = await uploadResp.json();
+            if (!uploadResp.ok || !uploadJson?.imageHash) {
+              throw new Error("Agent image upload to Meta failed");
+            }
+
+            // 3. Persist truth
+            lockedCampaignState.imageHash = uploadJson.imageHash;
+            imageUploadedThisTurn = true;
+            currentState.image_hash = uploadJson.imageHash;
+            currentState.stage = "READY_TO_LAUNCH";
           }
-
-
-          // 2. Upload image to Meta using EXISTING uploader
-          console.log("UPLOAD IMAGE API HIT");
-          const uploadResp = await fetch(`${process.env.NEXT_PUBLIC_BASE_URL}/api/meta/upload-image`, {
-            method: "POST",
-            headers: {
-              "Content-Type": "application/json",
-              "x-client-email": session.user.email,
-            },
-            body: JSON.stringify({
-              imageBase64: imageJson.imageBase64,
-            }),
-          });
-
-
-          const uploadJson = await uploadResp.json();
-
-
-          if (!uploadResp.ok || !uploadJson?.imageHash) {
-            throw new Error("Agent image upload to Meta failed");
-          }
-
-
-          // 3. Persist truth
-          lockedCampaignState.imageHash = uploadJson.imageHash;
-          imageUploadedThisTurn = true;
-
-          // Sync with local waterfall state
-          currentState.image_hash = uploadJson.imageHash;
-          currentState.stage = "READY_TO_LAUNCH";
         }
+
+
 
 
         // --- STEP 12: EXECUTION ---
@@ -4084,14 +4064,24 @@ Reply **YES** to confirm this plan and proceed.
                   if (adCreative.destination_url && (adCreative.destination_url === "N/A" || adCreative.destination_url === "n/a" || !adCreative.destination_url.startsWith("http"))) {
                     adCreative.destination_url = null;
                   }
+
+                  // Force Catalogue settings for dynamic ads
+                  if (isCatalogueMode) {
+                    delete adCreative.image_hash;
+                  }
+
                   return {
                     ...adset,
-                    conversion_location: currentState.destination === "catalogue" ? "CATALOGUE" : (currentState.conversion_location || plan.conversion_location || null),
+                    _catalogInfo: isCatalogueMode ? { productSetId: "default" } : (adset._catalogInfo || null),
+                    conversion_location: isCatalogueMode ? "CATALOGUE" : (currentState.conversion_location || plan.conversion_location || null),
                     message_channel: currentState.message_channel || null,
                     ad_creative: adCreative
                   };
                 })
               };
+
+              // Force dynamic currency
+              finalPayload.budget.currency = activeCurrency;
 
               // Remove any leftover hardcoded geo_locations from plan
               if (finalPayload.targeting.geo_locations) {
