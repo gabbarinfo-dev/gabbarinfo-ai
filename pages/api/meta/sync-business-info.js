@@ -48,7 +48,25 @@ const user_access_token = metaRow?.fb_user_access_token;
     } catch (e) {
       return res.status(500).json({ ok: false, message: `AdAccount Sync Failed: ${e.message}` });
     }
-
+// 🔥 NEW: Catalogue Discovery
+    let catalogId = null;
+    try {
+      if (businessId) {
+        const catRes = await fetch(
+          `https://graph.facebook.com/v21.0/${businessId}/owned_product_catalogs?fields=id,name,product_count&access_token=${user_access_token}`
+        );
+        const catJson = await catRes.json();
+        if (catJson?.data?.length) {
+          // Auto-pick the catalog with the most products
+          const bestCat = catJson.data.reduce((prev, curr) => 
+            ((prev.product_count || 0) > (curr.product_count || 0)) ? prev : curr
+          );
+          catalogId = bestCat.id;
+        }
+      }
+    } catch (e) {
+      console.warn(`[Catalogue Sync Failed] ${e.message}`);
+    }
     // 1️⃣ Get Pages user manages
     const pagesRes = await fetch(
       `https://graph.facebook.com/v21.0/me/accounts?access_token=${user_access_token}`
@@ -107,6 +125,8 @@ const user_access_token = metaRow?.fb_user_access_token;
         fb_ad_account_id: adAccountId || undefined,
         fb_page_id: page.id || null, // Ensure Page ID is persisted
         fb_page_access_token: pageInfo.access_token || null, // Persist Page Token
+        fb_catalog_id: catalogId || null, // <--- ADD THIS LINE
+        catalog_last_synced_at: new Date().toISOString(), // <--- ADD THIS LINE
         ig_business_id: igJson?.instagram_business_account?.id || null,
         instagram_actor_id: instagramActorId,
         business_name: pageInfo.name || null,
