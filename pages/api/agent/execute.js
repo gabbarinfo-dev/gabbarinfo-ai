@@ -1555,11 +1555,26 @@ You are in GENERIC DIGITAL MARKETING AGENT MODE.
           session.user.email.toLowerCase()
         );
 
+        // Detect ad account currency before showing budget prompt
+        let accountCurrency = lockedCampaignState.account_currency || "INR";
+        if (!lockedCampaignState.account_currency && metaRow?.fb_ad_account_id && metaRow?.fb_access_token) {
+          try {
+            const currRes = await fetch(`https://graph.facebook.com/v21.0/act_${metaRow.fb_ad_account_id}?fields=currency&access_token=${metaRow.fb_access_token}`);
+            const currJson = await currRes.json();
+            if (currJson.currency) {
+              accountCurrency = currJson.currency;
+              lockedCampaignState.account_currency = accountCurrency;
+              currentState = lockedCampaignState;
+              await saveAnswerMemory(process.env.NEXT_PUBLIC_BASE_URL, effectiveBusinessId, { campaign_state: lockedCampaignState }, session.user.email.toLowerCase());
+            }
+          } catch (e) { console.warn("Currency detection failed:", e.message); }
+        }
+
         return res.status(200).json({
           ok: true,
           mode,
           gated: true,
-          text: `Age range: **18-65** (Standard).\n\nWhat is your **DAILY budget** for this campaign in INR? (e.g., 500)`
+          text: `Age range: **18-65** (Standard).\n\nWhat is your **DAILY budget** for this campaign in ${accountCurrency}? (e.g., 500)`
         });
       }
 
@@ -1595,11 +1610,26 @@ You are in GENERIC DIGITAL MARKETING AGENT MODE.
           session.user.email.toLowerCase()
         );
 
+        // Detect ad account currency
+        let accountCurrency2 = lockedCampaignState.account_currency || "INR";
+        if (!lockedCampaignState.account_currency && metaRow?.fb_ad_account_id && metaRow?.fb_access_token) {
+          try {
+            const currRes = await fetch(`https://graph.facebook.com/v21.0/act_${metaRow.fb_ad_account_id}?fields=currency&access_token=${metaRow.fb_access_token}`);
+            const currJson = await currRes.json();
+            if (currJson.currency) {
+              accountCurrency2 = currJson.currency;
+              lockedCampaignState.account_currency = accountCurrency2;
+              currentState = lockedCampaignState;
+              await saveAnswerMemory(process.env.NEXT_PUBLIC_BASE_URL, effectiveBusinessId, { campaign_state: lockedCampaignState }, session.user.email.toLowerCase());
+            }
+          } catch (e) { console.warn("Currency detection failed:", e.message); }
+        }
+
         return res.status(200).json({
           ok: true,
           mode,
           gated: true,
-          text: `Age range: **${ageMin}-${ageMax}** (Custom).\n\nWhat is your **DAILY budget** for this campaign in INR? (e.g., 500)`
+          text: `Age range: **${ageMin}-${ageMax}** (Custom).\n\nWhat is your **DAILY budget** for this campaign in ${accountCurrency2}? (e.g., 500)`
         });
       }
 
@@ -1618,11 +1648,12 @@ You are in GENERIC DIGITAL MARKETING AGENT MODE.
       if (budgetMatch) {
         const amount = parseInt(budgetMatch[1], 10);
 
+        const bCurrency = lockedCampaignState?.account_currency || "INR";
         // Validation: Ensure budget isn't too low for Meta
         if (amount < 100) {
           return res.status(200).json({
             ok: true, mode, gated: true,
-            text: `₹${amount} might be too low. Meta Ads usually require at least **₹100 per day** to deliver results. \n\nPlease enter a higher daily budget.`
+            text: `${amount} ${bCurrency} might be too low. Meta Ads usually require at least **100 ${bCurrency} per day** to deliver results. \n\nPlease enter a higher daily budget.`
           });
         }
 
@@ -1641,9 +1672,10 @@ You are in GENERIC DIGITAL MARKETING AGENT MODE.
           session.user.email.toLowerCase()
         );
 
+        const confirmCurrency = lockedCampaignState?.account_currency || "INR";
         return res.status(200).json({
           ok: true, mode, gated: true,
-          text: `Daily Budget: **₹${amount}**.\n\nFinally, for **how many days** should this campaign run? (e.g., 7 or 30)`
+          text: `Daily Budget: **${amount} ${confirmCurrency}**.\n\nFinally, for **how many days** should this campaign run? (e.g., 7 or 30)`
         });
       } else {
         return res.status(200).json({
@@ -2412,20 +2444,20 @@ You are in GENERIC DIGITAL MARKETING AGENT MODE.
                 ok: true,
                 mode,
                 gated: true,
-                text: `Daily budget locked at ₹${numericBudget}. \n\n**For how many days** do you want to run this campaign? (e.g., 7 or 30)`,
+                text: `Daily budget locked at ${numericBudget} ${lockedCampaignState?.account_currency || 'INR'}. \n\n**For how many days** do you want to run this campaign? (e.g., 7 or 30)`,
               });
             }
           }
 
           const suggestionText = extractedData.budget
-            ? `\n\nI detected a possible daily budget of ₹${extractedData.budget}. Is this correct? If so, please type it.`
+            ? `\n\nI detected a possible daily budget of ${extractedData.budget} ${lockedCampaignState?.account_currency || 'INR'}. Is this correct? If so, please type it.`
             : "";
 
           return res.status(200).json({
             ok: true,
             mode,
             gated: true,
-            text: `What is your DAILY budget in INR?${suggestionText}`,
+            text: `What is your DAILY budget in ${lockedCampaignState?.account_currency || 'INR'}?${suggestionText}`,
           });
         }
 
