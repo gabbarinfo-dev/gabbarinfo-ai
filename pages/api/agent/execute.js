@@ -1215,9 +1215,10 @@ You are in GENERIC DIGITAL MARKETING AGENT MODE.
         } else if (selectedMetaObjective === "OUTCOME_SALES") {
           // ADD THIS SPECIFIC BLOCK FOR SALES
           nextQuestion =
-            "Excellent. **I see you want Sales—I'll optimize this campaign for Purchases using your connected Meta Pixel.**\n\n" +
+            "Excellent. **I see you want Sales—I'll optimize this campaign for Purchases using your connected Meta Pixel or Product Catalogue.**\n\n" +
             "Now, where should people complete their purchase?\n\n" +
-            "1. Website";
+            "1. Website\n" +
+            "2. Catalogue Sales (Products from your catalogue)";
         } else {
           // Generic fallback for Awareness or App Promotion
           nextQuestion =
