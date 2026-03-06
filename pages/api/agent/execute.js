@@ -393,7 +393,7 @@ export default async function handler(req, res) {
       await supabase.from("agent_meta_assets").upsert(verifiedMetaAssets);
     }
 
-    const activeCurrency = verifiedMetaAssets?.ad_account?.currency || "INR";
+    const activeCurrency = verifiedMetaAssets?.ad_account?.currency || metaRow?.account_currency || "USD";
     console.log(`🏢 [Currency] Active Account Currency: ${activeCurrency}`);
 
     console.log(`🏢 Effective Business ID: ${effectiveBusinessId} (Active: ${activeBusinessId})`);
@@ -1585,10 +1585,10 @@ You are in GENERIC DIGITAL MARKETING AGENT MODE.
 
         // Detect ad account currency before showing budget prompt
         // RETRY if currently INR to ensure UK accounts get fixed
-        let isDefaultOrInr = !lockedCampaignState.account_currency || lockedCampaignState.account_currency === "INR";
-        let accountCurrency = lockedCampaignState.account_currency || "INR";
+        let isDefaultCurrency = !lockedCampaignState.account_currency;
+        let accountCurrency = lockedCampaignState.account_currency || metaRow?.account_currency || activeCurrency;
 
-        if (isDefaultOrInr && metaRow?.fb_ad_account_id && metaRow?.fb_user_access_token) {
+        if (isDefaultCurrency && metaRow?.fb_ad_account_id && metaRow?.fb_user_access_token) {
           try {
             console.log(`🔍 [Currency] Detecting currency for act_${metaRow.fb_ad_account_id}...`);
             const currRes = await fetch(`https://graph.facebook.com/v25.0/act_${metaRow.fb_ad_account_id}?fields=currency&access_token=${metaRow.fb_user_access_token}`);
@@ -1644,10 +1644,10 @@ You are in GENERIC DIGITAL MARKETING AGENT MODE.
         );
 
         // Detect ad account currency
-        let isDefaultOrInr2 = !lockedCampaignState.account_currency || lockedCampaignState.account_currency === "INR";
-        let accountCurrency2 = lockedCampaignState.account_currency || "INR";
+        let isDefaultCurrency2 = !lockedCampaignState.account_currency;
+        let accountCurrency2 = lockedCampaignState.account_currency || metaRow?.account_currency || activeCurrency;
 
-        if (isDefaultOrInr2 && metaRow?.fb_ad_account_id && metaRow?.fb_user_access_token) {
+        if (isDefaultCurrency2 && metaRow?.fb_ad_account_id && metaRow?.fb_user_access_token) {
           try {
             console.log(`🔍 [Currency] Detecting currency for act_${metaRow.fb_ad_account_id}... (Custom Age Path)`);
             const currRes = await fetch(`https://graph.facebook.com/v25.0/act_${metaRow.fb_ad_account_id}?fields=currency&access_token=${metaRow.fb_user_access_token}`);
@@ -1685,12 +1685,15 @@ You are in GENERIC DIGITAL MARKETING AGENT MODE.
       if (budgetMatch) {
         const amount = parseInt(budgetMatch[1], 10);
 
-        const bCurrency = lockedCampaignState?.account_currency || "INR";
+        const bCurrency = lockedCampaignState?.account_currency || metaRow?.account_currency || activeCurrency;
+        // Dynamic minimum budget per currency
+        const minBudget = bCurrency === "INR" ? 100 : 1;
+        const currencySymbol = bCurrency === "INR" ? "₹" : bCurrency === "GBP" ? "£" : bCurrency === "EUR" ? "€" : bCurrency === "USD" ? "$" : bCurrency === "AED" ? "AED " : `${bCurrency} `;
         // Validation: Ensure budget isn't too low for Meta
-        if (amount < 100) {
+        if (amount < minBudget) {
           return res.status(200).json({
             ok: true, mode, gated: true,
-            text: `${amount} ${bCurrency} might be too low. Meta Ads usually require at least **100 ${bCurrency} per day** to deliver results. \n\nPlease enter a higher daily budget.`
+            text: `${amount} ${bCurrency} is too low. Meta Ads require at least **${currencySymbol}${minBudget}** per day to deliver results. \n\nPlease enter a higher daily budget.`
           });
         }
 
@@ -1709,7 +1712,7 @@ You are in GENERIC DIGITAL MARKETING AGENT MODE.
           session.user.email.toLowerCase()
         );
 
-        const confirmCurrency = lockedCampaignState?.account_currency || "INR";
+        const confirmCurrency = lockedCampaignState?.account_currency || metaRow?.account_currency || activeCurrency;
         return res.status(200).json({
           ok: true, mode, gated: true,
           text: `Daily Budget: **${amount} ${confirmCurrency}**.\n\nFinally, for **how many days** should this campaign run? (e.g., 7 or 30)`
