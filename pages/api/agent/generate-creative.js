@@ -16,7 +16,7 @@ export default async function handler(req, res) {
       return res.status(400).json({ ok: false, error: "Missing intake data" });
     }
 
-    const model = genAI.getGenerativeModel({ model: process.env.GEMINI_MODEL || "gemini-1.5-flash-latest" });
+    const model = genAI.getGenerativeModel({ model: process.env.GEMINI_MODEL || "gemini-2.0-flash" });
 
     const prompt = `
 You are a senior Meta Ads copywriter and strategist.
