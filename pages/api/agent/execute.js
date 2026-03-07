@@ -24,7 +24,7 @@ const supabase = createClient(
 
 
 const GEMINI_API_KEY = process.env.GEMINI_API_KEY;
-const GEMINI_MODEL = process.env.GEMINI_MODEL || "gemini-2.0-flash";
+const GEMINI_MODEL = process.env.GEMINI_MODEL || "gemini-1.5-flash";
 
 let genAI = null;
 let __currentEmail = null;
@@ -4321,3 +4321,4 @@ async function handleInstagramPostOnly(req, res, session, body) {
 
   return res.json({ ok: true, text: "Thinking..." });
 }
+
