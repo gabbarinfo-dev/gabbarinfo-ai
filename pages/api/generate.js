@@ -79,8 +79,12 @@ export default async function handler(req, res) {
     }
 
     // 🔹 TEXT MODE (DEFAULT) – your old behavior, unchanged
+    let modelName = process.env.GEMINI_MODEL || "gemini-1.5-flash";
+    if (modelName.includes("models/")) {
+      modelName = modelName.replace("models/", "");
+    }
     const model = genAI.getGenerativeModel({
-      model: "gemini-flash-latest", // or "gemini-1.5-flash" if you prefer
+      model: modelName,
     });
 
     // exactly like before
@@ -110,4 +114,3 @@ export default async function handler(req, res) {
     });
   }
 }
-
