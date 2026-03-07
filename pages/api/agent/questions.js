@@ -16,8 +16,11 @@ export default async function handler(req, res) {
     });
   }
 
+  let modelName = process.env.GEMINI_MODEL || "gemini-1.5-flash";
+  if (modelName.includes("models/")) modelName = modelName.replace("models/", "");
+
   const model = genAI.getGenerativeModel({
-    model: process.env.GEMINI_MODEL || "gemini-1.5-flash",
+    model: modelName,
   });
 
   const prompt = `
@@ -60,4 +63,3 @@ Rules:
     });
   }
 }
-
