@@ -16,7 +16,10 @@ export default async function handler(req, res) {
       return res.status(400).json({ ok: false, error: "Missing intake data" });
     }
 
-    const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash" });
+    let modelName = process.env.GEMINI_MODEL || "gemini-1.5-flash";
+    if (modelName.includes("models/")) modelName = modelName.replace("models/", "");
+
+    const model = genAI.getGenerativeModel({ model: modelName });
 
     const prompt = `
 You are a senior Meta Ads copywriter and strategist.
@@ -81,4 +84,3 @@ Return STRICT JSON in this exact shape:
     });
   }
 }
-
