@@ -22,7 +22,10 @@ export default async function handler(req, res) {
     platform = "meta",
   } = req.body;
 
-  const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash" });
+  let modelName = process.env.GEMINI_MODEL || "gemini-1.5-flash";
+  if (modelName.includes("models/")) modelName = modelName.replace("models/", "");
+
+  const model = genAI.getGenerativeModel({ model: modelName });
 
   const prompt = `
 You are GabbarInfo AI — a senior digital marketing consultant.
@@ -63,4 +66,3 @@ Respond ONLY with questions (no explanations).
     questions: text,
   });
 }
-
