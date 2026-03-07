@@ -34,7 +34,7 @@ export default async function handler(req, res) {
     if (type === "image") {
       const model = genAI.getGenerativeModel({
         // image-capable model
-        model: process.env.GEMINI_MODEL || "gemini-2.0-flash",
+        model: process.env.GEMINI_MODEL || "gemini-1.5-flash",
       });
 
       // Ask Gemini to return an image (PNG)
@@ -80,7 +80,7 @@ export default async function handler(req, res) {
 
     // 🔹 TEXT MODE (DEFAULT) – your old behavior, unchanged
     const model = genAI.getGenerativeModel({
-      model: process.env.GEMINI_MODEL || "gemini-2.0-flash",
+      model: process.env.GEMINI_MODEL || "gemini-1.5-flash",
     });
 
     // exactly like before
