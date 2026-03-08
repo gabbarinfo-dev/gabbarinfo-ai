@@ -9,6 +9,7 @@
   },
   "dependencies": {
     "@google/generative-ai": "latest",
+    "google-ads-api": "^1.0.0",
     "next": "14.1.0",
     "react": "18.2.0",
     "react-dom": "18.2.0",
@@ -18,6 +19,8 @@
     "formidable": "^3.5.0",
     "pdf-parse": "^1.1.1",
     "mammoth": "^1.6.0",
-    "axios": "^1.6.8"
+    "axios": "^1.6.8",
+    "sharp": "^0.33.2",
+    "node-fetch": "^3.3.2"
   }
 }
