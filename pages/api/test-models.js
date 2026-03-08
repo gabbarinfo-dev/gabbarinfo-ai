@@ -8,17 +8,24 @@ export default async function handler(req, res) {
     }
 
     try {
-        const genAI = new GoogleGenerativeAI(GEMINI_API_KEY);
-        const response = await genAI.listModels();
+        // Using direct fetch to avoid SDK version inconsistencies
+        const url = `https://generativelanguage.googleapis.com/v1beta/models?key=${GEMINI_API_KEY}`;
+        const response = await fetch(url);
+        const data = await response.json();
 
-        const models = response.models.map(m => ({
+        if (!response.ok) {
+            throw new Error(data.error?.message || "Failed to fetch models");
+        }
+
+        const models = data.models.map(m => ({
             name: m.name,
+            displayName: m.displayName,
             supportedMethods: m.supportedGenerationMethods
         }));
 
         res.status(200).json({
             message: "Success",
-            api_key_found: true,
+            endpoint_used: "v1beta",
             models: models
         });
 
