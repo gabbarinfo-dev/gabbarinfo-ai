@@ -3,7 +3,6 @@
 import { useEffect, useState } from "react";
 import { useSession, signIn, signOut } from "next-auth/react";
 import FacebookBusinessConnect from "./components/facebook/FacebookBusinessConnect";
-import AnimatedSkyBackground from "./components/facebook/ui/AnimatedSkyBackground";
 
 export default function HomePage() {
   const { data: session, status } = useSession();
@@ -49,134 +48,46 @@ export default function HomePage() {
     );
   }
 
-/* -------------------------
-   NOT LOGGED IN
-------------------------- */
-if (!session) {
-  return (
-    <AnimatedSkyBackground>
-      <>
-        <style jsx>{`
-          .hero-title {
-            font-size: 44px;
-            font-weight: 600;
-            color: #ffffff;
-            margin-bottom: 12px;
-            position: relative;
-            text-shadow:
-              0 0 12px rgba(140,180,255,0.35),
-              0 0 26px rgba(120,160,255,0.25);
-          }
+  /* -------------------------
+     NOT LOGGED IN
+  ------------------------- */
+  if (!session) {
+    return (
+      <div style={{ padding: 40, fontFamily: "Inter, Arial" }}>
+        <h1>GabbarInfo AI</h1>
+        <p>Please sign in to use GabbarInfo AI.</p>
 
-          /* ELECTRIC TEXT CORE */
-          .ai-electric {
-            position: relative;
-            display: inline-block;
-          }
+        <button
+          onClick={() => signIn("google")}
+          style={{
+            marginTop: 16,
+            padding: "10px 16px",
+            borderRadius: 6,
+            border: "1px solid #ddd",
+            background: "#fff",
+            cursor: "pointer",
+          }}
+        >
+          Sign in with Google
+        </button>
+        <div style={{ height: 8 }} />
+        <button
+          onClick={() => signIn("facebook")}
+          style={{
+            padding: "10px 16px",
+            borderRadius: 6,
+            border: "1px solid #ddd",
+            background: "#1877F2",
+            color: "#fff",
+            cursor: "pointer",
+          }}
+        >
+          Continue with Facebook
+        </button>
+      </div>
+    );
+  }
 
-          /* ELECTRIC EDGE SPARKS */
-          .ai-electric::before,
-          .ai-electric::after {
-            content: attr(data-text);
-            position: absolute;
-            inset: 0;
-            color: transparent;
-            -webkit-text-stroke: 1px rgba(160,200,255,0.9);
-            opacity: 0;
-            pointer-events: none;
-            animation: spark 3.2s infinite steps(1);
-          }
-
-          .ai-electric::after {
-            -webkit-text-stroke: 1px rgba(210,230,255,0.9);
-            animation-delay: 1.6s;
-          }
-
-          @keyframes spark {
-            0% { opacity: 0; transform: translate(0,0); }
-            4% { opacity: 1; transform: translate(-1px,1px); }
-            5% { opacity: 0; }
-            22% { opacity: 0; }
-            26% { opacity: 1; transform: translate(1px,-1px); }
-            27% { opacity: 0; }
-            100% { opacity: 0; }
-          }
-
-          .hero-subtitle {
-            font-size: 16px;
-            color: rgba(255,255,255,0.75);
-            margin-bottom: 26px;
-            text-shadow: 0 0 10px rgba(255,255,255,0.15);
-          }
-        `}</style>
-
-        <div style={{ padding: 40, textAlign: "center" }}>
-          {/* ⚡ ELECTRIC AI TITLE */}
-          <h1 className="hero-title">
-            <span
-              className="ai-electric"
-              data-text="GabbarInfo AI"
-            >
-              GabbarInfo AI
-            </span>
-          </h1>
-
-          <p className="hero-subtitle">
-            Please sign in to use GabbarInfo AI.
-          </p>
-
-          <button
-            onClick={() => signIn("google")}
-            style={{
-              marginTop: 16,
-              padding: "10px 16px",
-              borderRadius: 6,
-              border: "1px solid #ddd",
-              background: "#fff",
-              cursor: "pointer",
-            }}
-          >
-            Sign in with Google
-          </button>
-
-          <div style={{ height: 8 }} />
-
-          <button
-            onClick={() => signIn("facebook")}
-            style={{
-              padding: "10px 16px",
-              borderRadius: 6,
-              border: "1px solid #ddd",
-              background: "#1877F2",
-              color: "#fff",
-              cursor: "pointer",
-            }}
-          >
-            Continue with Facebook
-          </button>
-
-          <footer
-            style={{
-              marginTop: 60,
-              fontSize: 13,
-              color: "#888",
-            }}
-          >
-            © 2026 GabbarInfo AI ·{" "}
-            <a
-              href="https://gabbarinfo.com/privacy-policy"
-              target="_blank"
-              rel="noopener noreferrer"
-              style={{ color: "#888", textDecoration: "none" }}
-            >
-              Privacy Policy
-            </a>
-          </footer>
-        </div>
-      </>
-    </AnimatedSkyBackground>
-  );
-}
   /* -------------------------
      LOGGED IN VIEW
   ------------------------- */
@@ -186,10 +97,7 @@ if (!session) {
         fontFamily: "Inter, Arial",
         minHeight: "100vh",
         padding: 32,
-        backgroundImage: "url('/backgrounds/dashboard-bg.jpg')",
-backgroundSize: "cover",
-backgroundPosition: "center",
-backgroundRepeat: "no-repeat",
+        background: "#fafafa",
       }}
     >
       {/* HEADER */}
@@ -204,7 +112,7 @@ backgroundRepeat: "no-repeat",
         <div>
           <h1 style={{ margin: 0 }}>GabbarInfo AI</h1>
           <div style={{ fontSize: 13, color: "#555", marginTop: 4 }}>
-            Logged in as {session.user.email} ({role})
+            Logged in as {session.user.email || "Unknown Email"} ({role})
           </div>
         </div>
 
@@ -248,7 +156,59 @@ backgroundRepeat: "no-repeat",
         </div>
       </header>
 
-      <main>
+      <main
+        style={{
+          display: "flex",
+          flexDirection: "column",
+          gap: 24,
+        }}
+      >
+        {/* 📧 MISSING EMAIL WARNING */}
+        {!session.user.email && (
+          <div
+            style={{
+              padding: "16px 20px",
+              borderRadius: 12,
+              background: "#fff5f5",
+              border: "1px solid #feb2b2",
+              color: "#c53030",
+              display: "flex",
+              flexDirection: "column",
+              gap: 8,
+              boxShadow: "0 4px 6px rgba(0,0,0,0.05)",
+              maxWidth: 640,
+            }}
+          >
+            <div style={{ fontWeight: 700, fontSize: 16 }}>
+              ⚠️ Missing Email Address
+            </div>
+            <div style={{ fontSize: 14, lineHeight: 1.5 }}>
+              We couldn't retrieve your email from your login. This will prevent
+              you from connecting Facebook Business assets.
+              <br />
+              <strong>Fix:</strong> Please sign out and log in using **Google**,
+              or ensure your Facebook account has a primary email address
+              shared.
+            </div>
+            <button
+              onClick={() => signOut()}
+              style={{
+                width: "fit-content",
+                padding: "8px 16px",
+                background: "#c53030",
+                color: "white",
+                border: "none",
+                borderRadius: 6,
+                cursor: "pointer",
+                fontSize: 13,
+                marginTop: 4,
+              }}
+            >
+              Sign out and try again
+            </button>
+          </div>
+        )}
+
         {/* CREDITS */}
         <section
           style={{
@@ -257,7 +217,6 @@ backgroundRepeat: "no-repeat",
             background: "#fff",
             border: "1px solid #eee",
             maxWidth: 640,
-            marginBottom: 24,
           }}
         >
           <h2 style={{ marginTop: 0 }}>Your Credits</h2>
@@ -282,7 +241,6 @@ backgroundRepeat: "no-repeat",
             gap: 12,
             flexWrap: "wrap",
             maxWidth: 640,
-            marginBottom: 24,
           }}
         >
           <a
@@ -293,6 +251,7 @@ backgroundRepeat: "no-repeat",
               border: "1px solid #ddd",
               background: "#fff",
               textDecoration: "none",
+              color: "#444",
               fontSize: 14,
             }}
           >
@@ -308,6 +267,7 @@ backgroundRepeat: "no-repeat",
                 border: "1px solid #ddd",
                 background: "#fff",
                 textDecoration: "none",
+                color: "#444",
                 fontSize: 14,
               }}
             >
@@ -330,29 +290,6 @@ backgroundRepeat: "no-repeat",
           <FacebookBusinessConnect />
         </section>
       </main>
-
-      {/* FOOTER */}
-      <footer
-        style={{
-          marginTop: 40,
-          textAlign: "center",
-          fontSize: 13,
-          color: "#888",
-          paddingBottom: 20,
-        }}
-      >
-        &copy; 2026 GabbarInfo AI &middot;{" "}
-        <a
-          href="https://gabbarinfo.com/privacy-policy"
-          target="_blank"
-          rel="noopener noreferrer"
-          style={{ color: "#888", textDecoration: "none" }}
-          onMouseOver={(e) => (e.currentTarget.style.textDecoration = "underline")}
-          onMouseOut={(e) => (e.currentTarget.style.textDecoration = "none")}
-        >
-          Privacy Policy
-        </a>
-      </footer>
     </div>
   );
 }
