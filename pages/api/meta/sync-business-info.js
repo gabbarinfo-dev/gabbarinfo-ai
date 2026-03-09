@@ -251,6 +251,36 @@ export default async function handler(req, res) {
         }
       }
 
+      // STEP 3.5: Connected WhatsApp Business Account (New Page Field Discovery)
+      if (!whatsappBusinessNumber && page?.id && pageInfo?.access_token) {
+        try {
+          console.log(`📱 [Sync] STEP 3.5: Checking connected_whatsapp_business_account...`);
+          const connRes = await fetch(
+            `https://graph.facebook.com/v21.0/${page.id}?fields=connected_whatsapp_business_account&access_token=${pageInfo.access_token}`
+          );
+          const connJson = await connRes.json();
+
+          if (connJson?.connected_whatsapp_business_account?.id) {
+            const connectedWabaId = connJson.connected_whatsapp_business_account.id;
+            console.log(`📱 [Sync] Found Connected WABA ID: ${connectedWabaId}`);
+
+            const phoneRes = await fetch(
+              `https://graph.facebook.com/v21.0/${connectedWabaId}/phone_numbers?access_token=${pageInfo.access_token}`
+            );
+            const phoneJson = await phoneRes.json();
+
+            if (phoneJson?.data?.length) {
+              const found = phoneJson.data[0];
+              whatsappBusinessNumber = found.display_phone_number;
+              whatsappBusinessNumberId = found.id;
+              console.log(`✅ [Sync] STEP 3.5: Found WhatsApp from Connected WABA: ${whatsappBusinessNumber} (ID: ${whatsappBusinessNumberId})`);
+            }
+          }
+        } catch (e) {
+          console.warn(`[Sync] STEP 3.5 (Connected WABA) failed: ${e.message}`);
+        }
+      }
+
       // STEP 4: Final Fallback (Use Business Phone)
       if (!whatsappBusinessNumber && pageInfo?.phone) {
         whatsappBusinessNumber = pageInfo.phone;
