@@ -54,7 +54,7 @@ async function crawlWebsite(startUrl) {
       links.forEach((l) => {
         if (!visited.has(l)) queue.push(l);
       });
-    } catch (_) {}
+    } catch (_) { }
   }
 
   return pages;
@@ -135,29 +135,28 @@ export default async function handler(req, res) {
       }
     }
 
-   // 🧠 FINAL INTAKE OBJECT (AUTHORITATIVE — AGENT READABLE)
-return res.json({
-  ok: true,
-  intake: {
-    business_name: meta.business_name || null,
-    business_category: meta.business_category || null,
-    business_about: meta.business_about || null,
+    // 🧠 FINAL INTAKE OBJECT (AUTHORITATIVE — AGENT READABLE)
+    return res.json({
+      ok: true,
+      intake: {
+        business_name: meta.business_name || null,
+        business_category: meta.business_category || null,
+        business_about: meta.business_about || null,
 
-    business_phone: meta.business_phone || detectedPhone || null,
-    business_website: meta.business_website || websiteUrl || null,
+        business_phone: meta.business_phone || detectedPhone || null,
+        business_website: meta.business_website || websiteUrl || null,
 
-    instagram_bio: meta.instagram_bio || null,
-    instagram_website: meta.instagram_website || null,
+        instagram_bio: meta.instagram_bio || null,
+        instagram_website: meta.instagram_website || null,
 
-    // ✅ ADD THIS
-    detected_services: detectedServices.length
-      ? detectedServices
-      : null,
+        detected_services: detectedServices.length
+          ? detectedServices
+          : null,
 
-    source: "supabase_synced",
-    synced_at: meta.updated_at || null,
-  },
-});
+        source: "supabase_synced",
+        synced_at: meta.updated_at || null,
+      },
+    });
 
   } catch (err) {
     return res.status(500).json({
@@ -166,4 +165,3 @@ return res.json({
     });
   }
 }
-
