@@ -229,11 +229,6 @@ Check Failed: ${e.message}`
     // 1. Map Objective 
     const rawObjective = payload.objective || "";
     let finalObjective = mapObjectiveToODAX(rawObjective);
-    // 🔧 FORCE WhatsApp campaigns to Engagement objective
-if ((payload.conversion_location || "").toUpperCase() === "WHATSAPP") {
-  console.log("📱 WhatsApp detected → forcing OUTCOME_ENGAGEMENT objective");
-  finalObjective = "OUTCOME_ENGAGEMENT";
-}
     // FIX: LEADS + CALLS is not allowed under ODAX
     if (
       finalObjective === "OUTCOME_LEADS" &&
@@ -785,16 +780,17 @@ async function buildAdSetPayload(objective, adSet, campaignId, accessToken, plac
         console.log("📍 [AdSet] Using LINK_CLICKS for TRAFFIC + WhatsApp to avoid 'Personal Account' restrictions.");
       }
 
-      else if (conversionLocation === "MESSAGES" || conversionLocation === "MESSAGING_APPS") {
+      else if (conversionLocation === "MESSAGES" || conversionLocation === "MESSAGING_APPS" || conversionLocation === "INSTAGRAM_DIRECT" || conversionLocation === "MESSENGER") {
         const channel = (adSet.message_channel || "").toUpperCase();
         if (channel === "WHATSAPP" || channel === "WHATSAPP_MESSAGES") {
           destination_type = "WHATSAPP";
-        } else if (channel === "INSTAGRAM_MESSAGES") {
+        } else if (channel === "INSTAGRAM_MESSAGES" || conversionLocation === "INSTAGRAM_DIRECT") {
           destination_type = "INSTAGRAM_DIRECT";
-        } else if (channel === "FACEBOOK_MESSENGER") {
+        } else if (channel === "FACEBOOK_MESSENGER" || conversionLocation === "MESSENGER") {
           destination_type = "MESSENGER";
         } else {
-          destination_type = "MESSENGER";
+          // Default to what we normalized to or fallback to Messenger
+          destination_type = conversionLocation === "INSTAGRAM_DIRECT" ? "INSTAGRAM_DIRECT" : "MESSENGER";
         }
         optimization_goal = "CONVERSATIONS";
         billing_event = "IMPRESSIONS";
@@ -829,30 +825,21 @@ async function buildAdSetPayload(objective, adSet, campaignId, accessToken, plac
         console.log("📍 [AdSet] Using CONVERSATIONS goal for LEADS + WhatsApp destination.");
       }
 
-     else if (
-  conversionLocation === "MESSAGING_APPS" ||
-  conversionLocation === "MESSAGES" ||
-  conversionLocation === "MESSENGER" ||
-  conversionLocation === "INSTAGRAM_DIRECT"
-) {
-
-  optimization_goal = "CONVERSATIONS";
-  billing_event = "IMPRESSIONS";
-
-  promoted_object = {
-    page_id: pageId
-  };
-
-  const channel = (adSet.message_channel || "").toUpperCase();
-
-  if (channel === "WHATSAPP_MESSAGES" || channel === "WHATSAPP") {
-    destination_type = "WHATSAPP";
-  } else if (channel === "INSTAGRAM_MESSAGES") {
-    destination_type = "INSTAGRAM_DIRECT";
-  } else {
-    destination_type = "MESSENGER";
-  }
-}
+      else if (conversionLocation === "MESSAGING_APPS" || conversionLocation === "MESSAGES" || conversionLocation === "MESSENGER" || conversionLocation === "INSTAGRAM_DIRECT") {
+        const channel = (adSet.message_channel || "").toUpperCase();
+        if (channel === "WHATSAPP" || channel === "WHATSAPP_MESSAGES") {
+          destination_type = "WHATSAPP";
+        } else if (channel === "INSTAGRAM_MESSAGES") {
+          destination_type = "INSTAGRAM_DIRECT";
+        } else {
+          destination_type = "MESSENGER";
+        }
+        // MOD: Messaging-based Leads require CONVERSATIONS goal in ODAX
+        optimization_goal = "CONVERSATIONS";
+        billing_event = "IMPRESSIONS";
+        promoted_object = { page_id: pageId };
+        console.log(`📍 [AdSet] Using CONVERSATIONS goal for LEADS + ${destination_type} destination.`);
+      }
 
       else if (conversionLocation === "CALLS") {
 
@@ -894,7 +881,7 @@ async function buildAdSetPayload(objective, adSet, campaignId, accessToken, plac
         };
       }
 
-      else if (conversionLocation === "MESSAGING_APPS" || conversionLocation === "MESSAGES" || conversionLocation === "WHATSAPP") {
+      else if (conversionLocation === "MESSAGING_APPS" || conversionLocation === "MESSAGES" || conversionLocation === "WHATSAPP" || conversionLocation === "INSTAGRAM_DIRECT" || conversionLocation === "MESSENGER") {
         const channel = (adSet.message_channel || "").toUpperCase();
 
         if (channel === "INSTAGRAM_MESSAGES") {
@@ -1197,7 +1184,9 @@ function buildCreativePayload(objective, creative, pageId, instagramActorId, acc
     const isMessagingDestination =
       conversionLocation === "WHATSAPP" ||
       conversionLocation === "MESSAGES" ||
-      conversionLocation === "MESSAGING_APPS";
+      conversionLocation === "MESSAGING_APPS" ||
+      conversionLocation === "INSTAGRAM_DIRECT" ||
+      conversionLocation === "MESSENGER";
 
     const pageUrl = `https://www.facebook.com/${pageId}`;
     const channel = (creative.message_channel || "").toUpperCase();
