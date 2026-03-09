@@ -176,13 +176,60 @@ export default async function handler(req, res) {
       console.warn(`⚠️ [Sync] Catalogue discovery failed: ${e.message}`);
     }
 
-    // 7️⃣ Store extracted data
+    // 7️⃣ WhatsApp Business Number Sync
+    let whatsappBusinessNumber = null;
+    let whatsappBusinessNumberId = null;
+
+    try {
+      console.log(`📱 [Sync] Starting WhatsApp discovery...`);
+
+      // Step A: Try Business-owned WABAs (if businessId exists)
+      if (businessId) {
+        const wabaRes = await fetch(
+          `https://graph.facebook.com/v21.0/${businessId}/owned_whatsapp_business_accounts?access_token=${user_access_token}`
+        );
+        const wabaJson = await wabaRes.json();
+
+        if (wabaJson?.data?.length) {
+          const wabaId = wabaJson.data[0].id;
+          console.log(`📱 [Sync] Found WABA ID: ${wabaId}`);
+
+          const phoneRes = await fetch(
+            `https://graph.facebook.com/v21.0/${wabaId}/phone_numbers?access_token=${user_access_token}`
+          );
+          const phoneJson = await phoneRes.json();
+
+          if (phoneJson?.data?.length) {
+            whatsappBusinessNumber = phoneJson.data[0].display_phone_number;
+            whatsappBusinessNumberId = phoneJson.data[0].id;
+            console.log(`✅ [Sync] WhatsApp Business Number found: ${whatsappBusinessNumber} (ID: ${whatsappBusinessNumberId})`);
+          }
+        }
+      }
+
+      // Step B: Fallback to Page-linked WhatsApp number if Business sync didn't find one
+      if (!whatsappBusinessNumber && page?.id) {
+        console.log(`📱 [Sync] Falling back to Page-linked WhatsApp search...`);
+        const pageWasaRes = await fetch(
+          `https://graph.facebook.com/v21.0/${page.id}?fields=whatsapp_number&access_token=${user_access_token}`
+        );
+        const pageWasaJson = await pageWasaRes.json();
+        if (pageWasaJson?.whatsapp_number) {
+          whatsappBusinessNumber = pageWasaJson.whatsapp_number;
+          console.log(`✅ [Sync] Page-linked WhatsApp Number found: ${whatsappBusinessNumber}`);
+        }
+      }
+    } catch (e) {
+      console.warn(`⚠️ [Sync] WhatsApp discovery failed: ${e.message}`);
+    }
+
+    // 8️⃣ Store extracted data
     await supabaseServer
       .from("meta_connections")
       .update({
         fb_ad_account_id: adAccountId || undefined,
-        fb_page_id: page.id || null, // Ensure Page ID is persisted
-        fb_page_access_token: pageInfo.access_token || null, // Persist Page Token
+        fb_page_id: page.id || null,
+        fb_page_access_token: pageInfo.access_token || null,
         ig_business_id: igJson?.instagram_business_account?.id || null,
         instagram_actor_id: instagramActorId,
         business_name: pageInfo.name || null,
@@ -197,6 +244,8 @@ export default async function handler(req, res) {
         fb_pixel_id: pixelId || undefined,
         fb_catalog_id: catalogId || undefined,
         catalog_last_synced_at: catalogId ? new Date().toISOString() : undefined,
+        whatsapp_business_number: whatsappBusinessNumber || null,
+        whatsapp_business_number_id: whatsappBusinessNumberId || null,
       })
       .eq("email", session.user.email);
 
