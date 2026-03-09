@@ -252,7 +252,10 @@ Check Failed: ${e.message}`
     // NEW FIX: LEADS + WHATSAPP is not allowed under ODAX or requires specific TOS
     if (
       finalObjective === "OUTCOME_LEADS" &&
-      (payload.conversion_location || "").toUpperCase() === "WHATSAPP"
+      (
+        (payload.conversion_location || "").toUpperCase() === "WHATSAPP" ||
+        (payload.message_channel || "").toUpperCase() === "WHATSAPP"
+      )
     ) {
       console.log("🔄 Re-mapping LEADS + WHATSAPP to OUTCOME_ENGAGEMENT for ODAX compliance and TOS safety");
       finalObjective = "OUTCOME_ENGAGEMENT";
@@ -499,6 +502,15 @@ The WhatsApp number linked to your Page is a "Personal" account.
 To use the "Maximize Conversations" goal, you MUST convert it to a WhatsApp Business account (download the WhatsApp Business app and follow the prompts).
 
 Alternatively, I will try to use the "Link Clicks" goal instead, which works with all numbers. (Relaunching with Traffic might fix this).`);
+        }
+
+        // Specific Handle for Performance Goal Error (ODAX Mismatch)
+        if (errDetail.error_subcode === 2490408) {
+          throw new Error(`
+⚠️ Meta Optimization Mismatch: The selected goal isn't available for this campaign type.
+This usually happens when trying to use "Lead Generation" goal with WhatsApp destination.
+
+I will try to automatically correct this to "Maximize Conversations" or switch to a Traffic campaign.`);
         }
 
         throw new Error(`AdSet Create Failed: ${errDetail.message || 'Unknown'} | SubCode: ${errDetail.error_subcode || 'N/A'} | Detail: ${errDetail.error_user_msg || errDetail.error_user_title || 'N/A'} (Account: ${AD_ACCOUNT_ID})`);
@@ -802,13 +814,14 @@ async function buildAdSetPayload(objective, adSet, campaignId, accessToken, plac
       if (conversionLocation === "WHATSAPP") {
 
         destination_type = "WHATSAPP";
-        optimization_goal = "LEAD_GENERATION";
+        // MOD: LEADS + WHATSAPP requires CONVERSATIONS, not LEAD_GENERATION
+        optimization_goal = "CONVERSATIONS";
         billing_event = "IMPRESSIONS";
 
         promoted_object = {
           page_id: pageId
         };
-
+        console.log("📍 [AdSet] Using CONVERSATIONS goal for LEADS + WhatsApp destination.");
       }
 
       else if (conversionLocation === "MESSAGING_APPS" || conversionLocation === "MESSAGES" || conversionLocation === "MESSENGER" || conversionLocation === "INSTAGRAM_DIRECT") {
