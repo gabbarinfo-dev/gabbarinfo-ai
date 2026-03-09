@@ -176,141 +176,13 @@ export default async function handler(req, res) {
       console.warn(`⚠️ [Sync] Catalogue discovery failed: ${e.message}`);
     }
 
-    // 7️⃣ Refined WhatsApp Business Number Sync (Enhanced Discovery)
-    let whatsappBusinessNumber = null;
-    let whatsappBusinessNumberId = null;
-
-    try {
-      console.log(`📱 [Sync] Starting Enhanced WhatsApp discovery...`);
-
-      // STEP 1: WABA Discovery (Multi-Source: Owned, Client, Personal)
-      const wabaIds = new Set();
-
-      try {
-        // A. Owned Business Accounts
-        if (businessId) {
-          const ownedRes = await fetch(
-            `https://graph.facebook.com/v21.0/${businessId}/owned_whatsapp_business_accounts?access_token=${user_access_token}`
-          );
-          const ownedJson = await ownedRes.json();
-          if (ownedJson?.data) ownedJson.data.forEach(w => wabaIds.add(w.id));
-        }
-
-        // B. Client/Assigned Business Accounts
-        if (businessId) {
-          const clientRes = await fetch(
-            `https://graph.facebook.com/v21.0/${businessId}/client_whatsapp_business_accounts?access_token=${user_access_token}`
-          );
-          const clientJson = await clientRes.json();
-          if (clientJson?.data) clientJson.data.forEach(w => wabaIds.add(w.id));
-        }
-
-        // C. Personal/Direct Accounts
-        const personalRes = await fetch(
-          `https://graph.facebook.com/v21.0/me/whatsapp_business_accounts?access_token=${user_access_token}`
-        );
-        const personalJson = await personalRes.json();
-        if (personalJson?.data) personalJson.data.forEach(w => wabaIds.add(w.id));
-
-        console.log(`📱 [Sync] Discovered WABA IDs:`, Array.from(wabaIds));
-
-        // STEP 2: Phone Extraction (Loop through all discovered WABAs)
-        for (const wabaId of wabaIds) {
-          console.log(`📱 [Sync] Extracting phones for WABA ID: ${wabaId}`);
-          const phoneRes = await fetch(
-            `https://graph.facebook.com/v21.0/${wabaId}/phone_numbers?access_token=${user_access_token}`
-          );
-          const phoneJson = await phoneRes.json();
-
-          if (phoneJson?.data?.length) {
-            const found = phoneJson.data[0];
-            whatsappBusinessNumber = found.display_phone_number;
-            whatsappBusinessNumberId = found.id;
-            console.log(`✅ [Sync] WABA Match Found: ${whatsappBusinessNumber} (ID: ${whatsappBusinessNumberId})`);
-            break;
-          }
-        }
-      } catch (e) {
-        console.warn(`[Sync] WABA Search Failed: ${e.message}`);
-      }
-
-      // STEP 3: Page-Linked WhatsApp (Strict) — Use Page Access Token
-      if (!whatsappBusinessNumber && page?.id && pageInfo?.access_token) {
-        try {
-          console.log(`📱 [Sync] STEP 3: Page-linked search using Page Access Token...`);
-          const pageWasaRes = await fetch(
-            `https://graph.facebook.com/v21.0/${page.id}?fields=whatsapp_number&access_token=${pageInfo.access_token}`
-          );
-          const pageWasaJson = await pageWasaRes.json();
-          if (pageWasaJson?.whatsapp_number) {
-            whatsappBusinessNumber = pageWasaJson.whatsapp_number;
-            console.log(`✅ [Sync] STEP 3: Page-linked WhatsApp found: ${whatsappBusinessNumber}`);
-          }
-        } catch (e) {
-          console.warn(`[Sync] STEP 3 failed: ${e.message}`);
-        }
-      }
-
-      // STEP 4: Ads Capability Fallback (Check Page CTAs)
-      if (!whatsappBusinessNumber && page?.id && pageInfo?.access_token) {
-        try {
-          console.log(`📱 [Sync] STEP 4: Checking Page CTAs...`);
-          const ctaRes = await fetch(
-            `https://graph.facebook.com/v21.0/${page.id}/call_to_actions?fields=type,status,whatsapp_number&access_token=${pageInfo.access_token}`
-          );
-          const ctaJson = await ctaRes.json();
-          const waCTA = ctaJson?.data?.find(cta => cta.type === "WHATSAPP_MESSAGE" && cta.whatsapp_number);
-          if (waCTA) {
-            whatsappBusinessNumber = waCTA.whatsapp_number;
-            console.log(`✅ [Sync] STEP 4: Found in Page CTA: ${whatsappBusinessNumber}`);
-          }
-        } catch (e) {
-          console.warn(`[Sync] STEP 4 failed: ${e.message}`);
-        }
-      }
-
-      // STEP 5: Connected WhatsApp Business Account (Page Field)
-      if (!whatsappBusinessNumber && page?.id && pageInfo?.access_token) {
-        try {
-          console.log(`📱 [Sync] STEP 5: Checking connected_whatsapp_business_account...`);
-          const connRes = await fetch(
-            `https://graph.facebook.com/v21.0/${page.id}?fields=connected_whatsapp_business_account&access_token=${pageInfo.access_token}`
-          );
-          const connJson = await connRes.json();
-          if (connJson?.connected_whatsapp_business_account?.id) {
-            const connectedWabaId = connJson.connected_whatsapp_business_account.id;
-            const phoneRes = await fetch(
-              `https://graph.facebook.com/v21.0/${connectedWabaId}/phone_numbers?access_token=${pageInfo.access_token}`
-            );
-            const phoneJson = await phoneRes.json();
-            if (phoneJson?.data?.length) {
-              whatsappBusinessNumber = phoneJson.data[0].display_phone_number;
-              whatsappBusinessNumberId = phoneJson.data[0].id;
-              console.log(`✅ [Sync] STEP 5: Found via Connected WABA: ${whatsappBusinessNumber}`);
-            }
-          }
-        } catch (e) {
-          console.warn(`[Sync] STEP 5 failed: ${e.message}`);
-        }
-      }
-
-      // STEP 6: Final Fallback (Only if NO WABA of any kind found)
-      if (!whatsappBusinessNumber && pageInfo?.phone) {
-        whatsappBusinessNumber = pageInfo.phone;
-        console.log(`✅ [Sync] STEP 6: Final fallback using Business Phone: ${whatsappBusinessNumber}`);
-      }
-
-    } catch (e) {
-      console.warn(`⚠️ [Sync] WhatsApp discovery fatal: ${e.message}`);
-    }
-
-    // 8️⃣ Store extracted data
+    // 7️⃣ Store extracted data
     await supabaseServer
       .from("meta_connections")
       .update({
         fb_ad_account_id: adAccountId || undefined,
-        fb_page_id: page.id || null,
-        fb_page_access_token: pageInfo.access_token || null,
+        fb_page_id: page.id || null, // Ensure Page ID is persisted
+        fb_page_access_token: pageInfo.access_token || null, // Persist Page Token
         ig_business_id: igJson?.instagram_business_account?.id || null,
         instagram_actor_id: instagramActorId,
         business_name: pageInfo.name || null,
@@ -325,8 +197,6 @@ export default async function handler(req, res) {
         fb_pixel_id: pixelId || undefined,
         fb_catalog_id: catalogId || undefined,
         catalog_last_synced_at: catalogId ? new Date().toISOString() : undefined,
-        whatsapp_business_number: whatsappBusinessNumber || null,
-        whatsapp_business_number_id: whatsappBusinessNumberId || null,
       })
       .eq("email", session.user.email);
 
@@ -345,3 +215,4 @@ export default async function handler(req, res) {
     });
   }
 }
+
