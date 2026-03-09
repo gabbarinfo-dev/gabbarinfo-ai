@@ -1935,11 +1935,9 @@ You are in GENERIC DIGITAL MARKETING AGENT MODE.
       });
     }
 
-    if (metaRow?.whatsapp_business_number) {
-      detectedWhatsappNumber = metaRow.whatsapp_business_number;
-    } else if (autoBusinessContext?.whatsapp_business_number) {
-      detectedWhatsappNumber = autoBusinessContext.whatsapp_business_number;
-    } else if (autoBusinessContext?.business_phone) {
+    let detectedWhatsappNumber = null;
+
+    if (autoBusinessContext?.business_phone) {
       detectedWhatsappNumber = autoBusinessContext.business_phone;
     }
 
@@ -2009,26 +2007,9 @@ You are in GENERIC DIGITAL MARKETING AGENT MODE.
       !lockedCampaignState?.whatsapp_confirmed
     ) {
       console.log("TRACE: ENTER META INTAKE FLOW");
-
-      if (detectedWhatsappNumber) {
-        // PROACTIVE AUTO-LOCK if a real WhatsApp Business Number is found
-        const baseUrl = process.env.NEXT_PUBLIC_BASE_URL;
-        const nextState = {
-          ...lockedCampaignState,
-          whatsapp: detectedWhatsappNumber,
-          whatsapp_confirmed: true,
-          locked_at: new Date().toISOString()
-        };
-        await saveAnswerMemory(baseUrl, effectiveBusinessId, { campaign_state: nextState }, session.user.email.toLowerCase());
-        lockedCampaignState = nextState;
-
-        return res.status(200).json({
-          ok: true,
-          mode,
-          gated: true,
-          text: `I found your primary WhatsApp Business number connected to your ad account:\n📱 **${detectedWhatsappNumber}**\n\nI will use this for your campaign. (To use a different number, please update it in your Meta Business Suite). Reply OK to continue.`,
-        });
-      }
+      const suggestionText = detectedWhatsappNumber
+        ? `\n\nI found this number on your Facebook Page:\n📱 ${detectedWhatsappNumber}`
+        : "";
 
       console.log("TRACE: RETURNING RESPONSE — STAGE =", currentState?.stage);
       return res.status(200).json({
@@ -2036,9 +2017,10 @@ You are in GENERIC DIGITAL MARKETING AGENT MODE.
         mode,
         gated: true,
         text:
-          "WhatsApp ads require a connected WhatsApp Business number.\n\n" +
-          "I couldn't find a WhatsApp Business number connected to your account. Please connect one in your Meta Business Suite, then try again.\n\n" +
-          "Alternatively, if you have a number, please reply with it (with country code, e.g., +91XXXXXXXXXX).",
+          "WhatsApp ads require an explicit WhatsApp-enabled number." +
+          suggestionText +
+          "\n\nPlease reply with the exact WhatsApp number you want to use (with country code).\n" +
+          "Example: +91XXXXXXXXXX",
       });
     }
     // ============================================================
@@ -4339,3 +4321,4 @@ async function handleInstagramPostOnly(req, res, session, body) {
 
   return res.json({ ok: true, text: "Thinking..." });
 }
+
