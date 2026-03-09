@@ -1982,6 +1982,36 @@ You are in GENERIC DIGITAL MARKETING AGENT MODE.
           text: `WhatsApp number **${cleaned}** saved. Reply OK to generate your campaign plan.`
         });
       }
+
+      // Handle "OK" / "Confirm" for detected number
+      const triggerConfirm = /^(ok|yes|confirm|proceed|correct|yep|sure)$/i.test(instruction.trim());
+      if (triggerConfirm && detectedWhatsappNumber && effectiveBusinessId) {
+        const baseUrl = process.env.NEXT_PUBLIC_BASE_URL;
+        const newState = {
+          ...lockedCampaignState,
+          whatsapp: detectedWhatsappNumber,
+          whatsapp_confirmed: true,
+          locked_at: new Date().toISOString(),
+          stage: "whatsapp_confirmed"
+        };
+
+        await saveAnswerMemory(
+          baseUrl,
+          effectiveBusinessId,
+          { campaign_state: newState },
+          session.user.email.toLowerCase()
+        );
+
+        lockedCampaignState = newState;
+        currentState = newState;
+
+        return res.status(200).json({
+          ok: true,
+          mode,
+          gated: true,
+          text: `WhatsApp number **${detectedWhatsappNumber}** confirmed. Reply OK to generate your campaign plan.`
+        });
+      }
     }
 
     if (
@@ -2007,20 +2037,24 @@ You are in GENERIC DIGITAL MARKETING AGENT MODE.
       !lockedCampaignState?.whatsapp_confirmed
     ) {
       console.log("TRACE: ENTER META INTAKE FLOW");
-      const suggestionText = detectedWhatsappNumber
-        ? `\n\nI found this number on your Facebook Page:\n📱 ${detectedWhatsappNumber}`
+      const suggestionPart = detectedWhatsappNumber
+        ? `\n\nI found this number on your Facebook Page: **${detectedWhatsappNumber}**.\n\n`
         : "";
 
       console.log("TRACE: RETURNING RESPONSE — STAGE =", currentState?.stage);
+
+      let promptText = "WhatsApp ads require an explicit WhatsApp-enabled number.\n\n";
+      if (detectedWhatsappNumber) {
+        promptText = `We have found a WhatsApp Business number connected to your account (**${detectedWhatsappNumber}**).\n\nPress **OK** to confirm or reply with a different number.`;
+      } else {
+        promptText += "Please reply with the exact WhatsApp number you want to use (with country code, e.g., +91XXXXXXXXXX).";
+      }
+
       return res.status(200).json({
         ok: true,
         mode,
         gated: true,
-        text:
-          "WhatsApp ads require an explicit WhatsApp-enabled number." +
-          suggestionText +
-          "\n\nPlease reply with the exact WhatsApp number you want to use (with country code).\n" +
-          "Example: +91XXXXXXXXXX",
+        text: promptText,
       });
     }
     // ============================================================
