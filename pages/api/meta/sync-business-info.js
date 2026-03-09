@@ -9,44 +9,59 @@ export default async function handler(req, res) {
       return res.status(401).json({ ok: false });
     }
 
- // 🔥 Get user-specific access token
-const { data: metaRow } = await supabaseServer
-  .from("meta_connections")
-  .select("fb_business_id, fb_user_access_token")
-  .eq("email", session.user.email)
-  .single();
+    // 🔥 Get user-specific access token
+    const { data: metaRow } = await supabaseServer
+      .from("meta_connections")
+      .select("fb_business_id, fb_user_access_token")
+      .eq("email", session.user.email)
+      .single();
 
-const businessId = metaRow?.fb_business_id;
-const user_access_token = metaRow?.fb_user_access_token;
+    const businessId = metaRow?.fb_business_id;
+    const user_access_token = metaRow?.fb_user_access_token;
     let adAccountId = null;
 
-    if (!businessId || !user_access_token) {
-  return res.status(400).json({
-    ok: false,
-    message: "Missing business ID or user access token",
-  });
-}
+    if (!user_access_token) {
+      return res.status(400).json({
+        ok: false,
+        message: "Missing user access token. Please reconnect Facebook Business.",
+      });
+    }
 
-    // Fetch Ad Accounts (Strictly Business-owned)
+    // --- STEP 0: Fetch Ad Account (Try Business Owned, then Fallback to Personal) ---
     try {
+      // 1. Try Business Owned Ad Accounts
       if (businessId) {
+        console.log(`🏢 [Sync] Attempting Business sync for ID: ${businessId}`);
         const bizAdRes = await fetch(
           `https://graph.facebook.com/v21.0/${businessId}/owned_ad_accounts?access_token=${user_access_token}`
         );
         const bizAdJson = await bizAdRes.json();
         if (bizAdJson?.data?.length) {
           adAccountId = bizAdJson.data[0].id;
+          console.log(`✅ [Sync] Business ad account found: ${adAccountId}`);
         }
       }
 
+      // 2. Fallback: Fetch any accessible ad accounts (Personal/Direct)
       if (!adAccountId) {
-        return res.status(400).json({
-          ok: false,
-          message: "No business-owned ad accounts found. A Meta Business account is required.",
-        });
+        console.log("📍 [Sync] No business ad account. Falling back to personal accounts (/me/adaccounts)...");
+        const personalAdRes = await fetch(
+          `https://graph.facebook.com/v21.0/me/adaccounts?access_token=${user_access_token}`
+        );
+        const personalAdJson = await personalAdRes.json();
+        if (personalAdJson?.data?.length) {
+          adAccountId = personalAdJson.data[0].id;
+          console.log(`✅ [Sync] Personal/Fallback ad account found: ${adAccountId}`);
+        }
+      }
+
+      // 3. Optional: Only error if ABSOLUTELY no ad account found and we need it for Ads
+      // For now, we allow continuing if Page sync might still work (for Instagram organic)
+      if (!adAccountId) {
+        console.warn("⚠️ [Sync] No ad accounts found. Only Page/Instagram features will be enabled.");
       }
     } catch (e) {
-      return res.status(500).json({ ok: false, message: `AdAccount Sync Failed: ${e.message}` });
+      console.error(`[Sync AdAccount Error] ${e.message}`);
     }
 
     // 1️⃣ Get Pages user manages
@@ -100,7 +115,68 @@ const user_access_token = metaRow?.fb_user_access_token;
       instagram = await igInfoRes.json();
     }
 
-    // 4️⃣ Store extracted data
+    // 4️⃣ Fetch Ad Account Currency
+    let accountCurrency = null;
+    try {
+      const currRes = await fetch(
+        `https://graph.facebook.com/v21.0/${adAccountId}?fields=currency&access_token=${user_access_token}`
+      );
+      const currJson = await currRes.json();
+      if (currJson.currency) {
+        accountCurrency = currJson.currency;
+        console.log(`💱 [Sync] Currency detected: ${accountCurrency}`);
+      }
+    } catch (e) {
+      console.warn(`⚠️ [Sync] Currency detection failed: ${e.message}`);
+    }
+
+    // 5️⃣ Fetch Pixel ID
+    let pixelId = null;
+    try {
+      const pixRes = await fetch(
+        `https://graph.facebook.com/v21.0/${adAccountId}/adspixels?fields=id,name&access_token=${user_access_token}`
+      );
+      const pixJson = await pixRes.json();
+      if (pixJson?.data?.length) {
+        pixelId = pixJson.data[0].id;
+        console.log(`🎯 [Sync] Pixel found: ${pixelId}`);
+      }
+    } catch (e) {
+      console.warn(`⚠️ [Sync] Pixel discovery failed: ${e.message}`);
+    }
+
+    // 6️⃣ Deep Catalogue Scan
+    let catalogId = null;
+    try {
+      const cleanAdId = (adAccountId || "").toString().replace(/^act_/, "");
+      const catalogEndpoints = [
+        businessId ? `https://graph.facebook.com/v21.0/${businessId}/owned_product_catalogs?fields=id,name,product_count&access_token=${user_access_token}` : null,
+        adAccountId ? `https://graph.facebook.com/v21.0/${adAccountId}/product_catalogs?fields=id,name,product_count&access_token=${user_access_token}` : null,
+        adAccountId ? `https://graph.facebook.com/v21.0/act_${cleanAdId}/assigned_product_catalogs?fields=id,name,product_count&access_token=${user_access_token}` : null,
+        page?.id ? `https://graph.facebook.com/v21.0/${page.id}/product_catalogs?fields=id,name,product_count&access_token=${user_access_token}` : null,
+      ].filter(Boolean);
+
+      const allCatalogs = [];
+      for (const url of catalogEndpoints) {
+        try {
+          const catRes = await fetch(url);
+          const catJson = await catRes.json();
+          if (catJson?.data?.length) allCatalogs.push(...catJson.data);
+        } catch (_) { /* skip failed endpoint */ }
+      }
+
+      // De-duplicate and pick the one with the most products
+      const unique = Array.from(new Map(allCatalogs.map(c => [c.id, c])).values());
+      if (unique.length > 0) {
+        unique.sort((a, b) => (b.product_count || 0) - (a.product_count || 0));
+        catalogId = unique[0].id;
+        console.log(`🛍️ [Sync] Best catalogue: "${unique[0].name}" (ID: ${catalogId}, Products: ${unique[0].product_count || 0})`);
+      }
+    } catch (e) {
+      console.warn(`⚠️ [Sync] Catalogue discovery failed: ${e.message}`);
+    }
+
+    // 7️⃣ Store extracted data
     await supabaseServer
       .from("meta_connections")
       .update({
@@ -117,6 +193,10 @@ const user_access_token = metaRow?.fb_user_access_token;
         instagram_bio: instagram?.biography || null,
         instagram_website: instagram?.website || null,
         business_info_synced: true,
+        account_currency: accountCurrency || undefined,
+        fb_pixel_id: pixelId || undefined,
+        fb_catalog_id: catalogId || undefined,
+        catalog_last_synced_at: catalogId ? new Date().toISOString() : undefined,
       })
       .eq("email", session.user.email);
 
