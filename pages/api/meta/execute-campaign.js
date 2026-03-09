@@ -216,6 +216,16 @@ Check Failed: ${e.message}`
   const createdAssets = { campaign_id: null, ad_sets: [], ads: [] };
 
   try {
+    // NEW: WhatsApp Detection Hook (Pre-Normalization)
+    // If the creative explicitly has a whatsapp_number, force the conversion_location to WHATSAPP
+    const firstAdSet = payload.ad_sets?.[0] || {};
+    const creative = firstAdSet.ad_creative || {};
+    if (creative.message_template_options?.whatsapp_number || creative.whatsapp_number) {
+      console.log("📱 [Execution] WhatsApp number detected in creative. Forcing conversion_location: WHATSAPP and message_channel: WHATSAPP_MESSAGES");
+      payload.conversion_location = "WHATSAPP";
+      payload.message_channel = "WHATSAPP_MESSAGES"; // Ensure true WhatsApp routing
+    }
+
     // 1. Map Objective 
     const rawObjective = payload.objective || "";
     let finalObjective = mapObjectiveToODAX(rawObjective);
@@ -239,12 +249,12 @@ Check Failed: ${e.message}`
       finalObjective = "OUTCOME_ENGAGEMENT";
     }
 
-    // NEW FIX: LEADS + WHATSAPP is not allowed under ODAX
+    // NEW FIX: LEADS + WHATSAPP is not allowed under ODAX or requires specific TOS
     if (
       finalObjective === "OUTCOME_LEADS" &&
       (payload.conversion_location || "").toUpperCase() === "WHATSAPP"
     ) {
-      console.log("🔄 Re-mapping LEADS + WHATSAPP to OUTCOME_ENGAGEMENT for ODAX compliance");
+      console.log("🔄 Re-mapping LEADS + WHATSAPP to OUTCOME_ENGAGEMENT for ODAX compliance and TOS safety");
       finalObjective = "OUTCOME_ENGAGEMENT";
     }
     console.log(`
@@ -468,6 +478,18 @@ dsets`, {
       if (!asRes.ok) {
         const errDetail = asJson.error || {};
         console.error(`❌ [AdSet] Full Meta Error:`, JSON.stringify(asJson.error, null, 2));
+
+        // Specific Handle for Lead Ads Terms of Service
+        if (errDetail.error_subcode === 1815089) {
+          throw new Error(`
+✋ Meta Action Required: Lead Ads Terms Not Accepted.
+Please visit this link to accept the Terms of Service for your Facebook Page:
+https://www.facebook.com/ads/leadgen/tos
+
+Once accepted, you can try publishing this campaign again.
+(Page ID: ${PAGE_ID})`);
+        }
+
         throw new Error(`AdSet Create Failed: ${errDetail.message || 'Unknown'} | SubCode: ${errDetail.error_subcode || 'N/A'} | Detail: ${errDetail.error_user_msg || errDetail.error_user_title || 'N/A'} (Account: ${AD_ACCOUNT_ID})`);
       }
       // 4. Create Creative with Fallbacks
