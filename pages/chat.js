@@ -313,6 +313,7 @@ export default function ChatPage() {
   const [agentInstruction, setAgentInstruction] = useState("");
   const [agentLoading, setAgentLoading] = useState(false);
   const [agentError, setAgentError] = useState("");
+  const [agentResponse, setAgentResponse] = useState("");
 
   useEffect(() => {
     if (typeof window === "undefined") return;
@@ -411,6 +412,7 @@ export default function ChatPage() {
     });
     setActiveChatId(newChat.id);
     setInput("");
+    setAgentResponse("");
   }
 
   function scrollChatToBottom() {
@@ -777,6 +779,7 @@ Now respond as GabbarInfo AI.
       const data = await res.json();
       const rawText = data.text || data.response || JSON.stringify(data, null, 2);
       const assistantText = `GabbarInfo Agent:\n\n${rawText}`;
+      setAgentResponse(rawText); // Save for the panel integrated view
 
       const assistantMsg = {
         role: "assistant",
@@ -1291,8 +1294,29 @@ Now respond as GabbarInfo AI.
                   </option>
                   <option value="social_plan">Social Media calendar</option>
                   <option value="seo_blog">SEO / Blog planner</option>
-                  <option value="instagram_post">Instagram Post Publish</option>
                 </select>
+
+                {agentResponse && (
+                  <div
+                    style={{
+                      marginTop: 12,
+                      padding: 12,
+                      background: "#e8f0fe",
+                      borderRadius: 10,
+                      border: "1px solid #d2e3fc",
+                      fontSize: 13,
+                      color: "#174ea6",
+                      whiteSpace: "pre-wrap",
+                      maxHeight: 200,
+                      overflowY: "auto",
+                    }}
+                  >
+                    <div style={{ fontWeight: 700, marginBottom: 4, fontSize: 11, textTransform: "uppercase" }}>
+                      Agent Reply:
+                    </div>
+                    {agentResponse}
+                  </div>
+                )}
 
                 <label
                   style={{
@@ -1481,4 +1505,3 @@ Now respond as GabbarInfo AI.
     </div>
   );
 }
-
