@@ -229,6 +229,11 @@ Check Failed: ${e.message}`
     // 1. Map Objective 
     const rawObjective = payload.objective || "";
     let finalObjective = mapObjectiveToODAX(rawObjective);
+    // 🔧 FORCE WhatsApp campaigns to Engagement objective
+if ((payload.conversion_location || "").toUpperCase() === "WHATSAPP") {
+  console.log("📱 WhatsApp detected → forcing OUTCOME_ENGAGEMENT objective");
+  finalObjective = "OUTCOME_ENGAGEMENT";
+}
     // FIX: LEADS + CALLS is not allowed under ODAX
     if (
       finalObjective === "OUTCOME_LEADS" &&
@@ -824,19 +829,30 @@ async function buildAdSetPayload(objective, adSet, campaignId, accessToken, plac
         console.log("📍 [AdSet] Using CONVERSATIONS goal for LEADS + WhatsApp destination.");
       }
 
-      else if (conversionLocation === "MESSAGING_APPS" || conversionLocation === "MESSAGES" || conversionLocation === "MESSENGER" || conversionLocation === "INSTAGRAM_DIRECT") {
-        const channel = (adSet.message_channel || "").toUpperCase();
-        if (channel === "WHATSAPP" || channel === "WHATSAPP_MESSAGES") {
-          destination_type = "WHATSAPP";
-        } else if (channel === "INSTAGRAM_MESSAGES") {
-          destination_type = "INSTAGRAM_DIRECT";
-        } else {
-          destination_type = "MESSENGER";
-        }
-        optimization_goal = "LEAD_GENERATION";
-        billing_event = "IMPRESSIONS";
-        promoted_object = { page_id: pageId };
-      }
+     else if (
+  conversionLocation === "MESSAGING_APPS" ||
+  conversionLocation === "MESSAGES" ||
+  conversionLocation === "MESSENGER" ||
+  conversionLocation === "INSTAGRAM_DIRECT"
+) {
+
+  optimization_goal = "CONVERSATIONS";
+  billing_event = "IMPRESSIONS";
+
+  promoted_object = {
+    page_id: pageId
+  };
+
+  const channel = (adSet.message_channel || "").toUpperCase();
+
+  if (channel === "WHATSAPP_MESSAGES" || channel === "WHATSAPP") {
+    destination_type = "WHATSAPP";
+  } else if (channel === "INSTAGRAM_MESSAGES") {
+    destination_type = "INSTAGRAM_DIRECT";
+  } else {
+    destination_type = "MESSENGER";
+  }
+}
 
       else if (conversionLocation === "CALLS") {
 
