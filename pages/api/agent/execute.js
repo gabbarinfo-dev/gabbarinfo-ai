@@ -801,6 +801,8 @@ You MUST ALWAYS output BOTH a human-readable summary AND the JSON using this exa
 }
 
 - Meta Objectives must be one of: OUTCOME_TRAFFIC, OUTCOME_LEADS, OUTCOME_SALES, OUTCOME_AWARENESS, OUTCOME_ENGAGEMENT, OUTCOME_APP_PROMOTION.
+- For Instagram Profile Visits, use CTA: VIEW_INSTAGRAM_PROFILE and Performance Goal: VISIT_INSTAGRAM_PROFILE.
+- For Facebook Page visits, use CTA: VISIT_PROFILE or LEARN_MORE.
 - optimization_goal must match the performance goal (e.g., LINK_CLICKS, LANDING_PAGE_VIEWS).
 - destination_type should be set (e.g., WEBSITE, MESSAGING_APPS).
 - **CATALOGUE RULE**: If the user selects 'Catalogue Sales', set 'destination_type': 'CATALOGUE', remove 'imagePrompt' and 'destination_url', and add '_isCatalogue': true. If the user provides a specific Catalogue ID or Product Set ID in the chat, capture them in 'catalogId' and 'productSetId'. If you do not have a Catalogue ID and discovery fails (returns "default"), you MUST ask the user: "I'm ready to launch your Sales Carousel, but I need your Catalogue ID to pull the products. You can find this in Meta Commerce Manager > Settings."
