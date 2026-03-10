@@ -485,7 +485,7 @@ Error: ${lastError?.message}`);
       adSet.message_channel = payload.message_channel;
       adSet.phone_number = payload.phone_number || meta.business_phone;
       if (catalogInfo) adSet._catalogInfo = catalogInfo; // Honor discovery but don't overwrite if present
-      const p = await buildAdSetPayload(finalObjective, adSet, campaignId, ACCESS_TOKEN, placements, PAGE_ID, activePixelId, payload);
+      const p = await buildAdSetPayload(finalObjective, adSet, campaignId, ACCESS_TOKEN, placements, PAGE_ID, activePixelId, payload, validatedInstagramActorId);
 
       // Append Budget 
       p.append(budgetType, String(Math.floor(Number(budgetAmount) *
@@ -619,7 +619,7 @@ creation...`);
  [AdSet] Creating NEW Ad Set for fallback 
 with placements ${platKey}...`);
             adSet.conversion_location = payload.conversion_location;
-            const p = await buildAdSetPayload(finalObjective, adSet, campaignId, ACCESS_TOKEN, strat.placements, PAGE_ID, activePixelId, payload);
+            const p = await buildAdSetPayload(finalObjective, adSet, campaignId, ACCESS_TOKEN, strat.placements, PAGE_ID, activePixelId, payload, validatedInstagramActorId);
             // Append budget (same as primary AdSet)
             const fbBudgetAmount = payload.budget?.amount || 500;
             const fbBudgetType = (payload.budget?.type || "DAILY").toUpperCase() === "DAILY" ? "daily_budget" : "lifetime_budget";
@@ -760,7 +760,7 @@ ${JSON.stringify(lastCreativeError, null, 2)}`);
 }
 
 // UNIVERSAL AD SET BUILDER (Strict ODAX Compliance)
-async function buildAdSetPayload(objective, adSet, campaignId, accessToken, placements, pageId, metaPixelId, payload) {
+async function buildAdSetPayload(objective, adSet, campaignId, accessToken, placements, pageId, metaPixelId, payload, instagramActorId) {
   const params = new URLSearchParams();
 
   params.append("name", adSet.name || "Ad Set 1");
@@ -834,6 +834,29 @@ async function buildAdSetPayload(objective, adSet, campaignId, accessToken, plac
         destination_type = "WEBSITE";
         optimization_goal = "LINK_CLICKS";
         billing_event = "IMPRESSIONS";
+      }
+
+      else if (conversionLocation === "INSTAGRAM_PROFILE") {
+        if (!instagramActorId) {
+          throw new Error("Instagram Profile Visits require a connected Instagram account. Please connect your Instagram profile to your Facebook Page first.");
+        }
+        destination_type = "INSTAGRAM_PROFILE";
+        optimization_goal = "INSTAGRAM_PROFILE_VISITS";
+        billing_event = "IMPRESSIONS";
+        promoted_object = {
+          instagram_actor_id: instagramActorId
+        };
+        console.log("📍 [AdSet] Using INSTAGRAM_PROFILE destination and INSTAGRAM_PROFILE_VISITS goal.");
+      }
+
+      else if (conversionLocation === "FACEBOOK_PAGE") {
+        destination_type = "FACEBOOK_PAGE";
+        optimization_goal = "LINK_CLICKS";
+        billing_event = "IMPRESSIONS";
+        promoted_object = {
+          page_id: pageId
+        };
+        console.log("📍 [AdSet] Using FACEBOOK_PAGE destination.");
       }
 
       else {
@@ -1181,6 +1204,10 @@ function buildCreativePayload(objective, creative, pageId, instagramActorId, acc
     conversionLocation === "INSTAGRAM_DIRECT" ||
     conversionLocation === "MESSENGER";
 
+  const isProfileDestination =
+    conversionLocation === "INSTAGRAM_PROFILE" ||
+    conversionLocation === "FACEBOOK_PAGE";
+
   const channel = (creative.message_channel || "").toUpperCase();
 
   const isInstagramPlacement = placements.includes("instagram");
@@ -1252,6 +1279,32 @@ function buildCreativePayload(objective, creative, pageId, instagramActorId, acc
       };
 
       console.log(`📨 [Creative] Messaging mode: CTA=${ctaType}, link=${pageUrl}`);
+    }
+
+    // ==============================
+    // PROFILE DESTINATIONS (Instagram Profile / Facebook Page)
+    // ==============================
+    else if (!forcePhoto && isProfileDestination) {
+      let ctaType = "LEARN_MORE";
+
+      if (conversionLocation === "INSTAGRAM_PROFILE") {
+        ctaType = "INSTAGRAM_PROFILE_VISITS";
+      } else if (conversionLocation === "FACEBOOK_PAGE") {
+        // For Traffic, LEARN_MORE is standard; for Engagement, LIKE_PAGE could be used
+        ctaType = (objective === "OUTCOME_ENGAGEMENT") ? "LIKE_PAGE" : "LEARN_MORE";
+      }
+
+      objectStorySpec.link_data = {
+        image_hash: creative.image_hash,
+        link: pageUrl, // FB/IG profiles often use Page URL as the base link
+        message: creative.primary_text || "",
+        name: creative.headline || (conversionLocation === "INSTAGRAM_PROFILE" ? "Visit profile" : "Visit page"),
+        call_to_action: {
+          type: ctaType
+        }
+      };
+
+      console.log(`👤 [Creative] Profile mode: CTA=${ctaType}, link=${pageUrl}`);
     }
 
     // ==============================
