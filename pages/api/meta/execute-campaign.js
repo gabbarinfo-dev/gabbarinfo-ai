@@ -323,7 +323,10 @@ ${objParam}`);
 
           // ODAX Safety Default
           const dofSpec = {
-            advantage_plus_creative: { enroll_status: "OPT_IN" }
+            creative_features_spec: {
+              image_touchups: { enroll_status: "OPT_IN" },
+              text_optimizations: { enroll_status: "OPT_IN" }
+            }
           };
           campaignParams.append("degrees_of_freedom_spec",
             JSON.stringify(dofSpec));
@@ -1281,7 +1284,10 @@ function buildCreativePayload(objective, creative, pageId, instagramActorId, acc
 
   // Required for multi-destination messaging creatives (ODAX)
   const dofSpec = {
-    advantage_plus_creative: { enroll_status: "OPT_IN" }
+    creative_features_spec: {
+      image_touchups: { enroll_status: "OPT_IN" },
+      text_optimizations: { enroll_status: "OPT_IN" }
+    }
   };
 
   params.append(
