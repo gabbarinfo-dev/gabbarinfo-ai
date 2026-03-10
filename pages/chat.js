@@ -322,6 +322,8 @@ export default function ChatPage() {
         setAgentInstruction("Create A Meta Ads Campaign");
       } else if (agentMode === "instagram_post") {
         setAgentInstruction("Publish an Instagram Post");
+      } else {
+        setAgentInstruction("");
       }
     }
   }, [agentMode, isAgentPanelOpen]);
