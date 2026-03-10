@@ -1174,6 +1174,15 @@ function buildCreativePayload(objective, creative, pageId, instagramActorId, acc
     // else stays as MESSAGES/MESSAGING_APPS → will route to MESSAGE_PAGE CTA
   }
 
+  const isMessagingDestination =
+    conversionLocation === "WHATSAPP" ||
+    conversionLocation === "MESSAGES" ||
+    conversionLocation === "MESSAGING_APPS" ||
+    conversionLocation === "INSTAGRAM_DIRECT" ||
+    conversionLocation === "MESSENGER";
+
+  const channel = (creative.message_channel || "").toUpperCase();
+
   const isInstagramPlacement = placements.includes("instagram");
 
   // CRITICAL: If Instagram is selected, we MUST have an actor ID
@@ -1211,18 +1220,7 @@ function buildCreativePayload(objective, creative, pageId, instagramActorId, acc
     };
   } else {
 
-    // ===================================================================
-    // ODAX CREATIVE ROUTING — Messaging vs Website
-    // ===================================================================
-    const isMessagingDestination =
-      conversionLocation === "WHATSAPP" ||
-      conversionLocation === "MESSAGES" ||
-      conversionLocation === "MESSAGING_APPS" ||
-      conversionLocation === "INSTAGRAM_DIRECT" ||
-      conversionLocation === "MESSENGER";
-
     const pageUrl = `https://www.facebook.com/${pageId}`;
-    const channel = (creative.message_channel || "").toUpperCase();
 
     // ==============================
     // MESSAGING DESTINATIONS (WhatsApp / Messenger / IG / All)
