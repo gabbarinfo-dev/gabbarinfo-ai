@@ -844,9 +844,9 @@ async function buildAdSetPayload(objective, adSet, campaignId, accessToken, plac
         optimization_goal = "VISIT_INSTAGRAM_PROFILE";
         billing_event = "IMPRESSIONS";
         promoted_object = {
-          instagram_actor_id: instagramActorId
+          page_id: pageId
         };
-        console.log("📍 [AdSet] Using INSTAGRAM_PROFILE destination and INSTAGRAM_PROFILE_VISITS goal.");
+        console.log("📍 [AdSet] Using INSTAGRAM_PROFILE destination and VISIT_INSTAGRAM_PROFILE goal.");
       }
 
       else if (conversionLocation === "FACEBOOK_PAGE") {
