@@ -733,7 +733,8 @@ ${creativeId} (AdSet: ${finalAdSetId})`);
           };
 
           // 🔧 FIX: Special handle for "Actor must be valid" error (redundant for some messaging ads)
-          if (lastCreativeError.code === 100 && lastCreativeError.message?.includes("instagram_actor_id")) {
+          const isProfileAd = (payload.conversion_location === "INSTAGRAM_PROFILE");
+          if (!isProfileAd && lastCreativeError.code === 100 && lastCreativeError.message?.includes("instagram_actor_id")) {
             console.warn(`⚠️ [Creative] Identity Error: ${lastCreativeError.message}. Retrying with No Actor fallback.`);
             continue;
           }
@@ -1398,6 +1399,13 @@ function buildCreativePayload(creative, pageId, AD_ACCOUNT_ID, accessToken, plac
   const params = new URLSearchParams();
   params.append("name", creative.headline || "Creative");
   params.append("object_story_spec", JSON.stringify(objectStorySpec));
+  
+  // 🔥 CRITICAL FIX: For Profile Visits and some ODAX types, 
+  // Meta requires instagram_actor_id both INSIDE object_story_spec AND at the Root level.
+  if (finalInstagramActor) {
+    console.log(`🛠️ [Creative] Injecting Root-level instagram_actor_id: ${finalInstagramActor}`);
+    params.append("instagram_actor_id", finalInstagramActor);
+  }
 
   // 🛡️ ODAX FIX: ONLY inject DOF for multi-destination ads.
   // Single-destination (WhatsApp / Messenger / Instagram) DOES NOT require DOF and FAILS if it's there without asset_feed_spec.
