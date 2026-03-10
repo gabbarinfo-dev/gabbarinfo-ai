@@ -220,8 +220,11 @@ Check Failed: ${e.message}`
     // If the creative explicitly has a whatsapp_number, force the conversion_location to WHATSAPP
     const firstAdSet = payload.ad_sets?.[0] || {};
     const creative = firstAdSet.ad_creative || {};
-    if (creative.message_template_options?.whatsapp_number || creative.whatsapp_number) {
-      console.log("📱 [Execution] WhatsApp number detected in creative. Forcing conversion_location: WHATSAPP and message_channel: WHATSAPP_MESSAGES");
+    const destUrl = (creative.destination_url || "").toLowerCase();
+    const isWhatsAppUrl = destUrl.includes("wa.me") || destUrl.includes("whatsapp.com");
+
+    if (creative.message_template_options?.whatsapp_number || creative.whatsapp_number || isWhatsAppUrl) {
+      console.log("📱 [Execution] WhatsApp detection (number or URL). Forcing conversion_location: WHATSAPP and message_channel: WHATSAPP_MESSAGES");
       payload.conversion_location = "WHATSAPP";
       payload.message_channel = "WHATSAPP_MESSAGES"; // Ensure true WhatsApp routing
     }
@@ -323,6 +326,7 @@ ${objParam}`);
 
           // ODAX Safety Default
           const dofSpec = {
+            degrees_of_freedom_type: "MESSAGING_DESTINATION",
             creative_features_spec: {
               image_touchups: { enroll_status: "OPT_IN" },
               text_optimizations: { enroll_status: "OPT_IN" }
@@ -1284,6 +1288,7 @@ function buildCreativePayload(objective, creative, pageId, instagramActorId, acc
 
   // Required for multi-destination messaging creatives (ODAX)
   const dofSpec = {
+    degrees_of_freedom_type: "MESSAGING_DESTINATION",
     creative_features_spec: {
       image_touchups: { enroll_status: "OPT_IN" },
       text_optimizations: { enroll_status: "OPT_IN" }
