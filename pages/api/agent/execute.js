@@ -741,6 +741,8 @@ You are in META ADS / CREATIVE AGENT MODE.
    - "Messaging Apps" (WhatsApp/Messenger)
    - "Instant Forms" (Lead Forms)
    - "Calls"
+   - "Instagram Profile" (IG Profile Visits)
+   - "Facebook Page" (Page traffic)
 
 3. PERFORMANCE GOAL (Optimization):
    - If Objective = OUTCOME_TRAFFIC:
@@ -752,6 +754,7 @@ You are in META ADS / CREATIVE AGENT MODE.
      - "Maximize Conversions" (Goal: CONVERSIONS)
    - If Objective = OUTCOME_ENGAGEMENT:
      - "Maximize Conversations" (Goal: CONVERSATIONS)
+     - "Maximize Instagram Profile Visits" (Goal: INSTAGRAM_PROFILE_VISITS)
    - If Objective = OUTCOME_AWARENESS:
      - "Maximize Reach" (Goal: REACH)
 
@@ -1044,7 +1047,9 @@ You are in GENERIC DIGITAL MARKETING AGENT MODE.
         } else if (rawKey === "conversion location" || rawKey === "conversion_location" || rawKey === "destination") {
           const v = value.toLowerCase();
           if (v.includes("website")) candidate.destination = "website";
-          else if (v.includes("instagram")) candidate.destination = "messages"; // Mapping profile visit intent to messaging
+          else if (v.includes("instagram") && v.includes("profile")) candidate.destination = "instagram_profile";
+          else if (v.includes("facebook") && v.includes("page")) candidate.destination = "facebook_page";
+          else if (v.includes("instagram")) candidate.destination = "messages";
           else if (v.includes("facebook")) candidate.destination = "messages";
           else if (v.includes("call") || v.includes("phone")) candidate.destination = "call";
           else if (v.includes("whatsapp")) candidate.destination = "whatsapp";
@@ -1212,7 +1217,9 @@ You are in GENERIC DIGITAL MARKETING AGENT MODE.
             "Now, where should we direct the users who click on the ad?\n\n" +
             "1. Website\n" +
             "2. Calls\n" +
-            "3. Messages (WhatsApp / Messenger / Instagram)";
+            "3. Messages (WhatsApp / Messenger / Instagram)\n" +
+            "4. Instagram Profile\n" +
+            "5. Facebook Page";
         } else if (selectedMetaObjective === "OUTCOME_LEADS") {
           nextQuestion =
             "Now, where should people contact you to become leads?\n\n" +
@@ -1225,7 +1232,8 @@ You are in GENERIC DIGITAL MARKETING AGENT MODE.
             "Now, where should people engage with you?\n\n" +
             "1. Messenger / Instagram Direct\n" +
             "2. WhatsApp\n" +
-            "3. Calls";
+            "3. Calls\n" +
+            "4. Instagram Profile";
         } else if (selectedMetaObjective === "OUTCOME_SALES") {
           // ADD THIS SPECIFIC BLOCK FOR SALES
           nextQuestion =
@@ -1271,11 +1279,11 @@ You are in GENERIC DIGITAL MARKETING AGENT MODE.
 
       // 1. Define Options to show user
       if (selectedMetaObjective === "OUTCOME_TRAFFIC") {
-        options = ["Website", "Calls", "Messages (WhatsApp / Messenger / Instagram)"];
+        options = ["Website", "Calls", "Messages (WhatsApp / Messenger / Instagram)", "Instagram Profile", "Facebook Page"];
       } else if (selectedMetaObjective === "OUTCOME_LEADS") {
         options = ["WhatsApp", "Calls", "Messenger / Instagram Direct"];
       } else if (selectedMetaObjective === "OUTCOME_ENGAGEMENT") {
-        options = ["Messenger / Instagram Direct", "WhatsApp", "Calls"];
+        options = ["Messenger / Instagram Direct", "WhatsApp", "Calls", "Instagram Profile"];
       } else if (selectedMetaObjective === "OUTCOME_SALES") {
         // Sales: Website (manual image) or Catalogue (dynamic product ads)
         options = ["Website", "Catalogue Sales (Products from your catalogue)"];
@@ -1290,6 +1298,8 @@ You are in GENERIC DIGITAL MARKETING AGENT MODE.
         if (input === "1" || input.includes("website")) selectedDestination = "website";
         else if (input === "2" || input.includes("call")) selectedDestination = "call";
         else if (input === "3" || input.includes("message") || input.includes("whatsapp")) selectedDestination = "messages";
+        else if (input === "4" || input.includes("instagram") || input.includes("profile")) selectedDestination = "instagram_profile";
+        else if (input === "5" || input.includes("facebook") || input.includes("page")) selectedDestination = "facebook_page";
       }
       else if (selectedMetaObjective === "OUTCOME_LEADS") {
         if (input === "1" || input.includes("whatsapp")) selectedDestination = "whatsapp";
@@ -1300,6 +1310,7 @@ You are in GENERIC DIGITAL MARKETING AGENT MODE.
         if (input === "1" || input.includes("messenger") || input.includes("direct")) selectedDestination = "messages";
         else if (input === "2" || input.includes("whatsapp")) selectedDestination = "whatsapp";
         else if (input === "3" || input.includes("call")) selectedDestination = "call";
+        else if (input === "4" || input.includes("instagram") || input.includes("profile")) selectedDestination = "instagram_profile";
       }
       else if (selectedMetaObjective === "OUTCOME_SALES") {
         // Prioritize catalogue match
@@ -1333,6 +1344,10 @@ You are in GENERIC DIGITAL MARKETING AGENT MODE.
             goals = ["Maximize Number of Calls"];
           } else if (selectedDestination === "whatsapp" || selectedDestination === "messages") {
             goals = ["Maximize Number of Conversations"];
+          } else if (selectedDestination === "instagram_profile") {
+            goals = ["Maximize Number of Instagram Profile Visits"];
+          } else if (selectedDestination === "facebook_page") {
+            goals = ["Maximize Number of Link Clicks"];
           } else if (selectedDestination === "catalogue") {
             goals = ["Maximize Number of Conversions (Catalogue Sales)"];
           } else {
@@ -1388,6 +1403,8 @@ You are in GENERIC DIGITAL MARKETING AGENT MODE.
         selectedPerformanceGoal = "MAXIMIZE_LANDING_PAGE_VIEWS";
       } else if (input.includes("conversation") || (["whatsapp", "messages"].includes(selectedDestination) && input === "1")) {
         selectedPerformanceGoal = "MAXIMIZE_CONVERSATIONS";
+      } else if (input.includes("instagram") || (selectedDestination === "instagram_profile" && input === "1")) {
+        selectedPerformanceGoal = "INSTAGRAM_PROFILE_VISITS";
       } else if (input.includes("call") || (selectedDestination === "call" && input === "1")) {
         selectedPerformanceGoal = "MAXIMIZE_CALLS";
       } else if (selectedMetaObjective === "OUTCOME_SALES" && (input.includes("conversion") || input === "1")) {
@@ -4091,7 +4108,9 @@ Reply **YES** to confirm this plan and proceed.
               // 🌍 UNIVERSAL LOCATION HANDLER (Ends here)
               const finalPayload = {
                 ...plan,
-                conversion_location: currentState.destination === "catalogue" ? "CATALOGUE" : (currentState.conversion_location || plan.conversion_location || null),
+                // 🛡️ SYNC HOOK: Force state-based values to prevent Gemini "context leaks" (e.g. WhatsApp for Instagram)
+                objective: currentState.objective || plan.objective || "OUTCOME_TRAFFIC",
+                conversion_location: currentState.destination === "catalogue" ? "CATALOGUE" : (currentState.conversion_location || plan.conversion_location || currentState.destination || null),
                 message_channel: currentState.message_channel || null,
 
                 targeting: {
@@ -4124,12 +4143,27 @@ Reply **YES** to confirm this plan and proceed.
                       catalogId: finalCatalogId
                     } : (adset._catalogInfo || null),
                     catalogId: finalCatalogId,
-                    conversion_location: isCatalogueMode ? "CATALOGUE" : (currentState.conversion_location || plan.conversion_location || null),
+                    conversion_location: isCatalogueMode ? "CATALOGUE" : (currentState.conversion_location || plan.conversion_location || currentState.destination || null),
                     message_channel: currentState.message_channel || null,
                     ad_creative: adCreative
                   };
                 })
               };
+
+              // 🛡️ CTA SYNC: Ensure Call to Action matches the selected Message Channel
+              if (finalPayload.message_channel && finalPayload.ad_sets) {
+                finalPayload.ad_sets.forEach(as => {
+                  if (!as.ad_creative) return;
+                  const channel = finalPayload.message_channel.toUpperCase();
+                  if (channel === "INSTAGRAM_MESSAGES") {
+                    as.ad_creative.call_to_action = "INSTAGRAM_MESSAGE";
+                  } else if (channel === "WHATSAPP" || channel === "WHATSAPP_MESSAGES") {
+                    as.ad_creative.call_to_action = "SEND_WHATSAPP_MESSAGE";
+                  } else if (channel === "FACEBOOK_MESSENGER") {
+                    as.ad_creative.call_to_action = "MESSAGE_PAGE";
+                  }
+                });
+              }
 
               // Force dynamic currency
               finalPayload.budget.currency = activeCurrency;
