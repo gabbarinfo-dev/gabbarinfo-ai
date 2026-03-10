@@ -1275,8 +1275,19 @@ function buildCreativePayload(objective, creative, pageId, instagramActorId, acc
   const params = new URLSearchParams();
   params.append("name", creative.headline || "Creative");
   params.append("object_story_spec", JSON.stringify(objectStorySpec));
-  params.append("access_token", accessToken);
 
+  // Required for multi-destination messaging creatives (ODAX)
+const dofSpec = {
+  creative_features_spec: {
+    standard_enhancements: { enroll_status: "OPT_IN" }
+  }
+};
+
+params.append(
+  "degrees_of_freedom_spec",
+  JSON.stringify(dofSpec)
+);
+   params.append("access_token", accessToken);
   return params;
 }
 // HELPER: Auto-discover Pixel if missing from DB
