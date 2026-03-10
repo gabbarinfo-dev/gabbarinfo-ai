@@ -168,6 +168,21 @@ failed: ${e.message}`);
     }
   }
 
+  // 1d. Fetch IG Username for Profile Links
+  let instagramProfileUrl = null;
+  if (validatedInstagramActorId) {
+    try {
+      const igInfoRes = await fetch(`https://graph.facebook.com/${API_VERSION}/${validatedInstagramActorId}?fields=username&access_token=${ACCESS_TOKEN}`);
+      const igInfo = await igInfoRes.json();
+      if (igInfo.username) {
+        instagramProfileUrl = `https://www.instagram.com/${igInfo.username}/`;
+        console.log(`📸 [Meta API] Resolved Instagram Profile URL: ${instagramProfileUrl}`);
+      }
+    } catch (e) {
+      console.warn("⚠️ [Meta API] Failed to fetch IG username:", e.message);
+    }
+  }
+
   // 2⃣ Compute final Instagram usage flag 
   const shouldUseInstagramActor =
     validatedInstagramActorId &&
@@ -485,7 +500,18 @@ Error: ${lastError?.message}`);
       adSet.message_channel = payload.message_channel;
       adSet.phone_number = payload.phone_number || meta.business_phone;
       if (catalogInfo) adSet._catalogInfo = catalogInfo; // Honor discovery but don't overwrite if present
-      const p = await buildAdSetPayload(finalObjective, adSet, campaignId, ACCESS_TOKEN, placements, PAGE_ID, activePixelId, payload, validatedInstagramActorId);
+      
+      // FORCED PLACEMENTS for Profile Destinations
+      let adSetPlacements = [...placements];
+      if (adSet.conversion_location === "INSTAGRAM_PROFILE") {
+        console.log("👗 [Placement] Forcing Instagram-only placement for Instagram Profile Visits.");
+        adSetPlacements = ["instagram"];
+      } else if (adSet.conversion_location === "FACEBOOK_PAGE") {
+        console.log("📘 [Placement] Forcing Facebook-only placement for Facebook Page Visits.");
+        adSetPlacements = ["facebook"];
+      }
+
+      const p = await buildAdSetPayload(finalObjective, adSet, campaignId, ACCESS_TOKEN, adSetPlacements, PAGE_ID, activePixelId, payload, validatedInstagramActorId);
 
       // Append Budget 
       p.append(budgetType, String(Math.floor(Number(budgetAmount) *
@@ -567,6 +593,7 @@ I will try to automatically correct this to "Maximize Conversations" or switch t
           throw new Error("Please provide a website or landing page for website traffic campaigns.");
         }
       }
+
       const fallbackStrategies = [
         {
           name: "Primary", placements: placements, igActor:
@@ -603,6 +630,13 @@ I will try to automatically correct this to "Maximize Conversations" or switch t
       };
 
       for (const strat of fallbackStrategies) {
+        // Skip fallbacks that don't make sense for certain destinations
+        const isProfileDest = (payload.conversion_location === "INSTAGRAM_PROFILE" || payload.conversion_location === "FACEBOOK_PAGE");
+        if (isProfileDest && strat.name.includes("Fallback")) {
+          console.log(`⏩ [Creative] Skipping ${strat.name} for Profile Destination (Identity/Placements are fixed).`);
+          continue;
+        }
+
         try {
           console.log(`
 🎨
@@ -660,7 +694,17 @@ dsets`, {
           creative.message_channel = payload.message_channel;
           creative.phone_number = payload.phone_number || meta.business_phone;
           if (catalogInfo) creative._catalogInfo = catalogInfo;
-          const crParams = buildCreativePayload(finalObjective, creative, PAGE_ID, strat.igActor, ACCESS_TOKEN, finalForcePhoto, strat.placements);
+          const crParams = buildCreativePayload(
+            creative,
+            PAGE_ID,
+            AD_ACCOUNT_ID,
+            ACCESS_TOKEN,
+            strat.placements,
+            finalForcePhoto,
+            finalObjective,
+            strat.igActor,
+            instagramProfileUrl
+          );
           const crRes = await
             fetch(`https://graph.facebook.com/${API_VERSION}/act_${AD_ACCOUNT_ID}/a
 dcreatives?debug=all`, {
@@ -1139,7 +1183,7 @@ async function buildAdSetPayload(objective, adSet, campaignId, accessToken, plac
 }
 
 // UNIVERSAL CREATIVE BUILDER (Placement Safe & Strict Types)
-function buildCreativePayload(objective, creative, pageId, instagramActorId, accessToken, forcePhoto = false, placements = []) {
+function buildCreativePayload(creative, pageId, AD_ACCOUNT_ID, accessToken, placements, forcePhoto, objective, instagramActorId, instagramProfileUrl) {
   if (!pageId) throw new Error("Page ID is required for Creative");
 
   // --- CATALOGUE CREATIVE PATH (Advantage+ Catalog Ads) ---
@@ -1296,7 +1340,7 @@ function buildCreativePayload(objective, creative, pageId, instagramActorId, acc
 
       objectStorySpec.link_data = {
         image_hash: creative.image_hash,
-        link: pageUrl, // FB/IG profiles often use Page URL as the base link
+        link: (conversionLocation === "INSTAGRAM_PROFILE" && instagramProfileUrl) ? instagramProfileUrl : pageUrl,
         message: creative.primary_text || "",
         name: creative.headline || (conversionLocation === "INSTAGRAM_PROFILE" ? "Visit profile" : "Visit page"),
         call_to_action: {
