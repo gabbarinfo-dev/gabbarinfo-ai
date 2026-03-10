@@ -100,7 +100,18 @@ export default async function handler(req, res) {
     placements = ["facebook"];
   }
 
-  console.log("✅ FINAL SANITIZED PLACEMENTS:", placements);
+  console.log("✅ INITIAL SANITIZED PLACEMENTS:", placements);
+
+  // 🔥 Destination-specific placement forcing (ODAX Consistency)
+  const destLocation = (payload.conversion_location || "").toUpperCase();
+  if (destLocation === "INSTAGRAM_PROFILE") {
+    console.log("👗 [Placements] Forcing Instagram-only for IG Profile Visits.");
+    placements = ["instagram"];
+  } else if (destLocation === "FACEBOOK_PAGE") {
+    console.log("📘 [Placements] Forcing Facebook-only for FB Page Visits.");
+    placements = ["facebook"];
+  }
+  console.log("✅ FINAL FORCED PLACEMENTS:", placements);
 
   const { data: meta, error } = await supabase
     .from("meta_connections")
@@ -501,17 +512,7 @@ Error: ${lastError?.message}`);
       adSet.phone_number = payload.phone_number || meta.business_phone;
       if (catalogInfo) adSet._catalogInfo = catalogInfo; // Honor discovery but don't overwrite if present
       
-      // FORCED PLACEMENTS for Profile Destinations
-      let adSetPlacements = [...placements];
-      if (adSet.conversion_location === "INSTAGRAM_PROFILE") {
-        console.log("👗 [Placement] Forcing Instagram-only placement for Instagram Profile Visits.");
-        adSetPlacements = ["instagram"];
-      } else if (adSet.conversion_location === "FACEBOOK_PAGE") {
-        console.log("📘 [Placement] Forcing Facebook-only placement for Facebook Page Visits.");
-        adSetPlacements = ["facebook"];
-      }
-
-      const p = await buildAdSetPayload(finalObjective, adSet, campaignId, ACCESS_TOKEN, adSetPlacements, PAGE_ID, activePixelId, payload, validatedInstagramActorId);
+      const p = await buildAdSetPayload(finalObjective, adSet, campaignId, ACCESS_TOKEN, placements, PAGE_ID, activePixelId, payload, validatedInstagramActorId);
 
       // Append Budget 
       p.append(budgetType, String(Math.floor(Number(budgetAmount) *
@@ -762,7 +763,8 @@ ${JSON.stringify(lastCreativeError, null, 2)}`);
           creative_id: creativeId
         },
         status: "ACTIVE",
-        ...(payload.message_channel === "INSTAGRAM_MESSAGES" &&
+        ...(
+          (payload.message_channel === "INSTAGRAM_MESSAGES" || payload.conversion_location === "INSTAGRAM_PROFILE") &&
           validatedInstagramActorId
           ? { instagram_actor_id: validatedInstagramActorId }
           : {})
@@ -1254,7 +1256,14 @@ function buildCreativePayload(creative, pageId, AD_ACCOUNT_ID, accessToken, plac
 
   const channel = (creative.message_channel || "").toUpperCase();
 
-  const isInstagramPlacement = placements.includes("instagram");
+  // DESTINATION-PLACEMENTS SYNC: Instagram Profile visits ONLY work on Instagram.
+  // Including other platforms (like Facebook) will cause identity validation errors (#100).
+  let finalPlacements = [...placements];
+  if (conversionLocation === "INSTAGRAM_PROFILE") {
+    finalPlacements = ["instagram"];
+  }
+
+  const isInstagramPlacement = finalPlacements.includes("instagram");
 
   // CRITICAL: If Instagram is selected, we MUST have an actor ID
   const finalInstagramActor = isInstagramPlacement ? instagramActorId : null;
@@ -1348,7 +1357,8 @@ function buildCreativePayload(creative, pageId, AD_ACCOUNT_ID, accessToken, plac
         }
       };
 
-      console.log(`👤 [Creative] Profile mode: CTA=${ctaType}, link=${pageUrl}`);
+      const linkVal = (conversionLocation === "INSTAGRAM_PROFILE" && instagramProfileUrl) ? instagramProfileUrl : pageUrl;
+      console.log(`👤 [Creative] Profile mode: CTA=${ctaType}, link=${linkVal}`);
     }
 
     // ==============================
