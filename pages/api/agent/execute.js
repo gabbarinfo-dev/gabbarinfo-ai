@@ -754,7 +754,7 @@ You are in META ADS / CREATIVE AGENT MODE.
      - "Maximize Conversions" (Goal: CONVERSIONS)
    - If Objective = OUTCOME_ENGAGEMENT:
      - "Maximize Conversations" (Goal: CONVERSATIONS)
-     - "Maximize Instagram Profile Visits" (Goal: INSTAGRAM_PROFILE_VISITS)
+     - "Maximize Instagram Profile Visits" (Goal: VISIT_INSTAGRAM_PROFILE)
    - If Objective = OUTCOME_AWARENESS:
      - "Maximize Reach" (Goal: REACH)
 
@@ -1404,7 +1404,7 @@ You are in GENERIC DIGITAL MARKETING AGENT MODE.
       } else if (input.includes("conversation") || (["whatsapp", "messages"].includes(selectedDestination) && input === "1")) {
         selectedPerformanceGoal = "MAXIMIZE_CONVERSATIONS";
       } else if (input.includes("instagram") || (selectedDestination === "instagram_profile" && input === "1")) {
-        selectedPerformanceGoal = "INSTAGRAM_PROFILE_VISITS";
+        selectedPerformanceGoal = "VISIT_INSTAGRAM_PROFILE";
       } else if (input.includes("call") || (selectedDestination === "call" && input === "1")) {
         selectedPerformanceGoal = "MAXIMIZE_CALLS";
       } else if (selectedMetaObjective === "OUTCOME_SALES" && (input.includes("conversion") || input === "1")) {
