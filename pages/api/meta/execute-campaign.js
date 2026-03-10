@@ -229,6 +229,21 @@ Check Failed: ${e.message}`
     // 1. Map Objective 
     const rawObjective = payload.objective || "";
     let finalObjective = mapObjectiveToODAX(rawObjective);
+
+    // 🔧 FORCE WhatsApp campaigns to Engagement objective
+// 🔧 FORCE ALL messaging campaigns to Engagement objective
+const convLoc = (payload.conversion_location || "").toUpperCase();
+
+if (
+  convLoc === "WHATSAPP" ||
+  convLoc === "MESSAGING_APPS" ||
+  convLoc === "MESSAGES" ||
+  convLoc === "MESSENGER" ||
+  convLoc === "INSTAGRAM_DIRECT"
+) {
+  console.log("📩 Messaging destination detected → forcing OUTCOME_ENGAGEMENT objective");
+  finalObjective = "OUTCOME_ENGAGEMENT";
+}
     // FIX: LEADS + CALLS is not allowed under ODAX
     if (
       finalObjective === "OUTCOME_LEADS" &&
