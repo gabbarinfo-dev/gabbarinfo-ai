@@ -315,6 +315,17 @@ export default function ChatPage() {
   const [agentError, setAgentError] = useState("");
   const [agentResponse, setAgentResponse] = useState("");
 
+  // Auto-populate agent instructions based on mode (UI Enhancement)
+  useEffect(() => {
+    if (isAgentPanelOpen) {
+      if (agentMode === "generic") {
+        setAgentInstruction("Create A Meta Ads Campaign");
+      } else if (agentMode === "instagram_post") {
+        setAgentInstruction("Publish an Instagram Post");
+      }
+    }
+  }, [agentMode, isAgentPanelOpen]);
+
   useEffect(() => {
     if (typeof window === "undefined") return;
     const check = () => setIsMobile(window.innerWidth <= 768);
