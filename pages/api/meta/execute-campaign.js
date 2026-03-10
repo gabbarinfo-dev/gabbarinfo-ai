@@ -322,11 +322,9 @@ ${objParam}`);
             "GUIDED_CREATION");
 
           // ODAX Safety Default 
-          const dofSpec = {
-            "creative_features_spec": {
-              "standard_enhancements": { "enroll_status": "OPT_OUT" }
-            }
-          };
+         const dofSpec = {
+  creative_features_spec: {}
+};
           campaignParams.append("degrees_of_freedom_spec",
             JSON.stringify(dofSpec));
         }
