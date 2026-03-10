@@ -231,19 +231,19 @@ Check Failed: ${e.message}`
     let finalObjective = mapObjectiveToODAX(rawObjective);
 
     // 🔧 FORCE WhatsApp campaigns to Engagement objective
-// 🔧 FORCE ALL messaging campaigns to Engagement objective
-const convLoc = (payload.conversion_location || "").toUpperCase();
+    // 🔧 FORCE ALL messaging campaigns to Engagement objective
+    const convLoc = (payload.conversion_location || "").toUpperCase();
 
-if (
-  convLoc === "WHATSAPP" ||
-  convLoc === "MESSAGING_APPS" ||
-  convLoc === "MESSAGES" ||
-  convLoc === "MESSENGER" ||
-  convLoc === "INSTAGRAM_DIRECT"
-) {
-  console.log("📩 Messaging destination detected → forcing OUTCOME_ENGAGEMENT objective");
-  finalObjective = "OUTCOME_ENGAGEMENT";
-}
+    if (
+      convLoc === "WHATSAPP" ||
+      convLoc === "MESSAGING_APPS" ||
+      convLoc === "MESSAGES" ||
+      convLoc === "MESSENGER" ||
+      convLoc === "INSTAGRAM_DIRECT"
+    ) {
+      console.log("📩 Messaging destination detected → forcing OUTCOME_ENGAGEMENT objective");
+      finalObjective = "OUTCOME_ENGAGEMENT";
+    }
     // FIX: LEADS + CALLS is not allowed under ODAX
     if (
       finalObjective === "OUTCOME_LEADS" &&
@@ -321,10 +321,10 @@ ${objParam}`);
           campaignParams.append("smart_promotion_type",
             "GUIDED_CREATION");
 
-          // ODAX Safety Default 
-         const dofSpec = {
-  creative_features_spec: {}
-};
+          // ODAX Safety Default
+          const dofSpec = {
+            advantage_plus_creative: { enroll_status: "OPT_IN" }
+          };
           campaignParams.append("degrees_of_freedom_spec",
             JSON.stringify(dofSpec));
         }
@@ -663,15 +663,20 @@ dcreatives?debug=all`, {
 ${creativeId} (AdSet: ${finalAdSetId})`);
             break;
           }
+
           lastCreativeError = {
             message: crJson.error?.message,
             code: crJson.error?.code,
             subcode: crJson.error?.error_subcode,
             user_title: crJson.error?.error_user_title,
-            user_message: crJson.error?.error_user_msg,
-            error_data: crJson.error?.error_data,
-            fbtrace_id: crJson.error?.fbtrace_id
+            user_message: crJson.error?.error_user_msg
           };
+
+          // 🔧 FIX: Special handle for "Actor must be valid" error (redundant for some messaging ads)
+          if (lastCreativeError.code === 100 && lastCreativeError.message?.includes("instagram_actor_id")) {
+            console.warn(`⚠️ [Creative] Identity Error: ${lastCreativeError.message}. Retrying with No Actor fallback.`);
+            continue;
+          }
           console.warn(`
 ⚠
  [Creative] ${strat.name} Rejected:`,
@@ -1275,15 +1280,15 @@ function buildCreativePayload(objective, creative, pageId, instagramActorId, acc
   params.append("object_story_spec", JSON.stringify(objectStorySpec));
 
   // Required for multi-destination messaging creatives (ODAX)
-const dofSpec = {
-  creative_features_spec: {}
-};
+  const dofSpec = {
+    advantage_plus_creative: { enroll_status: "OPT_IN" }
+  };
 
-params.append(
-  "degrees_of_freedom_spec",
-  JSON.stringify(dofSpec)
-);
-   params.append("access_token", accessToken);
+  params.append(
+    "degrees_of_freedom_spec",
+    JSON.stringify(dofSpec)
+  );
+  params.append("access_token", accessToken);
   return params;
 }
 // HELPER: Auto-discover Pixel if missing from DB
