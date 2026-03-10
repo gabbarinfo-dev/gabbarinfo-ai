@@ -841,7 +841,7 @@ async function buildAdSetPayload(objective, adSet, campaignId, accessToken, plac
           throw new Error("Instagram Profile Visits require a connected Instagram account. Please connect your Instagram profile to your Facebook Page first.");
         }
         destination_type = "INSTAGRAM_PROFILE";
-        optimization_goal = "INSTAGRAM_PROFILE_VISITS";
+        optimization_goal = "VISIT_INSTAGRAM_PROFILE";
         billing_event = "IMPRESSIONS";
         promoted_object = {
           instagram_actor_id: instagramActorId
@@ -1288,7 +1288,7 @@ function buildCreativePayload(objective, creative, pageId, instagramActorId, acc
       let ctaType = "LEARN_MORE";
 
       if (conversionLocation === "INSTAGRAM_PROFILE") {
-        ctaType = "INSTAGRAM_PROFILE_VISITS";
+        ctaType = "VISIT_INSTAGRAM_PROFILE";
       } else if (conversionLocation === "FACEBOOK_PAGE") {
         // For Traffic, LEARN_MORE is standard; for Engagement, LIKE_PAGE could be used
         ctaType = (objective === "OUTCOME_ENGAGEMENT") ? "LIKE_PAGE" : "LEARN_MORE";
