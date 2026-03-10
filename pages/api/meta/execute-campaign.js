@@ -1276,9 +1276,7 @@ function buildCreativePayload(objective, creative, pageId, instagramActorId, acc
 
   // Required for multi-destination messaging creatives (ODAX)
 const dofSpec = {
-  creative_features_spec: {
-    standard_enhancements: { enroll_status: "OPT_IN" }
-  }
+  creative_features_spec: {}
 };
 
 params.append(
