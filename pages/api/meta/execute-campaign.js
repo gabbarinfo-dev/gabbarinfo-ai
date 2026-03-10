@@ -891,7 +891,7 @@ async function buildAdSetPayload(objective, adSet, campaignId, accessToken, plac
         optimization_goal = "VISIT_INSTAGRAM_PROFILE";
         billing_event = "IMPRESSIONS";
         promoted_object = {
-          page_id: pageId
+          instagram_actor_id: instagramActorId
         };
         console.log("📍 [AdSet] Using INSTAGRAM_PROFILE destination and VISIT_INSTAGRAM_PROFILE goal.");
       }
@@ -1401,10 +1401,10 @@ function buildCreativePayload(creative, pageId, AD_ACCOUNT_ID, accessToken, plac
   params.append("object_story_spec", JSON.stringify(objectStorySpec));
   
   // 🔥 CRITICAL FIX: For Profile Visits and some ODAX types, 
-  // Meta requires instagram_actor_id both INSIDE object_story_spec AND at the Root level.
+  // Meta requires instagram_user_id at the Root level (instagram_actor_id is deprecated as root param in v22+).
   if (finalInstagramActor) {
-    console.log(`🛠️ [Creative] Injecting Root-level instagram_actor_id: ${finalInstagramActor}`);
-    params.append("instagram_actor_id", finalInstagramActor);
+    console.log(`🛠️ [Creative] Injecting Root-level instagram_user_id: ${finalInstagramActor}`);
+    params.append("instagram_user_id", finalInstagramActor);
   }
 
   // 🛡️ ODAX FIX: ONLY inject DOF for multi-destination ads.
