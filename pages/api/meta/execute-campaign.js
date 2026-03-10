@@ -1288,7 +1288,7 @@ function buildCreativePayload(objective, creative, pageId, instagramActorId, acc
       let ctaType = "LEARN_MORE";
 
       if (conversionLocation === "INSTAGRAM_PROFILE") {
-        ctaType = "VISIT_INSTAGRAM_PROFILE";
+        ctaType = "VIEW_INSTAGRAM_PROFILE";
       } else if (conversionLocation === "FACEBOOK_PAGE") {
         // For Traffic, LEARN_MORE is standard; for Engagement, LIKE_PAGE could be used
         ctaType = (objective === "OUTCOME_ENGAGEMENT") ? "LIKE_PAGE" : "LEARN_MORE";
