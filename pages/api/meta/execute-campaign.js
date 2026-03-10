@@ -767,7 +767,7 @@ ${JSON.stringify(lastCreativeError, null, 2)}`);
         ...(
           (payload.message_channel === "INSTAGRAM_MESSAGES" || payload.conversion_location === "INSTAGRAM_PROFILE") &&
           validatedInstagramActorId
-          ? { instagram_actor_id: validatedInstagramActorId }
+          ? { instagram_user_id: validatedInstagramActorId }
           : {})
       };
 
@@ -891,7 +891,7 @@ async function buildAdSetPayload(objective, adSet, campaignId, accessToken, plac
         optimization_goal = "VISIT_INSTAGRAM_PROFILE";
         billing_event = "IMPRESSIONS";
         promoted_object = {
-          instagram_actor_id: instagramActorId
+          page_id: pageId
         };
         console.log("📍 [AdSet] Using INSTAGRAM_PROFILE destination and VISIT_INSTAGRAM_PROFILE goal.");
       }
@@ -1266,13 +1266,14 @@ function buildCreativePayload(creative, pageId, AD_ACCOUNT_ID, accessToken, plac
 
   const isInstagramPlacement = finalPlacements.includes("instagram");
 
-  // CRITICAL: If Instagram is selected, we MUST have an actor ID
-  const finalInstagramActor = isInstagramPlacement ? instagramActorId : null;
+  // CRITICAL: If Instagram is selected, we MUST have an account ID
+  // Meta now prefers instagram_user_id over instagram_actor_id
+  const finalInstagramUser = isInstagramPlacement ? instagramActorId : null;
 
   const objectStorySpec = {
     page_id: pageId,
     // This tells FB which IG account to show the ad as
-    ...(finalInstagramActor ? { instagram_actor_id: finalInstagramActor } : {})
+    ...(finalInstagramUser ? { instagram_user_id: finalInstagramUser } : {})
   };
 
   // ===========================
@@ -1402,9 +1403,9 @@ function buildCreativePayload(creative, pageId, AD_ACCOUNT_ID, accessToken, plac
   
   // 🔥 CRITICAL FIX: For Profile Visits and some ODAX types, 
   // Meta requires instagram_user_id at the Root level (instagram_actor_id is deprecated as root param in v22+).
-  if (finalInstagramActor) {
-    console.log(`🛠️ [Creative] Injecting Root-level instagram_user_id: ${finalInstagramActor}`);
-    params.append("instagram_user_id", finalInstagramActor);
+  if (finalInstagramUser) {
+    console.log(`🛠️ [Creative] Injecting Root-level instagram_user_id: ${finalInstagramUser}`);
+    params.append("instagram_user_id", finalInstagramUser);
   }
 
   // 🛡️ ODAX FIX: ONLY inject DOF for multi-destination ads.
