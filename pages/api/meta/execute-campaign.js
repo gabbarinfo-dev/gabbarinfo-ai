@@ -217,16 +217,24 @@ Check Failed: ${e.message}`
 
   try {
     // NEW: WhatsApp Detection Hook (Pre-Normalization)
-    // If the creative explicitly has a whatsapp_number, force the conversion_location to WHATSAPP
+    // Aggressively force WHATSAPP if intent is clear in names, text, or URLs
     const firstAdSet = payload.ad_sets?.[0] || {};
     const creative = firstAdSet.ad_creative || {};
     const destUrl = (creative.destination_url || "").toLowerCase();
     const isWhatsAppUrl = destUrl.includes("wa.me") || destUrl.includes("whatsapp.com");
 
-    if (creative.message_template_options?.whatsapp_number || creative.whatsapp_number || isWhatsAppUrl) {
-      console.log("📱 [Execution] WhatsApp detection (number or URL). Forcing conversion_location: WHATSAPP and message_channel: WHATSAPP_MESSAGES");
+    // Check names and texts for "WhatsApp" keywords
+    const campaignName = (payload.campaign_name || "").toLowerCase();
+    const adSetName = (firstAdSet.name || "").toLowerCase();
+    const primaryText = (creative.primary_text || "").toLowerCase();
+    const headline = (creative.headline || "").toLowerCase();
+    const hasWAIntent = [campaignName, adSetName, primaryText, headline].some(t => t.includes("whatsapp") || t.includes("wa.me"));
+    const isWACTA = creative.call_to_action === "SEND_WHATSAPP_MESSAGE" || creative.call_to_action === "WHATSAPP_MESSAGE";
+
+    if (creative.message_template_options?.whatsapp_number || creative.whatsapp_number || isWhatsAppUrl || hasWAIntent || isWACTA) {
+      console.log("📱 [Execution] Definitive WhatsApp intent detected. Forcing SINGLE-DESTINATION WHATSAPP campaign.");
       payload.conversion_location = "WHATSAPP";
-      payload.message_channel = "WHATSAPP_MESSAGES"; // Ensure true WhatsApp routing
+      payload.message_channel = "WHATSAPP_MESSAGES";
     }
 
     // 1. Map Objective 
@@ -1286,19 +1294,27 @@ function buildCreativePayload(objective, creative, pageId, instagramActorId, acc
   params.append("name", creative.headline || "Creative");
   params.append("object_story_spec", JSON.stringify(objectStorySpec));
 
-  // Required for multi-destination messaging creatives (ODAX)
-  const dofSpec = {
-    degrees_of_freedom_type: "USER_ENROLLED",
-    creative_features_spec: {
-      image_touchups: { enroll_status: "OPT_IN" },
-      text_optimizations: { enroll_status: "OPT_IN" }
-    }
-  };
+  // 🛡️ ODAX FIX: ONLY inject DOF for multi-destination ads.
+  // Single-destination (WhatsApp / Messenger / Instagram) DOES NOT require DOF and FAILS if it's there without asset_feed_spec.
+  // Multi-destination is typically triggered when conversion_location is generic AND channel is omitted/generic.
+  const isMultiDestination =
+    isMessagingDestination &&
+    (conversionLocation === "MESSAGING_APPS" || conversionLocation === "MESSAGES") &&
+    (!channel || channel === "ALL_MESSAGES");
 
-  params.append(
-    "degrees_of_freedom_spec",
-    JSON.stringify(dofSpec)
-  );
+  if (isMultiDestination) {
+    console.log("🛠️ [Creative] Multi-destination detected. Injecting mandatory DOF spec.");
+    const dofSpec = {
+      degrees_of_freedom_type: "USER_ENROLLED",
+      creative_features_spec: {
+        image_touchups: { enroll_status: "OPT_IN" },
+        text_optimizations: { enroll_status: "OPT_IN" }
+      }
+    };
+    params.append("degrees_of_freedom_spec", JSON.stringify(dofSpec));
+  } else {
+    console.log(`🛠️ [Creative] Single-destination (${conversionLocation}) detected. Bypassing DOF spec to avoid ODAX errors.`);
+  }
   params.append("access_token", accessToken);
   return params;
 }
