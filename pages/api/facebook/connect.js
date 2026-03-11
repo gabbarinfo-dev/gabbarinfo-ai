@@ -7,13 +7,15 @@ export default async function handler(req, res) {
   const session = await getServerSession(req, res, authOptions);
 
   // Safety: user must be logged in via Login app
-  if (!session?.user?.email) {
+  const email = session?.user?.email;
+
+  if (!email) {
     return res.status(401).send(`
       <html>
         <body style="font-family: Arial, sans-serif; padding: 40px; text-align: center;">
           <h1>Not Logged In</h1>
-          <p>We couldn't detect your login session in this request.</p>
-          <p>Please try refreshing the page or signing in again.</p>
+          <p>We couldn't detect your email session in this request (Found ID: ${session?.user?.id || 'none'}).</p>
+          <p>Please try signing out and signing in again via Facebook.</p>
           <a href="/" style="display:inline-block; margin-top:20px; padding:10px 20px; background:#1877F2; color:#fff; text-decoration:none; border-radius:6px;">Back to Dashboard</a>
         </body>
       </html>
