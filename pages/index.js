@@ -274,14 +274,14 @@ function EmailFallbackForm() {
 
       const data = await res.json();
       if (res.ok) {
-        setMessage("Email saved! Refreshing session...");
+        setMessage("Email saved! Refreshing session in one go...");
         
-        // 🚀 FORCE SESSION REFRESH
-        // In Next-Auth, we can trigger a re-render/fetch by calling getSession
-        // or just doing a hard reload which will re-run the Auth sequence.
+        // 🚀 THE "ONE-GO" REFRESH
+        // We trigger an instant re-auth. Since they are already logged into Facebook,
+        // it will just blink and come back with a FRESH token containing the new email.
         setTimeout(() => {
-          window.location.href = "/?refresh=" + Date.now();
-        }, 1000);
+          signIn("facebook", { callbackUrl: window.location.origin });
+        }, 1200);
       } else {
         setMessage("Error: " + (data.error || "Failed to save email"));
       }
