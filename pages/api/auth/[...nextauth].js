@@ -93,8 +93,8 @@ export const authOptions = {
       const emailToUse = user?.email || token.email;
 
       // 🔍 FALLBACK: Check for email override if currently missing
-      if (!emailToUse && token.sub && supabaseClient) {
-        const { data } = await supabaseClient
+      if (!emailToUse && token.sub && supabaseServer) {
+        const { data } = await supabaseServer
           .from("user_email_overrides")
           .select("email")
           .eq("provider_id", token.sub)
@@ -121,7 +121,8 @@ export const authOptions = {
     // 🧾 SESSION
     async session({ session, token }) {
       session.user.role = token?.role || "client";
-      session.user.id = token?.sub; // 🆔 Expose sub ID for email-less users
+      session.user.id = token?.sub; 
+      session.user.email = token?.email || session.user.email; // 📧 Explicitly map fallback email
       session.accessToken = token?.accessToken;
       session.refreshToken = token?.refreshToken;
       return session;
