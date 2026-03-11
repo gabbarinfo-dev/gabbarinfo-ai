@@ -274,8 +274,9 @@ const DEFAULT_MESSAGES = [
   },
 ];
 
-const STORAGE_KEY_CHATS = "gabbarinfo_chats_v1";
-const STORAGE_KEY_ACTIVE = "gabbarinfo_active_chat_v1";
+// Keys for localStorage (we will append user email to make it user-specific)
+const STORAGE_KEY_CHATS_BASE = "gabbarinfo_chats_v2";
+const STORAGE_KEY_ACTIVE_BASE = "gabbarinfo_active_chat_v2";
 
 function createEmptyChat() {
   const now = Date.now();
@@ -327,6 +328,11 @@ export default function ChatPage() {
       }
     }
   }, [agentMode, isAgentPanelOpen]);
+
+  // Generate user-specific keys
+  const userEmail = session?.user?.email || "anonymous";
+  const STORAGE_KEY_CHATS = `${STORAGE_KEY_CHATS_BASE}_${userEmail}`;
+  const STORAGE_KEY_ACTIVE = `${STORAGE_KEY_ACTIVE_BASE}_${userEmail}`;
 
   useEffect(() => {
     if (typeof window === "undefined") return;
@@ -496,19 +502,9 @@ export default function ChatPage() {
     const imagePromptValue = isImagePrompt ? userText.slice(7).trim() : "";
 
     if (role !== "owner" && !unlimited && credits !== null && credits <= 0) {
-      setChats((prev) =>
-        prev.map((chat) => {
-          if (chat.id !== activeChatId) return chat;
-          const errMsg = {
-            role: "assistant",
-            text: "You’ve run out of credits. Please contact GabbarInfo to top up.",
-          };
-          return {
-            ...chat,
-            messages: [...(chat.messages || DEFAULT_MESSAGES), errMsg],
-          };
-        })
-      );
+      // 🚫 DON'T PUSH TO MESSAGES (to avoid poisoning history)
+      // Just show a local error / alert
+      alert("You’ve run out of credits. Please contact GabbarInfo to top up.");
       return;
     }
 
