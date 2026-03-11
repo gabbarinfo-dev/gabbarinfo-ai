@@ -274,10 +274,14 @@ function EmailFallbackForm() {
 
       const data = await res.json();
       if (res.ok) {
-        setMessage("Email saved! Reloading...");
+        setMessage("Email saved! Refreshing session...");
+        
+        // 🚀 FORCE SESSION REFRESH
+        // In Next-Auth, we can trigger a re-render/fetch by calling getSession
+        // or just doing a hard reload which will re-run the Auth sequence.
         setTimeout(() => {
-          window.location.reload();
-        }, 1500);
+          window.location.href = "/?refresh=" + Date.now();
+        }, 1000);
       } else {
         setMessage("Error: " + (data.error || "Failed to save email"));
       }
