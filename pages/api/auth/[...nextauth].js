@@ -90,11 +90,26 @@ export const authOptions = {
         }
       }
 
-      if (user?.email && supabaseClient) {
+      const emailToUse = user?.email || token.email;
+
+      // 🔍 FALLBACK: Check for email override if currently missing
+      if (!emailToUse && token.sub && supabaseClient) {
+        const { data } = await supabaseClient
+          .from("user_email_overrides")
+          .select("email")
+          .eq("provider_id", token.sub)
+          .maybeSingle();
+        
+        if (data?.email) {
+          token.email = data.email;
+        }
+      }
+
+      if (token.email && supabaseClient) {
         const { data } = await supabaseClient
           .from("allowed_users")
           .select("role")
-          .eq("email", user.email.toLowerCase().trim())
+          .eq("email", token.email.toLowerCase().trim())
           .maybeSingle();
 
         token.role = data?.role || "client";
@@ -106,6 +121,7 @@ export const authOptions = {
     // 🧾 SESSION
     async session({ session, token }) {
       session.user.role = token?.role || "client";
+      session.user.id = token?.sub; // 🆔 Expose sub ID for email-less users
       session.accessToken = token?.accessToken;
       session.refreshToken = token?.refreshToken;
       return session;
