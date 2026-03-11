@@ -4305,14 +4305,16 @@ async function handleInstagramPostOnly(req, res, session, body) {
   const activeBusinessId = metaRow?.fb_business_id || "default_business";
 
   // Helper for retrying publication (handles "Media ID not available" latency)
-  const safePublish = async (params, retries = 1) => {
+  const safePublish = async (params, retries = 2) => {
     try {
       return await executeInstagramPost(params);
     } catch (e) {
-      if (retries > 0 && e.message.includes("Media ID")) {
-        console.warn(`[Instagram Retry] Media ID not ready. Waiting 5s... (${retries} retries left)`);
-        await new Promise(r => setTimeout(r, 5000));
-        return await executeInstagramPost(params);
+      const isTransient = e.message.includes("Media ID") || e.message.includes("unexpected error") || e.message.includes("retry your request later");
+      if (retries > 0 && isTransient) {
+        const delay = e.message.includes("Media ID") ? 5000 : 2000;
+        console.warn(`[Instagram Retry] Transient error detected: "${e.message}". Waiting ${delay/1000}s... (${retries} retries left)`);
+        await new Promise(r => setTimeout(r, delay));
+        return await safePublish(params, retries - 1);
       }
       throw e;
     }
@@ -4367,14 +4369,26 @@ async function handleInstagramPostOnly(req, res, session, body) {
   // Path B: Success Publication
   if (creativeResult.assets) {
     try {
+      const { imageUrl, caption, storageFileName } = creativeResult.assets;
+
       const postResult = await safePublish({
         userEmail: session.user.email.toLowerCase(),
-        imageUrl: creativeResult.assets.imageUrl,
-        caption: creativeResult.assets.caption
+        imageUrl: imageUrl,
+        caption: caption
       });
 
       const containerId = postResult.mediaResponseJson?.id;
       const publishId = postResult.publishResponseJson?.id;
+
+      // 🧹 STORAGE CLEANUP: Delete the creative after successful publish
+      if (storageFileName) {
+        try {
+          console.log(`[Storage Cleanup] Deleting published creative: ${storageFileName}`);
+          await supabase.storage.from("instagram-creatives").remove([storageFileName]);
+        } catch (cleanupErr) {
+          console.warn("[Storage Cleanup] Failed to delete file:", cleanupErr.message);
+        }
+      }
 
       return res.status(200).json({
         ok: true,
