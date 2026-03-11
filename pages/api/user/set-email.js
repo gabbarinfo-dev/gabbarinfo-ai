@@ -65,8 +65,11 @@ export default async function handler(req, res) {
       }, { onConflict: "provider_id" });
 
     if (overrideError) {
-      console.error("set-email overrides error:", overrideError);
-      return res.status(500).json({ error: "Failed to save email mapping." });
+      console.error("❌ set-email overrides error:", overrideError.message, overrideError);
+      return res.status(500).json({ 
+        error: "Failed to save email mapping.", 
+        details: overrideError.message 
+      });
     }
 
     // 2) Ensure user is in allowed_users (so they aren't blocked by signIn callback on next login)
