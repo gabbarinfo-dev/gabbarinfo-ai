@@ -342,11 +342,13 @@ export default function ChatPage() {
     return () => window.removeEventListener("resize", check);
   }, []);
 
-  // Load chats from localStorage
+  // Load chats from sessionStorage
   useEffect(() => {
+    if (status === "loading") return; // Wait for session to settle
+    
     try {
-      const storedChats = localStorage.getItem(STORAGE_KEY_CHATS);
-      const storedActive = localStorage.getItem(STORAGE_KEY_ACTIVE);
+      const storedChats = sessionStorage.getItem(STORAGE_KEY_CHATS);
+      const storedActive = sessionStorage.getItem(STORAGE_KEY_ACTIVE);
 
       if (storedChats) {
         const parsed = JSON.parse(storedChats);
@@ -368,6 +370,7 @@ export default function ChatPage() {
         }
       }
 
+      // No chats found for this key, create fresh one
       const first = createEmptyChat();
       setChats([first]);
       setActiveChatId(first.id);
@@ -377,19 +380,22 @@ export default function ChatPage() {
       setChats([first]);
       setActiveChatId(first.id);
     }
-  }, []);
+  }, [STORAGE_KEY_CHATS, status]); // Re-run when key or status changes
 
   // Save chats + active chat
   useEffect(() => {
+    if (status === "loading") return; // Don't save to "anonymous" while loading real session
+    if (!chats.length) return;
+
     try {
-      localStorage.setItem(STORAGE_KEY_CHATS, JSON.stringify(chats));
+      sessionStorage.setItem(STORAGE_KEY_CHATS, JSON.stringify(chats));
       if (activeChatId) {
-        localStorage.setItem(STORAGE_KEY_ACTIVE, activeChatId);
+        sessionStorage.setItem(STORAGE_KEY_ACTIVE, activeChatId);
       }
     } catch (e) {
       console.error("Failed to save chats:", e);
     }
-  }, [chats, activeChatId]);
+  }, [chats, activeChatId, STORAGE_KEY_CHATS, status]);
 
   // Load credits
   useEffect(() => {
@@ -813,6 +819,16 @@ Now respond as GabbarInfo AI.
     }
   }
 
+  function handleSignOut() {
+    try {
+      sessionStorage.removeItem(STORAGE_KEY_CHATS);
+      sessionStorage.removeItem(STORAGE_KEY_ACTIVE);
+    } catch (e) {
+      console.error("Failed to clear session storage:", e);
+    }
+    signOut();
+  }
+
   // ---------- AUTH STATES ----------
   if (status === "loading") {
     return <div style={{ padding: 40 }}>Checking session…</div>;
@@ -943,7 +959,7 @@ Now respond as GabbarInfo AI.
           </div>
 
           <button
-            onClick={() => signOut()}
+            onClick={handleSignOut}
             style={{
               padding: "6px 8px",
               borderRadius: 6,
