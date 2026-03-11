@@ -19,12 +19,25 @@ export default async function handler(req, res) {
       return res.status(401).json({ error: "Not authenticated" });
     }
 
-    // We expect an email even if session.user.email is currently null
     const { email } = req.body || {};
     const normalizedEmail = email?.toLowerCase().trim();
 
-    if (!normalizedEmail || !normalizedEmail.includes("@")) {
-      return res.status(400).json({ error: "Valid email is required." });
+    // 🕵️ VALIDATION
+    if (!normalizedEmail || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(normalizedEmail)) {
+      return res.status(400).json({ error: "Please provide a valid email address." });
+    }
+
+    // 🔒 CHECK: Is this email already claimed by another social account?
+    const { data: existingMapping } = await supabase
+      .from("user_email_overrides")
+      .select("provider_id")
+      .eq("email", normalizedEmail)
+      .maybeSingle();
+
+    if (existingMapping && existingMapping.provider_id !== session.user.id) {
+      return res.status(400).json({ 
+        error: "This email is already linked to another account. Please use a different one." 
+      });
     }
 
     // provider_id is the unique ID from Facebook/Google stored in the token sub
