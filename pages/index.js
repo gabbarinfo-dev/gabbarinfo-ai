@@ -163,50 +163,9 @@ export default function HomePage() {
           gap: 24,
         }}
       >
-        {/* 📧 MISSING EMAIL WARNING */}
+        {/* 📧 MISSING EMAIL COLLECTION FLOW */}
         {!session.user.email && (
-          <div
-            style={{
-              padding: "16px 20px",
-              borderRadius: 12,
-              background: "#fff5f5",
-              border: "1px solid #feb2b2",
-              color: "#c53030",
-              display: "flex",
-              flexDirection: "column",
-              gap: 8,
-              boxShadow: "0 4px 6px rgba(0,0,0,0.05)",
-              maxWidth: 640,
-            }}
-          >
-            <div style={{ fontWeight: 700, fontSize: 16 }}>
-              ⚠️ Missing Email Address
-            </div>
-            <div style={{ fontSize: 14, lineHeight: 1.5 }}>
-              We couldn't retrieve your email from your login. This will prevent
-              you from connecting Facebook Business assets.
-              <br />
-              <strong>Fix:</strong> Please sign out and log in using **Google**,
-              or ensure your Facebook account has a primary email address
-              shared.
-            </div>
-            <button
-              onClick={() => signOut()}
-              style={{
-                width: "fit-content",
-                padding: "8px 16px",
-                background: "#c53030",
-                color: "white",
-                border: "none",
-                borderRadius: 6,
-                cursor: "pointer",
-                fontSize: 13,
-                marginTop: 4,
-              }}
-            >
-              Sign out and try again
-            </button>
-          </div>
+          <EmailFallbackForm />
         )}
 
         {/* CREDITS */}
@@ -290,6 +249,144 @@ export default function HomePage() {
           <FacebookBusinessConnect />
         </section>
       </main>
+    </div>
+  );
+}
+/* -------------------------
+   EMAIL FALLBACK FORM COMPONENT
+------------------------- */
+function EmailFallbackForm() {
+  const [email, setEmail] = useState("");
+  const [loading, setLoading] = useState(false);
+  const [message, setMessage] = useState("");
+
+  const handleSubmit = async (e) => {
+    e.preventDefault();
+    setLoading(true);
+    setMessage("");
+
+    try {
+      const res = await fetch("/api/user/set-email", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email }),
+      });
+
+      const data = await res.json();
+      if (res.ok) {
+        setMessage("Email saved! Reloading...");
+        setTimeout(() => {
+          window.location.reload();
+        }, 1500);
+      } else {
+        setMessage("Error: " + (data.error || "Failed to save email"));
+      }
+    } catch (err) {
+      setMessage("Error: " + err.message);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  return (
+    <div
+      style={{
+        padding: "24px",
+        borderRadius: 16,
+        background: "#fff",
+        border: "1px solid #e2e8f0",
+        boxShadow: "0 10px 15px -3px rgba(0, 0, 0, 0.1)",
+        maxWidth: 640,
+        marginBottom: 24,
+      }}
+    >
+      <div style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: 16 }}>
+        <div style={{ 
+          background: "#fee2e2", 
+          color: "#dc2626", 
+          width: 40, 
+          height: 40, 
+          borderRadius: "50%", 
+          display: "flex", 
+          alignItems: "center", 
+          justifyContent: "center",
+          fontSize: 20
+        }}>
+          ⚠️
+        </div>
+        <h2 style={{ margin: 0, fontSize: 18, color: "#1e293b" }}>Email Required</h2>
+      </div>
+
+      <p style={{ fontSize: 14, color: "#64748b", lineHeight: 1.6, marginBottom: 20 }}>
+        We couldn't retrieve your email from your Facebook login. 
+        Please provide an email address to use as your identifier on this platform.
+        <strong> This is required to connect Facebook Business assets.</strong>
+      </p>
+
+      <form onSubmit={handleSubmit} style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+        <input
+          type="email"
+          placeholder="Enter your email address"
+          required
+          value={email}
+          onChange={(e) => setEmail(e.target.value)}
+          style={{
+            padding: "12px 16px",
+            borderRadius: 8,
+            border: "1px solid #cbd5e1",
+            fontSize: 14,
+            outline: "none",
+          }}
+          disabled={loading}
+        />
+        
+        <div style={{ display: "flex", gap: 12, alignItems: "center" }}>
+          <button
+            type="submit"
+            disabled={loading}
+            style={{
+              padding: "12px 24px",
+              background: "#1877F2",
+              color: "white",
+              border: "none",
+              borderRadius: 8,
+              cursor: loading ? "not-allowed" : "pointer",
+              fontWeight: 600,
+              fontSize: 14,
+              flex: 1,
+            }}
+          >
+            {loading ? "Saving..." : "Save and Continue"}
+          </button>
+          
+          <button
+            type="button"
+            onClick={() => signOut()}
+            style={{
+              padding: "12px 16px",
+              background: "#f1f5f9",
+              color: "#475569",
+              border: "none",
+              borderRadius: 8,
+              cursor: "pointer",
+              fontSize: 14,
+            }}
+          >
+            Sign out
+          </button>
+        </div>
+      </form>
+
+      {message && (
+        <p style={{ 
+          marginTop: 16, 
+          fontSize: 13, 
+          color: message.startsWith("Error") ? "#dc2626" : "#16a34a",
+          fontWeight: 500 
+        }}>
+          {message}
+        </p>
+      )}
     </div>
   );
 }
