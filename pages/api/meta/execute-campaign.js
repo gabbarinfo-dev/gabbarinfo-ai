@@ -267,51 +267,32 @@ Check Failed: ${e.message}`
     const rawObjective = payload.objective || "";
     let finalObjective = mapObjectiveToODAX(rawObjective);
 
-    // 🔧 FORCE WhatsApp campaigns to Engagement objective
-    // 🔧 FORCE ALL messaging campaigns to Engagement objective
+    // ODAX Objective routing for messaging destinations
     const convLoc = (payload.conversion_location || "").toUpperCase();
+    const msgChannel = (payload.message_channel || "").toUpperCase();
+    const isWhatsAppDest = convLoc === "WHATSAPP" || msgChannel === "WHATSAPP" || msgChannel === "WHATSAPP_MESSAGES";
 
-    if (
-      convLoc === "WHATSAPP" ||
-      convLoc === "MESSAGING_APPS" ||
-      convLoc === "MESSAGES" ||
-      convLoc === "MESSENGER" ||
-      convLoc === "INSTAGRAM_DIRECT"
-    ) {
-      console.log("📩 Messaging destination detected → forcing OUTCOME_ENGAGEMENT objective");
-      finalObjective = "OUTCOME_ENGAGEMENT";
-    }
-    // FIX: LEADS + CALLS is not allowed under ODAX
-    if (
-      finalObjective === "OUTCOME_LEADS" &&
-      (payload.conversion_location || "").toUpperCase() === "CALLS"
-    ) {
+    // FIX: LEADS + CALLS is not allowed under ODAX — downgrade to Traffic
+    if (finalObjective === "OUTCOME_LEADS" && convLoc === "CALLS") {
       finalObjective = "OUTCOME_TRAFFIC";
     }
 
-    // FIX: TRAFFIC + MESSAGES must use ENGAGEMENT objective ONLY FOR MESSENGER/IG
+    // For non-WhatsApp messaging (Messenger, Instagram DM) with Traffic objective → use Engagement
+    // WhatsApp is exempt — OUTCOME_TRAFFIC + WHATSAPP is a valid ODAX combination
     if (
       finalObjective === "OUTCOME_TRAFFIC" &&
-      (
-        (payload.conversion_location || "").toUpperCase() === "MESSAGES" ||
-        (payload.conversion_location || "").toUpperCase() === "MESSAGING_APPS"
-      ) &&
-      (payload.message_channel || "").toUpperCase() !== "WHATSAPP"
+      !isWhatsAppDest &&
+      (convLoc === "MESSAGING_APPS" || convLoc === "MESSAGES" || convLoc === "MESSENGER" || convLoc === "INSTAGRAM_DIRECT")
     ) {
+      console.log("📩 Non-WhatsApp messaging + Traffic → forcing OUTCOME_ENGAGEMENT");
       finalObjective = "OUTCOME_ENGAGEMENT";
     }
 
-    // NEW FIX: LEADS + WHATSAPP is not allowed under ODAX or requires specific TOS
-    if (
-      finalObjective === "OUTCOME_LEADS" &&
-      (
-        (payload.conversion_location || "").toUpperCase() === "WHATSAPP" ||
-        (payload.message_channel || "").toUpperCase() === "WHATSAPP"
-      )
-    ) {
-      console.log("🔄 Re-mapping LEADS + WHATSAPP to OUTCOME_ENGAGEMENT for ODAX compliance and TOS safety");
-      finalObjective = "OUTCOME_ENGAGEMENT";
-    }
+    // ODAX rule: standalone Engagement campaigns with messaging destinations → keep ENGAGEMENT
+    // (No override needed — OUTCOME_ENGAGEMENT + WHATSAPP is already valid)
+
+    // NOTE: OUTCOME_TRAFFIC + WHATSAPP and OUTCOME_LEADS + WHATSAPP are both valid
+    // ODAX combinations with optimization_goal=CONVERSATIONS. Do NOT override them.
     console.log(`
 🚀
  [Campaign Creator] Objective: ${finalObjective} 
@@ -548,28 +529,58 @@ Once accepted, you can try publishing this campaign again.
 (Page ID: ${PAGE_ID})`);
         }
 
-        // Specific Handle for Personal WhatsApp Account Error — auto-retry with LINK_CLICKS
+        // Handle: WhatsApp WABA not connected → fallback to wa.me URL approach
+        // destination_type=WHATSAPP fails for ANY optimization goal without a properly
+        // connected WhatsApp Business Account (WABA) via Meta Business Suite.
+        // Fallback: use WEBSITE destination + LINK_CLICKS + wa.me link in creative.
         if (errDetail.error_subcode === 2446885) {
-          console.warn("⚠️ [AdSet] WhatsApp Business account error (2446885). Auto-retrying with LINK_CLICKS goal...");
-          // Rebuild params with LINK_CLICKS override
-          const retryP = await buildAdSetPayload(finalObjective, adSet, campaignId, ACCESS_TOKEN, placements, PAGE_ID, activePixelId, payload, validatedInstagramActorId);
-          // Force override optimization_goal to LINK_CLICKS in the URLSearchParams
-          const retryEntries = [...retryP.entries()].filter(([k]) => k !== 'optimization_goal');
-          const retryParams = new URLSearchParams(retryEntries);
-          retryParams.append('optimization_goal', 'LINK_CLICKS');
-          const budgetAmountR = payload.budget?.amount || 500;
-          const budgetTypeR = (payload.budget?.type || "DAILY").toUpperCase() === "DAILY" ? "daily_budget" : "lifetime_budget";
-          retryParams.append(budgetTypeR, String(Math.floor(Number(budgetAmountR) * 100)));
-          console.log("🔄 [AdSet] Retry params (LINK_CLICKS):", retryParams.toString().substring(0, 200) + '...');
-          const retryRes = await fetch(`https://graph.facebook.com/${API_VERSION}/act_${AD_ACCOUNT_ID}/adsets`, { method: "POST", body: retryParams });
-          const retryJson = await retryRes.json();
-          if (retryRes.ok && retryJson.id) {
-            console.log(`✅ [AdSet] LINK_CLICKS retry succeeded: ${retryJson.id}`);
-            createdAssets.ad_sets.push(retryJson.id);
-            // Swap asJson so downstream creative/ad creation uses the new adset
-            asJson.id = retryJson.id;
+          const rawPhone = adSet.phone_number || meta?.business_phone || "";
+          const cleanPhone = rawPhone.replace(/\D/g, "");
+          const waPhone = cleanPhone.startsWith("91") ? cleanPhone : `91${cleanPhone}`;
+          const waLink = `https://wa.me/${waPhone}`;
+          console.warn(`⚠️ [AdSet] WABA not connected (2446885). Falling back to wa.me URL approach: ${waLink}`);
+
+          // Rebuild adset without WhatsApp destination: WEBSITE + LINK_CLICKS
+          const wameFallbackParams = new URLSearchParams();
+          wameFallbackParams.append("name", adSet.name || "Ad Set 1");
+          wameFallbackParams.append("campaign_id", campaignId);
+          wameFallbackParams.append("status", "ACTIVE");
+          wameFallbackParams.append("access_token", ACCESS_TOKEN);
+          wameFallbackParams.append("bid_strategy", "LOWEST_COST_WITHOUT_CAP");
+          const wameStart = new Date(Date.now() + 5 * 60 * 1000);
+          wameFallbackParams.append("start_time", wameStart.toISOString());
+          wameFallbackParams.append("optimization_goal", "LINK_CLICKS");
+          wameFallbackParams.append("billing_event", "IMPRESSIONS");
+          // No destination_type → defaults to WEBSITE
+          const budgetAmountF = payload.budget?.amount || 500;
+          const budgetTypeF = (payload.budget?.type || "DAILY").toUpperCase() === "DAILY" ? "daily_budget" : "lifetime_budget";
+          wameFallbackParams.append(budgetTypeF, String(Math.floor(Number(budgetAmountF) * 100)));
+
+          // Targeting (reuse same targeting from original payload)
+          const wameGeo = {};
+          // Quick re-resolve: reuse the existing buildAdSetPayload just for targeting string extraction
+          const tempP = await buildAdSetPayload(finalObjective, adSet, campaignId, ACCESS_TOKEN, placements, PAGE_ID, activePixelId, payload, validatedInstagramActorId);
+          const targetingStr = tempP.get("targeting");
+          if (targetingStr) wameFallbackParams.append("targeting", targetingStr);
+
+          console.log("🔄 [AdSet] wa.me fallback params built. Attempting WEBSITE+LINK_CLICKS adset...");
+          const wameRes = await fetch(`https://graph.facebook.com/${API_VERSION}/act_${AD_ACCOUNT_ID}/adsets`, { method: "POST", body: wameFallbackParams });
+          const wameJson = await wameRes.json();
+          if (wameRes.ok && wameJson.id) {
+            console.log(`✅ [AdSet] wa.me fallback adset created: ${wameJson.id}`);
+            createdAssets.ad_sets.push(wameJson.id);
+            asJson.id = wameJson.id;
+            // Override creative destination so the link builder uses wa.me
+            if (adSet.ad_creative) {
+              adSet.ad_creative.destination_url = waLink;
+              adSet.ad_creative.call_to_action = "LEARN_MORE";
+            }
+            // Override conversion_location so creative builder uses WEBSITE path
+            payload._waFallback = true;
+            payload.conversion_location = "WEBSITE";
+            console.log(`📱 [wa.me Fallback] Campaign will open WhatsApp via link: ${waLink}`);
           } else {
-            throw new Error(`AdSet Create Failed (LINK_CLICKS retry): ${retryJson.error?.message || 'Unknown'}`);
+            throw new Error(`WhatsApp ads require a WhatsApp Business Account (WABA) connected to your Facebook Page via Meta Business Suite. Please go to business.facebook.com → Settings → WhatsApp Accounts → Add a phone number and verify it. Error: ${wameJson.error?.message || 'Unknown'}`);
           }
         } else {
 
@@ -866,13 +877,11 @@ async function buildAdSetPayload(objective, adSet, campaignId, accessToken, plac
 
       if (conversionLocation === "WHATSAPP") {
         destination_type = "WHATSAPP";
-        // MOD: Use LINK_CLICKS for OUTCOME_TRAFFIC to allow Personal WhatsApp numbers
-        optimization_goal = "LINK_CLICKS";
+        // ODAX rule: OUTCOME_TRAFFIC + WHATSAPP requires CONVERSATIONS goal
+        optimization_goal = "CONVERSATIONS";
         billing_event = "IMPRESSIONS";
-        promoted_object = {
-          page_id: pageId
-        };
-        console.log("📍 [AdSet] Using LINK_CLICKS for TRAFFIC + WhatsApp to avoid 'Personal Account' restrictions.");
+        promoted_object = { page_id: pageId };
+        console.log("📍 [AdSet] Using CONVERSATIONS for TRAFFIC + WhatsApp (correct ODAX rule).");
       }
 
       else if (conversionLocation === "MESSAGES" || conversionLocation === "MESSAGING_APPS" || conversionLocation === "INSTAGRAM_DIRECT" || conversionLocation === "MESSENGER") {
@@ -989,16 +998,12 @@ async function buildAdSetPayload(objective, adSet, campaignId, accessToken, plac
     case "OUTCOME_ENGAGEMENT":
 
       billing_event = "IMPRESSIONS";
+      optimization_goal = "CONVERSATIONS"; // ODAX default for Engagement
 
       if (conversionLocation === "WHATSAPP") {
         destination_type = "WHATSAPP";
-        // LINK_CLICKS works with both personal & business WhatsApp numbers.
-        // CONVERSATIONS requires a verified WhatsApp Business account (error 2446885).
-        optimization_goal = "LINK_CLICKS";
-        promoted_object = {
-          page_id: pageId
-        };
-        console.log("📍 [AdSet] Using LINK_CLICKS for ENGAGEMENT + WhatsApp to avoid 'Personal Account' restriction.");
+        promoted_object = { page_id: pageId };
+        console.log("📍 [AdSet] ENGAGEMENT + WhatsApp: CONVERSATIONS goal.");
       }
 
       else if (conversionLocation === "MESSAGING_APPS" || conversionLocation === "MESSAGES" || conversionLocation === "INSTAGRAM_DIRECT" || conversionLocation === "MESSENGER") {
@@ -1006,30 +1011,17 @@ async function buildAdSetPayload(objective, adSet, campaignId, accessToken, plac
 
         if (channel === "INSTAGRAM_MESSAGES") {
           destination_type = "INSTAGRAM_DIRECT";
-          optimization_goal = "CONVERSATIONS";
         } else if (channel === "FACEBOOK_MESSENGER") {
           destination_type = "MESSENGER";
-          optimization_goal = "CONVERSATIONS";
         } else if (channel === "WHATSAPP_MESSAGES" || channel === "WHATSAPP") {
           destination_type = "WHATSAPP";
-          // Same fix: LINK_CLICKS for WhatsApp to avoid personal account error
-          optimization_goal = "LINK_CLICKS";
-          console.log("📍 [AdSet] Using LINK_CLICKS for channel=WHATSAPP to avoid 'Personal Account' restriction.");
         } else if (channel === "ALL_MESSAGES" || !channel) {
-          // Multi-destination: Instagram, Messenger, and WhatsApp
           destination_type = "MESSAGING_INSTAGRAM_DIRECT_MESSENGER_WHATSAPP";
-          optimization_goal = "CONVERSATIONS";
         }
       }
 
-      else {
-        optimization_goal = "CONVERSATIONS";
-      }
-
       if (!promoted_object) {
-        promoted_object = {
-          page_id: pageId
-        };
+        promoted_object = { page_id: pageId };
       }
 
       break;
