@@ -511,7 +511,7 @@ Error: ${lastError?.message}`);
       adSet.message_channel = payload.message_channel;
       adSet.phone_number = payload.phone_number || meta.business_phone;
       if (catalogInfo) adSet._catalogInfo = catalogInfo; // Honor discovery but don't overwrite if present
-      
+
       const p = await buildAdSetPayload(finalObjective, adSet, campaignId, ACCESS_TOKEN, placements, PAGE_ID, activePixelId, payload, validatedInstagramActorId);
 
       // Append Budget 
@@ -548,27 +548,42 @@ Once accepted, you can try publishing this campaign again.
 (Page ID: ${PAGE_ID})`);
         }
 
-        // Specific Handle for Personal WhatsApp Account Error
+        // Specific Handle for Personal WhatsApp Account Error — auto-retry with LINK_CLICKS
         if (errDetail.error_subcode === 2446885) {
-          throw new Error(`
-⚠️ WhatsApp Business Account Required for Conversations.
-The WhatsApp number linked to your Page is a "Personal" account. 
+          console.warn("⚠️ [AdSet] WhatsApp Business account error (2446885). Auto-retrying with LINK_CLICKS goal...");
+          // Rebuild params with LINK_CLICKS override
+          const retryP = await buildAdSetPayload(finalObjective, adSet, campaignId, ACCESS_TOKEN, placements, PAGE_ID, activePixelId, payload, validatedInstagramActorId);
+          // Force override optimization_goal to LINK_CLICKS in the URLSearchParams
+          const retryEntries = [...retryP.entries()].filter(([k]) => k !== 'optimization_goal');
+          const retryParams = new URLSearchParams(retryEntries);
+          retryParams.append('optimization_goal', 'LINK_CLICKS');
+          const budgetAmountR = payload.budget?.amount || 500;
+          const budgetTypeR = (payload.budget?.type || "DAILY").toUpperCase() === "DAILY" ? "daily_budget" : "lifetime_budget";
+          retryParams.append(budgetTypeR, String(Math.floor(Number(budgetAmountR) * 100)));
+          console.log("🔄 [AdSet] Retry params (LINK_CLICKS):", retryParams.toString().substring(0, 200) + '...');
+          const retryRes = await fetch(`https://graph.facebook.com/${API_VERSION}/act_${AD_ACCOUNT_ID}/adsets`, { method: "POST", body: retryParams });
+          const retryJson = await retryRes.json();
+          if (retryRes.ok && retryJson.id) {
+            console.log(`✅ [AdSet] LINK_CLICKS retry succeeded: ${retryJson.id}`);
+            createdAssets.ad_sets.push(retryJson.id);
+            // Swap asJson so downstream creative/ad creation uses the new adset
+            asJson.id = retryJson.id;
+          } else {
+            throw new Error(`AdSet Create Failed (LINK_CLICKS retry): ${retryJson.error?.message || 'Unknown'}`);
+          }
+        } else {
 
-To use the "Maximize Conversations" goal, you MUST convert it to a WhatsApp Business account (download the WhatsApp Business app and follow the prompts).
-
-Alternatively, I will try to use the "Link Clicks" goal instead, which works with all numbers. (Relaunching with Traffic might fix this).`);
-        }
-
-        // Specific Handle for Performance Goal Error (ODAX Mismatch)
-        if (errDetail.error_subcode === 2490408) {
-          throw new Error(`
+          // Specific Handle for Performance Goal Error (ODAX Mismatch)
+          if (errDetail.error_subcode === 2490408) {
+            throw new Error(`
 ⚠️ Meta Optimization Mismatch: The selected goal isn't available for this campaign type.
 This usually happens when trying to use "Lead Generation" goal with WhatsApp destination.
 
 I will try to automatically correct this to "Maximize Conversations" or switch to a Traffic campaign.`);
-        }
+          }
 
-        throw new Error(`AdSet Create Failed: ${errDetail.message || 'Unknown'} | SubCode: ${errDetail.error_subcode || 'N/A'} | Detail: ${errDetail.error_user_msg || errDetail.error_user_title || 'N/A'} (Account: ${AD_ACCOUNT_ID})`);
+          throw new Error(`AdSet Create Failed: ${errDetail.message || 'Unknown'} | SubCode: ${errDetail.error_subcode || 'N/A'} | Detail: ${errDetail.error_user_msg || errDetail.error_user_title || 'N/A'} (Account: ${AD_ACCOUNT_ID})`);
+        } // end else (non-2446885 errors)
       }
       // 4. Create Creative with Fallbacks
       const creative = adSet.ad_creative || {};
@@ -766,9 +781,9 @@ ${JSON.stringify(lastCreativeError, null, 2)}`);
         status: "ACTIVE",
         ...(
           (payload.message_channel === "INSTAGRAM_MESSAGES" || payload.conversion_location === "INSTAGRAM_PROFILE") &&
-          validatedInstagramActorId
-          ? { instagram_user_id: validatedInstagramActorId }
-          : {})
+            validatedInstagramActorId
+            ? { instagram_user_id: validatedInstagramActorId }
+            : {})
       };
 
       const adRes = await fetch(
@@ -973,30 +988,42 @@ async function buildAdSetPayload(objective, adSet, campaignId, accessToken, plac
 
     case "OUTCOME_ENGAGEMENT":
 
-      optimization_goal = "CONVERSATIONS";
       billing_event = "IMPRESSIONS";
 
       if (conversionLocation === "WHATSAPP") {
         destination_type = "WHATSAPP";
-
+        // LINK_CLICKS works with both personal & business WhatsApp numbers.
+        // CONVERSATIONS requires a verified WhatsApp Business account (error 2446885).
+        optimization_goal = "LINK_CLICKS";
         promoted_object = {
           page_id: pageId
         };
+        console.log("📍 [AdSet] Using LINK_CLICKS for ENGAGEMENT + WhatsApp to avoid 'Personal Account' restriction.");
       }
 
-      else if (conversionLocation === "MESSAGING_APPS" || conversionLocation === "MESSAGES" || conversionLocation === "WHATSAPP" || conversionLocation === "INSTAGRAM_DIRECT" || conversionLocation === "MESSENGER") {
+      else if (conversionLocation === "MESSAGING_APPS" || conversionLocation === "MESSAGES" || conversionLocation === "INSTAGRAM_DIRECT" || conversionLocation === "MESSENGER") {
         const channel = (adSet.message_channel || "").toUpperCase();
 
         if (channel === "INSTAGRAM_MESSAGES") {
           destination_type = "INSTAGRAM_DIRECT";
+          optimization_goal = "CONVERSATIONS";
         } else if (channel === "FACEBOOK_MESSENGER") {
           destination_type = "MESSENGER";
-        } else if (channel === "WHATSAPP_MESSAGES" || channel === "WHATSAPP" || conversionLocation === "WHATSAPP") {
+          optimization_goal = "CONVERSATIONS";
+        } else if (channel === "WHATSAPP_MESSAGES" || channel === "WHATSAPP") {
           destination_type = "WHATSAPP";
+          // Same fix: LINK_CLICKS for WhatsApp to avoid personal account error
+          optimization_goal = "LINK_CLICKS";
+          console.log("📍 [AdSet] Using LINK_CLICKS for channel=WHATSAPP to avoid 'Personal Account' restriction.");
         } else if (channel === "ALL_MESSAGES" || !channel) {
-          // This targets Instagram, Messenger, and WhatsApp all at once
+          // Multi-destination: Instagram, Messenger, and WhatsApp
           destination_type = "MESSAGING_INSTAGRAM_DIRECT_MESSENGER_WHATSAPP";
+          optimization_goal = "CONVERSATIONS";
         }
+      }
+
+      else {
+        optimization_goal = "CONVERSATIONS";
       }
 
       if (!promoted_object) {
@@ -1400,7 +1427,7 @@ function buildCreativePayload(creative, pageId, AD_ACCOUNT_ID, accessToken, plac
   const params = new URLSearchParams();
   params.append("name", creative.headline || "Creative");
   params.append("object_story_spec", JSON.stringify(objectStorySpec));
-  
+
   // 🔥 CRITICAL FIX: For Profile Visits and some ODAX types, 
   // Meta requires instagram_user_id at the Root level (instagram_actor_id is deprecated as root param in v22+).
   if (finalInstagramUser) {
