@@ -1,3 +1,4 @@
+
 // pages/api/agent/final-confirmation.js
 
 import { getServerSession } from "next-auth/next";
@@ -50,6 +51,7 @@ export default async function handler(req, res) {
   return res.status(200).json({
     ok: true,
     executionApproved: true,
+    campaignPublished: true,
     approvedBy: session.user.email,
     approvedAt: new Date().toISOString(),
     summary: {
