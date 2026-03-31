@@ -1,5 +1,4 @@
 "use client";
-
 import { useEffect, useState } from "react";
 import { useSession, signIn, signOut } from "next-auth/react";
 import FacebookBusinessConnect from "./components/facebook/FacebookBusinessConnect";
