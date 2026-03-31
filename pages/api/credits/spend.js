@@ -9,7 +9,7 @@ const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
 );
 
-const DEFAULT_CREDITS = 30;
+const DEFAULT_CREDITS = 10;
 
 export default async function handler(req, res) {
   if (req.method !== "POST") {
