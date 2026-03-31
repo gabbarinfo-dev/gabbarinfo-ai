@@ -316,6 +316,9 @@ export default function ChatPage() {
   const [agentError, setAgentError] = useState("");
   const [agentResponse, setAgentResponse] = useState("");
 
+  // Track how many agent steps have been charged in the current campaign session
+  const [campaignStepCount, setCampaignStepCount] = useState(0);
+
   // Auto-populate agent instructions based on mode (UI Enhancement)
   useEffect(() => {
     if (isAgentPanelOpen) {
@@ -438,6 +441,7 @@ export default function ChatPage() {
     setActiveChatId(newChat.id);
     setInput("");
     setAgentResponse("");
+    setCampaignStepCount(0); // reset campaign step counter on new chat
   }
 
   function scrollChatToBottom() {
@@ -534,7 +538,7 @@ export default function ChatPage() {
             const data = await consumeRes.json().catch(() => ({}));
             const msg =
               data.error ||
-              "You’ve run out of credits. Please contact GabbarInfo to top up.";
+              "You've run out of credits. Please contact GabbarInfo to top up.";
 
             setCredits(0);
 
@@ -563,6 +567,24 @@ export default function ChatPage() {
             const data = await consumeRes.json().catch(() => ({}));
             if (typeof data.credits === "number") {
               setCredits(data.credits);
+            }
+          }
+
+          // 🖼️ Image generation costs 2 credits — consume the extra 1 now
+          if (isImagePrompt) {
+            try {
+              const extraConsumeRes = await fetch("/api/credits/consume", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+              });
+              if (extraConsumeRes.ok) {
+                const extraData = await extraConsumeRes.json().catch(() => ({}));
+                if (typeof extraData.credits === "number") {
+                  setCredits(extraData.credits);
+                }
+              }
+            } catch (err) {
+              console.error("Error consuming extra credit for image:", err);
             }
           }
         } catch (err) {
@@ -748,7 +770,7 @@ Now respond as GabbarInfo AI.
             const data = await consumeRes.json().catch(() => ({}));
             const msg =
               data.error ||
-              "You’ve run out of credits. Please contact GabbarInfo to top up.";
+              "You've run out of credits. Please contact GabbarInfo to top up.";
 
             setCredits(0);
             setAgentError(msg);
@@ -763,6 +785,8 @@ Now respond as GabbarInfo AI.
             if (typeof data.credits === "number") {
               setCredits(data.credits);
             }
+            // Increment campaign step counter for every agent credit consumed
+            setCampaignStepCount((prev) => prev + 1);
           }
         } catch (err) {
           console.error("Error calling /api/credits/consume for Agent:", err);
@@ -807,6 +831,35 @@ Now respond as GabbarInfo AI.
         updatedMessages,
         assistantMsg
       );
+
+      // 🎯 Campaign published successfully → top up to 24 total credits
+      // Detect by checking if the response signals a successful campaign publish
+      const isCampaignPublished =
+        (data.campaignPublished === true) ||
+        rawText.includes("CAMPAIGN_PUBLISHED_SUCCESS") ||
+        rawText.includes("campaign has been published") ||
+        rawText.includes("campaign is now live");
+
+      if (isCampaignPublished && role !== "owner" && !unlimited) {
+        try {
+          const topUpRes = await fetch("/api/credits/campaign-top-up", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            credentials: "include",
+            body: JSON.stringify({ stepsSpent: campaignStepCount }),
+          });
+          if (topUpRes.ok) {
+            const topUpData = await topUpRes.json().catch(() => ({}));
+            if (typeof topUpData.creditsLeft === "number") {
+              setCredits(topUpData.creditsLeft);
+            }
+          }
+        } catch (err) {
+          console.error("Error calling /api/credits/campaign-top-up:", err);
+        }
+        // Reset counter after a published campaign
+        setCampaignStepCount(0);
+      }
 
       setAgentInstruction("");
       scrollChatToBottom();
