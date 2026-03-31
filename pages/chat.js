@@ -1,6 +1,5 @@
 // pages/chat.js
 "use client";
-
 import { useEffect, useState } from "react";
 import { signIn, signOut, useSession } from "next-auth/react";
 import BuyCreditsModal from "./components/BuyCreditsModal";
