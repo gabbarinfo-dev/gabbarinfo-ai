@@ -1,4 +1,3 @@
-
 // pages/api/agent/final-confirmation.js
 
 import { getServerSession } from "next-auth/next";
