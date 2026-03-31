@@ -2,7 +2,6 @@
 // Deducts the remaining credits to ensure a completed Meta Ads campaign
 // costs a total of CAMPAIGN_TOTAL_CREDITS (24), regardless of how many
 // step-by-step credits were already spent during the conversation.
-
 import { getServerSession } from "next-auth/next";
 import { authOptions } from "../auth/[...nextauth]";
 import { createClient } from "@supabase/supabase-js";
