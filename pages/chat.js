@@ -3,6 +3,7 @@
 
 import { useEffect, useState } from "react";
 import { signIn, signOut, useSession } from "next-auth/react";
+import BuyCreditsModal from "./components/BuyCreditsModal";
 
 const SYSTEM_PROMPT = `
 You are **GabbarInfo AI**, a senior digital marketing strategist with expertise in all aspects of digital marketing.
@@ -300,6 +301,8 @@ export default function ChatPage() {
   const [credits, setCredits] = useState(null);
   const [unlimited, setUnlimited] = useState(false);
   const [creditsLoading, setCreditsLoading] = useState(true);
+  // ── Buy Credits modal state ──
+  const [showBuyCredits, setShowBuyCredits] = useState(false);
 
   // simple responsive flag – ONLY used for layout decisions (column vs row)
   const [isMobile, setIsMobile] = useState(false);
@@ -999,6 +1002,26 @@ Now respond as GabbarInfo AI.
                 : `Client · Credits: ${credits ?? 0}`}
           </span>
 
+          {/* ➕ Add Credits button — visible to non-owners only */}
+          {role !== "owner" && (
+            <button
+              onClick={() => setShowBuyCredits(true)}
+              style={{
+                padding: "4px 10px",
+                borderRadius: 8,
+                border: "1.5px solid #4f46e5",
+                background: "#eef2ff",
+                color: "#4f46e5",
+                fontWeight: 600,
+                fontSize: 11,
+                cursor: "pointer",
+                whiteSpace: "nowrap",
+              }}
+            >
+              ➕ Add Credits
+            </button>
+          )}
+
           <div
             style={{
               fontSize: 12,
@@ -1583,6 +1606,14 @@ Now respond as GabbarInfo AI.
           )}
         </section>
       </main>
+
+      {/* ── Buy Credits Modal ── */}
+      {/* userEmail is read from session.user.email and passed as prop */}
+      <BuyCreditsModal
+        isOpen={showBuyCredits}
+        onClose={() => setShowBuyCredits(false)}
+        userEmail={session?.user?.email}
+      />
     </div>
   );
 }
