@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import { useSession, signIn, signOut } from "next-auth/react";
 import FacebookBusinessConnect from "./components/facebook/FacebookBusinessConnect";
+import BuyCreditsModal from "./components/BuyCreditsModal";
 
 export default function HomePage() {
   const { data: session, status } = useSession();
@@ -12,6 +13,8 @@ export default function HomePage() {
   const [loadingCredits, setLoadingCredits] = useState(true);
 
   const role = session?.user?.role || "client";
+  // ── Buy Credits modal state ──
+  const [showBuyCredits, setShowBuyCredits] = useState(false);
 
   /* -------------------------
      LOAD CREDITS
@@ -187,9 +190,28 @@ export default function HomePage() {
           ) : loadingCredits ? (
             <p>Loading credits…</p>
           ) : (
-            <p>
-              You currently have <strong>{credits ?? 0}</strong> credits left.
-            </p>
+            <div style={{ display: "flex", alignItems: "center", gap: 14, flexWrap: "wrap" }}>
+              <p style={{ margin: 0 }}>
+                You currently have <strong>{credits ?? 0}</strong> credits left.
+              </p>
+              {/* ➕ Add Credits button — opens the Buy Credits modal */}
+              <button
+                onClick={() => setShowBuyCredits(true)}
+                style={{
+                  padding: "6px 14px",
+                  borderRadius: 8,
+                  border: "1.5px solid #4f46e5",
+                  background: "#eef2ff",
+                  color: "#4f46e5",
+                  fontWeight: 600,
+                  fontSize: 13,
+                  cursor: "pointer",
+                  whiteSpace: "nowrap",
+                }}
+              >
+                ➕ Add Credits
+              </button>
+            </div>
           )}
         </section>
 
@@ -249,6 +271,14 @@ export default function HomePage() {
           <FacebookBusinessConnect />
         </section>
       </main>
+
+      {/* ── Buy Credits Modal ── */}
+      {/* userEmail is read from session and passed as prop */}
+      <BuyCreditsModal
+        isOpen={showBuyCredits}
+        onClose={() => setShowBuyCredits(false)}
+        userEmail={session?.user?.email}
+      />
     </div>
   );
 }
