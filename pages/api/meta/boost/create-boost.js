@@ -30,7 +30,7 @@ export default async function handler(req, res) {
         }
 
         const { fb_user_access_token, fb_ad_account_id } = data;
-const token = fb_user_access_token;
+        const token = fb_user_access_token;
 
         if (!token) {
             return res.status(400).json({ error: "System user token missing" });
@@ -66,7 +66,7 @@ const token = fb_user_access_token;
                 objective: "OUTCOME_AWARENESS",
                 special_ad_categories: JSON.stringify([]), // Must be stringified empty array for form-encoded
                 is_adset_budget_sharing_enabled: false, // Campaign Budget Optimization off
-                status: "PAUSED",
+                status: "ACTIVE",
                 access_token: token
             }),
         });
@@ -98,7 +98,7 @@ const token = fb_user_access_token;
                 start_time: startTime,
                 end_time: endTime,
                 targeting: JSON.stringify({ geo_locations: { countries: ["IN"] } }), // Must be stringified
-                status: "PAUSED",
+                status: "ACTIVE",
                 access_token: token
             }),
         });
@@ -137,7 +137,7 @@ const token = fb_user_access_token;
                 name: `Ad_Boost_${post_id}`,
                 adset_id: adSetId,
                 creative: JSON.stringify({ creative_id: creativeId }), // Must be stringified
-                status: "PAUSED",
+                status: "ACTIVE",
                 access_token: token
             }),
         });
