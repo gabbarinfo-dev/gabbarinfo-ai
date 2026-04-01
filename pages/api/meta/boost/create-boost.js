@@ -13,7 +13,7 @@ export default async function handler(req, res) {
     }
 
     const email = session.user.email;
-    const { page_id, post_id, goal, daily_budget, duration } = req.body;
+    const { page_id, post_id, goal, daily_budget, duration, cities } = req.body;
     if (!page_id || !post_id) {
         return res.status(400).json({ error: "Missing required fields" });
     }
@@ -53,6 +53,32 @@ export default async function handler(req, res) {
             },
             access_token: token
         };
+
+        // --- Build geo_locations targeting ---
+        // If cities are provided, resolve via Meta Location Search API; else target whole India.
+        let geo_locations = { countries: ["IN"] }; // default: all India
+
+        if (Array.isArray(cities) && cities.length > 0) {
+            const resolvedCities = [];
+            for (const cityName of cities) {
+                try {
+                    const locRes = await fetch(
+                        `https://graph.facebook.com/v21.0/search?type=adgeolocation&q=${encodeURIComponent(cityName)}&location_types=["city"]&country_code=IN&access_token=${token}`
+                    );
+                    const locData = await locRes.json();
+                    const match = (locData.data || []).find(d => d.country_code === "IN");
+                    if (match) {
+                        resolvedCities.push({ key: match.key });
+                    }
+                } catch (e) {
+                    console.warn(`Could not resolve city: ${cityName}`, e.message);
+                }
+            }
+            if (resolvedCities.length > 0) {
+                geo_locations = { cities: resolvedCities };
+            }
+            // If resolution failed for all cities → keep default India country target
+        }
 
         // Ensure ad account ID has 'act_' prefix
         const adAccountId = fb_ad_account_id.startsWith("act_") ? fb_ad_account_id : `act_${fb_ad_account_id}`;
@@ -97,7 +123,7 @@ export default async function handler(req, res) {
                 daily_budget: Math.max(100, (daily_budget || 500) * 100), // Min 100 units
                 start_time: startTime,
                 end_time: endTime,
-                targeting: JSON.stringify({ geo_locations: { countries: ["IN"] } }), // Must be stringified
+                targeting: JSON.stringify({ geo_locations }),
                 status: "ACTIVE",
                 access_token: token
             }),
