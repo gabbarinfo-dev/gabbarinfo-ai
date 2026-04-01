@@ -50,6 +50,7 @@ export default function BoostModal({ onClose }) {
     const [selectedPostId, setSelectedPostId] = useState("");
     const [budget, setBudget] = useState(500);
     const [duration, setDuration] = useState(7);
+    const [cities, setCities] = useState(""); // comma-separated Indian city names
 
     // Result
     const [result, setResult] = useState(null);
@@ -147,6 +148,7 @@ export default function BoostModal({ onClose }) {
                     post_id: selectedPostId,
                     daily_budget: Number(budget),
                     duration: Number(duration),
+                    cities: cities.trim() ? cities.split(",").map(c => c.trim()).filter(Boolean) : [],
                 }),
             });
             const data = await res.json();
@@ -273,8 +275,17 @@ export default function BoostModal({ onClose }) {
                                 min="1"
                                 disabled={loading}
                             />
+                            <p style={styles.label}>Target Cities in India</p>
+                            <input
+                                type="text"
+                                value={cities}
+                                onChange={(e) => setCities(e.target.value)}
+                                placeholder="e.g. Mumbai, Delhi, Pune"
+                                style={styles.input}
+                                disabled={loading}
+                            />
                             <p style={styles.hint}>
-                                Note: Targeting is set to India. The post will be boosted to a broad audience.
+                                Enter city names separated by commas. Leave blank to target all of India.
                             </p>
                         </div>
                     )}
