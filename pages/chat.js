@@ -1,5 +1,6 @@
 // pages/chat.js
 "use client";
+
 import { useEffect, useState } from "react";
 import { signIn, signOut, useSession } from "next-auth/react";
 import BuyCreditsModal from "./components/BuyCreditsModal";
@@ -793,6 +794,47 @@ Now respond as GabbarInfo AI.
         } catch (err) {
           console.error("Error calling /api/credits/consume for Agent:", err);
         }
+
+        // ─── BOOST NOW: 2 credits (1 already consumed above, deduct 1 more) ─────────
+        // Detect keywords from user instruction that indicate "Boost Now" final step
+        const isBoostNow =
+          instruction.toLowerCase().includes("boost now") ||
+          instruction.toLowerCase().includes("boost post") ||
+          instruction.toLowerCase().includes("publish boost") ||
+          instruction.toLowerCase().includes("confirm boost");
+
+        if (isBoostNow) {
+          try {
+            // Check we still have ≥ 1 more credit for the extra charge
+            if (credits !== null && credits < 1) {
+              setAgentError(
+                "Insufficient balance to Boost Now. You need at least 2 credits for this step. Please add credits."
+              );
+              setAgentLoading(false);
+              return;
+            }
+            // Deduct the extra 1 credit (total = 2 for this step)
+            const boostExtraRes = await fetch("/api/credits/consume", {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+            });
+            if (boostExtraRes.ok) {
+              const boostExtraData = await boostExtraRes.json().catch(() => ({}));
+              if (typeof boostExtraData.credits === "number") {
+                setCredits(boostExtraData.credits);
+              }
+            } else if (boostExtraRes.status === 402) {
+              setAgentError(
+                "Insufficient balance to Boost Now. Please add credits to continue."
+              );
+              setAgentLoading(false);
+              return;
+            }
+          } catch (err) {
+            console.error("Error consuming extra credit for Boost Now:", err);
+          }
+        }
+        // ─────────────────────────────────────────────────────────────────────────────
       }
 
       const chatHistory = baseMessages
@@ -843,6 +885,42 @@ Now respond as GabbarInfo AI.
         rawText.includes("campaign is now live");
 
       if (isCampaignPublished && role !== "owner" && !unlimited) {
+        // ─── PRE-FLIGHT CHECK: ensure user has enough credits for the top-up ────────
+        try {
+          const checkRes = await fetch("/api/credits/check-campaign-publish", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            credentials: "include",
+            body: JSON.stringify({ stepsSpent: campaignStepCount }),
+          });
+          if (checkRes.ok) {
+            const checkData = await checkRes.json().catch(() => ({}));
+            if (!checkData.sufficient) {
+              // Block publish — show friendly message with shortfall
+              const shortBy = checkData.shortBy ?? "?";
+              const needed  = checkData.needed  ?? "?";
+              const assistantErrMsg = {
+                role: "assistant",
+                text:
+                  `GabbarInfo Agent:\n\n⚠️ **Insufficient Credits to Publish**\n\n` +
+                  `Publishing this campaign requires **${needed} more credits** but you only have **${checkData.currentCredits}** left.\n` +
+                  `You are **${shortBy} credit${shortBy !== 1 ? "s" : ""}** short.\n\n` +
+                  `👉 Please click **"➕ Add Credits"** to top up and then try publishing again.`,
+              };
+              updateChatWithAssistantMessage(pseudoUserText, updatedMessages, assistantErrMsg);
+              setAgentInstruction("");
+              scrollChatToBottom();
+              setAgentLoading(false);
+              setLoading(false);
+              return;
+            }
+          }
+        } catch (err) {
+          console.error("Error calling /api/credits/check-campaign-publish:", err);
+          // Non-blocking: if check fails, let the top-up proceed anyway
+        }
+        // ─────────────────────────────────────────────────────────────────────────────
+
         try {
           const topUpRes = await fetch("/api/credits/campaign-top-up", {
             method: "POST",
