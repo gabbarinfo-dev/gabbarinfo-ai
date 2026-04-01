@@ -1,3 +1,4 @@
+
 import { useState, useEffect } from "react";
 
 /**
@@ -16,6 +17,29 @@ export default function BoostModal({ onClose }) {
     const [step, setStep] = useState(1);
     const [loading, setLoading] = useState(false);
     const [error, setError] = useState(null);
+    const [creditError, setCreditError] = useState(null);
+
+    // ─── Credit helpers ───────────────────────────────────────────────────────
+    // Consume N credits. Returns true if successful, false if insufficient.
+    async function consumeCredits(count = 1) {
+        for (let i = 0; i < count; i++) {
+            const res = await fetch("/api/credits/consume", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+            });
+            if (res.status === 402) {
+                setCreditError(
+                    `Insufficient balance. You need at least ${count} credit${count > 1 ? "s" : ""} for this step. ` +
+                    `Please click \"\u2795 Add Credits\" to top up.`
+                );
+                return false;
+            }
+            if (!res.ok) return false; // silent fail, don't block
+        }
+        setCreditError(null);
+        return true;
+    }
+    // ─────────────────────────────────────────────────────────────────────────
 
     // Data
     const [pages, setPages] = useState([]);
@@ -87,20 +111,31 @@ export default function BoostModal({ onClose }) {
         }
     }
 
-    const handleNextStep = () => {
+    const handleNextStep = async () => {
+        setCreditError(null);
         if (step === 1) {
             if (!selectedPageId) return;
+            // 1 credit for selecting a page and clicking Next
+            const ok = await consumeCredits(1);
+            if (!ok) return;
             fetchPosts(selectedPageId);
             setStep(2);
         } else if (step === 2) {
             if (!selectedPostId) return;
+            // 1 credit for selecting a post and clicking Next
+            const ok = await consumeCredits(1);
+            if (!ok) return;
             setStep(3);
         } else if (step === 3) {
-            handleCreateBoost();
+            await handleCreateBoost();
         }
     };
 
     const handleCreateBoost = async () => {
+        setCreditError(null);
+        // 2 credits for "Boost Now"
+        const creditOk = await consumeCredits(2);
+        if (!creditOk) return;
         setLoading(true);
         setError(null);
         try {
@@ -149,6 +184,11 @@ export default function BoostModal({ onClose }) {
                 </div>
 
                 <div style={styles.content}>
+                    {creditError && (
+                        <div style={{ ...styles.error, backgroundColor: "#fff3cd", color: "#856404", borderLeft: "4px solid #ffc107" }}>
+                            💳 {creditError}
+                        </div>
+                    )}
                     {error && <div style={styles.error}>{error}</div>}
 
                     {/* STEP 1: SELECT PAGE */}
