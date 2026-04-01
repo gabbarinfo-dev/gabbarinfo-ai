@@ -1,5 +1,5 @@
 // pages/api/meta/create-campaign.js
-// ADMIN-ONLY • PAUSED CAMPAIGN • REAL META API
+// ADMIN-ONLY • ACTIVE CAMPAIGN • REAL META API
 // Uses stored Meta system user token + ad account from Supabase
 
 import { getServerSession } from "next-auth/next";
@@ -75,7 +75,7 @@ export default async function handler(req, res) {
     }
 
     const finalObjective = objective || "TRAFFIC";
-    const finalStatus = "PAUSED"; // 🔒 HARD LOCK
+    const finalStatus = "ACTIVE"; // ✅ Campaigns go live immediately on creation
 
     let dailyBudgetMinor = null;
     if (dailyBudget !== undefined && dailyBudget !== null) {
@@ -130,7 +130,7 @@ export default async function handler(req, res) {
     // ---------------------------
     return res.status(200).json({
       ok: true,
-      message: "Paused Meta campaign created (admin test)",
+      message: "Active Meta campaign created successfully",
       campaignId: fbJson.id,
       ad_account_id: `act_${AD_ACCOUNT_ID}`,
       fbResponse: fbJson,
