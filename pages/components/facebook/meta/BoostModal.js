@@ -462,10 +462,6 @@ const styles = {
         fontSize: "48px",
         marginBottom: "12px",
     },
-    successIcon: {
-        fontSize: "48px",
-        marginBottom: "12px",
-    },
     successText: {
         color: "#606770",
         fontSize: "14px",
