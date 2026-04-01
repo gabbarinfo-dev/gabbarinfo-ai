@@ -36,7 +36,7 @@ export default async function handler(req, res) {
             return res.status(400).json({ error: "Page access token missing" });
         }
 
-        const url = `https://graph.facebook.com/v19.0/${page_id}/posts?fields=id,message,created_time,is_eligible_for_promotion&limit=3`;
+        const url = `https://graph.facebook.com/v19.0/${page_id}/posts?fields=id,message,created_time,is_eligible_for_promotion&limit=5`;
 
         const response = await fetch(url, {
             headers: {
