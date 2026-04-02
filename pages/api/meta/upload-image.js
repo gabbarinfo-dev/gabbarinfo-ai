@@ -33,10 +33,10 @@ export default async function handler(req, res) {
   }
 
   const { data: meta, error } = await supabase
-  .from("meta_connections")
-  .select("fb_ad_account_id, fb_user_access_token")
-  .eq("email", clientEmail)
-  .single();
+    .from("meta_connections")
+    .select("fb_ad_account_id")
+    .eq("email", clientEmail)
+    .single();
 
   if (error || !meta?.fb_ad_account_id) {
     return res.status(400).json({
@@ -46,14 +46,7 @@ export default async function handler(req, res) {
   }
 
   const AD_ACCOUNT_ID = (meta.fb_ad_account_id || "").toString().replace(/^act_/, "");
-  const ACCESS_TOKEN = meta.fb_user_access_token;
-
-if (!ACCESS_TOKEN) {
-  return res.status(400).json({
-    ok: false,
-    message: "Missing Facebook user access token for this user.",
-  });
-}
+  const ACCESS_TOKEN = process.env.META_SYSTEM_USER_TOKEN;
 
   try {
     const { imageUrl, imageBase64 } = req.body || {};
@@ -69,13 +62,54 @@ if (!ACCESS_TOKEN) {
 
     let resp;
     if (imageUrl) {
-      const params = new URLSearchParams();
-      params.append("url", imageUrl);
-      params.append("access_token", ACCESS_TOKEN);
+      // 🔧 FIX: Fetch the image server-side and upload as multipart (source field).
+      // Using Meta's url= parameter requires extra app capabilities that the system
+      // user token doesn't have → causes (#3) OAuthException.
+      // Fetching and re-uploading ourselves uses the same path as AI-generated images.
+      console.log(`🖼️ [upload-image] Fetching user-provided image from URL: ${imageUrl}`);
+      let imageBuffer;
+      try {
+        const fetchRes = await fetch(imageUrl);
+        if (!fetchRes.ok) {
+          return res.status(400).json({
+            ok: false,
+            message: `Failed to fetch image from the provided URL (HTTP ${fetchRes.status}). Please ensure the URL is publicly accessible.`,
+          });
+        }
+        const arrayBuffer = await fetchRes.arrayBuffer();
+        imageBuffer = Buffer.from(arrayBuffer);
+      } catch (fetchErr) {
+        return res.status(400).json({
+          ok: false,
+          message: `Could not download image from the provided URL: ${fetchErr.message}`,
+        });
+      }
+
+      if (!imageBuffer || imageBuffer.length < 1024) {
+        return res.status(400).json({
+          ok: false,
+          message: "The image at the provided URL is too small or invalid.",
+          details: { size_bytes: imageBuffer?.length || 0 },
+        });
+      }
+
+      // Determine content type from URL extension
+      const lowerUrl = imageUrl.toLowerCase().split("?")[0];
+      const contentType = lowerUrl.endsWith(".jpg") || lowerUrl.endsWith(".jpeg")
+        ? "image/jpeg"
+        : "image/png";
+      const fileName = lowerUrl.endsWith(".jpg") || lowerUrl.endsWith(".jpeg")
+        ? "user-image.jpg"
+        : "user-image.png";
+
+      console.log(`🖼️ [upload-image] Uploading fetched image as multipart: ${fileName} (${imageBuffer.length} bytes)`);
+      const blob = new Blob([imageBuffer], { type: contentType });
+      const form = new FormData();
+      form.append("source", blob, fileName);
+      form.append("access_token", ACCESS_TOKEN);
       resp = await fetch(graphUrl, {
         method: "POST",
-        headers: { "Content-Type": "application/x-www-form-urlencoded" },
-        body: params.toString(),
+        body: form,
       });
     } else {
       const cleaned = imageBase64
@@ -141,25 +175,7 @@ if (!ACCESS_TOKEN) {
 
     const firstKey = imageKeys[0];
     const imageHash = json.images[firstKey]?.hash;
-// 🔒 VERIFY IMAGE EXISTS IN AD ACCOUNT (HARD CHECK)
-const verifyRes = await fetch(
-  `https://graph.facebook.com/v24.0/act_${AD_ACCOUNT_ID}/adimages?hashes=["${imageHash}"]&access_token=${ACCESS_TOKEN}`
-);
 
-const verifyJson = await verifyRes.json();
-
-if (
-  !verifyRes.ok ||
-  !verifyJson?.data ||
-  !Array.isArray(verifyJson.data) ||
-  verifyJson.data.length === 0
-) {
-  return res.status(500).json({
-    ok: false,
-    message: "Image upload not confirmed in Meta ad account.",
-    details: verifyJson,
-  });
-}
     if (!imageHash) {
       return res.status(500).json({
         ok: false,
@@ -183,4 +199,3 @@ if (
     });
   }
 }
-
