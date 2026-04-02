@@ -11,6 +11,7 @@ import { executeInstagramPost } from "../../../lib/execute-instagram-post";
 import { normalizeImageUrl } from "../../../lib/normalize-image-url";
 import { creativeEntry } from "../../../lib/instagram/creative-entry";
 import { clearCreativeState } from "../../../lib/instagram/creative-memory";
+import { processMetaAdImage } from "../../../lib/meta/process-meta-image";
 
 const Messages = {
   META_EXECUTION_FAILED: "Meta Execution Failed",
@@ -831,6 +832,47 @@ export default async function handler(req, res) {
     }
 
     // ============================================================
+    // 🎁 OFFER COLLECTION GATE (Stage: offer_pending)
+    // User is responding to the offer prompt shown after duration is locked.
+    // ============================================================
+    if (
+      mode === "meta_ads_plan" &&
+      lockedCampaignState?.stage === "offer_pending" &&
+      lockedCampaignState?.total_days
+    ) {
+      const offerInput = instruction.trim();
+      const offerFinal = offerInput.toLowerCase() === "none" ? "" : offerInput;
+
+      const newOfferState = {
+        ...lockedCampaignState,
+        offer: offerFinal,
+        stage: "intake_complete",
+        locked_at: new Date().toISOString(),
+      };
+
+      await saveAnswerMemory(
+        process.env.NEXT_PUBLIC_BASE_URL,
+        effectiveBusinessId,
+        { campaign_state: newOfferState },
+        session.user.email.toLowerCase()
+      );
+
+      lockedCampaignState = newOfferState;
+      currentState = newOfferState;
+
+      const offerConfirmMsg = offerFinal
+        ? `Offer locked: **"${offerFinal}"** — this will appear prominently on your ad image 🎁`
+        : `No specific offer — the AI will craft a compelling hook for the image.`;
+
+      return res.status(200).json({
+        ok: true,
+        mode,
+        gated: true,
+        text: `${offerConfirmMsg}\n\n**Reply "OK" or "Proceed"** to see your complete Meta Ads strategy.`,
+      });
+    }
+
+    // ============================================================
     // 4️⃣ IMAGE GENERATION MUST BE EXPLICIT (Force Waterfall)
     // ============================================================
     // If we are in PLAN_CONFIRMED, we MUST generate image.
@@ -927,6 +969,7 @@ You MUST ALWAYS output BOTH a human-readable summary AND the JSON using this exa
         "primary_text": "Experience the best ${currentService} in ${currentLocation}.",
         "headline": "Top ${currentService} in ${currentLocation}",
         "call_to_action": "LEARN_MORE",
+        "tagline": "Punchy hook for the ad image (max 8 words)",
         "destination_url": "https://client-website.com"
       },
       "catalogId": null,
@@ -1898,7 +1941,7 @@ You are in GENERIC DIGITAL MARKETING AGENT MODE.
           ...lockedCampaignState,
           total_days: days,
           duration_confirmed: true,
-          stage: "intake_complete"
+          stage: "offer_pending"
         };
         currentState = lockedCampaignState;
 
@@ -1911,7 +1954,7 @@ You are in GENERIC DIGITAL MARKETING AGENT MODE.
 
         return res.status(200).json({
           ok: true, mode, gated: true,
-          text: `Duration: **${days} days**.\n\nGreat! I have all the details. I am now preparing your Meta Ads Strategy. **Reply "OK" or "Proceed" to see the full campaign plan.**`
+          text: `Duration: **${days} days**.\n\n🎯 One last thing! Do you have a **special offer or promotion** to feature on your ad image?\n\nExamples:\n• *20% OFF This Weekend*\n• *Free Consultation – Book Today*\n• *Buy 1 Get 1 Free*\n\nType your offer, or type **NONE** to skip.`
         });
       } else {
         return res.status(200).json({
@@ -2706,6 +2749,7 @@ You are in GENERIC DIGITAL MARKETING AGENT MODE.
                 ...lockedCampaignState,
                 total_days: numericDays,
                 duration_confirmed: true,
+                stage: "offer_pending",
                 locked_at: new Date().toISOString(),
               };
               await saveAnswerMemory(
@@ -2725,7 +2769,7 @@ You are in GENERIC DIGITAL MARKETING AGENT MODE.
                 ok: true,
                 mode,
                 gated: true,
-                text: `Campaign duration locked for ${numericDays} days.`,
+                text: `Campaign duration locked for **${numericDays} days**.\n\n🎯 One last thing! Do you have a **special offer or promotion** to feature on your ad image?\n\nExamples:\n• *20% OFF This Weekend*\n• *Free Consultation – Book Today*\n• *Buy 1 Get 1 Free*\n\nType your offer, or type **NONE** to skip.`,
               });
             }
           }
@@ -2969,6 +3013,7 @@ LOCKED CAMPAIGN STATE (DO NOT CHANGE OR RE-ASK):
 - Daily Budget (${lockedCampaignState.account_currency || "INR"}): ${lockedCampaignState.budget_per_day || "N/A"}
 - Duration (days): ${lockedCampaignState.total_days || "N/A"}
 - Website/Landing Page: ${lockedCampaignState.landing_page || "N/A"}
+- Special Offer for Ad Image: ${lockedCampaignState.offer || "none — AI will suggest a compelling hook"}
 
 RULES:
 - You MUST NOT ask again for these locked fields.
@@ -3338,10 +3383,27 @@ Otherwise, respond with a full, clear explanation, and include example JSON only
             const imgJson = await parseResponseSafe(imgRes);
 
             if (imgJson.imageBase64) {
+              // 🎨 APPLY OVERLAY: service name + tagline + offer on top of DALL-E image
+              let processedBase64 = imgJson.imageBase64;
+              try {
+                processedBase64 = await processMetaAdImage({
+                  imageBase64: imgJson.imageBase64,
+                  service: state.service || "",
+                  offer: state.offer || "",
+                  tagline: state.tagline || state.plan?.ad_sets?.[0]?.ad_creative?.tagline || "",
+                  businessName: autoBusinessContext?.business_name ||
+                    verifiedMetaAssets?.fb_page?.name || "",
+                });
+                console.log("[Overlay] service=", state.service, "| offer=", state.offer, "| tagline=", state.tagline || state.plan?.ad_sets?.[0]?.ad_creative?.tagline);
+                console.log("✅ Overlay applied: service=", state.service, "offer=", state.offer);
+              } catch (overlayErr) {
+                console.error("⚠️ Overlay failed, using raw image:", overlayErr.message);
+              }
+
               const newCreative = {
                 ...creativeResult,
-                imageBase64: imgJson.imageBase64,
-                imageUrl: `data:image/png;base64,${imgJson.imageBase64}`
+                imageBase64: processedBase64,
+                imageUrl: `data:image/png;base64,${processedBase64}`
               };
 
               // 🔒 UPDATE STATE
@@ -3361,7 +3423,7 @@ Otherwise, respond with a full, clear explanation, and include example JSON only
               console.log("TRACE: IMAGE EXISTS =", !!state.creative);
               console.log("TRACE: IMAGE UPLOADED =", !!state.meta?.uploadedImageHash);
 
-              waterfallLog.push("✅ Step 9: AI Image Generated");
+              waterfallLog.push("✅ Step 9: AI Image Generated + Overlay Applied");
             } else {
               errorOcurred = true;
               stopReason = "Image Generation Failed (No Base64 returned)";
@@ -3957,6 +4019,8 @@ Otherwise, respond with a full, clear explanation, and include example JSON only
               landing_page_confirmed: true,
               location_confirmed: true,
               service_confirmed: true,
+              // 🎨 Extract tagline from Gemini plan for image overlay
+              tagline: lockedCampaignState?.tagline || planJson.ad_sets?.[0]?.ad_creative?.tagline || planJson.tagline || "",
               auto_run: false,
               locked_at: new Date().toISOString()
             };
@@ -4609,5 +4673,3 @@ async function handleInstagramPostOnly(req, res, session, body) {
 
   return res.json({ ok: true, text: "Thinking..." });
 }
-
-
