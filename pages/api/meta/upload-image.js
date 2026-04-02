@@ -6,6 +6,7 @@
 import { getServerSession } from "next-auth/next";
 import { authOptions } from "../auth/[...nextauth]";
 import { createClient } from "@supabase/supabase-js";
+import sharp from "sharp";
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL,
   process.env.SUPABASE_SERVICE_ROLE_KEY
@@ -116,18 +117,33 @@ export default async function handler(req, res) {
         .toString()
         .replace(/^data:image\/\w+;base64,/, "")
         .replace(/\s+/g, "");
-      const buffer = Buffer.from(cleaned, "base64");
-      if (!buffer || buffer.length < 1024) {
+      const rawBuffer = Buffer.from(cleaned, "base64");
+      if (!rawBuffer || rawBuffer.length < 1024) {
         return res.status(400).json({
           ok: false,
           message: "Generated image looks invalid or too small for upload.",
-          details: { size_bytes: buffer?.length || 0 },
+          details: { size_bytes: rawBuffer?.length || 0 },
         });
       }
-      const blob = new Blob([buffer], { type: "image/png" });
+
+      // ✅ Convert to JPEG q85 via sharp — PNG at 1024×1024 can be 3-5 MB,
+      // which sometimes causes Meta upload failures. JPEG stays under 500 KB.
+      let buffer;
+      try {
+        buffer = await sharp(rawBuffer)
+          .resize(1080, 1080, { fit: "inside", withoutEnlargement: true })
+          .jpeg({ quality: 85, mozjpeg: true })
+          .toBuffer();
+        console.log(`🖼️ [upload-image] Converted to JPEG: ${buffer.length} bytes (was ${rawBuffer.length} bytes PNG)`);
+      } catch (convertErr) {
+        console.warn("⚠️ [upload-image] JPEG conversion failed, using raw buffer:", convertErr.message);
+        buffer = rawBuffer;
+      }
+
+      const blob = new Blob([buffer], { type: "image/jpeg" });
       const form = new FormData();
       // Use 'source' for file uploads per Graph API conventions
-      form.append("source", blob, "creative.png");
+      form.append("source", blob, "creative.jpg");
       form.append("access_token", ACCESS_TOKEN);
       resp = await fetch(graphUrl, {
         method: "POST",
@@ -145,7 +161,7 @@ export default async function handler(req, res) {
 
     if (!resp.ok) {
       // Facebook returns 400/400-like errors in JSON. Forward them.
-      console.error("FB adimages error:", json);
+      console.error("❌ FB adimages error (HTTP", resp.status, "):", JSON.stringify(json, null, 2));
       return res.status(resp.status || 500).json({
         ok: false,
         message: "Facebook API returned an error during image upload.",
