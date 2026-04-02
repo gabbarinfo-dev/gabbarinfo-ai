@@ -35,7 +35,7 @@ export default async function handler(req, res) {
 
   const { data: meta, error } = await supabase
     .from("meta_connections")
-    .select("fb_ad_account_id")
+    .select("fb_ad_account_id, fb_user_access_token")
     .eq("email", clientEmail)
     .single();
 
@@ -47,7 +47,9 @@ export default async function handler(req, res) {
   }
 
   const AD_ACCOUNT_ID = (meta.fb_ad_account_id || "").toString().replace(/^act_/, "");
-  const ACCESS_TOKEN = process.env.META_SYSTEM_USER_TOKEN;
+  // 🔑 FIX: Use the user's specific access token, not the system token
+  // This ensures we have the correct permissions to access the specific ad account.
+  const ACCESS_TOKEN = meta.fb_user_access_token || process.env.META_SYSTEM_USER_TOKEN;
 
   try {
     const { imageUrl, imageBase64 } = req.body || {};
