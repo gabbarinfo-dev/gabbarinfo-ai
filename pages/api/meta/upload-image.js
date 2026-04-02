@@ -59,7 +59,7 @@ export default async function handler(req, res) {
       });
     }
 
-    const graphUrl = `https://graph.facebook.com/v24.0/act_${AD_ACCOUNT_ID}/adimages`;
+    const graphUrl = `https://graph.facebook.com/v21.0/act_${AD_ACCOUNT_ID}/adimages`;
 
     let resp;
     if (imageUrl) {
