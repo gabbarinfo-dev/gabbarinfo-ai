@@ -3130,10 +3130,32 @@ Otherwise, respond with a full, clear explanation, and include example JSON only
     }
 
     // ⚡ CRITICAL SHORT-CIRCUIT: Skip Gemini if plan exists and user confirms (Mandatory Fix 1 & 3)
+    const wantsToLaunch =
+      lowerInstruction.includes("launch") ||
+      lowerInstruction.includes("execute") ||
+      lowerInstruction.includes("publish") ||
+      lowerInstruction.includes("run") ||
+      lowerInstruction.includes("yes") ||
+      lowerInstruction.includes("ok") ||
+      lowerInstruction.includes("proceed") ||
+      lowerInstruction.includes("confirm") ||
+      lowerInstruction.includes("go");
+
+    // 🖼️ RESUME PATH: Stage is IMAGE_GENERATED + image_hash already set + user wants to launch
+    // This fires on Turn 2 (LAUNCH) when planGeneratedThisTurn is false but everything is ready
+    const isResumeExecution =
+      (lockedCampaignState?.stage === "IMAGE_GENERATED" || lockedCampaignState?.stage === "READY_TO_LAUNCH") &&
+      !!lockedCampaignState?.image_hash &&
+      !!lockedCampaignState?.plan &&
+      wantsToLaunch;
+
     if (
       (lockedCampaignState?.stage === "PLAN_CONFIRMED" || lockedCampaignState?.stage === "IMAGE_GENERATED" || lockedCampaignState?.stage === "READY_TO_LAUNCH") &&
       lockedCampaignState?.plan &&
-      planGeneratedThisTurn === true && // 🔒 HARD GATE
+      (
+        planGeneratedThisTurn === true || // 🔒 Normal path: plan confirmed this turn
+        isResumeExecution                  // 🖼️ Resume path: image already set, just launch
+      ) &&
       (
         imageChoiceMadeThisTurn === true || // 🖼️ User replied to image prompt (URL or skip)
         lowerInstruction.includes("yes") ||
@@ -3427,8 +3449,10 @@ Otherwise, respond with a full, clear explanation, and include example JSON only
 
       // --- STEP 12: EXECUTION (Final Step) ---
       if (!errorOcurred) {
-        // 🔒 PATCH: Execution requires READY_TO_LAUNCH strict
-        const isReady = state.stage === "READY_TO_LAUNCH" && state.image_hash;
+        // ✅ Ready when: image is uploaded (image_hash set) AND stage is IMAGE_GENERATED or READY_TO_LAUNCH
+        const isReady =
+          (state.stage === "READY_TO_LAUNCH" || state.stage === "IMAGE_GENERATED") &&
+          !!state.image_hash;
         const wantsLaunch = lowerInstruction.includes("launch") || lowerInstruction.includes("execute") || lowerInstruction.includes("run") || lowerInstruction.includes("publish") || lowerInstruction.includes("yes") || lowerInstruction.includes("ok") || lowerInstruction.includes("proceed") || lowerInstruction.includes("confirm") || lowerInstruction.includes("go");
 
         if (isReady && wantsLaunch) {
