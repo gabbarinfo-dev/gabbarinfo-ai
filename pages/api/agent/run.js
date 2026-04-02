@@ -1,3 +1,4 @@
+
 // pages/api/agent/run.js
 
 const BASE_URL =
@@ -52,7 +53,7 @@ export default async function handler(req, res) {
     }
 
     /* ======================================================
-       🔹 MODE 1: AGENT CHAT FLOW (NEW, SAFE)
+       🔹 MODE 1: AGENT CHAT FLOW
        Triggered when message exists
        ====================================================== */
 
@@ -64,13 +65,13 @@ export default async function handler(req, res) {
 
       if (!intentRes.ok) {
         return res.json({
-          reply: "I couldn’t understand that. Please rephrase your request.",
+          reply: "I couldn't understand that. Please rephrase your request.",
         });
       }
 
       const { platform, objective } = intentRes.intent;
 
-      // 1.5️⃣ Load business intake (VERY IMPORTANT)
+      // 1.5️⃣ Load business intake
       const intakeRes = await fetch(`${BASE_URL}/api/agent/intake-business`, {
         method: "GET",
         headers: {
@@ -81,18 +82,17 @@ export default async function handler(req, res) {
       const intakeJson = await intakeRes.json();
       const intake = intakeJson?.intake || {};
 
-
-      // 2️⃣ Safety gate (initial, strict)
+      // 2️⃣ Safety gate
       const gateRes = await safetyGate({
         platform,
         objective: objective || "traffic",
-        conversion_location: "WEBSITE", // Fixed for this flow
-        performance_goal: "LINK_CLICKS", // Fixed for this flow
+        conversion_location: "WEBSITE",
+        performance_goal: "LINK_CLICKS",
         context: intake,
       });
 
       if (!gateRes.ok && gateRes.missing) {
-        // 3️⃣ Ask Gemini questions
+        // 3️⃣ Ask questions for missing fields
         const qRes = await generateQuestions({
           platform,
           objective,
@@ -110,29 +110,41 @@ export default async function handler(req, res) {
         });
       }
 
-      // 4️⃣ Ready for Creative Generation
+      // 4️⃣ All details ready — ask user for their offer
       return res.json({
-        reply: "I have all the required details. Shall I generate the ad creative options for you?",
-        stage: "ready_for_creative",
+        reply:
+          "I have all the required details! 🎉\n\n" +
+          "Do you have a **special offer or promotion** you'd like to highlight in this ad?\n\n" +
+          "Examples:\n" +
+          "• *20% OFF This Weekend*\n" +
+          "• *Free Consultation – Book Today*\n" +
+          "• *Buy 1 Get 1 Free*\n\n" +
+          "Type your offer, or type **NONE** to let AI decide.",
+        stage: "awaiting_offer",
         intent: { platform, objective, conversion_location: "WEBSITE", performance_goal: "LINK_CLICKS" },
         intake,
       });
     }
 
     /* ======================================================
-       🔹 STAGE: CREATIVE GENERATION (User said YES to "Shall I generate creative?")
+       🔹 STAGE: COLLECT OFFER → Generate Creative
+       User typed their offer (or "NONE") in response to awaiting_offer
        ====================================================== */
 
-    if (
-      body.stage === "ready_for_creative" &&
-      body.confirm === true
-    ) {
+    if (body.stage === "awaiting_offer" && body.offer !== undefined) {
+      const offerText = (body.offer || "").trim();
+      const offerFinal =
+        offerText === "" || offerText.toLowerCase() === "none"
+          ? ""
+          : offerText;
+
       const creativeRes = await fetch(`${BASE_URL}/api/agent/generate-creative`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           intake: body.intake,
           objective: body.intent.objective,
+          offer: offerFinal,
         }),
       });
 
@@ -145,16 +157,17 @@ export default async function handler(req, res) {
 
       return res.json({
         reply:
-          "Here’s what I’ve prepared for your ad:\n\n" +
+          "Here's what I've prepared for your ad:\n\n" +
           "**Headlines:**\n- " + headlines.join("\n- ") +
           "\n\n**Primary Texts:**\n- " + primary_texts.join("\n- ") +
           "\n\n**CTA:** " + cta +
+          (offerFinal ? `\n\n**Your Offer on Image:** ${offerFinal}` : "") +
           "\n\n**Image Concept:** " + image_prompt +
           "\n\n**Targeting Suggestions:**\n- Interests: " + targeting_suggestions.interests.join(", ") +
           "\n- Demographics: " + targeting_suggestions.demographics.join(", ") +
           "\n\n**Reply YES to generate the image and upload it to Meta.**",
         stage: "creative_ready",
-        creative: creativeData.creative,
+        creative: { ...creativeData.creative, offer: offerFinal },
         intent: body.intent,
         intake: body.intake,
       });
@@ -168,11 +181,16 @@ export default async function handler(req, res) {
       body.stage === "creative_ready" &&
       body.confirm === true
     ) {
-      // A. Generate Image
+      // A. Generate Image — pass service + offer so overlay uses user's text
       const imgGenRes = await fetch(`${BASE_URL}/api/images/generate`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ prompt: body.creative.image_prompt }),
+        body: JSON.stringify({
+          prompt: body.creative.image_prompt,
+          service: body.intake.business_type || body.intake.business_name || "",
+          offer: body.creative.offer || "",
+          businessName: body.intake.business_name || "",
+        }),
       });
 
       const imgGenData = await imgGenRes.json();
@@ -185,7 +203,7 @@ export default async function handler(req, res) {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
-          "x-client-email": body.intake.email || "" // Assuming email is in intake or session
+          "x-client-email": body.intake.email || "",
         },
         body: JSON.stringify({ imageBase64: imgGenData.imageBase64 }),
       });
@@ -196,7 +214,8 @@ export default async function handler(req, res) {
       }
 
       return res.json({
-        reply: "Image generated and uploaded successfully! I'm now ready to create the campaign.\n\n" +
+        reply:
+          "Image generated and uploaded successfully! I'm now ready to create the campaign.\n\n" +
           "**Final Confirmation:** Do you want me to publish this campaign in **PAUSED** mode to your Meta Ad Account?",
         stage: "final_publish_confirmation",
         image_hash: uploadData.imageHash,
@@ -214,7 +233,7 @@ export default async function handler(req, res) {
       body.stage === "final_publish_confirmation" &&
       body.confirm === true
     ) {
-      // SECTION 9 — FAILURE CONDITIONS
+      // Failure guards
       if (!body.intake?.website_url && !body.intake?.business_website) {
         return res.json({ reply: "Stop. Execution failed: website_url is missing." });
       }
@@ -242,37 +261,37 @@ export default async function handler(req, res) {
               primary_text: body.creative.primary_texts[0],
               headline: body.creative.headlines[0],
               call_to_action: body.creative.cta,
-              destination_url: body.intake.website_url || body.intake.business_website
-            }
-          }
-        ]
+              destination_url: body.intake.website_url || body.intake.business_website,
+            },
+          },
+        ],
       };
 
       const executeRes = await fetch(`${BASE_URL}/api/meta/execute-campaign`, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
-          "x-client-email": body.intake.email || ""
+          "x-client-email": body.intake.email || "",
         },
         body: JSON.stringify({ platform: "meta", payload }),
       });
 
       const executeData = await executeRes.json();
       if (!executeData.ok) {
-        // Section 9: STOP on Meta permission error
         return res.json({ reply: "Meta permission or API error: " + (executeData.message || "Execution failed.") });
       }
 
       return res.json({
         ok: true,
-        reply: `Success! Your campaign has been created and put in **PAUSED** mode.\n\n` +
+        reply:
+          `Success! Your campaign has been created and put in **PAUSED** mode.\n\n` +
           `**Campaign ID:** ${executeData.id}\n` +
-          `**Ad Set ID:** ${executeData.details?.ad_sets?.[0] || 'N/A'}\n` +
-          `**Ad ID:** ${executeData.details?.ads?.[0] || 'N/A'}\n` +
+          `**Ad Set ID:** ${executeData.details?.ad_sets?.[0] || "N/A"}\n` +
+          `**Ad ID:** ${executeData.details?.ads?.[0] || "N/A"}\n` +
           `**Status:** ${executeData.status}\n\n` +
           `You can now review it in your Meta Ads Manager.`,
         stage: "completed",
-        campaign_id: executeData.id
+        campaign_id: executeData.id,
       });
     }
 
@@ -378,5 +397,3 @@ export default async function handler(req, res) {
     });
   }
 }
-
-
