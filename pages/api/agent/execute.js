@@ -776,6 +776,10 @@ export default async function handler(req, res) {
           ...lockedCampaignState,
           stage: "PLAN_CONFIRMED",
           user_provided_image_url: providedImageUrl,
+          // 🚫 CANCEL OVERLAY FIELDS (User-provided image should stay clean)
+          service: null,
+          tagline: null,
+          offer: null,
           auto_run: true,
           locked_at: new Date().toISOString()
         };
@@ -3351,7 +3355,15 @@ Otherwise, respond with a full, clear explanation, and include example JSON only
             userProvidedImageUrl: userProvidedImageUrl
           };
 
-          state = { ...state, stage: "IMAGE_GENERATED", creative: newCreative };
+          state = { 
+            ...state, 
+            stage: "IMAGE_GENERATED", 
+            creative: newCreative,
+            // 🚫 CANCEL OVERLAY FIELDS (User-provided image should stay clean)
+            service: null,
+            tagline: null,
+            offer: null
+          };
           currentState = state;
 
           await saveAnswerMemory(
@@ -3403,7 +3415,7 @@ Otherwise, respond with a full, clear explanation, and include example JSON only
               const newCreative = {
                 ...creativeResult,
                 imageBase64: processedBase64,
-                imageUrl: `data:image/png;base64,${processedBase64}`
+                imageUrl: `data:image/jpeg;base64,${processedBase64}`
               };
 
               // 🔒 UPDATE STATE
