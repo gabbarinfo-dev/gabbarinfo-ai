@@ -174,6 +174,7 @@ export default async function handler(req, res) {
   let planGeneratedThisTurn = false; // 🔒 Request-scoped flag for plan ownership
   let imageUploadedThisTurn = false; // 🔒 Request-scoped flag for upload verification
   let campaignExecutedThisTurn = false; // 🔒 Request-scoped flag for execution verification
+  let imageChoiceMadeThisTurn = false; // 🖼️ Request-scoped flag: user responded to image prompt
   let imageHash = null;
   if (req.method !== "POST") {
     console.log("TRACE: ENTER EXECUTE");
@@ -471,7 +472,7 @@ export default async function handler(req, res) {
 
     const isPlanProposed =
       !!lockedCampaignState &&
-      ["PLAN_PROPOSED", "PLAN_CONFIRMED", "IMAGE_GENERATED", "READY_TO_LAUNCH"].includes(lockedCampaignState.stage) &&
+      ["PLAN_PROPOSED", "PLAN_CONFIRMED", "AWAITING_USER_IMAGE", "IMAGE_GENERATED", "READY_TO_LAUNCH"].includes(lockedCampaignState.stage) &&
       isMetaPlanComplete(lockedCampaignState.plan) &&
       !!lockedCampaignState.objective &&
       !!lockedCampaignState.destination;
@@ -669,6 +670,39 @@ export default async function handler(req, res) {
             });
           }
 
+          // 🖼️ USER IMAGE OPTION: Ask user if they want to provide their own image
+          // Only ask if:
+          //   1. We haven't asked yet (user_image_asked flag)
+          //   2. This is NOT a Catalogue campaign (catalogue ads use dynamic product images, no upload needed)
+          const isCatalogueCampaign = lockedCampaignState.destination === "catalogue" ||
+            lockedCampaignState.destination === "Catalogue Sales";
+
+          if (!lockedCampaignState.user_image_asked && !isCatalogueCampaign) {
+            const awaitingImageState = {
+              ...lockedCampaignState,
+              stage: "AWAITING_USER_IMAGE",
+              user_image_asked: true,
+              locked_at: new Date().toISOString()
+            };
+
+            await saveAnswerMemory(
+              process.env.NEXT_PUBLIC_BASE_URL,
+              effectiveBusinessId,
+              { campaign_state: awaitingImageState },
+              session.user.email.toLowerCase()
+            );
+
+            lockedCampaignState = awaitingImageState;
+            currentState = awaitingImageState;
+
+            return res.status(200).json({
+              ok: true,
+              mode,
+              gated: true,
+              text: "Do you have your own image you'd like to use for this ad?\n\n📸 If **yes**, please share the image URL (e.g., https://example.com/my-image.png)\n\n⚡ If **no**, just reply **NO** or **SKIP** and I'll generate one for you automatically."
+            });
+          }
+
           const nextState = {
             ...lockedCampaignState,
             stage: "PLAN_CONFIRMED",
@@ -695,6 +729,107 @@ export default async function handler(req, res) {
         }
       }
     }
+
+    // ============================================================
+    // 🖼️ AWAITING_USER_IMAGE HANDLER
+    // ============================================================
+    // Handles the stage where we asked the user if they have their own image.
+    // They either provide a URL or say no/skip.
+    if (
+      mode === "meta_ads_plan" &&
+      lockedCampaignState?.stage === "AWAITING_USER_IMAGE"
+    ) {
+      const userInput = instruction.trim();
+      const lowerInput = userInput.toLowerCase();
+
+      // Detect if user is skipping (no/skip/generate)
+      const isSkipping =
+        lowerInput === "no" ||
+        lowerInput === "skip" ||
+        lowerInput === "n" ||
+        lowerInput.includes("generate") ||
+        lowerInput.includes("no image") ||
+        lowerInput.includes("skip image") ||
+        lowerInput.includes("don't have") ||
+        lowerInput.includes("dont have") ||
+        lowerInput.includes("auto") ||
+        lowerInput.includes("automatically");
+
+      // 🔒 Detect a valid HTTPS image URL (.png, .jpg, .jpeg)
+      // Meta's adimages API requires HTTPS URLs for external image fetching
+      const imageUrlMatch = userInput.match(
+        /https:\/\/[^\s]+\.(?:png|jpg|jpeg)(?:[?#][^\s]*)?/i
+      );
+
+      // Detect if user gave an HTTP (non-HTTPS) URL — give a helpful error
+      const httpOnlyMatch = !imageUrlMatch && userInput.match(
+        /http:\/\/[^\s]+\.(?:png|jpg|jpeg)(?:[?#][^\s]*)?/i
+      );
+
+      if (imageUrlMatch) {
+        // ✅ User provided an image URL — save it and proceed to PLAN_CONFIRMED
+        const providedImageUrl = imageUrlMatch[0];
+        console.log(`🖼️ [User Image] User provided image URL: ${providedImageUrl}`);
+
+        const confirmedState = {
+          ...lockedCampaignState,
+          stage: "PLAN_CONFIRMED",
+          user_provided_image_url: providedImageUrl,
+          auto_run: true,
+          locked_at: new Date().toISOString()
+        };
+
+        await saveAnswerMemory(
+          process.env.NEXT_PUBLIC_BASE_URL,
+          effectiveBusinessId,
+          { campaign_state: confirmedState },
+          session.user.email.toLowerCase()
+        );
+
+        lockedCampaignState = confirmedState;
+        currentState = confirmedState;
+        planGeneratedThisTurn = true;
+        imageChoiceMadeThisTurn = true; // 🖼️ Bypass keyword gate — user responded to image prompt
+
+        console.log("🚀 User image saved. Proceeding to waterfall with user-provided image.");
+      } else if (isSkipping) {
+        // ✅ User is skipping — proceed to PLAN_CONFIRMED with AI image generation
+        console.log("🖼️ [User Image] User skipped. Will use AI-generated image.");
+
+        const confirmedState = {
+          ...lockedCampaignState,
+          stage: "PLAN_CONFIRMED",
+          user_provided_image_url: null,
+          auto_run: true,
+          locked_at: new Date().toISOString()
+        };
+
+        await saveAnswerMemory(
+          process.env.NEXT_PUBLIC_BASE_URL,
+          effectiveBusinessId,
+          { campaign_state: confirmedState },
+          session.user.email.toLowerCase()
+        );
+
+        lockedCampaignState = confirmedState;
+        currentState = confirmedState;
+        planGeneratedThisTurn = true;
+        imageChoiceMadeThisTurn = true; // 🖼️ Bypass keyword gate — user skipped image prompt
+
+        console.log("🚀 No user image. Proceeding to waterfall with AI image generation.");
+      } else {
+        // ❓ Unclear input — re-ask
+        return res.status(200).json({
+          ok: true,
+          mode,
+          gated: true,
+          text: httpOnlyMatch
+            ? "⚠️ The image URL you provided uses **HTTP**, but Meta Ads requires a secure **HTTPS** URL.\n\nPlease share a URL that starts with `https://` (e.g., https://example.com/my-ad.png)\n\nOr reply **NO** to have me generate one automatically."
+            : "Please share a **publicly accessible HTTPS image URL** ending in `.png`, `.jpg`, or `.jpeg`.\n\nExample: `https://example.com/my-ad-image.png`\n\nOr reply **NO** to let me generate one automatically."
+        });
+      }
+    }
+
     // ============================================================
     // 4️⃣ IMAGE GENERATION MUST BE EXPLICIT (Force Waterfall)
     // ============================================================
@@ -2999,14 +3134,17 @@ Otherwise, respond with a full, clear explanation, and include example JSON only
       (lockedCampaignState?.stage === "PLAN_CONFIRMED" || lockedCampaignState?.stage === "IMAGE_GENERATED" || lockedCampaignState?.stage === "READY_TO_LAUNCH") &&
       lockedCampaignState?.plan &&
       planGeneratedThisTurn === true && // 🔒 HARD GATE
-      (lowerInstruction.includes("yes") ||
+      (
+        imageChoiceMadeThisTurn === true || // 🖼️ User replied to image prompt (URL or skip)
+        lowerInstruction.includes("yes") ||
         lowerInstruction.includes("approve") ||
         lowerInstruction.includes("confirm") ||
         lowerInstruction.includes("proceed") ||
         lowerInstruction.includes("launch") ||
         lowerInstruction.includes("generate") ||
         lowerInstruction.includes("image") ||
-        lowerInstruction.includes("ok"))
+        lowerInstruction.includes("ok")
+      )
     ) {
 
       console.log(`[PROD_LOG] 🚀 SHORT-CIRCUIT: Transitioning Started | User: ${session.user.email} | ID: ${effectiveBusinessId} | From: ${lockedCampaignState.stage}`);
@@ -3097,7 +3235,7 @@ Otherwise, respond with a full, clear explanation, and include example JSON only
         console.log("TRACE: ENTER META WATERFALL");
         console.log("TRACE: CURRENT STAGE =", currentState?.stage);
 
-        if (!lockedCampaignState || (lockedCampaignState.stage !== "PLAN_CONFIRMED" && lockedCampaignState.stage !== "IMAGE_GENERATED" && lockedCampaignState.stage !== "READY_TO_LAUNCH")) {
+        if (!lockedCampaignState || (lockedCampaignState.stage !== "PLAN_CONFIRMED" && lockedCampaignState.stage !== "AWAITING_USER_IMAGE" && lockedCampaignState.stage !== "IMAGE_GENERATED" && lockedCampaignState.stage !== "READY_TO_LAUNCH")) {
           console.log("TRACE: RETURNING RESPONSE — STAGE =", currentState?.stage);
           return res.status(200).json({
             ok: true,
@@ -3128,55 +3266,88 @@ Otherwise, respond with a full, clear explanation, and include example JSON only
         console.log("TRACE: IMAGE GENERATION ATTEMPT");
         console.log("TRACE: IMAGE EXISTS =", !!state.creative);
 
-        console.log("🚀 Waterfall: Starting Image Generation...");
-        const plan = state.plan || {};
-        const adSet0 = (Array.isArray(plan.ad_sets) ? plan.ad_sets[0] : (plan.ad_sets || {}));
-        const creativeResult = adSet0.ad_creative || adSet0.creative || adSet0.ads?.[0]?.creative || {};
+        // 🖼️ CHECK FOR USER-PROVIDED IMAGE FIRST
+        const userProvidedImageUrl = state.user_provided_image_url || null;
 
-        const imagePrompt =
-          creativeResult.image_prompt ||
-          creativeResult.image_generation_prompt ||
-          `${state.service} professional ad for ${state.location}. Style: clean, high-conversion, marketing photography.`;
-        try {
-          const imgRes = await fetch(`${process.env.NEXT_PUBLIC_BASE_URL}/api/images/generate`, {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ prompt: imagePrompt }),
-          });
-          const imgJson = await parseResponseSafe(imgRes);
+        if (userProvidedImageUrl) {
+          // ✅ User provided their own image URL — use it directly, skip AI generation
+          console.log(`🖼️ [User Image] Using user-provided image: ${userProvidedImageUrl}`);
 
-          if (imgJson.imageBase64) {
-            const newCreative = {
-              ...creativeResult,
-              imageBase64: imgJson.imageBase64,
-              imageUrl: `data:image/png;base64,${imgJson.imageBase64}`
-            };
+          const plan = state.plan || {};
+          const adSet0 = (Array.isArray(plan.ad_sets) ? plan.ad_sets[0] : (plan.ad_sets || {}));
+          const creativeResult = adSet0.ad_creative || adSet0.creative || adSet0.ads?.[0]?.creative || {};
 
-            // 🔒 UPDATE STATE
-            state = { ...state, stage: "IMAGE_GENERATED", creative: newCreative };
-            currentState = state; // Sync
+          const newCreative = {
+            ...creativeResult,
+            imageBase64: null,
+            imageUrl: userProvidedImageUrl,
+            userProvidedImageUrl: userProvidedImageUrl
+          };
 
-            // 💾 PERSIST IMMEDIATELY
-            await saveAnswerMemory(
-              process.env.NEXT_PUBLIC_BASE_URL,
-              effectiveBusinessId,
-              { campaign_state: state },
-              session.user.email.toLowerCase()
-            );
+          state = { ...state, stage: "IMAGE_GENERATED", creative: newCreative };
+          currentState = state;
 
-            console.log("TRACE: PIPELINE STEP REPORT");
-            console.log("TRACE: STAGE (pipeline) =", state.stage);
-            console.log("TRACE: IMAGE EXISTS =", !!state.creative);
-            console.log("TRACE: IMAGE UPLOADED =", !!state.meta?.uploadedImageHash);
+          await saveAnswerMemory(
+            process.env.NEXT_PUBLIC_BASE_URL,
+            effectiveBusinessId,
+            { campaign_state: state },
+            session.user.email.toLowerCase()
+          );
 
-            waterfallLog.push("✅ Step 9: Image Generated");
-          } else {
+          console.log("✅ Step 9: User-Provided Image Set");
+          waterfallLog.push("✅ Step 9: User-Provided Image Set");
+        } else {
+          // 🤖 No user image — generate with AI as usual
+          console.log("🚀 Waterfall: Starting AI Image Generation...");
+          const plan = state.plan || {};
+          const adSet0 = (Array.isArray(plan.ad_sets) ? plan.ad_sets[0] : (plan.ad_sets || {}));
+          const creativeResult = adSet0.ad_creative || adSet0.creative || adSet0.ads?.[0]?.creative || {};
+
+          const imagePrompt =
+            creativeResult.image_prompt ||
+            creativeResult.image_generation_prompt ||
+            `${state.service} professional ad for ${state.location}. Style: clean, high-conversion, marketing photography.`;
+          try {
+            const imgRes = await fetch(`${process.env.NEXT_PUBLIC_BASE_URL}/api/images/generate`, {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ prompt: imagePrompt }),
+            });
+            const imgJson = await parseResponseSafe(imgRes);
+
+            if (imgJson.imageBase64) {
+              const newCreative = {
+                ...creativeResult,
+                imageBase64: imgJson.imageBase64,
+                imageUrl: `data:image/png;base64,${imgJson.imageBase64}`
+              };
+
+              // 🔒 UPDATE STATE
+              state = { ...state, stage: "IMAGE_GENERATED", creative: newCreative };
+              currentState = state; // Sync
+
+              // 💾 PERSIST IMMEDIATELY
+              await saveAnswerMemory(
+                process.env.NEXT_PUBLIC_BASE_URL,
+                effectiveBusinessId,
+                { campaign_state: state },
+                session.user.email.toLowerCase()
+              );
+
+              console.log("TRACE: PIPELINE STEP REPORT");
+              console.log("TRACE: STAGE (pipeline) =", state.stage);
+              console.log("TRACE: IMAGE EXISTS =", !!state.creative);
+              console.log("TRACE: IMAGE UPLOADED =", !!state.meta?.uploadedImageHash);
+
+              waterfallLog.push("✅ Step 9: AI Image Generated");
+            } else {
+              errorOcurred = true;
+              stopReason = "Image Generation Failed (No Base64 returned)";
+            }
+          } catch (e) {
             errorOcurred = true;
-            stopReason = "Image Generation Failed (No Base64 returned)";
+            stopReason = `Image Generation Error: ${e.message}`;
           }
-        } catch (e) {
-          errorOcurred = true;
-          stopReason = `Image Generation Error: ${e.message}`;
         }
       }
 
@@ -3193,18 +3364,27 @@ Otherwise, respond with a full, clear explanation, and include example JSON only
 
       // --- STEP 10: IMAGE UPLOAD ---
       if (!errorOcurred && lockedCampaignState.destination !== "catalogue") {
-        // 🔒 PATCH: Use strict upload check
-        if (state.creative?.imageBase64 && !isImageUploaded) {
+        // 🖼️ Determine upload source: user's URL OR AI-generated base64
+        const hasUserImageUrl = !!state.creative?.userProvidedImageUrl;
+        const hasAiImageBase64 = !!state.creative?.imageBase64;
+        const needsUpload = (hasUserImageUrl || hasAiImageBase64) && !isImageUploaded;
+
+        if (needsUpload) {
           console.log("TRACE: IMAGE UPLOAD ATTEMPT");
           console.log("TRACE: IMAGE HASH =", state.meta?.uploadedImageHash);
-
-          console.log("TRACE: UPLOADING IMAGE TO META");
           console.log("🚀 Waterfall: Uploading Image to Meta...");
+          console.log(hasUserImageUrl ? "🖼️ Upload source: User-Provided URL" : "🤖 Upload source: AI-Generated Base64");
+
           try {
+            // Build upload body: prefer user URL, fall back to base64
+            const uploadBody = hasUserImageUrl
+              ? { imageUrl: state.creative.userProvidedImageUrl }
+              : { imageBase64: state.creative.imageBase64 };
+
             const uploadRes = await fetch(`${process.env.NEXT_PUBLIC_BASE_URL}/api/meta/upload-image`, {
               method: "POST",
               headers: { "Content-Type": "application/json", "x-client-email": session.user.email.toLowerCase() },
-              body: JSON.stringify({ imageBase64: state.creative.imageBase64 })
+              body: JSON.stringify(uploadBody)
             });
             const uploadJson = await parseResponseSafe(uploadRes);
             console.log("TRACE: IMAGE UPLOAD RESPONSE =", uploadJson);
@@ -4312,7 +4492,7 @@ async function handleInstagramPostOnly(req, res, session, body) {
       const isTransient = e.message.includes("Media ID") || e.message.includes("unexpected error") || e.message.includes("retry your request later");
       if (retries > 0 && isTransient) {
         const delay = e.message.includes("Media ID") ? 5000 : 2000;
-        console.warn(`[Instagram Retry] Transient error detected: "${e.message}". Waiting ${delay/1000}s... (${retries} retries left)`);
+        console.warn(`[Instagram Retry] Transient error detected: "${e.message}". Waiting ${delay / 1000}s... (${retries} retries left)`);
         await new Promise(r => setTimeout(r, delay));
         return await safePublish(params, retries - 1);
       }
@@ -4405,4 +4585,3 @@ async function handleInstagramPostOnly(req, res, session, body) {
 
   return res.json({ ok: true, text: "Thinking..." });
 }
-
