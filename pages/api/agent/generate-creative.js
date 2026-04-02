@@ -11,7 +11,7 @@ export default async function handler(req, res) {
       return res.status(401).json({ ok: false });
     }
 
-    const { intake, objective = "Traffic" } = req.body;
+    const { intake, objective = "Traffic", offer = "" } = req.body;
     if (!intake) {
       return res.status(400).json({ ok: false, error: "Missing intake data" });
     }
@@ -21,6 +21,10 @@ export default async function handler(req, res) {
 
     const model = genAI.getGenerativeModel({ model: modelName });
 
+    const offerLine = offer && offer.trim()
+      ? `Special Offer to feature: "${offer.trim()}"`
+      : "No specific offer — AI should suggest a compelling hook.";
+
     const prompt = `
 You are a senior Meta Ads copywriter and strategist.
 
@@ -28,7 +32,7 @@ Using ONLY the information below, generate:
 - 3 headlines (max 40 chars each)
 - 2 primary texts (max 125 chars each)
 - 1 CTA from Meta-approved list (e.g., LEARN_MORE, SHOP_NOW, BOOK_NOW, CONTACT_US, SIGN_UP)
-- 1 short, high-quality image prompt (photorealistic, ad-safe, focus on visual appeal)
+- 1 short, high-quality image prompt (photorealistic, ad-safe, service-focused visual)
 - targeting suggestions (interests, demographics) for this specific business and location
 
 Rules:
@@ -37,11 +41,13 @@ Rules:
 - Do NOT say REQUIRED
 - Be confident and conversion-focused
 - Match the business tone automatically
+- Incorporate the special offer naturally into headlines and primary texts if one is provided
 
 Business Data:
 ${JSON.stringify(intake, null, 2)}
 
 Objective: ${objective}
+${offerLine}
 
 Return STRICT JSON in this exact shape:
 {
