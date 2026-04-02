@@ -1,10 +1,12 @@
 
 // pages/api/agent/run.js
 
+import { processMetaAdImage } from "../../../lib/meta/process-meta-image";
+
 const BASE_URL =
   process.env.NEXT_PUBLIC_BASE_URL || "http://localhost:3000";
 
-/* ---------------- HELPERS (SAFE ADDITIONS) ---------------- */
+/* ---------------- HELPERS ---------------- */
 
 async function detectIntent(query) {
   const res = await fetch(`${BASE_URL}/api/agent/intent`, {
@@ -33,6 +35,23 @@ async function generateQuestions(payload) {
   return res.json();
 }
 
+/* ── Shared helper: ask user for their offer ─────────────────────────────── */
+function askForOffer(res, intent, intake) {
+  return res.json({
+    reply:
+      "Great! One more thing before I build your ad 🎯\n\n" +
+      "Do you have a **special offer or promotion** to highlight?\n\n" +
+      "Examples:\n" +
+      "• *20% OFF This Weekend*\n" +
+      "• *Free Consultation – Book Today*\n" +
+      "• *Buy 1 Get 1 Free*\n\n" +
+      "Type your offer, or type **NONE** to let AI choose a compelling hook.",
+    stage: "awaiting_offer",
+    intent,
+    intake,
+  });
+}
+
 /* ---------------- MAIN HANDLER ---------------- */
 
 export default async function handler(req, res) {
@@ -53,8 +72,8 @@ export default async function handler(req, res) {
     }
 
     /* ======================================================
-       🔹 MODE 1: AGENT CHAT FLOW
-       Triggered when message exists
+       🔹 MODE 1: INITIAL CHAT MESSAGE
+       User sends a natural language message to start a campaign
        ====================================================== */
 
     if (body.message && typeof body.message === "string") {
@@ -62,27 +81,28 @@ export default async function handler(req, res) {
 
       // 1️⃣ Detect intent
       const intentRes = await detectIntent(userMessage);
-
       if (!intentRes.ok) {
         return res.json({
           reply: "I couldn't understand that. Please rephrase your request.",
         });
       }
-
       const { platform, objective } = intentRes.intent;
+      const intent = {
+        platform,
+        objective,
+        conversion_location: "WEBSITE",
+        performance_goal: "LINK_CLICKS",
+      };
 
-      // 1.5️⃣ Load business intake
+      // 2️⃣ Load business intake
       const intakeRes = await fetch(`${BASE_URL}/api/agent/intake-business`, {
         method: "GET",
-        headers: {
-          Cookie: req.headers.cookie || "",
-        },
+        headers: { Cookie: req.headers.cookie || "" },
       });
-
       const intakeJson = await intakeRes.json();
       const intake = intakeJson?.intake || {};
 
-      // 2️⃣ Safety gate
+      // 3️⃣ Safety gate
       const gateRes = await safetyGate({
         platform,
         objective: objective || "traffic",
@@ -92,7 +112,7 @@ export default async function handler(req, res) {
       });
 
       if (!gateRes.ok && gateRes.missing) {
-        // 3️⃣ Ask questions for missing fields
+        // 4️⃣ Some fields missing — ask questions first
         const qRes = await generateQuestions({
           platform,
           objective,
@@ -105,30 +125,33 @@ export default async function handler(req, res) {
             "Before I proceed, I need a few details:\n\n" +
             qRes.questions.map((q, i) => `${i + 1}. ${q}`).join("\n"),
           stage: "awaiting_answers",
-          intent: { platform, objective, conversion_location: "WEBSITE", performance_goal: "LINK_CLICKS" },
+          intent,
+          intake,
           missing: gateRes.missing,
         });
       }
 
-      // 4️⃣ All details ready — ask user for their offer
-      return res.json({
-        reply:
-          "I have all the required details! 🎉\n\n" +
-          "Do you have a **special offer or promotion** you'd like to highlight in this ad?\n\n" +
-          "Examples:\n" +
-          "• *20% OFF This Weekend*\n" +
-          "• *Free Consultation – Book Today*\n" +
-          "• *Buy 1 Get 1 Free*\n\n" +
-          "Type your offer, or type **NONE** to let AI decide.",
-        stage: "awaiting_offer",
-        intent: { platform, objective, conversion_location: "WEBSITE", performance_goal: "LINK_CLICKS" },
-        intake,
-      });
+      // 5️⃣ All details present — ask for offer (every campaign)
+      return askForOffer(res, intent, intake);
     }
 
     /* ======================================================
-       🔹 STAGE: COLLECT OFFER → Generate Creative
-       User typed their offer (or "NONE") in response to awaiting_offer
+       🔹 STAGE: AWAITING_ANSWERS
+       User has answered the missing-field questions.
+       Route straight to asking for offer next.
+       ====================================================== */
+
+    if (body.stage === "awaiting_answers" && body.answers) {
+      // answers have been saved by the frontend/answer-memory endpoint.
+      // We just move the conversation forward to offer collection.
+      const intent = body.intent;
+      const intake = { ...(body.intake || {}), ...(body.answers || {}) };
+      return askForOffer(res, intent, intake);
+    }
+
+    /* ======================================================
+       🔹 STAGE: AWAITING_OFFER → Generate Creative
+       User typed their offer (or "NONE")
        ====================================================== */
 
     if (body.stage === "awaiting_offer" && body.offer !== undefined) {
@@ -138,84 +161,125 @@ export default async function handler(req, res) {
           ? ""
           : offerText;
 
-      const creativeRes = await fetch(`${BASE_URL}/api/agent/generate-creative`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          intake: body.intake,
-          objective: body.intent.objective,
-          offer: offerFinal,
-        }),
-      });
+      const creativeRes = await fetch(
+        `${BASE_URL}/api/agent/generate-creative`,
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            intake: body.intake,
+            objective: body.intent?.objective,
+            offer: offerFinal,
+          }),
+        }
+      );
 
       const creativeData = await creativeRes.json();
       if (!creativeData.ok) {
-        return res.json({ reply: "I couldn't generate creatives. Please try again." });
+        return res.json({
+          reply: "I couldn't generate creatives. Please try again.",
+        });
       }
 
-      const { headlines, primary_texts, cta, image_prompt, targeting_suggestions } = creativeData.creative;
+      const {
+        headlines,
+        primary_texts,
+        cta,
+        tagline,
+        image_prompt,
+        targeting_suggestions,
+      } = creativeData.creative;
 
       return res.json({
         reply:
           "Here's what I've prepared for your ad:\n\n" +
-          "**Headlines:**\n- " + headlines.join("\n- ") +
-          "\n\n**Primary Texts:**\n- " + primary_texts.join("\n- ") +
-          "\n\n**CTA:** " + cta +
-          (offerFinal ? `\n\n**Your Offer on Image:** ${offerFinal}` : "") +
-          "\n\n**Image Concept:** " + image_prompt +
-          "\n\n**Targeting Suggestions:**\n- Interests: " + targeting_suggestions.interests.join(", ") +
-          "\n- Demographics: " + targeting_suggestions.demographics.join(", ") +
-          "\n\n**Reply YES to generate the image and upload it to Meta.**",
+          "**Headlines:**\n- " +
+          headlines.join("\n- ") +
+          "\n\n**Primary Texts:**\n- " +
+          primary_texts.join("\n- ") +
+          "\n\n**CTA:** " +
+          cta +
+          (offerFinal ? `\n\n**Offer on Image:** ${offerFinal}` : "") +
+          (tagline ? `\n**Tagline on Image:** *${tagline}*` : "") +
+          "\n\n**Targeting:**\n- Interests: " +
+          targeting_suggestions.interests.join(", ") +
+          "\n- Demographics: " +
+          targeting_suggestions.demographics.join(", ") +
+          "\n\n**Reply YES to generate your ad image and upload it to Meta.**",
         stage: "creative_ready",
-        creative: { ...creativeData.creative, offer: offerFinal },
+        creative: {
+          ...creativeData.creative,
+          offer: offerFinal,
+          tagline: tagline || "",
+        },
         intent: body.intent,
         intake: body.intake,
       });
     }
 
     /* ======================================================
-       🔹 STAGE: IMAGE GENERATION & UPLOAD (User said YES to Creative)
+       🔹 STAGE: CREATIVE_READY → Image Gen + Overlay + Upload
+       User said YES to the creative preview
        ====================================================== */
 
-    if (
-      body.stage === "creative_ready" &&
-      body.confirm === true
-    ) {
-      // A. Generate Image — pass service + offer so overlay uses user's text
+    if (body.stage === "creative_ready" && body.confirm === true) {
+
+      // A. Generate raw background image from DALL-E (no text in image)
       const imgGenRes = await fetch(`${BASE_URL}/api/images/generate`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          prompt: body.creative.image_prompt,
-          service: body.intake.business_type || body.intake.business_name || "",
-          offer: body.creative.offer || "",
-          businessName: body.intake.business_name || "",
-        }),
+        body: JSON.stringify({ prompt: body.creative.image_prompt }),
       });
 
       const imgGenData = await imgGenRes.json();
       if (!imgGenData.ok) {
-        return res.json({ reply: "Image generation failed. Should I try again?" });
+        return res.json({
+          reply: "Image generation failed. Should I try again?",
+        });
       }
 
-      // B. Upload to Meta
+      // B. Apply overlay via processMetaAdImage
+      //    Overlay renders: business name (top), service (centre large),
+      //    tagline (medium, below service), offer (accent colour, bottom)
+      let finalBase64;
+      try {
+        finalBase64 = await processMetaAdImage({
+          imageBase64: imgGenData.imageBase64,
+          service:
+            body.intake?.business_type ||
+            body.intake?.service ||
+            body.intake?.business_name ||
+            "",
+          offer: body.creative?.offer || "",
+          tagline: body.creative?.tagline || "",
+          businessName: body.intake?.business_name || "",
+        });
+      } catch (overlayErr) {
+        console.error("[run.js] Overlay failed, using raw image:", overlayErr.message);
+        finalBase64 = imgGenData.imageBase64;
+      }
+
+      // C. Upload processed image to Meta
       const uploadRes = await fetch(`${BASE_URL}/api/meta/upload-image`, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
-          "x-client-email": body.intake.email || "",
+          "x-client-email": body.intake?.email || "",
         },
-        body: JSON.stringify({ imageBase64: imgGenData.imageBase64 }),
+        body: JSON.stringify({ imageBase64: finalBase64 }),
       });
 
       const uploadData = await uploadRes.json();
       if (!uploadData.ok) {
-        return res.json({ reply: "Failed to upload image to Meta. " + (uploadData.message || "") });
+        return res.json({
+          reply:
+            "Failed to upload image to Meta. " + (uploadData.message || ""),
+        });
       }
 
       return res.json({
         reply:
-          "Image generated and uploaded successfully! I'm now ready to create the campaign.\n\n" +
+          "✅ Image generated and uploaded!\n\n" +
           "**Final Confirmation:** Do you want me to publish this campaign in **PAUSED** mode to your Meta Ad Account?",
         stage: "final_publish_confirmation",
         image_hash: uploadData.imageHash,
@@ -226,29 +290,40 @@ export default async function handler(req, res) {
     }
 
     /* ======================================================
-       🔹 STAGE: EXECUTION (User said YES to Final Publish)
+       🔹 STAGE: FINAL_PUBLISH_CONFIRMATION → Execute
+       User confirmed — create the campaign
        ====================================================== */
 
     if (
       body.stage === "final_publish_confirmation" &&
       body.confirm === true
     ) {
-      // Failure guards
+      // Hard stops
       if (!body.intake?.website_url && !body.intake?.business_website) {
-        return res.json({ reply: "Stop. Execution failed: website_url is missing." });
+        return res.json({
+          reply: "Stop. Execution failed: website_url is missing.",
+        });
       }
       if (!body.intake?.budget?.amount) {
-        return res.json({ reply: "Stop. Execution failed: budget is invalid or missing." });
+        return res.json({
+          reply: "Stop. Execution failed: budget is invalid or missing.",
+        });
       }
       if (!body.intake?.duration_days) {
-        return res.json({ reply: "Stop. Execution failed: duration is missing." });
+        return res.json({
+          reply: "Stop. Execution failed: duration is missing.",
+        });
       }
       if (!body.intake?.locations) {
-        return res.json({ reply: "Stop. Execution failed: locations are missing." });
+        return res.json({
+          reply: "Stop. Execution failed: locations are missing.",
+        });
       }
 
       const payload = {
-        campaign_name: `${body.intent.objective.toUpperCase()} - ${body.intake.business_name || "Campaign"} - ${new Date().toLocaleDateString()}`,
+        campaign_name: `${body.intent.objective.toUpperCase()} - ${
+          body.intake.business_name || "Campaign"
+        } - ${new Date().toLocaleDateString()}`,
         objective: body.intent.objective,
         budget: body.intake.budget,
         duration_days: body.intake.duration_days,
@@ -261,7 +336,8 @@ export default async function handler(req, res) {
               primary_text: body.creative.primary_texts[0],
               headline: body.creative.headlines[0],
               call_to_action: body.creative.cta,
-              destination_url: body.intake.website_url || body.intake.business_website,
+              destination_url:
+                body.intake.website_url || body.intake.business_website,
             },
           },
         ],
@@ -271,32 +347,36 @@ export default async function handler(req, res) {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
-          "x-client-email": body.intake.email || "",
+          "x-client-email": body.intake?.email || "",
         },
         body: JSON.stringify({ platform: "meta", payload }),
       });
 
       const executeData = await executeRes.json();
       if (!executeData.ok) {
-        return res.json({ reply: "Meta permission or API error: " + (executeData.message || "Execution failed.") });
+        return res.json({
+          reply:
+            "Meta permission or API error: " +
+            (executeData.message || "Execution failed."),
+        });
       }
 
       return res.json({
         ok: true,
         reply:
-          `Success! Your campaign has been created and put in **PAUSED** mode.\n\n` +
+          `🎉 Success! Your campaign is live in **PAUSED** mode.\n\n` +
           `**Campaign ID:** ${executeData.id}\n` +
           `**Ad Set ID:** ${executeData.details?.ad_sets?.[0] || "N/A"}\n` +
           `**Ad ID:** ${executeData.details?.ads?.[0] || "N/A"}\n` +
           `**Status:** ${executeData.status}\n\n` +
-          `You can now review it in your Meta Ads Manager.`,
+          `You can review and activate it in Meta Ads Manager.`,
         stage: "completed",
         campaign_id: executeData.id,
       });
     }
 
     /* ======================================================
-       🔹 MODE 2: EXISTING EXECUTION FLOW (UNCHANGED)
+       🔹 MODE 2: EXISTING DIRECT EXECUTION FLOW (UNCHANGED)
        platform + action + payload
        ====================================================== */
 
@@ -308,14 +388,12 @@ export default async function handler(req, res) {
         message: "platform (string) is required: 'google' or 'meta'.",
       });
     }
-
     if (!action || typeof action !== "string") {
       return res.status(400).json({
         ok: false,
         message: "action (string) is required.",
       });
     }
-
     if (!payload || typeof payload !== "object") {
       return res.status(400).json({
         ok: false,
@@ -323,8 +401,7 @@ export default async function handler(req, res) {
       });
     }
 
-    /* ---------- GOOGLE ADS (UNCHANGED) ---------- */
-
+    /* ---------- GOOGLE ADS ---------- */
     if (platform === "google" && action === "create_simple_campaign") {
       const resp = await fetch(
         `${BASE_URL}/api/google-ads/create-simple-campaign`,
@@ -334,9 +411,7 @@ export default async function handler(req, res) {
           body: JSON.stringify(payload),
         }
       );
-
       const data = await resp.json().catch(() => ({}));
-
       if (!resp.ok) {
         return res.status(resp.status).json({
           ok: false,
@@ -345,7 +420,6 @@ export default async function handler(req, res) {
           error: data,
         });
       }
-
       return res.status(200).json({
         ok: true,
         forwardedTo: "google-ads/create-simple-campaign",
@@ -353,8 +427,7 @@ export default async function handler(req, res) {
       });
     }
 
-    /* ---------- META ADS (UNCHANGED) ---------- */
-
+    /* ---------- META ADS ---------- */
     if (platform === "meta" && action === "create_simple_campaign") {
       const resp = await fetch(
         `${BASE_URL}/api/meta/create-simple-campaign`,
@@ -364,9 +437,7 @@ export default async function handler(req, res) {
           body: JSON.stringify(payload),
         }
       );
-
       const data = await resp.json().catch(() => ({}));
-
       if (!resp.ok) {
         return res.status(resp.status).json({
           ok: false,
@@ -375,7 +446,6 @@ export default async function handler(req, res) {
           error: data,
         });
       }
-
       return res.status(200).json({
         ok: true,
         forwardedTo: "meta/create-simple-campaign",
