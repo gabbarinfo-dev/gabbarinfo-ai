@@ -17,15 +17,18 @@ export default async function handler(req, res) {
       return res.status(400).json({ error: "Missing prompt" });
     }
 
-    const result = await client.images.generate({
-      model: "dall-e-3",
-      prompt,
-      n: 1,
-      size: "1024x1024",
-      response_format: "b64_json",
-    });
+   const result = await client.images.generate({
+  model: "gpt-image-1",
+  prompt,
+  size: "1024x1024",
+  quality: "high",
+});
 
-    const imageBase64 = result.data[0].b64_json;
+const imageBase64 = result.data?.[0]?.b64_json;
+
+if (!imageBase64) {
+  throw new Error("OpenAI did not return image data.");
+}
 
     return res.status(200).json({
       ok: true,
