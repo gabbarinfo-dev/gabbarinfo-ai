@@ -1,14 +1,16 @@
 // pages/api/google-ads/accounts.js
-// Handles listing accessible Google Ads customer accounts for the logged-in user
-// and selecting/saving the active Google Ads Customer ID.
+// Lists accessible Google Ads client accounts for the logged-in user
+// and handles selecting/saving the active Google Ads Customer ID.
+//
+// Uses getAccountHierarchy() which queries customer_client under the MCC
+// (GOOGLE_ADS_LOGIN_CUSTOMER_ID) — the correct approach for Agency/MCC accounts.
 
 import { getServerSession } from "next-auth/next";
 import { authOptions } from "../auth/[...nextauth]";
 import { createClient } from "@supabase/supabase-js";
 import {
   cleanCustomerId,
-  listAccessibleCustomers,
-  getCustomerDetails,
+  getAccountHierarchy,
 } from "../../../lib/googleAdsHelper";
 
 const SUPABASE_URL = process.env.NEXT_PUBLIC_SUPABASE_URL;
@@ -45,72 +47,64 @@ export default async function handler(req, res) {
       }
 
       // Check for refresh token in DB or in session
-      const refreshToken = connection?.refresh_token || session.refreshToken || null;
+      const refreshToken =
+        connection?.refresh_token || session.refreshToken || null;
 
       if (!refreshToken) {
         return res.status(200).json({
           ok: true,
           connected: false,
-          message: "No Google Ads authorization found. Please sign in with Google to connect your account.",
+          message:
+            "No Google Ads authorization found. Please sign in with Google to connect your account.",
           accounts: [],
           selectedCustomerId: null,
         });
       }
 
-      // 2. Call Google Ads API to list accessible customer accounts
-      const listResp = await listAccessibleCustomers({ refreshToken });
+      // 2. Use getAccountHierarchy — queries customer_client under MCC
+      //    GOOGLE_ADS_LOGIN_CUSTOMER_ID = 8060320443 (set in Vercel env vars)
+      const hierarchyResp = await getAccountHierarchy({ refreshToken });
 
-      if (!listResp.ok) {
+      if (!hierarchyResp.ok) {
+        // Provide a detailed error message for debugging
+        const apiError =
+          hierarchyResp.json?.error?.message ||
+          hierarchyResp.json?.error?.details?.[0]?.errors?.[0]?.message ||
+          JSON.stringify(hierarchyResp.json || {});
+
+        console.error("getAccountHierarchy failed:", hierarchyResp.json);
+
         return res.status(200).json({
           ok: false,
           connected: true,
           error: "failed_to_list_accounts",
-          message:
-            listResp.json?.error?.message ||
-            "Failed to retrieve Google Ads accounts. Ensure Google Ads API scope is authorized.",
-          details: listResp.json,
+          message: `Failed to retrieve Google Ads accounts: ${apiError}`,
+          details: hierarchyResp.json,
           accounts: [],
           selectedCustomerId: connection?.customer_id || null,
         });
       }
 
-      const resourceNames = listResp.resourceNames || [];
-      const customerIds = resourceNames.map((rn) => cleanCustomerId(rn.replace("customers/", "")));
+      const accountDetails = hierarchyResp.accounts || [];
 
-      // 3. Query details for each customer ID
-      const accountDetails = await Promise.all(
-        customerIds.map(async (cid) => {
-          const details = await getCustomerDetails({
-            accessToken: listResp.accessToken,
-            customerId: cid,
-          });
-
-          if (details.ok) {
-            return {
-              customerId: cid,
-              descriptiveName: details.descriptiveName,
-              currencyCode: details.currencyCode,
-              timeZone: details.timeZone,
-              isManager: details.isManager,
-            };
-          }
-
-          // Fallback if details query fails (e.g. child account under MCC)
-          return {
-            customerId: cid,
-            descriptiveName: `Google Ads Account (${cid.slice(0, 3)}-${cid.slice(3, 6)}-${cid.slice(6)})`,
-            currencyCode: "INR",
-            timeZone: "Asia/Kolkata",
-            isManager: false,
-          };
-        })
-      );
-
-      // Selected Customer ID
+      // 3. Determine selected Customer ID
       let selectedCustomerId = connection?.customer_id || null;
-      if (!selectedCustomerId && accountDetails.length > 0) {
-        // Default to first account if only one exists
+
+      // Auto-select the only account if none selected yet
+      if (!selectedCustomerId && accountDetails.length === 1) {
         selectedCustomerId = accountDetails[0].customerId;
+
+        // Save the auto-selected ID to Supabase
+        await supabase
+          .from("google_connections")
+          .upsert(
+            {
+              email,
+              customer_id: selectedCustomerId,
+              updated_at: new Date().toISOString(),
+            },
+            { onConflict: "email" }
+          );
       }
 
       return res.status(200).json({
@@ -138,7 +132,9 @@ export default async function handler(req, res) {
       const cleanId = cleanCustomerId(customerId);
 
       if (!cleanId) {
-        return res.status(400).json({ ok: false, message: "Valid customerId is required" });
+        return res
+          .status(400)
+          .json({ ok: false, message: "Valid customerId is required" });
       }
 
       // Update in Supabase google_connections
