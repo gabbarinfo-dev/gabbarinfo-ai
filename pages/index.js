@@ -2,7 +2,7 @@
 import { useEffect, useState } from "react";
 import { useSession, signIn, signOut } from "next-auth/react";
 import FacebookBusinessConnect from "./components/facebook/FacebookBusinessConnect";
-import GoogleAdsAccountConnect from "./components/google/GoogleAdsAccountConnect";
+import GoogleAdsAccountConnect from "./components/google/googleadsaccountconnect";
 import BuyCreditsModal from "./components/BuyCreditsModal";
 
 export default function HomePage() {
