@@ -327,6 +327,8 @@ export default function ChatPage() {
     if (isAgentPanelOpen) {
       if (agentMode === "generic") {
         setAgentInstruction("Create A Meta Ads Campaign");
+      } else if (agentMode === "google_ads_plan") {
+        setAgentInstruction("Create a Google Search Ads campaign");
       } else if (agentMode === "instagram_post") {
         setAgentInstruction("Publish an Instagram Post");
       } else {
