@@ -2,6 +2,7 @@
 import { useEffect, useState } from "react";
 import { useSession, signIn, signOut } from "next-auth/react";
 import FacebookBusinessConnect from "./components/facebook/FacebookBusinessConnect";
+import GoogleAdsAccountConnect from "./components/google/GoogleAdsAccountConnect";
 import BuyCreditsModal from "./components/BuyCreditsModal";
 
 export default function HomePage() {
@@ -254,6 +255,20 @@ export default function HomePage() {
               Open Admin
             </a>
           )}
+        </section>
+
+        {/* GOOGLE ADS CONNECTION STATUS */}
+        <section
+          style={{
+            padding: 20,
+            borderRadius: 12,
+            background: "#fff",
+            border: "1px solid #eee",
+            maxWidth: 640,
+          }}
+        >
+          <h2 style={{ marginTop: 0 }}>Google Ads Account</h2>
+          <GoogleAdsAccountConnect />
         </section>
 
         {/* META CONNECTION STATUS */}
