@@ -1,32 +1,23 @@
 // pages/api/google-ads/create-simple-campaign.js
-// Replaceable — server route that validates payload, and (optionally)
-// verifies Google Ads credentials using a per-user refresh token stored
-// in Supabase (public.google_connections).
-//
-// Requirements (env):
-// - SUPABASE_URL
-// - SUPABASE_SERVICE_ROLE_KEY
-// - GOOGLE_ADS_BASIC_ACCESS (set to "true" to enable verification branch)
-//
-// NOTE: this file expects you already created lib/googleAdsHelper.js which
-// exports listAccessibleCustomers({ refreshToken }) -> { ok, status, json }
-// (the earlier helper you added).
+// Multi-user Google Ads Campaign Creation Endpoint
+// Validates payload and executes Campaign Budget, Search Campaign (PAUSED),
+// Ad Groups, RSA Ads, and Keywords directly in the user's selected Google Ads account.
 
 import { getServerSession } from "next-auth/next";
-import { authOptions } from "../auth/[...nextauth]"; // path relative to this file
+import { authOptions } from "../auth/[...nextauth]";
 import { createClient } from "@supabase/supabase-js";
-import { listAccessibleCustomers } from "../../../lib/googleAdsHelper";
+import {
+  cleanCustomerId,
+  createFullGoogleAdsCampaign,
+} from "../../../lib/googleAdsHelper";
 
 const SUPABASE_URL = process.env.NEXT_PUBLIC_SUPABASE_URL;
 const SUPABASE_SERVICE_ROLE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY;
 
-if (!SUPABASE_URL || !SUPABASE_SERVICE_ROLE_KEY) {
-  console.warn(
-    "Warning: SUPABASE_URL or SUPABASE_SERVICE_ROLE_KEY not set. Supabase access will fail for server-side token lookup."
-  );
-}
-
-const supabaseServer = createClient(SUPABASE_URL || "", SUPABASE_SERVICE_ROLE_KEY || "");
+const supabaseServer = createClient(
+  SUPABASE_URL || "",
+  SUPABASE_SERVICE_ROLE_KEY || ""
+);
 
 export default async function handler(req, res) {
   if (req.method !== "POST") {
@@ -39,158 +30,126 @@ export default async function handler(req, res) {
       return res.status(400).json({ ok: false, message: "Missing or invalid JSON body." });
     }
 
-    const { customerId, campaign, adGroups, refreshToken: incomingRefreshToken } = body;
+    const {
+      customerId: incomingCustomerId,
+      campaign,
+      adGroups,
+      refreshToken: incomingRefreshToken,
+    } = body;
 
-    // --- validation (same rules you had) ---
-    const errors = [];
-    if (!customerId || typeof customerId !== "string") {
-      errors.push("customerId (string) is required.");
-    }
+    // 1) Authenticate user session
+    const session = await getServerSession(req, res, authOptions);
+    const email = session?.user?.email?.toLowerCase()?.trim();
 
-    if (!campaign || typeof campaign !== "object") {
-      errors.push("campaign object is required.");
-    } else {
-      if (!campaign.name) errors.push("campaign.name is required.");
-      if (!campaign.network) errors.push("campaign.network is required.");
-      if (typeof campaign.dailyBudgetMicros !== "number") {
-        errors.push("campaign.dailyBudgetMicros (number) is required.");
-      }
-      if (!campaign.finalUrl) errors.push("campaign.finalUrl is required.");
-    }
-
-    if (!Array.isArray(adGroups) || adGroups.length === 0) {
-      errors.push("adGroups (non-empty array) is required.");
-    } else {
-      adGroups.forEach((ag, idx) => {
-        if (!ag.name) errors.push(`adGroups[${idx}].name is required.`);
-        if (typeof ag.cpcBidMicros !== "number") {
-          errors.push(`adGroups[${idx}].cpcBidMicros (number) is required.`);
-        }
-        if (!Array.isArray(ag.keywords) || ag.keywords.length === 0) {
-          errors.push(`adGroups[${idx}].keywords (non-empty array) is required.`);
-        }
-        if (!Array.isArray(ag.ads) || ag.ads.length === 0) {
-          errors.push(`adGroups[${idx}].ads (non-empty array) is required.`);
-        }
-      });
-    }
-
-    if (errors.length > 0) {
-      return res.status(400).json({ ok: false, message: "Validation failed.", errors });
-    }
-
-    // If basic access flag isn't turned on, keep acting as the safe stub (echo)
-    const basicAccessFlag = String(process.env.GOOGLE_ADS_BASIC_ACCESS || "false").toLowerCase();
-    if (basicAccessFlag !== "true") {
-      return res.status(200).json({
-        ok: true,
-        stub: true,
-        message:
-          "Stub only: campaign payload received. Set GOOGLE_ADS_BASIC_ACCESS=true to run verification checks.",
-        received: body,
-      });
-    }
-
-    // ---------------------------
-    // GOOGLE ADS BASIC ACCESS FLOW
-    // ---------------------------
-    // 1) Determine refresh token to use:
-    //    - incomingRefreshToken (body) has highest priority
-    //    - otherwise read from Supabase table public.google_connections by user email
     let refreshTokenToUse = incomingRefreshToken || null;
+    let customerIdToUse = incomingCustomerId || null;
 
-    if (!refreshTokenToUse) {
-      // get server session to find the user's email
-      const session = await getServerSession(req, res, authOptions);
-      const email = session?.user?.email?.toLowerCase?.().trim?.();
-
-      if (!email) {
-        return res.status(401).json({
-          ok: false,
-          step: "auth",
-          message:
-            "No valid session / email found. Provide refreshToken in body or ensure you are signed in.",
-        });
-      }
-
-      // fetch from supabase
+    // 2) Look up connection details from Supabase if needed
+    if (email && (!refreshTokenToUse || !customerIdToUse)) {
       try {
         const { data, error } = await supabaseServer
           .from("google_connections")
-          .select("refresh_token, access_token, customer_id, expires_at")
+          .select("refresh_token, customer_id")
           .eq("email", email)
           .maybeSingle();
 
-        if (error) {
-          console.error("Supabase error fetching google_connections:", error);
-          // continue to let user know
-          return res.status(500).json({
-            ok: false,
-            step: "supabase_fetch",
-            message: "Failed to read Google connection from Supabase.",
-            error: error.message || error,
-          });
+        if (!error && data) {
+          if (!refreshTokenToUse && data.refresh_token) {
+            refreshTokenToUse = data.refresh_token;
+          }
+          if (!customerIdToUse && data.customer_id) {
+            customerIdToUse = data.customer_id;
+          }
         }
-
-        if (!data || !data.refresh_token) {
-          return res.status(404).json({
-            ok: false,
-            step: "no_refresh_token",
-            message:
-              "No refresh_token found for your account in Supabase. Provide refreshToken in body or insert it into google_connections table.",
-          });
-        }
-
-        refreshTokenToUse = data.refresh_token;
-      } catch (err) {
-        console.error("Unexpected Supabase error:", err);
-        return res.status(500).json({
-          ok: false,
-          step: "supabase_exception",
-          message: "Unexpected error reading Supabase google_connections.",
-          error: String(err.message || err),
-        });
+      } catch (dbErr) {
+        console.warn("Could not query google_connections from Supabase:", dbErr.message);
       }
     }
 
-    // 2) Call Google Ads lightweight verification using the refresh token
-    try {
-      const googleResp = await listAccessibleCustomers({ refreshToken: refreshTokenToUse });
+    // Session fallback for refresh token
+    if (!refreshTokenToUse && session?.refreshToken) {
+      refreshTokenToUse = session.refreshToken;
+    }
 
-      // listAccessibleCustomers should return an object like { ok, status, json }
-      if (!googleResp || !googleResp.ok) {
-        return res.status(500).json({
-          ok: false,
-          step: "google_verification",
-          message: "Google Ads verification call failed.",
-          details: googleResp?.json || null,
-          status: googleResp?.status || null,
-        });
-      }
-
-      // Success -> return the verification result + original payload
-      return res.status(200).json({
-        ok: true,
-        stub: false,
+    // 3) Validate Refresh Token
+    if (!refreshTokenToUse) {
+      return res.status(401).json({
+        ok: false,
+        step: "auth",
         message:
-          "Basic Access flag is ON and Google verification passed. Campaign creation logic is not executed yet (safe mode).",
-        googleVerification: googleResp.json || null,
-        received: body,
+          "No Google Ads authorization found. Please sign in with Google or provide a refresh token.",
       });
-    } catch (err) {
-      console.error("Error during Google Ads verification:", err);
+    }
+
+    // 4) Validate Customer ID
+    const cleanId = cleanCustomerId(customerIdToUse);
+    if (!cleanId) {
+      return res.status(400).json({
+        ok: false,
+        step: "validation",
+        message:
+          "Google Ads customerId is required. Please select or provide a Google Ads account.",
+      });
+    }
+
+    // 5) Validate Campaign Payload
+    if (!campaign || typeof campaign !== "object") {
+      return res.status(400).json({
+        ok: false,
+        step: "validation",
+        message: "campaign object is required.",
+      });
+    }
+
+    const campaignName = campaign.name || `GabbarInfo AI Search - ${Date.now()}`;
+    const dailyBudgetMicros =
+      typeof campaign.dailyBudgetMicros === "number"
+        ? campaign.dailyBudgetMicros
+        : typeof campaign.dailyBudget === "number"
+        ? campaign.dailyBudget * 1000000
+        : 1000000000; // default ₹1,000/day
+
+    const finalUrl = campaign.finalUrl || "https://ai.gabbarinfo.com";
+
+    // 6) Execute Campaign Creation via Google Ads API (always PAUSED)
+    const result = await createFullGoogleAdsCampaign({
+      refreshToken: refreshTokenToUse,
+      customerId: cleanId,
+      campaign: {
+        ...campaign,
+        name: campaignName,
+        dailyBudgetMicros,
+        finalUrl,
+      },
+      adGroups: Array.isArray(adGroups) ? adGroups : [],
+    });
+
+    if (!result.ok) {
+      console.error("Google Ads Campaign Creation Failed:", result);
       return res.status(500).json({
         ok: false,
-        step: "exception",
-        message: "Unexpected error while verifying Google Ads credentials.",
-        error: err.message || String(err),
+        step: result.step || "google_ads_api",
+        message: result.message || "Failed to create campaign in Google Ads.",
+        error: result.error,
       });
     }
+
+    return res.status(200).json({
+      ok: true,
+      message: "Campaign created successfully in Google Ads in PAUSED status.",
+      campaignId: result.campaignId,
+      campaignName: result.campaignName,
+      status: "PAUSED",
+      budgetId: result.budgetId,
+      customerId: result.customerId,
+      adGroups: result.adGroups,
+      details: result,
+    });
   } catch (err) {
     console.error("Unhandled error in create-simple-campaign:", err);
     return res.status(500).json({
       ok: false,
-      message: "Server error while handling campaign creation.",
+      message: "Server error while handling Google Ads campaign creation.",
       error: String(err.message || err),
     });
   }
