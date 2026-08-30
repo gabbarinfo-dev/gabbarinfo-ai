@@ -39,7 +39,7 @@ export default function GoogleAdsAccountConnect() {
     fetchAccounts();
   }, []);
 
-  const handleSelectAccount = async (customerId) => {
+  const handleSelectAccount = async (customerId, managerId) => {
     setUpdatingId(customerId);
     setMessage("");
     setError("");
@@ -47,7 +47,7 @@ export default function GoogleAdsAccountConnect() {
       const res = await fetch("/api/google-ads/accounts", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ customerId }),
+        body: JSON.stringify({ customerId, managerId: managerId || null }),
       });
 
       const data = await res.json();
@@ -237,7 +237,7 @@ export default function GoogleAdsAccountConnect() {
             return (
               <div
                 key={acc.customerId}
-                onClick={() => !isPending && handleSelectAccount(acc.customerId)}
+                onClick={() => !isPending && handleSelectAccount(acc.customerId, acc.managerId)}
                 style={{
                   padding: "12px 16px",
                   borderRadius: "10px",
@@ -295,7 +295,7 @@ export default function GoogleAdsAccountConnect() {
                       disabled={isPending}
                       onClick={(e) => {
                         e.stopPropagation();
-                        handleSelectAccount(acc.customerId);
+                        handleSelectAccount(acc.customerId, acc.managerId);
                       }}
                       style={{
                         padding: "6px 12px",
