@@ -1,6 +1,3 @@
-
-
-
 // pages/api/agent/execute.js
 
 import { GoogleGenerativeAI } from "@google/generative-ai";
@@ -12,6 +9,12 @@ import { normalizeImageUrl } from "../../../lib/normalize-image-url";
 import { creativeEntry } from "../../../lib/instagram/creative-entry";
 import { clearCreativeState } from "../../../lib/instagram/creative-memory";
 import { processMetaAdImage } from "../../../lib/meta/process-meta-image";
+import {
+  cleanCustomerId,
+  listAccessibleCustomers,
+  getCustomerDetails,
+  createFullGoogleAdsCampaign,
+} from "../../../lib/googleAdsHelper";
 
 const Messages = {
   META_EXECUTION_FAILED: "Meta Execution Failed",
@@ -204,21 +207,37 @@ export default async function handler(req, res) {
       console.log(`🎯 [Manual Capture] Found Catalogue ID candidate: ${capturedCatalogId}`);
     }
 
-    // 💡 INTENT DETECTION: If in generic mode, check if user wants Meta Ads
+    // 💡 INTENT DETECTION: If in generic mode, check if user wants Google Ads or Meta Ads
     if (mode === "generic") {
       const historyTextForIntent = Array.isArray(chatHistory)
         ? chatHistory.slice(-10).map(m => m?.text?.toLowerCase() || "").join(" ")
         : "";
       const intentSource = `${lowerInstruction} ${historyTextForIntent}`;
-      const isMetaIntent =
-        intentSource.includes("meta ads") || intentSource.includes("meta campaign") ||
-        intentSource.includes("facebook ads") || intentSource.includes("instagram ads") ||
-        intentSource.includes("facebook campaign") || intentSource.includes("instagram campaign") ||
-        intentSource.includes("run ads") || intentSource.includes("start ads");
 
-      if (isMetaIntent) {
-        mode = "meta_ads_plan";
+      const isGoogleIntent =
+        lowerInstruction.includes("google ads") || lowerInstruction.includes("google ad") ||
+        lowerInstruction.includes("google campaign") || lowerInstruction.includes("google search ad") ||
+        lowerInstruction.includes("google search campaign") || lowerInstruction.includes("adwords") ||
+        lowerInstruction.includes("google adwords");
+
+      if (isGoogleIntent) {
+        mode = "google_ads_plan";
+      } else {
+        const isMetaIntent =
+          intentSource.includes("meta ads") || intentSource.includes("meta campaign") ||
+          intentSource.includes("facebook ads") || intentSource.includes("instagram ads") ||
+          intentSource.includes("facebook campaign") || intentSource.includes("instagram campaign") ||
+          intentSource.includes("run ads") || intentSource.includes("start ads");
+
+        if (isMetaIntent) {
+          mode = "meta_ads_plan";
+        }
       }
+    }
+
+    // 🔒 MODE AUTHORITY GATE — GOOGLE ADS ISOLATION
+    if (mode === "google_ads_plan") {
+      return handleGoogleAdsCampaignFlow(req, res, session, body);
     }
 
     // 🔒 MODE AUTHORITY GATE — INSTAGRAM ISOLATION
@@ -4684,4 +4703,276 @@ async function handleInstagramPostOnly(req, res, session, body) {
   }
 
   return res.json({ ok: true, text: "Thinking..." });
+}
+
+async function handleGoogleAdsCampaignFlow(req, res, session, body) {
+  const { instruction = "", chatHistory = [] } = body;
+  const userEmail = session.user.email.toLowerCase().trim();
+  const lowerInstruction = instruction.toLowerCase().trim();
+
+  // 1. Fetch user's Google connection from Supabase
+  const { data: googleConn } = await supabase
+    .from("google_connections")
+    .select("refresh_token, customer_id, updated_at")
+    .eq("email", userEmail)
+    .maybeSingle();
+
+  const refreshToken = googleConn?.refresh_token || session.refreshToken || null;
+
+  if (!refreshToken) {
+    return res.status(200).json({
+      ok: true,
+      gated: true,
+      text: "I don't have access to your Google Ads account yet.\n\nPlease **Sign in with Google** on the homepage or connect your Google account to grant Google Ads authorization.",
+    });
+  }
+
+  // 2. Fetch accessible customer accounts
+  let selectedCustomerId = googleConn?.customer_id ? cleanCustomerId(googleConn.customer_id) : null;
+  let accessibleAccounts = [];
+
+  try {
+    const listResp = await listAccessibleCustomers({ refreshToken });
+    if (listResp.ok && Array.isArray(listResp.resourceNames)) {
+      const ids = listResp.resourceNames.map(rn => cleanCustomerId(rn.replace("customers/", "")));
+      accessibleAccounts = await Promise.all(
+        ids.map(async (cid) => {
+          const details = await getCustomerDetails({
+            accessToken: listResp.accessToken,
+            customerId: cid,
+          });
+          return {
+            customerId: cid,
+            descriptiveName: details.ok ? details.descriptiveName : `Google Ads Account (${cid.slice(0, 3)}-${cid.slice(3, 6)}-${cid.slice(6)})`,
+            currencyCode: details.ok ? details.currencyCode : "INR",
+          };
+        })
+      );
+    }
+  } catch (accErr) {
+    console.warn("Could not list Google Ads accessible accounts:", accErr.message);
+  }
+
+  // Check if user is typing an account ID to select it in this turn
+  const matchId = instruction.match(/\b\d{3}[-\s]?\d{3}[-\s]?\d{4}\b|\b\d{10}\b/);
+  if (matchId) {
+    const candidateId = cleanCustomerId(matchId[0]);
+    const foundAcc = accessibleAccounts.find(a => a.customerId === candidateId);
+    if (foundAcc) {
+      selectedCustomerId = candidateId;
+      await supabase
+        .from("google_connections")
+        .upsert({ email: userEmail, customer_id: candidateId, updated_at: new Date().toISOString() }, { onConflict: "email" });
+    }
+  }
+
+  // If no account selected yet
+  if (!selectedCustomerId) {
+    if (accessibleAccounts.length === 0) {
+      return res.status(200).json({
+        ok: true,
+        gated: true,
+        text: "No Google Ads accounts were found linked to your Google login.\n\nPlease make sure your Google account has access to an active Google Ads account.",
+      });
+    }
+
+    if (accessibleAccounts.length === 1) {
+      // Auto-select the only account
+      selectedCustomerId = accessibleAccounts[0].customerId;
+      await supabase
+        .from("google_connections")
+        .upsert({ email: userEmail, customer_id: selectedCustomerId, updated_at: new Date().toISOString() }, { onConflict: "email" });
+    } else {
+      // Ask user to select an account
+      const accountsList = accessibleAccounts
+        .map(a => `• **${a.descriptiveName}** — ID: \`${a.customerId.slice(0,3)}-${a.customerId.slice(3,6)}-${a.customerId.slice(6)}\``)
+        .join("\n");
+
+      return res.status(200).json({
+        ok: true,
+        text: `Which Google Ads account would you like to manage?\n\n${accountsList}\n\nPlease reply with your Account ID to continue.`,
+      });
+    }
+  }
+
+  const activeAccountObj = accessibleAccounts.find(a => a.customerId === selectedCustomerId) || {
+    customerId: selectedCustomerId,
+    descriptiveName: `Google Ads Account (${selectedCustomerId})`,
+    currencyCode: "INR",
+  };
+
+  // 3. Check memory for existing proposed Google Ads plan
+  const { data: memData } = await supabase
+    .from("agent_memory")
+    .select("content")
+    .eq("email", userEmail)
+    .eq("memory_type", "google_ads_state")
+    .maybeSingle();
+
+  let gAdsState = null;
+  if (memData?.content) {
+    try {
+      gAdsState = JSON.parse(memData.content);
+    } catch (_) {}
+  }
+
+  const isConfirm =
+    lowerInstruction === "yes" ||
+    lowerInstruction === "y" ||
+    lowerInstruction.startsWith("yes ") ||
+    lowerInstruction.includes("proceed") ||
+    lowerInstruction.includes("confirm") ||
+    lowerInstruction.includes("create campaign") ||
+    lowerInstruction.includes("publish");
+
+  // 4. Execution Step (User confirmed proposed plan)
+  if (gAdsState?.stage === "PLAN_PROPOSED" && isConfirm && gAdsState.plan) {
+    try {
+      const plan = gAdsState.plan;
+      const createRes = await createFullGoogleAdsCampaign({
+        refreshToken,
+        customerId: selectedCustomerId,
+        campaign: plan.campaign,
+        adGroups: plan.adGroups,
+      });
+
+      if (!createRes.ok) {
+        console.error("Google Ads creation error:", createRes);
+        return res.status(200).json({
+          ok: false,
+          text: `⚠️ **Failed to create campaign in Google Ads**:\n\n${createRes.message || "Unknown error"}\n\nDetails: \`${JSON.stringify(createRes.error || {})}\``,
+        });
+      }
+
+      // Mark completed in memory
+      await supabase
+        .from("agent_memory")
+        .upsert({
+          email: userEmail,
+          memory_type: "google_ads_state",
+          content: JSON.stringify({ stage: "COMPLETED", lastCampaign: createRes, updated_at: new Date().toISOString() }),
+          updated_at: new Date().toISOString(),
+        }, { onConflict: "email,memory_type" });
+
+      const formattedAccId = `${selectedCustomerId.slice(0,3)}-${selectedCustomerId.slice(3,6)}-${selectedCustomerId.slice(6)}`;
+      const dailyBudgetRupees = Math.round((plan.campaign.dailyBudgetMicros || 1000000000) / 1000000);
+
+      return res.status(200).json({
+        ok: true,
+        campaignPublished: true,
+        text: `🎉 **Google Ads Campaign Successfully Created!**\n\n` +
+          `• **Campaign Name:** ${createRes.campaignName}\n` +
+          `• **Campaign ID:** \`${createRes.campaignId}\`\n` +
+          `• **Google Ads Account:** ${activeAccountObj.descriptiveName} (\`${formattedAccId}\`)\n` +
+          `• **Daily Budget:** ₹${dailyBudgetRupees}/day\n` +
+          `• **Status:** **PAUSED** ⏸️ *(Created in paused mode for safety so you can review in Google Ads before enabling)*\n\n` +
+          `You can now view and review this campaign inside your Google Ads console.`,
+      });
+    } catch (createErr) {
+      console.error("Error executing Google Ads campaign:", createErr);
+      return res.status(200).json({
+        ok: false,
+        text: `Error creating Google Ads campaign: ${createErr.message}`,
+      });
+    }
+  }
+
+  // 5. Plan Generation using Gemini
+  const prompt = `
+You are GabbarInfo AI, a senior Google Ads specialist.
+The user wants to plan and create a Google Search Ads campaign for their business.
+
+User Instruction: "${instruction}"
+Target Google Ads Account: ${activeAccountObj.descriptiveName} (Customer ID: ${selectedCustomerId}, Currency: ${activeAccountObj.currencyCode})
+
+Task:
+Extract the business details, location/city, budget, target keywords, and ad headlines/descriptions.
+If budget is not specified, default to 1000 INR/day (dailyBudgetMicros: 1000000000).
+If website is not specified, default to "https://ai.gabbarinfo.com" or a relevant URL.
+
+You MUST respond with a JSON block in this EXACT structure:
+\`\`\`json
+{
+  "customerId": "${selectedCustomerId}",
+  "campaign": {
+    "name": "Search - [Business Name] - [City]",
+    "status": "PAUSED",
+    "network": "SEARCH",
+    "dailyBudgetMicros": 1000000000,
+    "finalUrl": "https://client-website.com"
+  },
+  "adGroups": [
+    {
+      "name": "[Ad Group Theme]",
+      "cpcBidMicros": 20000000,
+      "keywords": [
+        "keyword 1",
+        "keyword 2",
+        "keyword 3",
+        "keyword 4",
+        "keyword 5"
+      ],
+      "ads": [
+        {
+          "headline1": "Top Headline 1 (max 30 chars)",
+          "headline2": "Headline 2 (max 30 chars)",
+          "headline3": "Headline 3 (max 30 chars)",
+          "description1": "Description line 1 (max 90 chars)",
+          "description2": "Description line 2 (max 90 chars)",
+          "path1": "services",
+          "path2": "city"
+        }
+      ]
+    }
+  ]
+}
+\`\`\`
+Followed by a concise, professional summary explaining the strategy, budget, keywords, and headlines, and ending with:
+"Reply **YES** to create this campaign in **PAUSED** mode in your Google Ads account."
+`;
+
+  let responseText = "";
+  let extractedPlan = null;
+
+  try {
+    const model = genAI.getGenerativeModel({ model: GEMINI_MODEL });
+    const result = await model.generateContent(prompt);
+    responseText = result.response.text();
+
+    const jsonMatch = responseText.match(/```(?:json)?\s*([\s\S]*?)\s*```/);
+    if (jsonMatch) {
+      try {
+        extractedPlan = JSON.parse(jsonMatch[1]);
+      } catch (_) {}
+    }
+  } catch (geminiErr) {
+    console.error("Gemini generation error:", geminiErr);
+    return res.status(200).json({
+      ok: false,
+      text: `Error generating campaign plan: ${geminiErr.message}`,
+    });
+  }
+
+  // Save proposed plan to memory
+  if (extractedPlan) {
+    await supabase
+      .from("agent_memory")
+      .upsert({
+        email: userEmail,
+        memory_type: "google_ads_state",
+        content: JSON.stringify({
+          stage: "PLAN_PROPOSED",
+          customerId: selectedCustomerId,
+          plan: extractedPlan,
+          proposed_at: new Date().toISOString(),
+        }),
+        updated_at: new Date().toISOString(),
+      }, { onConflict: "email,memory_type" });
+  }
+
+  return res.status(200).json({
+    ok: true,
+    text: responseText,
+    plan: extractedPlan,
+  });
 }
