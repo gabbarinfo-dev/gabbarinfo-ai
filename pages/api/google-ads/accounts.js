@@ -1,9 +1,11 @@
 // pages/api/google-ads/accounts.js
 // Lists accessible Google Ads client accounts for the logged-in user
-// and handles selecting/saving the active Google Ads Customer ID.
+// and handles selecting/saving the active Google Ads Customer ID + Manager ID.
 //
-// Uses getAccountHierarchy() which queries customer_client under the MCC
-// (GOOGLE_ADS_LOGIN_CUSTOMER_ID) — the correct approach for Agency/MCC accounts.
+// Uses getAccountHierarchy() which:
+//   - Calls listAccessibleCustomers with NO global login-customer-id (per-user)
+//   - Traverses each user's own MCC hierarchy dynamically
+//   - Returns managerId per account for correct campaign creation login path
 
 import { getServerSession } from "next-auth/next";
 import { authOptions } from "../auth/[...nextauth]";
@@ -38,7 +40,7 @@ export default async function handler(req, res) {
       // 1. Fetch user's Google connection from Supabase
       const { data: connection, error: connErr } = await supabase
         .from("google_connections")
-        .select("refresh_token, customer_id, updated_at")
+        .select("refresh_token, customer_id, manager_id, updated_at")
         .eq("email", email)
         .maybeSingle();
 
@@ -46,7 +48,6 @@ export default async function handler(req, res) {
         console.error("Error fetching google_connections:", connErr);
       }
 
-      // Check for refresh token in DB or in session
       const refreshToken =
         connection?.refresh_token || session.refreshToken || null;
 
@@ -61,12 +62,12 @@ export default async function handler(req, res) {
         });
       }
 
-      // 2. Use getAccountHierarchy — queries customer_client under MCC
-      //    GOOGLE_ADS_LOGIN_CUSTOMER_ID = 8060320443 (set in Vercel env vars)
+      // 2. Discover THIS user's account hierarchy dynamically
+      //    - No global login-customer-id used here
+      //    - Each user's MCC is discovered from their own OAuth token
       const hierarchyResp = await getAccountHierarchy({ refreshToken });
 
       if (!hierarchyResp.ok) {
-        // Provide a detailed error message for debugging
         const apiError =
           hierarchyResp.json?.error?.message ||
           hierarchyResp.json?.error?.details?.[0]?.errors?.[0]?.message ||
@@ -90,28 +91,45 @@ export default async function handler(req, res) {
       // 3. Determine selected Customer ID
       let selectedCustomerId = connection?.customer_id || null;
 
-      // Auto-select the only account if none selected yet
+      // Auto-select if only one account and none selected yet
       if (!selectedCustomerId && accountDetails.length === 1) {
         selectedCustomerId = accountDetails[0].customerId;
+        const autoManagerId = accountDetails[0].managerId || null;
 
-        // Save the auto-selected ID to Supabase
-        await supabase
-          .from("google_connections")
-          .upsert(
-            {
-              email,
-              customer_id: selectedCustomerId,
-              updated_at: new Date().toISOString(),
-            },
-            { onConflict: "email" }
-          );
+        // Save the auto-selected account + its manager_id
+        try {
+          await supabase
+            .from("google_connections")
+            .upsert(
+              {
+                email,
+                customer_id: selectedCustomerId,
+                manager_id: autoManagerId,
+                updated_at: new Date().toISOString(),
+              },
+              { onConflict: "email" }
+            );
+        } catch (saveErr) {
+          // manager_id column may not exist yet — save without it
+          await supabase
+            .from("google_connections")
+            .upsert(
+              {
+                email,
+                customer_id: selectedCustomerId,
+                updated_at: new Date().toISOString(),
+              },
+              { onConflict: "email" }
+            );
+        }
       }
 
       return res.status(200).json({
         ok: true,
         connected: true,
-        accounts: accountDetails,
+        accounts: accountDetails, // Each account includes managerId for campaign creation
         selectedCustomerId,
+        selectedManagerId: connection?.manager_id || null,
       });
     } catch (err) {
       console.error("GET /api/google-ads/accounts error:", err);
@@ -125,11 +143,13 @@ export default async function handler(req, res) {
 
   // ----------------------------------------------------
   // POST: Select / Switch Active Google Ads Customer ID
+  // Expects: { customerId, managerId }
   // ----------------------------------------------------
   if (req.method === "POST") {
     try {
-      const { customerId } = req.body || {};
+      const { customerId, managerId } = req.body || {};
       const cleanId = cleanCustomerId(customerId);
+      const cleanManagerId = managerId ? cleanCustomerId(managerId) : null;
 
       if (!cleanId) {
         return res
@@ -137,17 +157,36 @@ export default async function handler(req, res) {
           .json({ ok: false, message: "Valid customerId is required" });
       }
 
-      // Update in Supabase google_connections
-      const { error: updateErr } = await supabase
+      // Build the upsert object — try with manager_id first
+      const upsertObj = {
+        email,
+        customer_id: cleanId,
+        updated_at: new Date().toISOString(),
+      };
+
+      if (cleanManagerId) {
+        upsertObj.manager_id = cleanManagerId;
+      }
+
+      let updateErr = null;
+
+      const { error: err1 } = await supabase
         .from("google_connections")
-        .upsert(
-          {
-            email,
-            customer_id: cleanId,
-            updated_at: new Date().toISOString(),
-          },
-          { onConflict: "email" }
-        );
+        .upsert(upsertObj, { onConflict: "email" });
+
+      updateErr = err1;
+
+      // If manager_id column doesn't exist yet, retry without it
+      if (updateErr && cleanManagerId) {
+        console.warn("manager_id column may not exist, retrying without it:", updateErr.message);
+        const { error: err2 } = await supabase
+          .from("google_connections")
+          .upsert(
+            { email, customer_id: cleanId, updated_at: new Date().toISOString() },
+            { onConflict: "email" }
+          );
+        updateErr = err2;
+      }
 
       if (updateErr) {
         console.error("Error updating selected customer_id:", updateErr);
@@ -162,6 +201,7 @@ export default async function handler(req, res) {
         ok: true,
         message: "Active Google Ads account updated successfully.",
         selectedCustomerId: cleanId,
+        selectedManagerId: cleanManagerId,
       });
     } catch (err) {
       console.error("POST /api/google-ads/accounts error:", err);
