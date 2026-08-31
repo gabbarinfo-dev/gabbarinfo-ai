@@ -4723,7 +4723,36 @@ async function handleInstagramPostOnly(req, res, session, body) {
       });
 
       const containerId = postResult.mediaResponseJson?.id;
-      coasync function handleGoogleAdsCampaignFlow(req, res, session, body) {
+      const publishId = postResult.publishResponseJson?.id;
+
+      // 🧹 STORAGE CLEANUP: Delete the creative after successful publish
+      if (storageFileName) {
+        try {
+          console.log(`[Storage Cleanup] Deleting published creative: ${storageFileName}`);
+          await supabase.storage.from("instagram-creatives").remove([storageFileName]);
+        } catch (cleanupErr) {
+          console.warn("[Storage Cleanup] Failed to delete file:", cleanupErr.message);
+        }
+      }
+
+      return res.status(200).json({
+        ok: true,
+        text: "🎉 Instagram Post Published!",
+        container_id: containerId,
+        publish_id: publishId,
+        graph_status: "200 OK"
+      });
+    } catch (e) {
+      console.error("[Path B] Publication Error:", e);
+      return res.status(200).json({ ok: false, text: `Instagram publication failed: ${e.message}` });
+    }
+  }
+
+  return res.json({ ok: true, text: "Thinking..." });
+}
+
+async function handleGoogleAdsCampaignFlow(req, res, session, body) {
+
   try {
     const { instruction = "", chatHistory = [] } = body;
     const userEmail = session.user.email.toLowerCase().trim();
