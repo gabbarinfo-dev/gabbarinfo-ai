@@ -17,12 +17,22 @@ export default async function handler(req, res) {
       return res.status(400).json({ error: "Missing prompt" });
     }
 
-    const result = await client.images.generate({
-      model: "dall-e-3",
-      prompt,
-      size: "1024x1024",
-      quality: "hd",
-    });
+    const modelToUse = process.env.OPENAI_IMAGE_MODEL || "gpt-image-2";
+    let result;
+    try {
+      result = await client.images.generate({
+        model: modelToUse,
+        prompt,
+        size: "1024x1024",
+      });
+    } catch (modelErr) {
+      console.warn(`Failed with ${modelToUse}, falling back to gpt-image-1...`, modelErr?.message);
+      result = await client.images.generate({
+        model: "gpt-image-1",
+        prompt,
+        size: "1024x1024",
+      });
+    }
 
     const imageUrl = result.data?.[0]?.url || null;
     const imageBase64 = result.data?.[0]?.b64_json || null;
