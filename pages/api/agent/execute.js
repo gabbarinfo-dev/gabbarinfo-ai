@@ -4715,7 +4715,7 @@ async function handleGoogleAdsCampaignFlow(req, res, session, body) {
   // 1. Fetch user's Google connection from Supabase
   const { data: googleConn } = await supabase
     .from("google_connections")
-    .select("refresh_token, customer_id, updated_at")
+    .select("refresh_token, customer_id, manager_id, updated_at")
     .eq("email", userEmail)
     .maybeSingle();
 
@@ -4729,17 +4729,14 @@ async function handleGoogleAdsCampaignFlow(req, res, session, body) {
     });
   }
 
-  // 2. Fetch accessible customer accounts using full hierarchy discovery
-  //    Uses dynamic per-user MCC detection — no global login-customer-id.
-  //    Correctly traverses customer_client under each user's own MCC.
+  // 2. Fetch accessible customer accounts using dynamic per-user hierarchy discovery
   let selectedCustomerId = googleConn?.customer_id ? cleanCustomerId(googleConn.customer_id) : null;
+  let selectedManagerId = googleConn?.manager_id ? cleanCustomerId(googleConn.manager_id) : null;
   let accessibleAccounts = [];
-  let hierarchyAccessToken = null;
 
   try {
     const hierarchyResp = await getAccountHierarchy({ refreshToken });
     if (hierarchyResp.ok) {
-      hierarchyAccessToken = hierarchyResp.accessToken;
       accessibleAccounts = (hierarchyResp.accounts || []).map(acc => ({
         customerId: acc.customerId,
         descriptiveName: acc.descriptiveName,
@@ -4753,23 +4750,23 @@ async function handleGoogleAdsCampaignFlow(req, res, session, body) {
     console.warn("Could not fetch Google Ads account hierarchy:", accErr.message);
   }
 
-  // Check if user is typing an account ID to select it in this turn
+  // Check if user is typing an account ID to switch/select it
   const matchId = instruction.match(/\b\d{3}[-\s]?\d{3}[-\s]?\d{4}\b|\b\d{10}\b/);
   if (matchId) {
     const candidateId = cleanCustomerId(matchId[0]);
     const foundAcc = accessibleAccounts.find(a => a.customerId === candidateId);
     if (foundAcc) {
       selectedCustomerId = candidateId;
+      selectedManagerId = foundAcc.managerId || null;
       await supabase
         .from("google_connections")
         .upsert({
           email: userEmail,
           customer_id: candidateId,
-          manager_id: foundAcc.managerId || null,
+          manager_id: selectedManagerId,
           updated_at: new Date().toISOString(),
         }, { onConflict: "email" })
         .catch(() => {
-          // manager_id column may not exist yet — save without it
           supabase.from("google_connections")
             .upsert({ email: userEmail, customer_id: candidateId, updated_at: new Date().toISOString() }, { onConflict: "email" });
         });
@@ -4789,12 +4786,13 @@ async function handleGoogleAdsCampaignFlow(req, res, session, body) {
     if (accessibleAccounts.length === 1) {
       // Auto-select the only account
       selectedCustomerId = accessibleAccounts[0].customerId;
+      selectedManagerId = accessibleAccounts[0].managerId || null;
       await supabase
         .from("google_connections")
         .upsert({
           email: userEmail,
           customer_id: selectedCustomerId,
-          manager_id: accessibleAccounts[0].managerId || null,
+          manager_id: selectedManagerId,
           updated_at: new Date().toISOString(),
         }, { onConflict: "email" })
         .catch(() => {
@@ -4809,7 +4807,7 @@ async function handleGoogleAdsCampaignFlow(req, res, session, body) {
 
       return res.status(200).json({
         ok: true,
-        text: `Which Google Ads account would you like to manage?\n\n${accountsList}\n\nPlease reply with your Account ID to continue.`,
+        text: `Which Google Ads account would you like to create campaigns for?\n\n${accountsList}\n\nPlease reply with your **Account ID** to continue.`,
       });
     }
   }
@@ -4818,9 +4816,13 @@ async function handleGoogleAdsCampaignFlow(req, res, session, body) {
     customerId: selectedCustomerId,
     descriptiveName: `Google Ads Account (${selectedCustomerId})`,
     currencyCode: "INR",
+    managerId: selectedManagerId,
   };
 
-  // 3. Check memory for existing proposed Google Ads plan
+  const formattedAccId = `${selectedCustomerId.slice(0,3)}-${selectedCustomerId.slice(3,6)}-${selectedCustomerId.slice(6)}`;
+  const accountCurrency = activeAccountObj.currencyCode || "INR";
+
+  // 3. Load existing Google Ads state from Supabase
   const { data: memData } = await supabase
     .from("agent_memory")
     .select("content")
@@ -4835,24 +4837,41 @@ async function handleGoogleAdsCampaignFlow(req, res, session, body) {
     } catch (_) {}
   }
 
+  // 4. Check for fresh restart intent (e.g. "start new campaign", "reset", "create a google search ads campaign" when fresh)
+  const isFreshStartPrompt =
+    lowerInstruction === "create a google search ads campaign" ||
+    lowerInstruction === "create google ads campaign" ||
+    lowerInstruction === "create a google ads campaign" ||
+    lowerInstruction === "start over" ||
+    lowerInstruction === "new campaign" ||
+    lowerInstruction === "reset campaign";
+
+  if (isFreshStartPrompt && gAdsState?.stage === "COMPLETED") {
+    gAdsState = null;
+  }
+
   const isConfirm =
     lowerInstruction === "yes" ||
     lowerInstruction === "y" ||
     lowerInstruction.startsWith("yes ") ||
-    lowerInstruction.includes("proceed") ||
-    lowerInstruction.includes("confirm") ||
-    lowerInstruction.includes("create campaign") ||
-    lowerInstruction.includes("publish");
+    lowerInstruction === "confirm" ||
+    lowerInstruction === "proceed" ||
+    lowerInstruction === "publish" ||
+    lowerInstruction === "create campaign" ||
+    lowerInstruction.includes("create it now");
 
-  // 4. Execution Step (User confirmed proposed plan)
+  // 5. Execution Step: User confirmed the proposed plan
   if (gAdsState?.stage === "PLAN_PROPOSED" && isConfirm && gAdsState.plan) {
     try {
       const plan = gAdsState.plan;
+      const targetManagerId = activeAccountObj.managerId || gAdsState.managerId || null;
+
       const createRes = await createFullGoogleAdsCampaign({
         refreshToken,
         customerId: selectedCustomerId,
         campaign: plan.campaign,
         adGroups: plan.adGroups,
+        loginCustomerId: targetManagerId,
       });
 
       if (!createRes.ok) {
@@ -4869,12 +4888,16 @@ async function handleGoogleAdsCampaignFlow(req, res, session, body) {
         .upsert({
           email: userEmail,
           memory_type: "google_ads_state",
-          content: JSON.stringify({ stage: "COMPLETED", lastCampaign: createRes, updated_at: new Date().toISOString() }),
+          content: JSON.stringify({
+            stage: "COMPLETED",
+            lastCampaign: createRes,
+            plan: plan,
+            completed_at: new Date().toISOString()
+          }),
           updated_at: new Date().toISOString(),
         }, { onConflict: "email,memory_type" });
 
-      const formattedAccId = `${selectedCustomerId.slice(0,3)}-${selectedCustomerId.slice(3,6)}-${selectedCustomerId.slice(6)}`;
-      const dailyBudgetRupees = Math.round((plan.campaign.dailyBudgetMicros || 1000000000) / 1000000);
+      const dailyBudgetUnits = Math.round((plan.campaign.dailyBudgetMicros || 1000000000) / 1000000);
 
       return res.status(200).json({
         ok: true,
@@ -4883,9 +4906,9 @@ async function handleGoogleAdsCampaignFlow(req, res, session, body) {
           `• **Campaign Name:** ${createRes.campaignName}\n` +
           `• **Campaign ID:** \`${createRes.campaignId}\`\n` +
           `• **Google Ads Account:** ${activeAccountObj.descriptiveName} (\`${formattedAccId}\`)\n` +
-          `• **Daily Budget:** ₹${dailyBudgetRupees}/day\n` +
-          `• **Status:** **PAUSED** ⏸️ *(Created in paused mode for safety so you can review in Google Ads before enabling)*\n\n` +
-          `You can now view and review this campaign inside your Google Ads console.`,
+          `• **Daily Budget:** ${accountCurrency === "INR" ? "₹" : accountCurrency + " "}${dailyBudgetUnits}/day\n` +
+          `• **Status:** **PAUSED** ⏸️ *(Created in paused mode for safety so you can review in your Google Ads dashboard before enabling)*\n\n` +
+          `You can now review your campaign, keywords, and ads inside your Google Ads console!`,
       });
     } catch (createErr) {
       console.error("Error executing Google Ads campaign:", createErr);
@@ -4896,58 +4919,210 @@ async function handleGoogleAdsCampaignFlow(req, res, session, body) {
     }
   }
 
-  // 5. Plan Generation using Gemini
-  const prompt = `
-You are GabbarInfo AI, a senior Google Ads specialist.
-The user wants to plan and create a Google Search Ads campaign for their business.
+  // 6. Conversational Intake & Extraction via Gemini
+  // Build recent conversation context
+  const recentHistory = Array.isArray(chatHistory)
+    ? chatHistory.slice(-8).map(m => `${m.role === "user" ? "User" : "Agent"}: ${m.text}`).join("\n")
+    : "";
 
-User Instruction: "${instruction}"
-Target Google Ads Account: ${activeAccountObj.descriptiveName} (Customer ID: ${selectedCustomerId}, Currency: ${activeAccountObj.currencyCode})
+  const extractionPrompt = `
+You are an intelligent Google Ads intake analyzer.
+Analyze the user's latest instruction along with the conversation history to extract campaign requirements.
 
-Task:
-Extract the business details, location/city, budget, target keywords, and ad headlines/descriptions.
-If budget is not specified, default to 1000 INR/day (dailyBudgetMicros: 1000000000).
-If website is not specified, default to "https://ai.gabbarinfo.com" or a relevant URL.
+Target Google Ads Account: "${activeAccountObj.descriptiveName}" (${formattedAccId})
+Currency: ${accountCurrency}
 
-You MUST respond with a JSON block in this EXACT structure:
+Conversation History:
+${recentHistory}
+
+Latest User Input: "${instruction}"
+
+Existing Stored State (if any): ${JSON.stringify(gAdsState?.intake || {})}
+
+Your task is to extract the following fields in JSON format:
+{
+  "has_business_info": true/false (true if business name OR service/product is known),
+  "business_name": "extracted business name or null",
+  "services": "specific services or products being promoted or null",
+  "has_location": true/false,
+  "location": "target city, region, or country (e.g. 'Ahmedabad', 'Mumbai, India', 'United States') or null",
+  "has_budget": true/false,
+  "daily_budget": numeric daily budget amount or null (e.g. 500, 1000),
+  "has_landing_page": true/false,
+  "landing_page_url": "valid http/https landing page URL or null",
+  "keywords": ["optional specific keywords requested by user"],
+  "is_modifying_plan": true/false (true if user is asking to change something in an existing proposed plan),
+  "modification_request": "description of modification requested, or null"
+}
+
+Respond with ONLY the JSON object, wrapped in \`\`\`json \`\`\`.
+`;
+
+  let intakeData = {
+    has_business_info: false,
+    has_location: false,
+    has_budget: false,
+    has_landing_page: false,
+  };
+
+  try {
+    const model = genAI.getGenerativeModel({ model: GEMINI_MODEL });
+    const extractRes = await model.generateContent(extractionPrompt);
+    const extractText = extractRes.response.text();
+    const jsonMatch = extractText.match(/```(?:json)?\s*([\s\S]*?)\s*```/);
+    if (jsonMatch) {
+      intakeData = JSON.parse(jsonMatch[1]);
+    }
+  } catch (err) {
+    console.warn("Intake extraction warning:", err.message);
+  }
+
+  // Merge with existing state intake if available
+  const mergedIntake = {
+    ...(gAdsState?.intake || {}),
+    ...(intakeData.business_name ? { business_name: intakeData.business_name } : {}),
+    ...(intakeData.services ? { services: intakeData.services } : {}),
+    ...(intakeData.location ? { location: intakeData.location } : {}),
+    ...(intakeData.daily_budget ? { daily_budget: intakeData.daily_budget } : {}),
+    ...(intakeData.landing_page_url ? { landing_page_url: intakeData.landing_page_url } : {}),
+    ...(intakeData.keywords?.length ? { keywords: intakeData.keywords } : {}),
+  };
+
+  const hasBusiness = Boolean(mergedIntake.business_name || mergedIntake.services);
+  const hasLocation = Boolean(mergedIntake.location);
+  const hasBudget = Boolean(mergedIntake.daily_budget);
+  const hasLandingPage = Boolean(mergedIntake.landing_page_url);
+
+  // If user is asking for a generic "Create campaign" or missing essential details, ASK INTAKE QUESTIONS!
+  const isMissingKeyInfo = !hasBusiness || !hasLocation || !hasBudget || !hasLandingPage;
+
+  if (isMissingKeyInfo && !gAdsState?.plan) {
+    // Save partial intake to memory
+    await supabase
+      .from("agent_memory")
+      .upsert({
+        email: userEmail,
+        memory_type: "google_ads_state",
+        content: JSON.stringify({
+          stage: "INTAKE_PENDING",
+          customerId: selectedCustomerId,
+          managerId: activeAccountObj.managerId || null,
+          intake: mergedIntake,
+          updated_at: new Date().toISOString(),
+        }),
+        updated_at: new Date().toISOString(),
+      }, { onConflict: "email,memory_type" });
+
+    // Build smart prompt showing what is already captured and asking for the rest
+    const missingList = [];
+    if (!hasBusiness) missingList.push("1. 🏢 **Business & Services:** What is your business name, and what specific services or products are you promoting?");
+    if (!hasLocation) missingList.push("2. 📍 **Target Location:** Which city, region, or country do you want your ads to target?");
+    if (!hasBudget) missingList.push(`3. 💰 **Daily Budget:** What is your target daily budget (e.g. ₹500/day or ₹1,000/day in ${accountCurrency})?`);
+    if (!hasLandingPage) missingList.push("4. 🌐 **Landing Page / Website:** What website or landing page URL should visitors land on when clicking your ad?");
+
+    const capturedList = [];
+    if (hasBusiness) capturedList.push(`• **Business/Service:** ${mergedIntake.business_name || mergedIntake.services}`);
+    if (hasLocation) capturedList.push(`• **Location:** ${mergedIntake.location}`);
+    if (hasBudget) capturedList.push(`• **Budget:** ${accountCurrency === "INR" ? "₹" : ""}${mergedIntake.daily_budget}/day`);
+    if (hasLandingPage) capturedList.push(`• **Landing Page:** ${mergedIntake.landing_page_url}`);
+
+    const capturedHeader = capturedList.length > 0
+      ? `\n**What I have so far:**\n${capturedList.join("\n")}\n\n`
+      : "\n";
+
+    const questionResponse =
+      `I'm ready to build a high-performing Google Search Ads campaign for **${activeAccountObj.descriptiveName}** (\`${formattedAccId}\`)! 🎯\n` +
+      capturedHeader +
+      `To tailor the best search keywords, compelling ad copy, and bidding strategy, please tell me:\n\n` +
+      missingList.join("\n\n") +
+      `\n\n*(You can reply with all the details in one message, e.g.: "Dental clinic in Ahmedabad, ₹700/day budget, https://mydental.com")*`;
+
+    return res.status(200).json({
+      ok: true,
+      text: questionResponse,
+    });
+  }
+
+  // 7. Full Campaign Plan Generation using Gemini
+  const budgetMicros = Math.round(Number(mergedIntake.daily_budget || 1000) * 1000000);
+  const targetLocation = mergedIntake.location || "India";
+  const businessLabel = mergedIntake.business_name || mergedIntake.services || "Business";
+  const landingUrl = mergedIntake.landing_page_url || "https://example.com";
+
+  const planPrompt = `
+You are GabbarInfo AI, a world-class Google Ads strategist and copywriter.
+Create a high-performing Google Search Ads Campaign plan based on the user's verified business details.
+
+ACCOUNT DETAILS:
+- Account Name: ${activeAccountObj.descriptiveName}
+- Customer ID: ${selectedCustomerId}
+- Currency: ${accountCurrency}
+
+VERIFIED BUSINESS DETAILS:
+- Business Name: ${mergedIntake.business_name || businessLabel}
+- Services / Products Offered: ${mergedIntake.services || businessLabel}
+- Target Location: ${targetLocation}
+- Daily Budget: ${accountCurrency} ${mergedIntake.daily_budget} (dailyBudgetMicros: ${budgetMicros})
+- Landing Page URL: ${landingUrl}
+- Specific Keyword Focus / USPs: ${JSON.stringify(mergedIntake.keywords || [])}
+${intakeData.is_modifying_plan ? `- User Modification Request: ${intakeData.modification_request}` : ""}
+
+STRICT COPY RULES:
+1. Headlines: Must be engaging, high-intent, and STRICTLY maximum 30 characters each.
+2. Descriptions: Must include clear benefits and call-to-action, STRICTLY maximum 90 characters each.
+3. Keywords: 6-10 high-intent search terms directly matching the business services and location.
+4. Display Paths: Short slugs (max 15 chars each, e.g. path1: "services", path2: "contact").
+
+OUTPUT FORMAT:
+You MUST start with a valid JSON block inside \`\`\`json ... \`\`\` using this EXACT schema:
 \`\`\`json
 {
   "customerId": "${selectedCustomerId}",
   "campaign": {
-    "name": "Search - [Business Name] - [City]",
+    "name": "Search - ${businessLabel.slice(0, 30)} - ${targetLocation.slice(0, 20)}",
     "status": "PAUSED",
     "network": "SEARCH",
-    "dailyBudgetMicros": 1000000000,
-    "finalUrl": "https://client-website.com"
+    "dailyBudgetMicros": ${budgetMicros},
+    "finalUrl": "${landingUrl}"
   },
   "adGroups": [
     {
-      "name": "[Ad Group Theme]",
+      "name": "${businessLabel.slice(0, 25)} - Search",
       "cpcBidMicros": 20000000,
       "keywords": [
         "keyword 1",
         "keyword 2",
         "keyword 3",
         "keyword 4",
-        "keyword 5"
+        "keyword 5",
+        "keyword 6"
       ],
       "ads": [
         {
-          "headline1": "Top Headline 1 (max 30 chars)",
+          "headline1": "Headline 1 (max 30 chars)",
           "headline2": "Headline 2 (max 30 chars)",
           "headline3": "Headline 3 (max 30 chars)",
-          "description1": "Description line 1 (max 90 chars)",
-          "description2": "Description line 2 (max 90 chars)",
+          "description1": "Description 1 (max 90 chars)",
+          "description2": "Description 2 (max 90 chars)",
           "path1": "services",
-          "path2": "city"
+          "path2": "book"
         }
       ]
     }
   ]
 }
 \`\`\`
-Followed by a concise, professional summary explaining the strategy, budget, keywords, and headlines, and ending with:
-"Reply **YES** to create this campaign in **PAUSED** mode in your Google Ads account."
+
+Followed by a clean, professional campaign summary highlighting:
+- 📊 **Campaign Strategy & Setup**
+- 📍 **Targeting & Location:** ${targetLocation}
+- 💰 **Daily Budget:** ${accountCurrency === "INR" ? "₹" : accountCurrency + " "}${mergedIntake.daily_budget}/day
+- 🌐 **Landing Page:** ${landingUrl}
+- 🎯 **Top Target Keywords**
+- ✍️ **Ad Copy Preview (Headlines & Descriptions)**
+
+And conclude with:
+"Reply **YES** to create this campaign in **PAUSED** mode in your Google Ads account: **${activeAccountObj.descriptiveName}** (\`${formattedAccId}\`)."
 `;
 
   let responseText = "";
@@ -4955,7 +5130,7 @@ Followed by a concise, professional summary explaining the strategy, budget, key
 
   try {
     const model = genAI.getGenerativeModel({ model: GEMINI_MODEL });
-    const result = await model.generateContent(prompt);
+    const result = await model.generateContent(planPrompt);
     responseText = result.response.text();
 
     const jsonMatch = responseText.match(/```(?:json)?\s*([\s\S]*?)\s*```/);
@@ -4965,14 +5140,14 @@ Followed by a concise, professional summary explaining the strategy, budget, key
       } catch (_) {}
     }
   } catch (geminiErr) {
-    console.error("Gemini generation error:", geminiErr);
+    console.error("Gemini plan generation error:", geminiErr);
     return res.status(200).json({
       ok: false,
       text: `Error generating campaign plan: ${geminiErr.message}`,
     });
   }
 
-  // Save proposed plan to memory
+  // 8. Save proposed plan to memory
   if (extractedPlan) {
     await supabase
       .from("agent_memory")
@@ -4982,6 +5157,8 @@ Followed by a concise, professional summary explaining the strategy, budget, key
         content: JSON.stringify({
           stage: "PLAN_PROPOSED",
           customerId: selectedCustomerId,
+          managerId: activeAccountObj.managerId || null,
+          intake: mergedIntake,
           plan: extractedPlan,
           proposed_at: new Date().toISOString(),
         }),
@@ -4995,3 +5172,4 @@ Followed by a concise, professional summary explaining the strategy, budget, key
     plan: extractedPlan,
   });
 }
+
