@@ -57,7 +57,7 @@ console.log("TOKEN RESP STATUS:", tokenResp.status);   // <<< YE LINE
     const accessToken = tokenJson.access_token;
 
     // 3) Call Google Ads GAQL search using REST:
-    // POST https://googleads.googleapis.com/v18/customers/{customerId}/googleAds:search
+    // POST https://googleads.googleapis.com/v22/customers/{customerId}/googleAds:search
     const customerId = GOOGLE_ADS_CLIENT_ACCOUNT_ID; // The account with the ads
 
   const query = `

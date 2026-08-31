@@ -56,7 +56,7 @@ export default async function handler(req, res) {
 
     // 3) Call Google Ads API (read-only): listAccessibleCustomers
     const adsResp = await fetch(
-      "https://googleads.googleapis.com/v18/customers:listAccessibleCustomers",
+      "https://googleads.googleapis.com/v22/customers:listAccessibleCustomers",
       {
         method: "GET",
         headers: {
