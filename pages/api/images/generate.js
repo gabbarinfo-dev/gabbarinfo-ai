@@ -18,11 +18,12 @@ export default async function handler(req, res) {
     }
 
    const result = await client.images.generate({
-  model: "gpt-image-1",
-  prompt,
-  size: "1024x1024",
-  quality: "high",
-});
+     model: "dall-e-3",
+     prompt,
+     size: "1024x1024",
+     quality: "hd",
+     response_format: "b64_json",
+   });
 
 const imageBase64 = result.data?.[0]?.b64_json;
 
