@@ -17,22 +17,23 @@ export default async function handler(req, res) {
       return res.status(400).json({ error: "Missing prompt" });
     }
 
-   const result = await client.images.generate({
-     model: "dall-e-3",
-     prompt,
-     size: "1024x1024",
-     quality: "hd",
-     response_format: "b64_json",
-   });
+    const result = await client.images.generate({
+      model: "dall-e-3",
+      prompt,
+      size: "1024x1024",
+      quality: "hd",
+    });
 
-const imageBase64 = result.data?.[0]?.b64_json;
+    const imageUrl = result.data?.[0]?.url || null;
+    const imageBase64 = result.data?.[0]?.b64_json || null;
 
-if (!imageBase64) {
-  throw new Error("OpenAI did not return image data.");
-}
+    if (!imageUrl && !imageBase64) {
+      throw new Error("OpenAI did not return image data.");
+    }
 
     return res.status(200).json({
       ok: true,
+      imageUrl,
       imageBase64,
     });
   } catch (err) {
