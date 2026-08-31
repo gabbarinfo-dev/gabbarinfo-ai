@@ -1,3 +1,6 @@
+
+
+
 // pages/api/agent/execute.js
 
 import { GoogleGenerativeAI } from "@google/generative-ai";
@@ -11,8 +14,7 @@ import { clearCreativeState } from "../../../lib/instagram/creative-memory";
 import { processMetaAdImage } from "../../../lib/meta/process-meta-image";
 import {
   cleanCustomerId,
-  listAccessibleCustomers,
-  getCustomerDetails,
+  getAccountHierarchy,
   createFullGoogleAdsCampaign,
 } from "../../../lib/googleAdsHelper";
 
@@ -4727,30 +4729,28 @@ async function handleGoogleAdsCampaignFlow(req, res, session, body) {
     });
   }
 
-  // 2. Fetch accessible customer accounts
+  // 2. Fetch accessible customer accounts using full hierarchy discovery
+  //    Uses dynamic per-user MCC detection — no global login-customer-id.
+  //    Correctly traverses customer_client under each user's own MCC.
   let selectedCustomerId = googleConn?.customer_id ? cleanCustomerId(googleConn.customer_id) : null;
   let accessibleAccounts = [];
+  let hierarchyAccessToken = null;
 
   try {
-    const listResp = await listAccessibleCustomers({ refreshToken });
-    if (listResp.ok && Array.isArray(listResp.resourceNames)) {
-      const ids = listResp.resourceNames.map(rn => cleanCustomerId(rn.replace("customers/", "")));
-      accessibleAccounts = await Promise.all(
-        ids.map(async (cid) => {
-          const details = await getCustomerDetails({
-            accessToken: listResp.accessToken,
-            customerId: cid,
-          });
-          return {
-            customerId: cid,
-            descriptiveName: details.ok ? details.descriptiveName : `Google Ads Account (${cid.slice(0, 3)}-${cid.slice(3, 6)}-${cid.slice(6)})`,
-            currencyCode: details.ok ? details.currencyCode : "INR",
-          };
-        })
-      );
+    const hierarchyResp = await getAccountHierarchy({ refreshToken });
+    if (hierarchyResp.ok) {
+      hierarchyAccessToken = hierarchyResp.accessToken;
+      accessibleAccounts = (hierarchyResp.accounts || []).map(acc => ({
+        customerId: acc.customerId,
+        descriptiveName: acc.descriptiveName,
+        currencyCode: acc.currencyCode || "INR",
+        managerId: acc.managerId || null,
+      }));
+    } else {
+      console.warn("getAccountHierarchy failed in agent:", hierarchyResp.json);
     }
   } catch (accErr) {
-    console.warn("Could not list Google Ads accessible accounts:", accErr.message);
+    console.warn("Could not fetch Google Ads account hierarchy:", accErr.message);
   }
 
   // Check if user is typing an account ID to select it in this turn
@@ -4762,7 +4762,17 @@ async function handleGoogleAdsCampaignFlow(req, res, session, body) {
       selectedCustomerId = candidateId;
       await supabase
         .from("google_connections")
-        .upsert({ email: userEmail, customer_id: candidateId, updated_at: new Date().toISOString() }, { onConflict: "email" });
+        .upsert({
+          email: userEmail,
+          customer_id: candidateId,
+          manager_id: foundAcc.managerId || null,
+          updated_at: new Date().toISOString(),
+        }, { onConflict: "email" })
+        .catch(() => {
+          // manager_id column may not exist yet — save without it
+          supabase.from("google_connections")
+            .upsert({ email: userEmail, customer_id: candidateId, updated_at: new Date().toISOString() }, { onConflict: "email" });
+        });
     }
   }
 
@@ -4781,7 +4791,16 @@ async function handleGoogleAdsCampaignFlow(req, res, session, body) {
       selectedCustomerId = accessibleAccounts[0].customerId;
       await supabase
         .from("google_connections")
-        .upsert({ email: userEmail, customer_id: selectedCustomerId, updated_at: new Date().toISOString() }, { onConflict: "email" });
+        .upsert({
+          email: userEmail,
+          customer_id: selectedCustomerId,
+          manager_id: accessibleAccounts[0].managerId || null,
+          updated_at: new Date().toISOString(),
+        }, { onConflict: "email" })
+        .catch(() => {
+          supabase.from("google_connections")
+            .upsert({ email: userEmail, customer_id: selectedCustomerId, updated_at: new Date().toISOString() }, { onConflict: "email" });
+        });
     } else {
       // Ask user to select an account
       const accountsList = accessibleAccounts
