@@ -919,10 +919,53 @@ export default async function handler(req, res) {
     let modeFocus = "";
 
     if (mode === "meta_ads_plan") {
-      const currentObjective = lockedCampaignState?.objective || "the selected objective";
+      const currentObjective = lockedCampaignState?.objective || "OUTCOME_TRAFFIC";
       const currentLocation = lockedCampaignState?.location || "the selected location";
       const currentService = lockedCampaignState?.service || "the business service";
       const currentBudget = lockedCampaignState?.budget_per_day || "the specified budget";
+
+      let derivedConversionLocation = "WEBSITE";
+      let derivedDestinationType = "WEBSITE";
+      let derivedOptimizationGoal = "LINK_CLICKS";
+      let derivedCTA = "LEARN_MORE";
+
+      const dest = (lockedCampaignState?.destination || "").toLowerCase();
+      if (dest === "whatsapp") {
+        derivedConversionLocation = "WHATSAPP";
+        derivedDestinationType = "WHATSAPP";
+        derivedOptimizationGoal = "CONVERSATIONS";
+        derivedCTA = "WHATSAPP_MESSAGE";
+      } else if (dest === "messages" || dest === "messaging_apps") {
+        derivedConversionLocation = "MESSAGING_APPS";
+        derivedDestinationType = "MESSAGING_APPS";
+        derivedOptimizationGoal = "CONVERSATIONS";
+        derivedCTA = "WHATSAPP_MESSAGE";
+      } else if (dest === "instagram_profile") {
+        derivedConversionLocation = "INSTAGRAM_PROFILE";
+        derivedDestinationType = "INSTAGRAM_PROFILE";
+        derivedOptimizationGoal = "VISIT_INSTAGRAM_PROFILE";
+        derivedCTA = "VIEW_INSTAGRAM_PROFILE";
+      } else if (dest === "facebook_page") {
+        derivedConversionLocation = "FACEBOOK_PAGE";
+        derivedDestinationType = "FACEBOOK_PAGE";
+        derivedOptimizationGoal = "LINK_CLICKS";
+        derivedCTA = "LEARN_MORE";
+      } else if (dest === "call") {
+        derivedConversionLocation = "CALLS";
+        derivedDestinationType = "WEBSITE";
+        derivedOptimizationGoal = "LINK_CLICKS";
+        derivedCTA = "CALL_NOW";
+      } else if (dest === "catalogue") {
+        derivedConversionLocation = "CATALOGUE";
+        derivedDestinationType = "CATALOGUE";
+        derivedOptimizationGoal = "CONVERSIONS";
+        derivedCTA = "SHOP_NOW";
+      } else if (currentObjective === "OUTCOME_SALES") {
+        derivedConversionLocation = "WEBSITE";
+        derivedDestinationType = "WEBSITE";
+        derivedOptimizationGoal = "CONVERSIONS";
+        derivedCTA = "SHOP_NOW";
+      }
 
       modeFocus = `
 You are in META ADS / CREATIVE AGENT MODE.
@@ -940,18 +983,20 @@ You are in META ADS / CREATIVE AGENT MODE.
 
 2. **CONVERSION LOCATION** (Where it happens):
    - "Website" (Most Common)
-   - "Messaging Apps" (WhatsApp/Messenger)
-   - "Instant Forms" (Lead Forms)
-   - "Calls"
-   - "Instagram Profile" (IG Profile Visits)
-   - "Facebook Page" (Page traffic)
+   - "WhatsApp" -> WHATSAPP
+   - "Messaging Apps" -> MESSAGING_APPS
+   - "Calls" -> CALLS
+   - "Instagram Profile" -> INSTAGRAM_PROFILE
+   - "Facebook Page" -> FACEBOOK_PAGE
 
 3. PERFORMANCE GOAL (Optimization):
    - If Objective = OUTCOME_TRAFFIC:
      - "Maximize Link Clicks" (Goal: LINK_CLICKS)
+     - "Maximize Conversations" (Goal: CONVERSATIONS for WhatsApp/Messages)
      - "Maximize Landing Page Views" (Goal: LANDING_PAGE_VIEWS)
    - If Objective = OUTCOME_LEADS:
      - "Maximize Leads" (Goal: LEAD_GENERATION)
+     - "Maximize Conversations" (Goal: CONVERSATIONS for WhatsApp)
    - If Objective = OUTCOME_SALES:
      - "Maximize Conversions" (Goal: CONVERSIONS)
    - If Objective = OUTCOME_ENGAGEMENT:
@@ -966,8 +1011,8 @@ You MUST ALWAYS output BOTH a human-readable summary AND the JSON using this exa
 {
   "campaign_name": "${currentService} – ${currentLocation} – ${currentObjective}",
   "objective": "${currentObjective}",
-  "performance_goal": "MAXIMIZE_LINK_CLICKS",
-  "conversion_location": "WEBSITE",
+  "performance_goal": "${lockedCampaignState?.performance_goal || derivedOptimizationGoal}",
+  "conversion_location": "${derivedConversionLocation}",
   "budget": {
     "amount": ${currentBudget},
     "currency": "${activeCurrency}",
@@ -987,13 +1032,13 @@ You MUST ALWAYS output BOTH a human-readable summary AND the JSON using this exa
     {
       "name": "Ad Set 1",
       "status": "PAUSED",
-      "optimization_goal": "LINK_CLICKS",
-      "destination_type": "WEBSITE",
+      "optimization_goal": "${lockedCampaignState?.performance_goal || derivedOptimizationGoal}",
+      "destination_type": "${derivedDestinationType}",
       "ad_creative": {
         "imagePrompt": "Professional visual for ${currentService} in ${currentLocation}",
         "primary_text": "Experience the best ${currentService} in ${currentLocation}.",
         "headline": "Top ${currentService} in ${currentLocation}",
-        "call_to_action": "LEARN_MORE",
+        "call_to_action": "${derivedCTA}",
         "tagline": "Punchy hook for the ad image (max 8 words)",
         "destination_url": "https://client-website.com"
       },
@@ -1004,11 +1049,12 @@ You MUST ALWAYS output BOTH a human-readable summary AND the JSON using this exa
 }
 
 - Meta Objectives must be one of: OUTCOME_TRAFFIC, OUTCOME_LEADS, OUTCOME_SALES, OUTCOME_AWARENESS, OUTCOME_ENGAGEMENT, OUTCOME_APP_PROMOTION.
+- For WhatsApp, use CTA: WHATSAPP_MESSAGE, conversion_location: WHATSAPP, destination_type: WHATSAPP.
 - For Instagram Profile Visits, use CTA: VIEW_INSTAGRAM_PROFILE and Performance Goal: VISIT_INSTAGRAM_PROFILE.
 - For Facebook Page visits, use CTA: VISIT_PROFILE or LEARN_MORE.
-- optimization_goal must match the performance goal (e.g., LINK_CLICKS, LANDING_PAGE_VIEWS).
-- destination_type should be set (e.g., WEBSITE, MESSAGING_APPS).
-- **CATALOGUE RULE**: If the user selects 'Catalogue Sales', set 'destination_type': 'CATALOGUE', remove 'imagePrompt' and 'destination_url', and add '_isCatalogue': true. If the user provides a specific Catalogue ID or Product Set ID in the chat, capture them in 'catalogId' and 'productSetId'. If you do not have a Catalogue ID and discovery fails (returns "default"), you MUST ask the user: "I'm ready to launch your Sales Carousel, but I need your Catalogue ID to pull the products. You can find this in Meta Commerce Manager > Settings."
+- optimization_goal must match the performance goal (e.g., LINK_CLICKS, CONVERSATIONS, LANDING_PAGE_VIEWS).
+- destination_type should match the conversion location (e.g., WEBSITE, WHATSAPP, MESSAGING_APPS, INSTAGRAM_PROFILE).
+- **CATALOGUE RULE**: If the user selects 'Catalogue Sales', set 'destination_type': 'CATALOGUE', remove 'imagePrompt' and 'destination_url', and add '_isCatalogue': true.
 - When you output JSON, wrap it in a proper JSON code block. Do NOT add extra text inside the JSON block.
 - ALWAYS propose a plan if you have enough info (objective, location, service, budget).
 - **LOCATION RULE**: Use exactly "${currentLocation}" in universal_locations. DO NOT default to India.
@@ -1017,6 +1063,7 @@ You MUST ALWAYS output BOTH a human-readable summary AND the JSON using this exa
 - **CURRENCY RULE**: Always use "${activeCurrency}" for the budget currency.
 `;
     } else if (mode === "social_plan") {
+
       modeFocus = `
 You are in SOCIAL MEDIA PLANNER MODE.
 
@@ -1420,34 +1467,32 @@ You are in GENERIC DIGITAL MARKETING AGENT MODE.
         if (selectedMetaObjective === "OUTCOME_TRAFFIC") {
           nextQuestion =
             "Now, where should we direct the users who click on the ad?\n\n" +
-            "1. Website\n" +
-            "2. Calls\n" +
-            "3. Messages (WhatsApp / Messenger / Instagram)\n" +
-            "4. Instagram Profile\n" +
-            "5. Facebook Page";
+            "1. Website – Send traffic to your website or landing page\n" +
+            "2. WhatsApp – Chat directly with users on WhatsApp\n" +
+            "3. Messenger / Instagram Direct – Receive messages on Messenger & Instagram\n" +
+            "4. Calls – Get direct phone calls\n" +
+            "5. Instagram Profile – Grow your Instagram profile visits\n" +
+            "6. Facebook Page – Send visitors to your Facebook Page";
         } else if (selectedMetaObjective === "OUTCOME_LEADS") {
           nextQuestion =
             "Now, where should people contact you to become leads?\n\n" +
-            "1. WhatsApp\n" +
-            "2. Calls\n" +
-            "3. Messenger / Instagram Direct";
+            "1. WhatsApp – Receive lead enquiries on WhatsApp\n" +
+            "2. Calls – Get phone call leads\n" +
+            "3. Messenger / Instagram Direct – Lead chats on Messenger & Instagram";
         } else if (selectedMetaObjective === "OUTCOME_ENGAGEMENT") {
-          // FIXED: Added specific options for Engagement
           nextQuestion =
             "Now, where should people engage with you?\n\n" +
-            "1. Messenger / Instagram Direct\n" +
-            "2. WhatsApp\n" +
-            "3. Calls\n" +
-            "4. Instagram Profile";
+            "1. WhatsApp – Chat on WhatsApp\n" +
+            "2. Messenger / Instagram Direct – Chat on Messenger & Instagram Direct\n" +
+            "3. Instagram Profile – Visit your Instagram profile\n" +
+            "4. Calls – Direct calls";
         } else if (selectedMetaObjective === "OUTCOME_SALES") {
-          // ADD THIS SPECIFIC BLOCK FOR SALES
           nextQuestion =
             "Excellent. **I see you want Sales—I'll optimize this campaign for Purchases using your connected Meta Pixel or Product Catalogue.**\n\n" +
             "Now, where should people complete their purchase?\n\n" +
             "1. Website\n" +
             "2. Catalogue Sales (Products from your catalogue)";
         } else {
-          // Generic fallback for Awareness or App Promotion
           nextQuestion =
             "Now, where should people complete this action?\n\n" +
             "1. Website";
@@ -1470,7 +1515,7 @@ You are in GENERIC DIGITAL MARKETING AGENT MODE.
           text:
             "What is the primary objective of this campaign?\n\n" +
             "Please choose ONE option:\n\n" +
-            "1. Traffic – Get more people to visit your website or profile\n" +
+            "1. Traffic – Get more people to visit your website, WhatsApp, or profile\n" +
             "2. Leads – Get more enquiries via WhatsApp, calls, or forms\n" +
             "3. Sales – Drive purchases or conversions on your website\n" +
             "4. Engagement – Get more messages, profile visits, or interactions",
@@ -1484,13 +1529,12 @@ You are in GENERIC DIGITAL MARKETING AGENT MODE.
 
       // 1. Define Options to show user
       if (selectedMetaObjective === "OUTCOME_TRAFFIC") {
-        options = ["Website", "Calls", "Messages (WhatsApp / Messenger / Instagram)", "Instagram Profile", "Facebook Page"];
+        options = ["Website", "WhatsApp", "Messenger / Instagram Direct", "Calls", "Instagram Profile", "Facebook Page"];
       } else if (selectedMetaObjective === "OUTCOME_LEADS") {
         options = ["WhatsApp", "Calls", "Messenger / Instagram Direct"];
       } else if (selectedMetaObjective === "OUTCOME_ENGAGEMENT") {
-        options = ["Messenger / Instagram Direct", "WhatsApp", "Calls", "Instagram Profile"];
+        options = ["WhatsApp", "Messenger / Instagram Direct", "Instagram Profile", "Calls"];
       } else if (selectedMetaObjective === "OUTCOME_SALES") {
-        // Sales: Website (manual image) or Catalogue (dynamic product ads)
         options = ["Website", "Catalogue Sales (Products from your catalogue)"];
       } else {
         options = ["Website"];
@@ -1500,36 +1544,36 @@ You are in GENERIC DIGITAL MARKETING AGENT MODE.
 
       // 2. Map user input to internal destination string
       if (selectedMetaObjective === "OUTCOME_TRAFFIC") {
-        if (input === "1" || input.includes("website")) selectedDestination = "website";
-        else if (input === "2" || input.includes("call")) selectedDestination = "call";
-        else if (input === "3" || input.includes("message") || input.includes("whatsapp")) selectedDestination = "messages";
-        else if (input === "4" || input.includes("instagram") || input.includes("profile")) selectedDestination = "instagram_profile";
-        else if (input === "5" || input.includes("facebook") || input.includes("page")) selectedDestination = "facebook_page";
+        if (input.includes("whatsapp") || input === "2") selectedDestination = "whatsapp";
+        else if (input.includes("messenger") || input.includes("direct") || input === "3") selectedDestination = "messages";
+        else if (input.includes("website") || input === "1") selectedDestination = "website";
+        else if (input.includes("call") || input === "4") selectedDestination = "call";
+        else if (input.includes("instagram") || input.includes("profile") || input === "5") selectedDestination = "instagram_profile";
+        else if (input.includes("facebook") || input.includes("page") || input === "6") selectedDestination = "facebook_page";
+        else if (input.includes("message")) selectedDestination = "whatsapp"; // Default messaging to WhatsApp if ambiguous
       }
       else if (selectedMetaObjective === "OUTCOME_LEADS") {
-        if (input === "1" || input.includes("whatsapp")) selectedDestination = "whatsapp";
-        else if (input === "2" || input.includes("call")) selectedDestination = "call";
-        else if (input === "3" || input.includes("messenger") || input.includes("direct")) selectedDestination = "messages";
+        if (input.includes("whatsapp") || input === "1") selectedDestination = "whatsapp";
+        else if (input.includes("call") || input === "2") selectedDestination = "call";
+        else if (input.includes("messenger") || input.includes("direct") || input.includes("message") || input === "3") selectedDestination = "messages";
       }
       else if (selectedMetaObjective === "OUTCOME_ENGAGEMENT") {
-        if (input === "1" || input.includes("messenger") || input.includes("direct")) selectedDestination = "messages";
-        else if (input === "2" || input.includes("whatsapp")) selectedDestination = "whatsapp";
-        else if (input === "3" || input.includes("call")) selectedDestination = "call";
-        else if (input === "4" || input.includes("instagram") || input.includes("profile")) selectedDestination = "instagram_profile";
+        if (input.includes("whatsapp") || input === "1") selectedDestination = "whatsapp";
+        else if (input.includes("messenger") || input.includes("direct") || input.includes("message") || input === "2") selectedDestination = "messages";
+        else if (input.includes("instagram") || input.includes("profile") || input === "3") selectedDestination = "instagram_profile";
+        else if (input.includes("call") || input === "4") selectedDestination = "call";
       }
       else if (selectedMetaObjective === "OUTCOME_SALES") {
-        // Prioritize catalogue match
         if (input.includes("catalogue") || input.includes("catalog") || input.includes("product") || input === "2") {
           selectedDestination = "catalogue";
-        } else if (input === "1" || input.includes("website")) {
-          selectedDestination = "website";
         } else {
-          selectedDestination = "website"; // Final fallback
+          selectedDestination = "website";
         }
       }
       else {
         selectedDestination = "website";
       }
+
 
       if (!isPlanProposed && selectedDestination) {
         lockedCampaignState = { ...lockedCampaignState, destination: selectedDestination, stage: "destination_selected" };

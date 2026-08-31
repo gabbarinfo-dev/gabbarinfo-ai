@@ -811,6 +811,55 @@ ${JSON.stringify(lastCreativeError, null, 2)}`);
       const adJson = await adRes.json();
 
       if (!adRes.ok) {
+        const adErr = adJson.error || {};
+        // 🔧 RETRY FOR DOF SPEC ERROR (Subcode 2446493: Creative is missing DOF spec)
+        if (adErr.error_subcode === 2446493) {
+          console.warn("⚠️ [Ad] Missing DOF Spec error (2446493). Re-creating creative WITH degrees_of_freedom_spec and retrying Ad...");
+          const dofFallbackParams = buildCreativePayload(
+            creative,
+            PAGE_ID,
+            AD_ACCOUNT_ID,
+            ACCESS_TOKEN,
+            strat.placements,
+            strat.forcePhoto,
+            finalObjective,
+            strat.igActor,
+            instagramProfileUrl
+          );
+          const dofSpec = {
+            degrees_of_freedom_type: "USER_ENROLLED",
+            creative_features_spec: {
+              image_touchups: { enroll_status: "OPT_IN" },
+              text_optimizations: { enroll_status: "OPT_IN" }
+            }
+          };
+          dofFallbackParams.set("degrees_of_freedom_spec", JSON.stringify(dofSpec));
+
+          const retryCrRes = await fetch(`https://graph.facebook.com/${API_VERSION}/act_${AD_ACCOUNT_ID}/adcreatives?debug=all`, {
+            method: "POST",
+            body: dofFallbackParams,
+          });
+          const retryCrJson = await retryCrRes.json();
+          if (retryCrRes.ok && retryCrJson.id) {
+            console.log(`✅ [Ad Creative] DOF Creative recreated: ${retryCrJson.id}`);
+            adBody.creative.creative_id = retryCrJson.id;
+            const retryAdRes = await fetch(
+              `https://graph.facebook.com/${API_VERSION}/act_${AD_ACCOUNT_ID}/ads?access_token=${ACCESS_TOKEN}`,
+              {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify(adBody),
+              }
+            );
+            const retryAdJson = await retryAdRes.json();
+            if (retryAdRes.ok && retryAdJson.id) {
+              console.log(`✅ [Ad] Ad successfully created with DOF spec on retry: ${retryAdJson.id}`);
+              createdAssets.ads.push(retryAdJson.id);
+              continue;
+            }
+          }
+        }
+
         throw new Error(
           `Ad Create Failed: ${JSON.stringify(adJson.error)} (Account: ${AD_ACCOUNT_ID})`
         );
@@ -818,6 +867,7 @@ ${JSON.stringify(lastCreativeError, null, 2)}`);
 
       createdAssets.ads.push(adJson.id);
     }
+
 
     return res.status(200).json({
       ok: true,
