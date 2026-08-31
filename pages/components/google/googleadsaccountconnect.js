@@ -12,10 +12,12 @@ export default function GoogleAdsAccountConnect() {
   const [updatingId, setUpdatingId] = useState(null);
   const [message, setMessage] = useState("");
   const [error, setError] = useState("");
+  const [needsReauth, setNeedsReauth] = useState(false);
 
   const fetchAccounts = async () => {
     setLoading(true);
     setError("");
+    setNeedsReauth(false);
     try {
       const res = await fetch("/api/google-ads/accounts");
       const data = await res.json();
@@ -24,8 +26,17 @@ export default function GoogleAdsAccountConnect() {
         setConnected(Boolean(data.connected));
         setAccounts(data.accounts || []);
         setSelectedCustomerId(data.selectedCustomerId || null);
+        // If connected but no accounts returned, the refresh token
+        // likely lacks the adwords scope — user needs to re-authenticate
+        if (data.connected && (!data.accounts || data.accounts.length === 0)) {
+          setNeedsReauth(true);
+        }
       } else {
         setConnected(Boolean(data.connected));
+        // Scope/permission errors → prompt re-auth
+        if (data.error === "failed_to_list_accounts" || data.needsReauth) {
+          setNeedsReauth(true);
+        }
         setError(data.message || "Failed to load Google Ads accounts.");
       }
     } catch (err) {
@@ -217,16 +228,47 @@ export default function GoogleAdsAccountConnect() {
       {accounts.length === 0 ? (
         <div
           style={{
-            padding: "16px",
-            background: "#f8fafc",
+            padding: "16px 20px",
+            background: needsReauth ? "#fff7ed" : "#f8fafc",
             borderRadius: "8px",
-            border: "1px dashed #cbd5e1",
+            border: needsReauth ? "1px solid #fed7aa" : "1px dashed #cbd5e1",
             fontSize: "13px",
-            color: "#64748b",
+            color: needsReauth ? "#92400e" : "#64748b",
             textAlign: "center",
           }}
         >
-          No Google Ads customer accounts found for this Google login. Make sure your Google account has access to at least one active Google Ads account.
+          {needsReauth ? (
+            <>
+              <div style={{ fontSize: "20px", marginBottom: "8px" }}>🔑</div>
+              <strong style={{ display: "block", marginBottom: "6px", fontSize: "14px" }}>
+                Google Ads Permission Required
+              </strong>
+              <p style={{ margin: "0 0 14px", lineHeight: 1.6 }}>
+                Your current login doesn't have the <strong>Google Ads scope</strong> authorized.
+                This happens when you signed in before Google Ads access was enabled.
+                <br /><br />
+                Please <strong>sign out and sign back in</strong> — the consent screen will
+                appear and you must click <em>"Allow"</em> to grant Google Ads access.
+              </p>
+              <button
+                onClick={() => signIn("google")}
+                style={{
+                  padding: "10px 20px",
+                  background: "#4285F4",
+                  color: "#fff",
+                  border: "none",
+                  borderRadius: "8px",
+                  fontSize: "13px",
+                  fontWeight: 600,
+                  cursor: "pointer",
+                }}
+              >
+                🔄 Re-authenticate with Google
+              </button>
+            </>
+          ) : (
+            "No Google Ads customer accounts found for this Google login. Make sure your Google account has access to at least one active Google Ads account."
+          )}
         </div>
       ) : (
         <div style={{ display: "flex", flexDirection: "column", gap: "10px" }}>
