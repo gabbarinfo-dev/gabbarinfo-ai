@@ -4811,18 +4811,21 @@ async function handleGoogleAdsCampaignFlow(req, res, session, body) {
         selectedCustomerId = candidateId;
         selectedManagerId = foundAcc.managerId || null;
         justSelectedAccountId = true;
-        await supabase
-          .from("google_connections")
-          .upsert({
-            email: userEmail,
-            customer_id: candidateId,
-            manager_id: selectedManagerId,
-            updated_at: new Date().toISOString(),
-          }, { onConflict: "email" })
-          .catch(() => {
-            supabase.from("google_connections")
+        try {
+          await supabase
+            .from("google_connections")
+            .upsert({
+              email: userEmail,
+              customer_id: candidateId,
+              manager_id: selectedManagerId,
+              updated_at: new Date().toISOString(),
+            }, { onConflict: "email" });
+        } catch (saveErr) {
+          try {
+            await supabase.from("google_connections")
               .upsert({ email: userEmail, customer_id: candidateId, updated_at: new Date().toISOString() }, { onConflict: "email" });
-          });
+          } catch (_) {}
+        }
       }
     }
 
@@ -4840,18 +4843,21 @@ async function handleGoogleAdsCampaignFlow(req, res, session, body) {
         // Auto-select the only account
         selectedCustomerId = accessibleAccounts[0].customerId;
         selectedManagerId = accessibleAccounts[0].managerId || null;
-        await supabase
-          .from("google_connections")
-          .upsert({
-            email: userEmail,
-            customer_id: selectedCustomerId,
-            manager_id: selectedManagerId,
-            updated_at: new Date().toISOString(),
-          }, { onConflict: "email" })
-          .catch(() => {
-            supabase.from("google_connections")
+        try {
+          await supabase
+            .from("google_connections")
+            .upsert({
+              email: userEmail,
+              customer_id: selectedCustomerId,
+              manager_id: selectedManagerId,
+              updated_at: new Date().toISOString(),
+            }, { onConflict: "email" });
+        } catch (saveErr) {
+          try {
+            await supabase.from("google_connections")
               .upsert({ email: userEmail, customer_id: selectedCustomerId, updated_at: new Date().toISOString() }, { onConflict: "email" });
-          });
+          } catch (_) {}
+        }
       } else {
         // Ask user to select an account
         const accountsList = accessibleAccounts
