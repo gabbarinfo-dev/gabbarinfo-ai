@@ -4907,8 +4907,36 @@ async function handleGoogleAdsCampaignFlow(req, res, session, body) {
       lowerInstruction === "new campaign" ||
       lowerInstruction === "reset campaign";
 
-    if (isFreshStartPrompt && gAdsState?.stage === "COMPLETED") {
+    if (isFreshStartPrompt) {
       gAdsState = null;
+      try {
+        await supabase
+          .from("agent_memory")
+          .delete()
+          .eq("email", userEmail)
+          .eq("memory_type", "google_ads_state");
+      } catch (_) {}
+    }
+
+    if (justSelectedAccountId) {
+      // User just selected or switched their account ID
+      // Reset any previous plan so they are cleanly prompted for campaign requirements
+      gAdsState = {
+        stage: "INTAKE_PENDING",
+        customerId: selectedCustomerId,
+        managerId: selectedManagerId,
+        intake: {},
+      };
+      try {
+        await supabase
+          .from("agent_memory")
+          .upsert({
+            email: userEmail,
+            memory_type: "google_ads_state",
+            content: JSON.stringify(gAdsState),
+            updated_at: new Date().toISOString(),
+          }, { onConflict: "email,memory_type" });
+      } catch (_) {}
     }
 
     const isConfirm =
@@ -4922,7 +4950,7 @@ async function handleGoogleAdsCampaignFlow(req, res, session, body) {
       lowerInstruction.includes("create it now");
 
     // 5. Execution Step: User confirmed the proposed plan
-    if (gAdsState?.stage === "PLAN_PROPOSED" && isConfirm && gAdsState.plan) {
+    if (gAdsState?.stage === "PLAN_PROPOSED" && isConfirm && gAdsState.plan && !justSelectedAccountId) {
       try {
         const plan = gAdsState.plan;
         const targetManagerId = activeAccountObj.managerId || gAdsState.managerId || null;
@@ -4984,6 +5012,7 @@ async function handleGoogleAdsCampaignFlow(req, res, session, body) {
     let intakeData = {
       has_business_info: false,
       has_location: false,
+      has_language: false,
       has_budget: false,
       has_landing_page: false,
     };
@@ -5014,6 +5043,8 @@ Your task is to extract the following fields in JSON format:
   "services": "specific services or products being promoted or null",
   "has_location": true/false,
   "location": "target city, region, or country (e.g. 'Ahmedabad', 'Mumbai, India', 'United States') or null",
+  "has_language": true/false,
+  "language": "target languages (e.g. 'English', 'Hindi', etc.) or null",
   "has_budget": true/false,
   "daily_budget": numeric daily budget amount or null (e.g. 500, 1000),
   "has_landing_page": true/false,
@@ -5045,6 +5076,7 @@ Respond with ONLY the JSON object, wrapped in \`\`\`json \`\`\`.
       ...(intakeData.business_name ? { business_name: intakeData.business_name } : {}),
       ...(intakeData.services ? { services: intakeData.services } : {}),
       ...(intakeData.location ? { location: intakeData.location } : {}),
+      ...(intakeData.language ? { language: intakeData.language } : {}),
       ...(intakeData.daily_budget ? { daily_budget: intakeData.daily_budget } : {}),
       ...(intakeData.landing_page_url ? { landing_page_url: intakeData.landing_page_url } : {}),
       ...(intakeData.keywords?.length ? { keywords: intakeData.keywords } : {}),
@@ -5055,10 +5087,10 @@ Respond with ONLY the JSON object, wrapped in \`\`\`json \`\`\`.
     const hasBudget = Boolean(mergedIntake.daily_budget);
     const hasLandingPage = Boolean(mergedIntake.landing_page_url);
 
-    // If user is asking for a generic "Create campaign" or missing essential details, ASK INTAKE QUESTIONS!
+    // If user just selected the account ID, or is missing essential details, ASK INTAKE QUESTIONS!
     const isMissingKeyInfo = !hasBusiness || !hasLocation || !hasBudget || !hasLandingPage;
 
-    if (isMissingKeyInfo && !gAdsState?.plan) {
+    if (justSelectedAccountId || isMissingKeyInfo) {
       // Save partial intake to memory
       await supabase
         .from("agent_memory")
@@ -5076,27 +5108,29 @@ Respond with ONLY the JSON object, wrapped in \`\`\`json \`\`\`.
         }, { onConflict: "email,memory_type" });
 
       const missingList = [];
-      if (!hasBusiness) missingList.push("1. 🏢 **Business & Services:** What is your business name, and what specific services or products are you promoting?");
-      if (!hasLocation) missingList.push("2. 📍 **Target Location:** Which city, region, or country do you want your ads to target?");
-      if (!hasBudget) missingList.push(`3. 💰 **Daily Budget:** What is your target daily budget (e.g. ₹500/day or ₹1,000/day in ${accountCurrency})?`);
-      if (!hasLandingPage) missingList.push("4. 🌐 **Landing Page / Website:** What website or landing page URL should visitors land on when clicking your ad?");
+      if (!hasBusiness) missingList.push("1. 🏢 **Business & Services:** What is your business name, and what specific service or product do you want to promote?");
+      if (!hasLocation) missingList.push("2. 📍 **Target Location:** Which specific cities, regions, or countries should your ads target (e.g., Ahmedabad, Mumbai, or All India)?");
+      if (!mergedIntake.language) missingList.push("3. 🗣️ **Target Language:** Which languages do your target customers speak (e.g., English, Hindi, etc.)?");
+      if (!hasBudget) missingList.push(`4. 💰 **Daily Budget:** What is your target daily budget (e.g. ₹500/day or ₹1,000/day in ${accountCurrency})?`);
+      if (!hasLandingPage) missingList.push("5. 🌐 **Landing Page / Website URL:** What exact website or landing page URL should visitors land on when clicking your ad?");
 
       const capturedList = [];
       if (hasBusiness) capturedList.push(`• **Business/Service:** ${mergedIntake.business_name || mergedIntake.services}`);
       if (hasLocation) capturedList.push(`• **Location:** ${mergedIntake.location}`);
+      if (mergedIntake.language) capturedList.push(`• **Language:** ${mergedIntake.language}`);
       if (hasBudget) capturedList.push(`• **Budget:** ${accountCurrency === "INR" ? "₹" : ""}${mergedIntake.daily_budget}/day`);
       if (hasLandingPage) capturedList.push(`• **Landing Page:** ${mergedIntake.landing_page_url}`);
 
       const capturedHeader = capturedList.length > 0
         ? `\n**What I have so far:**\n${capturedList.join("\n")}\n\n`
-        : "\n";
+        : "\n\n";
 
       const questionResponse =
-        `I'm ready to build a high-performing Google Search Ads campaign for **${activeAccountObj.descriptiveName}** (\`${formattedAccId}\`)! 🎯\n` +
+        `I've selected your Google Ads account **${activeAccountObj.descriptiveName}** (\`${formattedAccId}\`)! 🎯\n` +
         capturedHeader +
-        `To tailor the best search keywords, compelling ad copy, and bidding strategy, please tell me:\n\n` +
+        `To craft the most effective search keywords, compelling ad copy, and targeted bidding strategy, please share your campaign details:\n\n` +
         missingList.join("\n\n") +
-        `\n\n*(You can reply with all the details in one message, e.g.: "Dental clinic in Ahmedabad, ₹700/day budget, https://mydental.com")*`;
+        `\n\n*(You can reply with all details in one message, e.g.: "Dr. Smile Dental Clinic in Ahmedabad, English & Gujarati, ₹800/day, https://drsmiledental.com")*`;
 
       return res.status(200).json({
         ok: true,
@@ -5123,6 +5157,7 @@ VERIFIED BUSINESS DETAILS:
 - Business Name: ${mergedIntake.business_name || businessLabel}
 - Services / Products Offered: ${mergedIntake.services || businessLabel}
 - Target Location: ${targetLocation}
+- Target Language: ${mergedIntake.language || "English"}
 - Daily Budget: ${accountCurrency} ${mergedIntake.daily_budget} (dailyBudgetMicros: ${budgetMicros})
 - Landing Page URL: ${landingUrl}
 - Specific Keyword Focus / USPs: ${JSON.stringify(mergedIntake.keywords || [])}
