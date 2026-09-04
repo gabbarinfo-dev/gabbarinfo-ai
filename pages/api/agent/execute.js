@@ -4959,6 +4959,8 @@ async function handleGoogleAdsCampaignFlow(req, res, session, body) {
         const sitelinks = plan.sitelinks || plan.campaign?.sitelinks || [];
         const callouts = plan.callouts || plan.campaign?.callouts || [];
         const callAsset = plan.callAsset || plan.campaign?.callAsset || null;
+        const negativeKeywords = plan.negativeKeywords || plan.campaign?.negativeKeywords || gAdsState.negativeKeywords || [];
+        const biddingStrategy = plan.biddingStrategy || plan.campaign?.biddingStrategy || gAdsState.intake?.bidding_strategy || "MAXIMIZE_CONVERSIONS";
 
         const createRes = await createFullGoogleAdsCampaign({
           refreshToken,
@@ -4968,6 +4970,8 @@ async function handleGoogleAdsCampaignFlow(req, res, session, body) {
           sitelinks,
           callouts,
           callAsset,
+          negativeKeywords,
+          biddingStrategy,
           loginCustomerId: targetManagerId,
         });
 
@@ -5006,6 +5010,10 @@ async function handleGoogleAdsCampaignFlow(req, res, session, body) {
           if (calloutsCount > 0) assetLines.push(`• **Callout Badges Attached:** ${calloutsCount} callout extensions`);
           if (callLinked) assetLines.push(`• **Phone Call Extension:** ${callAsset?.phoneNumber || "Enabled"}`);
         }
+        if (createRes.negativeKeywordsCount > 0) {
+          assetLines.push(`• **Negative Keywords Applied:** ${createRes.negativeKeywordsCount} waste-spend exclusions`);
+        }
+        assetLines.push(`• **Bidding Strategy:** ${String(biddingStrategy).toUpperCase().includes("CLICK") ? "Maximize Clicks (High Website Traffic)" : "Maximize Conversions (Leads/Calls Focus)"}`);
 
         return res.status(200).json({
           ok: true,
@@ -5035,8 +5043,14 @@ async function handleGoogleAdsCampaignFlow(req, res, session, body) {
       has_location: false,
       has_language: false,
       has_budget: false,
+      has_bidding_strategy: false,
       has_landing_page: false,
       has_phone_number: false,
+      custom_sitelinks: [],
+      keyword_action: null,
+      added_keywords: [],
+      removed_keywords: [],
+      added_negative_keywords: [],
     };
 
     if (localGenAI && !justSelectedAccountId) {
@@ -5050,6 +5064,7 @@ Analyze the user's latest instruction along with the conversation history to ext
 
 Target Google Ads Account: "${activeAccountObj.descriptiveName}" (${formattedAccId})
 Currency: ${accountCurrency}
+Current Stage: "${gAdsState?.stage || "INTAKE_PENDING"}"
 
 Conversation History:
 ${recentHistory}
@@ -5073,10 +5088,16 @@ Your task is to extract the following fields in JSON format:
   "language": "target languages (e.g. 'English', 'Hindi', etc.) or null",
   "has_budget": true/false,
   "daily_budget": numeric daily budget amount or null (e.g. 500, 1000),
+  "has_bidding_strategy": true/false,
+  "bidding_strategy": "MAXIMIZE_CONVERSIONS" or "MAXIMIZE_CLICKS" or null,
   "has_landing_page": true/false,
   "landing_page_url": "valid http/https landing page URL or null",
-  "keywords": ["optional specific keywords requested by user"],
-  "is_modifying_plan": true/false (true if user is asking to change something in an existing proposed plan),
+  "custom_sitelinks": ["optional specific sitelink paths or names provided by user, e.g. '/pricing', '/services'"],
+  "keyword_action": "APPROVE" (if user says 'looks good', 'proceed', 'yes', 'confirm', 'continue', 'make ads', 'approved') or "MODIFY" (if user asks to add or remove keywords) or null,
+  "added_keywords": ["keywords user explicitly asks to add"],
+  "removed_keywords": ["keywords user explicitly asks to remove"],
+  "added_negative_keywords": ["negative keywords user explicitly asks to exclude"],
+  "is_modifying_plan": true/false,
   "modification_request": "description of modification requested, or null"
 }
 
@@ -5106,23 +5127,21 @@ Respond with ONLY the JSON object, wrapped in \`\`\`json \`\`\`.
       ...(intakeData.location ? { location: intakeData.location } : {}),
       ...(intakeData.language ? { language: intakeData.language } : {}),
       ...(intakeData.daily_budget ? { daily_budget: intakeData.daily_budget } : {}),
+      ...(intakeData.bidding_strategy ? { bidding_strategy: intakeData.bidding_strategy } : {}),
       ...(intakeData.landing_page_url ? { landing_page_url: intakeData.landing_page_url } : {}),
-      ...(intakeData.keywords?.length ? { keywords: intakeData.keywords } : {}),
+      ...(Array.isArray(intakeData.custom_sitelinks) && intakeData.custom_sitelinks.length > 0 ? { custom_sitelinks: intakeData.custom_sitelinks } : {}),
     };
 
     const hasBusiness = Boolean(mergedIntake.business_name || mergedIntake.services);
     const hasLocation = Boolean(mergedIntake.location);
     const hasBudget = Boolean(mergedIntake.daily_budget);
     const hasLandingPage = Boolean(mergedIntake.landing_page_url);
-
-    // If user specified phone calls goal but missing phone number, prompt for phone number
     const isMissingPhoneForCalls = mergedIntake.campaign_goal === "PHONE_CALLS" && !mergedIntake.phone_number;
 
-    // If user just selected the account ID, or is missing essential details, ASK INTAKE QUESTIONS!
+    // PHASE 1: INTAKE CHECK
     const isMissingKeyInfo = !hasBusiness || !hasLocation || !hasBudget || !hasLandingPage || isMissingPhoneForCalls;
 
     if (justSelectedAccountId || isMissingKeyInfo) {
-      // Save partial intake to memory
       await supabase
         .from("agent_memory")
         .upsert({
@@ -5141,14 +5160,15 @@ Respond with ONLY the JSON object, wrapped in \`\`\`json \`\`\`.
       const missingList = [];
       if (!hasBusiness) missingList.push("1. 🏢 **Business & Services:** What is your business name, and what specific service or product do you want to promote?");
       if (!mergedIntake.campaign_goal) {
-        missingList.push("2. 🎯 **Primary Campaign Goal:** Do you want **Website Traffic & Online Leads** or **Direct Phone Calls**? *(If you want phone calls, please share your business phone number)*");
+        missingList.push("2. 🎯 **Primary Campaign Goal:** Do you want **Website Traffic & Online Leads** or **Direct Phone Calls**? *(If you want phone calls, please share your contact phone number)*");
       } else if (isMissingPhoneForCalls) {
         missingList.push("2. 📞 **Contact Phone Number:** You selected Direct Phone Calls as your goal. What phone number should customers call? *(Google Ads will attach this as a Direct Call Extension)*");
       }
       if (!hasLocation) missingList.push("3. 📍 **Target Location:** Which specific cities, regions, or countries should your ads target (e.g., Ahmedabad, Mumbai, or All India)?");
       if (!mergedIntake.language) missingList.push("4. 🗣️ **Target Language:** Which languages do your target customers speak (e.g., English, Hindi, etc.)?");
       if (!hasBudget) missingList.push(`5. 💰 **Daily Budget:** What is your target daily budget (e.g. ₹500/day or ₹1,000/day in ${accountCurrency})?`);
-      if (!hasLandingPage) missingList.push("6. 🌐 **Landing Page / Website URL:** What website or landing page URL should visitors land on? *(Google Ads requires your phone number to appear on this landing page domain for call verification)*");
+      if (!mergedIntake.bidding_strategy) missingList.push("6. 📈 **Bidding Strategy:** Do you prefer **Maximize Conversions** *(Recommended for leads & phone calls)* or **Maximize Clicks** *(for highest site traffic within budget)*?");
+      if (!hasLandingPage) missingList.push("7. 🌐 **Landing Page & Sitelinks:** What website or landing page URL should visitors land on? *(Optional: if you have 1 or 2 specific custom sitelinks in mind like /pricing or /services, mention them too!)*");
 
       const capturedList = [];
       if (hasBusiness) capturedList.push(`• **Business/Service:** ${mergedIntake.business_name || mergedIntake.services}`);
@@ -5158,7 +5178,9 @@ Respond with ONLY the JSON object, wrapped in \`\`\`json \`\`\`.
       if (hasLocation) capturedList.push(`• **Location:** ${mergedIntake.location}`);
       if (mergedIntake.language) capturedList.push(`• **Language:** ${mergedIntake.language}`);
       if (hasBudget) capturedList.push(`• **Budget:** ${accountCurrency === "INR" ? "₹" : ""}${mergedIntake.daily_budget}/day`);
+      if (mergedIntake.bidding_strategy) capturedList.push(`• **Bidding Strategy:** ${mergedIntake.bidding_strategy === "MAXIMIZE_CLICKS" ? "Maximize Clicks" : "Maximize Conversions"}`);
       if (hasLandingPage) capturedList.push(`• **Landing Page:** ${mergedIntake.landing_page_url}`);
+      if (mergedIntake.custom_sitelinks?.length) capturedList.push(`• **Custom Sitelinks:** ${mergedIntake.custom_sitelinks.join(", ")}`);
 
       const capturedHeader = capturedList.length > 0
         ? `\n**What I have so far:**\n${capturedList.join("\n")}\n\n`
@@ -5169,7 +5191,7 @@ Respond with ONLY the JSON object, wrapped in \`\`\`json \`\`\`.
         capturedHeader +
         `To craft the most effective search keywords, compelling ad copy, extensions, and targeted bidding strategy, please share your campaign details:\n\n` +
         missingList.join("\n\n") +
-        `\n\n*(You can reply with all details in one message, e.g.: "Dr. Smile Dental Clinic in Ahmedabad, Direct Phone Calls: +919876543210, English & Gujarati, ₹800/day, https://drsmiledental.com")*`;
+        `\n\n*(You can reply with all details in one message, e.g.: "Dr. Smile Dental Clinic in Ahmedabad, Direct Phone Calls: +919876543210, English & Gujarati, ₹800/day, Maximize Conversions, https://drsmiledental.com, Sitelinks: /services, /contact")*`;
 
       return res.status(200).json({
         ok: true,
@@ -5177,17 +5199,203 @@ Respond with ONLY the JSON object, wrapped in \`\`\`json \`\`\`.
       });
     }
 
-    // 7. Full Campaign Plan Generation using Gemini
     const budgetMicros = Math.round(Number(mergedIntake.daily_budget || 1000) * 1000000);
     const targetLocation = mergedIntake.location || "India";
     const businessLabel = mergedIntake.business_name || mergedIntake.services || "Business";
     const landingUrl = mergedIntake.landing_page_url || "https://example.com";
     const isCallGoal = mergedIntake.campaign_goal === "PHONE_CALLS" || Boolean(mergedIntake.phone_number);
     const countryIso = detectCountryCode(mergedIntake.phone_number, targetLocation);
+    const biddingChoice = mergedIntake.bidding_strategy || (isCallGoal ? "MAXIMIZE_CONVERSIONS" : "MAXIMIZE_CONVERSIONS");
+
+    // Check if user is in KEYWORD_REVIEW stage and approved or modified
+    const isKeywordApproved =
+      intakeData.keyword_action === "APPROVE" ||
+      lowerInstruction === "looks good" ||
+      lowerInstruction === "proceed" ||
+      lowerInstruction === "confirm" ||
+      lowerInstruction === "continue" ||
+      lowerInstruction === "next" ||
+      lowerInstruction === "yes" ||
+      lowerInstruction === "ok" ||
+      lowerInstruction === "approved" ||
+      lowerInstruction === "go ahead" ||
+      lowerInstruction === "make ads" ||
+      lowerInstruction === "generate ads" ||
+      lowerInstruction.includes("create ad copy");
+
+    let currentTargetKeywords = Array.isArray(gAdsState?.targetKeywords) && gAdsState.targetKeywords.length > 0
+      ? [...gAdsState.targetKeywords]
+      : [];
+    let currentNegativeKeywords = Array.isArray(gAdsState?.negativeKeywords) && gAdsState.negativeKeywords.length > 0
+      ? [...gAdsState.negativeKeywords]
+      : [];
+
+    // Handle user modifications to keywords if in KEYWORD_REVIEW
+    if (gAdsState?.stage === "KEYWORD_REVIEW" && !isKeywordApproved) {
+      if (Array.isArray(intakeData.added_keywords) && intakeData.added_keywords.length > 0) {
+        intakeData.added_keywords.forEach(k => {
+          if (!currentTargetKeywords.includes(k)) currentTargetKeywords.push(k);
+        });
+      }
+      if (Array.isArray(intakeData.removed_keywords) && intakeData.removed_keywords.length > 0) {
+        currentTargetKeywords = currentTargetKeywords.filter(k => !intakeData.removed_keywords.some(rem => k.toLowerCase().includes(rem.toLowerCase())));
+      }
+      if (Array.isArray(intakeData.added_negative_keywords) && intakeData.added_negative_keywords.length > 0) {
+        intakeData.added_negative_keywords.forEach(k => {
+          if (!currentNegativeKeywords.includes(k)) currentNegativeKeywords.push(k);
+        });
+      }
+
+      // If user provided modifications, save and redisplay updated keyword list
+      if (intakeData.added_keywords?.length || intakeData.removed_keywords?.length || intakeData.added_negative_keywords?.length) {
+        await supabase
+          .from("agent_memory")
+          .upsert({
+            email: userEmail,
+            memory_type: "google_ads_state",
+            content: JSON.stringify({
+              stage: "KEYWORD_REVIEW",
+              customerId: selectedCustomerId,
+              managerId: activeAccountObj.managerId || null,
+              intake: mergedIntake,
+              targetKeywords: currentTargetKeywords,
+              negativeKeywords: currentNegativeKeywords,
+              updated_at: new Date().toISOString(),
+            }),
+            updated_at: new Date().toISOString(),
+          }, { onConflict: "email,memory_type" });
+
+        return res.status(200).json({
+          ok: true,
+          text: `Got it! I've updated your targeting and negative keywords based on your feedback:\n\n` +
+            `🎯 **Updated Target Keywords (${currentTargetKeywords.length}):**\n` +
+            currentTargetKeywords.map(k => `• \`${k}\``).join("\n") +
+            `\n\n🛡️ **Updated Negative Keywords (${currentNegativeKeywords.length}):**\n` +
+            currentNegativeKeywords.map(k => `• \`${k}\``).join("\n") +
+            `\n\nEverything looks solid! Reply **"Proceed"** or **"Looks good"**, and I will generate your optimized Search Ads (Headlines & Descriptions) crafted directly from these keywords!`,
+        });
+      }
+    }
+
+    // PHASE 2: KEYWORD & NEGATIVE KEYWORD CURATION & REVIEW
+    // If we haven't completed keyword review yet, generate curated keywords & negative keywords and invite review!
+    if (gAdsState?.stage !== "KEYWORD_REVIEW" && !isKeywordApproved && gAdsState?.stage !== "PLAN_PROPOSED") {
+      const keywordPrompt = `
+You are a senior Google Ads specialist.
+Analyze this business and generate a high-intent, high-performing keyword targeting and negative keyword strategy.
+
+BUSINESS DETAILS:
+- Business Name: ${mergedIntake.business_name || businessLabel}
+- Services / Products: ${mergedIntake.services || businessLabel}
+- Target Location: ${targetLocation}
+- Goal: ${isCallGoal ? "Direct Phone Calls" : "Website Leads"}
+- Landing Page URL: ${landingUrl}
+
+TASKS:
+1. Curate 8-12 high-intent target keywords with proper Google Ads match type notation:
+   - Use Phrase Match (e.g. "dental clinic near me") for core intent.
+   - Use Exact Match (e.g. [best dentist in ahmedabad]) for highest commercial queries.
+   - Use Broad Match for wider discovery if appropriate.
+2. Formulate 8-12 industry-tailored Negative Keywords to prevent wasted budget (e.g. "free", "jobs", "vacancy", "career", "salary", "course", "training", "pdf", "diy").
+
+OUTPUT FORMAT:
+JSON wrapped in \`\`\`json \`\`\`:
+{
+  "targetKeywords": [
+    "\\"phrase match keyword\\"",
+    "[exact match keyword]",
+    "broad match keyword"
+  ],
+  "negativeKeywords": [
+    "free",
+    "jobs",
+    "vacancy",
+    "salary",
+    "course",
+    "training",
+    "pdf"
+  ]
+}
+`;
+
+      let initialKeywords = [];
+      let initialNegatives = [];
+
+      try {
+        const model = localGenAI.getGenerativeModel({ model: modelName });
+        const kwRes = await model.generateContent(keywordPrompt);
+        const kwText = kwRes.response.text();
+        const jsonMatch = kwText.match(/```(?:json)?\s*([\s\S]*?)\s*```/);
+        if (jsonMatch) {
+          const parsed = JSON.parse(jsonMatch[1]);
+          initialKeywords = parsed.targetKeywords || [];
+          initialNegatives = parsed.negativeKeywords || [];
+        }
+      } catch (err) {
+        console.warn("Keyword generation warning:", err.message);
+        initialKeywords = [
+          `"${businessLabel} in ${targetLocation}"`,
+          `"best ${businessLabel}"`,
+          `"${businessLabel} services"`,
+          `[${businessLabel} near me]`,
+        ];
+        initialNegatives = ["free", "jobs", "vacancy", "salary", "course", "pdf"];
+      }
+
+      await supabase
+        .from("agent_memory")
+        .upsert({
+          email: userEmail,
+          memory_type: "google_ads_state",
+          content: JSON.stringify({
+            stage: "KEYWORD_REVIEW",
+            customerId: selectedCustomerId,
+            managerId: activeAccountObj.managerId || null,
+            intake: mergedIntake,
+            targetKeywords: initialKeywords,
+            negativeKeywords: initialNegatives,
+            updated_at: new Date().toISOString(),
+          }),
+          updated_at: new Date().toISOString(),
+        }, { onConflict: "email,memory_type" });
+
+      const reviewMessage =
+        `🎯 **Phase 2: Target Keywords & Negative Keywords Strategy**\n\n` +
+        `I have analyzed **${businessLabel}** for **${targetLocation}** and curated the highest-converting search terms and waste-spend protection filters:\n\n` +
+        `### 📌 **Curated Target Keywords (${initialKeywords.length}):**\n` +
+        initialKeywords.map(k => `• \`${k}\``).join("\n") +
+        `\n*(Includes Phrase Match \`"..."\` and Exact Match \`[...]\` to prevent irrelevant clicks and maximize your Quality Score)*\n\n` +
+        `### 🛡️ **Recommended Negative Keywords (${initialNegatives.length}):**\n` +
+        initialNegatives.map(n => `• \`${n}\``).join("\n") +
+        `\n*(Excludes searchers seeking freebies, job vacancies, salaries, or training courses so you never waste ad budget)*\n\n` +
+        `---\n` +
+        `**Review & Refinement Options:**\n` +
+        `• Want to **add** any specific keywords of your own?\n` +
+        `• Want to **remove** any keywords from this list?\n` +
+        `• Want to add any more **negative keywords**?\n\n` +
+        `👉 If you are satisfied with this keyword architecture, simply reply **"Looks good"** or **"Proceed"**, and I will craft high-converting Search Ads (Headlines & Descriptions) built directly around these keywords!`;
+
+      return res.status(200).json({
+        ok: true,
+        text: reviewMessage,
+        targetKeywords: initialKeywords,
+        negativeKeywords: initialNegatives,
+      });
+    }
+
+    // PHASE 3: FINAL CAMPAIGN PLAN GENERATION (Using Finalized Keywords)
+    const finalizedKeywords = currentTargetKeywords.length > 0
+      ? currentTargetKeywords
+      : [`"${businessLabel} in ${targetLocation}"`, `"best ${businessLabel}"`, `[${businessLabel} services]`];
+    const finalizedNegatives = currentNegativeKeywords.length > 0
+      ? currentNegativeKeywords
+      : ["free", "jobs", "vacancy", "salary", "course", "pdf"];
+
+    const customSitelinksList = mergedIntake.custom_sitelinks || [];
 
     const planPrompt = `
 You are GabbarInfo AI, a world-class Google Ads strategist and copywriter.
-Create a high-performing Google Search Ads Campaign plan based on the user's verified business details.
+Create a high-performing Google Search Ads Campaign plan based on the user's verified business details and FINALIZED KEYWORDS.
 
 ACCOUNT DETAILS:
 - Account Name: ${activeAccountObj.descriptiveName}
@@ -5202,35 +5410,44 @@ VERIFIED BUSINESS DETAILS:
 - Target Location: ${targetLocation}
 - Target Language: ${mergedIntake.language || "English"}
 - Daily Budget: ${accountCurrency} ${mergedIntake.daily_budget} (dailyBudgetMicros: ${budgetMicros})
+- Bidding Strategy: ${biddingChoice}
 - Landing Page URL: ${landingUrl}
-- Specific Keyword Focus / USPs: ${JSON.stringify(mergedIntake.keywords || [])}
-${intakeData.is_modifying_plan ? `- User Modification Request: ${intakeData.modification_request}` : ""}
+- User Provided Sitelinks: ${JSON.stringify(customSitelinksList)}
+- FINALIZED TARGET KEYWORDS: ${JSON.stringify(finalizedKeywords)}
+- FINALIZED NEGATIVE KEYWORDS: ${JSON.stringify(finalizedNegatives)}
 
 STRICT COPY & ASSET RULES:
-1. Headlines: 3 to 5 engaging headlines, STRICTLY maximum 30 characters each. ${isCallGoal ? "Include at least one direct call CTA headline like 'Call Now For Free Quote' or 'Speak To An Expert Today'." : ""}
-2. Descriptions: 2 compelling descriptions, STRICTLY maximum 90 characters each with strong benefits and clear CTA.
-3. Keywords: 6-10 high-intent search terms directly matching the business services and location.
-4. Sitelink Assets: EXACTLY 4 professional sitelinks tailored to this business (e.g. Our Services, Request Quote, Client Reviews, About Us).
+1. Headlines: 3 to 5 engaging headlines, STRICTLY maximum 30 characters each.
+   - At least 2 headlines MUST directly include the top target keywords (e.g. service + location) to achieve 10/10 Google Quality Score!
+   - ${isCallGoal ? "Include at least one direct call CTA headline like 'Call Now For Consultation' or 'Speak To An Expert Today'." : ""}
+2. Descriptions: 2 compelling descriptions, STRICTLY maximum 90 characters each with strong benefits, social proof, and clear CTA.
+3. Sitelink Assets: EXACTLY 4 professional sitelinks tailored to this business.
+   - If User Provided Sitelinks exist (${JSON.stringify(customSitelinksList)}), include them as the first sitelinks!
+   - Auto-generate the remaining sitelinks to make exactly 4 (e.g. Services, Get A Quote, Client Reviews, About Us).
    - linkText: STRICTLY maximum 25 characters
    - description1: STRICTLY maximum 35 characters
    - description2: STRICTLY maximum 35 characters
    - finalUrl: ${landingUrl}
-5. Callout Assets: EXACTLY 4 standout unique selling propositions (USPs) as callout badges, STRICTLY maximum 25 characters each (e.g. "Verified & Certified", "24/7 Fast Support", "Transparent Pricing", "Top Rated Service").
-6. Call Asset: ${isCallGoal && mergedIntake.phone_number ? `Configure callAsset with phoneNumber "${mergedIntake.phone_number}" and countryCode "${countryIso}".` : "Set callAsset to null if no phone number was provided."}
+4. Callout Assets: EXACTLY 4 standout unique selling propositions (USPs) as callout badges, STRICTLY maximum 25 characters each (e.g. "Verified & Certified", "24/7 Fast Support", "Transparent Pricing", "Top Rated Service").
+5. Call Asset: ${isCallGoal && mergedIntake.phone_number ? `Configure callAsset with phoneNumber "${mergedIntake.phone_number}" and countryCode "${countryIso}".` : "Set callAsset to null if no phone number was provided."}
 
 OUTPUT FORMAT:
 You MUST start with a valid JSON block inside \`\`\`json ... \`\`\` using this EXACT schema:
 \`\`\`json
 {
   "customerId": "${selectedCustomerId}",
+  "biddingStrategy": "${biddingChoice}",
   "campaign": {
-    "name": "Search - ${businessLabel.slice(0, 30)} - ${targetLocation.slice(0, 20)}",
+    "name": "Search - ${businessLabel.slice(0, 25)} - ${targetLocation.slice(0, 15)}",
     "status": "PAUSED",
     "network": "SEARCH",
     "dailyBudgetMicros": ${budgetMicros},
     "finalUrl": "${landingUrl}",
-    "campaignGoal": "${isCallGoal ? "PHONE_CALLS" : "WEBSITE_LEADS"}"
+    "campaignGoal": "${isCallGoal ? "PHONE_CALLS" : "WEBSITE_LEADS"}",
+    "biddingStrategy": "${biddingChoice}",
+    "negativeKeywords": ${JSON.stringify(finalizedNegatives)}
   },
+  "negativeKeywords": ${JSON.stringify(finalizedNegatives)},
   "sitelinks": [
     {
       "linkText": "Our Services",
@@ -5268,14 +5485,7 @@ You MUST start with a valid JSON block inside \`\`\`json ... \`\`\` using this E
     {
       "name": "${businessLabel.slice(0, 25)} - Search",
       "cpcBidMicros": 20000000,
-      "keywords": [
-        "keyword 1",
-        "keyword 2",
-        "keyword 3",
-        "keyword 4",
-        "keyword 5",
-        "keyword 6"
-      ],
+      "keywords": ${JSON.stringify(finalizedKeywords)},
       "ads": [
         {
           "headline1": "Headline 1 (max 30 chars)",
@@ -5294,13 +5504,15 @@ You MUST start with a valid JSON block inside \`\`\`json ... \`\`\` using this E
 
 Followed by a clean, professional campaign summary highlighting:
 - 📊 **Campaign Strategy & Goal:** ${isCallGoal ? "Direct Phone Calls / Inbound Call Leads 📞" : "Website Traffic & Online Leads 🌐"}
+- 📈 **Bidding Strategy:** ${biddingChoice === "MAXIMIZE_CLICKS" ? "Maximize Clicks (Traffic Focus)" : "Maximize Conversions (Lead/Call Focus)"}
 - 📍 **Targeting & Location:** ${targetLocation}
 - 💰 **Daily Budget:** ${accountCurrency === "INR" ? "₹" : accountCurrency + " "}${mergedIntake.daily_budget}/day
 - 🌐 **Landing Page:** ${landingUrl}
 ${isCallGoal && mergedIntake.phone_number ? `- 📞 **Call Extension:** Direct phone calls routed to \`${mergedIntake.phone_number}\`\n` : ""}
 - 🔗 **Sitelink Extensions (4 Links):** List the 4 sitelinks with linkText and descriptions
 - 💡 **Callout Badges (4 USPs):** List the 4 callouts
-- 🎯 **Top Target Keywords**
+- 🛡️ **Negative Keywords Applied:** List the negative exclusions
+- 🎯 **Top Target Keywords (${finalizedKeywords.length})**
 - ✍️ **Ad Copy Preview (Headlines & Descriptions)**
 - 🏢 **Business Name & Logo Note:** Your business name is embedded directly into ad headlines. In Google Search Ads, verified logo and business name badges automatically appear once your Google Ads account completes advertiser identity verification in Google Ads Console.
 
@@ -5331,7 +5543,7 @@ And conclude with:
       responseText = `Plan configured for **${businessLabel}** (${targetLocation}) at ₹${mergedIntake.daily_budget}/day. Reply **YES** to create this campaign in PAUSED mode.`;
     }
 
-    // 8. Save proposed plan to memory
+    // Save proposed plan to memory
     if (extractedPlan) {
       await supabase
         .from("agent_memory")
@@ -5343,6 +5555,8 @@ And conclude with:
             customerId: selectedCustomerId,
             managerId: activeAccountObj.managerId || null,
             intake: mergedIntake,
+            targetKeywords: finalizedKeywords,
+            negativeKeywords: finalizedNegatives,
             plan: extractedPlan,
             proposed_at: new Date().toISOString(),
           }),
