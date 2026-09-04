@@ -4948,9 +4948,10 @@ async function handleGoogleAdsCampaignFlow(req, res, session, body) {
         const plan = gAdsState.plan;
         const targetManagerId = activeAccountObj.managerId || gAdsState.managerId || null;
 
+        const businessName = plan.businessName || plan.campaign?.businessName || gAdsState.intake?.business_name || null;
         const sitelinks = plan.sitelinks || plan.campaign?.sitelinks || [];
         const callouts = plan.callouts || plan.campaign?.callouts || [];
-        const callAsset = plan.callAsset || plan.campaign?.callAsset || null;
+        const callAsset = plan.callAsset || plan.campaign?.callAsset || (gAdsState.intake?.phone_number ? { phoneNumber: gAdsState.intake.phone_number } : null);
         const negativeKeywords = plan.negativeKeywords || plan.campaign?.negativeKeywords || gAdsState.negativeKeywords || [];
         const biddingStrategy = plan.biddingStrategy || plan.campaign?.biddingStrategy || gAdsState.intake?.bidding_strategy || "MAXIMIZE_CONVERSIONS";
 
@@ -4959,6 +4960,7 @@ async function handleGoogleAdsCampaignFlow(req, res, session, body) {
           customerId: selectedCustomerId,
           campaign: plan.campaign,
           adGroups: plan.adGroups,
+          businessName,
           sitelinks,
           callouts,
           callAsset,
@@ -4995,9 +4997,11 @@ async function handleGoogleAdsCampaignFlow(req, res, session, body) {
         // Assets summary text
         let assetLines = [];
         if (createRes.assets && createRes.assets.length > 0) {
+          const bizNameLinked = createRes.assets.some(a => a.fieldType === "BUSINESS_NAME");
           const sitelinksCount = createRes.assets.filter(a => a.fieldType === "SITELINK").length;
           const calloutsCount = createRes.assets.filter(a => a.fieldType === "CALLOUT").length;
           const callLinked = createRes.assets.some(a => a.fieldType === "CALL");
+          if (bizNameLinked) assetLines.push(`• **Business Name Attached:** ${businessName}`);
           if (sitelinksCount > 0) assetLines.push(`• **Sitelinks Attached:** ${sitelinksCount} sitelink extensions`);
           if (calloutsCount > 0) assetLines.push(`• **Callout Badges Attached:** ${calloutsCount} callout extensions`);
           if (callLinked) assetLines.push(`• **Phone Call Extension:** ${callAsset?.phoneNumber || "Enabled"}`);
@@ -5128,10 +5132,11 @@ Respond with ONLY the JSON object, wrapped in \`\`\`json \`\`\`.
     const hasLocation = Boolean(mergedIntake.location);
     const hasBudget = Boolean(mergedIntake.daily_budget);
     const hasLandingPage = Boolean(mergedIntake.landing_page_url);
-    const isMissingPhoneForCalls = mergedIntake.campaign_goal === "PHONE_CALLS" && !mergedIntake.phone_number;
+    const hasPhone = Boolean(mergedIntake.phone_number);
+    const isMissingPhoneForCalls = mergedIntake.campaign_goal === "PHONE_CALLS" && !hasPhone;
 
     // PHASE 1: INTAKE CHECK
-    const isMissingKeyInfo = !hasBusiness || !hasLocation || !hasBudget || !hasLandingPage || isMissingPhoneForCalls;
+    const isMissingKeyInfo = !hasBusiness || !hasLocation || !hasBudget || !hasLandingPage || (!hasPhone && !mergedIntake.skipped_phone);
 
     if (justSelectedAccountId || isMissingKeyInfo) {
       await supabase
@@ -5151,22 +5156,21 @@ Respond with ONLY the JSON object, wrapped in \`\`\`json \`\`\`.
 
       const missingList = [];
       if (!hasBusiness) missingList.push("1. 🏢 **Business & Services:** What is your business name, and what specific service or product do you want to promote?");
-      if (!mergedIntake.campaign_goal) {
-        missingList.push("2. 🎯 **Primary Campaign Goal:** Do you want **Website Traffic & Online Leads** or **Direct Phone Calls**? *(If you want phone calls, please share your contact phone number)*");
-      } else if (isMissingPhoneForCalls) {
-        missingList.push("2. 📞 **Contact Phone Number:** You selected Direct Phone Calls as your goal. What phone number should customers call? *(Google Ads will attach this as a Direct Call Extension)*");
+      if (!mergedIntake.campaign_goal || !hasPhone) {
+        missingList.push("2. 🎯 **Campaign Goal & Contact Phone:** What is your primary objective (e.g. **Website Visits & Online Leads** or **Direct Phone Calls**)? Also provide your **business phone or WhatsApp number** *(Google Ads will attach a Click-to-Call extension on your search ads so customers can call you directly)*.");
       }
       if (!hasLocation) missingList.push("3. 📍 **Target Location:** Which specific cities, regions, or countries should your ads target (e.g., Ahmedabad, Mumbai, or All India)?");
       if (!mergedIntake.language) missingList.push("4. 🗣️ **Target Language:** Which languages do your target customers speak (e.g., English, Hindi, etc.)?");
       if (!hasBudget) missingList.push(`5. 💰 **Daily Budget:** What is your target daily budget (e.g. ₹500/day or ₹1,000/day in ${accountCurrency})?`);
       if (!mergedIntake.bidding_strategy) missingList.push("6. 📈 **Bidding Strategy:** Do you prefer **Maximize Conversions** *(Recommended for leads & phone calls)* or **Maximize Clicks** *(for highest site traffic within budget)*?");
-      if (!hasLandingPage) missingList.push("7. 🌐 **Landing Page & Sitelinks:** What website or landing page URL should visitors land on? *(Optional: if you have 1 or 2 specific custom sitelinks in mind like /pricing or /services, mention them too!)*");
+      if (!hasLandingPage) missingList.push("7. 🌐 **Landing Page & Sitelinks:** What website or landing page URL should visitors land on? *(Optional: if you have specific custom sitelinks in mind like /pricing, /services, or /contact, mention them too!)*");
 
       const capturedList = [];
       if (hasBusiness) capturedList.push(`• **Business/Service:** ${mergedIntake.business_name || mergedIntake.services}`);
       if (mergedIntake.campaign_goal) {
-        capturedList.push(`• **Goal:** ${mergedIntake.campaign_goal === "PHONE_CALLS" ? "Direct Phone Calls" : "Website Leads & Traffic"}${mergedIntake.phone_number ? ` (Phone: \`${mergedIntake.phone_number}\`)` : ""}`);
+        capturedList.push(`• **Goal:** ${mergedIntake.campaign_goal === "PHONE_CALLS" ? "Direct Phone Calls" : "Website Leads & Traffic"}`);
       }
+      if (hasPhone) capturedList.push(`• **Contact Phone:** \`${mergedIntake.phone_number}\` (Call extension enabled)`);
       if (hasLocation) capturedList.push(`• **Location:** ${mergedIntake.location}`);
       if (mergedIntake.language) capturedList.push(`• **Language:** ${mergedIntake.language}`);
       if (hasBudget) capturedList.push(`• **Budget:** ${accountCurrency === "INR" ? "₹" : ""}${mergedIntake.daily_budget}/day`);
@@ -5183,7 +5187,7 @@ Respond with ONLY the JSON object, wrapped in \`\`\`json \`\`\`.
         capturedHeader +
         `To craft the most effective search keywords, compelling ad copy, extensions, and targeted bidding strategy, please share your campaign details:\n\n` +
         missingList.join("\n\n") +
-        `\n\n*(You can reply with all details in one message, e.g.: "Dr. Smile Dental Clinic in Ahmedabad, Direct Phone Calls: +919876543210, English & Gujarati, ₹800/day, Maximize Conversions, https://drsmiledental.com, Sitelinks: /services, /contact")*`;
+        `\n\n*(You can reply with all details in one message, e.g.: "GabbarInfo in Ahmedabad, Website leads & calls: +919876543210, English & Gujarati, ₹800/day, Maximize Conversions, https://gabbarinfo.com, Sitelinks: /services, /contact")*`;
 
       return res.status(200).json({
         ok: true,
@@ -5409,25 +5413,32 @@ VERIFIED BUSINESS DETAILS:
 - FINALIZED NEGATIVE KEYWORDS: ${JSON.stringify(finalizedNegatives)}
 
 STRICT COPY & ASSET RULES:
-1. Headlines: 3 to 5 engaging headlines, STRICTLY maximum 30 characters each.
-   - At least 2 headlines MUST directly include the top target keywords (e.g. service + location) to achieve 10/10 Google Quality Score!
-   - ${isCallGoal ? "Include at least one direct call CTA headline like 'Call Now For Consultation' or 'Speak To An Expert Today'." : ""}
-2. Descriptions: 2 compelling descriptions, STRICTLY maximum 90 characters each with strong benefits, social proof, and clear CTA.
-3. Sitelink Assets: EXACTLY 4 professional sitelinks tailored to this business.
+1. Headlines: Generate EXACTLY 10 to 12 keyword-rich, compelling, unique headlines, STRICTLY maximum 30 characters each.
+   - At least 5-6 headlines MUST directly stuff the top target keywords and services in ${targetLocation} to achieve an EXCELLENT Google Ad Strength and 10/10 Quality Score!
+   - Include 2-3 value propositions / USPs (e.g. "Top Rated Experts", "Verified & Certified", "Affordable & Reliable").
+   - Include 2-3 call-to-actions (e.g. "Get Free Quote Today", "Call For Consultation", "Book Online Now").
+2. Descriptions: Generate EXACTLY 4 compelling, unique descriptions, STRICTLY maximum 90 characters each:
+   - Description 1: Core service overview with primary keywords and target location.
+   - Description 2: Social proof, customer trust, ratings, and experience.
+   - Description 3: Pricing advantages, transparent estimates, fast turnaround, satisfaction guarantee.
+   - Description 4: Strong conversion CTA (Call now or visit our website to get started).
+3. Business Name: Set "businessName" to "${(mergedIntake.business_name || businessLabel).slice(0, 25)}" (STRICTLY max 25 characters) to link as a Google Ads Business Name asset.
+4. Sitelink Assets: EXACTLY 4 professional sitelinks tailored to this business.
    - If User Provided Sitelinks exist (${JSON.stringify(customSitelinksList)}), include them as the first sitelinks!
    - Auto-generate the remaining sitelinks to make exactly 4 (e.g. Services, Get A Quote, Client Reviews, About Us).
    - linkText: STRICTLY maximum 25 characters
    - description1: STRICTLY maximum 35 characters
    - description2: STRICTLY maximum 35 characters
    - finalUrl: ${landingUrl}
-4. Callout Assets: EXACTLY 4 standout unique selling propositions (USPs) as callout badges, STRICTLY maximum 25 characters each (e.g. "Verified & Certified", "24/7 Fast Support", "Transparent Pricing", "Top Rated Service").
-5. Call Asset: ${isCallGoal && mergedIntake.phone_number ? `Configure callAsset with phoneNumber "${mergedIntake.phone_number}" and countryCode "${countryIso}".` : "Set callAsset to null if no phone number was provided."}
+5. Callout Assets: EXACTLY 4 standout unique selling propositions (USPs) as callout badges, STRICTLY maximum 25 characters each (e.g. "Verified & Certified", "24/7 Fast Support", "Transparent Pricing", "Top Rated Service").
+6. Call Asset: ${mergedIntake.phone_number ? `Configure callAsset with phoneNumber "${mergedIntake.phone_number}" and countryCode "${countryIso}".` : "Set callAsset to null if no phone number was provided."}
 
 OUTPUT FORMAT:
 You MUST start with a valid JSON block inside \`\`\`json ... \`\`\` using this EXACT schema:
 \`\`\`json
 {
   "customerId": "${selectedCustomerId}",
+  "businessName": "${(mergedIntake.business_name || businessLabel).slice(0, 25)}",
   "biddingStrategy": "${biddingChoice}",
   "campaign": {
     "name": "Search - ${businessLabel.slice(0, 25)} - ${targetLocation.slice(0, 15)}",
@@ -5437,6 +5448,7 @@ You MUST start with a valid JSON block inside \`\`\`json ... \`\`\` using this E
     "finalUrl": "${landingUrl}",
     "campaignGoal": "${isCallGoal ? "PHONE_CALLS" : "WEBSITE_LEADS"}",
     "biddingStrategy": "${biddingChoice}",
+    "businessName": "${(mergedIntake.business_name || businessLabel).slice(0, 25)}",
     "negativeKeywords": ${JSON.stringify(finalizedNegatives)}
   },
   "negativeKeywords": ${JSON.stringify(finalizedNegatives)},
@@ -5472,7 +5484,7 @@ You MUST start with a valid JSON block inside \`\`\`json ... \`\`\` using this E
     "Transparent Pricing",
     "Customer Support"
   ],
-  "callAsset": ${isCallGoal && mergedIntake.phone_number ? JSON.stringify({ countryCode: countryIso, phoneNumber: mergedIntake.phone_number }) : "null"},
+  "callAsset": ${mergedIntake.phone_number ? JSON.stringify({ countryCode: countryIso, phoneNumber: mergedIntake.phone_number }) : "null"},
   "adGroups": [
     {
       "name": "${businessLabel.slice(0, 25)} - Search",
@@ -5480,11 +5492,24 @@ You MUST start with a valid JSON block inside \`\`\`json ... \`\`\` using this E
       "keywords": ${JSON.stringify(finalizedKeywords)},
       "ads": [
         {
-          "headline1": "Headline 1 (max 30 chars)",
-          "headline2": "Headline 2 (max 30 chars)",
-          "headline3": "Headline 3 (max 30 chars)",
-          "description1": "Description 1 (max 90 chars)",
-          "description2": "Description 2 (max 90 chars)",
+          "headlines": [
+            "Headline 1 with keyword",
+            "Headline 2 with service",
+            "Headline 3 with location",
+            "Headline 4 USP",
+            "Headline 5 USP",
+            "Headline 6 USP",
+            "Headline 7 CTA",
+            "Headline 8 CTA",
+            "Headline 9 CTA",
+            "Headline 10 CTA"
+          ],
+          "descriptions": [
+            "Description 1 with service keywords & location (max 90 chars)",
+            "Description 2 with trust proof & ratings (max 90 chars)",
+            "Description 3 with pricing & guarantee (max 90 chars)",
+            "Description 4 with call or click CTA (max 90 chars)"
+          ],
           "path1": "services",
           "path2": "book"
         }
@@ -5497,16 +5522,17 @@ You MUST start with a valid JSON block inside \`\`\`json ... \`\`\` using this E
 Followed by a clean, professional campaign summary highlighting:
 - 📊 **Campaign Strategy & Goal:** ${isCallGoal ? "Direct Phone Calls / Inbound Call Leads 📞" : "Website Traffic & Online Leads 🌐"}
 - 📈 **Bidding Strategy:** ${biddingChoice === "MAXIMIZE_CLICKS" ? "Maximize Clicks (Traffic Focus)" : "Maximize Conversions (Lead/Call Focus)"}
+- 🏢 **Business Name Asset:** ${(mergedIntake.business_name || businessLabel).slice(0, 25)}
 - 📍 **Targeting & Location:** ${targetLocation}
 - 💰 **Daily Budget:** ${accountCurrency === "INR" ? "₹" : accountCurrency + " "}${mergedIntake.daily_budget}/day
 - 🌐 **Landing Page:** ${landingUrl}
-${isCallGoal && mergedIntake.phone_number ? `- 📞 **Call Extension:** Direct phone calls routed to \`${mergedIntake.phone_number}\`\n` : ""}
-- 🔗 **Sitelink Extensions (4 Links):** List the 4 sitelinks with linkText and descriptions
+${mergedIntake.phone_number ? `- 📞 **Call Extension (Click-to-Call):** Attached with number \`${mergedIntake.phone_number}\`\n` : ""}
+- 🔗 **Sitelink Extensions (4 Links):** List the 4 sitelinks with linkText, descriptions, and destination
 - 💡 **Callout Badges (4 USPs):** List the 4 callouts
 - 🛡️ **Negative Keywords Applied:** List the negative exclusions
 - 🎯 **Top Target Keywords (${finalizedKeywords.length})**
-- ✍️ **Ad Copy Preview (Headlines & Descriptions)**
-- 🏢 **Business Name & Logo Note:** Your business name is embedded directly into ad headlines. In Google Search Ads, verified logo and business name badges automatically appear once your Google Ads account completes advertiser identity verification in Google Ads Console.
+- ✍️ **Ad Copy Preview (10-12 Headlines & 4 Descriptions):** List all generated headlines and descriptions with character counts!
+- ℹ️ **Business Logo Note:** Under Google Ads policy, custom brand logos appear on search ads once advertiser verification is completed in your Google Ads account console.
 
 And conclude with:
 "Reply **YES** to create this campaign in **PAUSED** mode in your Google Ads account: **${activeAccountObj.descriptiveName}** (\`${formattedAccId}\`)."
