@@ -41,25 +41,32 @@ export default async function handler(req, res) {
             throw new Error(basicJson.error.message);
         }
 
-        // 3. Fetch Page Reach (page_impressions_unique)
-        // /v21.0/{page_id}/insights?metric=page_impressions_unique&period=day
-        const insightsRes = await fetch(
-            `https://graph.facebook.com/v21.0/${pageId}/insights?metric=page_impressions_unique&period=day&access_token=${accessToken}`
-        );
-        const insightsJson = await insightsRes.json();
-
-        if (insightsJson.error) {
-            throw new Error(insightsJson.error.message);
-        }
-
-        // Extract latest value from insights
+        // 3. Fetch Page Reach using modern Meta Graph API v21.0+ metric (page_total_media_view_unique)
         let reach = 0;
-        if (insightsJson.data && insightsJson.data.length > 0) {
-            const metric = insightsJson.data.find(m => m.name === "page_impressions_unique");
-            if (metric?.values && metric.values.length > 0) {
-                // Take the most recent value
-                reach = metric.values[metric.values.length - 1].value;
+        try {
+            const insightsRes = await fetch(
+                `https://graph.facebook.com/v21.0/${pageId}/insights?metric=page_total_media_view_unique&period=day&access_token=${accessToken}`
+            );
+            const insightsJson = await insightsRes.json();
+
+            if (insightsJson.data && insightsJson.data.length > 0) {
+                const metric = insightsJson.data.find(m => m.name === "page_total_media_view_unique" || m.name === "page_impressions_unique");
+                if (metric?.values && metric.values.length > 0) {
+                    reach = metric.values[metric.values.length - 1].value || 0;
+                }
+            } else if (insightsJson.error) {
+                console.warn("Meta page_total_media_view_unique warning:", insightsJson.error.message);
+                // Fallback attempt: page_views_total
+                const fallbackRes = await fetch(
+                    `https://graph.facebook.com/v21.0/${pageId}/insights?metric=page_views_total&period=day&access_token=${accessToken}`
+                );
+                const fallbackJson = await fallbackRes.json();
+                if (fallbackJson.data?.[0]?.values?.length > 0) {
+                    reach = fallbackJson.data[0].values[fallbackJson.data[0].values.length - 1].value || 0;
+                }
             }
+        } catch (metricErr) {
+            console.warn("Non-fatal page reach insights metric error:", metricErr.message);
         }
 
         return res.json({
