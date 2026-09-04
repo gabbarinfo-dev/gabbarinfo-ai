@@ -5001,7 +5001,12 @@ async function handleGoogleAdsCampaignFlow(req, res, session, body) {
           const sitelinksCount = createRes.assets.filter(a => a.fieldType === "SITELINK").length;
           const calloutsCount = createRes.assets.filter(a => a.fieldType === "CALLOUT").length;
           const callLinked = createRes.assets.some(a => a.fieldType === "CALL");
+          const imagesCount = createRes.assets.filter(a => a.fieldType === "IMAGE").length;
+          const logoLinked = createRes.assets.some(a => a.fieldType === "LOGO");
+
           if (bizNameLinked) assetLines.push(`• **Business Name Attached:** ${businessName}`);
+          if (logoLinked) assetLines.push(`• **Business Logo Attached:** Verified Brand Logo`);
+          if (imagesCount > 0) assetLines.push(`• **Image Assets Attached:** ${imagesCount} visual extensions`);
           if (sitelinksCount > 0) assetLines.push(`• **Sitelinks Attached:** ${sitelinksCount} sitelink extensions`);
           if (calloutsCount > 0) assetLines.push(`• **Callout Badges Attached:** ${calloutsCount} callout extensions`);
           if (callLinked) assetLines.push(`• **Phone Call Extension:** ${callAsset?.phoneNumber || "Enabled"}`);
