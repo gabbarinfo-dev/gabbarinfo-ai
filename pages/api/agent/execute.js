@@ -18,6 +18,9 @@ import {
   createFullGoogleAdsCampaign,
   detectCountryCode,
   discoverWebsiteSubpages,
+  getExistingCampaignNames,
+  getUniqueCampaignName,
+  exchangeRefreshToken,
 } from "../../../lib/googleAdsHelper";
 
 const Messages = {
@@ -5017,11 +5020,15 @@ async function handleGoogleAdsCampaignFlow(req, res, session, body) {
         }
         assetLines.push(`• **Bidding Strategy:** ${String(biddingStrategy).toUpperCase().includes("CLICK") ? "Maximize Clicks (High Website Traffic)" : "Maximize Conversions (Leads/Calls Focus)"}`);
 
+        const renameNote = createRes.renamedFromDuplicate
+          ? ` *(Auto-renamed to prevent conflict with existing campaign)*`
+          : "";
+
         return res.status(200).json({
           ok: true,
           campaignPublished: true,
           text: `🎉 **Google Ads Campaign Successfully Created!**\n\n` +
-            `• **Campaign Name:** ${createRes.campaignName}\n` +
+            `• **Campaign Name:** ${createRes.campaignName}${renameNote}\n` +
             `• **Campaign ID:** \`${createRes.campaignId}\`\n` +
             `• **Google Ads Account:** ${activeAccountObj.descriptiveName} (\`${formattedAccId}\`)\n` +
             `• **Daily Budget:** ${accountCurrency === "INR" ? "₹" : accountCurrency + " "}${dailyBudgetUnits}/day\n` +
@@ -5493,6 +5500,26 @@ ${JSON.stringify(candidateSitelinks, null, 2)}
    - description2: STRICTLY maximum 35 characters`
       : `4. Sitelink Assets: Set "sitelinks": [] (empty array) because this website has no separate subpages and Google Ads forbids sitelinks pointing to the identical homepage URL.`;
 
+    // Proactively check existing campaign names so the proposed plan uses a guaranteed unique name
+    let proposedUniqueCampaignName = `Search - ${businessLabel.slice(0, 25)} - ${targetLocation.slice(0, 15)}`;
+    try {
+      if (refreshToken && selectedCustomerId) {
+        const exch = await exchangeRefreshToken({ refreshToken });
+        if (exch.ok && exch.accessToken) {
+          const existingNames = await getExistingCampaignNames({
+            accessToken: exch.accessToken,
+            customerId: selectedCustomerId,
+            loginCustomerId: activeAccountObj.managerId || null,
+          });
+          if (existingNames && existingNames.length > 0) {
+            proposedUniqueCampaignName = getUniqueCampaignName(proposedUniqueCampaignName, existingNames);
+          }
+        }
+      }
+    } catch (uniqueErr) {
+      console.warn("Pre-planning campaign uniqueness check non-fatal warning:", uniqueErr.message);
+    }
+
     const planPrompt = `
 You are GabbarInfo AI, a world-class Google Ads strategist and copywriter.
 Create a high-performing Google Search Ads Campaign plan based on the user's verified business details and FINALIZED KEYWORDS.
@@ -5539,7 +5566,7 @@ You MUST start with a valid JSON block inside \`\`\`json ... \`\`\` using this E
   "businessName": "${(mergedIntake.business_name || businessLabel).slice(0, 25)}",
   "biddingStrategy": "${biddingChoice}",
   "campaign": {
-    "name": "Search - ${businessLabel.slice(0, 25)} - ${targetLocation.slice(0, 15)}",
+    "name": "${proposedUniqueCampaignName.replace(/"/g, '\\"')}",
     "status": "PAUSED",
     "network": "SEARCH",
     "dailyBudgetMicros": ${budgetMicros},
