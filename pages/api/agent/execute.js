@@ -4953,6 +4953,7 @@ async function handleGoogleAdsCampaignFlow(req, res, session, body) {
         const targetManagerId = activeAccountObj.managerId || gAdsState.managerId || null;
 
         const businessName = plan.businessName || plan.campaign?.businessName || gAdsState.intake?.business_name || null;
+        const targetLocation = plan.location || plan.campaign?.location || gAdsState.intake?.location || null;
         const sitelinks = plan.sitelinks || plan.campaign?.sitelinks || [];
         const callouts = plan.callouts || plan.campaign?.callouts || [];
         const callAsset = plan.callAsset || plan.campaign?.callAsset || (gAdsState.intake?.phone_number ? { phoneNumber: gAdsState.intake.phone_number } : null);
@@ -4965,6 +4966,7 @@ async function handleGoogleAdsCampaignFlow(req, res, session, body) {
           campaign: plan.campaign,
           adGroups: plan.adGroups,
           businessName,
+          targetLocation,
           sitelinks,
           callouts,
           callAsset,
@@ -5014,6 +5016,10 @@ async function handleGoogleAdsCampaignFlow(req, res, session, body) {
           if (sitelinksCount > 0) assetLines.push(`• **Sitelinks Attached:** ${sitelinksCount} sitelink extensions`);
           if (calloutsCount > 0) assetLines.push(`• **Callout Badges Attached:** ${calloutsCount} callout extensions`);
           if (callLinked) assetLines.push(`• **Phone Call Extension:** ${callAsset?.phoneNumber || "Enabled"}`);
+        }
+        if (createRes.targetedLocations && createRes.targetedLocations.length > 0) {
+          const locNames = createRes.targetedLocations.map(l => l.canonicalName || l.name).join(", ");
+          assetLines.push(`• **Target Locations Applied:** 📍 ${locNames}`);
         }
         if (createRes.negativeKeywordsCount > 0) {
           assetLines.push(`• **Negative Keywords Applied:** ${createRes.negativeKeywordsCount} waste-spend exclusions`);
@@ -5564,11 +5570,13 @@ You MUST start with a valid JSON block inside \`\`\`json ... \`\`\` using this E
 {
   "customerId": "${selectedCustomerId}",
   "businessName": "${(mergedIntake.business_name || businessLabel).slice(0, 25)}",
+  "location": "${targetLocation}",
   "biddingStrategy": "${biddingChoice}",
   "campaign": {
     "name": "${proposedUniqueCampaignName.replace(/"/g, '\\"')}",
     "status": "PAUSED",
     "network": "SEARCH",
+    "location": "${targetLocation}",
     "dailyBudgetMicros": ${budgetMicros},
     "finalUrl": "${landingUrl}",
     "campaignGoal": "${isCallGoal ? "PHONE_CALLS" : "WEBSITE_LEADS"}",
@@ -5693,6 +5701,13 @@ And conclude with:
             }
           } else if (candidateSitelinks.length === 0 && extractedPlan) {
             extractedPlan.sitelinks = [];
+          }
+
+          if (extractedPlan) {
+            if (!extractedPlan.location && targetLocation) extractedPlan.location = targetLocation;
+            if (extractedPlan.campaign && !extractedPlan.campaign.location && targetLocation) {
+              extractedPlan.campaign.location = targetLocation;
+            }
           }
         }
       } catch (geminiErr) {
