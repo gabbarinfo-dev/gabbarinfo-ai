@@ -4781,110 +4781,7 @@ async function handleGoogleAdsCampaignFlow(req, res, session, body) {
       });
     }
 
-    // 2. Fetch accessible customer accounts using dynamic per-user hierarchy discovery
-    let selectedCustomerId = googleConn?.customer_id ? cleanCustomerId(googleConn.customer_id) : null;
-    let selectedManagerId = googleConn?.manager_id ? cleanCustomerId(googleConn.manager_id) : null;
-    let accessibleAccounts = [];
-
-    try {
-      const hierarchyResp = await getAccountHierarchy({ refreshToken });
-      if (hierarchyResp.ok) {
-        accessibleAccounts = (hierarchyResp.accounts || []).map(acc => ({
-          customerId: acc.customerId,
-          descriptiveName: acc.descriptiveName,
-          currencyCode: acc.currencyCode || "INR",
-          managerId: acc.managerId || null,
-        }));
-      } else {
-        console.warn("getAccountHierarchy failed in agent:", hierarchyResp.json);
-      }
-    } catch (accErr) {
-      console.warn("Could not fetch Google Ads account hierarchy:", accErr.message);
-    }
-
-    // Check if user is typing/selecting an account ID
-    let justSelectedAccountId = false;
-    const matchId = instruction.match(/\b\d{3}[-\s]?\d{3}[-\s]?\d{4}\b|\b\d{10}\b/);
-    if (matchId) {
-      const candidateId = cleanCustomerId(matchId[0]);
-      const foundAcc = accessibleAccounts.find(a => a.customerId === candidateId);
-      if (foundAcc) {
-        selectedCustomerId = candidateId;
-        selectedManagerId = foundAcc.managerId || null;
-        justSelectedAccountId = true;
-        try {
-          await supabase
-            .from("google_connections")
-            .upsert({
-              email: userEmail,
-              customer_id: candidateId,
-              manager_id: selectedManagerId,
-              updated_at: new Date().toISOString(),
-            }, { onConflict: "email" });
-        } catch (saveErr) {
-          try {
-            await supabase.from("google_connections")
-              .upsert({ email: userEmail, customer_id: candidateId, updated_at: new Date().toISOString() }, { onConflict: "email" });
-          } catch (_) {}
-        }
-      }
-    }
-
-    // If no account selected yet
-    if (!selectedCustomerId) {
-      if (accessibleAccounts.length === 0) {
-        return res.status(200).json({
-          ok: true,
-          gated: true,
-          text: "No Google Ads accounts were found linked to your Google login.\n\nPlease make sure your Google account has access to an active Google Ads account.",
-        });
-      }
-
-      if (accessibleAccounts.length === 1) {
-        // Auto-select the only account
-        selectedCustomerId = accessibleAccounts[0].customerId;
-        selectedManagerId = accessibleAccounts[0].managerId || null;
-        try {
-          await supabase
-            .from("google_connections")
-            .upsert({
-              email: userEmail,
-              customer_id: selectedCustomerId,
-              manager_id: selectedManagerId,
-              updated_at: new Date().toISOString(),
-            }, { onConflict: "email" });
-        } catch (saveErr) {
-          try {
-            await supabase.from("google_connections")
-              .upsert({ email: userEmail, customer_id: selectedCustomerId, updated_at: new Date().toISOString() }, { onConflict: "email" });
-          } catch (_) {}
-        }
-      } else {
-        // Ask user to select an account
-        const accountsList = accessibleAccounts
-          .map(a => `• **${a.descriptiveName}** — ID: \`${a.customerId.slice(0,3)}-${a.customerId.slice(3,6)}-${a.customerId.slice(6)}\``)
-          .join("\n");
-
-        return res.status(200).json({
-          ok: true,
-          text: `Which Google Ads account would you like to create campaigns for?\n\n${accountsList}\n\nPlease reply with your **Account ID** to continue.`,
-        });
-      }
-    }
-
-    const activeAccountObj = accessibleAccounts.find(a => a.customerId === selectedCustomerId) || {
-      customerId: selectedCustomerId,
-      descriptiveName: `Google Ads Account (${selectedCustomerId})`,
-      currencyCode: "INR",
-      managerId: selectedManagerId,
-    };
-
-    const formattedAccId = selectedCustomerId && selectedCustomerId.length >= 10
-      ? `${selectedCustomerId.slice(0,3)}-${selectedCustomerId.slice(3,6)}-${selectedCustomerId.slice(6)}`
-      : (selectedCustomerId || "Account");
-    const accountCurrency = activeAccountObj.currencyCode || "INR";
-
-    // 3. Load existing Google Ads state from Supabase
+    // 2. Load existing Google Ads state from Supabase FIRST
     const { data: memData } = await supabase
       .from("agent_memory")
       .select("content")
@@ -4899,7 +4796,7 @@ async function handleGoogleAdsCampaignFlow(req, res, session, body) {
       } catch (_) {}
     }
 
-    // 4. Check for fresh restart intent
+    // 3. Check for fresh restart intent
     const isFreshStartPrompt =
       lowerInstruction === "create a google search ads campaign" ||
       lowerInstruction === "create google ads campaign" ||
@@ -4919,14 +4816,81 @@ async function handleGoogleAdsCampaignFlow(req, res, session, body) {
       } catch (_) {}
     }
 
-    if (justSelectedAccountId) {
-      // User just selected or switched their account ID
-      // Reset any previous plan so they are cleanly prompted for campaign requirements
+    // 4. Fetch accessible customer accounts using dynamic per-user hierarchy discovery
+    let accessibleAccounts = [];
+    try {
+      const hierarchyResp = await getAccountHierarchy({ refreshToken });
+      if (hierarchyResp.ok) {
+        accessibleAccounts = (hierarchyResp.accounts || []).map(acc => ({
+          customerId: acc.customerId,
+          descriptiveName: acc.descriptiveName,
+          currencyCode: acc.currencyCode || "INR",
+          managerId: acc.managerId || null,
+        }));
+      } else {
+        console.warn("getAccountHierarchy failed in agent:", hierarchyResp.json);
+      }
+    } catch (accErr) {
+      console.warn("Could not fetch Google Ads account hierarchy:", accErr.message);
+    }
+
+    // Determine target customerId & managerId:
+    let justSelectedAccountId = false;
+    let selectedCustomerId = null;
+    let selectedManagerId = null;
+
+    // Check if user is typing/selecting an account ID explicitly
+    const matchId = instruction.match(/\b\d{3}[-\s]?\d{3}[-\s]?\d{4}\b|\b\d{10}\b/);
+    if (matchId) {
+      const candidateId = cleanCustomerId(matchId[0]);
+      const foundAcc = accessibleAccounts.find(a => a.customerId === candidateId);
+      if (foundAcc) {
+        selectedCustomerId = candidateId;
+        selectedManagerId = foundAcc.managerId || null;
+        justSelectedAccountId = true;
+      }
+    }
+
+    // Fallback to previously stored customerId from agent_memory or google_connections
+    if (!selectedCustomerId) {
+      selectedCustomerId = gAdsState?.customerId || (googleConn?.customer_id ? cleanCustomerId(googleConn.customer_id) : null);
+      selectedManagerId = gAdsState?.managerId || (googleConn?.manager_id ? cleanCustomerId(googleConn.manager_id) : null);
+    }
+
+    // If no account selected yet
+    if (!selectedCustomerId) {
+      if (accessibleAccounts.length === 0) {
+        return res.status(200).json({
+          ok: true,
+          gated: true,
+          text: "No Google Ads accounts were found linked to your Google login.\n\nPlease make sure your Google account has access to an active Google Ads account.",
+        });
+      }
+
+      if (accessibleAccounts.length === 1) {
+        // Auto-select the only account
+        selectedCustomerId = accessibleAccounts[0].customerId;
+        selectedManagerId = accessibleAccounts[0].managerId || null;
+      } else {
+        // Ask user to select an account
+        const accountsList = accessibleAccounts
+          .map(a => `• **${a.descriptiveName}** — ID: \`${a.customerId.slice(0,3)}-${a.customerId.slice(3,6)}-${a.customerId.slice(6)}\``)
+          .join("\n");
+
+        return res.status(200).json({
+          ok: true,
+          text: `Which Google Ads account would you like to create campaigns for?\n\n${accountsList}\n\nPlease reply with your **Account ID** to continue.`,
+        });
+      }
+    }
+
+    // Save selected account across agent_memory and google_connections
+    if (justSelectedAccountId || !gAdsState?.customerId) {
       gAdsState = {
         stage: "INTAKE_PENDING",
         customerId: selectedCustomerId,
         managerId: selectedManagerId,
-        intake: {},
+        intake: gAdsState?.intake || {},
       };
       try {
         await supabase
@@ -4938,7 +4902,35 @@ async function handleGoogleAdsCampaignFlow(req, res, session, body) {
             updated_at: new Date().toISOString(),
           }, { onConflict: "email,memory_type" });
       } catch (_) {}
+
+      try {
+        await supabase
+          .from("google_connections")
+          .upsert({
+            email: userEmail,
+            customer_id: selectedCustomerId,
+            manager_id: selectedManagerId,
+            updated_at: new Date().toISOString(),
+          }, { onConflict: "email" });
+      } catch (saveErr) {
+        try {
+          await supabase.from("google_connections")
+            .upsert({ email: userEmail, customer_id: selectedCustomerId, updated_at: new Date().toISOString() }, { onConflict: "email" });
+        } catch (_) {}
+      }
     }
+
+    const activeAccountObj = accessibleAccounts.find(a => a.customerId === selectedCustomerId) || {
+      customerId: selectedCustomerId,
+      descriptiveName: `Google Ads Account (${selectedCustomerId})`,
+      currencyCode: "INR",
+      managerId: selectedManagerId,
+    };
+
+    const formattedAccId = selectedCustomerId && selectedCustomerId.length >= 10
+      ? `${selectedCustomerId.slice(0,3)}-${selectedCustomerId.slice(3,6)}-${selectedCustomerId.slice(6)}`
+      : (selectedCustomerId || "Account");
+    const accountCurrency = activeAccountObj.currencyCode || "INR";
 
     const isConfirm =
       lowerInstruction === "yes" ||
