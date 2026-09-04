@@ -5217,7 +5217,10 @@ Respond with ONLY the JSON object, wrapped in \`\`\`json \`\`\`.
     const budgetMicros = Math.round(Number(mergedIntake.daily_budget || 1000) * 1000000);
     const targetLocation = mergedIntake.location || "India";
     const businessLabel = mergedIntake.business_name || mergedIntake.services || "Business";
-    const landingUrl = mergedIntake.landing_page_url || "https://example.com";
+    let landingUrl = mergedIntake.landing_page_url || "https://example.com";
+    if (landingUrl && !landingUrl.startsWith("http://") && !landingUrl.startsWith("https://")) {
+      landingUrl = `https://${landingUrl}`;
+    }
     const isCallGoal = mergedIntake.campaign_goal === "PHONE_CALLS" || Boolean(mergedIntake.phone_number);
     const countryIso = detectCountryCode(mergedIntake.phone_number, targetLocation);
     const biddingChoice = mergedIntake.bidding_strategy || (isCallGoal ? "MAXIMIZE_CONVERSIONS" : "MAXIMIZE_CONVERSIONS");
@@ -5407,10 +5410,6 @@ JSON wrapped in \`\`\`json \`\`\`:
       : ["free", "jobs", "vacancy", "salary", "course", "pdf"];
 
     // 1. Normalize landingUrl
-    let landingUrl = mergedIntake.landing_page_url || "https://example.com";
-    if (landingUrl && !landingUrl.startsWith("http://") && !landingUrl.startsWith("https://")) {
-      landingUrl = `https://${landingUrl}`;
-    }
     const landingNorm = landingUrl.replace(/\/+$/, "").toLowerCase();
 
     // 2. Normalize and resolve user-provided custom sitelinks
