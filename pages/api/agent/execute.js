@@ -17,6 +17,7 @@ import {
   getAccountHierarchy,
   createFullGoogleAdsCampaign,
   detectCountryCode,
+  discoverWebsiteSubpages,
 } from "../../../lib/googleAdsHelper";
 
 const Messages = {
@@ -5093,7 +5094,7 @@ Your task is to extract the following fields in JSON format:
   "bidding_strategy": "MAXIMIZE_CONVERSIONS" or "MAXIMIZE_CLICKS" or null,
   "has_landing_page": true/false,
   "landing_page_url": "valid http/https landing page URL or null",
-  "custom_sitelinks": ["optional specific sitelink paths or names provided by user, e.g. '/pricing', '/services'"],
+  "custom_sitelinks": ["list of sitelink URLs or paths explicitly mentioned by user, e.g. '/pricing', '/services', '/blogs', 'https://nayajevan.com/blogs/' or from phrases like 'sitelinks/blogs', 'sitelinks: /services'"],
   "keyword_action": "APPROVE" (if user says 'looks good', 'proceed', 'yes', 'confirm', 'continue', 'make ads', 'approved') or "MODIFY" (if user asks to add or remove keywords) or null,
   "added_keywords": ["keywords user explicitly asks to add"],
   "removed_keywords": ["keywords user explicitly asks to remove"],
@@ -5115,6 +5116,19 @@ Respond with ONLY the JSON object, wrapped in \`\`\`json \`\`\`.
         }
       } catch (err) {
         console.warn("Intake extraction warning:", err.message);
+      }
+
+      // Regex fallback for sitelinks: e.g. "sitelinks/blogs", "sitelink: https://nayajevan.com/blogs/", "sitelinks: /services, /contact"
+      const sitelinkRegex = /(?:sitelinks?[:\/\s]+)([^\s,]+(?:,\s*[^\s,]+)*)/i;
+      const sitelinkMatch = instruction.match(sitelinkRegex);
+      if (sitelinkMatch && sitelinkMatch[1]) {
+        const parts = sitelinkMatch[1].split(",").map(p => p.trim()).filter(Boolean);
+        if (parts.length > 0) {
+          intakeData.custom_sitelinks = Array.from(new Set([
+            ...(Array.isArray(intakeData.custom_sitelinks) ? intakeData.custom_sitelinks : []),
+            ...parts,
+          ]));
+        }
       }
     }
 
@@ -5392,7 +5406,93 @@ JSON wrapped in \`\`\`json \`\`\`:
       ? currentNegativeKeywords
       : ["free", "jobs", "vacancy", "salary", "course", "pdf"];
 
+    // 1. Normalize landingUrl
+    let landingUrl = mergedIntake.landing_page_url || "https://example.com";
+    if (landingUrl && !landingUrl.startsWith("http://") && !landingUrl.startsWith("https://")) {
+      landingUrl = `https://${landingUrl}`;
+    }
+    const landingNorm = landingUrl.replace(/\/+$/, "").toLowerCase();
+
+    // 2. Normalize and resolve user-provided custom sitelinks
     const customSitelinksList = mergedIntake.custom_sitelinks || [];
+    const normalizedUserSitelinks = [];
+    const seenSitelinkUrls = new Set();
+
+    for (const raw of customSitelinksList) {
+      if (!raw) continue;
+      let clean = String(raw).trim().replace(/^sitelinks?[:\/\s]+/i, "").trim();
+      if (!clean) continue;
+
+      let fullUrl = "";
+      try {
+        if (clean.startsWith("http://") || clean.startsWith("https://")) {
+          fullUrl = clean;
+        } else {
+          const path = clean.startsWith("/") ? clean : "/" + clean;
+          fullUrl = new URL(path, landingUrl).toString();
+        }
+      } catch (_) {
+        continue;
+      }
+
+      const norm = fullUrl.replace(/\/+$/, "").toLowerCase();
+      // Google Ads policy: sitelinks must NOT duplicate the landing page URL
+      if (norm === landingNorm) continue;
+      if (seenSitelinkUrls.has(norm)) continue;
+      seenSitelinkUrls.add(norm);
+
+      let linkText = clean.replace(/https?:\/\/[^\/]+/i, "").replace(/[-_\/]/g, " ").trim();
+      linkText = linkText ? linkText.replace(/\b\w/g, c => c.toUpperCase()).slice(0, 25) : "Learn More";
+
+      normalizedUserSitelinks.push({
+        linkText,
+        finalUrl: fullUrl,
+        source: "user",
+      });
+    }
+
+    // 3. Discover real internal subpages from the website
+    let discoveredPages = [];
+    try {
+      discoveredPages = await discoverWebsiteSubpages(landingUrl);
+    } catch (e) {
+      console.warn("discoverWebsiteSubpages non-fatal error:", e.message);
+    }
+
+    // 4. Combine user sitelinks first, then supplement with real discovered subpages up to 4 total
+    const candidateSitelinks = [...normalizedUserSitelinks];
+    for (const disc of discoveredPages) {
+      if (candidateSitelinks.length >= 4) break;
+      const norm = disc.finalUrl.replace(/\/+$/, "").toLowerCase();
+      if (norm === landingNorm) continue;
+      if (seenSitelinkUrls.has(norm)) continue;
+      seenSitelinkUrls.add(norm);
+
+      candidateSitelinks.push({
+        linkText: disc.linkText,
+        finalUrl: disc.finalUrl,
+        source: "website",
+      });
+    }
+
+    // Improve link text if website anchor matches
+    for (const cand of candidateSitelinks) {
+      const matchDisc = discoveredPages.find(p => p.finalUrl.replace(/\/+$/, "").toLowerCase() === cand.finalUrl.replace(/\/+$/, "").toLowerCase());
+      if (matchDisc && matchDisc.linkText && cand.source === "user") {
+        cand.linkText = matchDisc.linkText;
+      }
+    }
+
+    const sitelinkPromptRule = candidateSitelinks.length > 0
+      ? `4. Sitelink Assets: Generate EXACTLY ${candidateSitelinks.length} sitelink(s) using the verified candidate page(s) below:
+${JSON.stringify(candidateSitelinks, null, 2)}
+   - STRICT POLICY: Every sitelink MUST have a UNIQUE destination "finalUrl" matching one of the candidate pages above.
+   - DO NOT invent non-existent subpages (like /services or /contact or /about) if they are not in the candidate list.
+   - NEVER set finalUrl to the root homepage URL (${landingUrl}) because Google Ads strictly rejects duplicate destination URLs.
+   - linkText: STRICTLY maximum 25 characters
+   - description1: STRICTLY maximum 35 characters
+   - description2: STRICTLY maximum 35 characters`
+      : `4. Sitelink Assets: Set "sitelinks": [] (empty array) because this website has no separate subpages and Google Ads forbids sitelinks pointing to the identical homepage URL.`;
 
     const planPrompt = `
 You are GabbarInfo AI, a world-class Google Ads strategist and copywriter.
@@ -5413,7 +5513,7 @@ VERIFIED BUSINESS DETAILS:
 - Daily Budget: ${accountCurrency} ${mergedIntake.daily_budget} (dailyBudgetMicros: ${budgetMicros})
 - Bidding Strategy: ${biddingChoice}
 - Landing Page URL: ${landingUrl}
-- User Provided Sitelinks: ${JSON.stringify(customSitelinksList)}
+- Verified Candidate Sitelinks: ${JSON.stringify(candidateSitelinks)}
 - FINALIZED TARGET KEYWORDS: ${JSON.stringify(finalizedKeywords)}
 - FINALIZED NEGATIVE KEYWORDS: ${JSON.stringify(finalizedNegatives)}
 
@@ -5428,13 +5528,7 @@ STRICT COPY & ASSET RULES:
    - Description 3: Pricing advantages, transparent estimates, fast turnaround, satisfaction guarantee.
    - Description 4: Strong conversion CTA (Call now or visit our website to get started).
 3. Business Name: Set "businessName" to "${(mergedIntake.business_name || businessLabel).slice(0, 25)}" (STRICTLY max 25 characters) to link as a Google Ads Business Name asset.
-4. Sitelink Assets: EXACTLY 4 professional sitelinks tailored to this business.
-   - If User Provided Sitelinks exist (${JSON.stringify(customSitelinksList)}), include them as the first sitelinks!
-   - Auto-generate the remaining sitelinks to make exactly 4 (e.g. Services, Get A Quote, Client Reviews, About Us).
-   - linkText: STRICTLY maximum 25 characters
-   - description1: STRICTLY maximum 35 characters
-   - description2: STRICTLY maximum 35 characters
-   - finalUrl: ${landingUrl}
+${sitelinkPromptRule}
 5. Callout Assets: EXACTLY 4 standout unique selling propositions (USPs) as callout badges, STRICTLY maximum 25 characters each (e.g. "Verified & Certified", "24/7 Fast Support", "Transparent Pricing", "Top Rated Service").
 6. Call Asset: ${mergedIntake.phone_number ? `Configure callAsset with phoneNumber "${mergedIntake.phone_number}" and countryCode "${countryIso}".` : "Set callAsset to null if no phone number was provided."}
 
@@ -5457,32 +5551,12 @@ You MUST start with a valid JSON block inside \`\`\`json ... \`\`\` using this E
     "negativeKeywords": ${JSON.stringify(finalizedNegatives)}
   },
   "negativeKeywords": ${JSON.stringify(finalizedNegatives)},
-  "sitelinks": [
-    {
-      "linkText": "Our Services",
-      "description1": "Explore our full services",
-      "description2": "High quality & reliable",
-      "finalUrl": "${landingUrl}"
-    },
-    {
-      "linkText": "Get Free Quote",
-      "description1": "Quick & transparent estimates",
-      "description2": "Contact our team right now",
-      "finalUrl": "${landingUrl}"
-    },
-    {
-      "linkText": "Why Choose Us",
-      "description1": "Experienced & trusted team",
-      "description2": "100% customer satisfaction",
-      "finalUrl": "${landingUrl}"
-    },
-    {
-      "linkText": "Client Reviews",
-      "description1": "Read genuine customer reviews",
-      "description2": "Trusted by hundreds of clients",
-      "finalUrl": "${landingUrl}"
-    }
-  ],
+  "sitelinks": ${candidateSitelinks.length > 0 ? JSON.stringify(candidateSitelinks.map(c => ({
+    linkText: c.linkText,
+    description1: "Helpful insights & information",
+    description2: "Learn more & get in touch",
+    finalUrl: c.finalUrl
+  })), null, 2) : "[]"},
   "callouts": [
     "Verified & Certified",
     "Prompt & Reliable",
@@ -5532,7 +5606,9 @@ Followed by a clean, professional campaign summary highlighting:
 - 💰 **Daily Budget:** ${accountCurrency === "INR" ? "₹" : accountCurrency + " "}${mergedIntake.daily_budget}/day
 - 🌐 **Landing Page:** ${landingUrl}
 ${mergedIntake.phone_number ? `- 📞 **Call Extension (Click-to-Call):** Attached with number \`${mergedIntake.phone_number}\`\n` : ""}
-- 🔗 **Sitelink Extensions (4 Links):** List the 4 sitelinks with linkText, descriptions, and destination
+${candidateSitelinks.length > 0
+  ? `- 🔗 **Sitelink Extension${candidateSitelinks.length > 1 ? "s" : ""} (${candidateSitelinks.length} Link${candidateSitelinks.length > 1 ? "s" : ""}):** List each sitelink with linkText, descriptions, and destination`
+  : `- 🔗 **Sitelink Extensions:** None (landing page has no separate subpages)`}
 - 💡 **Callout Badges (4 USPs):** List the 4 callouts
 - 🛡️ **Negative Keywords Applied:** List the negative exclusions
 - 🎯 **Top Target Keywords (${finalizedKeywords.length})**
@@ -5557,6 +5633,41 @@ And conclude with:
           try {
             extractedPlan = JSON.parse(jsonMatch[1]);
           } catch (_) {}
+        }
+
+        // Safety verification of sitelinks
+        if (extractedPlan) {
+          if (Array.isArray(extractedPlan.sitelinks) && candidateSitelinks.length > 0) {
+            const seenCleanUrls = new Set();
+            extractedPlan.sitelinks = extractedPlan.sitelinks.filter(s => {
+              if (!s || !s.finalUrl) return false;
+              let sUrl = String(s.finalUrl).trim();
+              if (!sUrl.startsWith("http://") && !sUrl.startsWith("https://")) {
+                try {
+                  sUrl = new URL(sUrl.startsWith("/") ? sUrl : "/" + sUrl, landingUrl).toString();
+                } catch (_) {
+                  return false;
+                }
+              }
+              const norm = sUrl.replace(/\/+$/, "").toLowerCase();
+              if (norm === landingNorm) return false;
+              if (seenCleanUrls.has(norm)) return false;
+              seenCleanUrls.add(norm);
+              s.finalUrl = sUrl;
+              return true;
+            });
+
+            if (extractedPlan.sitelinks.length === 0) {
+              extractedPlan.sitelinks = candidateSitelinks.map(c => ({
+                linkText: c.linkText,
+                description1: "Helpful articles & insights",
+                description2: "Learn more & get in touch",
+                finalUrl: c.finalUrl,
+              }));
+            }
+          } else if (candidateSitelinks.length === 0 && extractedPlan) {
+            extractedPlan.sitelinks = [];
+          }
         }
       } catch (geminiErr) {
         console.error("Gemini plan generation error:", geminiErr);
