@@ -23,6 +23,10 @@ import {
   getExistingCampaignNames,
   getUniqueCampaignName,
   exchangeRefreshToken,
+  getConversionTrackingSettings,
+  listConversionActions,
+  createConversionAction,
+  auditWebsiteTracking,
 } from "../../../lib/googleAdsHelper";
 
 const Messages = {
@@ -4947,6 +4951,165 @@ async function handleGoogleAdsCampaignFlow(req, res, session, body) {
       lowerInstruction === "publish" ||
       lowerInstruction === "create campaign" ||
       lowerInstruction.includes("create it now");
+
+    // 4b. Dedicated Tracking & WordPress Plugin Diagnostic Flow
+    const isTrackingIntent =
+      lowerInstruction.includes("fix tracking") ||
+      lowerInstruction.includes("setup tracking") ||
+      lowerInstruction.includes("set up tracking") ||
+      lowerInstruction.includes("check tracking") ||
+      lowerInstruction.includes("audit tracking") ||
+      lowerInstruction.includes("verify tracking") ||
+      lowerInstruction.includes("gtag") ||
+      lowerInstruction.includes("conversion tracking") ||
+      lowerInstruction.includes("conversion action") ||
+      lowerInstruction.includes("wordpress plugin") ||
+      lowerInstruction.includes("gabbarinfo connect") ||
+      (lowerInstruction.includes("tracking") && (lowerInstruction.includes("how") || lowerInstruction.includes("can") || lowerInstruction.includes("fix") || lowerInstruction.includes("status")));
+
+    const isCreateConversionIntent =
+      lowerInstruction.includes("create conversion action") ||
+      lowerInstruction.includes("create conversion") ||
+      lowerInstruction.includes("add conversion action");
+
+    if ((isTrackingIntent || isCreateConversionIntent) && selectedCustomerId) {
+      try {
+        const exch = await exchangeRefreshToken({ refreshToken });
+        const accessToken = exch.accessToken;
+
+        if (accessToken) {
+          const targetManagerId = activeAccountObj.managerId || gAdsState?.managerId || null;
+          const urlInPrompt = instruction.match(/https?:\/\/[^\s"'<>]+/i)?.[0] || null;
+          const trackingTargetUrl = urlInPrompt || gAdsState?.intake?.landing_page_url || null;
+
+          // 1. If user explicitly requested creating a conversion action
+          if (isCreateConversionIntent) {
+            const isEcom = gAdsState?.intake?.is_ecommerce || lowerInstruction.includes("purchase") || lowerInstruction.includes("ecommerce");
+            const actionName = isEcom ? "WooCommerce Purchase (GabbarInfo AI)" : "Website Lead Form (GabbarInfo AI)";
+            const actionCat = isEcom ? "PURCHASE" : "SUBMIT_LEAD_FORM";
+
+            const createRes = await createConversionAction({
+              accessToken,
+              customerId: selectedCustomerId,
+              loginCustomerId: targetManagerId,
+              name: actionName,
+              category: actionCat,
+              defaultValue: isEcom ? 100.0 : 1.0,
+              defaultCurrencyCode: activeAccountObj.currencyCode || "INR",
+            });
+
+            if (createRes.ok) {
+              const tagSettings = await getConversionTrackingSettings({
+                accessToken,
+                customerId: selectedCustomerId,
+                loginCustomerId: targetManagerId,
+              });
+
+              return res.status(200).json({
+                ok: true,
+                text: `✅ **Google Ads Conversion Action Successfully Created!**\n\n` +
+                  `• **Action Name:** ${actionName}\n` +
+                  `• **Category:** \`${actionCat}\`\n` +
+                  `• **Google Tag ID:** \`${tagSettings.googleTagId || "AW-" + tagSettings.conversionTrackingId}\`\n` +
+                  (createRes.conversionLabel ? `• **Conversion Label:** \`${createRes.conversionLabel}\`\n` : "") +
+                  `• **Status:** Active & Ready for events\n\n` +
+                  `### 🚀 How to activate on your website:\n` +
+                  `• **WordPress / WooCommerce:** Install the [GabbarInfo AI Connect Plugin](/api/wordpress/download). It automatically injects your Google Tag and tracks dynamic purchases!\n` +
+                  `• **Shopify / Custom:** Add the Google Tag ID (\`${tagSettings.googleTagId}\`) in your site settings.`
+              });
+            } else {
+              return res.status(200).json({
+                ok: false,
+                text: `⚠️ **Could not create conversion action**: ${createRes.error?.message || JSON.stringify(createRes.error || {})}`
+              });
+            }
+          }
+
+          // 2. Audit Tracking
+          const tagSettings = await getConversionTrackingSettings({
+            accessToken,
+            customerId: selectedCustomerId,
+            loginCustomerId: targetManagerId,
+          });
+
+          const conversionActionsRes = await listConversionActions({
+            accessToken,
+            customerId: selectedCustomerId,
+            loginCustomerId: targetManagerId,
+          });
+
+          const siteAudit = trackingTargetUrl
+            ? await auditWebsiteTracking(trackingTargetUrl)
+            : null;
+
+          const googleTagId = tagSettings.googleTagId || (tagSettings.conversionTrackingId ? `AW-${tagSettings.conversionTrackingId}` : null);
+          const actionsList = conversionActionsRes.conversionActions || [];
+
+          let auditText = `🎯 **Google Ads Conversion Tracking Diagnostic Report**\n\n`;
+          auditText += `• **Google Ads Account:** ${activeAccountObj.descriptiveName} (\`${formattedAccId}\`)\n`;
+          auditText += `• **Account Google Tag ID:** ${googleTagId ? `\`${googleTagId}\`` : "⚠️ Not configured yet"}\n`;
+          auditText += `• **Enhanced Conversions:** ${tagSettings.enhancedConversionsEnabled ? "🟢 Enabled" : "⚪ Disabled"}\n`;
+          auditText += `• **Active Conversion Actions in Google Ads:** ${actionsList.length} action(s)\n`;
+
+          if (actionsList.length > 0) {
+            actionsList.forEach(a => {
+              auditText += `  - **${a.name}** (\`${a.category}\`) — Status: \`${a.status}\`${a.conversionLabel ? ` | Label: \`${a.conversionLabel}\`` : ""}\n`;
+            });
+          } else {
+            auditText += `  *(No active conversion actions found. Reply **"Create conversion action"** to auto-create one)*\n`;
+          }
+
+          if (siteAudit) {
+            auditText += `\n---\n\n🌐 **Live Website Scan for:** \`${siteAudit.url}\`\n`;
+            auditText += `• **Detected Platform:** ${siteAudit.cms}\n`;
+            auditText += `• **Google Tag (gtag.js):** ${siteAudit.tracking.hasGoogleTag ? `🟢 Active (${siteAudit.tracking.googleTagIds.join(", ")})` : "🔴 Not detected"}\n`;
+            auditText += `• **Google Tag Manager (GTM):** ${siteAudit.tracking.hasGtm ? `🟢 Active (\`${siteAudit.tracking.gtmId}\`)` : "⚪ Not installed"}\n`;
+            auditText += `• **Meta (Facebook) Pixel:** ${siteAudit.tracking.hasMetaPixel ? `🟢 Active (\`${siteAudit.tracking.metaPixelId}\`)` : "⚪ Not detected"}\n`;
+            auditText += `• **GabbarInfo Connect Plugin:** ${siteAudit.hasGabbarPlugin ? "🟢 Connected & Active" : "⚪ Not installed"}\n`;
+
+            if (siteAudit.isWordPress) {
+              auditText += `\n### 🔌 Recommended 1-Click Fix (WordPress & WooCommerce):\n` +
+                `Because your website runs on **${siteAudit.cms}**, you can use the **GabbarInfo AI Connect** plugin:\n` +
+                `1. 📥 **[Download GabbarInfo Connect Plugin (.zip)](/api/wordpress/download)**\n` +
+                `2. In WordPress Admin: Go to **Plugins ➔ Add New ➔ Upload Plugin**, select the .zip and click **Activate**.\n` +
+                `3. Go to **Settings ➔ GabbarInfo AI** and copy your **Pairing Key** (or enter your Google Tag ID: \`${googleTagId || "AW-XXXXX"}\`).\n` +
+                `4. **Done!** It automatically injects your Google Tag, handles WooCommerce revenue tracking, and records form leads without editing any theme code!\n`;
+            } else if (siteAudit.isShopify) {
+              auditText += `\n### 🛍️ Recommended Setup for Shopify:\n` +
+                `1. Open your **Shopify Admin** ➔ **Online Store** ➔ **Preferences**.\n` +
+                `2. Under **Google Tag / Google & YouTube app**, enter your Google Tag ID: \`${googleTagId || "AW-XXXXX"}\`.\n` +
+                `3. Click **Save**.\n`;
+            } else {
+              auditText += `\n### 💻 Custom HTML / Webflow Setup:\n` +
+                `Paste this snippet immediately inside the \`<head>\` of every page on your site:\n\n` +
+                `\`\`\`html\n` +
+                `<!-- Global site tag (gtag.js) - Google Ads -->\n` +
+                `<script async src="https://www.googletagmanager.com/gtag/js?id=${googleTagId || "AW-XXXXX"}"></script>\n` +
+                `<script>\n` +
+                `  window.dataLayer = window.dataLayer || [];\n` +
+                `  function gtag(){dataLayer.push(arguments);}\n` +
+                `  gtag('js', new Date());\n` +
+                `  gtag('config', '${googleTagId || "AW-XXXXX"}');\n` +
+                `</script>\n` +
+                `\`\`\`\n`;
+            }
+          } else {
+            auditText += `\n💡 *Tip: Provide your landing page URL (e.g., "Check tracking on https://mysite.com") to run a live scan and get platform-specific setup instructions.*`;
+          }
+
+          return res.status(200).json({
+            ok: true,
+            text: auditText,
+          });
+        }
+      } catch (trackErr) {
+        console.error("Tracking audit error:", trackErr);
+        return res.status(200).json({
+          ok: false,
+          text: `⚠️ **Tracking Diagnostic Error**: ${trackErr.message || "Could not retrieve tracking details."}`,
+        });
+      }
+    }
 
     // 5. Execution Step: User confirmed the proposed plan
     if (gAdsState?.stage === "PLAN_PROPOSED" && isConfirm && gAdsState.plan && !justSelectedAccountId) {
