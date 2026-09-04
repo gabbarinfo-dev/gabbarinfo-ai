@@ -166,8 +166,8 @@ export default function HomePage() {
           gap: 24,
         }}
       >
-        {/* 📧 MISSING EMAIL COLLECTION FLOW */}
-        {!session.user.email && (
+        {/* 📧 OPTIONAL EMAIL LINKING FOR FACEBOOK PHONE ACCOUNTS */}
+        {session?.user?.email?.includes("@facebook.gabbarinfo.ai") && (
           <EmailFallbackForm />
         )}
 
@@ -350,8 +350,8 @@ function EmailFallbackForm() {
     >
       <div style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: 16 }}>
         <div style={{ 
-          background: "#fee2e2", 
-          color: "#dc2626", 
+          background: "#e0f2fe", 
+          color: "#0284c7", 
           width: 40, 
           height: 40, 
           borderRadius: "50%", 
@@ -360,15 +360,14 @@ function EmailFallbackForm() {
           justifyContent: "center",
           fontSize: 20
         }}>
-          ⚠️
+          📧
         </div>
-        <h2 style={{ margin: 0, fontSize: 18, color: "#1e293b" }}>Email Required</h2>
+        <h2 style={{ margin: 0, fontSize: 18, color: "#1e293b" }}>Link Your Email (Optional)</h2>
       </div>
 
       <p style={{ fontSize: 14, color: "#64748b", lineHeight: 1.6, marginBottom: 20 }}>
-        We couldn't retrieve your email from your Facebook login. 
-        Please provide an email address to use as your identifier on this platform.
-        <strong> This is required to connect Facebook Business assets.</strong>
+        You are currently logged in via Facebook. All Meta and Instagram features and AI services are active.
+        If you would like to link a personal email for account notifications or future Google Ads integration, you can enter it below.
       </p>
 
       <form onSubmit={handleSubmit} style={{ display: "flex", flexDirection: "column", gap: 12 }}>

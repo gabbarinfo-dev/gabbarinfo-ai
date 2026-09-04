@@ -47,11 +47,14 @@ export const authOptions = {
         },
       },
       profile(profile) {
+        const rawEmail = profile.email ? String(profile.email).toLowerCase().trim() : null;
+        // Deterministic synthetic email for Facebook users registered with phone number only
+        const syntheticEmail = `fb_${profile.id}@facebook.gabbarinfo.ai`;
         return {
-          id: profile.id,
+          id: String(profile.id),
           name: profile.name,
-          email: profile.email,
-          image: profile.picture.data.url,
+          email: rawEmail || syntheticEmail,
+          image: profile.picture?.data?.url || null,
         };
       },
     }),
@@ -60,24 +63,42 @@ export const authOptions = {
   secret: process.env.NEXTAUTH_SECRET,
 
   callbacks: {
-    // 🔐 SIGN-IN CONTROL
+    // 🔐 SIGN-IN CONTROL (Open to all Google and Facebook users)
     async signIn({ user, account }) {
-      // ✅ Allow ALL Facebook logins (reviewers / testers)
-      if (account?.provider === "facebook") {
-        return true;
+      const email = user?.email?.toLowerCase().trim();
+      if (!email) return false;
+
+      // Auto-provision user in allowed_users and credits if not present
+      if (supabaseServer) {
+        try {
+          const { data: existingUser } = await supabaseServer
+            .from("allowed_users")
+            .select("role")
+            .eq("email", email)
+            .maybeSingle();
+
+          if (!existingUser) {
+            await supabaseServer
+              .from("allowed_users")
+              .insert({ email, role: "client" });
+          }
+
+          const { data: creditRow } = await supabaseServer
+            .from("credits")
+            .select("credits_left")
+            .eq("email", email)
+            .maybeSingle();
+
+          if (!creditRow) {
+            await supabaseServer
+              .from("credits")
+              .insert({ email, credits_left: 30 });
+          }
+        } catch (dbErr) {
+          console.warn("Auto-provision user in allowed_users / credits error:", dbErr.message);
+        }
       }
 
-      // 🔒 Google login → whitelist check
-      const email = user?.email?.toLowerCase().trim();
-      if (!email || !supabaseClient) return false;
-
-      const { data, error } = await supabaseClient
-        .from("allowed_users")
-        .select("role")
-        .eq("email", email)
-        .maybeSingle();
-
-      if (error || !data) return false;
       return true;
     },
 
@@ -88,31 +109,50 @@ export const authOptions = {
         if (account.refresh_token) {
           token.refreshToken = account.refresh_token;
         }
+        token.provider = account.provider;
       }
 
-      const emailToUse = user?.email || token.email;
-
-      // 🔍 FALLBACK: Check for email override if currently missing
-      if (!emailToUse && token.sub && supabaseServer) {
-        const { data } = await supabaseServer
-          .from("user_email_overrides")
-          .select("email")
-          .eq("provider_id", token.sub)
-          .maybeSingle();
-        
-        if (data?.email) {
-          token.email = data.email;
+      if (user) {
+        token.sub = String(user.id || token.sub);
+        if (user.email) {
+          token.email = user.email.toLowerCase().trim();
         }
       }
 
-      if (token.email && supabaseClient) {
-        const { data } = await supabaseClient
-          .from("allowed_users")
-          .select("role")
-          .eq("email", token.email.toLowerCase().trim())
-          .maybeSingle();
+      // 🔍 FALLBACK: Check for user-defined email override in user_email_overrides
+      if (token.sub && supabaseServer) {
+        try {
+          const { data } = await supabaseServer
+            .from("user_email_overrides")
+            .select("email")
+            .eq("provider_id", token.sub)
+            .maybeSingle();
+          
+          if (data?.email) {
+            token.email = data.email.toLowerCase().trim();
+          }
+        } catch (_) {}
+      }
 
-        token.role = data?.role || "client";
+      // If token still lacks an email but has a sub from Facebook, assign synthetic fallback
+      if (!token.email && token.sub) {
+        token.email = `fb_${token.sub}@facebook.gabbarinfo.ai`;
+      }
+
+      if (token.email && supabaseClient) {
+        try {
+          const { data } = await supabaseClient
+            .from("allowed_users")
+            .select("role")
+            .eq("email", token.email.toLowerCase().trim())
+            .maybeSingle();
+
+          token.role = data?.role || "client";
+        } catch (_) {
+          token.role = token.role || "client";
+        }
+      } else {
+        token.role = token.role || "client";
       }
 
       return token;
@@ -122,9 +162,10 @@ export const authOptions = {
     async session({ session, token }) {
       session.user.role = token?.role || "client";
       session.user.id = token?.sub; 
-      session.user.email = token?.email || session.user.email; // 📧 Explicitly map fallback email
+      session.user.email = token?.email || session.user.email;
       session.accessToken = token?.accessToken;
       session.refreshToken = token?.refreshToken;
+      session.provider = token?.provider;
       return session;
     },
   },
@@ -138,7 +179,7 @@ export const authOptions = {
   },
 
   events: {
-    // 💾 SAVE GOOGLE REFRESH TOKEN (unchanged logic, safer guards)
+    // 💾 SAVE GOOGLE REFRESH TOKEN
     async signIn({ user, account }) {
       if (
         account?.provider !== "google" ||
@@ -160,7 +201,7 @@ export const authOptions = {
 
       const { error } = await supabaseServer
         .from("google_connections")
-        .upsert(upsertObj, { onConflict: ["email"] });
+        .upsert(upsertObj, { onConflict: "email" });
 
       if (error) {
         console.error("Google refresh token save failed:", error);
