@@ -2,6 +2,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import Link from "next/link";
 import { signIn, signOut, useSession } from "next-auth/react";
 import BuyCreditsModal from "./components/BuyCreditsModal";
 
@@ -971,41 +972,95 @@ Now respond as GabbarInfo AI.
 
   // ---------- AUTH STATES ----------
   if (status === "loading") {
-    return <div style={{ padding: 40 }}>Checking session…</div>;
+    return (
+      <div style={{ minHeight: "100vh", display: "flex", alignItems: "center", justifyContent: "center", background: "#080b11", color: "#94a3b8", fontFamily: "'Plus Jakarta Sans', sans-serif" }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+          <div style={{ width: 22, height: 22, border: "2.5px solid rgba(59, 130, 246, 0.2)", borderTopColor: "#3b82f6", borderRadius: "50%", animation: "spin 0.8s linear infinite" }} />
+          <span style={{ fontSize: 14 }}>Connecting to GabbarInfo Neural Core…</span>
+        </div>
+      </div>
+    );
   }
 
   if (!session) {
     return (
-      <div style={{ fontFamily: "Inter, Arial", padding: 40 }}>
-        <h1>GabbarInfo AI</h1>
-        <p>Please sign in to use GabbarInfo AI.</p>
-        <button
-          onClick={() => signIn("google")}
+      <div
+        style={{
+          minHeight: "100vh",
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "center",
+          background: "#080b11",
+          fontFamily: "'Plus Jakarta Sans', sans-serif",
+          padding: 24,
+        }}
+      >
+        <div
           style={{
-            marginTop: 16,
-            padding: "10px 16px",
-            borderRadius: 6,
-            border: "1px solid #ddd",
-            background: "#fff",
-            cursor: "pointer",
+            maxWidth: 420,
+            width: "100%",
+            background: "rgba(15, 23, 42, 0.75)",
+            backdropFilter: "blur(20px)",
+            border: "1px solid rgba(255, 255, 255, 0.08)",
+            borderRadius: 20,
+            padding: 32,
+            boxShadow: "0 24px 60px rgba(0, 0, 0, 0.5)",
+            textAlign: "center",
           }}
         >
-          Sign in with Google
-        </button>
-        <div style={{ height: 8 }} />
-        <button
-          onClick={() => signIn("facebook")}
-          style={{
-            padding: "10px 16px",
-            borderRadius: 6,
-            border: "1px solid #ddd",
-            background: "#1877F2",
-            color: "#fff",
-            cursor: "pointer",
-          }}
-        >
-          Continue with Facebook
-        </button>
+          <div style={{ width: 56, height: 56, margin: "0 auto 16px", borderRadius: 16, background: "linear-gradient(135deg, #2563eb, #7c3aed)", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 26, boxShadow: "0 8px 24px rgba(37, 99, 235, 0.35)" }}>
+            ⚡
+          </div>
+          <h1 style={{ margin: "0 0 8px", fontSize: 22, fontWeight: 800, color: "#f8fafc", letterSpacing: "-0.02em" }}>
+            GabbarInfo AI
+          </h1>
+          <p style={{ margin: "0 0 24px", fontSize: 14, color: "#94a3b8", lineHeight: 1.5 }}>
+            Sign in to access your autonomous digital marketing & SEO strategist.
+          </p>
+          <button
+            onClick={() => signIn("google")}
+            style={{
+              width: "100%",
+              padding: "12px 18px",
+              borderRadius: 12,
+              border: "1px solid rgba(255, 255, 255, 0.15)",
+              background: "#ffffff",
+              color: "#0f172a",
+              fontWeight: 600,
+              fontSize: 14,
+              cursor: "pointer",
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+              gap: 10,
+              boxShadow: "0 4px 14px rgba(0, 0, 0, 0.15)",
+              marginBottom: 12,
+            }}
+          >
+            <span>Continue with Google</span>
+          </button>
+          <button
+            onClick={() => signIn("facebook")}
+            style={{
+              width: "100%",
+              padding: "12px 18px",
+              borderRadius: 12,
+              border: "none",
+              background: "#1877F2",
+              color: "#ffffff",
+              fontWeight: 600,
+              fontSize: 14,
+              cursor: "pointer",
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+              gap: 10,
+              boxShadow: "0 4px 14px rgba(24, 119, 242, 0.3)",
+            }}
+          >
+            <span>Continue with Facebook</span>
+          </button>
+        </div>
       </div>
     );
   }
@@ -1014,7 +1069,7 @@ Now respond as GabbarInfo AI.
   return (
     <div
       style={{
-        fontFamily: "Inter, Arial",
+        fontFamily: "'Plus Jakarta Sans', sans-serif",
         height: "100dvh",
         maxHeight: "100dvh",
         width: "100vw",
@@ -1022,7 +1077,8 @@ Now respond as GabbarInfo AI.
         overflow: "hidden",
         display: "flex",
         flexDirection: "column",
-        background: "#fafafa",
+        background: "#080b11",
+        color: "#f8fafc",
         boxSizing: "border-box",
       }}
     >
@@ -1033,36 +1089,115 @@ Now respond as GabbarInfo AI.
           display: "flex",
           justifyContent: "space-between",
           alignItems: "center",
-          padding: 12,
-          paddingLeft: isMobile ? 12 : 18,
-          paddingRight: isMobile ? 12 : 18,
-          borderBottom: "1px solid #eee",
-          background: "#fff",
+          padding: "10px 16px",
+          borderBottom: "1px solid rgba(255, 255, 255, 0.08)",
+          background: "rgba(15, 23, 42, 0.85)",
+          backdropFilter: "blur(16px)",
           zIndex: 20,
         }}
       >
-        <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-          <strong>GabbarInfo AI</strong>
-          <span>— Chat</span>
+        {/* Left: Brand + Quick Nav */}
+        <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+            <div
+              style={{
+                width: 32,
+                height: 32,
+                borderRadius: 9,
+                background: "linear-gradient(135deg, #2563eb, #7c3aed)",
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
+                fontSize: 16,
+                boxShadow: "0 2px 10px rgba(37, 99, 235, 0.35)",
+              }}
+            >
+              ⚡
+            </div>
+            <span
+              style={{
+                fontSize: 16,
+                fontWeight: 800,
+                letterSpacing: "-0.02em",
+                background: "linear-gradient(135deg, #ffffff 40%, #93c5fd)",
+                WebkitBackgroundClip: "text",
+                WebkitTextFillColor: "transparent",
+              }}
+            >
+              GabbarInfo AI
+            </span>
+          </div>
+
+          <div style={{ height: 18, width: 1, background: "rgba(255, 255, 255, 0.12)", margin: "0 2px" }} />
+
+          {/* Navigation Chips to other parts of the suite */}
+          <Link
+            href="/"
+            style={{
+              padding: "5px 10px",
+              borderRadius: 8,
+              border: "1px solid rgba(255, 255, 255, 0.08)",
+              background: "rgba(255, 255, 255, 0.03)",
+              color: "#94a3b8",
+              fontSize: 12,
+              textDecoration: "none",
+              display: isMobile ? "none" : "flex",
+              alignItems: "center",
+              gap: 5,
+              transition: "all 0.15s ease",
+            }}
+          >
+            <span>🏠</span>
+            <span>Dashboard</span>
+          </Link>
+
+          <Link
+            href="/seo"
+            style={{
+              padding: "5px 10px",
+              borderRadius: 8,
+              border: "1px solid rgba(16, 185, 129, 0.25)",
+              background: "rgba(16, 185, 129, 0.08)",
+              color: "#34d399",
+              fontSize: 12,
+              fontWeight: 600,
+              textDecoration: "none",
+              display: isMobile ? "none" : "flex",
+              alignItems: "center",
+              gap: 5,
+              transition: "all 0.15s ease",
+            }}
+          >
+            <span>🌐</span>
+            <span>SEO Suite</span>
+          </Link>
+
           <button
             onClick={handleNewChat}
             style={{
-              padding: "4px 10px",
-              borderRadius: 6,
-              border: "1px solid #ddd",
+              padding: "5px 12px",
+              borderRadius: 8,
+              border: "1px solid rgba(59, 130, 246, 0.3)",
+              background: "rgba(59, 130, 246, 0.12)",
+              color: "#60a5fa",
               fontSize: 12,
+              fontWeight: 600,
               cursor: "pointer",
-              background: "#fafafa",
+              display: "flex",
+              alignItems: "center",
+              gap: 4,
             }}
           >
-            New chat
+            <span>+</span>
+            <span>New Chat</span>
           </button>
         </div>
 
+        {/* Right: Credits, User info, Sign out */}
         <div
           style={{
             display: "flex",
-            gap: 8,
+            gap: 10,
             alignItems: "center",
             maxWidth: isMobile ? "55%" : "none",
             justifyContent: "flex-end",
@@ -1071,19 +1206,20 @@ Now respond as GabbarInfo AI.
           <span
             style={{
               fontSize: 11,
-              padding: "4px 8px",
+              fontWeight: 600,
+              padding: "4px 10px",
               borderRadius: 999,
-              border: "1px solid #ddd",
-              background: role === "owner" ? "#ffe8cc" : "#e8f0fe",
-              color: role === "owner" ? "#8a3c00" : "#174ea6",
+              border: role === "owner" ? "1px solid rgba(245, 158, 11, 0.3)" : "1px solid rgba(59, 130, 246, 0.3)",
+              background: role === "owner" ? "rgba(245, 158, 11, 0.12)" : "rgba(59, 130, 246, 0.12)",
+              color: role === "owner" ? "#fbbf24" : "#93c5fd",
               whiteSpace: "nowrap",
             }}
           >
             {role === "owner"
-              ? "Owner · Unlimited"
+              ? "👑 Owner · Unlimited"
               : creditsLoading
-                ? "Client · Credits: …"
-                : `Client · Credits: ${credits ?? 0}`}
+                ? "⚡ Credits: …"
+                : `⚡ Credits: ${credits ?? 0}`}
           </span>
 
           {/* ➕ Add Credits button — visible to non-owners only */}
@@ -1093,13 +1229,14 @@ Now respond as GabbarInfo AI.
               style={{
                 padding: "4px 10px",
                 borderRadius: 8,
-                border: "1.5px solid #4f46e5",
-                background: "#eef2ff",
-                color: "#4f46e5",
+                border: "1px solid rgba(139, 92, 246, 0.4)",
+                background: "rgba(139, 92, 246, 0.15)",
+                color: "#c4b5fd",
                 fontWeight: 600,
                 fontSize: 11,
                 cursor: "pointer",
                 whiteSpace: "nowrap",
+                transition: "all 0.15s ease",
               }}
             >
               ➕ Add Credits
@@ -1109,10 +1246,12 @@ Now respond as GabbarInfo AI.
           <div
             style={{
               fontSize: 12,
-              color: "#333",
+              color: "#94a3b8",
               overflow: "hidden",
               textOverflow: "ellipsis",
               whiteSpace: "nowrap",
+              maxWidth: 160,
+              display: isMobile ? "none" : "block",
             }}
           >
             {session.user?.email}
@@ -1121,9 +1260,13 @@ Now respond as GabbarInfo AI.
           <button
             onClick={handleSignOut}
             style={{
-              padding: "6px 8px",
-              borderRadius: 6,
+              padding: "5px 10px",
+              borderRadius: 8,
+              border: "1px solid rgba(255, 255, 255, 0.1)",
+              background: "rgba(255, 255, 255, 0.05)",
+              color: "#94a3b8",
               fontSize: 12,
+              cursor: "pointer",
               whiteSpace: "nowrap",
             }}
           >
@@ -1145,45 +1288,58 @@ Now respond as GabbarInfo AI.
         {/* SIDEBAR */}
         <aside
           style={{
-            width: isMobile ? "100%" : 260,
-            borderRight: isMobile ? "none" : "1px solid #eee",
-            borderBottom: isMobile ? "1px solid #eee" : "none",
-            padding: 12,
-            paddingTop: 10,
-            paddingBottom: 10,
+            width: isMobile ? "100%" : 280,
+            borderRight: isMobile ? "none" : "1px solid rgba(255, 255, 255, 0.08)",
+            borderBottom: isMobile ? "1px solid rgba(255, 255, 255, 0.08)" : "none",
+            padding: 14,
             display: "flex",
             flexDirection: "column",
-            gap: 10,
+            gap: 12,
             flexShrink: 0,
-            background: "#fff",
+            background: "rgba(10, 14, 23, 0.95)",
+            backdropFilter: "blur(16px)",
             boxSizing: "border-box",
           }}
         >
-          <div style={{ fontWeight: 600, fontSize: 15 }}>Conversations</div>
+          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+            <span style={{ fontWeight: 700, fontSize: 13, textTransform: "uppercase", letterSpacing: "0.05em", color: "#94a3b8" }}>
+              Conversations
+            </span>
+            <span style={{ fontSize: 11, color: "#64748b" }}>
+              {chats.length} active
+            </span>
+          </div>
 
           <button
             onClick={handleNewChat}
             style={{
               width: "100%",
               textAlign: "left",
-              padding: "10px 12px",
-              borderRadius: 8,
-              border: "1px solid #ddd",
-              background: "#f5f5f5",
+              padding: "10px 14px",
+              borderRadius: 10,
+              border: "1px solid rgba(59, 130, 246, 0.3)",
+              background: "rgba(59, 130, 246, 0.1)",
+              color: "#60a5fa",
               cursor: "pointer",
-              fontSize: 14,
+              fontSize: 13,
+              fontWeight: 600,
+              display: "flex",
+              alignItems: "center",
+              gap: 8,
+              transition: "all 0.15s ease",
             }}
           >
-            + New chat
+            <span>+</span>
+            <span>New conversation</span>
           </button>
 
           <div
             style={{
-              marginTop: 4,
               fontSize: 11,
               textTransform: "uppercase",
               letterSpacing: 0.5,
-              color: "#999",
+              color: "#64748b",
+              marginTop: 2,
             }}
           >
             Recent (max 5)
@@ -1195,46 +1351,91 @@ Now respond as GabbarInfo AI.
               flexDirection: "column",
               gap: 6,
               overflowY: "auto",
-              maxHeight: isMobile ? 150 : "60vh",
+              maxHeight: isMobile ? 150 : "58vh",
             }}
           >
-            {chats.map((chat) => (
-              <button
-                key={chat.id}
-                onClick={() => setActiveChatId(chat.id)}
-                style={{
-                  width: "100%",
-                  textAlign: "left",
-                  padding: "8px 10px",
-                  borderRadius: 6,
-                  border:
-                    chat.id === activeChatId
-                      ? "1px solid #d2e3fc"
-                      : "1px solid #eee",
-                  background:
-                    chat.id === activeChatId ? "#e8f0fe" : "#ffffff",
-                  fontSize: 13,
-                  color: "#174ea6",
-                  cursor: "pointer",
-                }}
-              >
-                {chat.title}
-              </button>
-            ))}
+            {chats.map((chat) => {
+              const isActive = chat.id === activeChatId;
+              return (
+                <button
+                  key={chat.id}
+                  onClick={() => setActiveChatId(chat.id)}
+                  style={{
+                    width: "100%",
+                    textAlign: "left",
+                    padding: "10px 12px",
+                    borderRadius: 8,
+                    border: isActive
+                      ? "1px solid rgba(59, 130, 246, 0.4)"
+                      : "1px solid rgba(255, 255, 255, 0.05)",
+                    background: isActive
+                      ? "rgba(59, 130, 246, 0.12)"
+                      : "rgba(255, 255, 255, 0.02)",
+                    fontSize: 13,
+                    color: isActive ? "#93c5fd" : "#cbd5e1",
+                    fontWeight: isActive ? 600 : 400,
+                    cursor: "pointer",
+                    transition: "all 0.15s ease",
+                    whiteSpace: "nowrap",
+                    overflow: "hidden",
+                    textOverflow: "ellipsis",
+                  }}
+                >
+                  💬 {chat.title}
+                </button>
+              );
+            })}
           </div>
 
           <div style={{ flex: 1 }} />
 
+          {/* Suite quick links inside mobile sidebar */}
+          {isMobile && (
+            <div style={{ display: "flex", gap: 8, paddingTop: 8, borderTop: "1px solid rgba(255, 255, 255, 0.08)" }}>
+              <Link
+                href="/"
+                style={{
+                  flex: 1,
+                  padding: "8px",
+                  borderRadius: 8,
+                  background: "rgba(255, 255, 255, 0.05)",
+                  color: "#94a3b8",
+                  fontSize: 12,
+                  textAlign: "center",
+                  textDecoration: "none",
+                }}
+              >
+                🏠 Dashboard
+              </Link>
+              <Link
+                href="/seo"
+                style={{
+                  flex: 1,
+                  padding: "8px",
+                  borderRadius: 8,
+                  background: "rgba(16, 185, 129, 0.1)",
+                  color: "#34d399",
+                  fontSize: 12,
+                  textAlign: "center",
+                  textDecoration: "none",
+                  fontWeight: 600,
+                }}
+              >
+                🌐 SEO Suite
+              </Link>
+            </div>
+          )}
+
           <div
             style={{
               fontSize: 11,
-              color: "#aaa",
-              borderTop: "1px solid #f0f0f0",
-              paddingTop: 8,
+              color: "#64748b",
+              borderTop: "1px solid rgba(255, 255, 255, 0.08)",
+              paddingTop: 10,
+              lineHeight: 1.5,
             }}
           >
-            Chats are stored only in your browser. <br />
-            GabbarInfo AI is tuned for digital marketing.
+            Chats are saved securely in your browser session. Tuned specifically for SMB & enterprise growth.
           </div>
         </aside>
 
@@ -1247,6 +1448,7 @@ Now respond as GabbarInfo AI.
             minHeight: 0,
             boxSizing: "border-box",
             position: "relative",
+            background: "radial-gradient(ellipse at 50% 0%, rgba(37, 99, 235, 0.08), transparent 50%), #080b11",
           }}
         >
           {/* MESSAGES AREA */}
@@ -1254,54 +1456,108 @@ Now respond as GabbarInfo AI.
             id="chat-area"
             style={{
               flex: 1,
-              padding: 12,
-              paddingBottom: 8,
+              padding: isMobile ? 12 : 20,
+              paddingBottom: 16,
               overflowY: "auto",
-              background: "#fafafa",
             }}
           >
-            {messages.map((m, i) => (
-              <div
-                key={i}
-                style={{
-                  marginBottom: 10,
-                  display: "flex",
-                  flexDirection: m.role === "user" ? "row-reverse" : "row",
-                }}
-              >
+            {messages.map((m, i) => {
+              const isUser = m.role === "user";
+              return (
                 <div
+                  key={i}
                   style={{
-                    maxWidth: "80%",
-                    background: m.role === "user" ? "#DCF8C6" : "#fff",
-                    padding: 10,
-                    borderRadius: 8,
-                    border: "1px solid #e6e6e6",
-                    fontSize: 14,
-                    whiteSpace: "pre-wrap",
-                    wordWrap: "break-word",
+                    marginBottom: 16,
+                    display: "flex",
+                    flexDirection: isUser ? "row-reverse" : "row",
+                    alignItems: "flex-start",
+                    gap: 10,
                   }}
                 >
-                  {m.imageUrl ? (
-                    <>
-                      <img
-                        src={m.imageUrl}
-                        alt="Generated creative"
-                        style={{
-                          maxWidth: "100%",
-                          borderRadius: 6,
-                          display: "block",
-                        }}
-                      />
-                      {m.text && (
-                        <div style={{ marginTop: 6 }}>{m.text}</div>
-                      )}
-                    </>
-                  ) : (
-                    m.text
+                  {!isUser && (
+                    <div
+                      style={{
+                        width: 32,
+                        height: 32,
+                        borderRadius: 8,
+                        background: "linear-gradient(135deg, #2563eb, #7c3aed)",
+                        display: "flex",
+                        alignItems: "center",
+                        justifyContent: "center",
+                        fontSize: 15,
+                        flexShrink: 0,
+                        marginTop: 2,
+                        boxShadow: "0 2px 8px rgba(37, 99, 235, 0.3)",
+                      }}
+                    >
+                      🤖
+                    </div>
                   )}
+
+                  <div
+                    style={{
+                      maxWidth: isMobile ? "88%" : "75%",
+                      background: isUser
+                        ? "linear-gradient(135deg, #1d4ed8, #2563eb)"
+                        : "rgba(15, 23, 42, 0.8)",
+                      backdropFilter: isUser ? "none" : "blur(16px)",
+                      padding: "12px 16px",
+                      borderRadius: isUser ? "16px 16px 4px 16px" : "16px 16px 16px 4px",
+                      border: isUser
+                        ? "1px solid rgba(96, 165, 250, 0.3)"
+                        : "1px solid rgba(255, 255, 255, 0.08)",
+                      fontSize: 14,
+                      lineHeight: 1.6,
+                      color: isUser ? "#ffffff" : "#f1f5f9",
+                      whiteSpace: "pre-wrap",
+                      wordWrap: "break-word",
+                      boxShadow: isUser
+                        ? "0 4px 16px rgba(37, 99, 235, 0.25)"
+                        : "0 4px 20px rgba(0, 0, 0, 0.3)",
+                    }}
+                  >
+                    {!isUser && (
+                      <div
+                        style={{
+                          fontSize: 11,
+                          fontWeight: 700,
+                          textTransform: "uppercase",
+                          letterSpacing: "0.05em",
+                          color: "#60a5fa",
+                          marginBottom: 6,
+                          display: "flex",
+                          alignItems: "center",
+                          gap: 6,
+                        }}
+                      >
+                        <span>GabbarInfo AI Strategist</span>
+                      </div>
+                    )}
+
+                    {m.imageUrl ? (
+                      <div>
+                        <img
+                          src={m.imageUrl}
+                          alt="Generated creative"
+                          style={{
+                            maxWidth: "100%",
+                            borderRadius: 10,
+                            display: "block",
+                            border: "1px solid rgba(255, 255, 255, 0.12)",
+                            boxShadow: "0 8px 24px rgba(0,0,0,0.4)",
+                          }}
+                        />
+                        {m.text && (
+                          <div style={{ marginTop: 10, color: "#cbd5e1" }}>{m.text}</div>
+                        )}
+                      </div>
+                    ) : (
+                      m.text
+                    )}
+                  </div>
                 </div>
-              </div>
-            ))}
+              );
+            })}
           </div>
 
           {/* INPUT BAR */}
@@ -1310,28 +1566,33 @@ Now respond as GabbarInfo AI.
             style={{
               flexShrink: 0,
               display: "flex",
-              padding: 10,
-              gap: 8,
-              borderTop: "1px solid #eee",
-              background: "#fff",
+              alignItems: "center",
+              padding: "12px 16px",
+              gap: 10,
+              borderTop: "1px solid rgba(255, 255, 255, 0.08)",
+              background: "rgba(15, 23, 42, 0.9)",
+              backdropFilter: "blur(20px)",
               boxSizing: "border-box",
-              // extra bottom padding so buttons don't hide behind mobile nav bar
-              paddingBottom: "calc(10px + env(safe-area-inset-bottom, 0px))",
+              paddingBottom: "calc(12px + env(safe-area-inset-bottom, 0px))",
             }}
           >
             <input
               value={input}
               onChange={(e) => setInput(e.target.value)}
               placeholder={
-                loading ? "Waiting for response..." : "Ask anything..."
+                loading ? "Analyzing and thinking…" : "Ask about campaigns, ad copy, targeting, SEO, or type instruction…"
               }
               style={{
                 flex: 1,
                 minWidth: 0,
-                padding: 10,
-                borderRadius: 8,
-                border: "1px solid #ddd",
+                padding: "12px 16px",
+                borderRadius: 12,
+                border: "1px solid rgba(255, 255, 255, 0.12)",
+                background: "rgba(8, 11, 17, 0.75)",
+                color: "#f8fafc",
                 fontSize: 14,
+                outline: "none",
+                transition: "border-color 0.2s ease",
               }}
               disabled={loading}
             />
@@ -1342,19 +1603,26 @@ Now respond as GabbarInfo AI.
               disabled={loading}
               onClick={() => setIsAgentPanelOpen(true)}
               style={{
-                padding: "10px 10px",
-                borderRadius: 8,
-                fontSize: 14,
-                border: "1px solid #ddd",
-                background: "#f5f5f5",
+                padding: "10px 14px",
+                borderRadius: 10,
+                fontSize: 13,
+                fontWeight: 600,
+                border: "1px solid rgba(139, 92, 246, 0.35)",
+                background: "rgba(139, 92, 246, 0.12)",
+                color: "#c4b5fd",
                 cursor: loading ? "default" : "pointer",
                 whiteSpace: "nowrap",
+                display: "flex",
+                alignItems: "center",
+                gap: 6,
+                transition: "all 0.15s ease",
               }}
             >
-              🧠 Agent
+              <span>🧠</span>
+              <span>Agent</span>
             </button>
 
-            {/* Image button (short label) */}
+            {/* Image button */}
             <button
               type="button"
               disabled={loading}
@@ -1363,25 +1631,41 @@ Now respond as GabbarInfo AI.
                 setImagePrompt("");
               }}
               style={{
-                padding: "8px 10px",          // a bit slimmer
-                borderRadius: 8,
-                fontSize: 13,                 // slightly smaller text
-                border: "1px solid #ddd",
-                background: "#f5f5f5",
+                padding: "10px 14px",
+                borderRadius: 10,
+                fontSize: 13,
+                fontWeight: 600,
+                border: "1px solid rgba(6, 182, 212, 0.35)",
+                background: "rgba(6, 182, 212, 0.12)",
+                color: "#67e8f9",
                 cursor: loading ? "default" : "pointer",
                 whiteSpace: "nowrap",
+                display: "flex",
+                alignItems: "center",
+                gap: 6,
+                transition: "all 0.15s ease",
               }}
             >
-              ✨ Image
+              <span>✨</span>
+              <span>Image</span>
             </button>
 
             <button
               type="submit"
               disabled={loading}
               style={{
-                padding: "10px 14px",
-                borderRadius: 8,
+                padding: "11px 20px",
+                borderRadius: 10,
                 fontSize: 14,
+                fontWeight: 700,
+                border: "none",
+                background: loading
+                  ? "rgba(255, 255, 255, 0.1)"
+                  : "linear-gradient(135deg, #2563eb, #7c3aed)",
+                color: "#ffffff",
+                cursor: loading ? "default" : "pointer",
+                boxShadow: loading ? "none" : "0 4px 16px rgba(37, 99, 235, 0.4)",
+                transition: "all 0.15s ease",
               }}
             >
               {loading ? "Thinking…" : "Send"}
@@ -1396,9 +1680,10 @@ Now respond as GabbarInfo AI.
                 top: 0,
                 right: 0,
                 bottom: 0,
-                width: isMobile ? "100%" : 360,
-                background: "#ffffff",
-                boxShadow: "-4px 0 12px rgba(0,0,0,0.12)",
+                width: isMobile ? "100%" : 380,
+                background: "#0d131f",
+                borderLeft: "1px solid rgba(255, 255, 255, 0.1)",
+                boxShadow: "-16px 0 40px rgba(0,0,0,0.6)",
                 zIndex: 40,
                 display: "flex",
                 flexDirection: "column",
@@ -1407,34 +1692,42 @@ Now respond as GabbarInfo AI.
             >
               <div
                 style={{
-                  padding: 16,
-                  borderBottom: "1px solid #eee",
+                  padding: "18px 20px",
+                  borderBottom: "1px solid rgba(255, 255, 255, 0.08)",
                   display: "flex",
                   alignItems: "center",
                   justifyContent: "space-between",
+                  background: "rgba(15, 23, 42, 0.6)",
                 }}
               >
                 <div>
-                  <div style={{ fontWeight: 600, fontSize: 15 }}>
-                    Agent panel
+                  <div style={{ fontWeight: 800, fontSize: 16, color: "#f8fafc" }}>
+                    🧠 Agent Execution Panel
                   </div>
                   <div
                     style={{
                       fontSize: 12,
-                      color: "#666",
+                      color: "#94a3b8",
                       marginTop: 2,
                     }}
                   >
-                    Plan campaigns, creatives, SEO & more.
+                    Autonomous plan builder & campaign orchestrator
                   </div>
                 </div>
                 <button
                   onClick={() => setIsAgentPanelOpen(false)}
                   style={{
                     border: "none",
-                    background: "transparent",
+                    background: "rgba(255, 255, 255, 0.08)",
+                    color: "#94a3b8",
+                    width: 30,
+                    height: 30,
+                    borderRadius: 8,
                     fontSize: 18,
                     cursor: "pointer",
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "center",
                   }}
                 >
                   ×
@@ -1443,105 +1736,119 @@ Now respond as GabbarInfo AI.
 
               <div
                 style={{
-                  padding: 16,
+                  padding: 20,
                   display: "flex",
                   flexDirection: "column",
-                  gap: 10,
+                  gap: 14,
                   flex: 1,
                   overflowY: "auto",
                 }}
               >
-                <label
-                  style={{
-                    fontSize: 12,
-                    fontWeight: 600,
-                    textTransform: "uppercase",
-                    letterSpacing: 0.4,
-                    color: "#555",
-                  }}
-                >
-                  Mode
-                </label>
-                <select
-                  value={agentMode}
-                  onChange={(e) => setAgentMode(e.target.value)}
-                  style={{
-                    padding: 8,
-                    borderRadius: 8,
-                    border: "1px solid #ddd",
-                    fontSize: 13,
-                  }}
-                >
-                  <option value="generic">Generic strategy (mixed)</option>
-                  <option value="google_ads_plan">
-                    Google Ads – Campaign planner
-                  </option>
-                  <option value="meta_ads_plan">
-                    Meta Ads – Creative planner
-                  </option>
-                  <option value="social_plan">Social Media calendar</option>
-                  <option value="seo_blog">SEO / Blog planner</option>
-                  <option value="instagram_post">Instagram Post Publish</option>
-                  <option value="facebook_post">Facebook Post Publish</option>
-                </select>
+                <div>
+                  <label
+                    style={{
+                      fontSize: 11,
+                      fontWeight: 700,
+                      textTransform: "uppercase",
+                      letterSpacing: "0.08em",
+                      color: "#94a3b8",
+                      display: "block",
+                      marginBottom: 6,
+                    }}
+                  >
+                    Agent Engine Mode
+                  </label>
+                  <select
+                    value={agentMode}
+                    onChange={(e) => setAgentMode(e.target.value)}
+                    style={{
+                      width: "100%",
+                      padding: "10px 12px",
+                      borderRadius: 10,
+                      border: "1px solid rgba(255, 255, 255, 0.12)",
+                      background: "#151c2c",
+                      color: "#f8fafc",
+                      fontSize: 13,
+                      outline: "none",
+                    }}
+                  >
+                    <option value="generic">Generic Strategy (Multi-channel)</option>
+                    <option value="google_ads_plan">Google Ads – Campaign Planner</option>
+                    <option value="meta_ads_plan">Meta Ads – Creative Planner</option>
+                    <option value="social_plan">Social Media Content Calendar</option>
+                    <option value="seo_blog">SEO & Blog Content Planner</option>
+                    <option value="instagram_post">Instagram Post Publisher</option>
+                    <option value="facebook_post">Facebook Post Publisher</option>
+                  </select>
+                </div>
 
                 {agentResponse && (
                   <div
                     style={{
-                      marginTop: 12,
-                      padding: 12,
-                      background: "#e8f0fe",
-                      borderRadius: 10,
-                      border: "1px solid #d2e3fc",
+                      marginTop: 4,
+                      padding: 14,
+                      background: "rgba(59, 130, 246, 0.1)",
+                      borderRadius: 12,
+                      border: "1px solid rgba(59, 130, 246, 0.25)",
                       fontSize: 13,
-                      color: "#174ea6",
+                      color: "#93c5fd",
                       whiteSpace: "pre-wrap",
-                      maxHeight: 200,
+                      maxHeight: 220,
                       overflowY: "auto",
                     }}
                   >
-                    <div style={{ fontWeight: 700, marginBottom: 4, fontSize: 11, textTransform: "uppercase" }}>
-                      Agent Reply:
+                    <div style={{ fontWeight: 800, marginBottom: 6, fontSize: 11, textTransform: "uppercase", letterSpacing: "0.05em", color: "#60a5fa" }}>
+                      Agent Execution Result:
                     </div>
                     {agentResponse}
                   </div>
                 )}
 
-                <label
-                  style={{
-                    fontSize: 12,
-                    fontWeight: 600,
-                    textTransform: "uppercase",
-                    letterSpacing: 0.4,
-                    color: "#555",
-                    marginTop: 8,
-                  }}
-                >
-                  Instruction
-                </label>
-                <textarea
-                  value={agentInstruction}
-                  onChange={(e) => setAgentInstruction(e.target.value)}
-                  rows={6}
-                  placeholder="Example: Create a Google Search campaign for my dental clinic in Ahmedabad with ₹700/day budget, JSON only. Or plan a 30-day Instagram calendar for Bella & Diva Jewellery UK."
-                  style={{
-                    resize: "vertical",
-                    padding: 8,
-                    borderRadius: 8,
-                    border: "1px solid #ddd",
-                    fontSize: 13,
-                    minHeight: 120,
-                  }}
-                />
+                <div>
+                  <label
+                    style={{
+                      fontSize: 11,
+                      fontWeight: 700,
+                      textTransform: "uppercase",
+                      letterSpacing: "0.08em",
+                      color: "#94a3b8",
+                      display: "block",
+                      marginBottom: 6,
+                    }}
+                  >
+                    Instruction & Objectives
+                  </label>
+                  <textarea
+                    value={agentInstruction}
+                    onChange={(e) => setAgentInstruction(e.target.value)}
+                    rows={6}
+                    placeholder="Example: Create a Google Search campaign for my dental clinic in Ahmedabad with ₹700/day budget, JSON only. Or plan a 30-day Instagram calendar for Bella & Diva Jewellery UK."
+                    style={{
+                      width: "100%",
+                      boxSizing: "border-box",
+                      resize: "vertical",
+                      padding: 12,
+                      borderRadius: 10,
+                      border: "1px solid rgba(255, 255, 255, 0.12)",
+                      background: "#080b11",
+                      color: "#f8fafc",
+                      fontSize: 13,
+                      minHeight: 120,
+                      lineHeight: 1.5,
+                      outline: "none",
+                    }}
+                  />
+                </div>
 
                 {agentError && (
                   <div
                     style={{
-                      fontSize: 12,
-                      color: "#b00020",
-                      background: "#fde7e9",
-                      borderRadius: 6,
-                      padding: 8,
+                      fontSize: 13,
+                      color: "#fca5a5",
+                      background: "rgba(239, 68, 68, 0.12)",
+                      border: "1px solid rgba(239, 68, 68, 0.3)",
+                      borderRadius: 10,
+                      padding: 12,
                     }}
                   >
                     {agentError}
@@ -1556,29 +1863,32 @@ Now respond as GabbarInfo AI.
                   disabled={agentLoading}
                   style={{
                     width: "100%",
-                    padding: "10px 14px",
-                    borderRadius: 8,
+                    padding: "12px 18px",
+                    borderRadius: 10,
                     fontSize: 14,
+                    fontWeight: 700,
                     border: "none",
-                    background: "#1a73e8",
-                    color: "#fff",
+                    background: agentLoading
+                      ? "rgba(255, 255, 255, 0.1)"
+                      : "linear-gradient(135deg, #2563eb, #7c3aed)",
+                    color: "#ffffff",
                     cursor: agentLoading ? "default" : "pointer",
-                    marginTop: 8,
+                    boxShadow: agentLoading ? "none" : "0 4px 18px rgba(37, 99, 235, 0.4)",
+                    transition: "all 0.15s ease",
                   }}
                 >
-                  {agentLoading ? "Running Agent…" : "Run Agent"}
+                  {agentLoading ? "Executing Neural Workflow…" : "Run Autonomous Agent"}
                 </button>
 
                 <div
                   style={{
-                    fontSize: 11,
-                    color: "#777",
-                    marginTop: 6,
+                    fontSize: 12,
+                    color: "#64748b",
+                    marginTop: 4,
+                    lineHeight: 1.5,
                   }}
                 >
-                  Tip: Use Agent for bigger tasks like full campaign plans,
-                  JSON payloads, social calendars or SEO briefs. The answer will
-                  appear in the main chat as a <b>GabbarInfo Agent</b> message.
+                  💡 <strong>Agent Tip:</strong> Executes multi-step campaign blueprints, structured JSON schemas, full social calendars, or SEO strategy. Responses are streamed directly to the main chat session.
                 </div>
               </div>
             </div>
@@ -1593,36 +1903,41 @@ Now respond as GabbarInfo AI.
                 left: 0,
                 right: 0,
                 bottom: 0,
-                background: "rgba(0,0,0,0.35)",
+                background: "rgba(0,0,0,0.65)",
+                backdropFilter: "blur(8px)",
                 display: "flex",
                 alignItems: "center",
                 justifyContent: "center",
                 zIndex: 50,
+                padding: 16,
               }}
             >
               <div
                 style={{
-                  width: isMobile ? "90%" : 420,
-                  background: "#fff",
-                  borderRadius: 12,
-                  boxShadow: "0 8px 20px rgba(0,0,0,0.15)",
-                  padding: 16,
+                  width: isMobile ? "95%" : 460,
+                  background: "#0f172a",
+                  border: "1px solid rgba(255, 255, 255, 0.12)",
+                  borderRadius: 16,
+                  boxShadow: "0 24px 60px rgba(0, 0, 0, 0.6)",
+                  padding: 24,
                   boxSizing: "border-box",
                 }}
               >
-                <h3 style={{ margin: 0, marginBottom: 8, fontSize: 16 }}>
-                  Generate ad creative
-                </h3>
+                <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 8 }}>
+                  <span style={{ fontSize: 22 }}>✨</span>
+                  <h3 style={{ margin: 0, fontSize: 18, fontWeight: 700, color: "#f8fafc" }}>
+                    Generate Ad Creative
+                  </h3>
+                </div>
                 <p
                   style={{
-                    margin: 0,
-                    marginBottom: 8,
+                    margin: "0 0 16px",
                     fontSize: 13,
-                    color: "#555",
+                    color: "#94a3b8",
+                    lineHeight: 1.5,
                   }}
                 >
-                  Describe the image you want. I’ll generate a DALL·E creative
-                  for you.
+                  Describe the creative visual. GabbarInfo AI will synthesize a high-converting image for your campaigns or social media.
                 </p>
 
                 <form
@@ -1630,8 +1945,7 @@ Now respond as GabbarInfo AI.
                   style={{
                     display: "flex",
                     flexDirection: "column",
-                    gap: 8,
-                    marginTop: 4,
+                    gap: 12,
                   }}
                 >
                   <textarea
@@ -1639,20 +1953,24 @@ Now respond as GabbarInfo AI.
                     onChange={(e) => setImagePrompt(e.target.value)}
                     rows={4}
                     autoFocus
-                    placeholder="Example: Close-up of gold Kundan necklace on black background, soft spotlight, high contrast, for Instagram ad…"
+                    placeholder="Example: Close-up of gold Kundan necklace on dark obsidian background, dramatic lighting, luxury jewelry ad style, 4k resolution…"
                     style={{
                       resize: "vertical",
-                      padding: 8,
-                      borderRadius: 8,
-                      border: "1px solid #ddd",
+                      padding: 12,
+                      borderRadius: 10,
+                      border: "1px solid rgba(255, 255, 255, 0.12)",
+                      background: "#080b11",
+                      color: "#f8fafc",
                       fontSize: 14,
+                      lineHeight: 1.5,
+                      outline: "none",
                     }}
                   />
                   <div
                     style={{
                       display: "flex",
                       justifyContent: "flex-end",
-                      gap: 8,
+                      gap: 10,
                       marginTop: 4,
                     }}
                   >
@@ -1663,11 +1981,13 @@ Now respond as GabbarInfo AI.
                         setImagePrompt("");
                       }}
                       style={{
-                        padding: "8px 12px",
+                        padding: "9px 16px",
                         borderRadius: 8,
                         fontSize: 13,
-                        border: "1px solid #ddd",
-                        background: "#f5f5f5",
+                        fontWeight: 600,
+                        border: "1px solid rgba(255, 255, 255, 0.1)",
+                        background: "rgba(255, 255, 255, 0.05)",
+                        color: "#94a3b8",
                         cursor: "pointer",
                       }}
                     >
@@ -1677,12 +1997,18 @@ Now respond as GabbarInfo AI.
                       type="submit"
                       disabled={loading}
                       style={{
-                        padding: "8px 12px",
+                        padding: "9px 18px",
                         borderRadius: 8,
                         fontSize: 13,
+                        fontWeight: 700,
+                        border: "none",
+                        background: "linear-gradient(135deg, #06b6d4, #3b82f6)",
+                        color: "#ffffff",
+                        cursor: loading ? "default" : "pointer",
+                        boxShadow: "0 4px 14px rgba(6, 182, 212, 0.35)",
                       }}
                     >
-                      {loading ? "Generating…" : "Generate"}
+                      {loading ? "Generating Creative…" : "Generate Creative"}
                     </button>
                   </div>
                 </form>
@@ -1693,7 +2019,6 @@ Now respond as GabbarInfo AI.
       </main>
 
       {/* ── Buy Credits Modal ── */}
-      {/* userEmail is read from session.user.email and passed as prop */}
       <BuyCreditsModal
         isOpen={showBuyCredits}
         onClose={() => setShowBuyCredits(false)}

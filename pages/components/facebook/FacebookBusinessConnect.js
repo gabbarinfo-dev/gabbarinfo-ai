@@ -202,53 +202,63 @@ export default function FacebookBusinessConnect() {
     <div
       style={{
         marginTop: "20px",
-        padding: "16px",
-        border: "1px solid #e5e7eb",
-        borderRadius: "8px",
-        maxWidth: "520px",
-        position: "relative" // for absolute modal positioning if needed
+        padding: "20px",
+        background: "rgba(15, 23, 42, 0.65)",
+        border: "1px solid rgba(255, 255, 255, 0.08)",
+        backdropFilter: "blur(12px)",
+        borderRadius: "14px",
+        maxWidth: "540px",
+        position: "relative",
       }}
     >
-      <h3 style={{ marginBottom: "6px" }}>Facebook Business</h3>
+      <div style={{ display: "flex", alignItems: "center", gap: "10px", marginBottom: "12px" }}>
+        <div style={{ width: 36, height: 36, borderRadius: 10, background: "rgba(24, 119, 242, 0.15)", display: "flex", alignItems: "center", justifyContent: "center", fontSize: "18px" }}>
+          🌐
+        </div>
+        <h3 style={{ margin: 0, fontSize: "16px", fontWeight: 700, color: "#f8fafc" }}>Facebook Business</h3>
+      </div>
 
       {status === "connected" ? (
         <>
-          <p style={{ color: "green", fontWeight: 500 }}>
-            ✅ Facebook Business Connected
+          <p style={{ color: "#34d399", fontWeight: 600, fontSize: "13px", display: "flex", alignItems: "center", gap: "6px", margin: "0 0 10px" }}>
+            <span>✅</span> <span>Facebook Business Connected</span>
           </p>
 
           {meta?.business_info_synced === true && (
-            <ul style={{ fontSize: 13, paddingLeft: 18, listStyleType: "none" }}>
+            <ul style={{ fontSize: 13, paddingLeft: 0, listStyleType: "none", margin: "10px 0 14px", color: "#94a3b8" }}>
               {meta?.fb_business_id && (
-                <li style={{ marginBottom: 4 }}>
-                  <span style={{ fontWeight: 600 }}>Business ID:</span>{" "}
-                  <code style={{ background: "#f3f4f6", padding: "2px 4px", borderRadius: 4 }}>{meta.fb_business_id}</code>
+                <li style={{ marginBottom: 6 }}>
+                  <span style={{ fontWeight: 600, color: "#cbd5e1" }}>Business ID:</span>{" "}
+                  <code style={{ background: "rgba(255, 255, 255, 0.06)", padding: "3px 6px", borderRadius: 6, color: "#60a5fa" }}>{meta.fb_business_id}</code>
                 </li>
               )}
               {meta?.fb_page_id && (
-                <li style={{ marginBottom: 4 }}>
-                  <span style={{ fontWeight: 600 }}>Page ID:</span>{" "}
-                  <code style={{ background: "#f3f4f6", padding: "2px 4px", borderRadius: 4 }}>{meta.fb_page_id}</code>
+                <li style={{ marginBottom: 6 }}>
+                  <span style={{ fontWeight: 600, color: "#cbd5e1" }}>Page ID:</span>{" "}
+                  <code style={{ background: "rgba(255, 255, 255, 0.06)", padding: "3px 6px", borderRadius: 6, color: "#60a5fa" }}>{meta.fb_page_id}</code>
                 </li>
               )}
               {meta?.fb_ad_account_id && (
                 <li>
-                  <span style={{ fontWeight: 600 }}>Ad Account ID:</span>{" "}
-                  <code style={{ background: "#f3f4f6", padding: "2px 4px", borderRadius: 4 }}>{meta.fb_ad_account_id}</code>
+                  <span style={{ fontWeight: 600, color: "#cbd5e1" }}>Ad Account ID:</span>{" "}
+                  <code style={{ background: "rgba(255, 255, 255, 0.06)", padding: "3px 6px", borderRadius: 6, color: "#60a5fa" }}>{meta.fb_ad_account_id}</code>
                 </li>
               )}
             </ul>
           )}
-          <div style={{ display: "flex", gap: "10px", flexWrap: "wrap", marginTop: "10px" }}>
+          <div style={{ display: "flex", gap: "8px", flexWrap: "wrap", marginTop: "12px" }}>
             <button
               onClick={handleSyncBusinessInfo}
               style={{
-                padding: "8px 12px",
-                background: "#1877F2",
+                padding: "8px 14px",
+                background: "linear-gradient(135deg, #1877F2, #2563eb)",
                 color: "#fff",
                 border: "none",
-                borderRadius: "6px",
+                borderRadius: "8px",
+                fontWeight: 600,
+                fontSize: "12px",
                 cursor: "pointer",
+                boxShadow: "0 2px 8px rgba(24, 119, 242, 0.3)",
               }}
             >
               Sync Business Info
@@ -258,74 +268,84 @@ export default function FacebookBusinessConnect() {
               onClick={handleEngagementClick}
               style={{
                 padding: "8px 12px",
-                background: status === "connected" ? "#fff" : "#f3f4f6",
-                color: status === "connected" ? "#1877F2" : "#9ca3af",
-                border: `1px solid ${status === "connected" ? "#1877F2" : "#d1d5db"}`,
-                borderRadius: "6px",
+                background: "rgba(255, 255, 255, 0.05)",
+                color: "#cbd5e1",
+                border: "1px solid rgba(255, 255, 255, 0.1)",
+                borderRadius: "8px",
+                fontSize: "12px",
+                fontWeight: 500,
                 cursor: status === "connected" ? "pointer" : "not-allowed",
               }}
             >
-              View Page Engagement
+              Page Engagement
             </button>
 
             <button
               onClick={handleIgInsightsClick}
               style={{
                 padding: "8px 12px",
-                background: status === "connected" ? "#fff" : "#f3f4f6",
-                color: status === "connected" ? "#1877F2" : "#9ca3af",
-                border: `1px solid ${status === "connected" ? "#1877F2" : "#d1d5db"}`,
-                borderRadius: "6px",
+                background: "rgba(255, 255, 255, 0.05)",
+                color: "#cbd5e1",
+                border: "1px solid rgba(255, 255, 255, 0.1)",
+                borderRadius: "8px",
+                fontSize: "12px",
+                fontWeight: 500,
                 cursor: status === "connected" ? "pointer" : "not-allowed",
               }}
             >
-              View Instagram Insights
+              IG Insights
             </button>
 
             <button
               onClick={handleAdInsightsClick}
               style={{
                 padding: "8px 12px",
-                background: status === "connected" ? "#fff" : "#f3f4f6",
-                color: status === "connected" ? "#1877F2" : "#9ca3af",
-                border: `1px solid ${status === "connected" ? "#1877F2" : "#d1d5db"}`,
-                borderRadius: "6px",
+                background: "rgba(255, 255, 255, 0.05)",
+                color: "#cbd5e1",
+                border: "1px solid rgba(255, 255, 255, 0.1)",
+                borderRadius: "8px",
+                fontSize: "12px",
+                fontWeight: 500,
                 cursor: status === "connected" ? "pointer" : "not-allowed",
               }}
             >
-              View Ad Insights
+              Ad Insights
             </button>
 
             <button
               onClick={handleBoostClick}
               style={{
                 padding: "8px 12px",
-                background: "#1877F2",
+                background: "linear-gradient(135deg, #1877F2, #2563eb)",
                 color: "#fff",
                 border: "none",
-                borderRadius: "6px",
+                borderRadius: "8px",
+                fontSize: "12px",
+                fontWeight: 600,
                 cursor: "pointer",
               }}
             >
-              Boost a Page Post
+              Boost a Post
             </button>
 
             <button
               onClick={handleDisconnect}
               style={{
                 padding: "8px 12px",
-                background: "#fff",
-                color: "#d00",
-                border: "1px solid #d00",
-                borderRadius: "6px",
+                background: "rgba(239, 68, 68, 0.1)",
+                color: "#fca5a5",
+                border: "1px solid rgba(239, 68, 68, 0.3)",
+                borderRadius: "8px",
+                fontSize: "12px",
+                fontWeight: 600,
                 cursor: "pointer",
               }}
             >
-              Disconnect Assets
+              Disconnect
             </button>
           </div>
 
-          <p style={{ fontSize: 12, color: "#555", marginTop: 10 }}>
+          <p style={{ fontSize: 12, color: "#94a3b8", marginTop: 12, lineHeight: 1.4 }}>
             You can reconnect anytime and add new Facebook Pages or grant access to other assets.
           </p>
 
@@ -543,7 +563,8 @@ const modalOverlayStyle = {
   left: 0,
   right: 0,
   bottom: 0,
-  backgroundColor: "rgba(0,0,0,0.5)",
+  backgroundColor: "rgba(0,0,0,0.75)",
+  backdropFilter: "blur(8px)",
   display: "flex",
   alignItems: "center",
   justifyContent: "center",
@@ -551,34 +572,45 @@ const modalOverlayStyle = {
 };
 
 const modalContentStyle = {
-  background: "#fff",
+  background: "#0f172a",
+  border: "1px solid rgba(255, 255, 255, 0.12)",
   padding: "24px",
-  borderRadius: "12px",
+  borderRadius: "16px",
   width: "90%",
-  maxWidth: "400px",
-  boxShadow: "0 4px 20px rgba(0,0,0,0.15)",
+  maxWidth: "420px",
+  boxShadow: "0 24px 60px rgba(0,0,0,0.6)",
+  color: "#f8fafc",
+  fontFamily: "'Plus Jakarta Sans', sans-serif",
 };
 
 const metricRowStyle = {
   display: "flex",
   justifyContent: "space-between",
-  padding: "10px 0",
-  borderBottom: "1px solid #f0f0f0",
+  padding: "12px 0",
+  borderBottom: "1px solid rgba(255, 255, 255, 0.08)",
+  fontSize: "13px",
+  color: "#cbd5e1",
 };
 
 const confirmBtnStyle = {
-  padding: "8px 16px",
-  background: "#1877F2",
+  padding: "8px 18px",
+  background: "linear-gradient(135deg, #1877F2, #2563eb)",
   color: "#fff",
   border: "none",
-  borderRadius: "6px",
+  borderRadius: "8px",
+  fontWeight: 600,
+  fontSize: "13px",
   cursor: "pointer",
+  boxShadow: "0 4px 14px rgba(24, 119, 242, 0.35)",
 };
 
 const cancelBtnStyle = {
   padding: "8px 16px",
-  background: "#fff",
-  border: "1px solid #ddd",
-  borderRadius: "6px",
+  background: "rgba(255, 255, 255, 0.05)",
+  border: "1px solid rgba(255, 255, 255, 0.1)",
+  color: "#94a3b8",
+  borderRadius: "8px",
+  fontWeight: 500,
+  fontSize: "13px",
   cursor: "pointer",
 };

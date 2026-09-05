@@ -72,37 +72,40 @@ export default function BuyCreditsModal({ isOpen, onClose, userEmail }) {
   const S = {
     overlay: {
       position: "fixed", inset: 0,
-      background: "rgba(0,0,0,0.45)",
+      background: "rgba(0,0,0,0.7)",
       zIndex: 1000,
       display: "flex", alignItems: "center", justifyContent: "center",
       padding: 16,
-      backdropFilter: "blur(2px)",
+      backdropFilter: "blur(8px)",
     },
     modal: {
-      background: "#fff",
+      background: "#0f172a",
       borderRadius: 20,
       width: "100%",
       maxWidth: 540,
       maxHeight: "90vh",
       overflowY: "auto",
-      boxShadow: "0 24px 60px rgba(0,0,0,0.18)",
-      fontFamily: "Inter, Arial, sans-serif",
+      boxShadow: "0 24px 60px rgba(0,0,0,0.6)",
+      fontFamily: "'Plus Jakarta Sans', Inter, sans-serif",
+      border: "1px solid rgba(255, 255, 255, 0.12)",
+      color: "#f8fafc",
       animation: "fadeSlideUp 0.22s ease",
     },
     header: {
       display: "flex", justifyContent: "space-between", alignItems: "center",
       padding: "20px 24px 16px",
-      borderBottom: "1px solid #f0f0f0",
+      borderBottom: "1px solid rgba(255, 255, 255, 0.08)",
     },
-    title: { margin: 0, fontSize: 20, fontWeight: 700, color: "#111" },
+    title: { margin: 0, fontSize: 20, fontWeight: 800, color: "#f8fafc", letterSpacing: "-0.02em" },
     closeBtn: {
-      background: "none", border: "none", cursor: "pointer",
-      fontSize: 22, color: "#888", lineHeight: 1, padding: 4,
+      background: "rgba(255, 255, 255, 0.06)", border: "none", cursor: "pointer",
+      fontSize: 16, color: "#94a3b8", width: 32, height: 32, borderRadius: 8,
+      display: "flex", alignItems: "center", justifyContent: "center",
     },
     body: { padding: "20px 24px 28px" },
     sectionLabel: {
       fontSize: 11, fontWeight: 700, letterSpacing: "0.08em",
-      textTransform: "uppercase", color: "#888", marginBottom: 10,
+      textTransform: "uppercase", color: "#94a3b8", marginBottom: 12,
     },
     cardGrid: {
       display: "grid",
@@ -157,9 +160,9 @@ export default function BuyCreditsModal({ isOpen, onClose, userEmail }) {
                 <div style={{
                   display: "flex", alignItems: "center", gap: 12, marginBottom: 18,
                 }}>
-                  <div style={{ flex: 1, height: 1, background: "#eee" }} />
+                  <div style={{ flex: 1, height: 1, background: "rgba(255,255,255,0.1)" }} />
                   <span style={{ fontSize: 12, color: "#aaa", whiteSpace: "nowrap" }}>Quick Top-Ups</span>
-                  <div style={{ flex: 1, height: 1, background: "#eee" }} />
+                  <div style={{ flex: 1, height: 1, background: "rgba(255,255,255,0.1)" }} />
                 </div>
 
                 {/* Top-ups */}
@@ -204,22 +207,23 @@ function PlanCard({ plan, onSelect, highlight }) {
   const [hovered, setHovered] = useState(false);
 
   const isPlan = plan.tag === "plan";
-  const accentColor = isPlan ? "#4f46e5" : "#0ea5e9";
-  const accentLight = isPlan ? "#eef2ff" : "#e0f2fe";
+  const accentColor = isPlan ? "#6366f1" : "#06b6d4";
+  const accentLight = isPlan ? "rgba(99, 102, 241, 0.15)" : "rgba(6, 182, 212, 0.15)";
 
   return (
     <div
       onMouseEnter={() => setHovered(true)}
       onMouseLeave={() => setHovered(false)}
       style={{
-        border: `1.5px solid ${hovered ? accentColor : "#e5e7eb"}`,
+        border: `1.5px solid ${hovered ? accentColor : "rgba(255, 255, 255, 0.08)"}`,
         borderRadius: 14,
         padding: "16px 14px",
         cursor: "pointer",
         transition: "all 0.18s ease",
-        background: hovered ? accentLight : "#fafafa",
+        background: hovered ? accentLight : "rgba(15, 23, 42, 0.6)",
         position: "relative",
         overflow: "hidden",
+        boxShadow: hovered ? `0 8px 24px ${accentColor}33` : "none",
       }}
     >
       {/* Validity badge */}
@@ -228,18 +232,18 @@ function PlanCard({ plan, onSelect, highlight }) {
         background: accentLight,
         color: accentColor,
         fontSize: 10, fontWeight: 700,
-        padding: "2px 7px", borderRadius: 99,
-        border: `1px solid ${accentColor}22`,
+        padding: "2px 8px", borderRadius: 99,
+        border: `1px solid ${accentColor}44`,
       }}>
         {plan.validity}
       </div>
 
-      <div style={{ fontSize: 22, fontWeight: 800, color: "#111", marginBottom: 2 }}>
+      <div style={{ fontSize: 22, fontWeight: 800, color: "#f8fafc", marginBottom: 2 }}>
         {plan.credits}
-        <span style={{ fontSize: 12, fontWeight: 500, color: "#666", marginLeft: 4 }}>credits</span>
+        <span style={{ fontSize: 12, fontWeight: 500, color: "#94a3b8", marginLeft: 4 }}>credits</span>
       </div>
 
-      <div style={{ fontSize: 18, fontWeight: 700, color: accentColor, marginBottom: 12 }}>
+      <div style={{ fontSize: 18, fontWeight: 800, color: accentColor, marginBottom: 12 }}>
         ₹{plan.amount}
       </div>
 
@@ -248,9 +252,9 @@ function PlanCard({ plan, onSelect, highlight }) {
         style={{
           width: "100%",
           padding: "8px 0",
-          background: hovered ? accentColor : "#fff",
-          color: hovered ? "#fff" : accentColor,
-          border: `1.5px solid ${accentColor}`,
+          background: hovered ? accentColor : "rgba(255, 255, 255, 0.05)",
+          color: hovered ? "#fff" : "#f8fafc",
+          border: `1px solid ${accentColor}55`,
           borderRadius: 8,
           fontWeight: 600,
           fontSize: 13,
@@ -258,7 +262,7 @@ function PlanCard({ plan, onSelect, highlight }) {
           transition: "all 0.18s ease",
         }}
       >
-        Get →
+        Select Pack →
       </button>
     </div>
   );
@@ -271,12 +275,13 @@ function PaymentSection({ plan, userEmail, onWhatsApp }) {
       {/* Selected plan summary */}
       <div style={{
         width: "100%",
-        background: "#f8fafc",
+        background: "rgba(8, 11, 17, 0.8)",
         borderRadius: 14,
-        border: "1px solid #e2e8f0",
+        border: "1px solid rgba(255, 255, 255, 0.08)",
         padding: "14px 18px",
         display: "flex", justifyContent: "space-between", alignItems: "center",
         flexWrap: "wrap", gap: 8,
+        boxSizing: "border-box",
       }}>
         {[
           { label: "Amount",   value: `₹${plan.amount}` },
@@ -285,7 +290,7 @@ function PaymentSection({ plan, userEmail, onWhatsApp }) {
         ].map(({ label, value }) => (
           <div key={label} style={{ textAlign: "center" }}>
             <div style={{ fontSize: 11, color: "#94a3b8", fontWeight: 600, marginBottom: 2 }}>{label}</div>
-            <div style={{ fontSize: 16, fontWeight: 700, color: "#1e293b" }}>{value}</div>
+            <div style={{ fontSize: 16, fontWeight: 800, color: "#f8fafc" }}>{value}</div>
           </div>
         ))}
       </div>
@@ -293,12 +298,12 @@ function PaymentSection({ plan, userEmail, onWhatsApp }) {
       {/* QR Code */}
       <div style={{ textAlign: "center" }}>
         <div style={{
-          background: "#fff",
-          border: "1.5px solid #e2e8f0",
+          background: "#ffffff",
+          border: "1.5px solid rgba(255, 255, 255, 0.2)",
           borderRadius: 16,
           padding: 12,
           display: "inline-block",
-          boxShadow: "0 4px 12px rgba(0,0,0,0.06)",
+          boxShadow: "0 8px 30px rgba(0,0,0,0.4)",
         }}>
           <img
             src={QR_URL}
@@ -320,24 +325,25 @@ function PaymentSection({ plan, userEmail, onWhatsApp }) {
           </div>
         </div>
 
-        <p style={{ margin: "10px 0 0", fontSize: 13, color: "#64748b", fontWeight: 500 }}>
-          📱 Scan to pay using any UPI app
+        <p style={{ margin: "10px 0 0", fontSize: 13, color: "#94a3b8", fontWeight: 500 }}>
+          📱 Scan to pay using any UPI app (GPay, PhonePe, Paytm)
         </p>
       </div>
 
       {/* Instructions */}
       <div style={{
         width: "100%",
-        background: "#fffbeb",
-        border: "1px solid #fde68a",
-        borderRadius: 10,
+        background: "rgba(245, 158, 11, 0.1)",
+        border: "1px solid rgba(245, 158, 11, 0.25)",
+        borderRadius: 12,
         padding: "12px 16px",
         fontSize: 13,
-        color: "#78350f",
+        color: "#fde68a",
         lineHeight: 1.6,
+        boxSizing: "border-box",
       }}>
-        <strong>After paying:</strong> Click the button below to send your payment proof on WhatsApp. 
-        Credits will be added manually within a few hours.
+        <strong>⚡ Instant Confirmation:</strong> Click the button below to send your payment screenshot on WhatsApp. 
+        Credits will be verified and added to your account promptly.
       </div>
 
       {/* WhatsApp button */}
@@ -346,7 +352,7 @@ function PaymentSection({ plan, userEmail, onWhatsApp }) {
         style={{
           width: "100%",
           padding: "14px",
-          background: "linear-gradient(135deg, #25d366, #128c7e)",
+          background: "linear-gradient(135deg, #10b981, #059669)",
           color: "#fff",
           border: "none",
           borderRadius: 12,
@@ -357,7 +363,7 @@ function PaymentSection({ plan, userEmail, onWhatsApp }) {
           alignItems: "center",
           justifyContent: "center",
           gap: 10,
-          boxShadow: "0 4px 14px rgba(37,211,102,0.35)",
+          boxShadow: "0 4px 18px rgba(16, 185, 129, 0.35)",
           transition: "transform 0.15s ease",
         }}
         onMouseEnter={(e) => e.currentTarget.style.transform = "scale(1.02)"}
@@ -371,8 +377,7 @@ function PaymentSection({ plan, userEmail, onWhatsApp }) {
 
       {/* Email note */}
       <p style={{ margin: 0, fontSize: 11, color: "#94a3b8", textAlign: "center" }}>
-        {/* This email comes from your session. See prop: userEmail */}
-        Message will include your email: <strong>{userEmail || "not available"}</strong>
+        Message will include your email: <strong style={{ color: "#f8fafc" }}>{userEmail || "not available"}</strong>
       </p>
     </div>
   );

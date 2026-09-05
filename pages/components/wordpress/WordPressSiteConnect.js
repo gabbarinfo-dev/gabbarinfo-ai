@@ -68,7 +68,7 @@ export default function WordPressSiteConnect() {
       });
       const data = await res.json();
       if (data.ok) {
-        setTestResult({ ok: true, message: `Connected! WordPress ${data.data?.site_name || ""} (v${data.data?.plugin_version}) is responding perfectly.` });
+        setTestResult({ ok: true, message: `Connected! WordPress ${data.data?.site_name || ""} (v${data.data?.plugin_version}) is responding.` });
       } else {
         setTestResult({ ok: false, message: "Site responded with error: " + (data.error || "Unable to ping plugin") });
       }
@@ -139,8 +139,8 @@ export default function WordPressSiteConnect() {
   return (
     <div style={{ marginTop: 8 }}>
       {/* Business Selector Header */}
-      <div style={{ display: "flex", gap: 12, alignItems: "center", marginBottom: 16, flexWrap: "wrap" }}>
-        <label style={{ fontSize: 13, fontWeight: 600, color: "#475569" }}>Target Business Profile:</label>
+      <div style={{ display: "flex", gap: 12, alignItems: "center", marginBottom: 18, flexWrap: "wrap" }}>
+        <label style={{ fontSize: 13, fontWeight: 600, color: "#94a3b8" }}>Target Business Profile:</label>
         <select
           value={businessName}
           onChange={(e) => {
@@ -148,18 +148,21 @@ export default function WordPressSiteConnect() {
             setCustomBusiness("");
           }}
           style={{
-            padding: "7px 12px",
-            borderRadius: 6,
-            border: "1px solid #cbd5e1",
+            padding: "8px 14px",
+            borderRadius: 8,
+            border: "1px solid #1e293b",
             fontSize: 13,
-            background: "#fff",
-            fontWeight: 500,
+            background: "#131b2e",
+            color: "#60a5fa",
+            fontWeight: 600,
+            cursor: "pointer",
+            outline: "none",
           }}
         >
-          <option value="GABBARinfo">GABBARinfo (Default)</option>
-          <option value="Digital Marketing Agency">Digital Marketing Agency</option>
-          <option value="Addiction Rehabilitation Center">Addiction Rehabilitation Center</option>
-          <option value="custom">+ Add / Type Custom Business</option>
+          <option value="GABBARinfo" style={{ background: "#0f172a", color: "#fff" }}>GABBARinfo (Default)</option>
+          <option value="Digital Marketing Agency" style={{ background: "#0f172a", color: "#fff" }}>Digital Marketing Agency</option>
+          <option value="Addiction Rehabilitation Center" style={{ background: "#0f172a", color: "#fff" }}>Addiction Rehabilitation Center</option>
+          <option value="custom" style={{ background: "#0f172a", color: "#fff" }}>+ Add / Type Custom Business</option>
         </select>
 
         {businessName === "custom" && (
@@ -169,10 +172,12 @@ export default function WordPressSiteConnect() {
             value={customBusiness}
             onChange={(e) => setCustomBusiness(e.target.value)}
             style={{
-              padding: "7px 12px",
-              borderRadius: 6,
-              border: "1px solid #cbd5e1",
+              padding: "8px 12px",
+              borderRadius: 8,
+              border: "1px solid #1e293b",
               fontSize: 13,
+              background: "#131b2e",
+              color: "#fff",
             }}
           />
         )}
@@ -181,62 +186,66 @@ export default function WordPressSiteConnect() {
       {loading ? (
         <div style={{ color: "#64748b", fontSize: 13 }}>Checking connection status…</div>
       ) : connection?.siteUrl ? (
-        /* 🟢 CONNECTED STATE */
-        <div style={{ background: "#f8fafc", border: "1px solid #e2e8f0", borderRadius: 8, padding: 16 }}>
-          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: 12 }}>
+        /* 🟢 CONNECTED STATE (DARK LUXURY) */
+        <div style={{ background: "rgba(19, 27, 46, 0.6)", border: "1px solid #1e293b", borderRadius: 12, padding: 18 }}>
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: 14 }}>
             <div>
               <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                <span style={{ height: 10, width: 10, borderRadius: "50%", background: "#10b981", display: "inline-block" }}></span>
-                <span style={{ fontWeight: 600, fontSize: 14, color: "#0f172a" }}>Connected: {connection.siteUrl}</span>
+                <span style={{ height: 10, width: 10, borderRadius: "50%", background: "#10b981", display: "inline-block", boxShadow: "0 0 8px #10b981" }}></span>
+                <span style={{ fontWeight: 700, fontSize: 15, color: "#f8fafc" }}>Connected: {connection.siteUrl}</span>
                 {connection.isWooCommerce && (
-                  <span style={{ fontSize: 11, background: "#f1f5f9", padding: "2px 6px", borderRadius: 4, color: "#7c3aed", fontWeight: 600 }}>
+                  <span style={{ fontSize: 11, background: "rgba(124, 58, 237, 0.2)", border: "1px solid #7c3aed", padding: "2px 8px", borderRadius: 4, color: "#c4b5fd", fontWeight: 600 }}>
                     WooCommerce Active
                   </span>
                 )}
               </div>
-              <div style={{ fontSize: 12, color: "#64748b", marginTop: 4 }}>
-                Site: {connection.siteName || "WordPress"} · Plugin v{connection.pluginVersion || "1.0.0"} · Active for <strong>{activeBusiness}</strong>
+              <div style={{ fontSize: 13, color: "#94a3b8", marginTop: 6 }}>
+                Site: {connection.siteName || "WordPress"} · Plugin v{connection.pluginVersion || "1.0.0"} · Target: <span style={{ color: "#60a5fa", fontWeight: 600 }}>{activeBusiness}</span>
               </div>
             </div>
 
-            <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+            <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
               <a
                 href="/seo"
                 style={{
-                  padding: "8px 14px",
-                  borderRadius: 6,
-                  background: "#4f46e5",
+                  padding: "9px 16px",
+                  borderRadius: 8,
+                  background: "linear-gradient(135deg, #2563eb 0%, #4f46e5 100%)",
                   color: "#fff",
                   textDecoration: "none",
                   fontSize: 13,
                   fontWeight: 600,
-                  display: "inline-block",
+                  display: "inline-flex",
+                  alignItems: "center",
+                  gap: 6,
+                  boxShadow: "0 4px 14px rgba(37, 99, 235, 0.3)",
                 }}
               >
-                🚀 Open SEO & Website Suite
+                <span>🚀</span> Open SEO Suite
               </a>
               <button
                 onClick={handleTestConnection}
                 disabled={testing}
                 style={{
-                  padding: "8px 12px",
-                  borderRadius: 6,
-                  border: "1px solid #cbd5e1",
-                  background: "#fff",
+                  padding: "9px 14px",
+                  borderRadius: 8,
+                  border: "1px solid #1e293b",
+                  background: "#131b2e",
+                  color: "#e2e8f0",
                   fontSize: 13,
                   cursor: "pointer",
                 }}
               >
-                {testing ? "Testing…" : "Test Ping"}
+                {testing ? "Testing…" : "⚡ Test Ping"}
               </button>
               <button
                 onClick={handleDisconnect}
                 style={{
-                  padding: "8px 12px",
-                  borderRadius: 6,
-                  border: "1px solid #fecaca",
-                  background: "#fff5f5",
-                  color: "#dc2626",
+                  padding: "9px 14px",
+                  borderRadius: 8,
+                  border: "1px solid rgba(239, 68, 68, 0.3)",
+                  background: "rgba(239, 68, 68, 0.1)",
+                  color: "#f87171",
                   fontSize: 13,
                   cursor: "pointer",
                 }}
@@ -247,24 +256,24 @@ export default function WordPressSiteConnect() {
           </div>
 
           {testResult && (
-            <div style={{ marginTop: 12, padding: "8px 12px", borderRadius: 6, fontSize: 13, background: testResult.ok ? "#ecfdf5" : "#fef2f2", color: testResult.ok ? "#065f46" : "#991b1b" }}>
+            <div style={{ marginTop: 14, padding: "10px 14px", borderRadius: 8, fontSize: 13, background: testResult.ok ? "rgba(16, 185, 129, 0.1)" : "rgba(239, 68, 68, 0.1)", border: `1px solid ${testResult.ok ? "#10b981" : "#ef4444"}`, color: testResult.ok ? "#34d399" : "#f87171" }}>
               {testResult.message}
             </div>
           )}
         </div>
       ) : (
-        /* ⚪ DISCONNECTED STATE */
-        <div style={{ background: "#f8fafc", border: "1px dashed #cbd5e1", borderRadius: 8, padding: 18 }}>
-          <p style={{ margin: "0 0 12px 0", color: "#64748b", fontSize: 14 }}>
-            Connect your WordPress / WooCommerce website to enable autonomous daily blogging, on-page SEO optimization, dual visual generation, and Google Search Console tracking.
+        /* ⚪ DISCONNECTED STATE (DARK LUXURY) */
+        <div style={{ background: "rgba(15, 23, 42, 0.5)", border: "1px dashed #334155", borderRadius: 12, padding: 22 }}>
+          <p style={{ margin: "0 0 16px 0", color: "#94a3b8", fontSize: 14, lineHeight: 1.5 }}>
+            Connect your WordPress / WooCommerce website to enable autonomous daily blogging at 6:00 AM IST, on-page SEO optimization, dual visual generation, and Google Search Console tracking.
           </p>
           <button
             onClick={handleStartConnect}
             style={{
-              padding: "10px 18px",
-              borderRadius: 6,
+              padding: "11px 20px",
+              borderRadius: 8,
               border: "none",
-              background: "#2563eb",
+              background: "linear-gradient(135deg, #2563eb 0%, #4f46e5 100%)",
               color: "#fff",
               fontWeight: 600,
               fontSize: 14,
@@ -272,6 +281,7 @@ export default function WordPressSiteConnect() {
               display: "inline-flex",
               alignItems: "center",
               gap: 8,
+              boxShadow: "0 4px 14px rgba(37, 99, 235, 0.3)",
             }}
           >
             <span>🌐</span> Connect WordPress Website
@@ -279,7 +289,7 @@ export default function WordPressSiteConnect() {
         </div>
       )}
 
-      {/* ── 3-STEP ONBOARDING MODAL ── */}
+      {/* ── 3-STEP ONBOARDING MODAL (DARK LUXURY) ── */}
       {showModal && (
         <div
           style={{
@@ -288,8 +298,9 @@ export default function WordPressSiteConnect() {
             left: 0,
             right: 0,
             bottom: 0,
-            background: "rgba(15, 23, 42, 0.75)",
-            backdropFilter: "blur(4px)",
+            background: "rgba(5, 8, 15, 0.85)",
+            backdropFilter: "blur(8px)",
+            WebkitBackdropFilter: "blur(8px)",
             display: "flex",
             alignItems: "center",
             justifyContent: "center",
@@ -299,55 +310,57 @@ export default function WordPressSiteConnect() {
         >
           <div
             style={{
-              background: "#fff",
-              borderRadius: 14,
+              background: "#0f172a",
+              border: "1px solid #1e293b",
+              borderRadius: 16,
               maxWidth: 580,
               width: "100%",
-              padding: 28,
-              boxShadow: "0 20px 25px -5px rgba(0, 0, 0, 0.2)",
+              padding: 30,
+              boxShadow: "0 25px 50px -12px rgba(0, 0, 0, 0.6), 0 0 30px rgba(37, 99, 235, 0.15)",
               position: "relative",
+              color: "#f8fafc",
             }}
           >
-            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 16 }}>
-              <h2 style={{ margin: 0, fontSize: 18, color: "#0f172a" }}>
-                Connect WordPress Site for <strong>{activeBusiness}</strong>
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 18 }}>
+              <h2 style={{ margin: 0, fontSize: 18, color: "#fff" }}>
+                Connect WordPress Site for <strong style={{ color: "#60a5fa" }}>{activeBusiness}</strong>
               </h2>
               <button
                 onClick={() => setShowModal(false)}
-                style={{ border: "none", background: "none", fontSize: 20, cursor: "pointer", color: "#94a3b8" }}
+                style={{ border: "none", background: "none", fontSize: 22, cursor: "pointer", color: "#94a3b8" }}
               >
                 ✕
               </button>
             </div>
 
             {/* Stepper Progress */}
-            <div style={{ display: "flex", gap: 8, marginBottom: 20 }}>
-              <div style={{ flex: 1, height: 4, borderRadius: 2, background: modalStep >= 1 ? "#2563eb" : "#e2e8f0" }} />
-              <div style={{ flex: 1, height: 4, borderRadius: 2, background: modalStep >= 2 ? "#2563eb" : "#e2e8f0" }} />
-              <div style={{ flex: 1, height: 4, borderRadius: 2, background: modalStep >= 3 ? "#2563eb" : "#e2e8f0" }} />
+            <div style={{ display: "flex", gap: 8, marginBottom: 24 }}>
+              <div style={{ flex: 1, height: 4, borderRadius: 2, background: modalStep >= 1 ? "#3b82f6" : "#1e293b" }} />
+              <div style={{ flex: 1, height: 4, borderRadius: 2, background: modalStep >= 2 ? "#3b82f6" : "#1e293b" }} />
+              <div style={{ flex: 1, height: 4, borderRadius: 2, background: modalStep >= 3 ? "#3b82f6" : "#1e293b" }} />
             </div>
 
             {/* STEP 1 */}
             {modalStep === 1 && (
               <div>
-                <h3 style={{ fontSize: 16, marginTop: 0, color: "#1e293b" }}>Step 1: Plugin Download</h3>
-                <p style={{ fontSize: 14, color: "#64748b", lineHeight: 1.5 }}>
+                <h3 style={{ fontSize: 16, marginTop: 0, color: "#fff" }}>Step 1: Plugin Download</h3>
+                <p style={{ fontSize: 14, color: "#94a3b8", lineHeight: 1.5 }}>
                   The <strong>gabbarinfo-connect.zip</strong> file was downloaded automatically. If your download did not start, click below:
                 </p>
-                <div style={{ margin: "16px 0", padding: 14, background: "#f1f5f9", borderRadius: 8, display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-                  <span style={{ fontSize: 13, fontWeight: 600, color: "#334155" }}>📦 gabbarinfo-connect.zip (v1.0.0)</span>
+                <div style={{ margin: "18px 0", padding: 16, background: "#131b2e", border: "1px solid #1e293b", borderRadius: 10, display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                  <span style={{ fontSize: 13, fontWeight: 600, color: "#cbd5e1" }}>📦 gabbarinfo-connect.zip (v1.0.0)</span>
                   <a
                     href="/api/wordpress/download"
                     download
-                    style={{ padding: "6px 12px", background: "#fff", border: "1px solid #cbd5e1", borderRadius: 6, fontSize: 12, fontWeight: 600, color: "#0f172a", textDecoration: "none" }}
+                    style={{ padding: "7px 14px", background: "#1e293b", border: "1px solid #334155", borderRadius: 6, fontSize: 12, fontWeight: 600, color: "#60a5fa", textDecoration: "none" }}
                   >
                     Download Again
                   </a>
                 </div>
-                <div style={{ display: "flex", justifyContent: "flex-end", marginTop: 24 }}>
+                <div style={{ display: "flex", justifyContent: "flex-end", marginTop: 26 }}>
                   <button
                     onClick={() => setModalStep(2)}
-                    style={{ padding: "9px 18px", borderRadius: 6, border: "none", background: "#2563eb", color: "#fff", fontWeight: 600, cursor: "pointer" }}
+                    style={{ padding: "10px 20px", borderRadius: 8, border: "none", background: "#2563eb", color: "#fff", fontWeight: 600, cursor: "pointer" }}
                   >
                     Next: Installation Steps ➔
                   </button>
@@ -358,24 +371,24 @@ export default function WordPressSiteConnect() {
             {/* STEP 2 */}
             {modalStep === 2 && (
               <div>
-                <h3 style={{ fontSize: 16, marginTop: 0, color: "#1e293b" }}>Step 2: Install in WordPress</h3>
-                <div style={{ fontSize: 13, color: "#475569", lineHeight: 1.6, background: "#f8fafc", padding: 16, borderRadius: 8, border: "1px solid #e2e8f0" }}>
+                <h3 style={{ fontSize: 16, marginTop: 0, color: "#fff" }}>Step 2: Install in WordPress</h3>
+                <div style={{ fontSize: 13, color: "#cbd5e1", lineHeight: 1.7, background: "#131b2e", padding: 18, borderRadius: 10, border: "1px solid #1e293b" }}>
                   <p style={{ margin: "0 0 8px 0" }}>1. Open your WordPress Admin (<code>yourdomain.com/wp-admin</code>).</p>
                   <p style={{ margin: "0 0 8px 0" }}>2. In the left menu, click <strong>Plugins ➔ Add New Plugin</strong>.</p>
                   <p style={{ margin: "0 0 8px 0" }}>3. Click <strong>Upload Plugin</strong> at the top, select <strong>gabbarinfo-connect.zip</strong>, and click <strong>Install Now</strong>.</p>
                   <p style={{ margin: "0 0 8px 0" }}>4. Click <strong>Activate Plugin</strong>.</p>
-                  <p style={{ margin: 0 }}>5. In the left sidebar, click <strong>Settings ➔ GabbarInfo AI</strong> (or copy your Secret Pairing Key).</p>
+                  <p style={{ margin: 0 }}>5. In the left sidebar, click <strong>Settings ➔ GabbarInfo AI</strong> and copy your <strong>Pairing Key</strong>.</p>
                 </div>
-                <div style={{ display: "flex", justifyContent: "space-between", marginTop: 24 }}>
+                <div style={{ display: "flex", justifyContent: "space-between", marginTop: 26 }}>
                   <button
                     onClick={() => setModalStep(1)}
-                    style={{ padding: "9px 16px", borderRadius: 6, border: "1px solid #cbd5e1", background: "#fff", color: "#475569", cursor: "pointer" }}
+                    style={{ padding: "10px 18px", borderRadius: 8, border: "1px solid #1e293b", background: "#131b2e", color: "#94a3b8", cursor: "pointer" }}
                   >
                     Back
                   </button>
                   <button
                     onClick={() => setModalStep(3)}
-                    style={{ padding: "9px 18px", borderRadius: 6, border: "none", background: "#2563eb", color: "#fff", fontWeight: 600, cursor: "pointer" }}
+                    style={{ padding: "10px 20px", borderRadius: 8, border: "none", background: "#2563eb", color: "#fff", fontWeight: 600, cursor: "pointer" }}
                   >
                     Next: Enter Pairing Key ➔
                   </button>
@@ -386,51 +399,51 @@ export default function WordPressSiteConnect() {
             {/* STEP 3 */}
             {modalStep === 3 && (
               <div>
-                <h3 style={{ fontSize: 16, marginTop: 0, color: "#1e293b" }}>Step 3: Pair Your Site</h3>
-                <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
+                <h3 style={{ fontSize: 16, marginTop: 0, color: "#fff" }}>Step 3: Pair Your Site</h3>
+                <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
                   <div>
-                    <label style={{ fontSize: 13, fontWeight: 600, color: "#334155", display: "block", marginBottom: 6 }}>Target Website URL</label>
+                    <label style={{ fontSize: 13, fontWeight: 600, color: "#cbd5e1", display: "block", marginBottom: 6 }}>Target Website URL</label>
                     <input
                       type="url"
                       placeholder="https://www.yourdomain.com"
                       value={siteUrlInput}
                       onChange={(e) => setSiteUrlInput(e.target.value)}
-                      style={{ width: "100%", padding: "9px 12px", borderRadius: 6, border: "1px solid #cbd5e1", fontSize: 14 }}
+                      style={{ width: "100%", padding: "10px 14px", borderRadius: 8, border: "1px solid #1e293b", background: "#131b2e", color: "#fff", fontSize: 14 }}
                     />
                   </div>
 
                   <div>
-                    <label style={{ fontSize: 13, fontWeight: 600, color: "#334155", display: "block", marginBottom: 6 }}>Plugin Secret Pairing Key</label>
+                    <label style={{ fontSize: 13, fontWeight: 600, color: "#cbd5e1", display: "block", marginBottom: 6 }}>Plugin Secret Pairing Key</label>
                     <input
                       type="text"
                       placeholder="e.g. gb_sec_..."
                       value={apiKeyInput}
                       onChange={(e) => setApiKeyInput(e.target.value)}
-                      style={{ width: "100%", padding: "9px 12px", borderRadius: 6, border: "1px solid #cbd5e1", fontSize: 14, fontFamily: "monospace" }}
+                      style={{ width: "100%", padding: "10px 14px", borderRadius: 8, border: "1px solid #1e293b", background: "#131b2e", color: "#fff", fontSize: 14, fontFamily: "monospace" }}
                     />
-                    <div style={{ fontSize: 12, color: "#64748b", marginTop: 4 }}>
+                    <div style={{ fontSize: 12, color: "#94a3b8", marginTop: 4 }}>
                       Found in your WordPress Admin under <code>Settings ➔ GabbarInfo AI</code>.
                     </div>
                   </div>
                 </div>
 
                 {errorMsg && (
-                  <div style={{ marginTop: 14, padding: 10, background: "#fef2f2", color: "#b91c1c", borderRadius: 6, fontSize: 13 }}>
+                  <div style={{ marginTop: 14, padding: 12, background: "rgba(239, 68, 68, 0.1)", border: "1px solid #ef4444", color: "#f87171", borderRadius: 8, fontSize: 13 }}>
                     ⚠️ {errorMsg}
                   </div>
                 )}
 
-                <div style={{ display: "flex", justifyContent: "space-between", marginTop: 24 }}>
+                <div style={{ display: "flex", justifyContent: "space-between", marginTop: 26 }}>
                   <button
                     onClick={() => setModalStep(2)}
-                    style={{ padding: "9px 16px", borderRadius: 6, border: "1px solid #cbd5e1", background: "#fff", color: "#475569", cursor: "pointer" }}
+                    style={{ padding: "10px 18px", borderRadius: 8, border: "1px solid #1e293b", background: "#131b2e", color: "#94a3b8", cursor: "pointer" }}
                   >
                     Back
                   </button>
                   <button
                     onClick={handleSaveConnection}
                     disabled={connecting}
-                    style={{ padding: "9px 18px", borderRadius: 6, border: "none", background: "#10b981", color: "#fff", fontWeight: 600, cursor: "pointer" }}
+                    style={{ padding: "10px 22px", borderRadius: 8, border: "none", background: "#10b981", color: "#fff", fontWeight: 700, cursor: "pointer", boxShadow: "0 0 16px rgba(16, 185, 129, 0.4)" }}
                   >
                     {connecting ? "Verifying…" : "Verify & Connect Website"}
                   </button>

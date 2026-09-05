@@ -87,7 +87,8 @@ export default function GoogleAdsAccountConnect() {
 
   if (loading) {
     return (
-      <div style={{ padding: "16px", color: "#666", fontSize: "14px" }}>
+      <div style={{ padding: "16px", color: "#94a3b8", fontSize: "14px", display: "flex", alignItems: "center", gap: "8px" }}>
+        <div style={{ width: 16, height: 16, border: "2px solid rgba(59, 130, 246, 0.2)", borderTopColor: "#3b82f6", borderRadius: "50%", animation: "spin 0.8s linear infinite" }} />
         Checking Google Ads account connection…
       </div>
     );
@@ -98,16 +99,19 @@ export default function GoogleAdsAccountConnect() {
       <div
         style={{
           padding: "20px",
-          borderRadius: "12px",
-          background: "#fff",
-          border: "1px solid #e2e8f0",
+          borderRadius: "14px",
+          background: "rgba(15, 23, 42, 0.65)",
+          border: "1px solid rgba(255, 255, 255, 0.08)",
+          backdropFilter: "blur(12px)",
         }}
       >
-        <div style={{ display: "flex", alignItems: "center", gap: "10px", marginBottom: "12px" }}>
-          <span style={{ fontSize: "20px" }}>🎯</span>
+        <div style={{ display: "flex", alignItems: "center", gap: "12px", marginBottom: "14px" }}>
+          <div style={{ width: 40, height: 40, borderRadius: 10, background: "rgba(66, 133, 244, 0.15)", display: "flex", alignItems: "center", justifyContent: "center", fontSize: "20px" }}>
+            🎯
+          </div>
           <div>
-            <h3 style={{ margin: 0, fontSize: "16px", color: "#1e293b" }}>Google Ads Account</h3>
-            <p style={{ margin: "2px 0 0", fontSize: "13px", color: "#64748b" }}>
+            <h3 style={{ margin: 0, fontSize: "16px", fontWeight: 700, color: "#f8fafc" }}>Google Ads Account</h3>
+            <p style={{ margin: "2px 0 0", fontSize: "13px", color: "#94a3b8", lineHeight: 1.4 }}>
               Connect your Google Ads account to create and manage search campaigns directly with AI.
             </p>
           </div>
@@ -116,18 +120,19 @@ export default function GoogleAdsAccountConnect() {
         <button
           onClick={() => signIn("google")}
           style={{
-            marginTop: "10px",
+            marginTop: "6px",
             padding: "10px 18px",
-            background: "#4285F4",
+            background: "linear-gradient(135deg, #4285F4, #2563eb)",
             color: "#fff",
             border: "none",
-            borderRadius: "8px",
-            fontSize: "14px",
-            fontWeight: 600,
+            borderRadius: "10px",
+            fontSize: "13px",
+            fontWeight: 700,
             cursor: "pointer",
             display: "inline-flex",
             alignItems: "center",
             gap: "8px",
+            boxShadow: "0 4px 14px rgba(66, 133, 244, 0.35)",
           }}
         >
           <span>Connect Google Ads Account</span>
@@ -140,9 +145,10 @@ export default function GoogleAdsAccountConnect() {
     <div
       style={{
         padding: "20px",
-        borderRadius: "12px",
-        background: "#fff",
-        border: "1px solid #e2e8f0",
+        borderRadius: "14px",
+        background: "rgba(15, 23, 42, 0.65)",
+        border: "1px solid rgba(255, 255, 255, 0.08)",
+        backdropFilter: "blur(12px)",
       }}
     >
       <div
@@ -153,17 +159,20 @@ export default function GoogleAdsAccountConnect() {
           marginBottom: "16px",
         }}
       >
-        <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
-          <span style={{ fontSize: "22px" }}>🎯</span>
+        <div style={{ display: "flex", alignItems: "center", gap: "12px" }}>
+          <div style={{ width: 40, height: 40, borderRadius: 10, background: "rgba(66, 133, 244, 0.15)", display: "flex", alignItems: "center", justifyContent: "center", fontSize: "20px" }}>
+            🎯
+          </div>
           <div>
             <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
-              <h3 style={{ margin: 0, fontSize: "16px", color: "#1e293b" }}>Google Ads Connected</h3>
+              <h3 style={{ margin: 0, fontSize: "16px", fontWeight: 700, color: "#f8fafc" }}>Google Ads Connected</h3>
               <span
                 style={{
                   fontSize: "11px",
                   padding: "2px 8px",
-                  background: "#dcfce7",
-                  color: "#166534",
+                  background: "rgba(16, 185, 129, 0.15)",
+                  color: "#34d399",
+                  border: "1px solid rgba(16, 185, 129, 0.3)",
                   borderRadius: "999px",
                   fontWeight: 600,
                 }}
@@ -171,7 +180,7 @@ export default function GoogleAdsAccountConnect() {
                 OAuth Active
               </span>
             </div>
-            <p style={{ margin: "4px 0 0", fontSize: "13px", color: "#64748b" }}>
+            <p style={{ margin: "4px 0 0", fontSize: "13px", color: "#94a3b8" }}>
               Select which Google Ads account you want GabbarInfo AI to manage.
             </p>
           </div>
@@ -182,11 +191,12 @@ export default function GoogleAdsAccountConnect() {
           style={{
             padding: "6px 12px",
             fontSize: "12px",
-            borderRadius: "6px",
-            border: "1px solid #cbd5e1",
-            background: "#f8fafc",
+            fontWeight: 600,
+            borderRadius: "8px",
+            border: "1px solid rgba(255, 255, 255, 0.1)",
+            background: "rgba(255, 255, 255, 0.05)",
             cursor: "pointer",
-            color: "#475569",
+            color: "#cbd5e1",
           }}
         >
           🔄 Refresh
@@ -197,10 +207,10 @@ export default function GoogleAdsAccountConnect() {
         <div
           style={{
             padding: "10px 14px",
-            background: "#ecfdf5",
-            border: "1px solid #a7f3d0",
-            color: "#065f46",
-            borderRadius: "8px",
+            background: "rgba(16, 185, 129, 0.12)",
+            border: "1px solid rgba(16, 185, 129, 0.3)",
+            color: "#34d399",
+            borderRadius: "10px",
             fontSize: "13px",
             marginBottom: "14px",
           }}
@@ -213,10 +223,10 @@ export default function GoogleAdsAccountConnect() {
         <div
           style={{
             padding: "10px 14px",
-            background: "#fef2f2",
-            border: "1px solid #fecaca",
-            color: "#991b1b",
-            borderRadius: "8px",
+            background: "rgba(239, 68, 68, 0.12)",
+            border: "1px solid rgba(239, 68, 68, 0.3)",
+            color: "#fca5a5",
+            borderRadius: "10px",
             fontSize: "13px",
             marginBottom: "14px",
           }}
@@ -228,19 +238,19 @@ export default function GoogleAdsAccountConnect() {
       {accounts.length === 0 ? (
         <div
           style={{
-            padding: "16px 20px",
-            background: needsReauth ? "#fff7ed" : "#f8fafc",
-            borderRadius: "8px",
-            border: needsReauth ? "1px solid #fed7aa" : "1px dashed #cbd5e1",
+            padding: "20px",
+            background: needsReauth ? "rgba(245, 158, 11, 0.1)" : "rgba(8, 11, 17, 0.6)",
+            borderRadius: "10px",
+            border: needsReauth ? "1px solid rgba(245, 158, 11, 0.3)" : "1px dashed rgba(255, 255, 255, 0.12)",
             fontSize: "13px",
-            color: needsReauth ? "#92400e" : "#64748b",
+            color: needsReauth ? "#fde68a" : "#94a3b8",
             textAlign: "center",
           }}
         >
           {needsReauth ? (
             <>
               <div style={{ fontSize: "20px", marginBottom: "8px" }}>🔑</div>
-              <strong style={{ display: "block", marginBottom: "6px", fontSize: "14px" }}>
+              <strong style={{ display: "block", marginBottom: "6px", fontSize: "14px", color: "#f8fafc" }}>
                 Google Ads Permission Required
               </strong>
               <p style={{ margin: "0 0 14px", lineHeight: 1.6 }}>
@@ -254,10 +264,10 @@ export default function GoogleAdsAccountConnect() {
                 onClick={() => signIn("google")}
                 style={{
                   padding: "10px 20px",
-                  background: "#4285F4",
+                  background: "linear-gradient(135deg, #4285F4, #2563eb)",
                   color: "#fff",
                   border: "none",
-                  borderRadius: "8px",
+                  borderRadius: "10px",
                   fontSize: "13px",
                   fontWeight: 600,
                   cursor: "pointer",
@@ -283,18 +293,19 @@ export default function GoogleAdsAccountConnect() {
                 style={{
                   padding: "12px 16px",
                   borderRadius: "10px",
-                  border: isSelected ? "2px solid #3b82f6" : "1px solid #e2e8f0",
-                  background: isSelected ? "#eff6ff" : "#fff",
+                  border: isSelected ? "2px solid #3b82f6" : "1px solid rgba(255, 255, 255, 0.08)",
+                  background: isSelected ? "rgba(59, 130, 246, 0.12)" : "rgba(8, 11, 17, 0.6)",
                   display: "flex",
                   justifyContent: "space-between",
                   alignItems: "center",
                   cursor: "pointer",
                   transition: "all 0.15s ease",
+                  boxShadow: isSelected ? "0 4px 14px rgba(59, 130, 246, 0.2)" : "none",
                 }}
               >
                 <div>
                   <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
-                    <strong style={{ fontSize: "14px", color: isSelected ? "#1d4ed8" : "#1e293b" }}>
+                    <strong style={{ fontSize: "14px", color: isSelected ? "#93c5fd" : "#f8fafc" }}>
                       {acc.descriptiveName || "Google Ads Account"}
                     </strong>
                     {acc.isManager && (
@@ -303,17 +314,17 @@ export default function GoogleAdsAccountConnect() {
                           fontSize: "10px",
                           padding: "2px 6px",
                           borderRadius: "4px",
-                          background: "#f1f5f9",
-                          color: "#475569",
-                          border: "1px solid #e2e8f0",
+                          background: "rgba(255, 255, 255, 0.06)",
+                          color: "#94a3b8",
+                          border: "1px solid rgba(255, 255, 255, 0.1)",
                         }}
                       >
                         Manager (MCC)
                       </span>
                     )}
                   </div>
-                  <div style={{ fontSize: "12px", color: "#64748b", marginTop: "3px" }}>
-                    ID: <code>{formatCustomerId(acc.customerId)}</code> • Currency: {acc.currencyCode || "INR"}
+                  <div style={{ fontSize: "12px", color: "#94a3b8", marginTop: "4px" }}>
+                    ID: <code style={{ color: "#60a5fa" }}>{formatCustomerId(acc.customerId)}</code> • Currency: {acc.currencyCode || "INR"}
                   </div>
                 </div>
 
@@ -322,9 +333,10 @@ export default function GoogleAdsAccountConnect() {
                     <span
                       style={{
                         fontSize: "12px",
-                        fontWeight: 600,
-                        color: "#2563eb",
-                        background: "#dbeafe",
+                        fontWeight: 700,
+                        color: "#60a5fa",
+                        background: "rgba(59, 130, 246, 0.2)",
+                        border: "1px solid rgba(59, 130, 246, 0.4)",
                         padding: "4px 10px",
                         borderRadius: "999px",
                       }}
@@ -340,12 +352,13 @@ export default function GoogleAdsAccountConnect() {
                         handleSelectAccount(acc.customerId, acc.managerId);
                       }}
                       style={{
-                        padding: "6px 12px",
+                        padding: "6px 14px",
                         fontSize: "12px",
-                        borderRadius: "6px",
-                        border: "1px solid #cbd5e1",
-                        background: "#fff",
-                        color: "#334155",
+                        fontWeight: 600,
+                        borderRadius: "8px",
+                        border: "1px solid rgba(255, 255, 255, 0.1)",
+                        background: "rgba(255, 255, 255, 0.05)",
+                        color: "#f8fafc",
                         cursor: isPending ? "wait" : "pointer",
                       }}
                     >
