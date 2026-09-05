@@ -328,7 +328,7 @@ export default function SeoHubPage() {
 
         <div style={{ display: "flex", alignItems: "center", gap: 14, flexWrap: "wrap" }}>
           {/* Dynamic Connected Business Profile Selector */}
-          <div style={{ display: "flex", alignItems: "center", gap: 8, background: "#131b2e", padding: "6px 14px", borderRadius: 8, border: "1.5px solid rgba(245, 183, 22, 0.35)" }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 8, background: "#0d111c", padding: "6px 14px", borderRadius: 8, border: "1px solid rgba(255, 255, 255, 0.16)" }}>
             <span style={{ fontSize: 12, color: "#94a3b8", fontWeight: 700 }}>Project:</span>
             <select
               value={activeBusiness}
@@ -336,7 +336,7 @@ export default function SeoHubPage() {
               style={{
                 background: "transparent",
                 border: "none",
-                color: "#F5B716",
+                color: "#38bdf8",
                 fontWeight: 700,
                 fontSize: 13,
                 cursor: "pointer",
@@ -345,12 +345,12 @@ export default function SeoHubPage() {
             >
               {connectedProfiles.length > 0 ? (
                 connectedProfiles.map((name) => (
-                  <option key={name} value={name} style={{ background: "#0f172a", color: "#fff" }}>
+                  <option key={name} value={name} style={{ background: "#0d111c", color: "#38bdf8" }}>
                     ✓ {name} ({allConnections[name]?.siteUrl})
                   </option>
                 ))
               ) : (
-                <option value="none" style={{ background: "#0f172a", color: "#F5B716" }}>
+                <option value="none" style={{ background: "#0d111c", color: "#94a3b8" }}>
                   [ No Website Connected Yet ]
                 </option>
               )}
@@ -360,7 +360,7 @@ export default function SeoHubPage() {
                 href="/#wordpress-connect"
                 style={{
                   fontSize: 12,
-                  color: "#F5B716",
+                  color: "#38bdf8",
                   fontWeight: 700,
                   textDecoration: "underline",
                   marginLeft: 4,

@@ -5,6 +5,7 @@ import { useEffect, useState } from "react";
 import Link from "next/link";
 import { signIn, signOut, useSession } from "next-auth/react";
 import BuyCreditsModal from "./components/BuyCreditsModal";
+import CyberMatrixBackground from "./components/CyberMatrixBackground";
 
 const SYSTEM_PROMPT = `
 You are **GabbarInfo AI**, a senior digital marketing strategist with expertise in all aspects of digital marketing.
@@ -993,73 +994,156 @@ Now respond as GabbarInfo AI.
           background: "#080b11",
           fontFamily: "'Plus Jakarta Sans', sans-serif",
           padding: 24,
+          position: "relative",
+          overflow: "hidden",
         }}
       >
+        {/* Cybernetic Falling Code & 3D Rotating Geometric Wireframes Background */}
+        <CyberMatrixBackground showGeometric={true} />
+
+        {/* Luxury AI Glass Card */}
         <div
           style={{
-            maxWidth: 420,
+            maxWidth: 480,
             width: "100%",
-            background: "rgba(15, 23, 42, 0.75)",
-            backdropFilter: "blur(20px)",
-            border: "1px solid rgba(255, 255, 255, 0.08)",
-            borderRadius: 20,
-            padding: 32,
-            boxShadow: "0 24px 60px rgba(0, 0, 0, 0.5)",
+            background: "linear-gradient(180deg, rgba(16, 22, 34, 0.88) 0%, rgba(8, 11, 17, 0.95) 100%)",
+            backdropFilter: "blur(28px)",
+            WebkitBackdropFilter: "blur(28px)",
+            border: "1px solid rgba(255, 255, 255, 0.16)",
+            borderRadius: 24,
+            padding: "44px 38px",
+            boxShadow: "0 30px 80px rgba(0, 0, 0, 0.85), 0 0 50px rgba(59, 130, 246, 0.15), inset 0 1px 0 rgba(255, 255, 255, 0.2)",
+            position: "relative",
+            zIndex: 1,
             textAlign: "center",
           }}
         >
-          <div style={{ width: 56, height: 56, margin: "0 auto 16px", borderRadius: 16, background: "linear-gradient(135deg, #2563eb, #7c3aed)", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 26, boxShadow: "0 8px 24px rgba(37, 99, 235, 0.35)" }}>
-            ⚡
+          {/* Brand Emblem */}
+          <div
+            style={{
+              display: "inline-flex",
+              alignItems: "center",
+              justifyContent: "center",
+              width: 68,
+              height: 68,
+              borderRadius: 20,
+              background: "linear-gradient(135deg, rgba(59, 130, 246, 0.25) 0%, rgba(8, 11, 17, 0.9) 100%)",
+              border: "1px solid rgba(255, 255, 255, 0.25)",
+              marginBottom: 18,
+              boxShadow: "0 0 30px rgba(59, 130, 246, 0.35)",
+            }}
+          >
+            <span style={{ fontSize: 32 }}>🚀</span>
           </div>
-          <h1 style={{ margin: "0 0 8px", fontSize: 22, fontWeight: 800, color: "#f8fafc", letterSpacing: "-0.02em" }}>
+
+          {/* Live Radar Pulse Badge */}
+          <div style={{ display: "inline-block", marginBottom: 12 }}>
+            <span
+              style={{
+                display: "inline-flex",
+                alignItems: "center",
+                gap: 6,
+                padding: "4px 14px",
+                borderRadius: 999,
+                background: "rgba(16, 185, 129, 0.12)",
+                border: "1px solid rgba(16, 185, 129, 0.35)",
+                color: "#34d399",
+                fontSize: 11,
+                fontWeight: 800,
+                letterSpacing: "1.2px",
+                textTransform: "uppercase",
+              }}
+            >
+              <span style={{ width: 7, height: 7, borderRadius: "50%", background: "#10b981", boxShadow: "0 0 10px #10b981", animation: "radarPulse 2s infinite" }} />
+              AUTONOMOUS AI COMMAND CENTER
+            </span>
+          </div>
+
+          <h1
+            style={{
+              margin: "0 0 10px 0",
+              fontSize: 32,
+              fontWeight: 800,
+              letterSpacing: "-0.5px",
+              background: "linear-gradient(135deg, #ffffff 40%, #38bdf8 100%)",
+              WebkitBackgroundClip: "text",
+              WebkitTextFillColor: "transparent",
+            }}
+          >
             GabbarInfo AI
           </h1>
-          <p style={{ margin: "0 0 24px", fontSize: 14, color: "#94a3b8", lineHeight: 1.5 }}>
-            Sign in to access your autonomous digital marketing & SEO strategist.
+
+          <p
+            style={{
+              margin: "0 0 28px 0",
+              color: "#94a3b8",
+              fontSize: 14,
+              lineHeight: 1.6,
+            }}
+          >
+            Autonomous Digital Marketing Strategist. Sign in to chat with your AI agent, orchestrate campaigns, and automate daily SEO.
           </p>
-          <button
-            onClick={() => signIn("google")}
-            style={{
-              width: "100%",
-              padding: "12px 18px",
-              borderRadius: 12,
-              border: "1px solid rgba(255, 255, 255, 0.15)",
-              background: "#ffffff",
-              color: "#0f172a",
-              fontWeight: 600,
-              fontSize: 14,
-              cursor: "pointer",
-              display: "flex",
-              alignItems: "center",
-              justifyContent: "center",
-              gap: 10,
-              boxShadow: "0 4px 14px rgba(0, 0, 0, 0.15)",
-              marginBottom: 12,
-            }}
-          >
-            <span>Continue with Google</span>
-          </button>
-          <button
-            onClick={() => signIn("facebook")}
-            style={{
-              width: "100%",
-              padding: "12px 18px",
-              borderRadius: 12,
-              border: "none",
-              background: "#1877F2",
-              color: "#ffffff",
-              fontWeight: 600,
-              fontSize: 14,
-              cursor: "pointer",
-              display: "flex",
-              alignItems: "center",
-              justifyContent: "center",
-              gap: 10,
-              boxShadow: "0 4px 14px rgba(24, 119, 242, 0.3)",
-            }}
-          >
-            <span>Continue with Facebook</span>
-          </button>
+
+          <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
+            <button
+              onClick={() => signIn("google")}
+              className="btn-gabbar-primary"
+              style={{
+                width: "100%",
+                padding: "14px 22px",
+                fontSize: 15,
+                justifyContent: "center",
+                display: "flex",
+                alignItems: "center",
+                gap: 12,
+                cursor: "pointer",
+              }}
+            >
+              <svg width="20" height="20" viewBox="0 0 24 24" style={{ flexShrink: 0 }}>
+                <path
+                  fill="#4285F4"
+                  d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"
+                />
+                <path
+                  fill="#34A853"
+                  d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z"
+                />
+                <path
+                  fill="#FBBC05"
+                  d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.06H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.94l2.85-2.22.81-.63z"
+                />
+                <path
+                  fill="#EA4335"
+                  d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.06l3.66 2.84c.87-2.6 3.3-4.52 6.16-4.52z"
+                />
+              </svg>
+              <span>Continue with Google ↗</span>
+            </button>
+
+            <button
+              onClick={() => signIn("facebook")}
+              className="btn-gabbar-secondary"
+              style={{
+                width: "100%",
+                padding: "14px 22px",
+                fontSize: 15,
+                justifyContent: "center",
+                display: "flex",
+                alignItems: "center",
+                gap: 12,
+                cursor: "pointer",
+              }}
+            >
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor" style={{ flexShrink: 0 }}>
+                <path d="M24 12.073c0-6.627-5.373-12-12-12s-12 5.373-12 12c0 5.99 4.388 10.954 10.125 11.854v-8.385H7.078v-3.47h3.047V9.43c0-3.007 1.792-4.669 4.533-4.669 1.312 0 2.686.235 2.686.235v2.953H15.83c-1.491 0-1.956.925-1.956 1.874v2.25h3.328l-.532 3.47h-2.796v8.385C19.612 23.027 24 18.062 24 12.073z" />
+              </svg>
+              <span>Continue with Facebook ↗</span>
+            </button>
+          </div>
+
+          <div style={{ marginTop: 26, fontSize: 12, color: "#64748b", display: "flex", alignItems: "center", justifyContent: "center", gap: 6 }}>
+            <span>🔒</span> Enterprise 256-Bit Encrypted OAuth Security
+          </div>
         </div>
       </div>
     );

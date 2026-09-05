@@ -46,7 +46,7 @@ function initFluidSimulation() {
     canvas.style.zIndex = '999999';
     canvas.style.pointerEvents = 'none';
     canvas.style.display = 'block';
-    canvas.style.opacity = '0.9';
+    canvas.style.opacity = '1';
 
 
     // Simulation section
@@ -58,28 +58,28 @@ function initFluidSimulation() {
 
     let config = {
         SIM_RESOLUTION: 128,
-        DYE_RESOLUTION: 512,
+        DYE_RESOLUTION: 1024,
         CAPTURE_RESOLUTION: 512,
-        DENSITY_DISSIPATION: 5,
-        VELOCITY_DISSIPATION: .7,
+        DENSITY_DISSIPATION: 1.8,
+        VELOCITY_DISSIPATION: .8,
         PRESSURE: 0.8,
         PRESSURE_ITERATIONS: 20,
-        CURL: 5,
-        SPLAT_RADIUS: 0.4,
+        CURL: 30,
+        SPLAT_RADIUS: 0.28,
         SPLAT_FORCE: 6000,
         SHADING: true,
         COLORFUL: true,
         COLOR_UPDATE_SPEED: 10,
         PAUSED: false,
         BACK_COLOR: { r: 0, g: 0, b: 0 },
-        TRANSPARENT: false,
+        TRANSPARENT: true,
         BLOOM: true,
         BLOOM_ITERATIONS: 8,
         BLOOM_RESOLUTION: 256,
-        BLOOM_INTENSITY: 0.2,
-        BLOOM_THRESHOLD: 0.6,
+        BLOOM_INTENSITY: 0.5,
+        BLOOM_THRESHOLD: 0.25,
         BLOOM_SOFT_KNEE: 0.7,
-        SUNRAYS: true,
+        SUNRAYS: false,
         SUNRAYS_RESOLUTION: 196,
         SUNRAYS_WEIGHT: 0.1,
     }
@@ -1230,18 +1230,16 @@ function initFluidSimulation() {
             blur(sunrays, sunraysTemp, 1);
         }
 
-        if (target == null || !config.TRANSPARENT) {
-            gl.blendFunc(gl.ONE, gl.ONE_MINUS_SRC_ALPHA);
-            gl.enable(gl.BLEND);
-        }
-        else {
-            gl.disable(gl.BLEND);
+        gl.blendFunc(gl.ONE, gl.ONE_MINUS_SRC_ALPHA);
+        gl.enable(gl.BLEND);
+
+        if (target == null) {
+            gl.clearColor(0, 0, 0, 0);
+            gl.clear(gl.COLOR_BUFFER_BIT);
+        } else {
+            drawColor(target, normalizeColor(config.BACK_COLOR));
         }
 
-        if (!config.TRANSPARENT)
-            drawColor(target, normalizeColor(config.BACK_COLOR));
-        if (target == null && config.TRANSPARENT)
-            drawCheckerboard(target);
         drawDisplay(target);
     }
 
