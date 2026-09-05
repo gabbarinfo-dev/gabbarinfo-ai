@@ -366,6 +366,73 @@ export default async function handler(req, res) {
       return res.status(resp.ok ? 200 : resp.status).json(data);
     }
 
+    // ----------------------------------------------------------------
+    // 10. GET AUTOPILOT CONFIG
+    // ----------------------------------------------------------------
+    if (action === "get-autopilot-config") {
+      const autoMemoryKey = `wp_autopilot_${normalizedBusiness}`;
+      const { data: autoMem } = await supabase
+        .from("agent_memory")
+        .select("content")
+        .eq("email", userEmail)
+        .eq("memory_type", autoMemoryKey)
+        .maybeSingle();
+
+      if (autoMem?.content) {
+        try {
+          return res.status(200).json({ ok: true, config: JSON.parse(autoMem.content) });
+        } catch (e) {}
+      }
+
+      return res.status(200).json({
+        ok: true,
+        config: {
+          enabled: false,
+          cadence: "daily",
+          customDaysPerWeek: 3,
+          autoShareFacebook: true,
+          autoShareInstagram: true,
+        },
+      });
+    }
+
+    // ----------------------------------------------------------------
+    // 11. SAVE AUTOPILOT CONFIG
+    // ----------------------------------------------------------------
+    if (action === "save-autopilot-config") {
+      const autoMemoryKey = `wp_autopilot_${normalizedBusiness}`;
+      const configPayload = body.config || {};
+      configPayload.businessName = businessName || "GABBARinfo";
+      configPayload.updatedAt = new Date().toISOString();
+
+      const { data: existing } = await supabase
+        .from("agent_memory")
+        .select("id")
+        .eq("email", userEmail)
+        .eq("memory_type", autoMemoryKey)
+        .maybeSingle();
+
+      if (existing?.id) {
+        await supabase
+          .from("agent_memory")
+          .update({
+            content: JSON.stringify(configPayload),
+            updated_at: new Date().toISOString(),
+          })
+          .eq("id", existing.id);
+      } else {
+        await supabase.from("agent_memory").insert({
+          email: userEmail,
+          memory_type: autoMemoryKey,
+          content: JSON.stringify(configPayload),
+          created_at: new Date().toISOString(),
+          updated_at: new Date().toISOString(),
+        });
+      }
+
+      return res.status(200).json({ ok: true, config: configPayload, message: "Autopilot settings saved successfully" });
+    }
+
     return res.status(400).json({ ok: false, error: `Unknown action: ${action}` });
   } catch (err) {
     console.error("WordPress sync error:", err);

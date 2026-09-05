@@ -1089,7 +1089,7 @@ You are in SEO / BLOG AGENT MODE.
 
 - Focus on high-ranking keyword strategies, blog topics, content outlines, and complete SEO-optimised articles.
 - Structure articles with compelling H2/H3 headers, bullet points, meta title (under 60 chars), meta description (under 155 chars), clean URL slugs, and internal/external linking strategies.
-- Remind users that they can connect their WordPress website directly via the [SEO & Web Content Suite](/seo) or Dashboard to enable 1-click publishing, autonomous daily blogging at 6:00 AM IST, and dual visual generation.
+- Remind users that they can connect their WordPress website directly via the [SEO & Web Content Suite](/seo) or Dashboard to enable 1-click publishing, autonomous scheduled blogging cadence, and dual visual generation.
 `;
     } else {
       modeFocus = `

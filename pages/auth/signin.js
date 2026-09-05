@@ -72,7 +72,7 @@ export default function SignInPage() {
           {[
             { icon: "🎯", text: "Autonomous Google Search & PMax Ad Campaigns" },
             { icon: "📘", text: "Meta Ads & 1-Click Instagram/Facebook Distribution" },
-            { icon: "🌐", text: "WordPress SEO & Daily 6:00 AM Content Engine" },
+            { icon: "🌐", text: "WordPress SEO & Autonomous Content Cadence" },
           ].map((item, idx) => (
             <div
               key={idx}

@@ -122,8 +122,13 @@ export default function SeoHubPage() {
     fetchKeywordsForTopic(top, targetMarket);
   };
 
-  // Autopilot State
+  // Autopilot State & Cadence
   const [autopilotEnabled, setAutopilotEnabled] = useState(false);
+  const [cadence, setCadence] = useState("daily"); // 'daily' | 'weekly' | 'monthly' | 'custom'
+  const [customDaysPerWeek, setCustomDaysPerWeek] = useState(3);
+  const [autoShareFb, setAutoShareFb] = useState(true);
+  const [autoShareIg, setAutoShareIg] = useState(true);
+  const [savingAutopilotConfig, setSavingAutopilotConfig] = useState(false);
   const [runningCycle, setRunningCycle] = useState(false);
   const [cycleNotice, setCycleNotice] = useState("");
 
@@ -165,6 +170,7 @@ export default function SeoHubPage() {
         if (data.connection) {
           setConnection(data.connection);
           fetchContent(data.connection);
+          fetchAutopilotConfig();
         } else {
           setConnection(null);
           setContentList([]);
@@ -177,6 +183,66 @@ export default function SeoHubPage() {
       console.error("Failed to load connection:", e);
     } finally {
       setLoadingConn(false);
+    }
+  };
+
+  const fetchAutopilotConfig = async () => {
+    try {
+      const res = await fetch("/api/wordpress/sync", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          action: "get-autopilot-config",
+          businessName: activeBusiness,
+        }),
+      });
+      const data = await res.json();
+      if (data.ok && data.config) {
+        setAutopilotEnabled(Boolean(data.config.enabled));
+        setCadence(data.config.cadence || "daily");
+        setCustomDaysPerWeek(Number(data.config.customDaysPerWeek) || 3);
+        setAutoShareFb(data.config.autoShareFacebook !== false);
+        setAutoShareIg(data.config.autoShareInstagram !== false);
+      }
+    } catch (e) {
+      console.warn("Could not load autopilot config:", e);
+    }
+  };
+
+  const handleSaveAutopilotSettings = async (overrideEnabled) => {
+    setSavingAutopilotConfig(true);
+    const isEnabled = typeof overrideEnabled === "boolean" ? overrideEnabled : autopilotEnabled;
+    try {
+      const res = await fetch("/api/wordpress/sync", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          action: "save-autopilot-config",
+          businessName: activeBusiness,
+          config: {
+            enabled: isEnabled,
+            cadence,
+            customDaysPerWeek,
+            autoShareFacebook: autoShareFb,
+            autoShareInstagram: autoShareIg,
+            targetKeywords: keywords,
+            wordCount: 1500,
+          },
+        }),
+      });
+      const data = await res.json();
+      if (data.ok) {
+        setAutopilotEnabled(isEnabled);
+        const cadLabel = cadence === "daily" ? "Daily" : cadence === "weekly" ? "Weekly" : cadence === "monthly" ? "Monthly" : `${customDaysPerWeek}x/week`;
+        setCycleNotice(`✅ Autopilot schedule saved (${isEnabled ? "Active" : "Paused"}, ${cadLabel}). Autonomous social cross-posting preferences updated.`);
+        setTimeout(() => setCycleNotice(""), 6000);
+      } else {
+        alert("Failed to save autopilot settings: " + (data.error || "Unknown error"));
+      }
+    } catch (e) {
+      alert("Error saving autopilot settings: " + e.message);
+    } finally {
+      setSavingAutopilotConfig(false);
     }
   };
 
@@ -840,7 +906,9 @@ export default function SeoHubPage() {
           <div style={{ background: "rgba(16, 22, 34, 0.78)", border: "1px solid rgba(255, 255, 255, 0.12)", borderRadius: 14, padding: 18, boxShadow: "0 10px 30px rgba(0,0,0,0.4)" }}>
             <div style={{ fontSize: 12, color: "#94a3b8", fontWeight: 700, textTransform: "uppercase" }}>Autopilot Daily Post</div>
             <div style={{ fontSize: 20, fontWeight: 700, color: autopilotEnabled ? "#10b981" : "#94a3b8", marginTop: 6 }}>
-              {autopilotEnabled ? "Active (Daily 6:00 AM)" : "Paused"}
+              {autopilotEnabled
+                ? `Active (${cadence === "daily" ? "Daily" : cadence === "weekly" ? "Weekly" : cadence === "monthly" ? "Monthly" : `${customDaysPerWeek}x/wk`})`
+                : "Paused"}
             </div>
             <div style={{ fontSize: 12, color: "#64748b", marginTop: 4 }}>Zero-maintenance scheduling</div>
           </div>
@@ -2252,104 +2320,519 @@ export default function SeoHubPage() {
             TAB 3: AUTOPILOT SCHEDULER
         ========================================================================= */}
         {activeTab === "autopilot" && (
-          <div style={{ background: "rgba(16, 22, 34, 0.78)", border: "1px solid rgba(255, 255, 255, 0.12)", borderRadius: 14, padding: 28, boxShadow: "0 10px 30px rgba(0,0,0,0.4)" }}>
-            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: 16 }}>
-              <div>
-                <h2 style={{ margin: "0 0 6px 0", fontSize: 20, color: "#fff" }}>🤖 Autonomous Daily Blogging Engine</h2>
-                <p style={{ margin: 0, color: "#94a3b8", fontSize: 14 }}>
-                  Every day at <strong>06:00 AM IST</strong>, GabbarInfo AI generates a comprehensive, anti-duplicated, dual-visual SEO article and publishes it live to your WordPress site.
+          <div style={{ display: "flex", flexDirection: "column", gap: 24 }}>
+            {/* ── HEADER & MAIN CONTROL CARD ── */}
+            <div style={{ background: "rgba(16, 22, 34, 0.78)", border: "1px solid rgba(255, 255, 255, 0.12)", borderRadius: 14, padding: 28, boxShadow: "0 10px 30px rgba(0,0,0,0.4)" }}>
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", flexWrap: "wrap", gap: 16 }}>
+                <div>
+                  <div style={{ display: "inline-flex", alignItems: "center", gap: 6, padding: "4px 10px", borderRadius: 20, background: "rgba(16, 185, 129, 0.15)", border: "1px solid rgba(16, 185, 129, 0.3)", color: "#34d399", fontSize: 11, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.5px", marginBottom: 10 }}>
+                    <span>📅</span> Publishing Schedule
+                  </div>
+                  <h2 style={{ margin: "0 0 6px 0", fontSize: 22, color: "#fff", fontWeight: 800 }}>Publishing Velocity & Cadence</h2>
+                  <p style={{ margin: 0, color: "#94a3b8", fontSize: 14, maxWidth: 740, lineHeight: 1.5 }}>
+                    Every day GabbarInfo AI generates a comprehensive, anti-duplicated, dual-visual SEO article and publishes it live to your WordPress site.
+                  </p>
+                </div>
+
+                <div style={{ display: "flex", gap: 12, alignItems: "center", flexWrap: "wrap" }}>
+                  <button
+                    onClick={() => handleSaveAutopilotSettings(!autopilotEnabled)}
+                    disabled={savingAutopilotConfig}
+                    style={{
+                      padding: "10px 22px",
+                      borderRadius: 8,
+                      border: autopilotEnabled ? "1px solid #10b981" : "1px solid rgba(255, 255, 255, 0.18)",
+                      background: autopilotEnabled ? "#10b981" : "rgba(255, 255, 255, 0.06)",
+                      color: autopilotEnabled ? "#052e16" : "#ffffff",
+                      fontWeight: 700,
+                      fontSize: 14,
+                      cursor: "pointer",
+                      display: "flex",
+                      alignItems: "center",
+                      gap: 8,
+                      boxShadow: autopilotEnabled ? "0 0 20px rgba(16, 185, 129, 0.35)" : "none",
+                      transition: "all 0.2s ease",
+                    }}
+                  >
+                    <span>{autopilotEnabled ? "✓" : "▶"}</span>
+                    {savingAutopilotConfig ? "Updating…" : autopilotEnabled ? "Active Schedule" : "Activate Schedule"}
+                  </button>
+
+                  <button
+                    onClick={async () => {
+                      setRunningCycle(true);
+                      setCycleNotice("Running autonomous publishing cycle…");
+                      try {
+                        const res = await fetch("/api/wordpress/autopilot-cron?force=1");
+                        const data = await res.json();
+                        if (data.ok) {
+                          setCycleNotice(`Cycle completed! Processed ${data.processed} site(s). Check Content Hub for your live article.`);
+                          fetchContent(connection);
+                        } else {
+                          setCycleNotice("Cycle failed: " + (data.error || "Unknown"));
+                        }
+                      } catch (e) {
+                        setCycleNotice("Cycle execution error: " + e.message);
+                      } finally {
+                        setRunningCycle(false);
+                      }
+                    }}
+                    disabled={runningCycle}
+                    className="btn-gabbar-primary"
+                    style={{
+                      padding: "10px 20px",
+                      fontSize: 13,
+                      cursor: "pointer",
+                      display: "flex",
+                      alignItems: "center",
+                      gap: 6,
+                    }}
+                  >
+                    <span>⚡</span>
+                    {runningCycle ? "Publishing…" : "Run Cycle Now ↗"}
+                  </button>
+                </div>
+              </div>
+
+              {cycleNotice && (
+                <div style={{ marginTop: 18, padding: "12px 16px", borderRadius: 8, background: "#131b2e", border: "1px solid #1e293b", color: "#60a5fa", fontSize: 13 }}>
+                  {cycleNotice}
+                </div>
+              )}
+            </div>
+
+            {/* ── SECTION 1: SELECT PUBLISHING CADENCE ── */}
+            <div style={{ background: "rgba(16, 22, 34, 0.78)", border: "1px solid rgba(255, 255, 255, 0.12)", borderRadius: 14, padding: 28, boxShadow: "0 10px 30px rgba(0,0,0,0.4)" }}>
+              <div style={{ fontSize: 16, fontWeight: 700, color: "#fff", marginBottom: 18 }}>
+                1. Select Publishing Cadence
+              </div>
+
+              <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))", gap: 16 }}>
+                {/* 1 Blog / Day */}
+                <div
+                  onClick={() => setCadence("daily")}
+                  style={{
+                    background: cadence === "daily" ? "rgba(16, 185, 129, 0.08)" : "rgba(13, 20, 35, 0.7)",
+                    border: cadence === "daily" ? "1.5px solid #10b981" : "1px solid rgba(255, 255, 255, 0.1)",
+                    borderRadius: 12,
+                    padding: 20,
+                    cursor: "pointer",
+                    position: "relative",
+                    transition: "all 0.2s ease",
+                    display: "flex",
+                    flexDirection: "column",
+                    justifyContent: "space-between",
+                  }}
+                >
+                  <div>
+                    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 8 }}>
+                      <div style={{ fontSize: 16, fontWeight: 800, color: "#fff" }}>1 Blog / Day</div>
+                      <span style={{ fontSize: 10, padding: "3px 8px", borderRadius: 12, background: "rgba(16, 185, 129, 0.2)", color: "#34d399", fontWeight: 700, border: "1px solid rgba(16, 185, 129, 0.3)" }}>
+                        RECOMMENDED
+                      </span>
+                    </div>
+                    <div style={{ fontSize: 13, fontWeight: 700, color: "#38bdf8", marginBottom: 8 }}>30 Blogs / Month</div>
+                    <p style={{ margin: 0, color: "#94a3b8", fontSize: 12, lineHeight: 1.5 }}>
+                      Consistent daily organic traffic growth and rapid topical authority.
+                    </p>
+                  </div>
+                  {cadence === "daily" && (
+                    <div style={{ marginTop: 14, display: "flex", justifyContent: "flex-end" }}>
+                      <span style={{ width: 22, height: 22, borderRadius: "50%", background: "#10b981", color: "#052e16", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 13, fontWeight: 900 }}>✓</span>
+                    </div>
+                  )}
+                </div>
+
+                {/* 1 Blog / Week */}
+                <div
+                  onClick={() => setCadence("weekly")}
+                  style={{
+                    background: cadence === "weekly" ? "rgba(16, 185, 129, 0.08)" : "rgba(13, 20, 35, 0.7)",
+                    border: cadence === "weekly" ? "1.5px solid #10b981" : "1px solid rgba(255, 255, 255, 0.1)",
+                    borderRadius: 12,
+                    padding: 20,
+                    cursor: "pointer",
+                    position: "relative",
+                    transition: "all 0.2s ease",
+                    display: "flex",
+                    flexDirection: "column",
+                    justifyContent: "space-between",
+                  }}
+                >
+                  <div>
+                    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 8 }}>
+                      <div style={{ fontSize: 16, fontWeight: 800, color: "#fff" }}>1 Blog / Week</div>
+                    </div>
+                    <div style={{ fontSize: 13, fontWeight: 700, color: "#38bdf8", marginBottom: 8 }}>4 Blogs / Month</div>
+                    <p style={{ margin: 0, color: "#94a3b8", fontSize: 12, lineHeight: 1.5 }}>
+                      Weekly publishing on randomized distributed days.
+                    </p>
+                  </div>
+                  {cadence === "weekly" && (
+                    <div style={{ marginTop: 14, display: "flex", justifyContent: "flex-end" }}>
+                      <span style={{ width: 22, height: 22, borderRadius: "50%", background: "#10b981", color: "#052e16", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 13, fontWeight: 900 }}>✓</span>
+                    </div>
+                  )}
+                </div>
+
+                {/* 1 Blog / Month */}
+                <div
+                  onClick={() => setCadence("monthly")}
+                  style={{
+                    background: cadence === "monthly" ? "rgba(16, 185, 129, 0.08)" : "rgba(13, 20, 35, 0.7)",
+                    border: cadence === "monthly" ? "1.5px solid #10b981" : "1px solid rgba(255, 255, 255, 0.1)",
+                    borderRadius: 12,
+                    padding: 20,
+                    cursor: "pointer",
+                    position: "relative",
+                    transition: "all 0.2s ease",
+                    display: "flex",
+                    flexDirection: "column",
+                    justifyContent: "space-between",
+                  }}
+                >
+                  <div>
+                    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 8 }}>
+                      <div style={{ fontSize: 16, fontWeight: 800, color: "#fff" }}>1 Blog / Month</div>
+                    </div>
+                    <div style={{ fontSize: 13, fontWeight: 700, color: "#38bdf8", marginBottom: 8 }}>1 Blog / Month</div>
+                    <p style={{ margin: 0, color: "#94a3b8", fontSize: 12, lineHeight: 1.5 }}>
+                      Monthly publishing on a randomized date.
+                    </p>
+                  </div>
+                  {cadence === "monthly" && (
+                    <div style={{ marginTop: 14, display: "flex", justifyContent: "flex-end" }}>
+                      <span style={{ width: 22, height: 22, borderRadius: "50%", background: "#10b981", color: "#052e16", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 13, fontWeight: 900 }}>✓</span>
+                    </div>
+                  )}
+                </div>
+
+                {/* Custom Frequency */}
+                <div
+                  onClick={() => setCadence("custom")}
+                  style={{
+                    background: cadence === "custom" ? "rgba(16, 185, 129, 0.08)" : "rgba(13, 20, 35, 0.7)",
+                    border: cadence === "custom" ? "1.5px solid #10b981" : "1px solid rgba(255, 255, 255, 0.1)",
+                    borderRadius: 12,
+                    padding: 20,
+                    cursor: "pointer",
+                    position: "relative",
+                    transition: "all 0.2s ease",
+                    display: "flex",
+                    flexDirection: "column",
+                    justifyContent: "space-between",
+                  }}
+                >
+                  <div>
+                    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 8 }}>
+                      <div style={{ fontSize: 16, fontWeight: 800, color: "#fff" }}>Custom Frequency</div>
+                      <span style={{ fontSize: 10, padding: "3px 8px", borderRadius: 12, background: "rgba(56, 189, 248, 0.2)", color: "#38bdf8", fontWeight: 700, border: "1px solid rgba(56, 189, 248, 0.3)" }}>
+                        CUSTOM
+                      </span>
+                    </div>
+                    <div style={{ fontSize: 13, fontWeight: 700, color: "#38bdf8", marginBottom: 8 }}>
+                      Flexible Cadence
+                    </div>
+                    <p style={{ margin: 0, color: "#94a3b8", fontSize: 12, lineHeight: 1.5 }}>
+                      Specify your own custom number of blogs per week or month.
+                    </p>
+                  </div>
+                  {cadence === "custom" && (
+                    <div style={{ marginTop: 14, display: "flex", justifyContent: "flex-end" }}>
+                      <span style={{ width: 22, height: 22, borderRadius: "50%", background: "#10b981", color: "#052e16", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 13, fontWeight: 900 }}>✓</span>
+                    </div>
+                  )}
+                </div>
+              </div>
+
+              {/* Custom Frequency Selector (when active) */}
+              {cadence === "custom" && (
+                <div style={{ marginTop: 20, padding: "16px 20px", background: "rgba(13, 20, 35, 0.9)", border: "1px solid rgba(56, 189, 248, 0.25)", borderRadius: 10, display: "flex", alignItems: "center", justifyContent: "space-between", flexWrap: "wrap", gap: 16 }}>
+                  <div>
+                    <div style={{ fontSize: 14, fontWeight: 700, color: "#fff" }}>Select Frequency per Week:</div>
+                    <div style={{ fontSize: 12, color: "#94a3b8", marginTop: 2 }}>
+                      Generating ~{customDaysPerWeek * 4} articles per month distributed across active days.
+                    </div>
+                  </div>
+                  <div style={{ display: "flex", gap: 8 }}>
+                    {[2, 3, 4, 5, 6].map((num) => (
+                      <button
+                        key={num}
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setCustomDaysPerWeek(num);
+                        }}
+                        style={{
+                          padding: "8px 16px",
+                          borderRadius: 8,
+                          border: customDaysPerWeek === num ? "1.5px solid #10b981" : "1px solid rgba(255, 255, 255, 0.15)",
+                          background: customDaysPerWeek === num ? "rgba(16, 185, 129, 0.2)" : "rgba(255, 255, 255, 0.05)",
+                          color: customDaysPerWeek === num ? "#34d399" : "#fff",
+                          fontWeight: 700,
+                          fontSize: 13,
+                          cursor: "pointer",
+                        }}
+                      >
+                        {num} Blogs / Wk
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {/* Cadence Info Footnote */}
+              <div style={{ marginTop: 20, display: "flex", alignItems: "center", gap: 8, color: "#94a3b8", fontSize: 12 }}>
+                <span style={{ color: "#34d399" }}>✨</span>
+                <span>Articles are automatically distributed and published directly to your WordPress site with SEO topical clustering.</span>
+              </div>
+            </div>
+
+            {/* ── SECTION 2: AUTONOMOUS MULTICHANNEL SOCIAL AMPLIFICATION ── */}
+            <div style={{ background: "rgba(16, 22, 34, 0.78)", border: "1px solid rgba(255, 255, 255, 0.12)", borderRadius: 14, padding: 28, boxShadow: "0 10px 30px rgba(0,0,0,0.4)" }}>
+              <div style={{ marginBottom: 20 }}>
+                <div style={{ display: "inline-flex", alignItems: "center", gap: 6, padding: "4px 10px", borderRadius: 20, background: "rgba(56, 189, 248, 0.15)", border: "1px solid rgba(56, 189, 248, 0.3)", color: "#38bdf8", fontSize: 11, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.5px", marginBottom: 8 }}>
+                  <span>⚡</span> Instant Social Cross-Posting
+                </div>
+                <h3 style={{ margin: "0 0 6px 0", fontSize: 18, color: "#fff", fontWeight: 800 }}>
+                  2. Autonomous Multichannel Amplification
+                </h3>
+                <p style={{ margin: 0, color: "#94a3b8", fontSize: 13, lineHeight: 1.5 }}>
+                  Every blog article that gets generated and published live to WordPress will instantly also be syndicated to your connected social channels.
                 </p>
               </div>
 
-              <div style={{ display: "flex", gap: 12, alignItems: "center", flexWrap: "wrap" }}>
-                <button
-                  onClick={() => setAutopilotEnabled(!autopilotEnabled)}
+              <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(280px, 1fr))", gap: 16 }}>
+                {/* Facebook Option Card */}
+                <div
+                  onClick={() => setAutoShareFb(!autoShareFb)}
                   style={{
-                    padding: "10px 20px",
-                    borderRadius: 8,
-                    border: autopilotEnabled ? "1px solid #10b981" : "1px solid rgba(255, 255, 255, 0.18)",
-                    background: autopilotEnabled ? "rgba(16, 185, 129, 0.18)" : "rgba(255, 255, 255, 0.06)",
-                    color: autopilotEnabled ? "#34d399" : "#ffffff",
-                    fontWeight: 700,
-                    fontSize: 14,
+                    background: autoShareFb ? "rgba(24, 119, 242, 0.1)" : "rgba(13, 20, 35, 0.7)",
+                    border: autoShareFb ? "1.5px solid #1877f2" : "1px solid rgba(255, 255, 255, 0.1)",
+                    borderRadius: 12,
+                    padding: 20,
                     cursor: "pointer",
                     display: "flex",
+                    justifyContent: "space-between",
                     alignItems: "center",
-                    gap: 8,
+                    gap: 16,
                     transition: "all 0.2s ease",
                   }}
                 >
-                  <span>{autopilotEnabled ? "●" : "○"}</span>
-                  {autopilotEnabled ? "Autopilot ACTIVE" : "Turn Autopilot ON"}
-                </button>
+                  <div style={{ display: "flex", gap: 14, alignItems: "flex-start" }}>
+                    <div style={{ width: 40, height: 40, borderRadius: 10, background: "#1877f2", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
+                      <svg width="22" height="22" viewBox="0 0 24 24" fill="#ffffff">
+                        <path d="M24 12.073c0-6.627-5.373-12-12-12s-12 5.373-12 12c0 5.99 4.388 10.954 10.125 11.854v-8.385H7.078v-3.47h3.047V9.43c0-3.007 1.792-4.669 4.533-4.669 1.312 0 2.686.235 2.686.235v2.953H15.83c-1.491 0-1.956.925-1.956 1.874v2.25h3.328l-.532 3.47h-2.796v8.385C19.612 23.027 24 18.062 24 12.073z"/>
+                      </svg>
+                    </div>
+                    <div>
+                      <div style={{ fontSize: 15, fontWeight: 700, color: "#fff", display: "flex", alignItems: "center", gap: 8 }}>
+                        Auto-Share to Facebook Page
+                        {autoShareFb && (
+                          <span style={{ fontSize: 10, padding: "2px 6px", borderRadius: 4, background: "rgba(16, 185, 129, 0.2)", color: "#34d399", fontWeight: 700 }}>
+                            LIVE
+                          </span>
+                        )}
+                      </div>
+                      <p style={{ margin: "4px 0 0 0", color: "#94a3b8", fontSize: 12, lineHeight: 1.4 }}>
+                        Instantly posts an interactive link card with article title, description, and link to your connected Facebook page.
+                      </p>
+                    </div>
+                  </div>
 
-                <button
-                  onClick={async () => {
-                    setRunningCycle(true);
-                    setCycleNotice("Running autonomous publishing cycle…");
-                    try {
-                      const res = await fetch("/api/wordpress/autopilot-cron?force=1");
-                      const data = await res.json();
-                      if (data.ok) {
-                        setCycleNotice(`Cycle completed! Processed ${data.processed} site(s). Check Content Hub for your live article.`);
-                        fetchContent(connection);
-                      } else {
-                        setCycleNotice("Cycle failed: " + (data.error || "Unknown"));
-                      }
-                    } catch (e) {
-                      setCycleNotice("Cycle execution error: " + e.message);
-                    } finally {
-                      setRunningCycle(false);
-                    }
-                  }}
-                  disabled={runningCycle}
-                  className="btn-gabbar-primary"
+                  {/* Toggle Switch */}
+                  <div
+                    style={{
+                      width: 44,
+                      height: 24,
+                      borderRadius: 14,
+                      background: autoShareFb ? "#10b981" : "#334155",
+                      position: "relative",
+                      flexShrink: 0,
+                      transition: "background 0.2s ease",
+                      cursor: "pointer",
+                    }}
+                  >
+                    <div
+                      style={{
+                        width: 18,
+                        height: 18,
+                        borderRadius: "50%",
+                        background: "#fff",
+                        position: "absolute",
+                        top: 3,
+                        left: autoShareFb ? 23 : 3,
+                        transition: "left 0.2s ease",
+                        boxShadow: "0 2px 4px rgba(0,0,0,0.3)",
+                      }}
+                    />
+                  </div>
+                </div>
+
+                {/* Instagram Option Card */}
+                <div
+                  onClick={() => setAutoShareIg(!autoShareIg)}
                   style={{
-                    padding: "10px 20px",
-                    fontSize: 13,
+                    background: autoShareIg ? "rgba(225, 48, 108, 0.1)" : "rgba(13, 20, 35, 0.7)",
+                    border: autoShareIg ? "1.5px solid #e1306c" : "1px solid rgba(255, 255, 255, 0.1)",
+                    borderRadius: 12,
+                    padding: 20,
                     cursor: "pointer",
+                    display: "flex",
+                    justifyContent: "space-between",
+                    alignItems: "center",
+                    gap: 16,
+                    transition: "all 0.2s ease",
                   }}
                 >
-                  {runningCycle ? "Publishing…" : "⚡ Run Cycle Now ↗"}
+                  <div style={{ display: "flex", gap: 14, alignItems: "flex-start" }}>
+                    <div style={{ width: 40, height: 40, borderRadius: 10, background: "linear-gradient(45deg, #f09433 0%, #e6683c 25%, #dc2743 50%, #cc2366 75%, #bc1888 100%)", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
+                      <svg width="22" height="22" viewBox="0 0 24 24" fill="#ffffff">
+                        <path d="M12 2.163c3.204 0 3.584.012 4.85.07 3.252.148 4.771 1.691 4.919 4.919.058 1.265.069 1.645.069 4.849 0 3.205-.012 3.584-.069 4.849-.149 3.225-1.664 4.771-4.919 4.919-1.266.058-1.644.07-4.85.07-3.204 0-3.584-.012-4.849-.07-3.26-.149-4.771-1.699-4.919-4.92-.058-1.265-.07-1.644-.07-4.849 0-3.204.013-3.583.07-4.849.149-3.227 1.664-4.771 4.919-4.919 1.266-.057 1.645-.069 4.849-.069zm0-2.163c-3.259 0-3.667.014-4.947.072-4.358.2-6.78 2.618-6.98 6.98-.059 1.281-.073 1.689-.073 4.948 0 3.259.014 3.668.072 4.948.2 4.358 2.618 6.78 6.98 6.98 1.281.058 1.689.072 4.948.072 3.259 0 3.668-.014 4.948-.072 4.354-.2 6.782-2.618 6.979-6.98.059-1.28.073-1.689.073-4.948 0-3.259-.014-3.667-.072-4.947-.196-4.354-2.617-6.78-6.979-6.98-1.281-.059-1.69-.073-4.949-.073zm0 5.838c-3.403 0-6.162 2.759-6.162 6.162s2.759 6.163 6.162 6.163 6.162-2.759 6.162-6.163c0-3.403-2.759-6.162-6.162-6.162zm0 10.162c-2.209 0-4-1.79-4-4 0-2.209 1.791-4 4-4s4 1.791 4 4c0 2.21-1.791 4-4 4zm6.406-11.845c-.796 0-1.441.645-1.441 1.44s.645 1.44 1.441 1.44c.795 0 1.439-.645 1.439-1.44s-.644-1.44-1.439-1.44z"/>
+                      </svg>
+                    </div>
+                    <div>
+                      <div style={{ fontSize: 15, fontWeight: 700, color: "#fff", display: "flex", alignItems: "center", gap: 8 }}>
+                        Auto-Post to Instagram Profile
+                        {autoShareIg && (
+                          <span style={{ fontSize: 10, padding: "2px 6px", borderRadius: 4, background: "rgba(16, 185, 129, 0.2)", color: "#34d399", fontWeight: 700 }}>
+                            LIVE
+                          </span>
+                        )}
+                      </div>
+                      <p style={{ margin: "4px 0 0 0", color: "#94a3b8", fontSize: 12, lineHeight: 1.4 }}>
+                        Instantly publishes the visual article photo with an AI caption, hashtags, and call-to-action on Instagram.
+                      </p>
+                    </div>
+                  </div>
+
+                  {/* Toggle Switch */}
+                  <div
+                    style={{
+                      width: 44,
+                      height: 24,
+                      borderRadius: 14,
+                      background: autoShareIg ? "#10b981" : "#334155",
+                      position: "relative",
+                      flexShrink: 0,
+                      transition: "background 0.2s ease",
+                      cursor: "pointer",
+                    }}
+                  >
+                    <div
+                      style={{
+                        width: 18,
+                        height: 18,
+                        borderRadius: "50%",
+                        background: "#fff",
+                        position: "absolute",
+                        top: 3,
+                        left: autoShareIg ? 23 : 3,
+                        transition: "left 0.2s ease",
+                        boxShadow: "0 2px 4px rgba(0,0,0,0.3)",
+                      }}
+                    />
+                  </div>
+                </div>
+              </div>
+
+              {/* Save Settings Bar */}
+              <div style={{ marginTop: 24, display: "flex", justifyContent: "flex-end" }}>
+                <button
+                  onClick={() => handleSaveAutopilotSettings()}
+                  disabled={savingAutopilotConfig}
+                  style={{
+                    padding: "12px 28px",
+                    borderRadius: 8,
+                    background: "#10b981",
+                    border: "none",
+                    color: "#052e16",
+                    fontWeight: 800,
+                    fontSize: 14,
+                    cursor: "pointer",
+                    display: "inline-flex",
+                    alignItems: "center",
+                    gap: 8,
+                    boxShadow: "0 0 25px rgba(16, 185, 129, 0.4)",
+                    transition: "all 0.2s ease",
+                  }}
+                >
+                  <span>✓</span>
+                  {savingAutopilotConfig ? "Saving Settings…" : "Save Schedule Settings"}
                 </button>
               </div>
             </div>
 
-            {cycleNotice && (
-              <div style={{ marginTop: 18, padding: "10px 14px", borderRadius: 8, background: "#131b2e", border: "1px solid #1e293b", color: "#60a5fa", fontSize: 13 }}>
-                {cycleNotice}
+            {/* ── SECTION 3: UPCOMING 7-DAY AUTONOMOUS CADENCE ── */}
+            <div style={{ background: "rgba(16, 22, 34, 0.78)", border: "1px solid rgba(255, 255, 255, 0.12)", borderRadius: 14, padding: 28, boxShadow: "0 10px 30px rgba(0,0,0,0.4)" }}>
+              <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 18 }}>
+                <div style={{ width: 32, height: 32, borderRadius: 8, background: "rgba(56, 189, 248, 0.15)", display: "flex", alignItems: "center", justifyContent: "center", color: "#38bdf8", fontSize: 16 }}>
+                  📅
+                </div>
+                <div>
+                  <h4 style={{ fontSize: 16, color: "#fff", margin: 0, fontWeight: 700 }}>
+                    Upcoming 7-Day Publishing Schedule
+                  </h4>
+                  <div style={{ fontSize: 12, color: "#94a3b8", marginTop: 2 }}>
+                    Projected publishing dates based on your cadence and active schedule.
+                  </div>
+                </div>
               </div>
-            )}
 
-            {/* Visual 7-Day Cadence Cards */}
-            <div style={{ marginTop: 28 }}>
-              <h4 style={{ fontSize: 14, color: "#cbd5e1", margin: "0 0 14px 0", textTransform: "uppercase", letterSpacing: "0.5px" }}>
-                Upcoming 7-Day Autonomous Cadence
-              </h4>
               <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(130px, 1fr))", gap: 12 }}>
                 {[0, 1, 2, 3, 4, 5, 6].map((offset) => {
                   const d = new Date();
                   d.setDate(d.getDate() + offset);
                   const isToday = offset === 0;
+
+                  // Determine if this day is scheduled based on cadence
+                  let isScheduled = false;
+                  if (autopilotEnabled) {
+                    if (cadence === "daily") {
+                      isScheduled = true;
+                    } else if (cadence === "weekly" || cadence === "monthly") {
+                      isScheduled = offset === 0;
+                    } else if (cadence === "custom") {
+                      const interval = Math.max(1, Math.floor(7 / customDaysPerWeek));
+                      isScheduled = offset % interval === 0;
+                    }
+                  }
+
                   return (
                     <div
                       key={offset}
                       style={{
-                        background: isToday ? "#1e293b" : "#131b2e",
-                        border: isToday ? "1px solid #3b82f6" : "1px solid #1e293b",
-                        borderRadius: 8,
-                        padding: 14,
+                        background: isToday ? "rgba(30, 41, 59, 0.9)" : "rgba(19, 27, 46, 0.7)",
+                        border: isToday ? "1.5px solid #38bdf8" : "1px solid rgba(255, 255, 255, 0.08)",
+                        borderRadius: 10,
+                        padding: 16,
                         textAlign: "center",
+                        display: "flex",
+                        flexDirection: "column",
+                        justifyContent: "space-between",
+                        minHeight: 110,
                       }}
                     >
-                      <div style={{ fontSize: 11, color: isToday ? "#60a5fa" : "#94a3b8", fontWeight: 700, textTransform: "uppercase" }}>
-                        {isToday ? "Today" : d.toLocaleDateString("en-US", { weekday: "short" })}
+                      <div>
+                        <div style={{ fontSize: 11, color: isToday ? "#38bdf8" : "#94a3b8", fontWeight: 800, textTransform: "uppercase", letterSpacing: "0.5px" }}>
+                          {isToday ? "TODAY" : d.toLocaleDateString("en-US", { weekday: "short" })}
+                        </div>
+                        <div style={{ fontSize: 15, fontWeight: 700, color: "#fff", marginTop: 4 }}>
+                          {d.toLocaleDateString("en-US", { month: "short", day: "numeric" })}
+                        </div>
                       </div>
-                      <div style={{ fontSize: 15, fontWeight: 700, color: "#fff", marginTop: 4 }}>
-                        {d.toLocaleDateString("en-US", { month: "short", day: "numeric" })}
-                      </div>
-                      <div style={{ fontSize: 11, color: autopilotEnabled ? "#10b981" : "#64748b", marginTop: 6, fontWeight: 500 }}>
-                        {autopilotEnabled ? "06:00 AM IST" : "Paused"}
+                      <div
+                        style={{
+                          fontSize: 11,
+                          marginTop: 10,
+                          fontWeight: 600,
+                          padding: "4px 8px",
+                          borderRadius: 6,
+                          background: isScheduled ? "rgba(16, 185, 129, 0.15)" : "rgba(255, 255, 255, 0.04)",
+                          color: isScheduled ? "#34d399" : "#64748b",
+                          border: isScheduled ? "1px solid rgba(16, 185, 129, 0.25)" : "1px solid transparent",
+                        }}
+                      >
+                        {isScheduled ? "● Scheduled Blog" : "No Post"}
                       </div>
                     </div>
                   );

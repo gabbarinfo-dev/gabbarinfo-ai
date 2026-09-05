@@ -473,7 +473,7 @@ export default function HomePage() {
                 Welcome to GabbarInfo AI Command Center 🚀
               </h1>
               <p style={{ margin: 0, color: "#94a3b8", fontSize: 14, maxWidth: 680, lineHeight: 1.6 }}>
-                Real-time autonomous digital marketing engine. Seamlessly orchestrate daily WordPress SEO publishing at 6:00 AM IST, Google Ads search campaigns, and Meta social syndication.
+                Real-time autonomous digital marketing engine. Seamlessly orchestrate autonomous WordPress SEO publishing, Google Ads search campaigns, and Meta social syndication.
               </p>
             </div>
 
@@ -511,7 +511,7 @@ export default function HomePage() {
               </div>
               <div style={{ display: "flex", gap: 12, fontSize: 11, color: "#64748b" }}>
                 <span>● Node Latency: <strong>48ms</strong></span>
-                <span>● Schedule: <strong>Daily 6:00 AM IST</strong></span>
+                <span>● Schedule: <strong>Autonomous Cadence</strong></span>
                 <span>● Index Pinging: <strong>GSC Instant</strong></span>
               </div>
             </div>

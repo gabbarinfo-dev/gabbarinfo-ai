@@ -271,7 +271,7 @@ export default function WordPressSiteConnect() {
         /* ⚪ DISCONNECTED STATE (DARK LUXURY WITH TITANIUM WHITE SLIDING BUTTON) */
         <div style={{ background: "rgba(16, 22, 34, 0.6)", border: "1px dashed rgba(255, 255, 255, 0.16)", borderRadius: 14, padding: 24 }}>
           <p style={{ margin: "0 0 18px 0", color: "#94a3b8", fontSize: 14, lineHeight: 1.6 }}>
-            Connect your WordPress / WooCommerce website to enable autonomous daily blogging at 6:00 AM IST, on-page SEO optimization, dual visual generation, and Google Search Console indexing.
+            Connect your WordPress / WooCommerce website to enable autonomous scheduled blogging, on-page SEO optimization, dual visual generation, and Google Search Console indexing.
           </p>
           <button
             onClick={handleStartConnect}
