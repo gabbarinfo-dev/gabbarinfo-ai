@@ -904,13 +904,13 @@ export default function SeoHubPage() {
           </div>
 
           <div style={{ background: "rgba(16, 22, 34, 0.78)", border: "1px solid rgba(255, 255, 255, 0.12)", borderRadius: 14, padding: 18, boxShadow: "0 10px 30px rgba(0,0,0,0.4)" }}>
-            <div style={{ fontSize: 12, color: "#94a3b8", fontWeight: 700, textTransform: "uppercase" }}>Autopilot Daily Post</div>
+            <div style={{ fontSize: 12, color: "#94a3b8", fontWeight: 700, textTransform: "uppercase" }}>Autopilot Dispatch</div>
             <div style={{ fontSize: 20, fontWeight: 700, color: autopilotEnabled ? "#10b981" : "#94a3b8", marginTop: 6 }}>
               {autopilotEnabled
                 ? `Active (${cadence === "daily" ? "Daily" : cadence === "weekly" ? "Weekly" : cadence === "monthly" ? "Monthly" : `${customDaysPerWeek}x/wk`})`
                 : "Paused"}
             </div>
-            <div style={{ fontSize: 12, color: "#64748b", marginTop: 4 }}>Zero-maintenance scheduling</div>
+            <div style={{ fontSize: 12, color: "#64748b", marginTop: 4 }}>Zero-maintenance autonomous publishing</div>
           </div>
         </div>
 
@@ -2326,9 +2326,9 @@ export default function SeoHubPage() {
               <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", flexWrap: "wrap", gap: 16 }}>
                 <div>
                   <div style={{ display: "inline-flex", alignItems: "center", gap: 6, padding: "4px 10px", borderRadius: 20, background: "rgba(16, 185, 129, 0.15)", border: "1px solid rgba(16, 185, 129, 0.3)", color: "#34d399", fontSize: 11, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.5px", marginBottom: 10 }}>
-                    <span>📅</span> Publishing Schedule
+                    <span>⚡</span> Autonomous Dispatch Engine
                   </div>
-                  <h2 style={{ margin: "0 0 6px 0", fontSize: 22, color: "#fff", fontWeight: 800 }}>Publishing Velocity & Cadence</h2>
+                  <h2 style={{ margin: "0 0 6px 0", fontSize: 22, color: "#fff", fontWeight: 800 }}>Automated Editorial Velocity & Dispatch</h2>
                   <p style={{ margin: 0, color: "#94a3b8", fontSize: 14, maxWidth: 740, lineHeight: 1.5 }}>
                     Every day GabbarInfo AI generates a comprehensive, anti-duplicated, dual-visual SEO article and publishes it live to your WordPress site.
                   </p>
@@ -2355,7 +2355,7 @@ export default function SeoHubPage() {
                     }}
                   >
                     <span>{autopilotEnabled ? "✓" : "▶"}</span>
-                    {savingAutopilotConfig ? "Updating…" : autopilotEnabled ? "Active Schedule" : "Activate Schedule"}
+                    {savingAutopilotConfig ? "Updating…" : autopilotEnabled ? "Active Production Engine" : "Enable Production Routine"}
                   </button>
 
                   <button
@@ -2389,7 +2389,7 @@ export default function SeoHubPage() {
                     }}
                   >
                     <span>⚡</span>
-                    {runningCycle ? "Publishing…" : "Run Cycle Now ↗"}
+                    {runningCycle ? "Publishing…" : "Trigger Immediate Generation ↗"}
                   </button>
                 </div>
               </div>
@@ -2401,14 +2401,14 @@ export default function SeoHubPage() {
               )}
             </div>
 
-            {/* ── SECTION 1: SELECT PUBLISHING CADENCE ── */}
+            {/* ── SECTION 1: DEFINE PUBLISHING RHYTHM & VOLUME ── */}
             <div style={{ background: "rgba(16, 22, 34, 0.78)", border: "1px solid rgba(255, 255, 255, 0.12)", borderRadius: 14, padding: 28, boxShadow: "0 10px 30px rgba(0,0,0,0.4)" }}>
               <div style={{ fontSize: 16, fontWeight: 700, color: "#fff", marginBottom: 18 }}>
-                1. Select Publishing Cadence
+                1. Define Publishing Rhythm & Volume
               </div>
 
               <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))", gap: 16 }}>
-                {/* 1 Blog / Day */}
+                {/* Daily High-Growth Cadence */}
                 <div
                   onClick={() => setCadence("daily")}
                   style={{
@@ -2426,14 +2426,14 @@ export default function SeoHubPage() {
                 >
                   <div>
                     <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 8 }}>
-                      <div style={{ fontSize: 16, fontWeight: 800, color: "#fff" }}>1 Blog / Day</div>
-                      <span style={{ fontSize: 10, padding: "3px 8px", borderRadius: 12, background: "rgba(16, 185, 129, 0.2)", color: "#34d399", fontWeight: 700, border: "1px solid rgba(16, 185, 129, 0.3)" }}>
-                        RECOMMENDED
+                      <div style={{ fontSize: 16, fontWeight: 800, color: "#fff" }}>Daily High-Growth Cadence</div>
+                      <span style={{ fontSize: 9, padding: "3px 8px", borderRadius: 12, background: "rgba(16, 185, 129, 0.2)", color: "#34d399", fontWeight: 700, border: "1px solid rgba(16, 185, 129, 0.3)", letterSpacing: "0.4px" }}>
+                        MAX RANKINGS
                       </span>
                     </div>
-                    <div style={{ fontSize: 13, fontWeight: 700, color: "#38bdf8", marginBottom: 8 }}>30 Blogs / Month</div>
+                    <div style={{ fontSize: 13, fontWeight: 700, color: "#38bdf8", marginBottom: 8 }}>30 Articles Monthly (Daily Rollout)</div>
                     <p style={{ margin: 0, color: "#94a3b8", fontSize: 12, lineHeight: 1.5 }}>
-                      Consistent daily organic traffic growth and rapid topical authority.
+                      Rapidly establishes topical authority and captures emerging keyword trends with daily fresh content.
                     </p>
                   </div>
                   {cadence === "daily" && (
@@ -2443,7 +2443,7 @@ export default function SeoHubPage() {
                   )}
                 </div>
 
-                {/* 1 Blog / Week */}
+                {/* Weekly Authority Sprint */}
                 <div
                   onClick={() => setCadence("weekly")}
                   style={{
@@ -2461,11 +2461,14 @@ export default function SeoHubPage() {
                 >
                   <div>
                     <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 8 }}>
-                      <div style={{ fontSize: 16, fontWeight: 800, color: "#fff" }}>1 Blog / Week</div>
+                      <div style={{ fontSize: 16, fontWeight: 800, color: "#fff" }}>Weekly Authority Sprint</div>
+                      <span style={{ fontSize: 9, padding: "3px 8px", borderRadius: 12, background: "rgba(56, 189, 248, 0.15)", color: "#38bdf8", fontWeight: 700, border: "1px solid rgba(56, 189, 248, 0.3)", letterSpacing: "0.4px" }}>
+                        STEADY
+                      </span>
                     </div>
-                    <div style={{ fontSize: 13, fontWeight: 700, color: "#38bdf8", marginBottom: 8 }}>4 Blogs / Month</div>
+                    <div style={{ fontSize: 13, fontWeight: 700, color: "#38bdf8", marginBottom: 8 }}>4 High-Impact Articles / Month</div>
                     <p style={{ margin: 0, color: "#94a3b8", fontSize: 12, lineHeight: 1.5 }}>
-                      Weekly publishing on randomized distributed days.
+                      Evenly paced weekly releases engineered for consistent crawler crawl rates and steady audience engagement.
                     </p>
                   </div>
                   {cadence === "weekly" && (
@@ -2475,7 +2478,7 @@ export default function SeoHubPage() {
                   )}
                 </div>
 
-                {/* 1 Blog / Month */}
+                {/* Monthly Flagship Pillar */}
                 <div
                   onClick={() => setCadence("monthly")}
                   style={{
@@ -2493,11 +2496,14 @@ export default function SeoHubPage() {
                 >
                   <div>
                     <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 8 }}>
-                      <div style={{ fontSize: 16, fontWeight: 800, color: "#fff" }}>1 Blog / Month</div>
+                      <div style={{ fontSize: 16, fontWeight: 800, color: "#fff" }}>Monthly Flagship Pillar</div>
+                      <span style={{ fontSize: 9, padding: "3px 8px", borderRadius: 12, background: "rgba(168, 85, 247, 0.15)", color: "#c084fc", fontWeight: 700, border: "1px solid rgba(168, 85, 247, 0.3)", letterSpacing: "0.4px" }}>
+                        PILLAR
+                      </span>
                     </div>
-                    <div style={{ fontSize: 13, fontWeight: 700, color: "#38bdf8", marginBottom: 8 }}>1 Blog / Month</div>
+                    <div style={{ fontSize: 13, fontWeight: 700, color: "#38bdf8", marginBottom: 8 }}>1 Cornerstone Guide / Month</div>
                     <p style={{ margin: 0, color: "#94a3b8", fontSize: 12, lineHeight: 1.5 }}>
-                      Monthly publishing on a randomized date.
+                      Deep-tier monthly cornerstone resource designed to anchor core search rankings and earn long-term backlinks.
                     </p>
                   </div>
                   {cadence === "monthly" && (
@@ -2507,7 +2513,7 @@ export default function SeoHubPage() {
                   )}
                 </div>
 
-                {/* Custom Frequency */}
+                {/* Tailored Frequency Plan */}
                 <div
                   onClick={() => setCadence("custom")}
                   style={{
@@ -2525,16 +2531,16 @@ export default function SeoHubPage() {
                 >
                   <div>
                     <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 8 }}>
-                      <div style={{ fontSize: 16, fontWeight: 800, color: "#fff" }}>Custom Frequency</div>
-                      <span style={{ fontSize: 10, padding: "3px 8px", borderRadius: 12, background: "rgba(56, 189, 248, 0.2)", color: "#38bdf8", fontWeight: 700, border: "1px solid rgba(56, 189, 248, 0.3)" }}>
-                        CUSTOM
+                      <div style={{ fontSize: 16, fontWeight: 800, color: "#fff" }}>Tailored Frequency Plan</div>
+                      <span style={{ fontSize: 9, padding: "3px 8px", borderRadius: 12, background: "rgba(56, 189, 248, 0.2)", color: "#38bdf8", fontWeight: 700, border: "1px solid rgba(56, 189, 248, 0.3)", letterSpacing: "0.4px" }}>
+                        ADAPTIVE
                       </span>
                     </div>
                     <div style={{ fontSize: 13, fontWeight: 700, color: "#38bdf8", marginBottom: 8 }}>
-                      Flexible Cadence
+                      Custom Pace ({customDaysPerWeek} Posts / Wk)
                     </div>
                     <p style={{ margin: 0, color: "#94a3b8", fontSize: 12, lineHeight: 1.5 }}>
-                      Specify your own custom number of blogs per week or month.
+                      Configure a bespoke weekly output volume fine-tuned to your brand's growth targets.
                     </p>
                   </div>
                   {cadence === "custom" && (
@@ -2549,9 +2555,9 @@ export default function SeoHubPage() {
               {cadence === "custom" && (
                 <div style={{ marginTop: 20, padding: "16px 20px", background: "rgba(13, 20, 35, 0.9)", border: "1px solid rgba(56, 189, 248, 0.25)", borderRadius: 10, display: "flex", alignItems: "center", justifyContent: "space-between", flexWrap: "wrap", gap: 16 }}>
                   <div>
-                    <div style={{ fontSize: 14, fontWeight: 700, color: "#fff" }}>Select Frequency per Week:</div>
+                    <div style={{ fontSize: 14, fontWeight: 700, color: "#fff" }}>Configure Target Weekly Output:</div>
                     <div style={{ fontSize: 12, color: "#94a3b8", marginTop: 2 }}>
-                      Generating ~{customDaysPerWeek * 4} articles per month distributed across active days.
+                      Generating ~{customDaysPerWeek * 4} articles per month distributed across active production days.
                     </div>
                   </div>
                   <div style={{ display: "flex", gap: 8 }}>
@@ -2573,7 +2579,7 @@ export default function SeoHubPage() {
                           cursor: "pointer",
                         }}
                       >
-                        {num} Blogs / Wk
+                        {num} Posts / Wk
                       </button>
                     ))}
                   </div>
@@ -2583,21 +2589,21 @@ export default function SeoHubPage() {
               {/* Cadence Info Footnote */}
               <div style={{ marginTop: 20, display: "flex", alignItems: "center", gap: 8, color: "#94a3b8", fontSize: 12 }}>
                 <span style={{ color: "#34d399" }}>✨</span>
-                <span>Articles are automatically distributed and published directly to your WordPress site with SEO topical clustering.</span>
+                <span>✦ Articles are autonomously formatted, internally linked, and indexed on your WordPress domain with semantic schema.</span>
               </div>
             </div>
 
-            {/* ── SECTION 2: AUTONOMOUS MULTICHANNEL SOCIAL AMPLIFICATION ── */}
+            {/* ── SECTION 2: INSTANT SOCIAL BROADCAST & AMPLIFICATION ── */}
             <div style={{ background: "rgba(16, 22, 34, 0.78)", border: "1px solid rgba(255, 255, 255, 0.12)", borderRadius: 14, padding: 28, boxShadow: "0 10px 30px rgba(0,0,0,0.4)" }}>
               <div style={{ marginBottom: 20 }}>
                 <div style={{ display: "inline-flex", alignItems: "center", gap: 6, padding: "4px 10px", borderRadius: 20, background: "rgba(56, 189, 248, 0.15)", border: "1px solid rgba(56, 189, 248, 0.3)", color: "#38bdf8", fontSize: 11, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.5px", marginBottom: 8 }}>
-                  <span>⚡</span> Instant Social Cross-Posting
+                  <span>⚡</span> Syndication Protocol
                 </div>
                 <h3 style={{ margin: "0 0 6px 0", fontSize: 18, color: "#fff", fontWeight: 800 }}>
-                  2. Autonomous Multichannel Amplification
+                  2. Instant Multichannel Social Syndication
                 </h3>
                 <p style={{ margin: 0, color: "#94a3b8", fontSize: 13, lineHeight: 1.5 }}>
-                  Every blog article that gets generated and published live to WordPress will instantly also be syndicated to your connected social channels.
+                  Amplify every live blog instantly. The moment an article goes live on WordPress, GabbarInfo AI automatically distributes it to your active social networks.
                 </p>
               </div>
 
@@ -2626,15 +2632,15 @@ export default function SeoHubPage() {
                     </div>
                     <div>
                       <div style={{ fontSize: 15, fontWeight: 700, color: "#fff", display: "flex", alignItems: "center", gap: 8 }}>
-                        Auto-Share to Facebook Page
+                        Facebook Business Page Syndication
                         {autoShareFb && (
                           <span style={{ fontSize: 10, padding: "2px 6px", borderRadius: 4, background: "rgba(16, 185, 129, 0.2)", color: "#34d399", fontWeight: 700 }}>
-                            LIVE
+                            ACTIVE
                           </span>
                         )}
                       </div>
                       <p style={{ margin: "4px 0 0 0", color: "#94a3b8", fontSize: 12, lineHeight: 1.4 }}>
-                        Instantly posts an interactive link card with article title, description, and link to your connected Facebook page.
+                        Automatically broadcasts a high-CTR interactive preview card with article synopsis, featured artwork, and direct site link.
                       </p>
                     </div>
                   </div>
@@ -2692,15 +2698,15 @@ export default function SeoHubPage() {
                     </div>
                     <div>
                       <div style={{ fontSize: 15, fontWeight: 700, color: "#fff", display: "flex", alignItems: "center", gap: 8 }}>
-                        Auto-Post to Instagram Profile
+                        Instagram Visual Feed Drop
                         {autoShareIg && (
                           <span style={{ fontSize: 10, padding: "2px 6px", borderRadius: 4, background: "rgba(16, 185, 129, 0.2)", color: "#34d399", fontWeight: 700 }}>
-                            LIVE
+                            ACTIVE
                           </span>
                         )}
                       </div>
                       <p style={{ margin: "4px 0 0 0", color: "#94a3b8", fontSize: 12, lineHeight: 1.4 }}>
-                        Instantly publishes the visual article photo with an AI caption, hashtags, and call-to-action on Instagram.
+                        Auto-formats your article's visual graphics with an AI-crafted caption, high-ranking hashtags, and bio call-to-action.
                       </p>
                     </div>
                   </div>
@@ -2757,12 +2763,12 @@ export default function SeoHubPage() {
                   }}
                 >
                   <span>✓</span>
-                  {savingAutopilotConfig ? "Saving Settings…" : "Save Schedule Settings"}
+                  {savingAutopilotConfig ? "Saving Preferences…" : "Apply Routine & Cross-Post Settings"}
                 </button>
               </div>
             </div>
 
-            {/* ── SECTION 3: UPCOMING 7-DAY AUTONOMOUS CADENCE ── */}
+            {/* ── SECTION 3: UPCOMING 7-DAY AUTONOMOUS DISPATCH CALENDAR ── */}
             <div style={{ background: "rgba(16, 22, 34, 0.78)", border: "1px solid rgba(255, 255, 255, 0.12)", borderRadius: 14, padding: 28, boxShadow: "0 10px 30px rgba(0,0,0,0.4)" }}>
               <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 18 }}>
                 <div style={{ width: 32, height: 32, borderRadius: 8, background: "rgba(56, 189, 248, 0.15)", display: "flex", alignItems: "center", justifyContent: "center", color: "#38bdf8", fontSize: 16 }}>
@@ -2770,10 +2776,10 @@ export default function SeoHubPage() {
                 </div>
                 <div>
                   <h4 style={{ fontSize: 16, color: "#fff", margin: 0, fontWeight: 700 }}>
-                    Upcoming 7-Day Publishing Schedule
+                    Next 7-Day Content Forecast
                   </h4>
                   <div style={{ fontSize: 12, color: "#94a3b8", marginTop: 2 }}>
-                    Projected publishing dates based on your cadence and active schedule.
+                    Preview upcoming autonomous publication slots mapped to your active routine.
                   </div>
                 </div>
               </div>
@@ -2832,7 +2838,7 @@ export default function SeoHubPage() {
                           border: isScheduled ? "1px solid rgba(16, 185, 129, 0.25)" : "1px solid transparent",
                         }}
                       >
-                        {isScheduled ? "● Scheduled Blog" : "No Post"}
+                        {isScheduled ? "● Scheduled Live Post" : "○ Organic Indexing Buffer"}
                       </div>
                     </div>
                   );
