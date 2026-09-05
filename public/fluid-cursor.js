@@ -46,7 +46,7 @@ function initFluidSimulation() {
     canvas.style.zIndex = '999999';
     canvas.style.pointerEvents = 'none';
     canvas.style.display = 'block';
-    canvas.style.opacity = '0.45';
+    canvas.style.opacity = '0.9';
 
 
     // Simulation section
@@ -60,24 +60,24 @@ function initFluidSimulation() {
         SIM_RESOLUTION: 128,
         DYE_RESOLUTION: 1024,
         CAPTURE_RESOLUTION: 512,
-        DENSITY_DISSIPATION: 5.5,
-        VELOCITY_DISSIPATION: 2.5,
+        DENSITY_DISSIPATION: 2.8,
+        VELOCITY_DISSIPATION: 1.2,
         PRESSURE: 0.8,
         PRESSURE_ITERATIONS: 20,
-        CURL: 20,
-        SPLAT_RADIUS: 0.12,
-        SPLAT_FORCE: 2500,
+        CURL: 25,
+        SPLAT_RADIUS: 0.20,
+        SPLAT_FORCE: 5000,
         SHADING: true,
         COLORFUL: true,
         COLOR_UPDATE_SPEED: 10,
         PAUSED: false,
         BACK_COLOR: { r: 0, g: 0, b: 0 },
         TRANSPARENT: true,
-        BLOOM: false,
-        BLOOM_ITERATIONS: 8,
+        BLOOM: true,
+        BLOOM_ITERATIONS: 6,
         BLOOM_RESOLUTION: 256,
-        BLOOM_INTENSITY: 0.15,
-        BLOOM_THRESHOLD: 0.25,
+        BLOOM_INTENSITY: 0.22,
+        BLOOM_THRESHOLD: 0.4,
         BLOOM_SOFT_KNEE: 0.7,
         SUNRAYS: false,
         SUNRAYS_RESOLUTION: 196,
@@ -524,7 +524,7 @@ function initFluidSimulation() {
         c += bloom;
     #endif
 
-        float a = max(c.r, max(c.g, c.b));
+        float a = min(max(c.r, max(c.g, c.b)) * 0.75, 0.7);
         gl_FragColor = vec4(c, a);
     }
 `;
