@@ -238,6 +238,44 @@ export default async function handler(req, res) {
     }
 
     // ----------------------------------------------------------------
+    // 5.5 GET SINGLE POST / PAGE (Full Content for Editor)
+    // ----------------------------------------------------------------
+    if (action === "get-post") {
+      const postId = body.postId || req.query.postId;
+      const postType = body.postType || "post";
+      const endpoint = postType === "page" ? `pages/${postId}` : `posts/${postId}`;
+
+      let fetchedData = null;
+      try {
+        const resp = await fetch(`${activeUrl}/wp-json/wp/v2/${endpoint}`, {
+          method: "GET",
+          headers: {
+            Accept: "application/json",
+            Authorization: `Bearer ${activeKey}`,
+          },
+        });
+        if (resp.ok) {
+          const json = await resp.json();
+          fetchedData = {
+            id: json.id,
+            title: json.title?.rendered || json.title || "",
+            content: json.content?.rendered || json.content || "",
+            slug: json.slug || "",
+            status: json.status || "publish",
+          };
+        }
+      } catch (e) {
+        console.warn("WP REST API get-post failed:", e.message);
+      }
+
+      if (fetchedData) {
+        return res.status(200).json({ ok: true, post: fetchedData });
+      } else {
+        return res.status(404).json({ ok: false, error: "Post not found or could not load content" });
+      }
+    }
+
+    // ----------------------------------------------------------------
     // 6. UPDATE CONTENT (Optimize Page or Post)
     // ----------------------------------------------------------------
     if (action === "update-content") {

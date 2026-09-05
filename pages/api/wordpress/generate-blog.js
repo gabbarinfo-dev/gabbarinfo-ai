@@ -412,6 +412,7 @@ INSTRUCTIONS:
       post_id: wpResult.post_id,
       post_url: wpResult.post_url,
       title: parsedArticle.title,
+      content: finalContent,
       slug: parsedArticle.slug,
       meta_title: parsedArticle.meta_title,
       meta_description: parsedArticle.meta_description,
