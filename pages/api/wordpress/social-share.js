@@ -2,7 +2,7 @@
 import { getServerSession } from "next-auth/next";
 import { authOptions } from "../auth/[...nextauth]";
 import { createClient } from "@supabase/supabase-js";
-import { executeFacebookPost } from "../../lib/execute-facebook-post";
+import { executeFacebookPost } from "../../../lib/execute-facebook-post";
 
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL,
