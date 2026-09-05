@@ -8,6 +8,7 @@ import { getServerSession } from "next-auth/next";
 import { authOptions } from "../auth/[...nextauth]";
 import { createClient } from "@supabase/supabase-js";
 import { executeInstagramPost } from "../../../lib/execute-instagram-post";
+import { executeFacebookPost } from "../../../lib/execute-facebook-post";
 import { normalizeImageUrl } from "../../../lib/normalize-image-url";
 import { creativeEntry } from "../../../lib/instagram/creative-entry";
 import { clearCreativeState } from "../../../lib/instagram/creative-memory";
@@ -253,9 +254,9 @@ export default async function handler(req, res) {
       return handleGoogleAdsCampaignFlow(req, res, session, body);
     }
 
-    // 🔒 MODE AUTHORITY GATE — INSTAGRAM ISOLATION
-    if (mode === "instagram_post") {
-      return handleInstagramPostOnly(req, res, session, body);
+    // 🔒 MODE AUTHORITY GATE — INSTAGRAM & FACEBOOK ISOLATION
+    if (mode === "instagram_post" || mode === "facebook_post") {
+      return handleSocialPost(req, res, session, body);
     }
 
     // ============================================================
@@ -4655,13 +4656,17 @@ async function generateMetaCampaignPlan({ lockedCampaignState, autoBusinessConte
   };
 }
 
-async function handleInstagramPostOnly(req, res, session, body) {
-  const { instruction = "" } = body;
-  const { data: metaRow } = await supabase.from("meta_connections").select("*").eq("email", session.user.email.toLowerCase()).maybeSingle();
+async function handleSocialPost(req, res, session, body) {
+  const { instruction = "", mode = "instagram_post" } = body;
+  const isFacebookMode = mode === "facebook_post";
+  const userEmail = session.user.email.toLowerCase();
+  const lowerInstruction = instruction.toLowerCase().trim();
+
+  const { data: metaRow } = await supabase.from("meta_connections").select("*").eq("email", userEmail).maybeSingle();
   const activeBusinessId = metaRow?.fb_business_id || "default_business";
 
-  // Helper for retrying publication (handles "Media ID not available" latency)
-  const safePublish = async (params, retries = 2) => {
+  // Helper for retrying Instagram publication (handles "Media ID not available" latency)
+  const safePublishIg = async (params, retries = 2) => {
     try {
       return await executeInstagramPost(params);
     } catch (e) {
@@ -4670,7 +4675,7 @@ async function handleInstagramPostOnly(req, res, session, body) {
         const delay = e.message.includes("Media ID") ? 5000 : 2000;
         console.warn(`[Instagram Retry] Transient error detected: "${e.message}". Waiting ${delay / 1000}s... (${retries} retries left)`);
         await new Promise(r => setTimeout(r, delay));
-        return await safePublish(params, retries - 1);
+        return await safePublishIg(params, retries - 1);
       }
       throw e;
     }
@@ -4682,7 +4687,6 @@ async function handleInstagramPostOnly(req, res, session, body) {
 
   if (imageUrl) {
     try {
-      // Extraction Priority: Regex for "Caption:" and "Hashtags:"
       const captionMatch = instruction.match(/Caption:\s*(.*?)(?=\s*Hashtags:|$)/is);
       const hashtagMatch = instruction.match(/Hashtags:\s*(.*)/is);
 
@@ -4690,51 +4694,115 @@ async function handleInstagramPostOnly(req, res, session, body) {
       const rawHashtags = hashtagMatch ? hashtagMatch[1].trim() : "";
       const combinedCaption = `${rawCaption}\n\n${rawHashtags}`.trim() || "New Post from GabbarInfo Agent";
 
-      console.log(`[Path A] Direct Instagram Publish detected. URL: ${imageUrl}`);
+      console.log(`[Path A] Direct Publish detected (Mode: ${mode}). URL: ${imageUrl}`);
 
-      if (body.mode === "instagram_post") {
-        await clearCreativeState(supabase, session.user.email.toLowerCase());
+      await clearCreativeState(supabase, userEmail);
+
+      const isBoth = lowerInstruction.includes("both") || (lowerInstruction.includes("facebook") && lowerInstruction.includes("instagram"));
+      const isFbOnly = isFacebookMode && !isBoth;
+      const isIgOnly = !isFacebookMode && !isBoth;
+
+      const publishResults = [];
+      let igData = null;
+      let fbData = null;
+
+      if (isIgOnly || isBoth) {
+        try {
+          igData = await safePublishIg({
+            userEmail,
+            imageUrl,
+            caption: combinedCaption,
+          });
+          const publishId = igData.publishResponseJson?.id || igData.mediaResponseJson?.id;
+          publishResults.push(`📸 **Instagram:** Published successfully! (ID: \`${publishId}\`)`);
+        } catch (igErr) {
+          console.error("[Path A] IG Error:", igErr);
+          publishResults.push(`⚠️ **Instagram:** Failed (${igErr.message})`);
+        }
       }
 
-      const result = await safePublish({
-        userEmail: session.user.email.toLowerCase(),
-        imageUrl,
-        caption: combinedCaption
-      });
+      if (isFbOnly || isBoth) {
+        try {
+          fbData = await executeFacebookPost({
+            userEmail,
+            imageUrl,
+            caption: combinedCaption,
+          });
+          publishResults.push(`📘 **Facebook Page:** Published successfully! [View Post](${fbData.postUrl}) (ID: \`${fbData.postId}\`)`);
+        } catch (fbErr) {
+          console.error("[Path A] FB Error:", fbErr);
+          publishResults.push(`⚠️ **Facebook Page:** Failed (${fbErr.message})`);
+        }
+      }
 
-      const containerId = result.mediaResponseJson?.id;
-      const publishId = result.publishResponseJson?.id;
+      const headerText = isBoth
+        ? "🎉 Post Successfully Published to Both Platforms!"
+        : (isFbOnly ? "🎉 Facebook Page Post Published!" : "🎉 Instagram Post Published!");
 
       return res.status(200).json({
         ok: true,
-        text: "🎉 Instagram Post Published!",
-        container_id: containerId,
-        publish_id: publishId,
+        text: `${headerText}\n\n${publishResults.join("\n")}`,
+        instagram: igData,
+        facebook: fbData,
         graph_status: "200 OK"
       });
     } catch (e) {
       console.error("[Path A] Direct Publish Error:", e);
-      return res.status(200).json({ ok: false, text: `Instagram publication failed: ${e.message}` });
+      return res.status(200).json({ ok: false, text: `Publication failed: ${e.message}` });
     }
   }
 
-  // 🗣️ Path B: Interactive Creative Mode
-  const creativeResult = await creativeEntry({ supabase, session, instruction, metaRow, effectiveBusinessId: activeBusinessId });
+  // 🗣️ Path B: Interactive Creative Mode (DALL-E 3 + Persuasive Copy + Canvas)
+  const creativeResult = await creativeEntry({
+    supabase,
+    session,
+    instruction,
+    metaRow,
+    effectiveBusinessId: activeBusinessId,
+    targetPlatform: isFacebookMode ? "facebook" : "instagram",
+  });
+
   if (creativeResult.response) return res.json(creativeResult.response);
 
   // Path B: Success Publication
   if (creativeResult.assets) {
     try {
-      const { imageUrl, caption, storageFileName } = creativeResult.assets;
+      const { imageUrl, caption, storageFileName, destination = (isFacebookMode ? "FACEBOOK_ONLY" : "INSTAGRAM_ONLY") } = creativeResult.assets;
 
-      const postResult = await safePublish({
-        userEmail: session.user.email.toLowerCase(),
-        imageUrl: imageUrl,
-        caption: caption
-      });
+      const publishResults = [];
+      let igData = null;
+      let fbData = null;
 
-      const containerId = postResult.mediaResponseJson?.id;
-      const publishId = postResult.publishResponseJson?.id;
+      // 1. Instagram
+      if (destination === "INSTAGRAM_ONLY" || destination === "BOTH") {
+        try {
+          igData = await safePublishIg({
+            userEmail,
+            imageUrl,
+            caption,
+          });
+          const publishId = igData.publishResponseJson?.id || igData.mediaResponseJson?.id;
+          publishResults.push(`📸 **Instagram:** Published successfully! (ID: \`${publishId}\`)`);
+        } catch (igErr) {
+          console.error("[Path B] IG Publish Error:", igErr);
+          publishResults.push(`⚠️ **Instagram:** Failed (${igErr.message})`);
+        }
+      }
+
+      // 2. Facebook Page
+      if (destination === "FACEBOOK_ONLY" || destination === "BOTH") {
+        try {
+          fbData = await executeFacebookPost({
+            userEmail,
+            imageUrl,
+            caption,
+          });
+          publishResults.push(`📘 **Facebook Page:** Published successfully! [View Post](${fbData.postUrl}) (ID: \`${fbData.postId}\`)`);
+        } catch (fbErr) {
+          console.error("[Path B] FB Publish Error:", fbErr);
+          publishResults.push(`⚠️ **Facebook Page:** Failed (${fbErr.message})`);
+        }
+      }
 
       // 🧹 STORAGE CLEANUP: Delete the creative after successful publish
       if (storageFileName) {
@@ -4746,16 +4814,20 @@ async function handleInstagramPostOnly(req, res, session, body) {
         }
       }
 
+      const headerText = destination === "BOTH"
+        ? "🎉 Post Successfully Published to Both Platforms!"
+        : (destination === "FACEBOOK_ONLY" ? "🎉 Facebook Page Post Published!" : "🎉 Instagram Post Published!");
+
       return res.status(200).json({
         ok: true,
-        text: "🎉 Instagram Post Published!",
-        container_id: containerId,
-        publish_id: publishId,
+        text: `${headerText}\n\n${publishResults.join("\n")}`,
+        instagram: igData,
+        facebook: fbData,
         graph_status: "200 OK"
       });
     } catch (e) {
       console.error("[Path B] Publication Error:", e);
-      return res.status(200).json({ ok: false, text: `Instagram publication failed: ${e.message}` });
+      return res.status(200).json({ ok: false, text: `Publication failed: ${e.message}` });
     }
   }
 

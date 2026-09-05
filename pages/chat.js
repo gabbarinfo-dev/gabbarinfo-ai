@@ -749,6 +749,7 @@ Now respond as GabbarInfo AI.
       social_plan: "Social media calendar",
       seo_blog: "SEO / Blog planner",
       instagram_post: "Instagram Post Publish",
+      facebook_post: "Facebook Post Publish",
     };
 
     const label = modeLabels[agentMode] || "Agent";
@@ -1477,6 +1478,7 @@ Now respond as GabbarInfo AI.
                   <option value="social_plan">Social Media calendar</option>
                   <option value="seo_blog">SEO / Blog planner</option>
                   <option value="instagram_post">Instagram Post Publish</option>
+                  <option value="facebook_post">Facebook Post Publish</option>
                 </select>
 
                 {agentResponse && (
