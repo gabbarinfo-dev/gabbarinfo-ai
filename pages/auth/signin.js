@@ -1,10 +1,8 @@
-// pages/auth/signin.js
-"use client";
-
 import { signIn, useSession } from "next-auth/react";
 import { useEffect } from "react";
 import { useRouter } from "next/router";
 import Head from "next/head";
+import CyberMatrixBackground from "../components/CyberMatrixBackground";
 
 export default function SignInPage() {
   const { data: session, status } = useSession();
@@ -20,7 +18,7 @@ export default function SignInPage() {
     <div
       style={{
         minHeight: "100vh",
-        background: "radial-gradient(circle at 50% 15%, rgba(245, 183, 22, 0.15) 0%, rgba(16, 185, 129, 0.08) 35%, #080b11 70%)",
+        background: "#080b11",
         display: "flex",
         alignItems: "center",
         justifyContent: "center",
@@ -34,56 +32,21 @@ export default function SignInPage() {
         <title>GabbarInfo AI · Autonomous Growth Command Center</title>
       </Head>
 
-      {/* Ambient luxury neural glow orbs */}
-      <div
-        style={{
-          position: "absolute",
-          top: "10%",
-          left: "15%",
-          width: 420,
-          height: 420,
-          background: "radial-gradient(circle, rgba(245, 183, 22, 0.2) 0%, transparent 70%)",
-          filter: "blur(80px)",
-          pointerEvents: "none",
-        }}
-      />
-      <div
-        style={{
-          position: "absolute",
-          bottom: "10%",
-          right: "15%",
-          width: 450,
-          height: 450,
-          background: "radial-gradient(circle, rgba(16, 185, 129, 0.15) 0%, rgba(6, 182, 212, 0.1) 40%, transparent 70%)",
-          filter: "blur(90px)",
-          pointerEvents: "none",
-        }}
-      />
-
-      {/* Subtle Golden Geometric Grid Lines */}
-      <div
-        style={{
-          position: "absolute",
-          inset: 0,
-          backgroundImage: `linear-gradient(rgba(245, 183, 22, 0.04) 1px, transparent 1px), linear-gradient(90deg, rgba(245, 183, 22, 0.04) 1px, transparent 1px)`,
-          backgroundSize: "48px 48px",
-          pointerEvents: "none",
-          opacity: 0.7,
-        }}
-      />
+      {/* Cybernetic Falling Code & 3D Rotating Geometric Wireframes Background */}
+      <CyberMatrixBackground showGeometric={true} />
 
       {/* Main Luxury Glass Card */}
       <div
         style={{
           maxWidth: 480,
           width: "100%",
-          background: "rgba(11, 15, 25, 0.82)",
+          background: "linear-gradient(180deg, rgba(16, 22, 34, 0.88) 0%, rgba(8, 11, 17, 0.95) 100%)",
           backdropFilter: "blur(28px)",
           WebkitBackdropFilter: "blur(28px)",
-          border: "1.5px solid rgba(245, 183, 22, 0.35)",
+          border: "1px solid rgba(255, 255, 255, 0.16)",
           borderRadius: 24,
           padding: "44px 38px",
-          boxShadow: "0 28px 64px rgba(0, 0, 0, 0.75), 0 0 32px rgba(245, 183, 22, 0.18), inset 0 1px 0 rgba(255, 255, 255, 0.15)",
+          boxShadow: "0 30px 80px rgba(0, 0, 0, 0.85), 0 0 50px rgba(59, 130, 246, 0.15), inset 0 1px 0 rgba(255, 255, 255, 0.2)",
           position: "relative",
           zIndex: 1,
           textAlign: "center",
@@ -104,8 +67,9 @@ export default function SignInPage() {
           }}
         >
           <span style={{ fontSize: 13, color: "#F5B716" }}>⚡</span>
-          <span style={{ fontSize: 11, fontWeight: 800, textTransform: "uppercase", letterSpacing: "0.1em", color: "#F5B716" }}>
-            GABBARINFO AI · NEURAL SUITE
+          <span style={{ fontSize: 11, fontWeight: 800, textTransform: "uppercase", letterSpacing: "0.12em", color: "#34d399", display: "inline-flex", alignItems: "center", gap: 6 }}>
+            <span style={{ width: 7, height: 7, borderRadius: "50%", background: "#10b981", boxShadow: "0 0 10px #10b981", animation: "radarPulse 2s infinite" }} />
+            AUTONOMOUS AI COMMAND CENTER
           </span>
         </div>
 
@@ -117,12 +81,12 @@ export default function SignInPage() {
             fontWeight: 800,
             letterSpacing: "-0.03em",
             fontFamily: "'Outfit', sans-serif",
-            background: "linear-gradient(135deg, #ffffff 30%, #F5B716 100%)",
+            background: "linear-gradient(135deg, #ffffff 40%, #38bdf8 100%)",
             WebkitBackgroundClip: "text",
             WebkitTextFillColor: "transparent",
           }}
         >
-          Autonomous Marketing
+          GabbarInfo AI
         </h1>
 
         <p style={{ margin: "0 0 28px 0", fontSize: 14, color: "#94a3b8", lineHeight: 1.6 }}>

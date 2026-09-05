@@ -372,15 +372,15 @@ export default function SeoHubPage() {
           </div>
 
           {/* Mode Switcher */}
-          <div style={{ display: "flex", background: "#131b2e", padding: 3, borderRadius: 8, border: "1.5px solid rgba(245, 183, 22, 0.3)" }}>
+          <div style={{ display: "flex", background: "rgba(16, 22, 34, 0.8)", padding: 4, borderRadius: 10, border: "1px solid rgba(255, 255, 255, 0.12)" }}>
             <button
               onClick={() => setMode("manual")}
               style={{
                 padding: "6px 14px",
-                borderRadius: 6,
+                borderRadius: 7,
                 border: "none",
-                background: mode === "manual" ? "#F5B716" : "transparent",
-                color: mode === "manual" ? "#000000" : "#94a3b8",
+                background: mode === "manual" ? "#ffffff" : "transparent",
+                color: mode === "manual" ? "#080b11" : "#94a3b8",
                 fontSize: 12,
                 fontWeight: 700,
                 cursor: "pointer",
@@ -393,10 +393,10 @@ export default function SeoHubPage() {
               onClick={() => setMode("autopilot")}
               style={{
                 padding: "6px 14px",
-                borderRadius: 6,
+                borderRadius: 7,
                 border: "none",
-                background: mode === "autopilot" ? "#F5B716" : "transparent",
-                color: mode === "autopilot" ? "#000000" : "#94a3b8",
+                background: mode === "autopilot" ? "#ffffff" : "transparent",
+                color: mode === "autopilot" ? "#080b11" : "#94a3b8",
                 fontSize: 12,
                 fontWeight: 700,
                 cursor: "pointer",
@@ -409,7 +409,7 @@ export default function SeoHubPage() {
 
           <a
             href="/chat"
-            className="btn-gabbar-dark"
+            className="btn-gabbar-secondary"
             style={{
               padding: "7px 14px",
               fontSize: 13,
@@ -420,7 +420,7 @@ export default function SeoHubPage() {
           </a>
           <a
             href="/"
-            className="btn-gabbar-gold"
+            className="btn-gabbar-primary"
             style={{
               padding: "7px 16px",
               fontSize: 13,
@@ -432,33 +432,49 @@ export default function SeoHubPage() {
         </div>
       </header>
 
+      {/* AMBIENT LIGHT CONE (WHIZWISER STYLE) */}
+      <div
+        style={{
+          position: "absolute",
+          top: 60,
+          left: "50%",
+          transform: "translateX(-50%)",
+          width: "100%",
+          maxWidth: 1240,
+          height: 480,
+          background: "radial-gradient(ellipse 70% 50% at 50% 0%, rgba(56, 189, 248, 0.14) 0%, rgba(99, 102, 241, 0.06) 45%, transparent 80%)",
+          pointerEvents: "none",
+          zIndex: 0,
+        }}
+      />
+
       {/* ── MAIN WORKSPACE CONTAINER ── */}
-      <div style={{ maxWidth: 1240, margin: "0 auto", padding: "28px 24px" }}>
+      <div style={{ maxWidth: 1240, margin: "0 auto", padding: "28px 24px", position: "relative", zIndex: 1 }}>
         {/* KPI CARDS BAR */}
         <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))", gap: 16, marginBottom: 28 }}>
-          <div style={{ background: "#0f172a", border: "1.5px solid rgba(245, 183, 22, 0.25)", borderRadius: 12, padding: 18, boxShadow: "0 4px 14px rgba(0,0,0,0.2)" }}>
+          <div style={{ background: "rgba(16, 22, 34, 0.78)", border: "1px solid rgba(255, 255, 255, 0.12)", borderRadius: 14, padding: 18, boxShadow: "0 10px 30px rgba(0,0,0,0.4)" }}>
             <div style={{ fontSize: 12, color: "#94a3b8", fontWeight: 700, textTransform: "uppercase" }}>Connected Site</div>
             <div style={{ fontSize: 16, fontWeight: 700, color: "#fff", marginTop: 6, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
               {connection?.siteUrl ? connection.siteUrl.replace(/^https?:\/\//, "") : "Not Connected"}
             </div>
-            <div style={{ fontSize: 12, color: connection?.siteUrl ? "#10b981" : "#F5B716", marginTop: 6, fontWeight: 600 }}>
+            <div style={{ fontSize: 12, color: connection?.siteUrl ? "#10b981" : "#94a3b8", marginTop: 6, fontWeight: 600 }}>
               {connection?.siteUrl ? "● Active & Syncing" : "○ Awaiting Pairing"}
             </div>
           </div>
 
-          <div style={{ background: "#0f172a", border: "1.5px solid rgba(245, 183, 22, 0.25)", borderRadius: 12, padding: 18, boxShadow: "0 4px 14px rgba(0,0,0,0.2)" }}>
+          <div style={{ background: "rgba(16, 22, 34, 0.78)", border: "1px solid rgba(255, 255, 255, 0.12)", borderRadius: 14, padding: 18, boxShadow: "0 10px 30px rgba(0,0,0,0.4)" }}>
             <div style={{ fontSize: 12, color: "#94a3b8", fontWeight: 700, textTransform: "uppercase" }}>Live Content Items</div>
-            <div style={{ fontSize: 24, fontWeight: 800, color: "#F5B716", marginTop: 4 }}>{contentList.length}</div>
+            <div style={{ fontSize: 24, fontWeight: 800, color: "#ffffff", marginTop: 4 }}>{contentList.length}</div>
             <div style={{ fontSize: 12, color: "#94a3b8", marginTop: 4 }}>Synced Posts & Pages</div>
           </div>
 
-          <div style={{ background: "#0f172a", border: "1.5px solid rgba(245, 183, 22, 0.25)", borderRadius: 12, padding: 18, boxShadow: "0 4px 14px rgba(0,0,0,0.2)" }}>
+          <div style={{ background: "rgba(16, 22, 34, 0.78)", border: "1px solid rgba(255, 255, 255, 0.12)", borderRadius: 14, padding: 18, boxShadow: "0 10px 30px rgba(0,0,0,0.4)" }}>
             <div style={{ fontSize: 12, color: "#94a3b8", fontWeight: 700, textTransform: "uppercase" }}>Target Keywords</div>
-            <div style={{ fontSize: 24, fontWeight: 800, color: "#F5B716", marginTop: 4 }}>{keywords.length}</div>
+            <div style={{ fontSize: 24, fontWeight: 800, color: "#38bdf8", marginTop: 4 }}>{keywords.length}</div>
             <div style={{ fontSize: 12, color: "#10b981", marginTop: 4, fontWeight: 600 }}>Coverage Tracking Active</div>
           </div>
 
-          <div style={{ background: "#0f172a", border: "1.5px solid rgba(245, 183, 22, 0.25)", borderRadius: 12, padding: 18, boxShadow: "0 4px 14px rgba(0,0,0,0.2)" }}>
+          <div style={{ background: "rgba(16, 22, 34, 0.78)", border: "1px solid rgba(255, 255, 255, 0.12)", borderRadius: 14, padding: 18, boxShadow: "0 10px 30px rgba(0,0,0,0.4)" }}>
             <div style={{ fontSize: 12, color: "#94a3b8", fontWeight: 700, textTransform: "uppercase" }}>Autopilot Daily Post</div>
             <div style={{ fontSize: 20, fontWeight: 700, color: autopilotEnabled ? "#10b981" : "#94a3b8", marginTop: 6 }}>
               {autopilotEnabled ? "Active (Daily 6:00 AM)" : "Paused"}
@@ -468,18 +484,19 @@ export default function SeoHubPage() {
         </div>
 
         {/* ── WORKSPACE TABS ── */}
-        <div style={{ display: "flex", gap: 10, borderBottom: "1px solid #1e293b", marginBottom: 24, paddingBottom: 2 }}>
+        <div style={{ display: "flex", gap: 10, borderBottom: "1px solid rgba(255, 255, 255, 0.1)", marginBottom: 24, paddingBottom: 2 }}>
           <button
             onClick={() => setActiveTab("content")}
             style={{
               padding: "10px 18px",
-              background: activeTab === "content" ? "#1e293b" : "transparent",
+              background: activeTab === "content" ? "rgba(255, 255, 255, 0.08)" : "transparent",
               border: "none",
-              borderBottom: activeTab === "content" ? "2.5px solid #F5B716" : "2.5px solid transparent",
-              color: activeTab === "content" ? "#F5B716" : "#94a3b8",
+              borderBottom: activeTab === "content" ? "2.5px solid #ffffff" : "2.5px solid transparent",
+              color: activeTab === "content" ? "#ffffff" : "#94a3b8",
               fontWeight: 700,
               fontSize: 14,
               cursor: "pointer",
+              borderRadius: "8px 8px 0 0",
             }}
           >
             📑 Articles & Website Pages ({contentList.length})
@@ -489,13 +506,14 @@ export default function SeoHubPage() {
             onClick={() => setActiveTab("topics")}
             style={{
               padding: "10px 18px",
-              background: activeTab === "topics" ? "#1e293b" : "transparent",
+              background: activeTab === "topics" ? "rgba(255, 255, 255, 0.08)" : "transparent",
               border: "none",
-              borderBottom: activeTab === "topics" ? "2.5px solid #F5B716" : "2.5px solid transparent",
-              color: activeTab === "topics" ? "#F5B716" : "#94a3b8",
+              borderBottom: activeTab === "topics" ? "2.5px solid #ffffff" : "2.5px solid transparent",
+              color: activeTab === "topics" ? "#ffffff" : "#94a3b8",
               fontWeight: 700,
               fontSize: 14,
               cursor: "pointer",
+              borderRadius: "8px 8px 0 0",
             }}
           >
             💡 Topic & Keyword Planner
@@ -505,13 +523,14 @@ export default function SeoHubPage() {
             onClick={() => setActiveTab("autopilot")}
             style={{
               padding: "10px 18px",
-              background: activeTab === "autopilot" ? "#1e293b" : "transparent",
+              background: activeTab === "autopilot" ? "rgba(255, 255, 255, 0.08)" : "transparent",
               border: "none",
-              borderBottom: activeTab === "autopilot" ? "2.5px solid #F5B716" : "2.5px solid transparent",
-              color: activeTab === "autopilot" ? "#F5B716" : "#94a3b8",
+              borderBottom: activeTab === "autopilot" ? "2.5px solid #ffffff" : "2.5px solid transparent",
+              color: activeTab === "autopilot" ? "#ffffff" : "#94a3b8",
               fontWeight: 700,
               fontSize: 14,
               cursor: "pointer",
+              borderRadius: "8px 8px 0 0",
             }}
           >
             🤖 Autopilot Scheduler
@@ -521,13 +540,14 @@ export default function SeoHubPage() {
             onClick={() => setActiveTab("integrations")}
             style={{
               padding: "10px 18px",
-              background: activeTab === "integrations" ? "#1e293b" : "transparent",
+              background: activeTab === "integrations" ? "rgba(255, 255, 255, 0.08)" : "transparent",
               border: "none",
-              borderBottom: activeTab === "integrations" ? "2.5px solid #F5B716" : "2.5px solid transparent",
-              color: activeTab === "integrations" ? "#F5B716" : "#94a3b8",
+              borderBottom: activeTab === "integrations" ? "2.5px solid #ffffff" : "2.5px solid transparent",
+              color: activeTab === "integrations" ? "#ffffff" : "#94a3b8",
               fontWeight: 700,
               fontSize: 14,
               cursor: "pointer",
+              borderRadius: "8px 8px 0 0",
             }}
           >
             🔌 WordPress Connector & GSC
@@ -577,7 +597,7 @@ export default function SeoHubPage() {
                 <button
                   onClick={() => fetchContent(connection)}
                   disabled={loadingContent}
-                  className="btn-gabbar-dark"
+                  className="btn-gabbar-secondary"
                   style={{
                     padding: "8px 16px",
                     fontSize: 13,
@@ -590,7 +610,7 @@ export default function SeoHubPage() {
 
               <button
                 onClick={() => setShowNewBlogModal(true)}
-                className="btn-gabbar-gold"
+                className="btn-gabbar-primary"
                 style={{
                   padding: "10px 22px",
                   fontSize: 13,
@@ -602,10 +622,10 @@ export default function SeoHubPage() {
             </div>
 
             {/* Table */}
-            <div style={{ background: "#0f172a", border: "1px solid #1e293b", borderRadius: 12, overflowX: "auto" }}>
+            <div style={{ background: "rgba(16, 22, 34, 0.78)", border: "1px solid rgba(255, 255, 255, 0.12)", borderRadius: 14, overflowX: "auto" }}>
               <table style={{ width: "100%", borderCollapse: "collapse", textAlign: "left", fontSize: 13 }}>
                 <thead>
-                  <tr style={{ borderBottom: "1px solid #1e293b", color: "#64748b", textTransform: "uppercase", fontSize: 11, letterSpacing: "0.5px" }}>
+                  <tr style={{ borderBottom: "1px solid rgba(255, 255, 255, 0.1)", color: "#64748b", textTransform: "uppercase", fontSize: 11, letterSpacing: "0.5px" }}>
                     <th style={{ padding: "14px 18px" }}>Title & URL</th>
                     <th style={{ padding: "14px 14px" }}>Type</th>
                     <th style={{ padding: "14px 14px" }}>Words</th>
@@ -629,14 +649,14 @@ export default function SeoHubPage() {
                     </tr>
                   ) : (
                     filteredContent.map((item) => (
-                      <tr key={item.id} style={{ borderBottom: "1px solid #131b2e" }}>
+                      <tr key={item.id} style={{ borderBottom: "1px solid rgba(255, 255, 255, 0.06)" }}>
                         <td style={{ padding: "14px 18px", maxWidth: 360 }}>
                           <div style={{ fontWeight: 600, color: "#f8fafc", lineHeight: 1.4 }}>{item.title}</div>
                           <a
                             href={item.url}
                             target="_blank"
                             rel="noreferrer"
-                            style={{ fontSize: 12, color: "#60a5fa", textDecoration: "none", display: "inline-block", marginTop: 4 }}
+                            style={{ fontSize: 12, color: "#38bdf8", textDecoration: "none", display: "inline-block", marginTop: 4 }}
                           >
                             /{item.slug} ↗
                           </a>
@@ -647,8 +667,8 @@ export default function SeoHubPage() {
                               fontSize: 11,
                               padding: "3px 8px",
                               borderRadius: 4,
-                              background: item.type === "page" ? "#312e81" : "#1e293b",
-                              color: item.type === "page" ? "#c7d2fe" : "#94a3b8",
+                              background: item.type === "page" ? "rgba(99, 102, 241, 0.2)" : "rgba(255, 255, 255, 0.08)",
+                              color: item.type === "page" ? "#a5b4fc" : "#94a3b8",
                               fontWeight: 600,
                               textTransform: "uppercase",
                             }}
@@ -670,8 +690,8 @@ export default function SeoHubPage() {
                               fontSize: 11,
                               padding: "3px 8px",
                               borderRadius: 4,
-                              background: item.status === "publish" ? "#064e3b" : "#451a03",
-                              color: item.status === "publish" ? "#34d399" : "#fbbf24",
+                              background: item.status === "publish" ? "rgba(16, 185, 129, 0.15)" : "rgba(255, 255, 255, 0.08)",
+                              color: item.status === "publish" ? "#34d399" : "#94a3b8",
                               fontWeight: 600,
                               textTransform: "uppercase",
                             }}
@@ -682,7 +702,7 @@ export default function SeoHubPage() {
                         <td style={{ padding: "14px 18px", textAlign: "right" }}>
                           <button
                             onClick={() => handleOpenOptimize(item)}
-                            className="btn-gabbar-dark"
+                            className="btn-gabbar-secondary"
                             style={{
                               padding: "6px 14px",
                               fontSize: 12,
@@ -707,7 +727,7 @@ export default function SeoHubPage() {
         {activeTab === "topics" && (
           <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 24 }}>
             {/* Left: Focus Keywords */}
-            <div style={{ background: "#0f172a", border: "1px solid #1e293b", borderRadius: 12, padding: 24 }}>
+            <div style={{ background: "rgba(16, 22, 34, 0.78)", border: "1px solid rgba(255, 255, 255, 0.12)", borderRadius: 14, padding: 24 }}>
               <h3 style={{ margin: "0 0 8px 0", fontSize: 16, color: "#fff" }}>🎯 Target Focus Keywords</h3>
               <p style={{ color: "#94a3b8", fontSize: 13, margin: "0 0 16px 0" }}>
                 Keywords used to guide SERP ranking, on-page optimization, and autonomous blog generation.
@@ -723,8 +743,8 @@ export default function SeoHubPage() {
                     flex: 1,
                     padding: "8px 12px",
                     borderRadius: 6,
-                    border: "1px solid #1e293b",
-                    background: "#131b2e",
+                    border: "1px solid rgba(255, 255, 255, 0.14)",
+                    background: "#0d111c",
                     color: "#fff",
                     fontSize: 13,
                   }}
@@ -740,7 +760,7 @@ export default function SeoHubPage() {
                     padding: "8px 16px",
                     cursor: "pointer",
                   }}
-                  className="btn-gabbar-gold"
+                  className="btn-gabbar-primary"
                 >
                   + Add Keyword
                 </button>
@@ -754,8 +774,8 @@ export default function SeoHubPage() {
                       display: "inline-flex",
                       alignItems: "center",
                       gap: 8,
-                      background: "#131b2e",
-                      border: "1px solid rgba(245, 183, 22, 0.2)",
+                      background: "rgba(18, 24, 38, 0.85)",
+                      border: "1px solid rgba(255, 255, 255, 0.12)",
                       padding: "6px 12px",
                       borderRadius: 6,
                       fontSize: 12,
@@ -775,13 +795,13 @@ export default function SeoHubPage() {
             </div>
 
             {/* Right: Anti-Duplication AI SERP Ideation */}
-            <div style={{ background: "#0f172a", border: "1.5px solid rgba(245, 183, 22, 0.25)", borderRadius: 12, padding: 24, boxShadow: "0 4px 14px rgba(0,0,0,0.2)" }}>
+            <div style={{ background: "rgba(16, 22, 34, 0.78)", border: "1px solid rgba(255, 255, 255, 0.12)", borderRadius: 14, padding: 24, boxShadow: "0 10px 30px rgba(0,0,0,0.4)" }}>
               <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 8, flexWrap: "wrap", gap: 10 }}>
                 <h3 style={{ margin: 0, fontSize: 16, color: "#fff" }}>💡 AI SERP Topic Generator</h3>
                 <button
                   onClick={handleAutoSuggestTopics}
                   disabled={loadingTopics}
-                  className="btn-gabbar-gold"
+                  className="btn-gabbar-primary"
                   style={{
                     padding: "7px 16px",
                     fontSize: 12,
@@ -797,7 +817,7 @@ export default function SeoHubPage() {
 
               <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
                 {suggestedTopics.length === 0 ? (
-                  <div style={{ padding: 24, textAlign: "center", color: "#64748b", fontSize: 13, background: "#131b2e", borderRadius: 8 }}>
+                  <div style={{ padding: 24, textAlign: "center", color: "#64748b", fontSize: 13, background: "#0d111c", borderRadius: 8 }}>
                     Click "Auto-Suggest 6 Topics" to ideate SERP-ranking articles.
                   </div>
                 ) : (
@@ -806,8 +826,8 @@ export default function SeoHubPage() {
                       key={idx}
                       style={{
                         padding: 12,
-                        background: "#131b2e",
-                        border: "1px solid #1e293b",
+                        background: "#0d111c",
+                        border: "1px solid rgba(255, 255, 255, 0.1)",
                         borderRadius: 8,
                         display: "flex",
                         justifyContent: "space-between",
@@ -821,7 +841,7 @@ export default function SeoHubPage() {
                           setNewTopic(top);
                           setShowNewBlogModal(true);
                         }}
-                        className="btn-gabbar-gold"
+                        className="btn-gabbar-primary"
                         style={{
                           padding: "6px 14px",
                           fontSize: 11,
@@ -843,7 +863,7 @@ export default function SeoHubPage() {
             TAB 3: AUTOPILOT SCHEDULER
         ========================================================================= */}
         {activeTab === "autopilot" && (
-          <div style={{ background: "#0f172a", border: "1.5px solid rgba(245, 183, 22, 0.25)", borderRadius: 12, padding: 28, boxShadow: "0 4px 20px rgba(0,0,0,0.3)" }}>
+          <div style={{ background: "rgba(16, 22, 34, 0.78)", border: "1px solid rgba(255, 255, 255, 0.12)", borderRadius: 14, padding: 28, boxShadow: "0 10px 30px rgba(0,0,0,0.4)" }}>
             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: 16 }}>
               <div>
                 <h2 style={{ margin: "0 0 6px 0", fontSize: 20, color: "#fff" }}>🤖 Autonomous Daily Blogging Engine</h2>
@@ -858,9 +878,9 @@ export default function SeoHubPage() {
                   style={{
                     padding: "10px 20px",
                     borderRadius: 8,
-                    border: autopilotEnabled ? "1.5px solid #10b981" : "1.5px solid rgba(245, 183, 22, 0.4)",
-                    background: autopilotEnabled ? "rgba(16, 185, 129, 0.2)" : "rgba(245, 183, 22, 0.1)",
-                    color: autopilotEnabled ? "#34d399" : "#F5B716",
+                    border: autopilotEnabled ? "1px solid #10b981" : "1px solid rgba(255, 255, 255, 0.18)",
+                    background: autopilotEnabled ? "rgba(16, 185, 129, 0.18)" : "rgba(255, 255, 255, 0.06)",
+                    color: autopilotEnabled ? "#34d399" : "#ffffff",
                     fontWeight: 700,
                     fontSize: 14,
                     cursor: "pointer",
@@ -894,7 +914,7 @@ export default function SeoHubPage() {
                     }
                   }}
                   disabled={runningCycle}
-                  className="btn-gabbar-gold"
+                  className="btn-gabbar-primary"
                   style={{
                     padding: "10px 20px",
                     fontSize: 13,
@@ -1099,7 +1119,7 @@ export default function SeoHubPage() {
               <button
                 onClick={handleSaveOptimization}
                 disabled={optSaving}
-                className="btn-gabbar-gold"
+                className="btn-gabbar-primary"
                 style={{ padding: "9px 20px", fontSize: 13, cursor: "pointer" }}
               >
                 {optSaving ? "Saving…" : "Apply On-Page SEO ↗"}
@@ -1167,7 +1187,7 @@ export default function SeoHubPage() {
                   <button
                     onClick={() => handleGenerateBlog()}
                     disabled={generatingBlog}
-                    className="btn-gabbar-gold"
+                    className="btn-gabbar-primary"
                     style={{ padding: "11px 24px", fontSize: 13, cursor: "pointer" }}
                   >
                     {generatingBlog ? "Writing & Generating Dual Images…" : "🚀 Publish Live to WordPress ↗"}

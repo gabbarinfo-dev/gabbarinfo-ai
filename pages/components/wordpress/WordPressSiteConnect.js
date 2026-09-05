@@ -152,10 +152,10 @@ export default function WordPressSiteConnect() {
           style={{
             padding: "9px 16px",
             borderRadius: 8,
-            border: "1.5px solid rgba(245, 183, 22, 0.3)",
+            border: "1px solid rgba(255, 255, 255, 0.16)",
             fontSize: 13,
-            background: "#131b2e",
-            color: "#F5B716",
+            background: "#0d111c",
+            color: "#f8fafc",
             fontWeight: 700,
             cursor: "pointer",
             outline: "none",
@@ -163,16 +163,16 @@ export default function WordPressSiteConnect() {
         >
           {connectedProfiles.length > 0 ? (
             connectedProfiles.map((name) => (
-              <option key={name} value={name} style={{ background: "#0f172a", color: "#fff" }}>
+              <option key={name} value={name} style={{ background: "#0d111c", color: "#38bdf8" }}>
                 ✓ {name} ({allConnections[name]?.siteUrl})
               </option>
             ))
           ) : (
-            <option value="custom" style={{ background: "#0f172a", color: "#F5B716" }}>
+            <option value="custom" style={{ background: "#0d111c", color: "#94a3b8" }}>
               [ No Website Connected Yet ]
             </option>
           )}
-          <option value="custom" style={{ background: "#0f172a", color: "#F5B716" }}>
+          <option value="custom" style={{ background: "#0d111c", color: "#38bdf8" }}>
             + Connect New Business Profile
           </option>
         </select>
@@ -186,9 +186,9 @@ export default function WordPressSiteConnect() {
             style={{
               padding: "8px 14px",
               borderRadius: 8,
-              border: "1.5px solid rgba(245, 183, 22, 0.3)",
+              border: "1px solid rgba(255, 255, 255, 0.16)",
               fontSize: 13,
-              background: "#131b2e",
+              background: "#0d111c",
               color: "#fff",
               minWidth: 240,
               outline: "none",
@@ -199,32 +199,32 @@ export default function WordPressSiteConnect() {
 
       {loading ? (
         <div style={{ color: "#94a3b8", fontSize: 13, display: "flex", alignItems: "center", gap: 8 }}>
-          <div style={{ width: 14, height: 14, border: "2px solid rgba(245, 183, 22, 0.2)", borderTopColor: "#F5B716", borderRadius: "50%", animation: "spin 0.8s linear infinite" }} />
+          <div style={{ width: 14, height: 14, border: "2px solid rgba(56, 189, 248, 0.2)", borderTopColor: "#38bdf8", borderRadius: "50%", animation: "spin 0.8s linear infinite" }} />
           Checking connection status…
         </div>
       ) : connection?.siteUrl ? (
         /* 🟢 CONNECTED STATE (DARK LUXURY) */
-        <div style={{ background: "rgba(19, 27, 46, 0.7)", border: "1px solid rgba(245, 183, 22, 0.2)", borderRadius: 14, padding: 20 }}>
+        <div style={{ background: "rgba(16, 22, 34, 0.8)", border: "1px solid rgba(56, 189, 248, 0.25)", borderRadius: 14, padding: 20 }}>
           <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: 14 }}>
             <div>
               <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
                 <span style={{ height: 10, width: 10, borderRadius: "50%", background: "#10b981", display: "inline-block", boxShadow: "0 0 10px #10b981" }}></span>
                 <span style={{ fontWeight: 800, fontSize: 16, color: "#f8fafc" }}>Connected: {connection.siteUrl}</span>
                 {connection.isWooCommerce && (
-                  <span style={{ fontSize: 11, background: "rgba(245, 183, 22, 0.15)", border: "1px solid #F5B716", padding: "2px 8px", borderRadius: 4, color: "#F5B716", fontWeight: 700 }}>
+                  <span style={{ fontSize: 11, background: "rgba(56, 189, 248, 0.12)", border: "1px solid rgba(56, 189, 248, 0.3)", padding: "2px 8px", borderRadius: 4, color: "#38bdf8", fontWeight: 700 }}>
                     WooCommerce Active
                   </span>
                 )}
               </div>
               <div style={{ fontSize: 13, color: "#94a3b8", marginTop: 6 }}>
-                Site: {connection.siteName || "WordPress"} · Plugin v{connection.pluginVersion || "1.0.0"} · Profile: <strong style={{ color: "#F5B716" }}>{activeBusiness}</strong>
+                Site: {connection.siteName || "WordPress"} · Plugin v{connection.pluginVersion || "1.0.0"} · Profile: <strong style={{ color: "#38bdf8" }}>{activeBusiness}</strong>
               </div>
             </div>
 
             <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
               <a
                 href="/seo"
-                className="btn-gabbar-gold"
+                className="btn-gabbar-primary"
                 style={{
                   padding: "9px 18px",
                   fontSize: 13,
@@ -268,14 +268,14 @@ export default function WordPressSiteConnect() {
           )}
         </div>
       ) : (
-        /* ⚪ DISCONNECTED STATE (DARK LUXURY WITH SIGNATURE GOLD SLIDING BUTTON) */
-        <div style={{ background: "rgba(15, 23, 42, 0.5)", border: "1px dashed rgba(245, 183, 22, 0.25)", borderRadius: 14, padding: 24 }}>
+        /* ⚪ DISCONNECTED STATE (DARK LUXURY WITH TITANIUM WHITE SLIDING BUTTON) */
+        <div style={{ background: "rgba(16, 22, 34, 0.6)", border: "1px dashed rgba(255, 255, 255, 0.16)", borderRadius: 14, padding: 24 }}>
           <p style={{ margin: "0 0 18px 0", color: "#94a3b8", fontSize: 14, lineHeight: 1.6 }}>
             Connect your WordPress / WooCommerce website to enable autonomous daily blogging at 6:00 AM IST, on-page SEO optimization, dual visual generation, and Google Search Console indexing.
           </p>
           <button
             onClick={handleStartConnect}
-            className="btn-gabbar-gold"
+            className="btn-gabbar-primary"
             style={{
               padding: "12px 24px",
               fontSize: 14,
@@ -358,7 +358,7 @@ export default function WordPressSiteConnect() {
                 <div style={{ display: "flex", justifyContent: "flex-end", marginTop: 26 }}>
                   <button
                     onClick={() => setModalStep(2)}
-                    className="btn-gabbar-gold"
+                    className="btn-gabbar-primary"
                     style={{ padding: "11px 22px", fontSize: 13 }}
                   >
                     Next: Installation Steps ➔
@@ -388,7 +388,7 @@ export default function WordPressSiteConnect() {
                   </button>
                   <button
                     onClick={() => setModalStep(3)}
-                    className="btn-gabbar-gold"
+                    className="btn-gabbar-primary"
                     style={{ padding: "11px 22px", fontSize: 13 }}
                   >
                     Next: Enter Pairing Key ➔
@@ -445,7 +445,7 @@ export default function WordPressSiteConnect() {
                   <button
                     onClick={handleSaveConnection}
                     disabled={connecting}
-                    className="btn-gabbar-gold"
+                    className="btn-gabbar-primary"
                     style={{ padding: "11px 24px", fontSize: 13 }}
                   >
                     {connecting ? "Verifying…" : "Verify & Pair Website ↗"}

@@ -119,7 +119,7 @@ export default function GoogleAdsAccountConnect() {
 
         <button
           onClick={() => signIn("google")}
-          className="btn-gabbar-gold"
+          className="btn-gabbar-primary"
           style={{
             marginTop: "8px",
             padding: "11px 22px",
@@ -179,7 +179,7 @@ export default function GoogleAdsAccountConnect() {
 
         <button
           onClick={fetchAccounts}
-          className="btn-gabbar-dark"
+          className="btn-gabbar-secondary"
           style={{
             padding: "7px 14px",
             fontSize: "12px",
