@@ -749,9 +749,9 @@ Now respond as GabbarInfo AI.
     }
 
     const modeLabels = {
-      generic: "Generic strategy",
+      generic: "Meta Ads – Campaign Creator",
+      meta_ads_plan: "Meta Ads – Creative & Copy Planner",
       google_ads_plan: "Google Ads – Campaign planner",
-      meta_ads_plan: "Meta Ads – Creative planner",
       social_plan: "Social media calendar",
       seo_blog: "SEO / Blog planner",
       instagram_post: "Instagram Post Publish",
@@ -1856,9 +1856,9 @@ Now respond as GabbarInfo AI.
                       outline: "none",
                     }}
                   >
-                    <option value="generic">Generic Strategy (Multi-channel)</option>
+                    <option value="generic">Meta Ads – Campaign Creator (Full Strategy)</option>
+                    <option value="meta_ads_plan">Meta Ads – Creative & Copy Planner</option>
                     <option value="google_ads_plan">Google Ads – Campaign Planner</option>
-                    <option value="meta_ads_plan">Meta Ads – Creative Planner</option>
                     <option value="social_plan">Social Media Content Calendar</option>
                     <option value="seo_blog">SEO & Blog Content Planner</option>
                     <option value="instagram_post">Instagram Post Publisher</option>

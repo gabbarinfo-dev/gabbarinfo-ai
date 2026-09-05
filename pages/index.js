@@ -564,7 +564,7 @@ export default function HomePage() {
                   </span>
                 </div>
                 <h4 style={{ margin: "0 0 6px 0", fontSize: 14, fontWeight: 700, color: "#ffffff" }}>
-                  Gemini Flash AI
+                  GabbarInfo AI
                 </h4>
                 <p style={{ margin: 0, fontSize: 12, color: "#94a3b8", lineHeight: 1.5 }}>
                   Synthesizes 1500+ word articles, schema markup, and dual attention-seeking visuals.
