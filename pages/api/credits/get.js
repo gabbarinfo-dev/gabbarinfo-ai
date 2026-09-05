@@ -2,12 +2,7 @@
 
 import { getServerSession } from "next-auth/next";
 import { authOptions } from "../auth/[...nextauth]";
-import { createClient } from "@supabase/supabase-js";
-
-const supabase = createClient(
-  process.env.NEXT_PUBLIC_SUPABASE_URL,
-  process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
-);
+import { supabaseServer } from "../../../lib/supabaseServer";
 
 export default async function handler(req, res) {
   if (req.method !== "GET") {
@@ -29,9 +24,9 @@ export default async function handler(req, res) {
       return res.status(200).json({ credits: null, unlimited: true });
     }
 
-    // 🔹 If email exists, check DB normally
+    // 🔹 If email exists, check DB via supabaseServer (bypasses RLS)
     if (email) {
-      const { data, error } = await supabase
+      const { data, error } = await supabaseServer
         .from("credits")
         .select("credits_left")
         .eq("email", email)
@@ -39,18 +34,31 @@ export default async function handler(req, res) {
 
       if (error) {
         console.error("credits/get error:", error);
-        return res.status(500).json({ error: "Database error" });
       }
 
-      const credits = data?.credits_left ?? 0;
+      // If user has no credits row in DB, auto-provision 30 free starter credits
+      if (!data) {
+        try {
+          await supabaseServer
+            .from("credits")
+            .insert({ email, credits_left: 30 });
+        } catch (insErr) {
+          console.warn("credits/get auto-provision insert warning:", insErr.message);
+        }
+
+        return res.status(200).json({
+          credits: 30,
+          unlimited: false,
+        });
+      }
+
       return res.status(200).json({
-        credits,
+        credits: data.credits_left ?? 30,
         unlimited: false,
       });
     }
 
-    // 🔹 Facebook phone-login case (no email)
-    // Show starter credits, actual row will be created on first spend
+    // 🔹 Fallback for session without email (e.g. initial provisional state)
     return res.status(200).json({
       credits: 30,
       unlimited: false,

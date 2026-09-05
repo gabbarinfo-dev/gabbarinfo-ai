@@ -1,14 +1,9 @@
 // pages/api/credits/spend.js
 import { getServerSession } from "next-auth/next";
 import { authOptions } from "../auth/[...nextauth]";
-import { createClient } from "@supabase/supabase-js";
+import { supabaseServer } from "../../lib/supabaseServer";
 
-const supabase = createClient(
-  process.env.NEXT_PUBLIC_SUPABASE_URL,
-  process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
-);
-
-const DEFAULT_CREDITS = 10;
+const DEFAULT_CREDITS = 30;
 
 export default async function handler(req, res) {
   if (req.method !== "POST") {
@@ -21,7 +16,7 @@ export default async function handler(req, res) {
       return res.status(401).json({ error: "Not authenticated" });
     }
 
-    const email = session.user?.email?.toLowerCase();
+    const email = session.user?.email?.toLowerCase()?.trim();
     const role = session.user?.role || "client";
 
     if (!email) {
@@ -42,8 +37,8 @@ export default async function handler(req, res) {
       });
     }
 
-    // Fetch credits row by email
-    const { data: creditRow, error } = await supabase
+    // Fetch credits row by email using supabaseServer (service role)
+    const { data: creditRow, error } = await supabaseServer
       .from("credits")
       .select("*")
       .eq("email", email)
@@ -58,9 +53,9 @@ export default async function handler(req, res) {
     let rowId;
 
     if (!creditRow) {
-      // No row yet → create one with DEFAULT_CREDITS first
+      // No row yet → create one with DEFAULT_CREDITS (30) first
       currentCredits = DEFAULT_CREDITS;
-      const { data: inserted, error: insertError } = await supabase
+      const { data: inserted, error: insertError } = await supabaseServer
         .from("credits")
         .insert({
           email,
@@ -93,9 +88,9 @@ export default async function handler(req, res) {
 
     const newCredits = currentCredits - amount;
 
-    const { error: updateError } = await supabase
+    const { error: updateError } = await supabaseServer
       .from("credits")
-      .update({ credits_left: newCredits })
+      .update({ credits_left: newCredits, updated_at: new Date().toISOString() })
       .eq("id", rowId);
 
     if (updateError) {

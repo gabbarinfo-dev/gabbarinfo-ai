@@ -1,12 +1,7 @@
 // pages/api/credits/consume.js
 import { getServerSession } from "next-auth/next";
 import { authOptions } from "../auth/[...nextauth]";
-import { createClient } from "@supabase/supabase-js";
-
-const supabase = createClient(
-  process.env.NEXT_PUBLIC_SUPABASE_URL,
-  process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
-);
+import { supabaseServer } from "../../lib/supabaseServer";
 
 export default async function handler(req, res) {
   if (req.method !== "POST") {
@@ -32,8 +27,8 @@ export default async function handler(req, res) {
       return res.status(200).json({ credits: null, unlimited: true });
     }
 
-    // Fetch current credits
-    const { data, error } = await supabase
+    // Fetch current credits using supabaseServer (service role)
+    let { data, error } = await supabaseServer
       .from("credits")
       .select("id, credits_left")
       .eq("email", email)
@@ -44,9 +39,23 @@ export default async function handler(req, res) {
       return res.status(500).json({ error: "Database error" });
     }
 
-    const current = data?.credits_left ?? 0;
+    // If no row exists, auto-provision 30 credits first
+    if (!data) {
+      try {
+        const { data: newRow } = await supabaseServer
+          .from("credits")
+          .insert({ email, credits_left: 30 })
+          .select()
+          .single();
+        data = newRow;
+      } catch (insErr) {
+        console.warn("credits/consume auto-provision error:", insErr.message);
+      }
+    }
 
-    if (!data || current <= 0) {
+    const current = data?.credits_left ?? 30;
+
+    if (current <= 0) {
       return res.status(402).json({
         error: "No credits available. Please contact GabbarInfo to top up.",
         credits: 0,
@@ -55,7 +64,7 @@ export default async function handler(req, res) {
 
     const newCredits = current - 1;
 
-    const { error: updateError } = await supabase
+    const { error: updateError } = await supabaseServer
       .from("credits")
       .update({ credits_left: newCredits, updated_at: new Date().toISOString() })
       .eq("email", email);
