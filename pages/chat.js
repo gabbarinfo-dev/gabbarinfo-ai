@@ -331,6 +331,8 @@ export default function ChatPage() {
         setAgentInstruction("Create a Google Search Ads campaign");
       } else if (agentMode === "instagram_post") {
         setAgentInstruction("Publish an Instagram Post");
+      } else if (agentMode === "facebook_post") {
+        setAgentInstruction("Publish a Facebook Post");
       } else {
         setAgentInstruction("");
       }
