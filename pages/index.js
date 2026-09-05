@@ -3,6 +3,7 @@ import { useEffect, useState } from "react";
 import { useSession, signIn, signOut } from "next-auth/react";
 import FacebookBusinessConnect from "./components/facebook/FacebookBusinessConnect";
 import GoogleAdsAccountConnect from "./components/google/googleadsaccountconnect";
+import WordPressSiteConnect from "./components/wordpress/WordPressSiteConnect";
 import BuyCreditsModal from "./components/BuyCreditsModal";
 
 export default function HomePage() {
@@ -239,6 +240,22 @@ export default function HomePage() {
             Open Chat
           </a>
 
+          <a
+            href="/seo"
+            style={{
+              padding: "10px 16px",
+              borderRadius: 8,
+              border: "1.5px solid #4f46e5",
+              background: "#eef2ff",
+              textDecoration: "none",
+              color: "#4f46e5",
+              fontSize: 14,
+              fontWeight: 600,
+            }}
+          >
+            🌐 SEO & Website Suite
+          </a>
+
           {role === "owner" && (
             <a
               href="/admin"
@@ -255,6 +272,20 @@ export default function HomePage() {
               Open Admin
             </a>
           )}
+        </section>
+
+        {/* WORDPRESS WEBSITE & SEO ENGINE */}
+        <section
+          style={{
+            padding: 20,
+            borderRadius: 12,
+            background: "#fff",
+            border: "1px solid #eee",
+            maxWidth: 640,
+          }}
+        >
+          <h2 style={{ marginTop: 0 }}>WordPress Website & SEO Engine</h2>
+          <WordPressSiteConnect />
         </section>
 
         {/* GOOGLE ADS CONNECTION STATUS */}

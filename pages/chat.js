@@ -333,6 +333,8 @@ export default function ChatPage() {
         setAgentInstruction("Publish an Instagram Post");
       } else if (agentMode === "facebook_post") {
         setAgentInstruction("Publish a Facebook Post");
+      } else if (agentMode === "seo_blog") {
+        setAgentInstruction("Publish an SEO Blog");
       } else {
         setAgentInstruction("");
       }
