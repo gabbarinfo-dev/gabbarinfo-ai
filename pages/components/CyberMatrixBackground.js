@@ -19,6 +19,7 @@ export default function CyberMatrixBackground({ showGeometric = true }) {
       width = canvas.width = window.innerWidth;
       height = canvas.height = window.innerHeight;
       initColumns();
+      polyhedra = createPolyhedra(width);
     };
     window.addEventListener("resize", handleResize);
 
@@ -131,9 +132,9 @@ export default function CyberMatrixBackground({ showGeometric = true }) {
           };
         });
 
-        // Draw edges with glowing gradient
-        ctx.strokeStyle = "rgba(56, 189, 248, 0.22)";
-        ctx.lineWidth = 1.2;
+        // Draw edges with glowing gradient (slightly darker)
+        ctx.strokeStyle = "rgba(56, 189, 248, 0.16)";
+        ctx.lineWidth = 1.1;
         ctx.beginPath();
         for (const [i1, i2] of this.edges) {
           if (rotated[i1] && rotated[i2]) {
@@ -143,22 +144,35 @@ export default function CyberMatrixBackground({ showGeometric = true }) {
         }
         ctx.stroke();
 
-        // Draw glowing nodes
+        // Draw glowing nodes (slightly darker)
         for (const node of rotated) {
-          ctx.fillStyle = "rgba(16, 185, 129, 0.45)";
+          ctx.fillStyle = "rgba(16, 185, 129, 0.32)";
           ctx.beginPath();
-          ctx.arc(node.x, node.y, 2.5, 0, Math.PI * 2);
+          ctx.arc(node.x, node.y, 2.2, 0, Math.PI * 2);
           ctx.fill();
         }
       }
     }
 
-    const polyhedra = [
-      new GeometricPolyhedron(0.18, 0.35, 100, 75, "icosahedron"),
-      new GeometricPolyhedron(0.82, 0.28, 80, 85, "cube"),
-      new GeometricPolyhedron(0.85, 0.72, 120, 65, "octahedron"),
-      new GeometricPolyhedron(0.14, 0.78, 90, 70, "icosahedron"),
-    ];
+    function createPolyhedra(w) {
+      const isMobile = w < 768;
+      if (isMobile) {
+        return [
+          new GeometricPolyhedron(0.12, 0.10, 100, 48, "icosahedron"),
+          new GeometricPolyhedron(0.86, 0.10, 80, 52, "cube"),
+          new GeometricPolyhedron(0.14, 0.90, 120, 46, "octahedron"),
+          new GeometricPolyhedron(0.86, 0.90, 90, 48, "icosahedron"),
+        ];
+      }
+      return [
+        new GeometricPolyhedron(0.18, 0.35, 100, 75, "icosahedron"),
+        new GeometricPolyhedron(0.82, 0.28, 80, 85, "cube"),
+        new GeometricPolyhedron(0.85, 0.72, 120, 65, "octahedron"),
+        new GeometricPolyhedron(0.14, 0.78, 90, 70, "icosahedron"),
+      ];
+    }
+
+    let polyhedra = createPolyhedra(width);
 
     let frame = 0;
     const render = () => {
@@ -167,7 +181,7 @@ export default function CyberMatrixBackground({ showGeometric = true }) {
       ctx.fillStyle = "rgba(8, 11, 17, 0.25)";
       ctx.fillRect(0, 0, width, height);
 
-      // Render Matrix Falling Code Stream
+      // Render Matrix Falling Code Stream (softer, darker tones)
       ctx.font = `${fontSize}px monospace`;
       for (let i = 0; i < drops.length; i += 2) {
         // Draw every 2nd column for clean density
@@ -175,15 +189,15 @@ export default function CyberMatrixBackground({ showGeometric = true }) {
         const x = i * fontSize;
         const char = chars[Math.floor(Math.random() * chars.length)];
 
-        // Glowing white/cyan head
-        ctx.fillStyle = "rgba(255, 255, 255, 0.85)";
+        // Glowing white/cyan head (softened from 0.85 to 0.55)
+        ctx.fillStyle = "rgba(220, 240, 255, 0.55)";
         ctx.fillText(char, x, drop.y);
 
-        // Fading green/cyan body trail
+        // Fading green/cyan body trail (softened from 0.28 to 0.18)
         for (let j = 1; j < 6; j++) {
           const trailY = drop.y - j * fontSize;
           if (trailY > 0) {
-            const alpha = (1 - j / 6) * 0.28 * drop.brightness;
+            const alpha = (1 - j / 6) * 0.18 * drop.brightness;
             ctx.fillStyle = `rgba(56, 189, 248, ${alpha})`;
             const trailChar = chars[Math.floor(Math.random() * chars.length)];
             ctx.fillText(trailChar, x, trailY);
@@ -235,7 +249,7 @@ export default function CyberMatrixBackground({ showGeometric = true }) {
           width: "100%",
           height: "100%",
           display: "block",
-          opacity: 0.85,
+          opacity: 0.75,
         }}
       />
 
@@ -249,17 +263,17 @@ export default function CyberMatrixBackground({ showGeometric = true }) {
           width: "100%",
           maxWidth: 1100,
           height: 600,
-          background: "radial-gradient(ellipse 70% 60% at 50% 0%, rgba(59, 130, 246, 0.22) 0%, rgba(16, 185, 129, 0.08) 40%, transparent 75%)",
+          background: "radial-gradient(ellipse 70% 60% at 50% 0%, rgba(59, 130, 246, 0.18) 0%, rgba(16, 185, 129, 0.06) 40%, transparent 75%)",
           pointerEvents: "none",
         }}
       />
 
-      {/* Central Card Contrast Mask */}
+      {/* Central Card Contrast Mask - Softened so animations are visible through cards */}
       <div
         style={{
           position: "absolute",
           inset: 0,
-          background: "radial-gradient(ellipse at 50% 50%, rgba(8, 11, 17, 0.45) 0%, rgba(8, 11, 17, 0.95) 85%)",
+          background: "radial-gradient(ellipse at 50% 50%, rgba(8, 11, 17, 0.20) 0%, rgba(8, 11, 17, 0.82) 85%)",
           pointerEvents: "none",
         }}
       />

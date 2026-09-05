@@ -36,22 +36,7 @@ export default function SignInPage() {
       <CyberMatrixBackground showGeometric={true} />
 
       {/* Main Luxury Glass Card */}
-      <div
-        style={{
-          maxWidth: 480,
-          width: "100%",
-          background: "linear-gradient(180deg, rgba(16, 22, 34, 0.88) 0%, rgba(8, 11, 17, 0.95) 100%)",
-          backdropFilter: "blur(28px)",
-          WebkitBackdropFilter: "blur(28px)",
-          border: "1px solid rgba(255, 255, 255, 0.16)",
-          borderRadius: 24,
-          padding: "44px 38px",
-          boxShadow: "0 30px 80px rgba(0, 0, 0, 0.85), 0 0 50px rgba(59, 130, 246, 0.15), inset 0 1px 0 rgba(255, 255, 255, 0.2)",
-          position: "relative",
-          zIndex: 1,
-          textAlign: "center",
-        }}
-      >
+      <div className="signin-card">
         {/* Brand Tag */}
         <div
           style={{
@@ -74,27 +59,16 @@ export default function SignInPage() {
         </div>
 
         {/* Brand Name & Headline */}
-        <h1
-          style={{
-            margin: "0 0 10px 0",
-            fontSize: 32,
-            fontWeight: 800,
-            letterSpacing: "-0.03em",
-            fontFamily: "'Outfit', sans-serif",
-            background: "linear-gradient(135deg, #ffffff 40%, #38bdf8 100%)",
-            WebkitBackgroundClip: "text",
-            WebkitTextFillColor: "transparent",
-          }}
-        >
+        <h1 className="signin-h1">
           GabbarInfo AI
         </h1>
 
-        <p style={{ margin: "0 0 28px 0", fontSize: 14, color: "#94a3b8", lineHeight: 1.6 }}>
+        <p className="signin-desc">
           High-performance AI engine orchestrating Google Ads, Meta Ads, and automated WordPress SEO on autopilot.
         </p>
 
         {/* Luxury Feature Pillars */}
-        <div style={{ display: "flex", flexDirection: "column", gap: 10, marginBottom: 32, textAlign: "left" }}>
+        <div style={{ display: "flex", flexDirection: "column", gap: 10, marginBottom: 28, textAlign: "left" }}>
           {[
             { icon: "🎯", text: "Autonomous Google Search & PMax Ad Campaigns" },
             { icon: "📘", text: "Meta Ads & 1-Click Instagram/Facebook Distribution" },
@@ -102,13 +76,14 @@ export default function SignInPage() {
           ].map((item, idx) => (
             <div
               key={idx}
+              className="signin-feature-pill"
               style={{
                 display: "flex",
                 alignItems: "center",
                 gap: 12,
                 padding: "10px 14px",
-                background: "rgba(15, 23, 42, 0.6)",
-                border: "1px solid rgba(255, 255, 255, 0.06)",
+                background: "rgba(15, 23, 42, 0.55)",
+                border: "1px solid rgba(255, 255, 255, 0.08)",
                 borderRadius: 12,
                 fontSize: 13,
                 color: "#e2e8f0",
@@ -188,6 +163,66 @@ export default function SignInPage() {
           <span>Enterprise 256-Bit Neural Encrypted OAuth 2.0 Security</span>
         </div>
       </div>
+
+      <style jsx>{`
+        .signin-card {
+          max-width: 480px;
+          width: 100%;
+          background: linear-gradient(180deg, rgba(16, 22, 34, 0.70) 0%, rgba(8, 11, 17, 0.80) 100%);
+          backdrop-filter: blur(20px);
+          -webkit-backdrop-filter: blur(20px);
+          border: 1px solid rgba(255, 255, 255, 0.14);
+          border-radius: 24px;
+          padding: 42px 36px;
+          box-shadow: 0 30px 80px rgba(0, 0, 0, 0.85), 0 0 45px rgba(59, 130, 246, 0.12), inset 0 1px 0 rgba(255, 255, 255, 0.18);
+          position: relative;
+          z-index: 1;
+          text-align: center;
+          transition: all 0.3s ease;
+        }
+
+        .signin-h1 {
+          margin: 0 0 10px 0;
+          font-size: 32px;
+          font-weight: 800;
+          letter-spacing: -0.03em;
+          font-family: 'Outfit', sans-serif;
+          background: linear-gradient(135deg, #ffffff 40%, #38bdf8 100%);
+          -webkit-background-clip: text;
+          -webkit-text-fill-color: transparent;
+        }
+
+        .signin-desc {
+          margin: 0 0 26px 0;
+          font-size: 14px;
+          color: #94a3b8;
+          line-height: 1.6;
+        }
+
+        @media (max-width: 640px) {
+          .signin-card {
+            max-width: 90% !important;
+            margin: 16px auto !important;
+            padding: 24px 18px !important;
+            border-radius: 20px !important;
+            background: linear-gradient(180deg, rgba(16, 22, 34, 0.62) 0%, rgba(8, 11, 17, 0.72) 100%) !important;
+            backdrop-filter: blur(14px) !important;
+            -webkit-backdrop-filter: blur(14px) !important;
+            box-shadow: 0 20px 50px rgba(0, 0, 0, 0.75), 0 0 30px rgba(59, 130, 246, 0.1) !important;
+          }
+          .signin-h1 {
+            font-size: 26px !important;
+          }
+          .signin-desc {
+            font-size: 13px !important;
+            margin-bottom: 20px !important;
+          }
+          .signin-feature-pill {
+            padding: 8px 10px !important;
+            font-size: 12px !important;
+          }
+        }
+      `}</style>
     </div>
   );
 }
