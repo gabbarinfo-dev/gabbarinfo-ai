@@ -1,7 +1,7 @@
 // pages/api/credits/spend.js
 import { getServerSession } from "next-auth/next";
 import { authOptions } from "../auth/[...nextauth]";
-import { supabaseServer } from "../../lib/supabaseServer";
+import { supabaseServer } from "../../../lib/supabaseServer";
 
 const DEFAULT_CREDITS = 30;
 

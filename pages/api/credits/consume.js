@@ -1,7 +1,7 @@
 // pages/api/credits/consume.js
 import { getServerSession } from "next-auth/next";
 import { authOptions } from "../auth/[...nextauth]";
-import { supabaseServer } from "../../lib/supabaseServer";
+import { supabaseServer } from "../../../lib/supabaseServer";
 
 export default async function handler(req, res) {
   if (req.method !== "POST") {
