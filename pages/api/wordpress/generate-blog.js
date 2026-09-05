@@ -125,30 +125,42 @@ export default async function handler(req, res) {
       : `AUTONOMOUS KEYWORD DISCOVERY: The user did not provide manual keywords. You MUST act as an elite SEO keyword research engine: automatically identify, prioritize, and embed the top 3-5 high-volume, high-intent ranking keywords tailored specifically to "${businessName}", its target market scope ("${businessLocation}"), and its core offerings ("${businessServices || industry}"). Target commercial buyer and problem-solving search phrases that actual customers and decision-makers search for.`;
 
     // 4. Generate High-Ranking Blog Content & SEO Payload with GPT
-    console.log(`[SEO Engine] Generating ${wordCount}-word article on "${topic}" for ${businessName}...`);
+    // 4. Generate High-Ranking Blog Content & SEO Payload with GPT
+    console.log(`[SEO Engine] Generating full ${wordCount}-word authority guide on "${topic}" for ${businessName}...`);
 
-    const systemPrompt = `You are a world-class SEO content strategist and elite copywriter.
-Generate a comprehensive, high-ranking, human-grade blog post optimized for Google SERP and reader conversion.
-Rules:
-1. Output MUST be valid JSON matching the exact schema specified.
-2. Structure the HTML content with <h2>, <h3>, <p>, <ul>, <li>, and <strong> tags. DO NOT include <h1> or <html>/<body> wrappers.
-3. Word count target: roughly ${wordCount} words.
-4. Keyword Integration: ${keywordStrategyDirective}
-5. Weave in 2-3 organic internal links using the following live pages from the user's site:
+    const systemPrompt = `You are a world-class SEO content strategist and elite industry copywriter.
+Generate an exhaustive, high-ranking, human-grade pillar guide optimized for Google SERP dominance and reader conversion.
+
+CRITICAL LENGTH & DEPTH MANDATES:
+1. STRICT WORD COUNT: You MUST write at least ${wordCount} words of comprehensive, in-depth content (target: ${wordCount} to ${wordCount + 400} words). Writing less than ${wordCount} words is a strict violation.
+2. EXTENSIVE STRUCTURE:
+   - Create at least 7 to 9 detailed <h2> sections.
+   - Include 2 to 3 detailed <h3> subsections under major sections.
+   - Every subsection must have 3 to 4 substantial, informative paragraphs (each paragraph 70-110 words).
+   - NEVER provide a superficial summary or condensed overview.
+3. ACTIONABLE FRAMEWORKS & EXAMPLES:
+   - Detail step-by-step execution methodologies, operational playbooks, and ROI metrics.
+   - Include an in-depth Real-World Case Study / Example Breakdown with specific numbers and strategy analysis.
+   - Include a detailed Troubleshooting & Costly Mistakes to Avoid section.
+   - Include an exhaustive FAQ Section with 4-5 high-value questions and multi-paragraph comprehensive answers.
+4. KEYWORD & INTERNAL LINK INTEGRATION:
+   - Keyword Strategy: ${keywordStrategyDirective}
+   - Internal Links: Weave in 2-3 organic internal links using the following live pages from the user's site:
 ${existingLinksContext || "None available - write naturally without broken links"}
-6. Include 1-2 authoritative external references (e.g. Google Search Central, Statista, Harvard Business Review, Wikipedia).
-7. Generate an engaging Meta Title (under 60 characters) and high-CTR Meta Description (under 155 characters).
-8. Generate visual image prompts for:
-   - featured_image_prompt: A striking hero banner visual prompt.
-   - mid_image_prompt: An informative mid-article infographic or conceptual visual prompt.`;
+   - External Authority: Include 1-2 authoritative citations (e.g. Google Search Central, Statista, Harvard Business Review).
+5. FORMATTING:
+   - Use semantic HTML: <h2>, <h3>, <p>, <ul>, <li>, <strong>, <em>.
+   - DO NOT include <h1>, <html>, or <body> tags.
+6. OUTPUT FORMAT:
+   - Output MUST be strictly valid JSON matching the schema.`;
 
-    const userPrompt = `Business Name: ${businessName}
-Business Operating City / Location: ${businessLocation || "Local & Regional Market"}
-Primary Services / Specialization: ${businessServices || industry}
+    const userPrompt = `Business: ${businessName}
+Target Market / Scope: ${businessLocation}
+Core Services / Industry: ${businessServices || industry}
 Brand Voice: ${brandVoice}
-Blog Topic: ${topic}
-${keywordList ? `Target Keywords: ${keywordList}` : "Keywords: Automatically generate top-ranking city and service keywords"}
-Target Word Count: ${wordCount}
+Blog Topic / Headline: ${topic}
+${keywordList ? `Target Ranked Keywords: ${keywordList}` : "Keywords: Automatically target high-volume commercial and topical ranking phrases."}
+MANDATORY MINIMUM WORD COUNT: ${wordCount} Words.
 
 Respond ONLY with a valid JSON object matching this schema:
 {
@@ -156,12 +168,12 @@ Respond ONLY with a valid JSON object matching this schema:
   "slug": "keyword-rich-url-slug",
   "meta_title": "SEO Meta Title (max 60 chars)",
   "meta_description": "SEO Meta Description (max 155 chars)",
-  "focus_keyword": "Primary target keyword (including city/service if local intent)",
+  "focus_keyword": "Primary target keyword",
   "secondary_keywords": ["ranked keyword 2", "ranked keyword 3", "ranked keyword 4"],
-  "html_content": "Full article HTML with headings and paragraphs",
-  "featured_image_prompt": "DALL-E prompt for the header hero banner",
+  "html_content": "Full exhaustive pillar article HTML (minimum ${wordCount} words)",
+  "featured_image_prompt": "Specific visual scene prompt for the header hero banner",
   "featured_image_alt": "Descriptive SEO alt text for hero image",
-  "mid_image_prompt": "DALL-E prompt for the mid-content visual",
+  "mid_image_prompt": "Specific visual infographic prompt for the mid-content visual",
   "mid_image_alt": "Descriptive SEO alt text for mid visual"
 }`;
 
@@ -172,78 +184,144 @@ Respond ONLY with a valid JSON object matching this schema:
         { role: "user", content: userPrompt },
       ],
       response_format: { type: "json_object" },
+      max_tokens: 4500,
       temperature: 0.7,
     });
 
     const parsedArticle = JSON.parse(completion.choices[0].message.content);
 
-    // 4. Generate Visual #1: Featured Hero Banner
-    let featuredImageUrl = null;
-    let midImageUrl = null;
+    // Multi-model AI Image Generator Helper (gpt-image-2, gpt-image-1.5, gpt-image-1)
+    const generateAiVisual = async (promptText, label = "visual") => {
+      const candidateModels = [
+        process.env.OPENAI_IMAGE_MODEL,
+        "gpt-image-2",
+        "gpt-image-1.5",
+        "gpt-image-1",
+      ].filter(Boolean);
 
-    try {
-      console.log(`[SEO Engine] Generating Featured Hero Banner image...`);
-      const img1Resp = await openai.images.generate({
-        model: "dall-e-3",
-        prompt: `Commercial editorial advertising photograph or 3D graphic banner for a blog article titled "${parsedArticle.title}". ${parsedArticle.featured_image_prompt}. Ultra-clean, modern, vibrant lighting, 4K quality, no generic stock text.`,
-        size: "1024x1024",
-      });
+      for (const modelName of candidateModels) {
+        try {
+          console.log(`[SEO Engine] Generating ${label} image using model ${modelName}...`);
+          const imgResp = await openai.images.generate({
+            model: modelName,
+            prompt: promptText,
+            size: "1024x1024",
+          });
 
-      if (img1Resp.data?.[0]?.url) {
-        // Download and upload to Supabase storage
-        const fetchRes = await fetch(img1Resp.data[0].url);
-        const buf = Buffer.from(await fetchRes.arrayBuffer());
-        const fileName = `blog_featured_${Date.now()}_${Math.random().toString(36).substring(7)}.png`;
+          let imgBuffer = null;
+          if (imgResp.data?.[0]?.b64_json) {
+            imgBuffer = Buffer.from(imgResp.data[0].b64_json, "base64");
+          } else if (imgResp.data?.[0]?.url) {
+            const fetchRes = await fetch(imgResp.data[0].url);
+            imgBuffer = Buffer.from(await fetchRes.arrayBuffer());
+          }
 
-        const { data: uploadData, error: uploadErr } = await supabase.storage
-          .from("instagram-creatives")
-          .upload(fileName, buf, { contentType: "image/png" });
+          if (imgBuffer) {
+            const fileName = `blog_${label}_${Date.now()}_${Math.random().toString(36).substring(7)}.png`;
+            const { data: uploadData, error: uploadErr } = await supabase.storage
+              .from("instagram-creatives")
+              .upload(fileName, imgBuffer, { contentType: "image/png" });
 
-        if (!uploadErr && uploadData) {
-          const { data: pubUrl } = supabase.storage.from("instagram-creatives").getPublicUrl(fileName);
-          featuredImageUrl = pubUrl.publicUrl;
-        } else {
-          featuredImageUrl = img1Resp.data[0].url;
+            if (!uploadErr && uploadData) {
+              const { data: pubUrl } = supabase.storage.from("instagram-creatives").getPublicUrl(fileName);
+              console.log(`[SEO Engine] Uploaded ${label} to Supabase: ${pubUrl.publicUrl}`);
+              return pubUrl.publicUrl;
+            }
+          }
+        } catch (imgErr) {
+          console.warn(`[SEO Engine] ${modelName} failed for ${label}:`, imgErr.message);
         }
       }
-    } catch (imgErr) {
-      console.warn("Featured image generation fallback:", imgErr.message);
+      return null;
+    };
+
+    // 4. Generate Visual #1: Featured Hero Banner
+    let featuredImageUrl = null;
+    try {
+      featuredImageUrl = await generateAiVisual(
+        `High-end commercial visual photograph or 3D graphic banner for a blog titled "${parsedArticle.title}". ${parsedArticle.featured_image_prompt || "Modern digital growth, high technology, vibrant lighting"}. Ultra-clean, modern, vibrant lighting, 4K quality, no text watermark.`,
+        "featured"
+      );
+    } catch (e) {
+      console.warn("Featured image generation error:", e.message);
     }
 
     // 5. Generate Visual #2: Mid-Article Conceptual Visual
+    let midImageUrl = null;
     try {
-      console.log(`[SEO Engine] Generating Mid-Article Visual...`);
-      const img2Resp = await openai.images.generate({
-        model: "dall-e-3",
-        prompt: `Infographic style modern visual illustration explaining "${parsedArticle.title}". ${parsedArticle.mid_image_prompt}. Clean geometric layout, soft shadows, vibrant accents, professional design.`,
-        size: "1024x1024",
-      });
-
-      if (img2Resp.data?.[0]?.url) {
-        const fetchRes = await fetch(img2Resp.data[0].url);
-        const buf = Buffer.from(await fetchRes.arrayBuffer());
-        const fileName = `blog_mid_${Date.now()}_${Math.random().toString(36).substring(7)}.png`;
-
-        const { data: uploadData, error: uploadErr } = await supabase.storage
-          .from("instagram-creatives")
-          .upload(fileName, buf, { contentType: "image/png" });
-
-        if (!uploadErr && uploadData) {
-          const { data: pubUrl } = supabase.storage.from("instagram-creatives").getPublicUrl(fileName);
-          midImageUrl = pubUrl.publicUrl;
-        } else {
-          midImageUrl = img2Resp.data[0].url;
-        }
-      }
-    } catch (img2Err) {
-      console.warn("Mid image generation fallback:", img2Err.message);
+      midImageUrl = await generateAiVisual(
+        `Infographic style modern visual illustration explaining "${parsedArticle.title}". ${parsedArticle.mid_image_prompt || "Diagram of search traffic growth, return on investment, analytics"}. Clean geometric layout, soft shadows, vibrant accents, professional design.`,
+        "mid"
+      );
+    } catch (e) {
+      console.warn("Mid image generation error:", e.message);
     }
 
-    // 6. Push Live Article to WordPress via Plugin
+    // 6. Ensure In-Content Mid Visual is Injected and Verify Word Count
+    let finalContent = parsedArticle.html_content || "";
+    
+    // Inject Mid-Article Visual Figure into HTML
+    if (midImageUrl && !finalContent.includes(midImageUrl)) {
+      const midAlt = parsedArticle.mid_image_alt || parsedArticle.title;
+      const midFigure = `\n<figure class="gabbarinfo-mid-image" style="margin: 36px 0; text-align: center;"><img src="${midImageUrl}" alt="${midAlt}" style="max-width: 100%; height: auto; border-radius: 8px; box-shadow: 0 4px 16px rgba(0,0,0,0.12);" /><figcaption style="font-size: 13px; color: #64748b; margin-top: 8px; font-style: italic;">${midAlt}</figcaption></figure>\n`;
+      const pSplits = finalContent.split("</p>");
+      if (pSplits.length > 3) {
+        const half = Math.floor(pSplits.length / 2);
+        pSplits[half] += midFigure;
+        finalContent = pSplits.join("</p>");
+      } else {
+        finalContent += midFigure;
+      }
+    }
+
+    // Word Count Verification and Expansion Pass
+    const actualWords = finalContent.replace(/<[^>]+>/g, " ").trim().split(/\s+/).filter(Boolean).length;
+    console.log(`[SEO Engine] Initial article word count: ${actualWords} words (Target: ${wordCount})`);
+
+    if (actualWords < wordCount * 0.82) {
+      console.log(`[SEO Engine] Word count (${actualWords}) below target (${wordCount}). Executing automatic enrichment & expansion pass...`);
+      try {
+        const expandResp = await openai.chat.completions.create({
+          model: "gpt-4o",
+          messages: [
+            {
+              role: "system",
+              content: `You are an elite SEO editor and authority content architect.
+The user requested a full ${wordCount}-word comprehensive pillar guide, but the draft currently has ${actualWords} words.
+Your task is to expand and enrich this article so that the total word count exceeds ${wordCount} words.
+INSTRUCTIONS:
+1. Add 2 brand-new, comprehensive <h2> sections with deep technical analysis and practical execution playbooks.
+2. Expand existing sections with multi-paragraph explanations (80-120 words per paragraph), actionable step-by-step frameworks, and metric breakdown lists.
+3. Add or expand an exhaustive FAQ section with 5 high-impact questions and detailed multi-paragraph answers.
+4. Keep all existing internal and external links and image tags intact.
+5. Return ONLY valid JSON: { "expanded_html": "full comprehensive expanded HTML" }`,
+            },
+            {
+              role: "user",
+              content: `Headline: ${parsedArticle.title}\nTarget Word Count: ${wordCount}\nCurrent HTML Content:\n${finalContent}`,
+            },
+          ],
+          response_format: { type: "json_object" },
+          max_tokens: 4500,
+          temperature: 0.7,
+        });
+
+        const expParsed = JSON.parse(expandResp.choices[0].message.content);
+        if (expParsed?.expanded_html && expParsed.expanded_html.length > finalContent.length) {
+          finalContent = expParsed.expanded_html;
+          const newCount = finalContent.replace(/<[^>]+>/g, " ").trim().split(/\s+/).filter(Boolean).length;
+          console.log(`[SEO Engine] Expansion successful! New word count: ${newCount} words.`);
+        }
+      } catch (expErr) {
+        console.warn("[SEO Engine] Expansion pass skipped:", expErr.message);
+      }
+    }
+
+    // 7. Push Live Article to WordPress via Plugin
     console.log(`[SEO Engine] Pushing article to WordPress: ${siteUrl}/wp-json/gabbarinfo/v1/create-post`);
     const wpPublishPayload = {
       title: parsedArticle.title,
-      content: parsedArticle.html_content,
+      content: finalContent,
       slug: parsedArticle.slug,
       status: publishStatus,
       post_type: "post",
