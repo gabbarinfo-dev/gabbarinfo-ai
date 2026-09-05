@@ -68,7 +68,28 @@ export default async function handler(req, res) {
     const siteUrl = conn.siteUrl;
     const wpApiKey = conn.apiKey;
 
-    // 2. Fetch existing posts & pages for Anti-Duplication & Smart Internal Linking
+    // 2. Fetch Client Profile Memory (City / Location / Services)
+    let businessLocation = "";
+    let businessServices = "";
+    try {
+      const { data: clientMem } = await supabase
+        .from("agent_memory")
+        .select("content")
+        .eq("email", userEmail)
+        .eq("memory_type", "client")
+        .maybeSingle();
+
+      if (clientMem?.content) {
+        const parsed = JSON.parse(clientMem.content);
+        const answers = parsed?.business_answers?.[businessName] || parsed?.business_answers?.["default_business"] || parsed || {};
+        businessLocation = answers.location || answers.city || "";
+        businessServices = answers.service || answers.services || "";
+      }
+    } catch (e) {
+      console.warn("Could not load client location/service memory:", e.message);
+    }
+
+    // 3. Fetch existing posts & pages for Anti-Duplication & Smart Internal Linking
     let existingContent = [];
     try {
       const listResp = await fetch(`${siteUrl}/wp-json/gabbarinfo/v1/list-content?per_page=30`, {
@@ -89,10 +110,14 @@ export default async function handler(req, res) {
       .join("\n");
 
     const keywordList = Array.isArray(targetKeywords)
-      ? targetKeywords.join(", ")
-      : String(targetKeywords);
+      ? targetKeywords.filter(Boolean).join(", ")
+      : String(targetKeywords || "").trim();
 
-    // 3. Generate High-Ranking Blog Content & SEO Payload with GPT
+    const keywordStrategyDirective = keywordList.length > 0
+      ? `User Specified Target Keywords: "${keywordList}". Weave these in organically across headers and content alongside relevant local search variations.`
+      : `AUTONOMOUS KEYWORD DISCOVERY MANDATE: The user did not provide manual keywords. You MUST act as an elite SEO keyword research engine: automatically identify, prioritize, and embed the top 3-5 high-volume, high-intent ranking keywords tailored specifically to "${businessName}", its geographic operating city/location ("${businessLocation || "targeted local and regional market"}"), and its core services ("${businessServices || industry}"). Target commercial and local search phrases that actual customers search for to find this business.`;
+
+    // 4. Generate High-Ranking Blog Content & SEO Payload with GPT
     console.log(`[SEO Engine] Generating ${wordCount}-word article on "${topic}" for ${businessName}...`);
 
     const systemPrompt = `You are a world-class SEO content strategist and elite copywriter.
@@ -101,7 +126,7 @@ Rules:
 1. Output MUST be valid JSON matching the exact schema specified.
 2. Structure the HTML content with <h2>, <h3>, <p>, <ul>, <li>, and <strong> tags. DO NOT include <h1> or <html>/<body> wrappers.
 3. Word count target: roughly ${wordCount} words.
-4. Integrate the target keywords naturally without keyword stuffing: ${keywordList || topic}.
+4. Keyword Integration: ${keywordStrategyDirective}
 5. Weave in 2-3 organic internal links using the following live pages from the user's site:
 ${existingLinksContext || "None available - write naturally without broken links"}
 6. Include 1-2 authoritative external references (e.g. Google Search Central, Statista, Harvard Business Review, Wikipedia).
@@ -111,10 +136,11 @@ ${existingLinksContext || "None available - write naturally without broken links
    - mid_image_prompt: An informative mid-article infographic or conceptual visual prompt.`;
 
     const userPrompt = `Business Name: ${businessName}
-Industry: ${industry}
+Business Operating City / Location: ${businessLocation || "Local & Regional Market"}
+Primary Services / Specialization: ${businessServices || industry}
 Brand Voice: ${brandVoice}
 Blog Topic: ${topic}
-Keywords: ${keywordList}
+${keywordList ? `Target Keywords: ${keywordList}` : "Keywords: Automatically generate top-ranking city and service keywords"}
 Target Word Count: ${wordCount}
 
 Respond ONLY with a valid JSON object matching this schema:
@@ -123,7 +149,8 @@ Respond ONLY with a valid JSON object matching this schema:
   "slug": "keyword-rich-url-slug",
   "meta_title": "SEO Meta Title (max 60 chars)",
   "meta_description": "SEO Meta Description (max 155 chars)",
-  "focus_keyword": "Primary target keyword",
+  "focus_keyword": "Primary target keyword (including city/service if local intent)",
+  "secondary_keywords": ["ranked keyword 2", "ranked keyword 3", "ranked keyword 4"],
   "html_content": "Full article HTML with headings and paragraphs",
   "featured_image_prompt": "DALL-E prompt for the header hero banner",
   "featured_image_alt": "Descriptive SEO alt text for hero image",
