@@ -84,29 +84,43 @@ export default function SeoHubPage() {
 
   const [suggestedTopics, setSuggestedTopics] = useState(getThirtyDefaultTopics("GABBARinfo"));
   const [loadingTopics, setLoadingTopics] = useState(false);
+  const [targetCity, setTargetCity] = useState("Ahmedabad");
+  const [loadingKeywords, setLoadingKeywords] = useState(false);
 
-  const deriveKeywordsFromTopic = (topicTitle) => {
-    if (!topicTitle) return "";
-    const clean = topicTitle
-      .replace(/[0-9]+|Best|Top|How to|Why|The|In 2026|Step-by-Step|Guide|Complete|Mistakes|Fix Them|Proven|Ultimate|Strategic/gi, "")
-      .replace(/[:\-–—!?&]/g, " ")
-      .replace(/\s+/g, " ")
-      .trim();
-    const words = clean.split(" ").filter((w) => w.length > 3).slice(0, 4);
-    const kw1 = words.slice(0, 2).join(" ").toLowerCase();
-    const kw2 = words.slice(2, 4).join(" ").toLowerCase();
-    const list = [kw1, kw2].filter(Boolean);
-    if (activeBusiness && !list.some((k) => k.includes(activeBusiness.toLowerCase()))) {
-      list.push(`${activeBusiness.toLowerCase()} services`);
+  // Real AI Keyword Research for City, Business & Topic
+  const fetchKeywordsForTopic = async (topicTitle, city = targetCity) => {
+    if (!topicTitle) return;
+    setLoadingKeywords(true);
+    try {
+      const res = await fetch("/api/wordpress/suggest-keywords", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          topic: topicTitle,
+          businessName: activeBusiness,
+          city: city || "Ahmedabad",
+        }),
+      });
+      const data = await res.json();
+      if (data.ok && Array.isArray(data.keywords) && data.keywords.length > 0) {
+        setNewKeywords(data.keywords.join(", "));
+        if (data.city) setTargetCity(data.city);
+      } else {
+        setNewKeywords(`seo service in ${city || "Ahmedabad"}, google rankings optimization, best seo agency ${city || "Ahmedabad"}, top digital marketing company ${city || "Ahmedabad"}`);
+      }
+    } catch (e) {
+      console.error("Keyword research error:", e);
+      setNewKeywords(`seo service in ${city || "Ahmedabad"}, google rankings optimization, best seo agency ${city || "Ahmedabad"}, top digital marketing company ${city || "Ahmedabad"}`);
+    } finally {
+      setLoadingKeywords(false);
     }
-    return list.join(", ");
   };
 
   const handleSelectTopic = (top) => {
     setNewTopic(top);
-    const derived = deriveKeywordsFromTopic(top);
-    setNewKeywords(derived);
     setShowNewBlogModal(true);
+    setNewKeywords(`🔍 Researching high-ranking search queries for ${targetCity}…`);
+    fetchKeywordsForTopic(top, targetCity);
   };
 
   // Autopilot State
@@ -240,13 +254,18 @@ export default function SeoHubPage() {
     setSocialShareStatus(null);
 
     try {
+      const cleanKeywords = newKeywords && !newKeywords.includes("Researching")
+        ? newKeywords.split(",").map((k) => k.trim()).filter(Boolean)
+        : [];
+
       const res = await fetch("/api/wordpress/generate-blog", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           businessName: activeBusiness,
           topic: topicToUse,
-          targetKeywords: newKeywords ? newKeywords.split(",").map((k) => k.trim()) : keywords,
+          city: targetCity || "Ahmedabad",
+          targetKeywords: cleanKeywords,
           wordCount: newWordCount,
         }),
       });
@@ -1230,36 +1249,47 @@ export default function SeoHubPage() {
                 </div>
 
                 <div>
-                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 6 }}>
-                    <label style={{ fontSize: 13, color: "#e2e8f0", fontWeight: 600 }}>
-                      Target Ranked Keywords <span style={{ color: "#34d399", fontSize: 11, fontWeight: 700, marginLeft: 6 }}>● AI Auto-Optimized</span>
-                    </label>
+                  <label style={{ fontSize: 13, color: "#94a3b8", display: "block", marginBottom: 6 }}>Target City / Local Market</label>
+                  <div style={{ display: "flex", gap: 8 }}>
+                    <input
+                      type="text"
+                      placeholder="e.g. Ahmedabad, Gujarat, India"
+                      value={targetCity}
+                      onChange={(e) => setTargetCity(e.target.value)}
+                      style={{ flex: 1, padding: "9px 12px", borderRadius: 6, border: "1px solid #1e293b", background: "#131b2e", color: "#fff", fontSize: 13 }}
+                    />
                     <button
                       type="button"
-                      onClick={() => setNewKeywords(deriveKeywordsFromTopic(newTopic))}
-                      style={{
-                        background: "rgba(56, 189, 248, 0.12)",
-                        border: "1px solid rgba(56, 189, 248, 0.3)",
-                        color: "#38bdf8",
-                        fontSize: 11,
-                        fontWeight: 700,
-                        padding: "3px 8px",
-                        borderRadius: 4,
-                        cursor: "pointer",
-                      }}
+                      disabled={loadingKeywords}
+                      onClick={() => fetchKeywordsForTopic(newTopic, targetCity)}
+                      className="btn-gabbar-secondary"
+                      style={{ padding: "8px 14px", fontSize: 12, cursor: "pointer", whiteSpace: "nowrap" }}
                     >
-                      ⚡ Auto-Derive From Topic & City
+                      {loadingKeywords ? "Searching SERP…" : "⚡ Re-Research City Keywords"}
                     </button>
+                  </div>
+                </div>
+
+                <div>
+                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 6 }}>
+                    <label style={{ fontSize: 13, color: "#e2e8f0", fontWeight: 600 }}>
+                      Target Ranked Keywords <span style={{ color: "#34d399", fontSize: 11, fontWeight: 700, marginLeft: 6 }}>● {targetCity} SERP Optimized</span>
+                    </label>
+                    {loadingKeywords && (
+                      <span style={{ fontSize: 11, color: "#38bdf8", fontWeight: 600, animation: "pulse 1.5s infinite" }}>
+                        🔍 AI Extracting High-Volume Keywords…
+                      </span>
+                    )}
                   </div>
                   <input
                     type="text"
-                    placeholder="Leave empty for 100% autonomous city & service keyword research, or edit..."
+                    placeholder={`e.g. seo service in ${targetCity}, google rankings optimization...`}
                     value={newKeywords}
                     onChange={(e) => setNewKeywords(e.target.value)}
                     style={{ width: "100%", padding: "10px 14px", borderRadius: 6, border: "1px solid #1e293b", background: "#131b2e", color: "#fff", fontSize: 14 }}
                   />
                   <div style={{ fontSize: 11, color: "#94a3b8", marginTop: 5, lineHeight: 1.4 }}>
-                    💡 <strong>Zero Manual Work Required:</strong> The AI automatically identifies and targets top-ranking commercial keywords tailored to your business, operating city, and promoted services.
+                    💡 <strong>Zero Manual Work Required:</strong> Automatically tailored for <strong>{targetCity}</strong> and your core services. If cleared, GabbarInfo AI runs deep SERP research during generation.
                   </div>
                 </div>
 

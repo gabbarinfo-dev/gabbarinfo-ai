@@ -24,6 +24,7 @@ export default async function handler(req, res) {
   const {
     businessName = "GABBARinfo",
     topic,
+    city,
     targetKeywords = [],
     wordCount = 1200,
     brandVoice = "authoritative, engaging, and consultative",
@@ -69,7 +70,7 @@ export default async function handler(req, res) {
     const wpApiKey = conn.apiKey;
 
     // 2. Fetch Client Profile Memory (City / Location / Services)
-    let businessLocation = "";
+    let businessLocation = city || "";
     let businessServices = "";
     try {
       const { data: clientMem } = await supabase
@@ -82,11 +83,16 @@ export default async function handler(req, res) {
       if (clientMem?.content) {
         const parsed = JSON.parse(clientMem.content);
         const answers = parsed?.business_answers?.[businessName] || parsed?.business_answers?.["default_business"] || parsed || {};
-        businessLocation = answers.location || answers.city || "";
+        if (!businessLocation) {
+          businessLocation = answers.location || answers.city || "Ahmedabad";
+        }
         businessServices = answers.service || answers.services || "";
       }
     } catch (e) {
       console.warn("Could not load client location/service memory:", e.message);
+    }
+    if (!businessLocation) {
+      businessLocation = "Ahmedabad";
     }
 
     // 3. Fetch existing posts & pages for Anti-Duplication & Smart Internal Linking
