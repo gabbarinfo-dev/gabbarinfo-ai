@@ -84,11 +84,11 @@ export default function SeoHubPage() {
 
   const [suggestedTopics, setSuggestedTopics] = useState(getThirtyDefaultTopics("GABBARinfo"));
   const [loadingTopics, setLoadingTopics] = useState(false);
-  const [targetCity, setTargetCity] = useState("Ahmedabad");
+  const [targetMarket, setTargetMarket] = useState("");
   const [loadingKeywords, setLoadingKeywords] = useState(false);
 
-  // Real AI Keyword Research for City, Business & Topic
-  const fetchKeywordsForTopic = async (topicTitle, city = targetCity) => {
+  // Real Universal AI Keyword Research (Any Market: Global, National, State, or City)
+  const fetchKeywordsForTopic = async (topicTitle, market = targetMarket) => {
     if (!topicTitle) return;
     setLoadingKeywords(true);
     try {
@@ -98,19 +98,18 @@ export default function SeoHubPage() {
         body: JSON.stringify({
           topic: topicTitle,
           businessName: activeBusiness,
-          city: city || "Ahmedabad",
+          targetMarket: market || "",
         }),
       });
       const data = await res.json();
       if (data.ok && Array.isArray(data.keywords) && data.keywords.length > 0) {
         setNewKeywords(data.keywords.join(", "));
-        if (data.city) setTargetCity(data.city);
       } else {
-        setNewKeywords(`seo service in ${city || "Ahmedabad"}, google rankings optimization, best seo agency ${city || "Ahmedabad"}, top digital marketing company ${city || "Ahmedabad"}`);
+        setNewKeywords("strategic seo services, google search ranking optimization, b2b lead generation strategies, organic search roi");
       }
     } catch (e) {
       console.error("Keyword research error:", e);
-      setNewKeywords(`seo service in ${city || "Ahmedabad"}, google rankings optimization, best seo agency ${city || "Ahmedabad"}, top digital marketing company ${city || "Ahmedabad"}`);
+      setNewKeywords("strategic seo services, google search ranking optimization, b2b lead generation strategies, organic search roi");
     } finally {
       setLoadingKeywords(false);
     }
@@ -119,8 +118,8 @@ export default function SeoHubPage() {
   const handleSelectTopic = (top) => {
     setNewTopic(top);
     setShowNewBlogModal(true);
-    setNewKeywords(`🔍 Researching high-ranking search queries for ${targetCity}…`);
-    fetchKeywordsForTopic(top, targetCity);
+    setNewKeywords("🔍 Researching high-ranking search queries for this topic…");
+    fetchKeywordsForTopic(top, targetMarket);
   };
 
   // Autopilot State
@@ -264,7 +263,8 @@ export default function SeoHubPage() {
         body: JSON.stringify({
           businessName: activeBusiness,
           topic: topicToUse,
-          city: targetCity || "Ahmedabad",
+          targetMarket: targetMarket || "",
+          city: targetMarket || "",
           targetKeywords: cleanKeywords,
           wordCount: newWordCount,
         }),
@@ -1181,7 +1181,7 @@ export default function SeoHubPage() {
                   type="text"
                   value={optFocusKw}
                   onChange={(e) => setOptFocusKw(e.target.value)}
-                  placeholder="e.g. affordable digital marketing ahmedabad"
+                  placeholder="e.g. strategic seo consulting services"
                   style={{ width: "100%", padding: "8px 12px", borderRadius: 6, border: "1px solid #1e293b", background: "#131b2e", color: "#fff", fontSize: 13 }}
                 />
               </div>
@@ -1249,23 +1249,27 @@ export default function SeoHubPage() {
                 </div>
 
                 <div>
-                  <label style={{ fontSize: 13, color: "#94a3b8", display: "block", marginBottom: 6 }}>Target City / Local Market</label>
+                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 6 }}>
+                    <label style={{ fontSize: 13, color: "#94a3b8" }}>
+                      Target Market Scope <span style={{ fontSize: 11, color: "#64748b" }}>(Optional: Country, State, City, or Global)</span>
+                    </label>
+                  </div>
                   <div style={{ display: "flex", gap: 8 }}>
                     <input
                       type="text"
-                      placeholder="e.g. Ahmedabad, Gujarat, India"
-                      value={targetCity}
-                      onChange={(e) => setTargetCity(e.target.value)}
+                      placeholder="Leave blank for Universal / National, or enter e.g. India, USA, Mumbai, Texas..."
+                      value={targetMarket}
+                      onChange={(e) => setTargetMarket(e.target.value)}
                       style={{ flex: 1, padding: "9px 12px", borderRadius: 6, border: "1px solid #1e293b", background: "#131b2e", color: "#fff", fontSize: 13 }}
                     />
                     <button
                       type="button"
                       disabled={loadingKeywords}
-                      onClick={() => fetchKeywordsForTopic(newTopic, targetCity)}
+                      onClick={() => fetchKeywordsForTopic(newTopic, targetMarket)}
                       className="btn-gabbar-secondary"
                       style={{ padding: "8px 14px", fontSize: 12, cursor: "pointer", whiteSpace: "nowrap" }}
                     >
-                      {loadingKeywords ? "Searching SERP…" : "⚡ Re-Research City Keywords"}
+                      {loadingKeywords ? "Searching SERP…" : "⚡ Re-Research Ranking Keywords"}
                     </button>
                   </div>
                 </div>
@@ -1273,7 +1277,9 @@ export default function SeoHubPage() {
                 <div>
                   <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 6 }}>
                     <label style={{ fontSize: 13, color: "#e2e8f0", fontWeight: 600 }}>
-                      Target Ranked Keywords <span style={{ color: "#34d399", fontSize: 11, fontWeight: 700, marginLeft: 6 }}>● {targetCity} SERP Optimized</span>
+                      Target Ranked Keywords <span style={{ color: "#34d399", fontSize: 11, fontWeight: 700, marginLeft: 6 }}>
+                        ● {targetMarket ? `${targetMarket} SERP Targeted` : "Universal Commercial SERP"}
+                      </span>
                     </label>
                     {loadingKeywords && (
                       <span style={{ fontSize: 11, color: "#38bdf8", fontWeight: 600, animation: "pulse 1.5s infinite" }}>
@@ -1283,13 +1289,13 @@ export default function SeoHubPage() {
                   </div>
                   <input
                     type="text"
-                    placeholder={`e.g. seo service in ${targetCity}, google rankings optimization...`}
+                    placeholder="e.g. strategic seo services, google rankings optimization, b2b lead generation..."
                     value={newKeywords}
                     onChange={(e) => setNewKeywords(e.target.value)}
                     style={{ width: "100%", padding: "10px 14px", borderRadius: 6, border: "1px solid #1e293b", background: "#131b2e", color: "#fff", fontSize: 14 }}
                   />
                   <div style={{ fontSize: 11, color: "#94a3b8", marginTop: 5, lineHeight: 1.4 }}>
-                    💡 <strong>Zero Manual Work Required:</strong> Automatically tailored for <strong>{targetCity}</strong> and your core services. If cleared, GabbarInfo AI runs deep SERP research during generation.
+                    💡 <strong>Zero Manual Work Required:</strong> The AI dynamically discovers high-ranking commercial, long-tail, and topical search queries tailored for your business model and target market scope.
                   </div>
                 </div>
 

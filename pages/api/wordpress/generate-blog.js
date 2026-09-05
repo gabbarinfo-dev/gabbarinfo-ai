@@ -24,6 +24,7 @@ export default async function handler(req, res) {
   const {
     businessName = "GABBARinfo",
     topic,
+    targetMarket,
     city,
     targetKeywords = [],
     wordCount = 1200,
@@ -69,8 +70,8 @@ export default async function handler(req, res) {
     const siteUrl = conn.siteUrl;
     const wpApiKey = conn.apiKey;
 
-    // 2. Fetch Client Profile Memory (City / Location / Services)
-    let businessLocation = city || "";
+    // 2. Fetch Client Profile Memory (Target Market / Location / Services)
+    let businessLocation = (targetMarket || city || "").trim();
     let businessServices = "";
     try {
       const { data: clientMem } = await supabase
@@ -84,7 +85,7 @@ export default async function handler(req, res) {
         const parsed = JSON.parse(clientMem.content);
         const answers = parsed?.business_answers?.[businessName] || parsed?.business_answers?.["default_business"] || parsed || {};
         if (!businessLocation) {
-          businessLocation = answers.location || answers.city || "Ahmedabad";
+          businessLocation = answers.target_market || answers.location || answers.country || answers.city || "";
         }
         businessServices = answers.service || answers.services || "";
       }
@@ -92,7 +93,7 @@ export default async function handler(req, res) {
       console.warn("Could not load client location/service memory:", e.message);
     }
     if (!businessLocation) {
-      businessLocation = "Ahmedabad";
+      businessLocation = "National & Global Commercial";
     }
 
     // 3. Fetch existing posts & pages for Anti-Duplication & Smart Internal Linking
@@ -120,8 +121,8 @@ export default async function handler(req, res) {
       : String(targetKeywords || "").trim();
 
     const keywordStrategyDirective = keywordList.length > 0
-      ? `User Specified Target Keywords: "${keywordList}". Weave these in organically across headers and content alongside relevant local search variations.`
-      : `AUTONOMOUS KEYWORD DISCOVERY MANDATE: The user did not provide manual keywords. You MUST act as an elite SEO keyword research engine: automatically identify, prioritize, and embed the top 3-5 high-volume, high-intent ranking keywords tailored specifically to "${businessName}", its geographic operating city/location ("${businessLocation || "targeted local and regional market"}"), and its core services ("${businessServices || industry}"). Target commercial and local search phrases that actual customers search for to find this business.`;
+      ? `Target Keywords to Embed: "${keywordList}". Weave these in organically across the title, H2s, introduction, body copy, and conclusion. Do not keyword-stuff; maintain natural readability and flow.`
+      : `AUTONOMOUS KEYWORD DISCOVERY: The user did not provide manual keywords. You MUST act as an elite SEO keyword research engine: automatically identify, prioritize, and embed the top 3-5 high-volume, high-intent ranking keywords tailored specifically to "${businessName}", its target market scope ("${businessLocation}"), and its core offerings ("${businessServices || industry}"). Target commercial buyer and problem-solving search phrases that actual customers and decision-makers search for.`;
 
     // 4. Generate High-Ranking Blog Content & SEO Payload with GPT
     console.log(`[SEO Engine] Generating ${wordCount}-word article on "${topic}" for ${businessName}...`);
