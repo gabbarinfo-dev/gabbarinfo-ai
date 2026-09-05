@@ -143,15 +143,17 @@ CRITICAL LENGTH & DEPTH MANDATES:
    - Include an in-depth Real-World Case Study / Example Breakdown with specific numbers and strategy analysis.
    - Include a detailed Troubleshooting & Costly Mistakes to Avoid section.
    - Include an exhaustive FAQ Section with 4-5 high-value questions and multi-paragraph comprehensive answers.
-4. KEYWORD & INTERNAL LINK INTEGRATION:
-   - Keyword Strategy: ${keywordStrategyDirective}
-   - Internal Links: Weave in 2-3 organic internal links using the following live pages from the user's site:
+4. MANDATORY INTERNAL & EXTERNAL HYPERLINKING:
+   - Internal Links: You MUST embed at least 3 to 4 working HTML anchor tags (<a href="URL">anchor text</a>) naturally within body paragraphs using these live URLs:
 ${existingLinksContext || "None available - write naturally without broken links"}
-   - External Authority: Include 1-2 authoritative citations (e.g. Google Search Central, Statista, Harvard Business Review).
-5. FORMATTING:
+   - External Authority: You MUST embed at least 2 external links to reputable industry citations (e.g. <a href="https://developers.google.com/search/docs" target="_blank" rel="noopener">Google Search Central</a> or <a href="https://www.statista.com" target="_blank" rel="noopener">Statista</a>).
+5. TARGET KEYWORD VISIBILITY:
+   - Feature and bold (<strong>keyword</strong>) the primary target keyword in the very first paragraph.
+   - Organically include the target keywords across at least two <h2> headings and repeatedly in the body paragraphs.
+6. FORMATTING:
    - Use semantic HTML: <h2>, <h3>, <p>, <ul>, <li>, <strong>, <em>.
    - DO NOT include <h1>, <html>, or <body> tags.
-6. OUTPUT FORMAT:
+7. OUTPUT FORMAT:
    - Output MUST be strictly valid JSON matching the schema.`;
 
     const userPrompt = `Business: ${businessName}
@@ -170,8 +172,8 @@ Respond ONLY with a valid JSON object matching this schema:
   "meta_description": "SEO Meta Description (max 155 chars)",
   "focus_keyword": "Primary target keyword",
   "secondary_keywords": ["ranked keyword 2", "ranked keyword 3", "ranked keyword 4"],
-  "html_content": "Full exhaustive pillar article HTML (minimum ${wordCount} words)",
-  "featured_image_prompt": "Specific visual scene prompt for the header hero banner",
+  "html_content": "Full exhaustive pillar article HTML (minimum ${wordCount} words with at least 3 internal links and 2 external links)",
+  "featured_image_prompt": "Specific visual scene prompt for a 16:9 panoramic widescreen hero banner",
   "featured_image_alt": "Descriptive SEO alt text for hero image",
   "mid_image_prompt": "Specific visual infographic prompt for the mid-content visual",
   "mid_image_alt": "Descriptive SEO alt text for mid visual"
@@ -191,7 +193,7 @@ Respond ONLY with a valid JSON object matching this schema:
     const parsedArticle = JSON.parse(completion.choices[0].message.content);
 
     // Multi-model AI Image Generator Helper (gpt-image-2, gpt-image-1.5, gpt-image-1)
-    const generateAiVisual = async (promptText, label = "visual") => {
+    const generateAiVisual = async (promptText, label = "visual", imageSize = "1024x1024") => {
       const candidateModels = [
         process.env.OPENAI_IMAGE_MODEL,
         "gpt-image-2",
@@ -201,11 +203,11 @@ Respond ONLY with a valid JSON object matching this schema:
 
       for (const modelName of candidateModels) {
         try {
-          console.log(`[SEO Engine] Generating ${label} image using model ${modelName}...`);
+          console.log(`[SEO Engine] Generating ${label} image using model ${modelName} at size ${imageSize}...`);
           const imgResp = await openai.images.generate({
             model: modelName,
             prompt: promptText,
-            size: "1024x1024",
+            size: imageSize,
           });
 
           let imgBuffer = null;
@@ -235,12 +237,13 @@ Respond ONLY with a valid JSON object matching this schema:
       return null;
     };
 
-    // 4. Generate Visual #1: Featured Hero Banner
+    // 4. Generate Visual #1: Featured Hero Banner (16:9 Widescreen Landscape)
     let featuredImageUrl = null;
     try {
       featuredImageUrl = await generateAiVisual(
-        `High-end commercial visual photograph or 3D graphic banner for a blog titled "${parsedArticle.title}". ${parsedArticle.featured_image_prompt || "Modern digital growth, high technology, vibrant lighting"}. Ultra-clean, modern, vibrant lighting, 4K quality, no text watermark.`,
-        "featured"
+        `Panoramic 16:9 widescreen commercial advertising photograph or 3D graphic banner for a blog titled "${parsedArticle.title}". ${parsedArticle.featured_image_prompt || "Modern digital growth, high technology, vibrant lighting"}. Ultra-wide landscape composition, cinematic lighting, 4K resolution, clean design, no text watermark.`,
+        "featured",
+        "1792x1024"
       );
     } catch (e) {
       console.warn("Featured image generation error:", e.message);
@@ -251,7 +254,8 @@ Respond ONLY with a valid JSON object matching this schema:
     try {
       midImageUrl = await generateAiVisual(
         `Infographic style modern visual illustration explaining "${parsedArticle.title}". ${parsedArticle.mid_image_prompt || "Diagram of search traffic growth, return on investment, analytics"}. Clean geometric layout, soft shadows, vibrant accents, professional design.`,
-        "mid"
+        "mid",
+        "1024x1024"
       );
     } catch (e) {
       console.warn("Mid image generation error:", e.message);
@@ -317,7 +321,55 @@ INSTRUCTIONS:
       }
     }
 
-    // 7. Push Live Article to WordPress via Plugin
+    // 7. Contextual Internal Linking & External Authority Citations Guarantee
+    const hasLiveInternalLinks = (existingContent || []).some((item) => finalContent.includes(item.url));
+
+    if (!hasLiveInternalLinks && existingContent.length > 0) {
+      console.log("[SEO Engine] Contextual internal link check: injecting live links...");
+      const linkTargets = [
+        { regex: /\b(?:seo\s*(?:&|and)?\s*content\s*writing|content\s*writing)\b/i, url: "https://www.gabbarinfo.com/seo-content-writing/" },
+        { regex: /\b(?:digital\s*marketing(?:\s*services?)?)\b/i, url: "https://www.gabbarinfo.com/digitalmarketing/" },
+        { regex: /\b(?:web(?:site)?\s*design(?:ing)?|web\s*development)\b/i, url: "https://www.gabbarinfo.com/website-design/" },
+        { regex: /\b(?:graphic\s*design(?:ing)?)\b/i, url: "https://www.gabbarinfo.com/graphic-designing/" },
+        { regex: /\b(?:video\s*editing)\b/i, url: "https://www.gabbarinfo.com/video-editing/" },
+        { regex: /\b(?:seo\s*packages|affordable\s*packages)\b/i, url: "https://www.gabbarinfo.com/packages/" },
+        { regex: /\b(?:digital\s*services|professional\s*services)\b/i, url: "https://www.gabbarinfo.com/services/" },
+      ];
+
+      let injectedLinks = 0;
+      for (const target of linkTargets) {
+        if (injectedLinks >= 4) break;
+        const pRegex = new RegExp(`(<p(?:[^>]*)>)([^<]*?)(${target.regex.source})([^<]*?<\\/p>)`, "i");
+        if (pRegex.test(finalContent)) {
+          finalContent = finalContent.replace(pRegex, (match, pStart, before, term, after) => {
+            injectedLinks++;
+            return `${pStart}${before}<a href="${target.url}"><strong>${term}</strong></a>${after}`;
+          });
+        }
+      }
+    }
+
+    // External Authority Citations Guarantee
+    if (!finalContent.includes("developers.google.com") && !finalContent.includes("statista.com")) {
+      console.log("[SEO Engine] Injecting authoritative industry citations...");
+      const authorityCitationHtml = `\n<div class="gabbarinfo-authority-citations" style="margin: 32px 0; padding: 18px 22px; background: rgba(241, 245, 249, 0.7); border-left: 4px solid #0284c7; border-radius: 8px; font-size: 14px; color: #334155; line-height: 1.6;"><strong>Official Search Authority & Industry Benchmarks:</strong> For technical documentation on search indexing, structured data, and search ranking systems, consult <a href="https://developers.google.com/search/docs" target="_blank" rel="noopener">Google Search Central</a> and verify competitive digital benchmarks via <a href="https://www.statista.com" target="_blank" rel="noopener">Statista</a>.</div>\n`;
+      const closingH2Index = finalContent.lastIndexOf("<h2>");
+      if (closingH2Index > 0) {
+        finalContent = finalContent.slice(0, closingH2Index) + authorityCitationHtml + finalContent.slice(closingH2Index);
+      } else {
+        finalContent += authorityCitationHtml;
+      }
+    }
+
+    // Target Focus Keyword Highlighting
+    if (parsedArticle.focus_keyword && !finalContent.toLowerCase().includes(`<strong>${parsedArticle.focus_keyword.toLowerCase()}</strong>`)) {
+      const kwRegex = new RegExp(`(<p(?:[^>]*)>[^<]*?)(${parsedArticle.focus_keyword})([^<]*?<\\/p>)`, "i");
+      if (kwRegex.test(finalContent)) {
+        finalContent = finalContent.replace(kwRegex, `$1<strong>$2</strong>$3`);
+      }
+    }
+
+    // 8. Push Live Article to WordPress via Plugin
     console.log(`[SEO Engine] Pushing article to WordPress: ${siteUrl}/wp-json/gabbarinfo/v1/create-post`);
     const wpPublishPayload = {
       title: parsedArticle.title,

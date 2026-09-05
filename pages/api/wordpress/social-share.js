@@ -51,35 +51,57 @@ export default async function handler(req, res) {
     }
 
     const results = {};
+    const API_VERSION = "v21.0";
+    const pageId = meta.fb_page_id ? meta.fb_page_id.split(",")[0].trim() : null;
+    const pageToken = meta.fb_page_access_token || meta.fb_user_access_token;
 
-    // 2. Share to Facebook Page
+    // 2. Share to Facebook Page (Link Preview Post)
     if (platform === "facebook" || platform === "both") {
       try {
+        if (!pageId) {
+          throw new Error("No Facebook Page linked to your account.");
+        }
+
         const fullMessage = `${title ? `📢 ${title}\n\n` : ""}${caption ? `${caption}\n\n` : ""}Read full article here 👇\n${postUrl}\n\n${hashtags}`;
-        const fbRes = await executeFacebookPost({
-          userEmail,
-          imageUrl: featuredImageUrl,
-          caption: fullMessage,
-          targetPlatform: "facebook",
-        });
-        results.facebook = { ok: true, id: fbRes?.id };
+
+        // Attempt official Link Post to /{page_id}/feed for interactive click-through card
+        const feedUrl = `https://graph.facebook.com/${API_VERSION}/${pageId}/feed`;
+        const feedParams = new URLSearchParams();
+        feedParams.append("link", postUrl);
+        feedParams.append("message", fullMessage);
+        feedParams.append("access_token", pageToken);
+
+        const feedRes = await fetch(feedUrl, { method: "POST", body: feedParams });
+        const feedJson = await feedRes.json();
+
+        if (feedRes.ok && feedJson?.id) {
+          results.facebook = { ok: true, id: feedJson.id, type: "link_preview" };
+        } else {
+          console.warn("Facebook Feed link post fallback to photo post:", feedJson?.error?.message);
+          // Fallback to Photo post if feed link posting has page permission restriction
+          const fbRes = await executeFacebookPost({
+            userEmail,
+            imageUrl: featuredImageUrl,
+            caption: fullMessage,
+            targetPlatform: "facebook",
+          });
+          results.facebook = { ok: true, id: fbRes?.id, type: "photo" };
+        }
       } catch (fbErr) {
         console.error("Facebook share error:", fbErr.message);
         results.facebook = { ok: false, error: fbErr.message };
       }
     }
 
-    // 3. Share to Instagram
+    // 3. Share to Instagram (Image Post with Status Polling)
     if (platform === "instagram" || platform === "both") {
       const igId = meta.instagram_actor_id || meta.ig_business_id;
       if (!igId) {
-        results.instagram = { ok: false, error: "No connected Instagram business account found." };
+        results.instagram = { ok: false, error: "No connected Instagram business account found. Ensure your Instagram account is linked to your Facebook Page in Meta Business Suite." };
       } else if (!featuredImageUrl) {
         results.instagram = { ok: false, error: "Instagram requires an image to publish a post." };
       } else {
         try {
-          const API_VERSION = "v21.0";
-          const token = meta.fb_page_access_token || meta.fb_user_access_token;
           const igCaption = `${title ? `✨ ${title}\n\n` : ""}${caption ? `${caption}\n\n` : ""}🔗 Read the complete guide on our website: ${postUrl}\n\n${hashtags}`;
 
           // Step A: Create container
@@ -87,7 +109,7 @@ export default async function handler(req, res) {
           const cParams = new URLSearchParams();
           cParams.append("image_url", featuredImageUrl);
           cParams.append("caption", igCaption);
-          cParams.append("access_token", token);
+          cParams.append("access_token", pageToken);
 
           const cRes = await fetch(containerUrl, { method: "POST", body: cParams });
           const cJson = await cRes.json();
@@ -96,11 +118,34 @@ export default async function handler(req, res) {
             throw new Error(cJson.error?.message || "Failed to create Instagram container");
           }
 
-          // Step B: Publish container
+          const creationId = cJson.id;
+
+          // Step B: Poll Instagram container status until FINISHED (up to 30s)
+          let isReady = false;
+          for (let attempt = 0; attempt < 12; attempt++) {
+            await new Promise((r) => setTimeout(r, 2500));
+            const statusRes = await fetch(
+              `https://graph.facebook.com/${API_VERSION}/${creationId}?fields=status_code,status&access_token=${pageToken}`
+            );
+            const statusJson = await statusRes.json();
+            if (statusJson.status_code === "FINISHED") {
+              isReady = true;
+              break;
+            }
+            if (statusJson.status_code === "ERROR") {
+              throw new Error("Instagram media processing error: " + (statusJson.status || "Invalid image"));
+            }
+          }
+
+          if (!isReady) {
+            throw new Error("Instagram media processing timed out. Please try again in a few moments.");
+          }
+
+          // Step C: Publish container
           const publishUrl = `https://graph.facebook.com/${API_VERSION}/${igId}/media_publish`;
           const pParams = new URLSearchParams();
-          pParams.append("creation_id", cJson.id);
-          pParams.append("access_token", token);
+          pParams.append("creation_id", creationId);
+          pParams.append("access_token", pageToken);
 
           const pRes = await fetch(publishUrl, { method: "POST", body: pParams });
           const pJson = await pRes.json();
@@ -117,9 +162,18 @@ export default async function handler(req, res) {
       }
     }
 
-    return res.status(200).json({
-      ok: true,
+    const platformSuccess = platform === "both"
+      ? (results.facebook?.ok || results.instagram?.ok)
+      : !!results[platform]?.ok;
+
+    const errorMessage = !platformSuccess
+      ? (results[platform]?.error || "Social share failed. Please verify page permissions.")
+      : null;
+
+    return res.status(platformSuccess ? 200 : 400).json({
+      ok: platformSuccess,
       results,
+      error: errorMessage,
     });
   } catch (err) {
     console.error("Social share error:", err);

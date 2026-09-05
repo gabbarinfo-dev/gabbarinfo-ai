@@ -306,13 +306,19 @@ export default function SeoHubPage() {
       const data = await res.json();
       if (data.require_connect) {
         setShowFbConnectModal(true);
-      } else if (data.ok) {
-        setSocialShareStatus({ ok: true, platform, message: `Successfully shared to ${platform === "facebook" ? "Facebook Page" : "Instagram"}!` });
+      } else if (data.ok && data.results?.[platform]?.ok !== false) {
+        const typeNote = data.results?.[platform]?.type === "link_preview" ? " (interactive link card)" : "";
+        setSocialShareStatus({
+          ok: true,
+          platform,
+          message: `✅ Successfully shared to ${platform === "facebook" ? "Facebook Page" : "Instagram"}${typeNote}!`,
+        });
       } else {
-        setSocialShareStatus({ ok: false, platform, message: "Share failed: " + (data.error || "Check permissions") });
+        const err = data.error || data.results?.[platform]?.error || "Check Meta permissions";
+        setSocialShareStatus({ ok: false, platform, message: `❌ Share failed: ${err}` });
       }
     } catch (e) {
-      setSocialShareStatus({ ok: false, platform, message: "Share error: " + e.message });
+      setSocialShareStatus({ ok: false, platform, message: "❌ Share error: " + e.message });
     } finally {
       setSocialSharing(false);
     }
