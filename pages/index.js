@@ -75,11 +75,11 @@ export default function HomePage() {
       <div
         style={{
           minHeight: "100vh",
-          background: "radial-gradient(circle at 50% 10%, #172554 0%, #080b11 60%)",
+          background: "radial-gradient(circle at 50% 0%, #151d30 0%, #080b11 75%)",
           display: "flex",
           alignItems: "center",
           justifyContent: "center",
-          padding: "24px 16px",
+          padding: "32px 16px",
           position: "relative",
           overflow: "hidden",
         }}
@@ -88,68 +88,108 @@ export default function HomePage() {
           <title>GabbarInfo AI · Autonomous Digital Marketing Strategist</title>
         </Head>
 
-        {/* Decorative ambient radial glows */}
+        {/* Ambient luxury golden & emerald glows */}
         <div
           style={{
             position: "absolute",
-            top: "10%",
-            left: "15%",
-            width: 380,
-            height: 380,
-            background: "radial-gradient(circle, rgba(59,130,246,0.18) 0%, transparent 70%)",
-            filter: "blur(70px)",
+            top: "-15%",
+            left: "50%",
+            transform: "translateX(-50%)",
+            width: 720,
+            height: 500,
+            background: "radial-gradient(circle, rgba(245,183,22,0.18) 0%, rgba(16,185,129,0.08) 50%, transparent 75%)",
+            filter: "blur(90px)",
             pointerEvents: "none",
           }}
         />
         <div
           style={{
             position: "absolute",
-            bottom: "10%",
-            right: "15%",
-            width: 420,
-            height: 420,
-            background: "radial-gradient(circle, rgba(139,92,246,0.18) 0%, transparent 70%)",
-            filter: "blur(80px)",
+            bottom: "-10%",
+            right: "10%",
+            width: 500,
+            height: 500,
+            background: "radial-gradient(circle, rgba(245,183,22,0.12) 0%, transparent 70%)",
+            filter: "blur(100px)",
             pointerEvents: "none",
           }}
         />
 
+        {/* Subtle Luxury Neural Matrix Grid */}
+        <div
+          style={{
+            position: "absolute",
+            inset: 0,
+            backgroundImage: "radial-gradient(rgba(245, 183, 22, 0.08) 1px, transparent 1px)",
+            backgroundSize: "32px 32px",
+            pointerEvents: "none",
+            maskImage: "radial-gradient(ellipse 60% 60% at 50% 50%, #000 30%, transparent 100%)",
+            WebkitMaskImage: "radial-gradient(ellipse 60% 60% at 50% 50%, #000 30%, transparent 100%)",
+          }}
+        />
+
+        {/* Luxury AI Glass Card */}
         <div
           style={{
             maxWidth: 480,
             width: "100%",
-            background: "rgba(15, 23, 42, 0.75)",
-            backdropFilter: "blur(20px)",
-            WebkitBackdropFilter: "blur(20px)",
-            border: "1px solid rgba(255, 255, 255, 0.1)",
-            borderRadius: 20,
+            background: "linear-gradient(180deg, rgba(17, 24, 39, 0.85) 0%, rgba(8, 11, 17, 0.95) 100%)",
+            backdropFilter: "blur(24px)",
+            WebkitBackdropFilter: "blur(24px)",
+            border: "1.5px solid rgba(245, 183, 22, 0.35)",
+            borderRadius: 24,
             padding: "44px 36px",
-            boxShadow: "0 25px 50px -12px rgba(0, 0, 0, 0.6), 0 0 35px rgba(59, 130, 246, 0.15)",
+            boxShadow: "0 30px 70px -15px rgba(0, 0, 0, 0.85), 0 0 50px rgba(245, 183, 22, 0.18)",
             position: "relative",
             zIndex: 1,
             textAlign: "center",
           }}
         >
+          {/* Brand Emblem */}
           <div
             style={{
               display: "inline-flex",
-              padding: 14,
-              borderRadius: 18,
-              background: "rgba(37, 99, 235, 0.15)",
-              border: "1px solid rgba(59, 130, 246, 0.3)",
-              marginBottom: 16,
+              alignItems: "center",
+              justifyContent: "center",
+              width: 72,
+              height: 72,
+              borderRadius: 22,
+              background: "linear-gradient(135deg, rgba(245, 183, 22, 0.25) 0%, rgba(8, 11, 17, 0.9) 100%)",
+              border: "1.5px solid rgba(245, 183, 22, 0.5)",
+              marginBottom: 20,
+              boxShadow: "0 0 28px rgba(245, 183, 22, 0.35)",
             }}
           >
-            <span style={{ fontSize: 34 }}>🚀</span>
+            <span style={{ fontSize: 36 }}>🚀</span>
+          </div>
+
+          {/* Premium Tagline */}
+          <div style={{ display: "inline-block", marginBottom: 12 }}>
+            <span
+              style={{
+                display: "inline-block",
+                padding: "4px 14px",
+                borderRadius: 999,
+                background: "rgba(245, 183, 22, 0.12)",
+                border: "1px solid rgba(245, 183, 22, 0.4)",
+                color: "#F5B716",
+                fontSize: 11,
+                fontWeight: 800,
+                letterSpacing: "1.5px",
+                textTransform: "uppercase",
+              }}
+            >
+              Enterprise AI Command Center
+            </span>
           </div>
 
           <h1
             style={{
-              margin: "0 0 8px 0",
-              fontSize: 30,
+              margin: "0 0 10px 0",
+              fontSize: 32,
               fontWeight: 800,
               letterSpacing: "-0.5px",
-              background: "linear-gradient(135deg, #ffffff 30%, #94a3b8 100%)",
+              background: "linear-gradient(135deg, #ffffff 40%, #F5B716 100%)",
               WebkitBackgroundClip: "text",
               WebkitTextFillColor: "transparent",
             }}
@@ -161,39 +201,36 @@ export default function HomePage() {
             Autonomous Digital Marketing Strategist. Google Ads, Meta Ads, Social Publishing, and WordPress SEO on Autopilot.
           </p>
 
+          {/* Capabilities Badges */}
           <div style={{ display: "flex", flexDirection: "column", gap: 10, marginBottom: 32, textAlign: "left" }}>
-            <div style={{ display: "flex", alignItems: "center", gap: 10, fontSize: 13, color: "#cbd5e1" }}>
-              <span style={{ color: "#34d399", fontSize: 14 }}>✓</span> Autonomous Google Ads Search Campaigns
+            <div style={{ display: "flex", alignItems: "center", gap: 10, fontSize: 13, color: "#e2e8f0", background: "rgba(245, 183, 22, 0.04)", padding: "8px 12px", borderRadius: 8, border: "1px solid rgba(245, 183, 22, 0.15)" }}>
+              <span style={{ color: "#F5B716", fontSize: 15, fontWeight: "bold" }}>✓</span> Autonomous Google Ads Search Campaigns
             </div>
-            <div style={{ display: "flex", alignItems: "center", gap: 10, fontSize: 13, color: "#cbd5e1" }}>
-              <span style={{ color: "#34d399", fontSize: 14 }}>✓</span> Meta Ads & 1-Click Instagram/Facebook Publishing
+            <div style={{ display: "flex", alignItems: "center", gap: 10, fontSize: 13, color: "#e2e8f0", background: "rgba(245, 183, 22, 0.04)", padding: "8px 12px", borderRadius: 8, border: "1px solid rgba(245, 183, 22, 0.15)" }}>
+              <span style={{ color: "#F5B716", fontSize: 15, fontWeight: "bold" }}>✓</span> Meta Ads & 1-Click Instagram/Facebook Publishing
             </div>
-            <div style={{ display: "flex", alignItems: "center", gap: 10, fontSize: 13, color: "#cbd5e1" }}>
-              <span style={{ color: "#34d399", fontSize: 14 }}>✓</span> WordPress SEO & Daily Autonomous Content Engine
+            <div style={{ display: "flex", alignItems: "center", gap: 10, fontSize: 13, color: "#e2e8f0", background: "rgba(245, 183, 22, 0.04)", padding: "8px 12px", borderRadius: 8, border: "1px solid rgba(245, 183, 22, 0.15)" }}>
+              <span style={{ color: "#F5B716", fontSize: 15, fontWeight: "bold" }}>✓</span> WordPress SEO & Daily Autonomous Content Engine
             </div>
           </div>
 
-          <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+          {/* SIGNATURE GABBARINFO YELLOW SLIDING BUTTONS */}
+          <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
             <button
               onClick={() => signIn("google")}
+              className="btn-gabbar-gold"
               style={{
                 width: "100%",
-                padding: "13px 18px",
-                borderRadius: 12,
-                border: "1px solid rgba(255, 255, 255, 0.15)",
-                background: "#ffffff",
-                color: "#0f172a",
-                fontWeight: 600,
+                padding: "14px 22px",
                 fontSize: 15,
+                justifyContent: "center",
                 display: "flex",
                 alignItems: "center",
-                justifyContent: "center",
                 gap: 12,
                 cursor: "pointer",
-                boxShadow: "0 4px 12px rgba(0, 0, 0, 0.1)",
               }}
             >
-              <svg width="20" height="20" viewBox="0 0 24 24">
+              <svg width="20" height="20" viewBox="0 0 24 24" style={{ flexShrink: 0 }}>
                 <path
                   fill="#4285F4"
                   d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"
@@ -211,37 +248,32 @@ export default function HomePage() {
                   d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.06l3.66 2.84c.87-2.6 3.3-4.52 6.16-4.52z"
                 />
               </svg>
-              Continue with Google
+              <span>Continue with Google ↗</span>
             </button>
 
             <button
               onClick={() => signIn("facebook")}
+              className="btn-gabbar-dark"
               style={{
                 width: "100%",
-                padding: "13px 18px",
-                borderRadius: 12,
-                border: "none",
-                background: "linear-gradient(135deg, #1877F2 0%, #1558b0 100%)",
-                color: "#ffffff",
-                fontWeight: 600,
+                padding: "14px 22px",
                 fontSize: 15,
+                justifyContent: "center",
                 display: "flex",
                 alignItems: "center",
-                justifyContent: "center",
                 gap: 12,
                 cursor: "pointer",
-                boxShadow: "0 4px 14px rgba(24, 119, 242, 0.35)",
               }}
             >
-              <svg width="20" height="20" viewBox="0 0 24 24" fill="#ffffff">
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor" style={{ flexShrink: 0 }}>
                 <path d="M24 12.073c0-6.627-5.373-12-12-12s-12 5.373-12 12c0 5.99 4.388 10.954 10.125 11.854v-8.385H7.078v-3.47h3.047V9.43c0-3.007 1.792-4.669 4.533-4.669 1.312 0 2.686.235 2.686.235v2.953H15.83c-1.491 0-1.956.925-1.956 1.874v2.25h3.328l-.532 3.47h-2.796v8.385C19.612 23.027 24 18.062 24 12.073z" />
               </svg>
-              Continue with Facebook
+              <span>Continue with Facebook ↗</span>
             </button>
           </div>
 
-          <div style={{ marginTop: 24, fontSize: 12, color: "#64748b" }}>
-            🔒 Enterprise 256-Bit Encrypted OAuth Security
+          <div style={{ marginTop: 26, fontSize: 12, color: "#64748b", display: "flex", alignItems: "center", justifyContent: "center", gap: 6 }}>
+            <span>🔒</span> Enterprise 256-Bit Encrypted OAuth Security
           </div>
         </div>
       </div>
@@ -356,14 +388,11 @@ export default function HomePage() {
 
           <a
             href="/chat"
+            className="btn-gabbar-dark"
             style={{
-              padding: "7px 14px",
-              borderRadius: 8,
-              background: "#1e293b",
-              color: "#f8fafc",
-              textDecoration: "none",
+              padding: "8px 16px",
               fontSize: 13,
-              fontWeight: 500,
+              textDecoration: "none",
             }}
           >
             💬 Chat Agent
@@ -371,30 +400,24 @@ export default function HomePage() {
 
           <a
             href="/seo"
+            className="btn-gabbar-gold"
             style={{
-              padding: "7px 14px",
-              borderRadius: 8,
-              background: "linear-gradient(135deg, #2563eb 0%, #4f46e5 100%)",
-              color: "#fff",
-              textDecoration: "none",
+              padding: "8px 18px",
               fontSize: 13,
-              fontWeight: 600,
+              textDecoration: "none",
             }}
           >
-            🌐 SEO Suite
+            🌐 SEO Suite ↗
           </a>
 
           {role === "owner" && (
             <a
               href="/admin"
+              className="btn-gabbar-dark"
               style={{
-                padding: "7px 14px",
-                borderRadius: 8,
-                background: "#1e293b",
-                color: "#94a3b8",
-                textDecoration: "none",
+                padding: "8px 14px",
                 fontSize: 13,
-                fontWeight: 500,
+                textDecoration: "none",
               }}
             >
               ⚙️ Admin
@@ -404,13 +427,15 @@ export default function HomePage() {
           <button
             onClick={() => signOut()}
             style={{
-              padding: "7px 12px",
+              padding: "8px 14px",
               borderRadius: 8,
-              border: "1px solid #1e293b",
-              background: "transparent",
+              border: "1px solid rgba(245, 183, 22, 0.25)",
+              background: "rgba(19, 27, 46, 0.6)",
               color: "#94a3b8",
               fontSize: 12,
+              fontWeight: 600,
               cursor: "pointer",
+              transition: "all 0.2s ease",
             }}
           >
             Sign out
@@ -446,36 +471,28 @@ export default function HomePage() {
               </p>
             </div>
 
-            <div style={{ display: "flex", gap: 10 }}>
+            <div style={{ display: "flex", gap: 12, alignItems: "center", flexWrap: "wrap" }}>
               <a
                 href="/chat"
+                className="btn-gabbar-dark"
                 style={{
-                  padding: "10px 18px",
-                  borderRadius: 8,
-                  background: "#2563eb",
-                  color: "#fff",
+                  padding: "11px 22px",
+                  fontSize: 14,
                   textDecoration: "none",
-                  fontWeight: 600,
-                  fontSize: 13,
-                  boxShadow: "0 4px 14px rgba(37, 99, 235, 0.35)",
                 }}
               >
                 💬 Launch Chat Agent
               </a>
               <a
                 href="/seo"
+                className="btn-gabbar-gold"
                 style={{
-                  padding: "10px 18px",
-                  borderRadius: 8,
-                  background: "linear-gradient(135deg, #10b981 0%, #059669 100%)",
-                  color: "#fff",
+                  padding: "11px 24px",
+                  fontSize: 14,
                   textDecoration: "none",
-                  fontWeight: 600,
-                  fontSize: 13,
-                  boxShadow: "0 4px 14px rgba(16, 185, 129, 0.35)",
                 }}
               >
-                🌐 Open SEO Suite
+                🌐 Open SEO Suite ↗
               </a>
             </div>
           </div>
@@ -490,8 +507,8 @@ export default function HomePage() {
               borderRadius: 16,
               background: "rgba(15, 23, 42, 0.65)",
               backdropFilter: "blur(16px)",
-              border: "1px solid rgba(255, 255, 255, 0.08)",
-              boxShadow: "0 4px 20px rgba(0,0,0,0.2)",
+              border: "1.5px solid rgba(245, 183, 22, 0.22)",
+              boxShadow: "0 10px 30px rgba(0,0,0,0.4), 0 0 20px rgba(245, 183, 22, 0.05)",
             }}
           >
             <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 12 }}>
@@ -508,8 +525,8 @@ export default function HomePage() {
               borderRadius: 16,
               background: "rgba(15, 23, 42, 0.65)",
               backdropFilter: "blur(16px)",
-              border: "1px solid rgba(255, 255, 255, 0.08)",
-              boxShadow: "0 4px 20px rgba(0,0,0,0.2)",
+              border: "1.5px solid rgba(245, 183, 22, 0.22)",
+              boxShadow: "0 10px 30px rgba(0,0,0,0.4), 0 0 20px rgba(245, 183, 22, 0.05)",
             }}
           >
             <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 12 }}>
@@ -526,8 +543,8 @@ export default function HomePage() {
               borderRadius: 16,
               background: "rgba(15, 23, 42, 0.65)",
               backdropFilter: "blur(16px)",
-              border: "1px solid rgba(255, 255, 255, 0.08)",
-              boxShadow: "0 4px 20px rgba(0,0,0,0.2)",
+              border: "1.5px solid rgba(245, 183, 22, 0.22)",
+              boxShadow: "0 10px 30px rgba(0,0,0,0.4), 0 0 20px rgba(245, 183, 22, 0.05)",
             }}
           >
             <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 12 }}>

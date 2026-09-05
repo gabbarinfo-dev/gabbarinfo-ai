@@ -136,104 +136,109 @@ export default function WordPressSiteConnect() {
     }
   };
 
+  const connectedProfiles = Object.keys(allConnections || {}).filter(k => allConnections[k]?.siteUrl);
+
   return (
     <div style={{ marginTop: 8 }}>
       {/* Business Selector Header */}
       <div style={{ display: "flex", gap: 12, alignItems: "center", marginBottom: 18, flexWrap: "wrap" }}>
-        <label style={{ fontSize: 13, fontWeight: 600, color: "#94a3b8" }}>Target Business Profile:</label>
+        <label style={{ fontSize: 13, fontWeight: 700, color: "#94a3b8" }}>Target Business Profile:</label>
         <select
           value={businessName}
           onChange={(e) => {
             setBusinessName(e.target.value);
-            setCustomBusiness("");
+            if (e.target.value !== "custom") setCustomBusiness("");
           }}
           style={{
-            padding: "8px 14px",
+            padding: "9px 16px",
             borderRadius: 8,
-            border: "1px solid #1e293b",
+            border: "1.5px solid rgba(245, 183, 22, 0.3)",
             fontSize: 13,
             background: "#131b2e",
-            color: "#60a5fa",
-            fontWeight: 600,
+            color: "#F5B716",
+            fontWeight: 700,
             cursor: "pointer",
             outline: "none",
           }}
         >
-          <option value="GABBARinfo" style={{ background: "#0f172a", color: "#fff" }}>GABBARinfo (Default)</option>
-          <option value="Digital Marketing Agency" style={{ background: "#0f172a", color: "#fff" }}>Digital Marketing Agency</option>
-          <option value="Addiction Rehabilitation Center" style={{ background: "#0f172a", color: "#fff" }}>Addiction Rehabilitation Center</option>
-          <option value="custom" style={{ background: "#0f172a", color: "#fff" }}>+ Add / Type Custom Business</option>
+          {connectedProfiles.length > 0 ? (
+            connectedProfiles.map((name) => (
+              <option key={name} value={name} style={{ background: "#0f172a", color: "#fff" }}>
+                ✓ {name} ({allConnections[name]?.siteUrl})
+              </option>
+            ))
+          ) : (
+            <option value="custom" style={{ background: "#0f172a", color: "#F5B716" }}>
+              [ No Website Connected Yet ]
+            </option>
+          )}
+          <option value="custom" style={{ background: "#0f172a", color: "#F5B716" }}>
+            + Connect New Business Profile
+          </option>
         </select>
 
-        {businessName === "custom" && (
+        {(businessName === "custom" || connectedProfiles.length === 0) && (
           <input
             type="text"
-            placeholder="Type business name..."
+            placeholder="Type business or website name..."
             value={customBusiness}
             onChange={(e) => setCustomBusiness(e.target.value)}
             style={{
-              padding: "8px 12px",
+              padding: "8px 14px",
               borderRadius: 8,
-              border: "1px solid #1e293b",
+              border: "1.5px solid rgba(245, 183, 22, 0.3)",
               fontSize: 13,
               background: "#131b2e",
               color: "#fff",
+              minWidth: 240,
+              outline: "none",
             }}
           />
         )}
       </div>
 
       {loading ? (
-        <div style={{ color: "#64748b", fontSize: 13 }}>Checking connection status…</div>
+        <div style={{ color: "#94a3b8", fontSize: 13, display: "flex", alignItems: "center", gap: 8 }}>
+          <div style={{ width: 14, height: 14, border: "2px solid rgba(245, 183, 22, 0.2)", borderTopColor: "#F5B716", borderRadius: "50%", animation: "spin 0.8s linear infinite" }} />
+          Checking connection status…
+        </div>
       ) : connection?.siteUrl ? (
         /* 🟢 CONNECTED STATE (DARK LUXURY) */
-        <div style={{ background: "rgba(19, 27, 46, 0.6)", border: "1px solid #1e293b", borderRadius: 12, padding: 18 }}>
+        <div style={{ background: "rgba(19, 27, 46, 0.7)", border: "1px solid rgba(245, 183, 22, 0.2)", borderRadius: 14, padding: 20 }}>
           <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: 14 }}>
             <div>
               <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                <span style={{ height: 10, width: 10, borderRadius: "50%", background: "#10b981", display: "inline-block", boxShadow: "0 0 8px #10b981" }}></span>
-                <span style={{ fontWeight: 700, fontSize: 15, color: "#f8fafc" }}>Connected: {connection.siteUrl}</span>
+                <span style={{ height: 10, width: 10, borderRadius: "50%", background: "#10b981", display: "inline-block", boxShadow: "0 0 10px #10b981" }}></span>
+                <span style={{ fontWeight: 800, fontSize: 16, color: "#f8fafc" }}>Connected: {connection.siteUrl}</span>
                 {connection.isWooCommerce && (
-                  <span style={{ fontSize: 11, background: "rgba(124, 58, 237, 0.2)", border: "1px solid #7c3aed", padding: "2px 8px", borderRadius: 4, color: "#c4b5fd", fontWeight: 600 }}>
+                  <span style={{ fontSize: 11, background: "rgba(245, 183, 22, 0.15)", border: "1px solid #F5B716", padding: "2px 8px", borderRadius: 4, color: "#F5B716", fontWeight: 700 }}>
                     WooCommerce Active
                   </span>
                 )}
               </div>
               <div style={{ fontSize: 13, color: "#94a3b8", marginTop: 6 }}>
-                Site: {connection.siteName || "WordPress"} · Plugin v{connection.pluginVersion || "1.0.0"} · Target: <span style={{ color: "#60a5fa", fontWeight: 600 }}>{activeBusiness}</span>
+                Site: {connection.siteName || "WordPress"} · Plugin v{connection.pluginVersion || "1.0.0"} · Profile: <strong style={{ color: "#F5B716" }}>{activeBusiness}</strong>
               </div>
             </div>
 
             <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
               <a
                 href="/seo"
+                className="btn-gabbar-gold"
                 style={{
-                  padding: "9px 16px",
-                  borderRadius: 8,
-                  background: "linear-gradient(135deg, #2563eb 0%, #4f46e5 100%)",
-                  color: "#fff",
-                  textDecoration: "none",
+                  padding: "9px 18px",
                   fontSize: 13,
-                  fontWeight: 600,
-                  display: "inline-flex",
-                  alignItems: "center",
-                  gap: 6,
-                  boxShadow: "0 4px 14px rgba(37, 99, 235, 0.3)",
                 }}
               >
-                <span>🚀</span> Open SEO Suite
+                <span>🌐</span> Open SEO Suite ↗
               </a>
               <button
                 onClick={handleTestConnection}
                 disabled={testing}
+                className="btn-gabbar-dark"
                 style={{
-                  padding: "9px 14px",
-                  borderRadius: 8,
-                  border: "1px solid #1e293b",
-                  background: "#131b2e",
-                  color: "#e2e8f0",
+                  padding: "9px 16px",
                   fontSize: 13,
-                  cursor: "pointer",
                 }}
               >
                 {testing ? "Testing…" : "⚡ Test Ping"}
@@ -247,6 +252,7 @@ export default function WordPressSiteConnect() {
                   background: "rgba(239, 68, 68, 0.1)",
                   color: "#f87171",
                   fontSize: 13,
+                  fontWeight: 600,
                   cursor: "pointer",
                 }}
               >
@@ -262,29 +268,21 @@ export default function WordPressSiteConnect() {
           )}
         </div>
       ) : (
-        /* ⚪ DISCONNECTED STATE (DARK LUXURY) */
-        <div style={{ background: "rgba(15, 23, 42, 0.5)", border: "1px dashed #334155", borderRadius: 12, padding: 22 }}>
-          <p style={{ margin: "0 0 16px 0", color: "#94a3b8", fontSize: 14, lineHeight: 1.5 }}>
-            Connect your WordPress / WooCommerce website to enable autonomous daily blogging at 6:00 AM IST, on-page SEO optimization, dual visual generation, and Google Search Console tracking.
+        /* ⚪ DISCONNECTED STATE (DARK LUXURY WITH SIGNATURE GOLD SLIDING BUTTON) */
+        <div style={{ background: "rgba(15, 23, 42, 0.5)", border: "1px dashed rgba(245, 183, 22, 0.25)", borderRadius: 14, padding: 24 }}>
+          <p style={{ margin: "0 0 18px 0", color: "#94a3b8", fontSize: 14, lineHeight: 1.6 }}>
+            Connect your WordPress / WooCommerce website to enable autonomous daily blogging at 6:00 AM IST, on-page SEO optimization, dual visual generation, and Google Search Console indexing.
           </p>
           <button
             onClick={handleStartConnect}
+            className="btn-gabbar-gold"
             style={{
-              padding: "11px 20px",
-              borderRadius: 8,
-              border: "none",
-              background: "linear-gradient(135deg, #2563eb 0%, #4f46e5 100%)",
-              color: "#fff",
-              fontWeight: 600,
+              padding: "12px 24px",
               fontSize: 14,
-              cursor: "pointer",
-              display: "inline-flex",
-              alignItems: "center",
-              gap: 8,
-              boxShadow: "0 4px 14px rgba(37, 99, 235, 0.3)",
             }}
           >
-            <span>🌐</span> Connect WordPress Website
+            <span>🌐</span>
+            <span>Connect WordPress Website ↗</span>
           </button>
         </div>
       )}
@@ -360,7 +358,8 @@ export default function WordPressSiteConnect() {
                 <div style={{ display: "flex", justifyContent: "flex-end", marginTop: 26 }}>
                   <button
                     onClick={() => setModalStep(2)}
-                    style={{ padding: "10px 20px", borderRadius: 8, border: "none", background: "#2563eb", color: "#fff", fontWeight: 600, cursor: "pointer" }}
+                    className="btn-gabbar-gold"
+                    style={{ padding: "11px 22px", fontSize: 13 }}
                   >
                     Next: Installation Steps ➔
                   </button>
@@ -382,13 +381,15 @@ export default function WordPressSiteConnect() {
                 <div style={{ display: "flex", justifyContent: "space-between", marginTop: 26 }}>
                   <button
                     onClick={() => setModalStep(1)}
-                    style={{ padding: "10px 18px", borderRadius: 8, border: "1px solid #1e293b", background: "#131b2e", color: "#94a3b8", cursor: "pointer" }}
+                    className="btn-gabbar-dark"
+                    style={{ padding: "10px 18px", fontSize: 13 }}
                   >
-                    Back
+                    ← Back
                   </button>
                   <button
                     onClick={() => setModalStep(3)}
-                    style={{ padding: "10px 20px", borderRadius: 8, border: "none", background: "#2563eb", color: "#fff", fontWeight: 600, cursor: "pointer" }}
+                    className="btn-gabbar-gold"
+                    style={{ padding: "11px 22px", fontSize: 13 }}
                   >
                     Next: Enter Pairing Key ➔
                   </button>
@@ -436,16 +437,18 @@ export default function WordPressSiteConnect() {
                 <div style={{ display: "flex", justifyContent: "space-between", marginTop: 26 }}>
                   <button
                     onClick={() => setModalStep(2)}
-                    style={{ padding: "10px 18px", borderRadius: 8, border: "1px solid #1e293b", background: "#131b2e", color: "#94a3b8", cursor: "pointer" }}
+                    className="btn-gabbar-dark"
+                    style={{ padding: "10px 18px", fontSize: 13 }}
                   >
-                    Back
+                    ← Back
                   </button>
                   <button
                     onClick={handleSaveConnection}
                     disabled={connecting}
-                    style={{ padding: "10px 22px", borderRadius: 8, border: "none", background: "#10b981", color: "#fff", fontWeight: 700, cursor: "pointer", boxShadow: "0 0 16px rgba(16, 185, 129, 0.4)" }}
+                    className="btn-gabbar-gold"
+                    style={{ padding: "11px 24px", fontSize: 13 }}
                   >
-                    {connecting ? "Verifying…" : "Verify & Connect Website"}
+                    {connecting ? "Verifying…" : "Verify & Pair Website ↗"}
                   </button>
                 </div>
               </div>

@@ -249,31 +249,21 @@ export default function FacebookBusinessConnect() {
           <div style={{ display: "flex", gap: "8px", flexWrap: "wrap", marginTop: "12px" }}>
             <button
               onClick={handleSyncBusinessInfo}
+              className="btn-gabbar-gold"
               style={{
-                padding: "8px 14px",
-                background: "linear-gradient(135deg, #1877F2, #2563eb)",
-                color: "#fff",
-                border: "none",
-                borderRadius: "8px",
-                fontWeight: 600,
+                padding: "8px 16px",
                 fontSize: "12px",
-                cursor: "pointer",
-                boxShadow: "0 2px 8px rgba(24, 119, 242, 0.3)",
               }}
             >
-              Sync Business Info
+              Sync Business Info ↗
             </button>
 
             <button
               onClick={handleEngagementClick}
+              className="btn-gabbar-dark"
               style={{
-                padding: "8px 12px",
-                background: "rgba(255, 255, 255, 0.05)",
-                color: "#cbd5e1",
-                border: "1px solid rgba(255, 255, 255, 0.1)",
-                borderRadius: "8px",
+                padding: "8px 14px",
                 fontSize: "12px",
-                fontWeight: 500,
                 cursor: status === "connected" ? "pointer" : "not-allowed",
               }}
             >
@@ -282,14 +272,10 @@ export default function FacebookBusinessConnect() {
 
             <button
               onClick={handleIgInsightsClick}
+              className="btn-gabbar-dark"
               style={{
-                padding: "8px 12px",
-                background: "rgba(255, 255, 255, 0.05)",
-                color: "#cbd5e1",
-                border: "1px solid rgba(255, 255, 255, 0.1)",
-                borderRadius: "8px",
+                padding: "8px 14px",
                 fontSize: "12px",
-                fontWeight: 500,
                 cursor: status === "connected" ? "pointer" : "not-allowed",
               }}
             >
@@ -298,14 +284,10 @@ export default function FacebookBusinessConnect() {
 
             <button
               onClick={handleAdInsightsClick}
+              className="btn-gabbar-dark"
               style={{
-                padding: "8px 12px",
-                background: "rgba(255, 255, 255, 0.05)",
-                color: "#cbd5e1",
-                border: "1px solid rgba(255, 255, 255, 0.1)",
-                borderRadius: "8px",
+                padding: "8px 14px",
                 fontSize: "12px",
-                fontWeight: 500,
                 cursor: status === "connected" ? "pointer" : "not-allowed",
               }}
             >
@@ -314,18 +296,13 @@ export default function FacebookBusinessConnect() {
 
             <button
               onClick={handleBoostClick}
+              className="btn-gabbar-gold"
               style={{
-                padding: "8px 12px",
-                background: "linear-gradient(135deg, #1877F2, #2563eb)",
-                color: "#fff",
-                border: "none",
-                borderRadius: "8px",
+                padding: "8px 16px",
                 fontSize: "12px",
-                fontWeight: 600,
-                cursor: "pointer",
               }}
             >
-              Boost a Post
+              Boost a Post ↗
             </button>
 
             <button
@@ -540,16 +517,14 @@ export default function FacebookBusinessConnect() {
       ) : (
         <button
           onClick={handleConnect}
+          className="btn-gabbar-gold"
           style={{
-            padding: "10px 14px",
-            backgroundColor: "#1877F2",
-            color: "#fff",
-            border: "none",
-            borderRadius: "6px",
+            padding: "11px 22px",
+            fontSize: "14px",
             cursor: "pointer",
           }}
         >
-          Connect Facebook Business
+          Connect Facebook Business ↗
         </button>
       )}
     </div>

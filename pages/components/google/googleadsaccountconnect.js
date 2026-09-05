@@ -119,23 +119,14 @@ export default function GoogleAdsAccountConnect() {
 
         <button
           onClick={() => signIn("google")}
+          className="btn-gabbar-gold"
           style={{
-            marginTop: "6px",
-            padding: "10px 18px",
-            background: "linear-gradient(135deg, #4285F4, #2563eb)",
-            color: "#fff",
-            border: "none",
-            borderRadius: "10px",
+            marginTop: "8px",
+            padding: "11px 22px",
             fontSize: "13px",
-            fontWeight: 700,
-            cursor: "pointer",
-            display: "inline-flex",
-            alignItems: "center",
-            gap: "8px",
-            boxShadow: "0 4px 14px rgba(66, 133, 244, 0.35)",
           }}
         >
-          <span>Connect Google Ads Account</span>
+          <span>Connect Google Ads Account ↗</span>
         </button>
       </div>
     );
@@ -188,15 +179,10 @@ export default function GoogleAdsAccountConnect() {
 
         <button
           onClick={fetchAccounts}
+          className="btn-gabbar-dark"
           style={{
-            padding: "6px 12px",
+            padding: "7px 14px",
             fontSize: "12px",
-            fontWeight: 600,
-            borderRadius: "8px",
-            border: "1px solid rgba(255, 255, 255, 0.1)",
-            background: "rgba(255, 255, 255, 0.05)",
-            cursor: "pointer",
-            color: "#cbd5e1",
           }}
         >
           🔄 Refresh
@@ -351,18 +337,13 @@ export default function GoogleAdsAccountConnect() {
                         e.stopPropagation();
                         handleSelectAccount(acc.customerId, acc.managerId);
                       }}
+                      className="btn-gabbar-gold"
                       style={{
-                        padding: "6px 14px",
+                        padding: "6px 16px",
                         fontSize: "12px",
-                        fontWeight: 600,
-                        borderRadius: "8px",
-                        border: "1px solid rgba(255, 255, 255, 0.1)",
-                        background: "rgba(255, 255, 255, 0.05)",
-                        color: "#f8fafc",
-                        cursor: isPending ? "wait" : "pointer",
                       }}
                     >
-                      {isPending ? "Setting…" : "Select"}
+                      {isPending ? "Setting…" : "Select ↗"}
                     </button>
                   )}
                 </div>

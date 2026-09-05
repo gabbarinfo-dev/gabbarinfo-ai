@@ -1,6 +1,6 @@
-// pages/_app.js
 import Head from "next/head";
 import { SessionProvider } from "next-auth/react";
+import CursorAura from "./components/CursorAura";
 
 export default function MyApp({ Component, pageProps }) {
   const { session, ...rest } = pageProps || {};
@@ -23,10 +23,13 @@ export default function MyApp({ Component, pageProps }) {
         />
       </Head>
 
+      {/* Global Interactive Rainbow Aurora Cursor */}
+      <CursorAura />
+
       {/* Render page */}
       <Component {...rest} />
 
-      {/* Global Luxury Dark Styles & Typography */}
+      {/* Global Luxury Dark Styles & Signature GabbarInfo Button Systems */}
       <style jsx global>{`
         *, *::before, *::after {
           box-sizing: border-box;
@@ -55,6 +58,99 @@ export default function MyApp({ Component, pageProps }) {
           letter-spacing: -0.02em;
         }
 
+        /* ─── SIGNATURE GABBARINFO SLIDING BUTTON (YELLOW ➔ BLACK) ─── */
+        /* Exact signature animation from www.gabbarinfo.com */
+        .btn-gabbar-gold {
+          position: relative !important;
+          overflow: hidden !important;
+          background: #F5B716 !important;
+          color: #000000 !important;
+          font-family: "Outfit", "Plus Jakarta Sans", sans-serif !important;
+          font-weight: 700 !important;
+          border: 1.5px solid #F5B716 !important;
+          border-radius: 8px !important;
+          transition: color 0.35s cubic-bezier(0.4, 0, 0.2, 1), 
+                      border-color 0.35s ease, 
+                      box-shadow 0.35s ease, 
+                      transform 0.2s ease !important;
+          z-index: 1 !important;
+          cursor: pointer !important;
+          display: inline-flex !important;
+          align-items: center !important;
+          justify-content: center !important;
+          gap: 8px !important;
+          text-decoration: none !important;
+        }
+
+        .btn-gabbar-gold::before {
+          content: '' !important;
+          position: absolute !important;
+          top: 0 !important;
+          left: -100% !important;
+          width: 100% !important;
+          height: 100% !important;
+          background: #080b11 !important;
+          transition: left 0.35s cubic-bezier(0.4, 0, 0.2, 1) !important;
+          z-index: -1 !important;
+        }
+
+        .btn-gabbar-gold:hover {
+          color: #F5B716 !important;
+          border-color: #F5B716 !important;
+          box-shadow: 0 0 24px rgba(245, 183, 22, 0.5) !important;
+          transform: translateY(-2px) !important;
+        }
+
+        .btn-gabbar-gold:hover::before {
+          left: 0 !important;
+        }
+
+        /* ─── SECONDARY GABBARINFO SLIDING BUTTON (DARK ➔ GOLD) ─── */
+        .btn-gabbar-dark {
+          position: relative !important;
+          overflow: hidden !important;
+          background: rgba(15, 23, 42, 0.8) !important;
+          color: #f8fafc !important;
+          font-family: "Outfit", "Plus Jakarta Sans", sans-serif !important;
+          font-weight: 700 !important;
+          border: 1.5px solid rgba(245, 183, 22, 0.35) !important;
+          border-radius: 8px !important;
+          transition: color 0.35s cubic-bezier(0.4, 0, 0.2, 1), 
+                      border-color 0.35s ease, 
+                      box-shadow 0.35s ease, 
+                      transform 0.2s ease !important;
+          z-index: 1 !important;
+          cursor: pointer !important;
+          display: inline-flex !important;
+          align-items: center !important;
+          justify-content: center !important;
+          gap: 8px !important;
+          text-decoration: none !important;
+        }
+
+        .btn-gabbar-dark::before {
+          content: '' !important;
+          position: absolute !important;
+          top: 0 !important;
+          left: -100% !important;
+          width: 100% !important;
+          height: 100% !important;
+          background: #F5B716 !important;
+          transition: left 0.35s cubic-bezier(0.4, 0, 0.2, 1) !important;
+          z-index: -1 !important;
+        }
+
+        .btn-gabbar-dark:hover {
+          color: #000000 !important;
+          border-color: #F5B716 !important;
+          box-shadow: 0 0 24px rgba(245, 183, 22, 0.4) !important;
+          transform: translateY(-2px) !important;
+        }
+
+        .btn-gabbar-dark:hover::before {
+          left: 0 !important;
+        }
+
         /* Smooth Custom Dark Scrollbar */
         ::-webkit-scrollbar {
           width: 7px;
@@ -68,12 +164,12 @@ export default function MyApp({ Component, pageProps }) {
           border-radius: 999px;
         }
         ::-webkit-scrollbar-thumb:hover {
-          background: #334155;
+          background: #F5B716;
         }
 
         /* Selection Highlights */
         ::selection {
-          background: rgba(59, 130, 246, 0.4);
+          background: rgba(245, 183, 22, 0.35);
           color: #ffffff;
         }
 

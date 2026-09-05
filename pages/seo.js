@@ -9,6 +9,7 @@ export default function SeoHubPage() {
 
   // State
   const [activeBusiness, setActiveBusiness] = useState("GABBARinfo");
+  const [allConnections, setAllConnections] = useState({});
   const [mode, setMode] = useState("manual"); // "manual" | "autopilot"
   const [activeTab, setActiveTab] = useState("content"); // "content" | "topics" | "autopilot" | "integrations"
   const [connection, setConnection] = useState(null);
@@ -58,6 +59,15 @@ export default function SeoHubPage() {
   // Social Connect Modal
   const [showFbConnectModal, setShowFbConnectModal] = useState(false);
 
+  const connectedProfiles = Object.keys(allConnections || {}).filter(k => allConnections[k]?.siteUrl);
+
+  // Auto-switch to first connected profile if available and current has no site
+  useEffect(() => {
+    if (connectedProfiles.length > 0 && !connectedProfiles.includes(activeBusiness)) {
+      setActiveBusiness(connectedProfiles[0]);
+    }
+  }, [allConnections]);
+
   // Load connection info when business changes
   useEffect(() => {
     if (!session) return;
@@ -69,9 +79,15 @@ export default function SeoHubPage() {
     try {
       const res = await fetch(`/api/wordpress/sync?action=get-connection&businessName=${encodeURIComponent(activeBusiness)}`);
       const data = await res.json();
-      if (data.ok && data.connection) {
-        setConnection(data.connection);
-        fetchContent(data.connection);
+      if (data.ok) {
+        setAllConnections(data.allConnections || {});
+        if (data.connection) {
+          setConnection(data.connection);
+          fetchContent(data.connection);
+        } else {
+          setConnection(null);
+          setContentList([]);
+        }
       } else {
         setConnection(null);
         setContentList([]);
@@ -311,41 +327,64 @@ export default function SeoHubPage() {
         </div>
 
         <div style={{ display: "flex", alignItems: "center", gap: 14, flexWrap: "wrap" }}>
-          {/* Business Profile Selector */}
-          <div style={{ display: "flex", alignItems: "center", gap: 8, background: "#131b2e", padding: "4px 10px", borderRadius: 8, border: "1px solid #1e293b" }}>
-            <span style={{ fontSize: 12, color: "#94a3b8" }}>Project:</span>
+          {/* Dynamic Connected Business Profile Selector */}
+          <div style={{ display: "flex", alignItems: "center", gap: 8, background: "#131b2e", padding: "6px 14px", borderRadius: 8, border: "1.5px solid rgba(245, 183, 22, 0.35)" }}>
+            <span style={{ fontSize: 12, color: "#94a3b8", fontWeight: 700 }}>Project:</span>
             <select
               value={activeBusiness}
               onChange={(e) => setActiveBusiness(e.target.value)}
               style={{
                 background: "transparent",
                 border: "none",
-                color: "#60a5fa",
-                fontWeight: 600,
+                color: "#F5B716",
+                fontWeight: 700,
                 fontSize: 13,
                 cursor: "pointer",
                 outline: "none",
               }}
             >
-              <option value="GABBARinfo" style={{ background: "#0f172a", color: "#fff" }}>GABBARinfo (Primary)</option>
-              <option value="Digital Marketing Agency" style={{ background: "#0f172a", color: "#fff" }}>Digital Marketing Agency</option>
-              <option value="Addiction Rehabilitation Center" style={{ background: "#0f172a", color: "#fff" }}>Addiction Rehabilitation Center</option>
+              {connectedProfiles.length > 0 ? (
+                connectedProfiles.map((name) => (
+                  <option key={name} value={name} style={{ background: "#0f172a", color: "#fff" }}>
+                    ✓ {name} ({allConnections[name]?.siteUrl})
+                  </option>
+                ))
+              ) : (
+                <option value="none" style={{ background: "#0f172a", color: "#F5B716" }}>
+                  [ No Website Connected Yet ]
+                </option>
+              )}
             </select>
+            {connectedProfiles.length === 0 && (
+              <a
+                href="/#wordpress-connect"
+                style={{
+                  fontSize: 12,
+                  color: "#F5B716",
+                  fontWeight: 700,
+                  textDecoration: "underline",
+                  marginLeft: 4,
+                }}
+              >
+                + Connect Website
+              </a>
+            )}
           </div>
 
           {/* Mode Switcher */}
-          <div style={{ display: "flex", background: "#131b2e", padding: 3, borderRadius: 8, border: "1px solid #1e293b" }}>
+          <div style={{ display: "flex", background: "#131b2e", padding: 3, borderRadius: 8, border: "1.5px solid rgba(245, 183, 22, 0.3)" }}>
             <button
               onClick={() => setMode("manual")}
               style={{
                 padding: "6px 14px",
                 borderRadius: 6,
                 border: "none",
-                background: mode === "manual" ? "#2563eb" : "transparent",
-                color: mode === "manual" ? "#fff" : "#94a3b8",
+                background: mode === "manual" ? "#F5B716" : "transparent",
+                color: mode === "manual" ? "#000000" : "#94a3b8",
                 fontSize: 12,
-                fontWeight: 600,
+                fontWeight: 700,
                 cursor: "pointer",
+                transition: "all 0.2s ease",
               }}
             >
               ✨ Manual Mode
@@ -356,22 +395,39 @@ export default function SeoHubPage() {
                 padding: "6px 14px",
                 borderRadius: 6,
                 border: "none",
-                background: mode === "autopilot" ? "#10b981" : "transparent",
-                color: mode === "autopilot" ? "#fff" : "#94a3b8",
+                background: mode === "autopilot" ? "#F5B716" : "transparent",
+                color: mode === "autopilot" ? "#000000" : "#94a3b8",
                 fontSize: 12,
-                fontWeight: 600,
+                fontWeight: 700,
                 cursor: "pointer",
+                transition: "all 0.2s ease",
               }}
             >
               🤖 Autopilot Mode
             </button>
           </div>
 
-          <a href="/chat" style={{ padding: "6px 12px", borderRadius: 6, background: "#1e293b", color: "#e2e8f0", textDecoration: "none", fontSize: 13, fontWeight: 500 }}>
+          <a
+            href="/chat"
+            className="btn-gabbar-dark"
+            style={{
+              padding: "7px 14px",
+              fontSize: 13,
+              textDecoration: "none",
+            }}
+          >
             💬 Open Chat
           </a>
-          <a href="/" style={{ padding: "6px 12px", borderRadius: 6, background: "#1e293b", color: "#e2e8f0", textDecoration: "none", fontSize: 13, fontWeight: 500 }}>
-            Dashboard
+          <a
+            href="/"
+            className="btn-gabbar-gold"
+            style={{
+              padding: "7px 16px",
+              fontSize: 13,
+              textDecoration: "none",
+            }}
+          >
+            Dashboard ↗
           </a>
         </div>
       </header>
@@ -380,30 +436,30 @@ export default function SeoHubPage() {
       <div style={{ maxWidth: 1240, margin: "0 auto", padding: "28px 24px" }}>
         {/* KPI CARDS BAR */}
         <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))", gap: 16, marginBottom: 28 }}>
-          <div style={{ background: "#0f172a", border: "1px solid #1e293b", borderRadius: 12, padding: 18 }}>
-            <div style={{ fontSize: 12, color: "#94a3b8", fontWeight: 600, textTransform: "uppercase" }}>Connected Site</div>
+          <div style={{ background: "#0f172a", border: "1.5px solid rgba(245, 183, 22, 0.25)", borderRadius: 12, padding: 18, boxShadow: "0 4px 14px rgba(0,0,0,0.2)" }}>
+            <div style={{ fontSize: 12, color: "#94a3b8", fontWeight: 700, textTransform: "uppercase" }}>Connected Site</div>
             <div style={{ fontSize: 16, fontWeight: 700, color: "#fff", marginTop: 6, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
               {connection?.siteUrl ? connection.siteUrl.replace(/^https?:\/\//, "") : "Not Connected"}
             </div>
-            <div style={{ fontSize: 12, color: connection?.siteUrl ? "#10b981" : "#f59e0b", marginTop: 6 }}>
+            <div style={{ fontSize: 12, color: connection?.siteUrl ? "#10b981" : "#F5B716", marginTop: 6, fontWeight: 600 }}>
               {connection?.siteUrl ? "● Active & Syncing" : "○ Awaiting Pairing"}
             </div>
           </div>
 
-          <div style={{ background: "#0f172a", border: "1px solid #1e293b", borderRadius: 12, padding: 18 }}>
-            <div style={{ fontSize: 12, color: "#94a3b8", fontWeight: 600, textTransform: "uppercase" }}>Live Content Items</div>
-            <div style={{ fontSize: 24, fontWeight: 700, color: "#fff", marginTop: 4 }}>{contentList.length}</div>
+          <div style={{ background: "#0f172a", border: "1.5px solid rgba(245, 183, 22, 0.25)", borderRadius: 12, padding: 18, boxShadow: "0 4px 14px rgba(0,0,0,0.2)" }}>
+            <div style={{ fontSize: 12, color: "#94a3b8", fontWeight: 700, textTransform: "uppercase" }}>Live Content Items</div>
+            <div style={{ fontSize: 24, fontWeight: 800, color: "#F5B716", marginTop: 4 }}>{contentList.length}</div>
             <div style={{ fontSize: 12, color: "#94a3b8", marginTop: 4 }}>Synced Posts & Pages</div>
           </div>
 
-          <div style={{ background: "#0f172a", border: "1px solid #1e293b", borderRadius: 12, padding: 18 }}>
-            <div style={{ fontSize: 12, color: "#94a3b8", fontWeight: 600, textTransform: "uppercase" }}>Target Keywords</div>
-            <div style={{ fontSize: 24, fontWeight: 700, color: "#fff", marginTop: 4 }}>{keywords.length}</div>
-            <div style={{ fontSize: 12, color: "#10b981", marginTop: 4 }}>Coverage Tracking Active</div>
+          <div style={{ background: "#0f172a", border: "1.5px solid rgba(245, 183, 22, 0.25)", borderRadius: 12, padding: 18, boxShadow: "0 4px 14px rgba(0,0,0,0.2)" }}>
+            <div style={{ fontSize: 12, color: "#94a3b8", fontWeight: 700, textTransform: "uppercase" }}>Target Keywords</div>
+            <div style={{ fontSize: 24, fontWeight: 800, color: "#F5B716", marginTop: 4 }}>{keywords.length}</div>
+            <div style={{ fontSize: 12, color: "#10b981", marginTop: 4, fontWeight: 600 }}>Coverage Tracking Active</div>
           </div>
 
-          <div style={{ background: "#0f172a", border: "1px solid #1e293b", borderRadius: 12, padding: 18 }}>
-            <div style={{ fontSize: 12, color: "#94a3b8", fontWeight: 600, textTransform: "uppercase" }}>Autopilot Daily Post</div>
+          <div style={{ background: "#0f172a", border: "1.5px solid rgba(245, 183, 22, 0.25)", borderRadius: 12, padding: 18, boxShadow: "0 4px 14px rgba(0,0,0,0.2)" }}>
+            <div style={{ fontSize: 12, color: "#94a3b8", fontWeight: 700, textTransform: "uppercase" }}>Autopilot Daily Post</div>
             <div style={{ fontSize: 20, fontWeight: 700, color: autopilotEnabled ? "#10b981" : "#94a3b8", marginTop: 6 }}>
               {autopilotEnabled ? "Active (Daily 6:00 AM)" : "Paused"}
             </div>
@@ -419,9 +475,9 @@ export default function SeoHubPage() {
               padding: "10px 18px",
               background: activeTab === "content" ? "#1e293b" : "transparent",
               border: "none",
-              borderBottom: activeTab === "content" ? "2px solid #3b82f6" : "2px solid transparent",
-              color: activeTab === "content" ? "#fff" : "#94a3b8",
-              fontWeight: 600,
+              borderBottom: activeTab === "content" ? "2.5px solid #F5B716" : "2.5px solid transparent",
+              color: activeTab === "content" ? "#F5B716" : "#94a3b8",
+              fontWeight: 700,
               fontSize: 14,
               cursor: "pointer",
             }}
@@ -435,9 +491,9 @@ export default function SeoHubPage() {
               padding: "10px 18px",
               background: activeTab === "topics" ? "#1e293b" : "transparent",
               border: "none",
-              borderBottom: activeTab === "topics" ? "2px solid #3b82f6" : "2px solid transparent",
-              color: activeTab === "topics" ? "#fff" : "#94a3b8",
-              fontWeight: 600,
+              borderBottom: activeTab === "topics" ? "2.5px solid #F5B716" : "2.5px solid transparent",
+              color: activeTab === "topics" ? "#F5B716" : "#94a3b8",
+              fontWeight: 700,
               fontSize: 14,
               cursor: "pointer",
             }}
@@ -451,9 +507,9 @@ export default function SeoHubPage() {
               padding: "10px 18px",
               background: activeTab === "autopilot" ? "#1e293b" : "transparent",
               border: "none",
-              borderBottom: activeTab === "autopilot" ? "2px solid #10b981" : "2px solid transparent",
-              color: activeTab === "autopilot" ? "#fff" : "#94a3b8",
-              fontWeight: 600,
+              borderBottom: activeTab === "autopilot" ? "2.5px solid #F5B716" : "2.5px solid transparent",
+              color: activeTab === "autopilot" ? "#F5B716" : "#94a3b8",
+              fontWeight: 700,
               fontSize: 14,
               cursor: "pointer",
             }}
@@ -467,9 +523,9 @@ export default function SeoHubPage() {
               padding: "10px 18px",
               background: activeTab === "integrations" ? "#1e293b" : "transparent",
               border: "none",
-              borderBottom: activeTab === "integrations" ? "2px solid #3b82f6" : "2px solid transparent",
-              color: activeTab === "integrations" ? "#fff" : "#94a3b8",
-              fontWeight: 600,
+              borderBottom: activeTab === "integrations" ? "2.5px solid #F5B716" : "2.5px solid transparent",
+              color: activeTab === "integrations" ? "#F5B716" : "#94a3b8",
+              fontWeight: 700,
               fontSize: 14,
               cursor: "pointer",
             }}
@@ -521,12 +577,9 @@ export default function SeoHubPage() {
                 <button
                   onClick={() => fetchContent(connection)}
                   disabled={loadingContent}
+                  className="btn-gabbar-dark"
                   style={{
-                    padding: "8px 14px",
-                    borderRadius: 8,
-                    border: "1px solid #1e293b",
-                    background: "#131b2e",
-                    color: "#e2e8f0",
+                    padding: "8px 16px",
                     fontSize: 13,
                     cursor: "pointer",
                   }}
@@ -537,21 +590,14 @@ export default function SeoHubPage() {
 
               <button
                 onClick={() => setShowNewBlogModal(true)}
+                className="btn-gabbar-gold"
                 style={{
-                  padding: "9px 18px",
-                  borderRadius: 8,
-                  border: "none",
-                  background: "#2563eb",
-                  color: "#fff",
-                  fontWeight: 600,
+                  padding: "10px 22px",
                   fontSize: 13,
                   cursor: "pointer",
-                  display: "flex",
-                  alignItems: "center",
-                  gap: 6,
                 }}
               >
-                <span>✍️</span> Generate & Publish New Blog
+                <span>✍️</span> Generate & Publish Blog ↗
               </button>
             </div>
 
@@ -636,14 +682,10 @@ export default function SeoHubPage() {
                         <td style={{ padding: "14px 18px", textAlign: "right" }}>
                           <button
                             onClick={() => handleOpenOptimize(item)}
+                            className="btn-gabbar-dark"
                             style={{
-                              padding: "6px 12px",
-                              borderRadius: 6,
-                              border: "1px solid #3b82f6",
-                              background: "rgba(59, 130, 246, 0.1)",
-                              color: "#60a5fa",
+                              padding: "6px 14px",
                               fontSize: 12,
-                              fontWeight: 600,
                               cursor: "pointer",
                             }}
                           >
@@ -696,16 +738,11 @@ export default function SeoHubPage() {
                   }}
                   style={{
                     padding: "8px 16px",
-                    borderRadius: 6,
-                    background: "#2563eb",
-                    border: "none",
-                    color: "#fff",
-                    fontWeight: 600,
-                    fontSize: 13,
                     cursor: "pointer",
                   }}
+                  className="btn-gabbar-gold"
                 >
-                  + Add
+                  + Add Keyword
                 </button>
               </div>
 
@@ -718,7 +755,7 @@ export default function SeoHubPage() {
                       alignItems: "center",
                       gap: 8,
                       background: "#131b2e",
-                      border: "1px solid #1e293b",
+                      border: "1px solid rgba(245, 183, 22, 0.2)",
                       padding: "6px 12px",
                       borderRadius: 6,
                       fontSize: 12,
@@ -738,24 +775,20 @@ export default function SeoHubPage() {
             </div>
 
             {/* Right: Anti-Duplication AI SERP Ideation */}
-            <div style={{ background: "#0f172a", border: "1px solid #1e293b", borderRadius: 12, padding: 24 }}>
-              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 8 }}>
+            <div style={{ background: "#0f172a", border: "1.5px solid rgba(245, 183, 22, 0.25)", borderRadius: 12, padding: 24, boxShadow: "0 4px 14px rgba(0,0,0,0.2)" }}>
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 8, flexWrap: "wrap", gap: 10 }}>
                 <h3 style={{ margin: 0, fontSize: 16, color: "#fff" }}>💡 AI SERP Topic Generator</h3>
                 <button
                   onClick={handleAutoSuggestTopics}
                   disabled={loadingTopics}
+                  className="btn-gabbar-gold"
                   style={{
-                    padding: "6px 12px",
-                    borderRadius: 6,
-                    background: "#10b981",
-                    border: "none",
-                    color: "#fff",
-                    fontWeight: 600,
+                    padding: "7px 16px",
                     fontSize: 12,
                     cursor: "pointer",
                   }}
                 >
-                  {loadingTopics ? "Analyzing SERP…" : "⚡ Auto-Suggest 6 Topics"}
+                  {loadingTopics ? "Analyzing SERP…" : "⚡ Auto-Suggest 6 Topics ↗"}
                 </button>
               </div>
               <p style={{ color: "#94a3b8", fontSize: 13, margin: "0 0 16px 0" }}>
@@ -788,19 +821,15 @@ export default function SeoHubPage() {
                           setNewTopic(top);
                           setShowNewBlogModal(true);
                         }}
+                        className="btn-gabbar-gold"
                         style={{
-                          padding: "5px 10px",
-                          borderRadius: 6,
-                          background: "#2563eb",
-                          border: "none",
-                          color: "#fff",
+                          padding: "6px 14px",
                           fontSize: 11,
-                          fontWeight: 600,
                           cursor: "pointer",
                           whiteSpace: "nowrap",
                         }}
                       >
-                        ✍️ Write Article
+                        ✍️ Write Article ↗
                       </button>
                     </div>
                   ))
@@ -814,7 +843,7 @@ export default function SeoHubPage() {
             TAB 3: AUTOPILOT SCHEDULER
         ========================================================================= */}
         {activeTab === "autopilot" && (
-          <div style={{ background: "#0f172a", border: "1px solid #1e293b", borderRadius: 12, padding: 28 }}>
+          <div style={{ background: "#0f172a", border: "1.5px solid rgba(245, 183, 22, 0.25)", borderRadius: 12, padding: 28, boxShadow: "0 4px 20px rgba(0,0,0,0.3)" }}>
             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: 16 }}>
               <div>
                 <h2 style={{ margin: "0 0 6px 0", fontSize: 20, color: "#fff" }}>🤖 Autonomous Daily Blogging Engine</h2>
@@ -823,21 +852,22 @@ export default function SeoHubPage() {
                 </p>
               </div>
 
-              <div style={{ display: "flex", gap: 12, alignItems: "center" }}>
+              <div style={{ display: "flex", gap: 12, alignItems: "center", flexWrap: "wrap" }}>
                 <button
                   onClick={() => setAutopilotEnabled(!autopilotEnabled)}
                   style={{
                     padding: "10px 20px",
                     borderRadius: 8,
-                    border: "none",
-                    background: autopilotEnabled ? "#10b981" : "#334155",
-                    color: "#fff",
+                    border: autopilotEnabled ? "1.5px solid #10b981" : "1.5px solid rgba(245, 183, 22, 0.4)",
+                    background: autopilotEnabled ? "rgba(16, 185, 129, 0.2)" : "rgba(245, 183, 22, 0.1)",
+                    color: autopilotEnabled ? "#34d399" : "#F5B716",
                     fontWeight: 700,
                     fontSize: 14,
                     cursor: "pointer",
                     display: "flex",
                     alignItems: "center",
                     gap: 8,
+                    transition: "all 0.2s ease",
                   }}
                 >
                   <span>{autopilotEnabled ? "●" : "○"}</span>
@@ -864,18 +894,14 @@ export default function SeoHubPage() {
                     }
                   }}
                   disabled={runningCycle}
+                  className="btn-gabbar-gold"
                   style={{
-                    padding: "10px 16px",
-                    borderRadius: 8,
-                    border: "1px solid #1e293b",
-                    background: "#131b2e",
-                    color: "#e2e8f0",
-                    fontWeight: 600,
+                    padding: "10px 20px",
                     fontSize: 13,
                     cursor: "pointer",
                   }}
                 >
-                  {runningCycle ? "Publishing…" : "⚡ Run Cycle Now"}
+                  {runningCycle ? "Publishing…" : "⚡ Run Cycle Now ↗"}
                 </button>
               </div>
             </div>
@@ -1073,9 +1099,10 @@ export default function SeoHubPage() {
               <button
                 onClick={handleSaveOptimization}
                 disabled={optSaving}
-                style={{ padding: "8px 16px", borderRadius: 6, border: "none", background: "#10b981", color: "#fff", fontWeight: 600, cursor: "pointer" }}
+                className="btn-gabbar-gold"
+                style={{ padding: "9px 20px", fontSize: 13, cursor: "pointer" }}
               >
-                {optSaving ? "Saving…" : "Apply On-Page SEO"}
+                {optSaving ? "Saving…" : "Apply On-Page SEO ↗"}
               </button>
             </div>
           </div>
@@ -1140,9 +1167,10 @@ export default function SeoHubPage() {
                   <button
                     onClick={() => handleGenerateBlog()}
                     disabled={generatingBlog}
-                    style={{ padding: "10px 20px", borderRadius: 6, border: "none", background: "#2563eb", color: "#fff", fontWeight: 600, cursor: "pointer" }}
+                    className="btn-gabbar-gold"
+                    style={{ padding: "11px 24px", fontSize: 13, cursor: "pointer" }}
                   >
-                    {generatingBlog ? "Writing & Generating Dual Images…" : "🚀 Publish Live to WordPress"}
+                    {generatingBlog ? "Writing & Generating Dual Images…" : "🚀 Publish Live to WordPress ↗"}
                   </button>
                 </div>
               </div>
