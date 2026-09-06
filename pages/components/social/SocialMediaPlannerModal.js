@@ -689,7 +689,7 @@ export default function SocialMediaPlannerModal({ onClose }) {
                   <span style={{ display: "inline-flex", alignItems: "center", gap: 6 }}>
                     <span>Instagram:</span>
                     <strong style={{ color: hasInstagram ? "#34d399" : "#f87171" }}>
-                      {hasInstagram ? `✅ Connected (${igUsername ? `@${igUsername}` : "Active"})` : "❌ Not Connected"}
+                      {hasInstagram ? `✅ Connected (${igUsername ? `@${igUsername.replace(/^@/, "")}` : "Active"})` : "❌ Not Connected"}
                     </strong>
                   </span>
                   {!hasInstagram && hasFacebook && (

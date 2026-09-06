@@ -116,13 +116,35 @@ export default async function handler(req, res) {
         config.queue = buildFallbackQueue(config.services, config.businessName, 30);
       }
 
+      // Resolve Instagram username via Graph API (matching Instagram Insights)
+      let igUsername = null;
+      if (hasInstagram && meta?.ig_business_id) {
+        const token = meta.fb_user_access_token || process.env.META_SYSTEM_USER_TOKEN;
+        if (token) {
+          try {
+            const igRes = await fetch(
+              `https://graph.facebook.com/v21.0/${meta.ig_business_id}?fields=username&access_token=${token}`
+            );
+            const igJson = await igRes.json();
+            if (igJson?.username) {
+              igUsername = igJson.username;
+            }
+          } catch (e) {
+            console.warn("[Social Autopilot] Failed to fetch IG username:", e.message);
+          }
+        }
+      }
+      if (!igUsername && hasInstagram) {
+        igUsername = meta?.business_name ? meta.business_name.toLowerCase().replace(/[^a-z0-9_.]/g, "") : `ID: ${meta?.ig_business_id || meta?.instagram_actor_id}`;
+      }
+
       return res.status(200).json({
         ok: true,
         config,
         hasFacebook,
         hasInstagram,
         fbPageName: meta?.business_name || (meta?.fb_page_id ? `Page ID: ${meta.fb_page_id}` : null),
-        igUsername: meta?.instagram_bio || (meta?.ig_business_id ? `Account #${meta.ig_business_id}` : null),
+        igUsername,
         metaInfo: {
           businessId: meta?.fb_business_id || null,
           pageId: meta?.fb_page_id || null,
