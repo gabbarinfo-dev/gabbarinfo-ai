@@ -253,7 +253,7 @@ export default function CyberMatrixBackground({ showGeometric = true }) {
         }}
       />
 
-      {/* Cybernetic Ambient Light Beams & Vignette Overlays */}
+      {/* Cybernetic Ambient Light Beams - Darkened for deep rich background */}
       <div
         style={{
           position: "absolute",
@@ -263,17 +263,17 @@ export default function CyberMatrixBackground({ showGeometric = true }) {
           width: "100%",
           maxWidth: 1100,
           height: 600,
-          background: "radial-gradient(ellipse 70% 60% at 50% 0%, rgba(59, 130, 246, 0.18) 0%, rgba(16, 185, 129, 0.06) 40%, transparent 75%)",
+          background: "radial-gradient(ellipse 70% 60% at 50% 0%, rgba(59, 130, 246, 0.08) 0%, rgba(16, 185, 129, 0.02) 40%, transparent 75%)",
           pointerEvents: "none",
         }}
       />
 
-      {/* Central Card Contrast Mask - Softened so animations are visible through cards */}
+      {/* Central Card Contrast Mask - Deep rich darkness */}
       <div
         style={{
           position: "absolute",
           inset: 0,
-          background: "radial-gradient(ellipse at 50% 50%, rgba(8, 11, 17, 0.20) 0%, rgba(8, 11, 17, 0.82) 85%)",
+          background: "radial-gradient(ellipse at 50% 50%, rgba(8, 11, 17, 0.40) 0%, rgba(8, 11, 17, 0.92) 85%)",
           pointerEvents: "none",
         }}
       />
