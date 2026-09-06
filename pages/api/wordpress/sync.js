@@ -135,7 +135,7 @@ export default async function handler(req, res) {
       const connPayload = {
         siteUrl: cleanUrl,
         apiKey: String(apiKey).trim(),
-        businessName: businessName || "GABBARinfo",
+        businessName: businessName || healthData.site_name || "My Website",
         siteName: healthData.site_name || "",
         pluginVersion: healthData.plugin_version || "1.0.0",
         isWooCommerce: Boolean(healthData.is_woocommerce),
@@ -402,7 +402,7 @@ export default async function handler(req, res) {
     if (action === "save-autopilot-config") {
       const autoMemoryKey = `wp_autopilot_${normalizedBusiness}`;
       const configPayload = body.config || {};
-      configPayload.businessName = businessName || "GABBARinfo";
+      configPayload.businessName = businessName || normalizedBusiness || "default";
       configPayload.updatedAt = new Date().toISOString();
 
       const { data: existing } = await supabase

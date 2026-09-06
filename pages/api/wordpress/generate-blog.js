@@ -22,14 +22,14 @@ export default async function handler(req, res) {
   }
 
   const {
-    businessName = "GABBARinfo",
+    businessName = "",
     topic,
     targetMarket,
     city,
     targetKeywords = [],
     wordCount = 1200,
     brandVoice = "authoritative, engaging, and consultative",
-    industry = "Digital Marketing",
+    industry = "",
     publishStatus = "publish",
     crossPostSocial = false,
   } = req.body;
@@ -47,28 +47,48 @@ export default async function handler(req, res) {
 
   try {
     // 1. Resolve WordPress Connection
-    const normalizedBusiness = businessName.toLowerCase().trim().replace(/[^a-z0-9]/g, "_");
-    const memoryKey = `wp_conn_${normalizedBusiness}`;
+    const normalizedBusiness = (businessName || "").toLowerCase().trim().replace(/[^a-z0-9]/g, "_");
+    const memoryKey = normalizedBusiness ? `wp_conn_${normalizedBusiness}` : null;
 
-    const { data: mem } = await supabase
-      .from("agent_memory")
-      .select("content")
-      .eq("email", userEmail)
-      .in("memory_type", [memoryKey, "wordpress_connection"])
-      .order("updated_at", { ascending: false })
-      .limit(1)
-      .single();
+    let targetMem = null;
+    if (memoryKey) {
+      const { data: mem } = await supabase
+        .from("agent_memory")
+        .select("content")
+        .eq("email", userEmail)
+        .in("memory_type", [memoryKey, "wordpress_connection"])
+        .order("updated_at", { ascending: false })
+        .limit(1)
+        .maybeSingle();
+      targetMem = mem;
+    }
 
-    if (!mem?.content) {
+    if (!targetMem?.content) {
+      // Fallback: check if user has any active wp_conn_* or wordpress_connection
+      const { data: fallbackMem } = await supabase
+        .from("agent_memory")
+        .select("content")
+        .eq("email", userEmail)
+        .or("memory_type.like.wp_conn_%,memory_type.eq.wordpress_connection")
+        .order("updated_at", { ascending: false })
+        .limit(1)
+        .maybeSingle();
+      targetMem = fallbackMem;
+    }
+
+    if (!targetMem?.content) {
       return res.status(400).json({
         ok: false,
-        error: `No connected WordPress website found for "${businessName}". Please connect your website in the dashboard first.`,
+        error: businessName && businessName !== "GABBARinfo"
+          ? `No connected WordPress website found for "${businessName}". Please connect your website in the WordPress Connector first.`
+          : `No connected WordPress website found. Please connect your WordPress website in the WordPress Connector first.`,
       });
     }
 
-    const conn = JSON.parse(mem.content);
+    const conn = JSON.parse(targetMem.content);
     const siteUrl = conn.siteUrl;
     const wpApiKey = conn.apiKey;
+    const effectiveBusiness = businessName || conn.businessName || conn.siteName || "Our Business";
 
     // 2. Fetch Client Profile Memory (Target Market / Location / Services)
     let businessLocation = (targetMarket || city || "").trim();
@@ -122,11 +142,10 @@ export default async function handler(req, res) {
 
     const keywordStrategyDirective = keywordList.length > 0
       ? `Target Keywords to Embed: "${keywordList}". Weave these in organically across the title, H2s, introduction, body copy, and conclusion. Do not keyword-stuff; maintain natural readability and flow.`
-      : `AUTONOMOUS KEYWORD DISCOVERY: The user did not provide manual keywords. You MUST act as an elite SEO keyword research engine: automatically identify, prioritize, and embed the top 3-5 high-volume, high-intent ranking keywords tailored specifically to "${businessName}", its target market scope ("${businessLocation}"), and its core offerings ("${businessServices || industry}"). Target commercial buyer and problem-solving search phrases that actual customers and decision-makers search for.`;
+      : `AUTONOMOUS KEYWORD DISCOVERY: The user did not provide manual keywords. You MUST act as an elite SEO keyword research engine: automatically identify, prioritize, and embed the top 3-5 high-volume, high-intent ranking keywords tailored specifically to "${effectiveBusiness}", its target market scope ("${businessLocation}"), and its core offerings ("${businessServices || industry || "Commercial Services"}"). Target commercial buyer and problem-solving search phrases that actual customers and decision-makers search for.`;
 
     // 4. Generate High-Ranking Blog Content & SEO Payload with GPT
-    // 4. Generate High-Ranking Blog Content & SEO Payload with GPT
-    console.log(`[SEO Engine] Generating full ${wordCount}-word authority guide on "${topic}" for ${businessName}...`);
+    console.log(`[SEO Engine] Generating full ${wordCount}-word authority guide on "${topic}" for ${effectiveBusiness}...`);
 
     const systemPrompt = `You are a world-class SEO content strategist and elite industry copywriter.
 Generate an exhaustive, high-ranking, human-grade pillar guide optimized for Google SERP dominance and reader conversion.
@@ -156,9 +175,9 @@ ${existingLinksContext || "None available - write naturally without broken links
 7. OUTPUT FORMAT:
    - Output MUST be strictly valid JSON matching the schema.`;
 
-    const userPrompt = `Business: ${businessName}
+    const userPrompt = `Business: ${effectiveBusiness}
 Target Market / Scope: ${businessLocation}
-Core Services / Industry: ${businessServices || industry}
+Core Services / Industry: ${businessServices || industry || "Commercial Services"}
 Brand Voice: ${brandVoice}
 Blog Topic / Headline: ${topic}
 ${keywordList ? `Target Ranked Keywords: ${keywordList}` : "Keywords: Automatically target high-volume commercial and topical ranking phrases."}

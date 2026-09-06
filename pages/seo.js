@@ -8,7 +8,7 @@ export default function SeoHubPage() {
   const { data: session, status } = useSession();
 
   // State
-  const [activeBusiness, setActiveBusiness] = useState("GABBARinfo");
+  const [activeBusiness, setActiveBusiness] = useState("");
   const [allConnections, setAllConnections] = useState({});
   const [mode, setMode] = useState("manual"); // "manual" | "autopilot"
   const [activeTab, setActiveTab] = useState("content"); // "content" | "topics" | "autopilot" | "integrations"
@@ -40,49 +40,43 @@ export default function SeoHubPage() {
   const [socialShareStatus, setSocialShareStatus] = useState(null);
 
   // Topics & Keywords State
-  const [keywords, setKeywords] = useState([
-    "affordable digital marketing services",
-    "creative web development agency",
-    "business lead generation strategies",
-    "seo ranking packages",
-    "conversion rate optimization",
-  ]);
+  const [keywords, setKeywords] = useState([]);
   const [newKeywordInput, setNewKeywordInput] = useState("");
 
-  const getThirtyDefaultTopics = (bName = "GABBARinfo") => [
-    `How ${bName} Drives 300% ROI With Strategic SEO in 2026`,
-    `Top 7 Mistakes Businesses Make With Web Design & How to Fix Them`,
+  const getThirtyDefaultTopics = (bName = "Your Business") => [
+    `How ${bName} Drives 300% ROI With Strategic Solutions in 2026`,
+    `Top 7 Mistakes Businesses Make in ${bName} & How to Fix Them`,
     `The Ultimate 2026 Guide to Dominating Local Search Rankings in Your City`,
     `Conversion Rate Optimization: Proven Frameworks That Turn Traffic Into Leads`,
-    `Why Technical SEO Is the Backbone of High-Ranking WordPress Websites`,
+    `Why Speed & Technical Architecture Are Crucial for High-Performance Websites`,
     `How to Build Topical Authority in Your Niche Step-by-Step`,
-    `The Complete Checklist for Launching a High-Converting Business Website`,
-    `Google Ads vs SEO: Where Should You Invest Your Marketing Budget First?`,
-    `How Core Web Vitals & Page Speed Directly Impact Your Bottom Line in 2026`,
-    `10 High-Impact Strategies to Outrank Your Local Competitors on Google Maps`,
-    `The Blueprint for Generating Consistent B2B Leads on Autopilot`,
-    `How to Craft Attention-Grabbing Headlines That Boost Organic CTR by 40%`,
-    `Why Your Bounce Rate Is High and 5 Data-Backed Ways to Fix It`,
-    `Voice Search Optimization: Preparing Your Business for the Next Wave of Search`,
-    `How AI-Driven Content Marketing Is Redefining Brand Authority in 2026`,
-    `The Essential On-Page SEO Checklist Every Marketing Manager Needs`,
-    `Schema Markup Explained: How Structured Data Unlocks Google Rich Snippets`,
-    `Internal Linking Strategies That Skyrocket Crawl Efficiency & Page Rankings`,
-    `How to Conduct a Comprehensive Competitor SEO Audit in Under 30 Minutes`,
-    `E-E-A-T Decoded: Building Trust and Authority That Google Rewards`,
-    `From Clicks to Customers: Crafting Landing Pages That Double Conversion Rates`,
-    `The Power of Evergreen Content: How One Post Can Drive Traffic for Years`,
-    `Zero-Click Searches: How to Win Featured Snippets and Brand Visibility`,
-    `Mobile-First Indexing: Key Optimization Rules for Small & Mid-Sized Businesses`,
-    `How to Target High-Intent Buyer Keywords Without Paying for Expensive PPC`,
-    `Repurposing Content: Turn One Blog Post Into 10 Social Media Lead Magnets`,
-    `Customer Retention vs Acquisition: Why Your Website Content Must Speak to Both`,
-    `The Anatomy of a Perfect Service Page That Converts Cold Traffic`,
-    `Why Local Citations and NAP Consistency Are Crucial for City-Based Rankings`,
-    `The Future of Autonomous Digital Marketing: Predictions & Strategies for 2026`,
+    `The Complete Checklist for Launching a High-Converting Online Presence`,
+    `Strategic Investment Guide: Where Should You Allocate Your Budget First?`,
+    `How Customer Experience Directly Impacts Your Bottom Line in 2026`,
+    `10 High-Impact Strategies to Outrank Your Local Competitors`,
+    `The Blueprint for Generating Consistent Quality Leads on Autopilot`,
+    `How to Craft Attention-Grabbing Headlines That Boost Engagement by 40%`,
+    `Why Your Visitor Drop-Off Is High and 5 Data-Backed Ways to Fix It`,
+    `Preparing Your Business for the Next Wave of Customer Search Behavior`,
+    `How AI-Driven Innovation Is Redefining Brand Authority in 2026`,
+    `The Essential Operational Checklist Every Business Manager Needs`,
+    `Structured Data & Visibility: How to Stand Out in Modern Search`,
+    `Internal Linking Strategies That Skyrocket Discovery & Authority`,
+    `How to Conduct a Comprehensive Competitor Audit in Under 30 Minutes`,
+    `Building Trust and Authority That Modern Clients Reward`,
+    `From Clicks to Customers: Crafting Pages That Double Conversion Rates`,
+    `The Power of Evergreen Content: How One Asset Drives Value for Years`,
+    `Winning Featured Spots: How to Dominate Search Intent`,
+    `Mobile-First Best Practices: Key Rules for Growing Businesses`,
+    `How to Target High-Intent Customers Without Overspending`,
+    `Repurposing Content: Turn One Post Into 10 Lead Magnets`,
+    `Customer Retention vs Acquisition: Why Your Strategy Must Balance Both`,
+    `The Anatomy of a Perfect Landing Page That Converts Cold Traffic`,
+    `Why Local Presence and Consistency Are Crucial for Market Dominance`,
+    `The Future of Autonomous Business Growth: Predictions & Strategies for 2026`,
   ];
 
-  const [suggestedTopics, setSuggestedTopics] = useState(getThirtyDefaultTopics("GABBARinfo"));
+  const [suggestedTopics, setSuggestedTopics] = useState([]);
   const [loadingTopics, setLoadingTopics] = useState(false);
   const [targetMarket, setTargetMarket] = useState("");
   const [loadingKeywords, setLoadingKeywords] = useState(false);
@@ -105,17 +99,22 @@ export default function SeoHubPage() {
       if (data.ok && Array.isArray(data.keywords) && data.keywords.length > 0) {
         setNewKeywords(data.keywords.join(", "));
       } else {
-        setNewKeywords("strategic seo services, google search ranking optimization, b2b lead generation strategies, organic search roi");
+        setNewKeywords("high intent search solutions, strategic growth optimization, market authority analysis");
       }
     } catch (e) {
       console.error("Keyword research error:", e);
-      setNewKeywords("strategic seo services, google search ranking optimization, b2b lead generation strategies, organic search roi");
+      setNewKeywords("high intent search solutions, strategic growth optimization, market authority analysis");
     } finally {
       setLoadingKeywords(false);
     }
   };
 
   const handleSelectTopic = (top) => {
+    if (!connection?.siteUrl) {
+      alert("⚠️ Please connect your WordPress website in the 'WordPress Connector & GSC' tab first to generate and edit articles.");
+      setActiveTab("integrations");
+      return;
+    }
     setNewTopic(top);
     setShowNewBlogModal(true);
     setNewKeywords("🔍 Researching high-ranking search queries for this topic…");
@@ -149,7 +148,7 @@ export default function SeoHubPage() {
 
   // Auto-switch to first connected profile if available and current has no site
   useEffect(() => {
-    if (connectedProfiles.length > 0 && !connectedProfiles.includes(activeBusiness)) {
+    if (connectedProfiles.length > 0 && (!activeBusiness || !connectedProfiles.includes(activeBusiness))) {
       setActiveBusiness(connectedProfiles[0]);
     }
   }, [allConnections]);
@@ -163,14 +162,17 @@ export default function SeoHubPage() {
   const fetchConnection = async () => {
     setLoadingConn(true);
     try {
-      const res = await fetch(`/api/wordpress/sync?action=get-connection&businessName=${encodeURIComponent(activeBusiness)}`);
+      const res = await fetch(`/api/wordpress/sync?action=get-connection&businessName=${encodeURIComponent(activeBusiness || "")}`);
       const data = await res.json();
       if (data.ok) {
         setAllConnections(data.allConnections || {});
         if (data.connection) {
           setConnection(data.connection);
+          const bName = data.connection.businessName || activeBusiness;
+          if (!activeBusiness && bName) setActiveBusiness(bName);
           fetchContent(data.connection);
           fetchAutopilotConfig();
+          setSuggestedTopics((prev) => (prev.length === 0 && bName ? getThirtyDefaultTopics(bName) : prev));
         } else {
           setConnection(null);
           setContentList([]);
@@ -203,6 +205,9 @@ export default function SeoHubPage() {
         setCustomDaysPerWeek(Number(data.config.customDaysPerWeek) || 3);
         setAutoShareFb(data.config.autoShareFacebook !== false);
         setAutoShareIg(data.config.autoShareInstagram !== false);
+        if (Array.isArray(data.config.targetKeywords) && data.config.targetKeywords.length > 0) {
+          setKeywords(data.config.targetKeywords);
+        }
       }
     } catch (e) {
       console.warn("Could not load autopilot config:", e);
@@ -210,6 +215,11 @@ export default function SeoHubPage() {
   };
 
   const handleSaveAutopilotSettings = async (overrideEnabled) => {
+    if (!connection?.siteUrl) {
+      alert("⚠️ Please connect your WordPress website in the 'WordPress Connector & GSC' tab first.");
+      setActiveTab("integrations");
+      return;
+    }
     setSavingAutopilotConfig(true);
     const isEnabled = typeof overrideEnabled === "boolean" ? overrideEnabled : autopilotEnabled;
     try {
@@ -569,6 +579,12 @@ export default function SeoHubPage() {
 
   // Generate Blog handler (Draft & Edit vs. Publish Live)
   const handleGenerateBlog = async (customTopic, publishStatus = "publish") => {
+    if (!connection?.siteUrl) {
+      alert("⚠️ No WordPress website connected. Please connect your WordPress website in the 'WordPress Connector & GSC' tab first.");
+      setShowNewBlogModal(false);
+      setActiveTab("integrations");
+      return;
+    }
     const topicToUse = customTopic || newTopic;
     if (!topicToUse) {
       alert("Please enter a blog topic.");
@@ -677,16 +693,22 @@ export default function SeoHubPage() {
   };
 
   // AI SERP Topic Generator with Anti-Duplication (30 Topics)
-  const handleAutoSuggestTopics = async () => {
+  const handleAutoSuggestTopics = async (overrideBusiness) => {
+    const targetBiz = (overrideBusiness || activeBusiness || connection?.businessName || connection?.siteName || "").trim();
+    if (!targetBiz && !connection?.siteUrl) {
+      alert("⚠️ Please connect your WordPress website or enter your business name first to generate topics.");
+      return;
+    }
     setLoadingTopics(true);
     try {
       const existingTitles = contentList.map((c) => c.title).slice(0, 30);
+      const kwList = keywords.length > 0 ? keywords.join(", ") : targetBiz;
       const res = await fetch("/api/agent/execute", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           mode: "seo_blog",
-          instruction: `Generate 30 high-ranking, non-duplicating SEO blog topic titles for ${activeBusiness}. Include commercial buyer-intent, local search guides, city targeting, technical authority pillars, and problem-solving topics. Target keywords: ${keywords.join(", ")}. Do NOT duplicate any of these existing titles: ${existingTitles.join(", ")}. Return ONLY a JSON array of 30 title strings: ["Title 1", "Title 2", ...].`,
+          instruction: `Generate 30 high-ranking, non-duplicating SEO blog topic titles for ${targetBiz || "our business"}. Include commercial buyer-intent, local search guides, city targeting, technical authority pillars, and problem-solving topics. Target keywords: ${kwList}. Do NOT duplicate any of these existing titles: ${existingTitles.join(", ")}. Return ONLY a JSON array of 30 title strings: ["Title 1", "Title 2", ...].`,
         }),
       });
 
@@ -697,13 +719,13 @@ export default function SeoHubPage() {
         if (match) topics = JSON.parse(match[0]);
       } catch (e) {}
 
-      if (!topics || topics.length < 15) {
-        topics = getThirtyDefaultTopics(activeBusiness);
+      if (!topics || topics.length < 5) {
+        topics = getThirtyDefaultTopics(targetBiz || "Your Business");
       }
       setSuggestedTopics(topics);
     } catch (e) {
       console.error(e);
-      setSuggestedTopics(getThirtyDefaultTopics(activeBusiness));
+      setSuggestedTopics(getThirtyDefaultTopics(targetBiz || "Your Business"));
     } finally {
       setLoadingTopics(false);
     }
@@ -792,19 +814,24 @@ export default function SeoHubPage() {
               )}
             </select>
             {connectedProfiles.length === 0 && (
-              <a
-                href="/#wordpress-connect"
+              <button
+                type="button"
+                onClick={() => setActiveTab("integrations")}
                 style={{
                   fontSize: 12,
                   color: "#38bdf8",
                   fontWeight: 700,
                   textDecoration: "underline",
                   marginLeft: 4,
+                  background: "none",
+                  border: "none",
+                  cursor: "pointer",
+                  padding: 0,
                   flexShrink: 0,
                 }}
               >
                 + Connect Website
-              </a>
+              </button>
             )}
           </div>
 
@@ -908,7 +935,9 @@ export default function SeoHubPage() {
           <div style={{ background: "rgba(16, 22, 34, 0.78)", border: "1px solid rgba(255, 255, 255, 0.12)", borderRadius: 14, padding: "14px 16px", boxShadow: "0 10px 30px rgba(0,0,0,0.4)" }}>
             <div style={{ fontSize: 11, color: "#94a3b8", fontWeight: 700, textTransform: "uppercase" }}>Target Keywords</div>
             <div style={{ fontSize: 22, fontWeight: 800, color: "#38bdf8", marginTop: 4 }}>{keywords.length}</div>
-            <div style={{ fontSize: 12, color: "#10b981", marginTop: 2, fontWeight: 600 }}>Coverage Active</div>
+            <div style={{ fontSize: 12, color: keywords.length > 0 ? "#10b981" : "#94a3b8", marginTop: 2, fontWeight: 600 }}>
+              {keywords.length > 0 ? "Coverage Active" : "Awaiting Setup"}
+            </div>
           </div>
 
           <div style={{ background: "rgba(16, 22, 34, 0.78)", border: "1px solid rgba(255, 255, 255, 0.12)", borderRadius: 14, padding: "14px 16px", boxShadow: "0 10px 30px rgba(0,0,0,0.4)" }}>
@@ -2008,7 +2037,12 @@ export default function SeoHubPage() {
 
                 <button
                   onClick={() => {
-                    const defaultTopic = suggestedTopics[0] || `How ${activeBusiness} Drives High-ROI Growth in 2026`;
+                    if (!connection?.siteUrl) {
+                      alert("⚠️ Please connect your WordPress website in the 'WordPress Connector & GSC' tab first.");
+                      setActiveTab("integrations");
+                      return;
+                    }
+                    const defaultTopic = suggestedTopics[0] || (activeBusiness ? `How ${activeBusiness} Drives High-ROI Growth in 2026` : "High-ROI Growth Strategies in 2026");
                     handleSelectTopic(defaultTopic);
                   }}
                   className="btn-gabbar-primary"
@@ -2049,8 +2083,25 @@ export default function SeoHubPage() {
                       </tr>
                     ) : filteredContent.length === 0 ? (
                       <tr>
-                        <td colSpan={8} style={{ padding: 40, textAlign: "center", color: "#64748b" }}>
-                          No content found. Make sure your WordPress site is connected in the Integrations tab.
+                        <td colSpan={8} style={{ padding: 44, textAlign: "center", color: "#64748b" }}>
+                          {!connection?.siteUrl ? (
+                            <div style={{ maxWidth: 440, margin: "0 auto" }}>
+                              <div style={{ fontSize: 32, marginBottom: 10 }}>🔌</div>
+                              <div style={{ color: "#f8fafc", fontWeight: 700, fontSize: 15, marginBottom: 6 }}>No WordPress Website Connected</div>
+                              <div style={{ color: "#94a3b8", fontSize: 13, marginBottom: 16, lineHeight: 1.5 }}>
+                                Connect your WordPress website to sync published posts, track real-time Google indexing, and publish AI blogs directly to your site.
+                              </div>
+                              <button
+                                onClick={() => setActiveTab("integrations")}
+                                className="btn-gabbar-primary"
+                                style={{ padding: "9px 20px", fontSize: 12, cursor: "pointer" }}
+                              >
+                                Connect WordPress Website ↗
+                              </button>
+                            </div>
+                          ) : (
+                            "No content items found on your connected WordPress site. Click 'Generate & Publish Blog' to create your first article."
+                          )}
                         </td>
                       </tr>
                     ) : (
@@ -2232,32 +2283,38 @@ export default function SeoHubPage() {
                 </button>
               </div>
 
-              <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
-                {keywords.map((kw, i) => (
-                  <span
-                    key={i}
-                    style={{
-                      display: "inline-flex",
-                      alignItems: "center",
-                      gap: 8,
-                      background: "rgba(18, 24, 38, 0.85)",
-                      border: "1px solid rgba(255, 255, 255, 0.12)",
-                      padding: "6px 12px",
-                      borderRadius: 6,
-                      fontSize: 12,
-                      color: "#e2e8f0",
-                    }}
-                  >
-                    <span>{kw}</span>
-                    <button
-                      onClick={() => setKeywords(keywords.filter((_, idx) => idx !== i))}
-                      style={{ border: "none", background: "none", color: "#94a3b8", cursor: "pointer", fontSize: 12, padding: 0 }}
+              {keywords.length === 0 ? (
+                <div style={{ padding: "20px", textAlign: "center", color: "#94a3b8", fontSize: 13, background: "#0d111c", borderRadius: 8, border: "1px dashed rgba(255,255,255,0.12)" }}>
+                  🎯 No target keywords yet. Enter your focus keyword above and click <strong>+ Add Keyword</strong>, or connect your website to automatically extract high-ranking search terms.
+                </div>
+              ) : (
+                <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
+                  {keywords.map((kw, i) => (
+                    <span
+                      key={i}
+                      style={{
+                        display: "inline-flex",
+                        alignItems: "center",
+                        gap: 8,
+                        background: "rgba(18, 24, 38, 0.85)",
+                        border: "1px solid rgba(255, 255, 255, 0.12)",
+                        padding: "6px 12px",
+                        borderRadius: 6,
+                        fontSize: 12,
+                        color: "#e2e8f0",
+                      }}
                     >
-                      ✕
-                    </button>
-                  </span>
-                ))}
-              </div>
+                      <span>{kw}</span>
+                      <button
+                        onClick={() => setKeywords(keywords.filter((_, idx) => idx !== i))}
+                        style={{ border: "none", background: "none", color: "#94a3b8", cursor: "pointer", fontSize: 12, padding: 0 }}
+                      >
+                        ✕
+                      </button>
+                    </span>
+                  ))}
+                </div>
+              )}
             </div>
 
             {/* Right: Anti-Duplication AI SERP Ideation (30 Topics) */}
@@ -2268,7 +2325,7 @@ export default function SeoHubPage() {
                   <span style={{ fontSize: 11, color: "#38bdf8", fontWeight: 700 }}>30 High-Ranking Editorial Calendar Topics</span>
                 </div>
                 <button
-                  onClick={handleAutoSuggestTopics}
+                  onClick={() => handleAutoSuggestTopics()}
                   disabled={loadingTopics}
                   className="btn-gabbar-primary"
                   style={{
@@ -2285,9 +2342,72 @@ export default function SeoHubPage() {
               </p>
 
               <div style={{ maxHeight: 580, overflowY: "auto", paddingRight: 6, display: "flex", flexDirection: "column", gap: 10 }}>
-                {suggestedTopics.length === 0 ? (
-                  <div style={{ padding: 24, textAlign: "center", color: "#64748b", fontSize: 13, background: "#0d111c", borderRadius: 8 }}>
-                    Click "Auto-Suggest 30 Topics" to ideate SERP-ranking articles.
+                {!connection?.siteUrl && !activeBusiness ? (
+                  <div style={{ padding: "36px 24px", textAlign: "center", background: "#0d111c", borderRadius: 12, border: "1px dashed rgba(56, 189, 248, 0.28)" }}>
+                    <div style={{ fontSize: 36, marginBottom: 12 }}>🌐</div>
+                    <h4 style={{ margin: "0 0 8px 0", color: "#fff", fontSize: 16, fontWeight: 700 }}>Connect Your WordPress Website</h4>
+                    <p style={{ color: "#94a3b8", fontSize: 13, maxWidth: 440, margin: "0 auto 20px auto", lineHeight: 1.5 }}>
+                      Connect your site to scan your live pages and let AI generate 30 high-ranking, anti-duplicated blog topics tailored to your exact industry and niche.
+                    </p>
+                    <button
+                      onClick={() => setActiveTab("integrations")}
+                      className="btn-gabbar-primary"
+                      style={{ padding: "10px 22px", fontSize: 13, cursor: "pointer", display: "inline-flex", alignItems: "center", gap: 8 }}
+                    >
+                      <span>🔗</span> Connect WordPress Website ↗
+                    </button>
+
+                    <div style={{ margin: "26px 0 18px 0", borderTop: "1px solid rgba(255,255,255,0.08)", position: "relative" }}>
+                      <span style={{ position: "absolute", top: -10, left: "50%", transform: "translateX(-50%)", background: "#0d111c", padding: "0 12px", fontSize: 11, color: "#64748b", fontWeight: 700, letterSpacing: "0.5px" }}>
+                        OR QUICK BRAINSTORM TOPICS
+                      </span>
+                    </div>
+
+                    <div style={{ display: "flex", flexDirection: "column", gap: 8, maxWidth: 400, margin: "0 auto", textAlign: "left" }}>
+                      <label style={{ fontSize: 12, color: "#94a3b8" }}>Enter your business name or niche:</label>
+                      <div style={{ display: "flex", gap: 8 }}>
+                        <input
+                          type="text"
+                          id="quick-brainstorm-biz"
+                          placeholder="e.g. Acme Dental, FitGym, CloudSaaS..."
+                          style={{
+                            flex: 1,
+                            padding: "9px 12px",
+                            borderRadius: 6,
+                            border: "1px solid rgba(255,255,255,0.15)",
+                            background: "#080b11",
+                            color: "#fff",
+                            fontSize: 13,
+                          }}
+                          onKeyDown={(e) => {
+                            if (e.key === "Enter") {
+                              const val = e.currentTarget.value.trim();
+                              if (val) {
+                                setActiveBusiness(val);
+                                handleAutoSuggestTopics(val);
+                              }
+                            }
+                          }}
+                        />
+                        <button
+                          onClick={() => {
+                            const val = document.getElementById("quick-brainstorm-biz")?.value?.trim();
+                            if (!val) return alert("Please enter your business or niche name.");
+                            setActiveBusiness(val);
+                            handleAutoSuggestTopics(val);
+                          }}
+                          className="btn-gabbar-secondary"
+                          style={{ padding: "8px 14px", fontSize: 12, cursor: "pointer", whiteSpace: "nowrap" }}
+                        >
+                          ⚡ Brainstorm
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                ) : suggestedTopics.length === 0 ? (
+                  <div style={{ padding: 32, textAlign: "center", color: "#64748b", fontSize: 13, background: "#0d111c", borderRadius: 8 }}>
+                    <div style={{ fontSize: 24, marginBottom: 8 }}>⚡</div>
+                    <div>Click "Re-Generate 30 Topics" to ideate SERP-ranking articles for {activeBusiness || "your website"}.</div>
                   </div>
                 ) : (
                   suggestedTopics.map((top, idx) => (
@@ -2353,6 +2473,21 @@ export default function SeoHubPage() {
         ========================================================================= */}
         {activeTab === "autopilot" && (
           <div style={{ display: "flex", flexDirection: "column", gap: 24 }}>
+            {!connection?.siteUrl && (
+              <div style={{ padding: "16px 20px", borderRadius: 12, background: "rgba(245, 158, 11, 0.12)", border: "1px solid #f59e0b", color: "#fbbf24", fontSize: 13, display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: 12 }}>
+                <div>
+                  <strong>⚠️ WordPress Connection Required:</strong> Connect your WordPress site to activate automated daily editorial generation and publishing.
+                </div>
+                <button
+                  onClick={() => setActiveTab("integrations")}
+                  className="btn-gabbar-primary"
+                  style={{ padding: "8px 16px", fontSize: 12, cursor: "pointer" }}
+                >
+                  Connect Website ↗
+                </button>
+              </div>
+            )}
+
             {/* ── HEADER & MAIN CONTROL CARD ── */}
             <div style={{ background: "rgba(16, 22, 34, 0.78)", border: "1px solid rgba(255, 255, 255, 0.12)", borderRadius: 14, padding: 28, boxShadow: "0 10px 30px rgba(0,0,0,0.4)" }}>
               <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", flexWrap: "wrap", gap: 16 }}>
@@ -2392,6 +2527,11 @@ export default function SeoHubPage() {
 
                   <button
                     onClick={async () => {
+                      if (!connection?.siteUrl) {
+                        alert("⚠️ Please connect your WordPress website in the 'WordPress Connector & GSC' tab first.");
+                        setActiveTab("integrations");
+                        return;
+                      }
                       setRunningCycle(true);
                       setCycleNotice("Running autonomous publishing cycle…");
                       try {
@@ -3050,6 +3190,23 @@ export default function SeoHubPage() {
 
             {!publishedResult ? (
               <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
+                {!connection?.siteUrl && (
+                  <div style={{ padding: "12px 16px", borderRadius: 8, background: "rgba(245, 158, 11, 0.15)", border: "1px solid #f59e0b", color: "#fbbf24", fontSize: 13, display: "flex", justifyContent: "space-between", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
+                    <span>⚠️ <strong>WordPress Site Required:</strong> Please connect your WordPress site first to save drafts and publish live articles.</span>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setShowNewBlogModal(false);
+                        setActiveTab("integrations");
+                      }}
+                      className="btn-gabbar-primary"
+                      style={{ padding: "6px 12px", fontSize: 11, cursor: "pointer" }}
+                    >
+                      Connect Website ↗
+                    </button>
+                  </div>
+                )}
+
                 <div>
                   <label style={{ fontSize: 13, color: "#94a3b8", display: "block", marginBottom: 6 }}>Blog Topic / Headline</label>
                   <input

@@ -9,7 +9,7 @@ const supabase = createClient(
   process.env.SUPABASE_SERVICE_ROLE_KEY
 );
 
-function generateSmartFallbackKeywords(topic = "", businessName = "GABBARinfo", industry = "", marketScope = "") {
+function generateSmartFallbackKeywords(topic = "", businessName = "", industry = "", marketScope = "") {
   const cleanTopic = topic.replace(/[^a-zA-Z0-9\s]/g, "").trim();
   const basePhrases = [];
 
@@ -26,7 +26,7 @@ function generateSmartFallbackKeywords(topic = "", businessName = "GABBARinfo", 
 
   // If user provided a specific market or city, weave it in naturally
   if (marketScope && marketScope !== "National & Global Commercial") {
-    basePhrases.unshift(`top digital solutions in ${marketScope}`);
+    basePhrases.unshift(`top solutions in ${marketScope}`);
   }
 
   return basePhrases.slice(0, 6);
@@ -42,10 +42,10 @@ export default async function handler(req, res) {
 
   const {
     topic = "",
-    businessName = "GABBARinfo",
+    businessName = "",
     targetMarket = "",
     city = "",
-    industry = "Digital Marketing, SEO & Web Development",
+    industry = "",
   } = req.body || {};
 
   if (!topic) {

@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react";
 
 export default function WordPressSiteConnect({ onConnectionChange }) {
-  const [businessName, setBusinessName] = useState("GABBARinfo");
+  const [businessName, setBusinessName] = useState("");
   const [customBusiness, setCustomBusiness] = useState("");
   const [connection, setConnection] = useState(null);
   const [allConnections, setAllConnections] = useState({});
@@ -17,17 +17,24 @@ export default function WordPressSiteConnect({ onConnectionChange }) {
   const [testing, setTesting] = useState(false);
   const [testResult, setTestResult] = useState(null);
 
-  const activeBusiness = customBusiness.trim() || businessName;
+  const activeBusiness = customBusiness.trim() || (businessName !== "custom" ? businessName : "");
 
   // Load existing connections
   useEffect(() => {
     fetchConnections();
   }, [activeBusiness]);
 
+  useEffect(() => {
+    const profiles = Object.keys(allConnections || {}).filter(k => allConnections[k]?.siteUrl);
+    if (profiles.length > 0 && (!businessName || businessName === "custom")) {
+      setBusinessName(profiles[0]);
+    }
+  }, [allConnections]);
+
   const fetchConnections = async () => {
     setLoading(true);
     try {
-      const res = await fetch(`/api/wordpress/sync?action=get-connection&businessName=${encodeURIComponent(activeBusiness)}`);
+      const res = await fetch(`/api/wordpress/sync?action=get-connection&businessName=${encodeURIComponent(activeBusiness || "")}`);
       const data = await res.json();
       if (data.ok) {
         setConnection(data.connection);
@@ -45,6 +52,11 @@ export default function WordPressSiteConnect({ onConnectionChange }) {
   };
 
   const handleStartConnect = () => {
+    const biz = (customBusiness.trim() || (businessName !== "custom" && businessName !== "" ? businessName : "")).trim();
+    if (!biz) {
+      alert("Please enter your business or website name in the input box before connecting.");
+      return;
+    }
     setErrorMsg("");
     setModalStep(1);
     setShowModal(true);
@@ -84,6 +96,11 @@ export default function WordPressSiteConnect({ onConnectionChange }) {
   };
 
   const handleSaveConnection = async () => {
+    const biz = (customBusiness.trim() || (businessName !== "custom" && businessName !== "" ? businessName : "")).trim();
+    if (!biz) {
+      setErrorMsg("Please enter your business or website name.");
+      return;
+    }
     if (!siteUrlInput.trim() || !apiKeyInput.trim()) {
       setErrorMsg("Please enter both your Site URL and Plugin Secret Key.");
       return;
@@ -100,13 +117,16 @@ export default function WordPressSiteConnect({ onConnectionChange }) {
           action: "save-connection",
           siteUrl: siteUrlInput.trim(),
           apiKey: apiKeyInput.trim(),
-          businessName: activeBusiness,
+          businessName: biz,
         }),
       });
 
       const data = await res.json();
       if (data.ok) {
         setConnection(data.connection);
+        setBusinessName(biz);
+        setCustomBusiness("");
+        fetchConnections();
         if (onConnectionChange) onConnectionChange(true);
         setShowModal(false);
         setSiteUrlInput("");
@@ -189,10 +209,10 @@ export default function WordPressSiteConnect({ onConnectionChange }) {
           </option>
         </select>
 
-        {(businessName === "custom" || connectedProfiles.length === 0) && (
+        {(businessName === "custom" || !businessName || connectedProfiles.length === 0) && (
           <input
             type="text"
-            placeholder="Type business or website name..."
+            placeholder="Type your business or website name (e.g. MyStore, TechBlog)..."
             value={customBusiness}
             onChange={(e) => setCustomBusiness(e.target.value)}
             style={{
