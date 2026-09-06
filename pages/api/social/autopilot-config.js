@@ -1,13 +1,10 @@
 // pages/api/social/autopilot-config.js
 import { getServerSession } from "next-auth/next";
 import { authOptions } from "../auth/[...nextauth]";
-import { createClient } from "@supabase/supabase-js";
+import { supabaseServer } from "../../../lib/supabaseServer";
 import OpenAI from "openai";
 
-const supabase = createClient(
-  process.env.NEXT_PUBLIC_SUPABASE_URL,
-  process.env.SUPABASE_SERVICE_ROLE_KEY
-);
+const supabase = supabaseServer;
 
 // 5 Core Marketing Pillars for high engagement & conversion
 const CONTENT_PILLARS = [
@@ -52,13 +49,13 @@ function buildFallbackQueue(services = [], businessName = "Our Business", count 
 
 export default async function handler(req, res) {
   const session = await getServerSession(req, res, authOptions);
-  const userEmail = session?.user?.email || req.body?.userEmail;
+  const userEmail = session?.user?.email || req.body?.userEmail || req.query?.userEmail;
 
   if (!userEmail) {
     return res.status(401).json({ ok: false, error: "Unauthorized" });
   }
 
-  const normalizedEmail = userEmail.toLowerCase();
+  const normalizedEmail = userEmail.toLowerCase().trim();
   const autoMemoryKey = `social_autopilot_${normalizedEmail}`;
 
   // ================================================================
@@ -66,15 +63,21 @@ export default async function handler(req, res) {
   // ================================================================
   if (req.method === "GET") {
     try {
-      // 1. Check Meta Connection
-      const { data: meta } = await supabase
+      // 1. Check Meta Connection using exact robust query matching status.js
+      const { data: meta, error: metaErr } = await supabase
         .from("meta_connections")
-        .select("fb_page_id, fb_page_name, instagram_actor_id, instagram_username, ig_business_id, fb_page_access_token, fb_user_access_token")
-        .eq("email", normalizedEmail)
+        .select("*")
+        .ilike("email", normalizedEmail)
         .maybeSingle();
 
-      const hasFacebook = Boolean(meta?.fb_page_id && (meta.fb_page_access_token || meta.fb_user_access_token));
-      const hasInstagram = Boolean(meta?.instagram_actor_id || meta?.ig_business_id);
+      if (metaErr) {
+        console.warn("[Social Autopilot] meta_connections query warning:", metaErr.message);
+      }
+
+      // Check Facebook connection (page ID or business ID present)
+      const hasFacebook = Boolean(meta?.fb_page_id || meta?.fb_business_id);
+      // Check Instagram connection (ig_business_id or instagram_actor_id present)
+      const hasInstagram = Boolean(meta?.ig_business_id || meta?.instagram_actor_id);
 
       // 2. Fetch Autopilot Config from agent_memory
       const { data: mem } = await supabase
@@ -86,10 +89,10 @@ export default async function handler(req, res) {
 
       let config = {
         enabled: false,
-        destination: "BOTH", // "BOTH" | "FACEBOOK_ONLY" | "INSTAGRAM_ONLY"
+        destination: hasFacebook && !hasInstagram ? "FACEBOOK_ONLY" : "BOTH", // sensible default based on connection
         cadence: "daily", // "daily" | "weekly_4" | "alternate" | "weekly"
-        businessName: "GabbarInfo",
-        industry: "Digital Marketing & Business Growth",
+        businessName: meta?.business_name || "GabbarInfo",
+        industry: meta?.business_category || "Digital Marketing & Business Growth",
         services: ["SEO Optimization", "Google Ads Management", "Meta Social Ads", "Website Design"],
         brandVoice: "Bold, authoritative, and consultative",
         targetAudience: "Business owners, entrepreneurs, and eCommerce brands",
@@ -118,8 +121,14 @@ export default async function handler(req, res) {
         config,
         hasFacebook,
         hasInstagram,
-        fbPageName: meta?.fb_page_name || (meta?.fb_page_id ? `Page #${meta.fb_page_id}` : null),
-        igUsername: meta?.instagram_username || null,
+        fbPageName: meta?.business_name || (meta?.fb_page_id ? `Page ID: ${meta.fb_page_id}` : null),
+        igUsername: meta?.instagram_bio || (meta?.ig_business_id ? `Account #${meta.ig_business_id}` : null),
+        metaInfo: {
+          businessId: meta?.fb_business_id || null,
+          pageId: meta?.fb_page_id || null,
+          adAccountId: meta?.fb_ad_account_id || null,
+          igBusinessId: meta?.ig_business_id || null,
+        },
         contentPillars: CONTENT_PILLARS
       });
     } catch (err) {

@@ -679,19 +679,24 @@ export default function SocialMediaPlannerModal({ onClose }) {
                 </div>
 
                 {/* Connection verification status */}
-                <div style={{ marginTop: 14, display: "flex", gap: 16, fontSize: 12, color: "#94a3b8" }}>
-                  <span>
-                    Facebook:{" "}
+                <div style={{ marginTop: 14, display: "flex", gap: 16, fontSize: 12, color: "#94a3b8", flexWrap: "wrap", alignItems: "center" }}>
+                  <span style={{ display: "inline-flex", alignItems: "center", gap: 6 }}>
+                    <span>Facebook:</span>
                     <strong style={{ color: hasFacebook ? "#34d399" : "#f87171" }}>
-                      {hasFacebook ? `Connected (${fbPageName || "Page Linked"})` : "Not Connected"}
+                      {hasFacebook ? `✅ Connected (${fbPageName || "Page Linked"})` : "❌ Not Connected"}
                     </strong>
                   </span>
-                  <span>
-                    Instagram:{" "}
+                  <span style={{ display: "inline-flex", alignItems: "center", gap: 6 }}>
+                    <span>Instagram:</span>
                     <strong style={{ color: hasInstagram ? "#34d399" : "#f87171" }}>
-                      {hasInstagram ? `Connected (${igUsername ? `@${igUsername}` : "Active"})` : "Not Connected"}
+                      {hasInstagram ? `✅ Connected (${igUsername ? `@${igUsername}` : "Active"})` : "❌ Not Connected"}
                     </strong>
                   </span>
+                  {!hasInstagram && hasFacebook && (
+                    <span style={{ fontSize: 11, color: "#cbd5e1", background: "rgba(255, 255, 255, 0.05)", padding: "3px 8px", borderRadius: 6, border: "1px solid rgba(255, 255, 255, 0.1)" }}>
+                      💡 Tip: To enable Instagram, link an Instagram Professional account to your Facebook Page in Meta Business Suite, then click "Sync Business Info".
+                    </span>
+                  )}
                 </div>
               </div>
 
