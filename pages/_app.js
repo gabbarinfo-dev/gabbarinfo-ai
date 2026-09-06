@@ -11,7 +11,7 @@ export default function MyApp({ Component, pageProps }) {
         <title>GabbarInfo AI · Autonomous Digital Marketing Strategist</title>
         <meta
           name="viewport"
-          content="width=device-width, initial-scale=1, maximum-scale=1"
+          content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover"
         />
         <meta name="theme-color" content="#080b11" />
         {/* Google Fonts: Plus Jakarta Sans & Outfit */}
@@ -43,9 +43,10 @@ export default function MyApp({ Component, pageProps }) {
           padding: 0;
           background: #080b11;
           color: #f8fafc;
-          overflow-x: hidden;
-          width: 100%;
-          max-width: 100vw;
+          overflow-x: hidden !important;
+          width: 100% !important;
+          max-width: 100vw !important;
+          position: relative;
         }
 
         body {
@@ -53,9 +54,10 @@ export default function MyApp({ Component, pageProps }) {
           background: #080b11;
           -webkit-font-smoothing: antialiased;
           -moz-osx-font-smoothing: grayscale;
-          overflow-x: hidden;
-          width: 100%;
-          max-width: 100vw;
+          overflow-x: hidden !important;
+          width: 100% !important;
+          max-width: 100vw !important;
+          position: relative;
         }
 
         img, video, canvas, svg {

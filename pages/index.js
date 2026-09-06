@@ -278,6 +278,10 @@ export default function HomePage() {
         background: "#080b11",
         color: "#f8fafc",
         fontFamily: "Plus Jakarta Sans, sans-serif",
+        overflowX: "hidden",
+        width: "100%",
+        maxWidth: "100vw",
+        position: "relative",
       }}
     >
       <Head>
@@ -288,7 +292,7 @@ export default function HomePage() {
       <header
         style={{
           borderBottom: "1px solid #1e293b",
-          padding: "16px 28px",
+          padding: "clamp(12px, 3vw, 16px) clamp(14px, 3vw, 28px)",
           background: "rgba(11, 15, 25, 0.9)",
           backdropFilter: "blur(12px)",
           WebkitBackdropFilter: "blur(12px)",
@@ -300,9 +304,12 @@ export default function HomePage() {
           zIndex: 100,
           flexWrap: "wrap",
           gap: 12,
+          width: "100%",
+          maxWidth: "100vw",
+          boxSizing: "border-box",
         }}
       >
-        <div style={{ display: "flex", alignItems: "center", gap: 14 }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 14, minWidth: 0 }}>
           <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
             <span style={{ fontSize: 22 }}>🚀</span>
             <span
@@ -460,16 +467,27 @@ export default function HomePage() {
           left: "50%",
           transform: "translateX(-50%)",
           width: "100%",
-          maxWidth: 1280,
+          maxWidth: "100vw",
           height: 520,
           background: "radial-gradient(ellipse 70% 50% at 50% 0%, rgba(56, 189, 248, 0.15) 0%, rgba(99, 102, 241, 0.08) 45%, transparent 80%)",
           pointerEvents: "none",
           zIndex: 0,
+          overflow: "hidden",
         }}
       />
 
       {/* MAIN CONTAINER */}
-      <main style={{ maxWidth: 1100, margin: "0 auto", padding: "40px 24px", position: "relative", zIndex: 1 }}>
+      <main
+        style={{
+          maxWidth: 1100,
+          width: "100%",
+          margin: "0 auto",
+          padding: "clamp(20px, 4vw, 40px) clamp(14px, 3vw, 24px)",
+          position: "relative",
+          zIndex: 1,
+          boxSizing: "border-box",
+        }}
+      >
         {/* Email fallback notification if needed */}
         {session?.user?.email?.includes("@facebook.gabbarinfo.ai") && (
           <EmailFallbackForm />
@@ -481,11 +499,13 @@ export default function HomePage() {
             background: "linear-gradient(180deg, rgba(16, 22, 34, 0.85) 0%, rgba(10, 14, 23, 0.95) 100%)",
             border: "1px solid rgba(255, 255, 255, 0.12)",
             borderRadius: 20,
-            padding: "32px 36px",
+            padding: "clamp(20px, 4vw, 32px) clamp(16px, 4vw, 36px)",
             marginBottom: 36,
             boxShadow: "0 25px 60px rgba(0, 0, 0, 0.6), 0 0 40px rgba(56, 189, 248, 0.08), inset 0 1px 0 rgba(255, 255, 255, 0.15)",
             position: "relative",
             overflow: "hidden",
+            width: "100%",
+            boxSizing: "border-box",
           }}
         >
           {/* Subtle Cyber Accent Line */}
@@ -501,7 +521,7 @@ export default function HomePage() {
           />
 
           <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", flexWrap: "wrap", gap: 20 }}>
-            <div>
+            <div style={{ minWidth: 0, flex: "1 1 300px" }}>
               {/* Live Radar Pulse Badge */}
               <div style={{ display: "inline-flex", alignItems: "center", gap: 8, padding: "5px 14px", borderRadius: 999, background: "rgba(16, 185, 129, 0.12)", border: "1px solid rgba(16, 185, 129, 0.35)", marginBottom: 14 }}>
                 <span style={{ width: 7, height: 7, borderRadius: "50%", background: "#10b981", boxShadow: "0 0 10px #10b981", animation: "radarPulse 2s infinite" }} />
@@ -510,7 +530,7 @@ export default function HomePage() {
                 </span>
               </div>
 
-              <h1 style={{ margin: "0 0 10px 0", fontSize: 30, fontWeight: 800, letterSpacing: "-0.6px", color: "#ffffff" }}>
+              <h1 style={{ margin: "0 0 10px 0", fontSize: "clamp(22px, 5vw, 30px)", fontWeight: 800, letterSpacing: "-0.6px", color: "#ffffff", wordBreak: "break-word" }}>
                 Welcome to GabbarInfo AI Command Center 🚀
               </h1>
               <p style={{ margin: 0, color: "#94a3b8", fontSize: 14, maxWidth: 680, lineHeight: 1.6 }}>
@@ -518,7 +538,7 @@ export default function HomePage() {
               </p>
             </div>
 
-            <div style={{ display: "flex", gap: 12, alignItems: "center", flexWrap: "wrap", marginTop: 4 }}>
+            <div style={{ display: "flex", gap: 12, alignItems: "center", flexWrap: "wrap", marginTop: 4, width: "100%", maxWidth: "100%" }}>
               <a
                 href="/chat"
                 className="btn-gabbar-secondary"
@@ -526,6 +546,8 @@ export default function HomePage() {
                   padding: "12px 22px",
                   fontSize: 14,
                   textDecoration: "none",
+                  flex: "1 1 auto",
+                  textAlign: "center",
                 }}
               >
                 💬 Launch Chat Agent
@@ -543,6 +565,8 @@ export default function HomePage() {
                   padding: "12px 24px",
                   fontSize: 14,
                   textDecoration: "none",
+                  flex: "1 1 auto",
+                  textAlign: "center",
                 }}
               >
                 🌐 Open SEO Suite ↗
@@ -556,7 +580,10 @@ export default function HomePage() {
                   cursor: "pointer",
                   display: "inline-flex",
                   alignItems: "center",
+                  justifyContent: "center",
                   gap: 8,
+                  flex: "1 1 auto",
+                  textAlign: "center",
                 }}
               >
                 📱 Social Media Planner ↗
@@ -570,7 +597,7 @@ export default function HomePage() {
               <div style={{ fontSize: 12, fontWeight: 800, color: "#cbd5e1", letterSpacing: "1px", textTransform: "uppercase", display: "flex", alignItems: "center", gap: 8 }}>
                 <span>⚡ Live Architecture & Execution Pipeline</span>
               </div>
-              <div style={{ display: "flex", gap: 12, fontSize: 11, color: "#64748b" }}>
+              <div style={{ display: "flex", gap: "8px 14px", fontSize: 11, color: "#64748b", flexWrap: "wrap" }}>
                 <span>● Node Latency: <strong>48ms</strong></span>
                 <span>● Schedule: <strong>Autonomous Cadence</strong></span>
                 <span>● Index Pinging: <strong>GSC Instant</strong></span>
@@ -580,8 +607,10 @@ export default function HomePage() {
             <div
               style={{
                 display: "grid",
-                gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))",
+                gridTemplateColumns: "repeat(auto-fit, minmax(min(100%, 200px), 1fr))",
                 gap: 16,
+                width: "100%",
+                boxSizing: "border-box",
               }}
             >
               {/* Step 1 */}
@@ -689,7 +718,7 @@ export default function HomePage() {
           <section
             id="wordpress-engine"
             style={{
-              padding: "26px 28px",
+              padding: "clamp(16px, 3.5vw, 26px) clamp(14px, 3.5vw, 28px)",
               borderRadius: 18,
               background: "rgba(14, 19, 30, 0.78)",
               backdropFilter: "blur(20px)",
@@ -697,11 +726,13 @@ export default function HomePage() {
               border: "1px solid rgba(255, 255, 255, 0.12)",
               boxShadow: "0 20px 50px rgba(0,0,0,0.5), 0 0 30px rgba(56, 189, 248, 0.05)",
               transition: "all 0.5s ease",
+              width: "100%",
+              boxSizing: "border-box",
             }}
           >
             <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 14, flexWrap: "wrap", gap: 10 }}>
               <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
-                <div style={{ width: 38, height: 38, borderRadius: 10, background: "rgba(56, 189, 248, 0.15)", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 18, border: "1px solid rgba(56, 189, 248, 0.3)" }}>
+                <div style={{ width: 38, height: 38, borderRadius: 10, background: "rgba(56, 189, 248, 0.15)", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 18, border: "1px solid rgba(56, 189, 248, 0.3)", flexShrink: 0 }}>
                   🌐
                 </div>
                 <div>
@@ -723,18 +754,20 @@ export default function HomePage() {
           {/* 2. GOOGLE ADS ACCOUNT */}
           <section
             style={{
-              padding: "26px 28px",
+              padding: "clamp(16px, 3.5vw, 26px) clamp(14px, 3.5vw, 28px)",
               borderRadius: 18,
               background: "rgba(14, 19, 30, 0.78)",
               backdropFilter: "blur(20px)",
               WebkitBackdropFilter: "blur(20px)",
               border: "1px solid rgba(255, 255, 255, 0.12)",
               boxShadow: "0 20px 50px rgba(0,0,0,0.5), 0 0 30px rgba(59, 130, 246, 0.05)",
+              width: "100%",
+              boxSizing: "border-box",
             }}
           >
             <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 14, flexWrap: "wrap", gap: 10 }}>
               <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
-                <div style={{ width: 38, height: 38, borderRadius: 10, background: "rgba(66, 133, 244, 0.15)", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 18, border: "1px solid rgba(66, 133, 244, 0.3)" }}>
+                <div style={{ width: 38, height: 38, borderRadius: 10, background: "rgba(66, 133, 244, 0.15)", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 18, border: "1px solid rgba(66, 133, 244, 0.3)", flexShrink: 0 }}>
                   🎯
                 </div>
                 <div>
@@ -756,18 +789,20 @@ export default function HomePage() {
           {/* 3. FACEBOOK BUSINESS */}
           <section
             style={{
-              padding: "26px 28px",
+              padding: "clamp(16px, 3.5vw, 26px) clamp(14px, 3.5vw, 28px)",
               borderRadius: 18,
               background: "rgba(14, 19, 30, 0.78)",
               backdropFilter: "blur(20px)",
               WebkitBackdropFilter: "blur(20px)",
               border: "1px solid rgba(255, 255, 255, 0.12)",
               boxShadow: "0 20px 50px rgba(0,0,0,0.5), 0 0 30px rgba(129, 140, 248, 0.05)",
+              width: "100%",
+              boxSizing: "border-box",
             }}
           >
             <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 14, flexWrap: "wrap", gap: 10 }}>
               <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
-                <div style={{ width: 38, height: 38, borderRadius: 10, background: "rgba(24, 119, 242, 0.15)", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 18, border: "1px solid rgba(24, 119, 242, 0.3)" }}>
+                <div style={{ width: 38, height: 38, borderRadius: 10, background: "rgba(24, 119, 242, 0.15)", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 18, border: "1px solid rgba(24, 119, 242, 0.3)", flexShrink: 0 }}>
                   📘
                 </div>
                 <div>

@@ -281,18 +281,25 @@ export default function SocialMediaPlannerModal({ onClose }) {
         display: "flex",
         alignItems: "center",
         justifyContent: "center",
-        padding: "8px",
+        padding: "clamp(6px, 2vw, 16px)",
         boxSizing: "border-box",
+        width: "100vw",
+        maxWidth: "100vw",
+        overflowX: "hidden",
+      }}
+      onClick={(e) => {
+        if (e.target === e.currentTarget) onClose();
       }}
     >
       <div
         style={{
           width: "100%",
           maxWidth: 960,
-          maxHeight: "96vh",
-          background: "linear-gradient(180deg, rgba(16, 22, 34, 0.96) 0%, rgba(8, 11, 17, 0.98) 100%)",
+          minWidth: 0,
+          maxHeight: "94vh",
+          background: "linear-gradient(180deg, rgba(16, 22, 34, 0.98) 0%, rgba(8, 11, 17, 0.99) 100%)",
           border: "1px solid rgba(255, 255, 255, 0.14)",
-          borderRadius: 20,
+          borderRadius: "clamp(12px, 3vw, 20px)",
           boxShadow: "0 30px 90px rgba(0, 0, 0, 0.9), 0 0 60px rgba(56, 189, 248, 0.12)",
           display: "flex",
           flexDirection: "column",
@@ -305,40 +312,48 @@ export default function SocialMediaPlannerModal({ onClose }) {
         {/* ── TOP HEADER ── */}
         <div
           style={{
-            padding: "14px 16px",
+            padding: "12px 16px",
             borderBottom: "1px solid rgba(255, 255, 255, 0.08)",
             display: "flex",
-            justifyContent: "space-between",
-            alignItems: "center",
-            flexWrap: "wrap",
-            gap: 10,
+            flexDirection: "column",
+            gap: 8,
             background: "rgba(255, 255, 255, 0.02)",
             width: "100%",
             boxSizing: "border-box",
             flexShrink: 0,
           }}
         >
-          <div style={{ display: "flex", alignItems: "center", gap: 10, flex: "1 1 auto", minWidth: 0 }}>
-            <div
-              style={{
-                width: 38,
-                height: 38,
-                borderRadius: 10,
-                background: "linear-gradient(135deg, rgba(56, 189, 248, 0.2) 0%, rgba(16, 185, 129, 0.2) 100%)",
-                border: "1px solid rgba(56, 189, 248, 0.3)",
-                display: "flex",
-                alignItems: "center",
-                justifyContent: "center",
-                fontSize: 20,
-                flexShrink: 0,
-              }}
-            >
-              📱
-            </div>
-            <div style={{ minWidth: 0 }}>
-              <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
-                <h2 style={{ margin: 0, fontSize: "clamp(15px, 4vw, 19px)", fontWeight: 800, letterSpacing: "-0.02em" }}>
-                  Autonomous Social Media Planner
+          {/* Row 1: App Identity (Left) + Autopilot Toggle & Close Button (Right) */}
+          <div
+            style={{
+              display: "flex",
+              justifyContent: "space-between",
+              alignItems: "center",
+              width: "100%",
+              gap: 8,
+              minWidth: 0,
+            }}
+          >
+            <div style={{ display: "flex", alignItems: "center", gap: 10, minWidth: 0, flex: 1 }}>
+              <div
+                style={{
+                  width: 34,
+                  height: 34,
+                  borderRadius: 10,
+                  background: "linear-gradient(135deg, rgba(56, 189, 248, 0.2) 0%, rgba(16, 185, 129, 0.2) 100%)",
+                  border: "1px solid rgba(56, 189, 248, 0.3)",
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  fontSize: 18,
+                  flexShrink: 0,
+                }}
+              >
+                📱
+              </div>
+              <div style={{ minWidth: 0, display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+                <h2 style={{ margin: 0, fontSize: "clamp(15px, 3.5vw, 19px)", fontWeight: 800, letterSpacing: "-0.02em", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
+                  Social Media Planner
                 </h2>
                 <span
                   style={{
@@ -367,54 +382,58 @@ export default function SocialMediaPlannerModal({ onClose }) {
                   {config.enabled ? "ACTIVE" : "PAUSED"}
                 </span>
               </div>
-              <p style={{ margin: "2px 0 0 0", fontSize: 12, color: "#94a3b8" }}>
-                AI-driven creative graphic posters & daily publishing to Meta feeds.
-              </p>
+            </div>
+
+            {/* Controls pinned safely on top right */}
+            <div style={{ display: "flex", alignItems: "center", gap: 8, flexShrink: 0 }}>
+              <button
+                onClick={handleToggleEnabled}
+                style={{
+                  padding: "6px 12px",
+                  borderRadius: 8,
+                  fontSize: 11.5,
+                  fontWeight: 700,
+                  cursor: "pointer",
+                  border: "none",
+                  background: config.enabled
+                    ? "linear-gradient(135deg, #10b981 0%, #059669 100%)"
+                    : "rgba(255, 255, 255, 0.08)",
+                  color: config.enabled ? "#042416" : "#cbd5e1",
+                  boxShadow: config.enabled ? "0 0 20px rgba(16, 185, 129, 0.35)" : "none",
+                  transition: "all 0.2s ease",
+                  whiteSpace: "nowrap",
+                }}
+              >
+                {config.enabled ? "Autopilot ON ✓" : "Turn ON Autopilot"}
+              </button>
+
+              <button
+                onClick={onClose}
+                aria-label="Close modal"
+                style={{
+                  width: 32,
+                  height: 32,
+                  borderRadius: 8,
+                  border: "1px solid rgba(255, 255, 255, 0.1)",
+                  background: "rgba(255, 255, 255, 0.04)",
+                  color: "#94a3b8",
+                  cursor: "pointer",
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  fontSize: 16,
+                  flexShrink: 0,
+                }}
+              >
+                ✕
+              </button>
             </div>
           </div>
 
-          <div style={{ display: "flex", alignItems: "center", gap: 8, flexShrink: 0, marginLeft: "auto" }}>
-            <button
-              onClick={handleToggleEnabled}
-              style={{
-                padding: "7px 14px",
-                borderRadius: 9,
-                fontSize: 12,
-                fontWeight: 700,
-                cursor: "pointer",
-                border: "none",
-                background: config.enabled
-                  ? "linear-gradient(135deg, #10b981 0%, #059669 100%)"
-                  : "rgba(255, 255, 255, 0.08)",
-                color: config.enabled ? "#042416" : "#cbd5e1",
-                boxShadow: config.enabled ? "0 0 20px rgba(16, 185, 129, 0.35)" : "none",
-                transition: "all 0.2s ease",
-                whiteSpace: "nowrap",
-              }}
-            >
-              {config.enabled ? "Autopilot ON ✓" : "Turn ON Autopilot"}
-            </button>
-
-            <button
-              onClick={onClose}
-              style={{
-                width: 32,
-                height: 32,
-                borderRadius: 8,
-                border: "1px solid rgba(255, 255, 255, 0.1)",
-                background: "rgba(255, 255, 255, 0.04)",
-                color: "#94a3b8",
-                cursor: "pointer",
-                display: "flex",
-                alignItems: "center",
-                justifyContent: "center",
-                fontSize: 16,
-                flexShrink: 0,
-              }}
-            >
-              ✕
-            </button>
-          </div>
+          {/* Row 2: Subtitle text */}
+          <p style={{ margin: 0, fontSize: 12, color: "#94a3b8", lineHeight: 1.4, paddingLeft: 44 }}>
+            AI-driven creative graphic posters & daily publishing to Meta feeds.
+          </p>
         </div>
 
         {/* ── TABS NAVIGATION (TOUCH SCROLLABLE) ── */}
@@ -422,7 +441,7 @@ export default function SocialMediaPlannerModal({ onClose }) {
           style={{
             display: "flex",
             gap: 6,
-            padding: "10px 16px",
+            padding: "8px 12px",
             borderBottom: "1px solid rgba(255, 255, 255, 0.08)",
             background: "rgba(10, 14, 23, 0.7)",
             overflowX: "auto",
@@ -432,7 +451,7 @@ export default function SocialMediaPlannerModal({ onClose }) {
             width: "100%",
             boxSizing: "border-box",
             flexShrink: 0,
-            minHeight: 48,
+            minHeight: 44,
             alignItems: "center",
           }}
         >
@@ -445,7 +464,7 @@ export default function SocialMediaPlannerModal({ onClose }) {
               key={tab.id}
               onClick={() => setActiveTab(tab.id)}
               style={{
-                padding: "7px 14px",
+                padding: "6px 12px",
                 borderRadius: 8,
                 fontSize: 12,
                 fontWeight: 700,
@@ -508,7 +527,7 @@ export default function SocialMediaPlannerModal({ onClose }) {
                   </strong>
                 </div>
 
-                <div style={{ display: "flex", gap: 8, flexWrap: "wrap", width: "100%" }}>
+                <div style={{ display: "flex", gap: 8, flexWrap: "wrap", width: "100%", boxSizing: "border-box" }}>
                   <button
                     onClick={handleTestPostNow}
                     disabled={testingPost}
@@ -525,7 +544,8 @@ export default function SocialMediaPlannerModal({ onClose }) {
                         : "1px solid rgba(56, 189, 248, 0.3)",
                       color: (!isOwner && (config.testPostsUsed || 0) >= 1) ? "#94a3b8" : "#38bdf8",
                       cursor: testingPost ? "not-allowed" : (!isOwner && (config.testPostsUsed || 0) >= 1) ? "not-allowed" : "pointer",
-                      flex: "1 1 130px",
+                      flex: "1 1 140px",
+                      minWidth: 0,
                       textAlign: "center",
                       opacity: (!isOwner && (config.testPostsUsed || 0) >= 1) ? 0.75 : 1,
                     }}
@@ -551,7 +571,8 @@ export default function SocialMediaPlannerModal({ onClose }) {
                       border: "1px solid rgba(16, 185, 129, 0.3)",
                       color: "#34d399",
                       cursor: generatingQueue ? "not-allowed" : "pointer",
-                      flex: "1 1 150px",
+                      flex: "1 1 140px",
+                      minWidth: 0,
                       textAlign: "center",
                     }}
                   >
@@ -561,7 +582,7 @@ export default function SocialMediaPlannerModal({ onClose }) {
               </div>
 
               {/* Queue List / Grid */}
-              <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+              <div style={{ display: "flex", flexDirection: "column", gap: 12, width: "100%", boxSizing: "border-box" }}>
                 {(config.queue || []).map((item, idx) => {
                   const badge = pillarBadges[item.pillar] || { label: "💡 Post", color: "#38bdf8", bg: "rgba(56, 189, 248, 0.1)" };
                   const isRegen = regeneratingIdx === idx;
@@ -571,7 +592,7 @@ export default function SocialMediaPlannerModal({ onClose }) {
                     <div
                       key={idx}
                       style={{
-                        padding: "16px 20px",
+                        padding: "14px 16px",
                         borderRadius: 14,
                         background: isPublished
                           ? "rgba(16, 185, 129, 0.05)"
@@ -584,9 +605,11 @@ export default function SocialMediaPlannerModal({ onClose }) {
                         display: "flex",
                         justifyContent: "space-between",
                         alignItems: "center",
-                        gap: 16,
+                        gap: 12,
                         flexWrap: "wrap",
                         transition: "all 0.2s ease",
+                        width: "100%",
+                        boxSizing: "border-box",
                       }}
                     >
                       <div style={{ display: "flex", alignItems: "flex-start", gap: 12, flex: "1 1 auto", minWidth: 0 }}>
@@ -659,7 +682,7 @@ export default function SocialMediaPlannerModal({ onClose }) {
 
                       {/* Action buttons */}
                       {!isPublished && (
-                        <div style={{ display: "flex", gap: 8 }}>
+                        <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginLeft: "auto" }}>
                           <button
                             onClick={() => handleOpenEdit(idx, item)}
                             style={{
@@ -962,7 +985,7 @@ export default function SocialMediaPlannerModal({ onClose }) {
                   </p>
                 </div>
               ) : (
-                <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(280px, 1fr))", gap: 16 }}>
+                <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(min(100%, 260px), 1fr))", gap: 16, width: "100%", boxSizing: "border-box" }}>
                   {config.history.map((hist, hIdx) => (
                     <div
                       key={hIdx}
