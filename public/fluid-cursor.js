@@ -46,7 +46,7 @@ function initFluidSimulation() {
     canvas.style.zIndex = '999999';
     canvas.style.pointerEvents = 'none';
     canvas.style.display = 'block';
-    canvas.style.opacity = '0.9';
+    canvas.style.opacity = '0.7';
 
 
     // Simulation section
@@ -60,13 +60,13 @@ function initFluidSimulation() {
         SIM_RESOLUTION: 128,
         DYE_RESOLUTION: 1024,
         CAPTURE_RESOLUTION: 512,
-        DENSITY_DISSIPATION: 2.8,
-        VELOCITY_DISSIPATION: 1.2,
+        DENSITY_DISSIPATION: 5.5,   // Higher = evaporates & vanishes much faster (default was 2.8)
+        VELOCITY_DISSIPATION: 2.5,  // Higher = motion slows down quickly (default was 1.2)
         PRESSURE: 0.8,
         PRESSURE_ITERATIONS: 20,
         CURL: 25,
-        SPLAT_RADIUS: 0.20,
-        SPLAT_FORCE: 5000,
+        SPLAT_RADIUS: 0.12,          // Smaller = sleeker, thinner cursor trail (default was 0.20)
+        SPLAT_FORCE: 4000,
         SHADING: true,
         COLORFUL: true,
         COLOR_UPDATE_SPEED: 10,
@@ -76,12 +76,18 @@ function initFluidSimulation() {
         BLOOM: true,
         BLOOM_ITERATIONS: 6,
         BLOOM_RESOLUTION: 256,
-        BLOOM_INTENSITY: 0.22,
+        BLOOM_INTENSITY: 0.14,       // Lower = softer, cleaner glow (default was 0.22)
         BLOOM_THRESHOLD: 0.4,
         BLOOM_SOFT_KNEE: 0.7,
         SUNRAYS: false,
         SUNRAYS_RESOLUTION: 196,
         SUNRAYS_WEIGHT: 0.1,
+    };
+
+    // Expose config globally so you can test & tweak values live in browser DevTools Console:
+    // e.g. fluidConfig.DENSITY_DISSIPATION = 7.0;
+    if (typeof window !== 'undefined') {
+        window.fluidConfig = config;
     }
 
     function pointerPrototype() {
