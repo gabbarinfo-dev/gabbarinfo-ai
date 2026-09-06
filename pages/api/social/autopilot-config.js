@@ -1,10 +1,87 @@
 // pages/api/social/autopilot-config.js
 import { getServerSession } from "next-auth/next";
 import { authOptions } from "../auth/[...nextauth]";
-import { supabaseServer } from "../../../lib/supabaseServer";
+import { supabaseServer } from "../../../lib/supabaseServer.js";
+import { executeFacebookPost } from "../../../lib/execute-facebook-post.js";
+import { executeInstagramPost } from "../../../lib/execute-instagram-post.js";
 import OpenAI from "openai";
 
 const supabase = supabaseServer;
+
+async function generateSocialVisual(prompt, label = "social") {
+  const apiKey = process.env.OPENAI_API_KEY;
+
+  if (apiKey) {
+    try {
+      const openai = new OpenAI({ apiKey });
+      const modelToUse = process.env.OPENAI_IMAGE_MODEL || "dall-e-3";
+      console.log(`[Social Autopilot] Generating visual with OpenAI (${modelToUse})...`);
+
+      let response;
+      try {
+        response = await openai.images.generate({
+          model: modelToUse,
+          prompt,
+          size: "1024x1024",
+        });
+      } catch (err) {
+        console.warn(`[Social Autopilot] Primary model failed, trying dall-e-2:`, err.message);
+        response = await openai.images.generate({
+          model: "dall-e-2",
+          prompt,
+          size: "1024x1024",
+        });
+      }
+
+      let imgBuffer = null;
+      if (response.data?.[0]?.b64_json) {
+        imgBuffer = Buffer.from(response.data[0].b64_json, "base64");
+      } else if (response.data?.[0]?.url) {
+        const fetchRes = await fetch(response.data[0].url);
+        imgBuffer = Buffer.from(await fetchRes.arrayBuffer());
+      }
+
+      if (imgBuffer) {
+        const fileName = `social_ai_${Date.now()}_${Math.random().toString(36).substring(7)}.png`;
+        const { data: uploadData, error: uploadErr } = await supabase.storage
+          .from("instagram-creatives")
+          .upload(fileName, imgBuffer, { contentType: "image/png", upsert: true });
+
+        if (!uploadErr && uploadData) {
+          const { data: pubUrl } = supabase.storage.from("instagram-creatives").getPublicUrl(fileName);
+          return pubUrl.publicUrl;
+        }
+      }
+    } catch (e) {
+      console.warn("[Social Autopilot] OpenAI visual generation error:", e.message);
+    }
+  }
+
+  // Pollinations reliable high-speed fallback
+  try {
+    const encoded = encodeURIComponent(prompt);
+    const pollinationsUrl = `https://image.pollinations.ai/prompt/${encoded}?width=1024&height=1024&nologo=true&seed=${Math.floor(Math.random() * 1000000)}`;
+    const pollRes = await fetch(pollinationsUrl);
+    if (pollRes.ok) {
+      const pollBuf = Buffer.from(await pollRes.arrayBuffer());
+      const fileName = `social_poll_${Date.now()}_${Math.random().toString(36).substring(7)}.png`;
+      const { data: uploadData, error: uploadErr } = await supabase.storage
+        .from("instagram-creatives")
+        .upload(fileName, pollBuf, { contentType: "image/png", upsert: true });
+
+      if (!uploadErr && uploadData) {
+        const { data: pubUrl } = supabase.storage.from("instagram-creatives").getPublicUrl(fileName);
+        return pubUrl.publicUrl;
+      }
+      return pollinationsUrl;
+    }
+    return pollinationsUrl;
+  } catch (pollErr) {
+    console.warn("[Social Autopilot] Pollinations fallback error:", pollErr.message);
+  }
+
+  return "https://images.unsplash.com/photo-1460925895917-afdab827c52f?w=1024&q=80";
+}
 
 // 5 Core Marketing Pillars for high engagement & conversion
 const CONTENT_PILLARS = [
@@ -367,6 +444,181 @@ Respond ONLY in JSON: { "hook": "short catchy hook (4-7 words)", "topic": "speci
         return res.status(200).json({ ok: true, updatedItem: queue[index], queue });
       }
 
+      // ── ACTION: TEST POST NOW (IMMEDIATE SINGLE POST ON-DEMAND) ──
+      if (action === "test-post") {
+        console.log(`[Social Autopilot] Executing immediate test post for ${normalizedEmail}...`);
+
+        // Check Meta Connection
+        const { data: meta } = await supabase
+          .from("meta_connections")
+          .select("*")
+          .ilike("email", normalizedEmail)
+          .order("created_at", { ascending: false })
+          .limit(1)
+          .maybeSingle();
+
+        const hasFacebook = Boolean(meta?.fb_page_id || meta?.fb_business_id || process.env.FB_PAGE_ID);
+        const hasInstagram = Boolean(meta?.ig_business_id || meta?.instagram_actor_id);
+
+        // Ensure queue exists
+        let queue = Array.isArray(current.queue) && current.queue.length > 0
+          ? current.queue
+          : buildFallbackQueue(current.services || ["Business Growth"], current.businessName || meta?.business_name || "GabbarInfo", 30);
+
+        // Pick next pending item or first item
+        let nextIndex = queue.findIndex(q => q.status === "pending");
+        if (nextIndex === -1) nextIndex = 0;
+        const targetItem = { ...queue[nextIndex] };
+
+        const businessName = current.businessName || meta?.business_name || "GabbarInfo";
+        const service = targetItem.service || (current.services && current.services[0]) || "Business Growth";
+        const topic = targetItem.topic || "Practical tips for business growth";
+        const hook = targetItem.hook || "Growth Insights";
+
+        // Synthesize Graphic Design Poster
+        const imagePrompt = `Award-winning commercial graphic design poster for social media advertising. Subject: "${service}" for brand "${businessName}". Theme: "${hook}: ${topic}". Sleek modern commercial studio lighting, vibrant colors, 3D geometric accents, high contrast, clean agency composition, pristine 4K quality, no text watermark.`;
+        const imageUrl = await generateSocialVisual(imagePrompt);
+
+        // Synthesize Persuasive Caption & Hashtags
+        let caption = `📢 ${hook.toUpperCase()}\n\n${topic}\n\nRunning a business means staying ahead of the curve. At ${businessName}, we help you turn complex digital challenges into predictable revenue.\n\n👉 Send us a message or visit our website to learn more!\n\n#${service.replace(/[^a-zA-Z0-9]/g, "")} #BusinessGrowth #Marketing #Entrepreneurship #${businessName.replace(/[^a-zA-Z0-9]/g, "")}`;
+
+        const apiKey = process.env.OPENAI_API_KEY;
+        if (apiKey) {
+          try {
+            const openai = new OpenAI({ apiKey });
+            const capResp = await openai.chat.completions.create({
+              model: "gpt-4o-mini",
+              messages: [
+                {
+                  role: "system",
+                  content: "You are a master social media copywriter. Write a punchy, highly engaging caption for Instagram and Facebook with a strong hook, value explanation, bullet points, call to action, and 7-9 relevant hashtags.",
+                },
+                {
+                  role: "user",
+                  content: `Business: ${businessName}\nService: ${service}\nHook: ${hook}\nTopic: ${topic}`,
+                },
+              ],
+            });
+            if (capResp.choices[0]?.message?.content) {
+              caption = capResp.choices[0].message.content.trim();
+            }
+          } catch (capErr) {
+            console.warn("[Social Autopilot] AI caption generation failed:", capErr.message);
+          }
+        }
+
+        // Determine destination: respect current.destination, fallback to connection capability
+        let destination = current.destination || (hasFacebook && !hasInstagram ? "FACEBOOK_ONLY" : "BOTH");
+        if (destination === "BOTH" && !hasInstagram && hasFacebook) {
+          destination = "FACEBOOK_ONLY";
+        }
+
+        const publishedTo = {};
+        let fbPostUrl = null;
+        let igPostUrl = null;
+
+        // 1. Facebook
+        if (destination === "BOTH" || destination === "FACEBOOK_ONLY") {
+          try {
+            const fbResult = await executeFacebookPost({
+              userEmail: normalizedEmail,
+              imageUrl,
+              caption,
+            });
+            publishedTo.facebook = {
+              ok: true,
+              id: fbResult?.postId || fbResult?.photoId || "posted",
+              postUrl: fbResult?.postUrl,
+            };
+            fbPostUrl = fbResult?.postUrl;
+          } catch (fbErr) {
+            console.error(`[Social Autopilot] Facebook publish error:`, fbErr.message);
+            publishedTo.facebook = { ok: false, error: fbErr.message };
+          }
+        }
+
+        // 2. Instagram
+        if (destination === "BOTH" || destination === "INSTAGRAM_ONLY") {
+          try {
+            const igResult = await executeInstagramPost({
+              userEmail: normalizedEmail,
+              imageUrl,
+              caption,
+            });
+            publishedTo.instagram = {
+              ok: true,
+              id: igResult?.id || "posted",
+              postUrl: igResult?.postUrl || "https://www.instagram.com",
+            };
+            igPostUrl = igResult?.postUrl || "https://www.instagram.com";
+          } catch (igErr) {
+            console.error(`[Social Autopilot] Instagram publish error:`, igErr.message);
+            publishedTo.instagram = { ok: false, error: igErr.message };
+          }
+        }
+
+        // Check if publication succeeded for designated target
+        const fbFailed = (destination === "BOTH" || destination === "FACEBOOK_ONLY") && !publishedTo.facebook?.ok;
+        const igFailed = (destination === "BOTH" || destination === "INSTAGRAM_ONLY") && !publishedTo.instagram?.ok;
+
+        if (fbFailed && (igFailed || destination === "FACEBOOK_ONLY")) {
+          const errors = [
+            publishedTo.facebook?.error ? `Facebook: ${publishedTo.facebook.error}` : null,
+            publishedTo.instagram?.error ? `Instagram: ${publishedTo.instagram.error}` : null,
+          ].filter(Boolean).join(" | ");
+          return res.status(400).json({ ok: false, error: errors || "Publishing to designated destination failed." });
+        }
+
+        const now = new Date();
+        targetItem.status = "published";
+        targetItem.publishedAt = now.toISOString();
+        targetItem.publishedImageUrl = imageUrl;
+        targetItem.publishedTo = publishedTo;
+        queue[nextIndex] = targetItem;
+
+        current.queue = queue;
+        current.lastPublishedAt = now.toISOString();
+        current.publishedCount = (current.publishedCount || 0) + 1;
+        current.destination = destination;
+
+        if (!Array.isArray(current.history)) current.history = [];
+        current.history.unshift({
+          date: now.toISOString(),
+          day: targetItem.day,
+          topic,
+          hook,
+          service,
+          imageUrl,
+          destination,
+          publishedTo,
+          postUrl: fbPostUrl || igPostUrl || null,
+        });
+
+        if (current.history.length > 50) current.history = current.history.slice(0, 50);
+
+        if (mem?.id) {
+          await supabase.from("agent_memory").update({ content: JSON.stringify(current), updated_at: now.toISOString() }).eq("id", mem.id);
+        } else {
+          await supabase.from("agent_memory").insert({
+            email: normalizedEmail,
+            memory_type: autoMemoryKey,
+            content: JSON.stringify(current),
+            created_at: now.toISOString(),
+            updated_at: now.toISOString(),
+          });
+        }
+
+        return res.status(200).json({
+          ok: true,
+          message: "Autonomous social post published successfully!",
+          publishedItem: targetItem,
+          postUrl: fbPostUrl || igPostUrl || null,
+          publishedTo,
+          destination,
+          config: current,
+        });
+      }
+
       return res.status(400).json({ ok: false, error: "Unknown action" });
     } catch (err) {
       console.error("[Social Autopilot] POST error:", err);
@@ -376,3 +628,7 @@ Respond ONLY in JSON: { "hook": "short catchy hook (4-7 words)", "topic": "speci
 
   return res.status(405).json({ ok: false, error: "Method not allowed" });
 }
+
+export const config = {
+  maxDuration: 60,
+};

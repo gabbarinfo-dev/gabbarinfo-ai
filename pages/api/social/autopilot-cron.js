@@ -16,7 +16,7 @@ async function generateSocialVisual(prompt, label = "social") {
   if (apiKey) {
     try {
       const openai = new OpenAI({ apiKey });
-      const modelToUse = process.env.OPENAI_IMAGE_MODEL || "gpt-image-2";
+      const modelToUse = process.env.OPENAI_IMAGE_MODEL || "dall-e-3";
       console.log(`[Social Cron] Generating visual with OpenAI (${modelToUse})...`);
 
       let response;
@@ -29,7 +29,7 @@ async function generateSocialVisual(prompt, label = "social") {
       } catch (err) {
         console.warn(`[Social Cron] Primary model failed, trying fallback:`, err.message);
         response = await openai.images.generate({
-          model: "gpt-image-1",
+          model: "dall-e-2",
           prompt,
           size: "1024x1024",
         });
@@ -75,12 +75,14 @@ async function generateSocialVisual(prompt, label = "social") {
         const { data: pubUrl } = supabase.storage.from("instagram-creatives").getPublicUrl(fileName);
         return pubUrl.publicUrl;
       }
+      return pollinationsUrl;
     }
+    return pollinationsUrl;
   } catch (pollErr) {
     console.warn("[Social Cron] Pollinations fallback error:", pollErr.message);
   }
 
-  return null;
+  return "https://images.unsplash.com/photo-1460925895917-afdab827c52f?w=1024&q=80";
 }
 
 export default async function handler(req, res) {
@@ -107,7 +109,7 @@ export default async function handler(req, res) {
     for (const item of configs || []) {
       try {
         const config = JSON.parse(item.content);
-        if (!config.enabled) continue;
+        if (!config.enabled && !req.query?.force) continue;
 
         // Specific single-user trigger override
         if (req.query?.email && req.query.email.toLowerCase() !== item.email.toLowerCase()) {
@@ -270,9 +272,17 @@ export default async function handler(req, res) {
       }
     }
 
+    if (req.query?.force && results.length === 0) {
+      return res.status(400).json({ ok: false, error: "No matching social configuration found to publish. Please open the planner to configure your settings." });
+    }
+
     return res.status(200).json({ ok: true, executedCount: results.length, results });
   } catch (cronErr) {
     console.error("[Social Autopilot Cron] Fatal error:", cronErr);
     return res.status(500).json({ ok: false, error: cronErr.message });
   }
 }
+
+export const config = {
+  maxDuration: 60,
+};

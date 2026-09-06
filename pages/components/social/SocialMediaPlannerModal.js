@@ -168,20 +168,35 @@ export default function SocialMediaPlannerModal({ onClose }) {
   }
 
   async function handleTestPostNow() {
+    const destLabel =
+      config.destination === "BOTH"
+        ? "Both Facebook Page & Instagram"
+        : config.destination === "FACEBOOK_ONLY"
+        ? "Facebook Page"
+        : "Instagram";
+
     const confirmPost = confirm(
-      `Post an immediate test creative now to your selected destination (${config.destination})?`
+      `Post an immediate live test creative now to ${destLabel}?`
     );
     if (!confirmPost) return;
 
     setTestingPost(true);
     try {
-      const res = await fetch(`/api/social/autopilot-cron?force=true`);
+      const res = await fetch("/api/social/autopilot-config", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "test-post" }),
+      });
       const data = await res.json();
       if (data.ok) {
-        alert("🎉 Success! Autonomous social post published successfully.");
+        if (data.config) {
+          setConfig(data.config);
+        }
+        const postLink = data.postUrl ? `\n\nDirect Link: ${data.postUrl}` : "";
+        alert(`🎉 Success! Autonomous test creative published successfully to ${destLabel}!${postLink}`);
         fetchConfig();
       } else {
-        alert("Publish error: " + (data.error || "Unknown error"));
+        alert("Publishing error: " + (data.error || "Unknown error"));
       }
     } catch (e) {
       alert("Test post failed: " + e.message);
@@ -924,6 +939,32 @@ export default function SocialMediaPlannerModal({ onClose }) {
                         <p style={{ margin: "0 0 12px 0", fontSize: 12, color: "#94a3b8", lineHeight: 1.4, flex: 1 }}>
                           {hist.topic}
                         </p>
+
+                        {hist.postUrl && (
+                          <a
+                            href={hist.postUrl}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            style={{
+                              display: "inline-flex",
+                              alignItems: "center",
+                              justifyContent: "center",
+                              gap: 6,
+                              padding: "8px 12px",
+                              borderRadius: 8,
+                              background: "rgba(56, 189, 248, 0.12)",
+                              border: "1px solid rgba(56, 189, 248, 0.25)",
+                              color: "#38bdf8",
+                              fontSize: 12,
+                              fontWeight: 700,
+                              textDecoration: "none",
+                              marginTop: 6,
+                              transition: "all 0.2s ease",
+                            }}
+                          >
+                            View Live Post ↗
+                          </a>
+                        )}
                       </div>
                     </div>
                   ))}
