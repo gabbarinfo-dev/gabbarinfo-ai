@@ -139,10 +139,10 @@ export default function WordPressSiteConnect() {
   const connectedProfiles = Object.keys(allConnections || {}).filter(k => allConnections[k]?.siteUrl);
 
   return (
-    <div style={{ marginTop: 8 }}>
+    <div style={{ marginTop: 8, width: "100%", maxWidth: "100%" }}>
       {/* Business Selector Header */}
-      <div style={{ display: "flex", gap: 12, alignItems: "center", marginBottom: 18, flexWrap: "wrap" }}>
-        <label style={{ fontSize: 13, fontWeight: 700, color: "#94a3b8" }}>Target Business Profile:</label>
+      <div style={{ display: "flex", gap: 10, alignItems: "center", marginBottom: 18, flexWrap: "wrap", width: "100%", maxWidth: "100%" }}>
+        <label style={{ fontSize: 13, fontWeight: 700, color: "#94a3b8", flexShrink: 0 }}>Target Business Profile:</label>
         <select
           value={businessName}
           onChange={(e) => {
@@ -150,7 +150,7 @@ export default function WordPressSiteConnect() {
             if (e.target.value !== "custom") setCustomBusiness("");
           }}
           style={{
-            padding: "9px 16px",
+            padding: "9px 14px",
             borderRadius: 8,
             border: "1px solid rgba(255, 255, 255, 0.16)",
             fontSize: 13,
@@ -159,6 +159,12 @@ export default function WordPressSiteConnect() {
             fontWeight: 700,
             cursor: "pointer",
             outline: "none",
+            maxWidth: "100%",
+            width: "auto",
+            minWidth: 0,
+            flex: "1 1 220px",
+            textOverflow: "ellipsis",
+            overflow: "hidden",
           }}
         >
           {connectedProfiles.length > 0 ? (
@@ -190,7 +196,9 @@ export default function WordPressSiteConnect() {
               fontSize: 13,
               background: "#0d111c",
               color: "#fff",
-              minWidth: 240,
+              minWidth: 0,
+              width: "100%",
+              flex: "1 1 200px",
               outline: "none",
             }}
           />
@@ -204,24 +212,24 @@ export default function WordPressSiteConnect() {
         </div>
       ) : connection?.siteUrl ? (
         /* 🟢 CONNECTED STATE (DARK LUXURY) */
-        <div style={{ background: "rgba(16, 22, 34, 0.8)", border: "1px solid rgba(56, 189, 248, 0.25)", borderRadius: 14, padding: 20 }}>
+        <div style={{ background: "rgba(16, 22, 34, 0.8)", border: "1px solid rgba(56, 189, 248, 0.25)", borderRadius: 14, padding: "16px 18px", width: "100%", maxWidth: "100%", boxSizing: "border-box" }}>
           <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: 14 }}>
-            <div>
-              <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                <span style={{ height: 10, width: 10, borderRadius: "50%", background: "#10b981", display: "inline-block", boxShadow: "0 0 10px #10b981" }}></span>
-                <span style={{ fontWeight: 800, fontSize: 16, color: "#f8fafc" }}>Connected: {connection.siteUrl}</span>
+            <div style={{ minWidth: 0, flex: "1 1 240px" }}>
+              <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+                <span style={{ height: 10, width: 10, borderRadius: "50%", background: "#10b981", display: "inline-block", boxShadow: "0 0 10px #10b981", flexShrink: 0 }}></span>
+                <span style={{ fontWeight: 800, fontSize: 15, color: "#f8fafc", wordBreak: "break-all", overflowWrap: "anywhere" }}>Connected: {connection.siteUrl}</span>
                 {connection.isWooCommerce && (
                   <span style={{ fontSize: 11, background: "rgba(56, 189, 248, 0.12)", border: "1px solid rgba(56, 189, 248, 0.3)", padding: "2px 8px", borderRadius: 4, color: "#38bdf8", fontWeight: 700 }}>
                     WooCommerce Active
                   </span>
                 )}
               </div>
-              <div style={{ fontSize: 13, color: "#94a3b8", marginTop: 6 }}>
+              <div style={{ fontSize: 13, color: "#94a3b8", marginTop: 6, wordBreak: "break-word" }}>
                 Site: {connection.siteName || "WordPress"} · Plugin v{connection.pluginVersion || "1.0.0"} · Profile: <strong style={{ color: "#38bdf8" }}>{activeBusiness}</strong>
               </div>
             </div>
 
-            <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
+            <div style={{ display: "flex", gap: 10, flexWrap: "wrap", width: "auto" }}>
               <a
                 href="/seo"
                 className="btn-gabbar-primary"

@@ -210,69 +210,77 @@ export default function SocialMediaPlannerModal({ onClose }) {
         display: "flex",
         alignItems: "center",
         justifyContent: "center",
-        padding: 16,
+        padding: "8px",
+        boxSizing: "border-box",
       }}
     >
       <div
         style={{
           width: "100%",
           maxWidth: 960,
-          maxHeight: "92vh",
+          maxHeight: "96vh",
           background: "linear-gradient(180deg, rgba(16, 22, 34, 0.96) 0%, rgba(8, 11, 17, 0.98) 100%)",
           border: "1px solid rgba(255, 255, 255, 0.14)",
-          borderRadius: 24,
+          borderRadius: 20,
           boxShadow: "0 30px 90px rgba(0, 0, 0, 0.9), 0 0 60px rgba(56, 189, 248, 0.12)",
           display: "flex",
           flexDirection: "column",
           overflow: "hidden",
           color: "#f8fafc",
           fontFamily: "Plus Jakarta Sans, sans-serif",
+          boxSizing: "border-box",
         }}
       >
         {/* ── TOP HEADER ── */}
         <div
           style={{
-            padding: "22px 28px",
+            padding: "14px 16px",
             borderBottom: "1px solid rgba(255, 255, 255, 0.08)",
             display: "flex",
             justifyContent: "space-between",
             alignItems: "center",
+            flexWrap: "wrap",
+            gap: 10,
             background: "rgba(255, 255, 255, 0.02)",
+            width: "100%",
+            boxSizing: "border-box",
           }}
         >
-          <div style={{ display: "flex", alignItems: "center", gap: 14 }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 10, flex: "1 1 auto", minWidth: 0 }}>
             <div
               style={{
-                width: 44,
-                height: 44,
-                borderRadius: 12,
+                width: 38,
+                height: 38,
+                borderRadius: 10,
                 background: "linear-gradient(135deg, rgba(56, 189, 248, 0.2) 0%, rgba(16, 185, 129, 0.2) 100%)",
                 border: "1px solid rgba(56, 189, 248, 0.3)",
                 display: "flex",
                 alignItems: "center",
                 justifyContent: "center",
-                fontSize: 22,
+                fontSize: 20,
+                flexShrink: 0,
               }}
             >
               📱
             </div>
-            <div>
-              <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-                <h2 style={{ margin: 0, fontSize: 19, fontWeight: 800, letterSpacing: "-0.02em" }}>
+            <div style={{ minWidth: 0 }}>
+              <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+                <h2 style={{ margin: 0, fontSize: "clamp(15px, 4vw, 19px)", fontWeight: 800, letterSpacing: "-0.02em" }}>
                   Autonomous Social Media Planner
                 </h2>
                 <span
                   style={{
                     display: "inline-flex",
                     alignItems: "center",
-                    gap: 6,
-                    padding: "3px 10px",
+                    gap: 5,
+                    padding: "2px 8px",
                     borderRadius: 999,
-                    fontSize: 11,
+                    fontSize: 10,
                     fontWeight: 700,
                     background: config.enabled ? "rgba(16, 185, 129, 0.15)" : "rgba(148, 163, 184, 0.1)",
                     color: config.enabled ? "#34d399" : "#94a3b8",
                     border: `1px solid ${config.enabled ? "rgba(16, 185, 129, 0.3)" : "rgba(148, 163, 184, 0.2)"}`,
+                    flexShrink: 0,
                   }}
                 >
                   <span
@@ -284,22 +292,22 @@ export default function SocialMediaPlannerModal({ onClose }) {
                       boxShadow: config.enabled ? "0 0 8px #10b981" : "none",
                     }}
                   />
-                  {config.enabled ? "AUTOPILOT ACTIVE" : "PAUSED"}
+                  {config.enabled ? "ACTIVE" : "PAUSED"}
                 </span>
               </div>
-              <p style={{ margin: "3px 0 0 0", fontSize: 13, color: "#94a3b8" }}>
-                AI-driven creative graphic posters, marketing hooks, and daily publishing to Meta feeds.
+              <p style={{ margin: "2px 0 0 0", fontSize: 12, color: "#94a3b8" }}>
+                AI-driven creative graphic posters & daily publishing to Meta feeds.
               </p>
             </div>
           </div>
 
-          <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 8, flexShrink: 0, marginLeft: "auto" }}>
             <button
               onClick={handleToggleEnabled}
               style={{
-                padding: "8px 18px",
-                borderRadius: 10,
-                fontSize: 13,
+                padding: "7px 14px",
+                borderRadius: 9,
+                fontSize: 12,
                 fontWeight: 700,
                 cursor: "pointer",
                 border: "none",
@@ -309,6 +317,7 @@ export default function SocialMediaPlannerModal({ onClose }) {
                 color: config.enabled ? "#042416" : "#cbd5e1",
                 boxShadow: config.enabled ? "0 0 20px rgba(16, 185, 129, 0.35)" : "none",
                 transition: "all 0.2s ease",
+                whiteSpace: "nowrap",
               }}
             >
               {config.enabled ? "Autopilot ON ✓" : "Turn ON Autopilot"}
@@ -317,8 +326,8 @@ export default function SocialMediaPlannerModal({ onClose }) {
             <button
               onClick={onClose}
               style={{
-                width: 34,
-                height: 34,
+                width: 32,
+                height: 32,
                 borderRadius: 8,
                 border: "1px solid rgba(255, 255, 255, 0.1)",
                 background: "rgba(255, 255, 255, 0.04)",
@@ -327,7 +336,8 @@ export default function SocialMediaPlannerModal({ onClose }) {
                 display: "flex",
                 alignItems: "center",
                 justifyContent: "center",
-                fontSize: 18,
+                fontSize: 16,
+                flexShrink: 0,
               }}
             >
               ✕
@@ -335,43 +345,51 @@ export default function SocialMediaPlannerModal({ onClose }) {
           </div>
         </div>
 
-        {/* ── TABS NAVIGATION ── */}
+        {/* ── TABS NAVIGATION (TOUCH SCROLLABLE) ── */}
         <div
           style={{
             display: "flex",
             gap: 6,
-            padding: "10px 28px",
+            padding: "8px 14px",
             borderBottom: "1px solid rgba(255, 255, 255, 0.08)",
             background: "rgba(10, 14, 23, 0.6)",
+            overflowX: "auto",
+            WebkitOverflowScrolling: "touch",
+            scrollbarWidth: "none",
+            whiteSpace: "nowrap",
+            maxWidth: "100%",
+            boxSizing: "border-box",
           }}
         >
           {[
-            { id: "planner", label: "🗓️ 30-Day Content Queue", count: config.queue?.length || 0 },
-            { id: "settings", label: "⚙️ Schedule & Channel Settings" },
-            { id: "history", label: "📜 Published Posts", count: config.history?.length || config.publishedCount || 0 },
+            { id: "planner", label: "🗓️ 30-Day Queue", count: config.queue?.length || 0 },
+            { id: "settings", label: "⚙️ Schedule & Settings" },
+            { id: "history", label: "📜 Published", count: config.history?.length || config.publishedCount || 0 },
           ].map((tab) => (
             <button
               key={tab.id}
               onClick={() => setActiveTab(tab.id)}
               style={{
-                padding: "8px 16px",
+                padding: "7px 14px",
                 borderRadius: 8,
-                fontSize: 13,
+                fontSize: 12,
                 fontWeight: 700,
                 cursor: "pointer",
                 border: "none",
                 background: activeTab === tab.id ? "rgba(56, 189, 248, 0.15)" : "transparent",
                 color: activeTab === tab.id ? "#38bdf8" : "#94a3b8",
                 transition: "all 0.2s ease",
+                flexShrink: 0,
+                whiteSpace: "nowrap",
               }}
             >
-              {tab.label} {tab.count !== undefined && <span style={{ opacity: 0.7 }}>({tab.count})</span>}
+              {tab.label} {tab.count !== undefined && `(${tab.count})`}
             </button>
           ))}
         </div>
 
-        {/* ── BODY CONTENT ── */}
-        <div style={{ flex: 1, overflowY: "auto", padding: "24px 28px" }}>
+        {/* ── SCROLLABLE BODY ── */}
+        <div style={{ padding: "16px 14px", overflowY: "auto", flex: 1, maxWidth: "100%", boxSizing: "border-box" }}>
           {loading ? (
             <div style={{ textAlign: "center", padding: "60px 0", color: "#94a3b8" }}>
               <div style={{ fontSize: 24, marginBottom: 10 }}>⚡</div>
@@ -389,36 +407,38 @@ export default function SocialMediaPlannerModal({ onClose }) {
                   justifyContent: "space-between",
                   alignItems: "center",
                   flexWrap: "wrap",
-                  gap: 12,
-                  marginBottom: 20,
-                  padding: "14px 18px",
+                  gap: 10,
+                  marginBottom: 16,
+                  padding: "12px 14px",
                   borderRadius: 14,
                   background: "rgba(255, 255, 255, 0.03)",
                   border: "1px solid rgba(255, 255, 255, 0.06)",
+                  maxWidth: "100%",
+                  boxSizing: "border-box",
                 }}
               >
                 <div>
-                  <span style={{ fontSize: 13, color: "#94a3b8" }}>Target Channel: </span>
-                  <strong style={{ color: "#38bdf8", fontSize: 13 }}>
+                  <span style={{ fontSize: 12, color: "#94a3b8" }}>Target: </span>
+                  <strong style={{ color: "#38bdf8", fontSize: 12 }}>
                     {config.destination === "BOTH"
-                      ? "Both Facebook Page & Instagram (Cross-Post)"
+                      ? "Both FB & IG"
                       : config.destination === "FACEBOOK_ONLY"
-                      ? "Facebook Page Only"
+                      ? "Facebook Only"
                       : "Instagram Only"}
                   </strong>
-                  <span style={{ color: "#475569", margin: "0 8px" }}>•</span>
-                  <span style={{ fontSize: 13, color: "#94a3b8" }}>Cadence: </span>
-                  <strong style={{ color: "#34d399", fontSize: 13, textTransform: "capitalize" }}>
+                  <span style={{ color: "#475569", margin: "0 6px" }}>•</span>
+                  <span style={{ fontSize: 12, color: "#94a3b8" }}>Cadence: </span>
+                  <strong style={{ color: "#34d399", fontSize: 12, textTransform: "capitalize" }}>
                     {config.cadence.replace("_", " ")}
                   </strong>
                 </div>
 
-                <div style={{ display: "flex", gap: 10 }}>
+                <div style={{ display: "flex", gap: 8, flexWrap: "wrap", width: "100%" }}>
                   <button
                     onClick={handleTestPostNow}
                     disabled={testingPost}
                     style={{
-                      padding: "8px 14px",
+                      padding: "8px 12px",
                       borderRadius: 8,
                       fontSize: 12,
                       fontWeight: 700,
@@ -426,6 +446,8 @@ export default function SocialMediaPlannerModal({ onClose }) {
                       border: "1px solid rgba(56, 189, 248, 0.3)",
                       color: "#38bdf8",
                       cursor: testingPost ? "not-allowed" : "pointer",
+                      flex: "1 1 130px",
+                      textAlign: "center",
                     }}
                   >
                     {testingPost ? "Publishing Test..." : "🚀 Test Post Now"}
@@ -435,17 +457,19 @@ export default function SocialMediaPlannerModal({ onClose }) {
                     onClick={handleGenerateFullQueue}
                     disabled={generatingQueue}
                     style={{
-                      padding: "8px 14px",
+                      padding: "8px 12px",
                       borderRadius: 8,
                       fontSize: 12,
                       fontWeight: 700,
-                      background: "linear-gradient(135deg, rgba(56, 189, 248, 0.25) 0%, rgba(99, 102, 241, 0.25) 100%)",
-                      border: "1px solid rgba(56, 189, 248, 0.4)",
-                      color: "#ffffff",
+                      background: "rgba(16, 185, 129, 0.12)",
+                      border: "1px solid rgba(16, 185, 129, 0.3)",
+                      color: "#34d399",
                       cursor: generatingQueue ? "not-allowed" : "pointer",
+                      flex: "1 1 150px",
+                      textAlign: "center",
                     }}
                   >
-                    {generatingQueue ? "Generating 30 Days..." : "⚡ Generate Fresh 30-Day Queue"}
+                    {generatingQueue ? "AI Generating..." : "⚡ Generate 30-Day Queue"}
                   </button>
                 </div>
               </div>
@@ -479,11 +503,11 @@ export default function SocialMediaPlannerModal({ onClose }) {
                         transition: "all 0.2s ease",
                       }}
                     >
-                      <div style={{ display: "flex", alignItems: "flex-start", gap: 14, flex: 1, minWidth: 280 }}>
+                      <div style={{ display: "flex", alignItems: "flex-start", gap: 12, flex: "1 1 auto", minWidth: 0 }}>
                         <div
                           style={{
-                            width: 38,
-                            height: 38,
+                            width: 36,
+                            height: 36,
                             borderRadius: 10,
                             background: isPublished ? "rgba(16, 185, 129, 0.2)" : "rgba(255, 255, 255, 0.05)",
                             border: `1px solid ${isPublished ? "rgba(16, 185, 129, 0.4)" : "rgba(255, 255, 255, 0.1)"}`,
@@ -499,7 +523,7 @@ export default function SocialMediaPlannerModal({ onClose }) {
                           {isPublished ? "✓" : `D${item.day || idx + 1}`}
                         </div>
 
-                        <div>
+                        <div style={{ minWidth: 0, flex: 1 }}>
                           <div style={{ display: "flex", gap: 8, alignItems: "center", marginBottom: 6, flexWrap: "wrap" }}>
                             <span
                               style={{
@@ -537,11 +561,11 @@ export default function SocialMediaPlannerModal({ onClose }) {
                             )}
                           </div>
 
-                          <h4 style={{ margin: "0 0 4px 0", fontSize: 15, fontWeight: 700, color: "#ffffff" }}>
+                          <h4 style={{ margin: "0 0 4px 0", fontSize: 15, fontWeight: 700, color: "#ffffff", wordBreak: "break-word", overflowWrap: "anywhere" }}>
                             {item.hook}
                           </h4>
 
-                          <p style={{ margin: 0, fontSize: 13, color: "#94a3b8", lineHeight: 1.4 }}>
+                          <p style={{ margin: 0, fontSize: 13, color: "#94a3b8", lineHeight: 1.4, wordBreak: "break-word", overflowWrap: "anywhere" }}>
                             {item.topic}
                           </p>
                         </div>
@@ -591,26 +615,27 @@ export default function SocialMediaPlannerModal({ onClose }) {
             </div>
           ) : activeTab === "settings" ? (
             /* ═══════════════════════════════════════════
-               TAB 2: CHANNEL & SCHEDULE SETTINGS
+               TAB 2: SCHEDULE & CHANNEL SETTINGS
             ═══════════════════════════════════════════ */
-            <div style={{ display: "flex", flexDirection: "column", gap: 24 }}>
+            <div style={{ display: "flex", flexDirection: "column", gap: 20 }}>
               {/* 1. Destination Selection */}
               <div
                 style={{
-                  padding: "20px 24px",
+                  padding: "16px 18px",
                   borderRadius: 16,
                   background: "rgba(255, 255, 255, 0.02)",
                   border: "1px solid rgba(255, 255, 255, 0.08)",
+                  boxSizing: "border-box",
                 }}
               >
-                <h3 style={{ margin: "0 0 6px 0", fontSize: 16, fontWeight: 800 }}>
+                <h3 style={{ margin: "0 0 6px 0", fontSize: 15, fontWeight: 800 }}>
                   1. Posting Destination Channel
                 </h3>
-                <p style={{ margin: "0 0 16px 0", fontSize: 13, color: "#94a3b8" }}>
+                <p style={{ margin: "0 0 14px 0", fontSize: 13, color: "#94a3b8" }}>
                   Choose where your autonomous graphics and captions will be published:
                 </p>
 
-                <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(240px, 1fr))", gap: 12 }}>
+                <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(140px, 1fr))", gap: 10 }}>
                   {[
                     {
                       id: "BOTH",
@@ -636,7 +661,7 @@ export default function SocialMediaPlannerModal({ onClose }) {
                       key={opt.id}
                       onClick={() => saveConfig({ destination: opt.id })}
                       style={{
-                        padding: "16px 18px",
+                        padding: "14px 16px",
                         borderRadius: 14,
                         cursor: "pointer",
                         background:
@@ -668,10 +693,10 @@ export default function SocialMediaPlannerModal({ onClose }) {
                           </span>
                         )}
                       </div>
-                      <h4 style={{ margin: "0 0 4px 0", fontSize: 14, fontWeight: 700, color: "#ffffff" }}>
+                      <h4 style={{ margin: "0 0 4px 0", fontSize: 13, fontWeight: 700, color: "#ffffff" }}>
                         {opt.title}
                       </h4>
-                      <p style={{ margin: 0, fontSize: 12, color: "#94a3b8", lineHeight: 1.4 }}>
+                      <p style={{ margin: 0, fontSize: 11, color: "#94a3b8", lineHeight: 1.4 }}>
                         {opt.desc}
                       </p>
                     </div>
@@ -703,20 +728,21 @@ export default function SocialMediaPlannerModal({ onClose }) {
               {/* 2. Frequency & Cadence */}
               <div
                 style={{
-                  padding: "20px 24px",
+                  padding: "16px 18px",
                   borderRadius: 16,
                   background: "rgba(255, 255, 255, 0.02)",
                   border: "1px solid rgba(255, 255, 255, 0.08)",
+                  boxSizing: "border-box",
                 }}
               >
-                <h3 style={{ margin: "0 0 6px 0", fontSize: 16, fontWeight: 800 }}>
+                <h3 style={{ margin: "0 0 6px 0", fontSize: 15, fontWeight: 800 }}>
                   2. Autonomous Cadence Frequency
                 </h3>
-                <p style={{ margin: "0 0 16px 0", fontSize: 13, color: "#94a3b8" }}>
+                <p style={{ margin: "0 0 14px 0", fontSize: 13, color: "#94a3b8" }}>
                   How often should GabbarInfo AI automatically generate and publish a creative?
                 </p>
 
-                <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))", gap: 12 }}>
+                <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(130px, 1fr))", gap: 10 }}>
                   {[
                     { id: "daily", label: "Daily (30 Posts / Mo)", desc: "1 fresh post every single day" },
                     { id: "weekly_4", label: "4 Posts / Week", desc: "~16 posts / mo on peak days" },

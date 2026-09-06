@@ -43,6 +43,9 @@ export default function MyApp({ Component, pageProps }) {
           padding: 0;
           background: #080b11;
           color: #f8fafc;
+          overflow-x: hidden;
+          width: 100%;
+          max-width: 100vw;
         }
 
         body {
@@ -51,6 +54,28 @@ export default function MyApp({ Component, pageProps }) {
           -webkit-font-smoothing: antialiased;
           -moz-osx-font-smoothing: grayscale;
           overflow-x: hidden;
+          width: 100%;
+          max-width: 100vw;
+        }
+
+        img, video, canvas, svg {
+          max-width: 100%;
+          height: auto;
+        }
+
+        input, select, textarea {
+          max-width: 100%;
+          box-sizing: border-box;
+        }
+
+        .mobile-scroll-x {
+          overflow-x: auto !important;
+          -webkit-overflow-scrolling: touch !important;
+          scrollbar-width: none !important;
+          -ms-overflow-style: none !important;
+        }
+        .mobile-scroll-x::-webkit-scrollbar {
+          display: none !important;
         }
 
         h1, h2, h3, h4, h5, h6 {
