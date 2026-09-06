@@ -329,8 +329,18 @@ export default function ChatPage() {
     if (isAgentPanelOpen) {
       if (agentMode === "generic") {
         setAgentInstruction("Create A Meta Ads Campaign");
-      } else if (agentMode === "google_ads_plan") {
+      } else if (agentMode === "google_ads_search") {
         setAgentInstruction("Create a Google Search Ads campaign");
+      } else if (agentMode === "google_ads_pmax") {
+        setAgentInstruction("Create a Performance Max campaign");
+      } else if (agentMode === "google_ads_pmax_shopping") {
+        setAgentInstruction("Create a Performance Max Shopping campaign with Merchant Center feed");
+      } else if (agentMode === "google_ads_shopping") {
+        setAgentInstruction("Create a Standard Shopping campaign with Google Merchant Center");
+      } else if (agentMode === "google_ads_display") {
+        setAgentInstruction("Create a Google Display Network campaign");
+      } else if (agentMode === "google_ads_plan") {
+        setAgentInstruction("Create a Google Ads campaign");
       } else if (agentMode === "instagram_post") {
         setAgentInstruction("Publish an Instagram Post");
       } else if (agentMode === "facebook_post") {
@@ -751,7 +761,12 @@ Now respond as GabbarInfo AI.
     const modeLabels = {
       generic: "Meta Ads – Campaign Creator",
       meta_ads_plan: "Meta Ads – Creative & Copy Planner",
-      google_ads_plan: "Google Ads – Campaign planner",
+      google_ads_search: "Google Ads – Search Campaign",
+      google_ads_pmax: "Google Ads – Performance Max",
+      google_ads_pmax_shopping: "Google Ads – PMax Retail Shopping",
+      google_ads_shopping: "Google Ads – Standard Shopping",
+      google_ads_display: "Google Ads – Display Network",
+      google_ads_plan: "Google Ads – Campaign Planner",
       social_plan: "Social media calendar",
       seo_blog: "SEO / Blog planner",
       instagram_post: "Instagram Post Publish",
@@ -1856,13 +1871,24 @@ Now respond as GabbarInfo AI.
                       outline: "none",
                     }}
                   >
-                    <option value="generic">Meta Ads – Campaign Creator (Full Strategy)</option>
-                    <option value="meta_ads_plan">Meta Ads – Creative & Copy Planner</option>
-                    <option value="google_ads_plan">Google Ads – Campaign Planner</option>
-                    <option value="social_plan">Social Media Content Calendar</option>
-                    <option value="seo_blog">SEO & Blog Content Planner</option>
-                    <option value="instagram_post">Instagram Post Publisher</option>
-                    <option value="facebook_post">Facebook Post Publisher</option>
+                    <optgroup label="Google Ads Suite">
+                      <option value="google_ads_search">Google Ads – Search Campaign (Keywords & High Intent)</option>
+                      <option value="google_ads_pmax">Google Ads – Performance Max (Omnichannel Reach)</option>
+                      <option value="google_ads_pmax_shopping">Google Ads – Performance Max Retail (Merchant Center)</option>
+                      <option value="google_ads_shopping">Google Ads – Standard Shopping (Catalog Product Ads)</option>
+                      <option value="google_ads_display">Google Ads – Display Network (Banners & Partner Sites)</option>
+                      <option value="google_ads_plan">Google Ads – Smart Campaign Planner (Auto-Detect Format)</option>
+                    </optgroup>
+                    <optgroup label="Meta Ads Suite">
+                      <option value="generic">Meta Ads – Campaign Creator (Full Strategy)</option>
+                      <option value="meta_ads_plan">Meta Ads – Creative & Copy Planner</option>
+                    </optgroup>
+                    <optgroup label="Social & Organic Marketing">
+                      <option value="social_plan">Social Media Content Calendar</option>
+                      <option value="seo_blog">SEO & Blog Content Planner</option>
+                      <option value="instagram_post">Instagram Post Publisher</option>
+                      <option value="facebook_post">Facebook Post Publisher</option>
+                    </optgroup>
                   </select>
                 </div>
 
@@ -1906,7 +1932,7 @@ Now respond as GabbarInfo AI.
                     value={agentInstruction}
                     onChange={(e) => setAgentInstruction(e.target.value)}
                     rows={6}
-                    placeholder="Example: Create a Google Search campaign for my dental clinic in Ahmedabad with ₹700/day budget, JSON only. Or plan a 30-day Instagram calendar for Bella & Diva Jewellery UK."
+                    placeholder="Example: Create a Performance Max or Search campaign for my business in Ahmedabad with ₹1,000/day budget. Or connect a Merchant Center feed for Shopping product ads."
                     style={{
                       width: "100%",
                       boxSizing: "border-box",

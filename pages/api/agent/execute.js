@@ -232,7 +232,9 @@ export default async function handler(req, res) {
         lowerInstruction.includes("google ads") || lowerInstruction.includes("google ad") ||
         lowerInstruction.includes("google campaign") || lowerInstruction.includes("google search ad") ||
         lowerInstruction.includes("google search campaign") || lowerInstruction.includes("adwords") ||
-        lowerInstruction.includes("google adwords");
+        lowerInstruction.includes("google adwords") || lowerInstruction.includes("performance max") ||
+        lowerInstruction.includes("pmax") || lowerInstruction.includes("shopping campaign") ||
+        lowerInstruction.includes("display campaign") || lowerInstruction.includes("gdn");
 
       if (isGoogleIntent) {
         mode = "google_ads_plan";
@@ -250,7 +252,7 @@ export default async function handler(req, res) {
     }
 
     // 🔒 MODE AUTHORITY GATE — GOOGLE ADS ISOLATION
-    if (mode === "google_ads_plan") {
+    if (mode === "google_ads_plan" || (typeof mode === "string" && mode.startsWith("google_ads"))) {
       return handleGoogleAdsCampaignFlow(req, res, session, body);
     }
 
@@ -4879,17 +4881,78 @@ async function handleGoogleAdsCampaignFlow(req, res, session, body) {
       } catch (_) {}
     }
 
+    // 2b. Detect campaign format intent from mode, instruction, and chat history
+    const activeMode = body.mode || "google_ads_plan";
+    let detectedCampaignType = null;
+    if (activeMode === "google_ads_pmax_shopping") detectedCampaignType = "PERFORMANCE_MAX_SHOPPING";
+    else if (activeMode === "google_ads_pmax") detectedCampaignType = "PERFORMANCE_MAX";
+    else if (activeMode === "google_ads_shopping") detectedCampaignType = "SHOPPING";
+    else if (activeMode === "google_ads_display") detectedCampaignType = "DISPLAY";
+    else if (activeMode === "google_ads_search") detectedCampaignType = "SEARCH";
+
+    // Fallback: check instruction for explicit campaign format intent
+    if (!detectedCampaignType) {
+      const lowerInst = instruction.toLowerCase().trim();
+      if (lowerInst.includes("pmax shopping") || lowerInst.includes("performance max shopping") ||
+          ((lowerInst.includes("performance max") || lowerInst.includes("pmax")) && (lowerInst.includes("shopping") || lowerInst.includes("feed") || lowerInst.includes("merchant") || lowerInst.includes("product") || lowerInst.includes("catalog"))) || lowerInst === "2") {
+        detectedCampaignType = "PERFORMANCE_MAX_SHOPPING";
+      } else if (lowerInst.includes("performance max") || lowerInst.includes("pmax") || lowerInst === "1") {
+        detectedCampaignType = "PERFORMANCE_MAX";
+      } else if (lowerInst.includes("standard shopping") || (lowerInst.includes("shopping") && !lowerInst.includes("search")) || lowerInst === "3") {
+        detectedCampaignType = "SHOPPING";
+      } else if (lowerInst.includes("display") || lowerInst.includes("gdn") || lowerInst.includes("banner") || lowerInst === "4") {
+        detectedCampaignType = "DISPLAY";
+      } else if ((lowerInst.includes("search") && !lowerInst.includes("performance") && !lowerInst.includes("pmax")) || lowerInst === "5") {
+        detectedCampaignType = "SEARCH";
+      }
+    }
+
+    // Check stored state intake if already recorded
+    if (!detectedCampaignType && gAdsState?.intake?.campaign_type) {
+      detectedCampaignType = gAdsState.intake.campaign_type;
+    }
+
+    // Only if still undetected, check the last explicit user request in chatHistory
+    if (!detectedCampaignType && Array.isArray(chatHistory) && chatHistory.length > 0) {
+      const lastUserMsg = [...chatHistory].reverse().find(m => m.role === "user" && m.text && !m.text.match(/\b\d{3}[-\s]?\d{3}[-\s]?\d{4}\b|\b\d{10}\b/));
+      if (lastUserMsg && lastUserMsg.text) {
+        const lastLower = lastUserMsg.text.toLowerCase();
+        if (lastLower.includes("pmax shopping") || lastLower.includes("performance max shopping")) {
+          detectedCampaignType = "PERFORMANCE_MAX_SHOPPING";
+        } else if (lastLower.includes("performance max") || lastLower.includes("pmax")) {
+          detectedCampaignType = "PERFORMANCE_MAX";
+        } else if (lastLower.includes("standard shopping") || (lastLower.includes("shopping") && !lastLower.includes("search"))) {
+          detectedCampaignType = "SHOPPING";
+        } else if (lastLower.includes("display") || lastLower.includes("gdn") || lastLower.includes("banner")) {
+          detectedCampaignType = "DISPLAY";
+        } else if (lastLower.includes("search") && !lastLower.includes("performance") && !lastLower.includes("pmax") && !lastLower.includes("google search ads campaign")) {
+          detectedCampaignType = "SEARCH";
+        }
+      }
+    }
+
     // 3. Check for fresh restart intent
     const isFreshStartPrompt =
       lowerInstruction === "create a google search ads campaign" ||
       lowerInstruction === "create google ads campaign" ||
       lowerInstruction === "create a google ads campaign" ||
+      lowerInstruction === "create a performance max campaign" ||
+      lowerInstruction.startsWith("create a performance max") ||
+      lowerInstruction.startsWith("create performance max") ||
+      lowerInstruction.startsWith("create standard shopping") ||
+      lowerInstruction.startsWith("create a standard shopping") ||
+      lowerInstruction.startsWith("create a display campaign") ||
+      lowerInstruction.startsWith("create display campaign") ||
+      lowerInstruction.startsWith("create a google display") ||
       lowerInstruction === "start over" ||
       lowerInstruction === "new campaign" ||
       lowerInstruction === "reset campaign";
 
     if (isFreshStartPrompt) {
-      gAdsState = null;
+      gAdsState = {
+        stage: "INTAKE_PENDING",
+        intake: detectedCampaignType ? { campaign_type: detectedCampaignType } : {},
+      };
       try {
         await supabase
           .from("agent_memory")
@@ -4955,6 +5018,27 @@ async function handleGoogleAdsCampaignFlow(req, res, session, body) {
         selectedCustomerId = accessibleAccounts[0].customerId;
         selectedManagerId = accessibleAccounts[0].managerId || null;
       } else {
+        // Save user's initial prompt & detected campaign type into memory so it is NOT lost when they choose an account!
+        const initialIntake = {
+          ...(gAdsState?.intake || {}),
+          pending_instruction: instruction,
+          ...(detectedCampaignType ? { campaign_type: detectedCampaignType } : {}),
+        };
+        try {
+          await supabase
+            .from("agent_memory")
+            .upsert({
+              email: userEmail,
+              memory_type: "google_ads_state",
+              content: JSON.stringify({
+                stage: "ACCOUNT_SELECTION_PENDING",
+                intake: initialIntake,
+                updated_at: new Date().toISOString(),
+              }),
+              updated_at: new Date().toISOString(),
+            }, { onConflict: "email,memory_type" });
+        } catch (_) {}
+
         // Ask user to select an account
         const accountsList = accessibleAccounts
           .map(a => `• **${a.descriptiveName}** — ID: \`${a.customerId.slice(0,3)}-${a.customerId.slice(3,6)}-${a.customerId.slice(6)}\``)
@@ -4969,11 +5053,15 @@ async function handleGoogleAdsCampaignFlow(req, res, session, body) {
 
     // Save selected account across agent_memory and google_connections
     if (justSelectedAccountId || !gAdsState?.customerId) {
+      const retainedType = gAdsState?.intake?.campaign_type || detectedCampaignType || null;
       gAdsState = {
         stage: "INTAKE_PENDING",
         customerId: selectedCustomerId,
         managerId: selectedManagerId,
-        intake: gAdsState?.intake || {},
+        intake: {
+          ...(gAdsState?.intake || {}),
+          ...(retainedType ? { campaign_type: retainedType } : {}),
+        },
       };
       try {
         await supabase
@@ -5262,9 +5350,14 @@ async function handleGoogleAdsCampaignFlow(req, res, session, body) {
           if (callLinked) assetLines.push(`• **Phone Call Extension:** ${callAsset?.phoneNumber || "Enabled"}`);
         }
         if (createRes.campaignType) {
-          const typeLabel = createRes.campaignType === "SHOPPING"
-            ? "🛍️ Standard Shopping (Merchant Center Product Ads)"
-            : (createRes.campaignType === "PERFORMANCE_MAX" ? "⚡ Performance Max Multi-Channel Campaign" : "🔍 Google Search Campaign");
+          const typeMap = {
+            PERFORMANCE_MAX_SHOPPING: "🛍️⚡ Performance Max Shopping (Retail Catalog)",
+            PERFORMANCE_MAX: "⚡ Performance Max Multi-Channel Campaign",
+            SHOPPING: "🛍️ Standard Shopping (Merchant Center Product Ads)",
+            DISPLAY: "🎨 Google Display Network (Banner & Visual Ads)",
+            SEARCH: "🔍 Google Search Campaign",
+          };
+          const typeLabel = typeMap[createRes.campaignType] || createRes.campaignType;
           assetLines.unshift(`• **Campaign Format:** ${typeLabel}`);
         }
         if (createRes.targetedLocations && createRes.targetedLocations.length > 0) {
@@ -5346,26 +5439,20 @@ Existing Stored State (if any): ${JSON.stringify(gAdsState?.intake || {})}
 
 Your task is to extract the following fields in JSON format:
 {
-  "has_business_info": true/false (true if business name OR service/product is known),
+  "has_business_info": true/false,
   "business_name": "extracted business name or null",
-  "services": "specific services or products being promoted or null",
-  "has_campaign_goal": true/false,
-  "campaign_goal": "WEBSITE_LEADS" or "PHONE_CALLS" or null,
-  "has_phone_number": true/false,
-  "phone_number": "extracted phone number (with country code if provided) or null",
-  "has_location": true/false,
-  "location": "target city, region, or country (e.g. 'Ahmedabad', 'Mumbai, India', 'United States') or null",
-  "has_language": true/false,
-  "language": "target languages (e.g. 'English', 'Hindi', etc.) or null",
-  "has_budget": true/false,
-  "daily_budget": numeric daily budget amount or null (e.g. 500, 1000),
-  "has_bidding_strategy": true/false,
+  "services": "extracted service or product description or null",
+  "landing_page_url": "extracted URL or null",
+  "location": "extracted location or null",
+  "language": "extracted language or null",
+  "daily_budget": numeric budget amount or null,
   "bidding_strategy": "MAXIMIZE_CONVERSIONS" or "MAXIMIZE_CLICKS" or null,
-  "has_landing_page": true/false,
-  "landing_page_url": "valid http/https landing page URL or null",
-  "custom_sitelinks": ["list of sitelink URLs or paths explicitly mentioned by user, e.g. '/pricing', '/services', '/blogs', 'https://nayajevan.com/blogs/' or from phrases like 'sitelinks/blogs', 'sitelinks: /services'"],
+  "campaign_goal": "WEBSITE_LEADS" or "PHONE_CALLS" or null,
+  "phone_number": "extracted phone/WhatsApp number or null",
+  "custom_sitelinks": ["sitelink titles or urls mentioned, or empty array"],
+  "merchant_id": "extracted Merchant Center account ID if mentioned, or null",
   "has_campaign_type": true/false,
-  "campaign_type": "SHOPPING" (if user mentions shopping, product ads, merchant feed) or "PERFORMANCE_MAX" (if user mentions pmax or performance max) or "SEARCH" (if user mentions search, web traffic, calls, leads) or null,
+  "campaign_type": "PERFORMANCE_MAX_SHOPPING" (if user mentions pmax shopping, retail catalog with performance max) or "PERFORMANCE_MAX" (if user mentions pmax or performance max for leads, services, or omnichannel) or "SHOPPING" (if user mentions standard shopping, product card ads, merchant center) or "DISPLAY" (if user mentions display ads, banner ads, GDN, visual network) or "SEARCH" (if user mentions search, keywords, text ads, calls) or null,
   "has_network_preference": true/false,
   "network_preference": "SEARCH_ONLY" (if user prefers Google search only / no display partners) or "SEARCH_PARTNERS" (if user wants partner search engines) or "DISPLAY_EXPANSION" (if user wants display ads / partner websites too) or null,
   "keyword_action": "APPROVE" (if user says 'looks good', 'proceed', 'yes', 'confirm', 'continue', 'make ads', 'approved') or "MODIFY" (if user asks to add or remove keywords) or null,
@@ -5391,6 +5478,10 @@ Respond with ONLY the JSON object, wrapped in \`\`\`json \`\`\`.
         console.warn("Intake extraction warning:", err.message);
       }
 
+      if (!intakeData.campaign_type && detectedCampaignType) {
+        intakeData.campaign_type = detectedCampaignType;
+      }
+
       // Regex fallback for sitelinks: e.g. "sitelinks/blogs", "sitelink: https://nayajevan.com/blogs/", "sitelinks: /services, /contact"
       const sitelinkRegex = /(?:sitelinks?[:\/\s]+)([^\s,]+(?:,\s*[^\s,]+)*)/i;
       const sitelinkMatch = instruction.match(sitelinkRegex);
@@ -5402,6 +5493,24 @@ Respond with ONLY the JSON object, wrapped in \`\`\`json \`\`\`.
             ...parts,
           ]));
         }
+      }
+    }
+
+    const lowerTrimInst = instruction.toLowerCase().trim();
+    if (!intakeData.campaign_type) {
+      if (lowerTrimInst.includes("pmax shopping") || lowerTrimInst.includes("performance max shopping") ||
+          ((lowerTrimInst.includes("performance max") || lowerTrimInst.includes("pmax")) && (lowerTrimInst.includes("shopping") || lowerTrimInst.includes("feed") || lowerTrimInst.includes("merchant") || lowerTrimInst.includes("catalog") || lowerTrimInst.includes("product"))) || lowerTrimInst === "2") {
+        intakeData.campaign_type = "PERFORMANCE_MAX_SHOPPING";
+      } else if (lowerTrimInst.includes("performance max") || lowerTrimInst.includes("pmax") || lowerTrimInst === "1") {
+        intakeData.campaign_type = "PERFORMANCE_MAX";
+      } else if (lowerTrimInst.includes("standard shopping") || (lowerTrimInst.includes("shopping") && !lowerTrimInst.includes("search")) || lowerTrimInst === "3") {
+        intakeData.campaign_type = "SHOPPING";
+      } else if (lowerTrimInst.includes("display") || lowerTrimInst.includes("gdn") || lowerTrimInst.includes("banner") || lowerTrimInst === "4") {
+        intakeData.campaign_type = "DISPLAY";
+      } else if ((lowerTrimInst.includes("search") && !lowerTrimInst.includes("performance") && !lowerTrimInst.includes("pmax")) || lowerTrimInst === "5") {
+        intakeData.campaign_type = "SEARCH";
+      } else if (detectedCampaignType) {
+        intakeData.campaign_type = detectedCampaignType;
       }
     }
 
@@ -5417,14 +5526,27 @@ Respond with ONLY the JSON object, wrapped in \`\`\`json \`\`\`.
       ...(intakeData.daily_budget ? { daily_budget: intakeData.daily_budget } : {}),
       ...(intakeData.bidding_strategy ? { bidding_strategy: intakeData.bidding_strategy } : {}),
       ...(intakeData.landing_page_url ? { landing_page_url: intakeData.landing_page_url } : {}),
-      ...(intakeData.campaign_type ? { campaign_type: intakeData.campaign_type } : {}),
+      campaign_type: intakeData.campaign_type || gAdsState?.intake?.campaign_type || detectedCampaignType || null,
       ...(intakeData.network_preference ? { network_preference: intakeData.network_preference } : {}),
       ...(Array.isArray(intakeData.custom_sitelinks) && intakeData.custom_sitelinks.length > 0 ? { custom_sitelinks: intakeData.custom_sitelinks } : {}),
     };
 
+    // Auto-detect linked Google Merchant Center account for the selected customer ID
+    let linkedGmc = null;
+    try {
+      linkedGmc = await getLinkedMerchantCenterAccount({
+        accessToken: refreshToken,
+        customerId: selectedCustomerId,
+        loginCustomerId: activeAccountObj.managerId || null,
+      });
+      if (linkedGmc?.merchantId) {
+        mergedIntake.merchant_id = linkedGmc.merchantId;
+        mergedIntake.is_ecommerce = true;
+      }
+    } catch (_) {}
+
     const hasLandingPage = Boolean(mergedIntake.landing_page_url);
     let siteAnalysis = { isEcommerce: false, platform: "unknown", detectedSignals: [] };
-    let linkedGmc = null;
     if (hasLandingPage) {
       try {
         siteAnalysis = await detectWebsiteType(mergedIntake.landing_page_url);
@@ -5433,30 +5555,65 @@ Respond with ONLY the JSON object, wrapped in \`\`\`json \`\`\`.
           mergedIntake.store_platform = siteAnalysis.platform;
         }
       } catch (_) {}
-
-      try {
-        linkedGmc = await getLinkedMerchantCenterAccount({
-          accessToken: refreshToken,
-          customerId: selectedCustomerId,
-          loginCustomerId: activeAccountObj.managerId || null,
-        });
-        if (linkedGmc?.merchantId) {
-          mergedIntake.merchant_id = linkedGmc.merchantId;
-          mergedIntake.is_ecommerce = true;
-        }
-      } catch (_) {}
     }
 
+    const activeCampaignType = mergedIntake.campaign_type || detectedCampaignType || null;
+    mergedIntake.campaign_type = activeCampaignType;
+
+    // IF CAMPAIGN FORMAT IS NOT YET CHOSEN: Ask user to pick from the 5 Google Ads formats!
+    if (!activeCampaignType) {
+      await supabase
+        .from("agent_memory")
+        .upsert({
+          email: userEmail,
+          memory_type: "google_ads_state",
+          content: JSON.stringify({
+            stage: "CAMPAIGN_TYPE_SELECTION",
+            customerId: selectedCustomerId,
+            managerId: activeAccountObj.managerId || null,
+            intake: mergedIntake,
+            updated_at: new Date().toISOString(),
+          }),
+          updated_at: new Date().toISOString(),
+        }, { onConflict: "email,memory_type" });
+
+      const gmcNotice = linkedGmc?.merchantId
+        ? `\n\n🛍️ **Google Merchant Center Connected:** Detected active Merchant Center catalog feed (\`${linkedGmc.merchantId}\`) on this account! *(Ideal for **Standard Shopping** or **Performance Max Shopping**)*`
+        : "";
+
+      const promptText =
+        `I've selected your Google Ads account **${activeAccountObj.descriptiveName}** (\`${formattedAccId}\`)! 🎯${gmcNotice}\n\n` +
+        `Which Google Ads campaign format would you like to create?\n\n` +
+        `1. ⚡ **Performance Max (PMax)** — AI omnichannel campaign across Google Search, Maps, YouTube, Gmail, Discover, & Display.\n` +
+        `2. 🛍️⚡ **Performance Max Shopping (Retail)** — Multi-channel visual ads powered by your Google Merchant Center product catalog.\n` +
+        `3. 🛍️ **Standard Shopping** — Classic product cards & pricing in Google Shopping and Google Search product tabs.\n` +
+        `4. 🎨 **Google Display Network (GDN)** — Visual banner ads across millions of partner websites, apps, and YouTube.\n` +
+        `5. 🔍 **Google Search** — High-intent keyword text ads targeting exact customer searches and direct phone calls.\n\n` +
+        `Please reply with your preferred format (e.g. "**Performance Max**", "**Shopping**", or "**Search**") or share your business details!`;
+
+      return res.status(200).json({
+        ok: true,
+        text: promptText,
+      });
+    }
+
+    const justSelectedCampaignType = gAdsState?.stage === "CAMPAIGN_TYPE_SELECTION" && Boolean(activeCampaignType);
     const hasBusiness = Boolean(mergedIntake.business_name || mergedIntake.services);
     const hasLocation = Boolean(mergedIntake.location);
     const hasBudget = Boolean(mergedIntake.daily_budget);
     const hasPhone = Boolean(mergedIntake.phone_number);
-    const isMissingPhoneForCalls = mergedIntake.campaign_goal === "PHONE_CALLS" && !hasPhone;
 
-    // PHASE 1: INTAKE CHECK
-    const isMissingKeyInfo = !hasBusiness || !hasLocation || !hasBudget || !hasLandingPage || (!hasPhone && !mergedIntake.skipped_phone);
+    // PHASE 1: INTAKE CHECK (Tailored by Campaign Type)
+    let isMissingKeyInfo = false;
+    if (activeCampaignType === "SHOPPING" || activeCampaignType === "PERFORMANCE_MAX_SHOPPING") {
+      isMissingKeyInfo = !hasBusiness || !hasBudget || !hasLandingPage || (!mergedIntake.merchant_id && !linkedGmc?.merchantId);
+    } else if (activeCampaignType === "PERFORMANCE_MAX" || activeCampaignType === "DISPLAY") {
+      isMissingKeyInfo = !hasBusiness || !hasLocation || !hasBudget || !hasLandingPage;
+    } else {
+      isMissingKeyInfo = !hasBusiness || !hasLocation || !hasBudget || !hasLandingPage || (!hasPhone && !mergedIntake.skipped_phone);
+    }
 
-    if (justSelectedAccountId || isMissingKeyInfo) {
+    if (justSelectedAccountId || justSelectedCampaignType || isMissingKeyInfo) {
       await supabase
         .from("agent_memory")
         .upsert({
@@ -5473,23 +5630,65 @@ Respond with ONLY the JSON object, wrapped in \`\`\`json \`\`\`.
         }, { onConflict: "email,memory_type" });
 
       const missingList = [];
-      if (!hasBusiness) missingList.push("1. 🏢 **Business & Services:** What is your business name, and what specific service or product do you want to promote?");
-      if (!mergedIntake.campaign_goal || !hasPhone) {
-        missingList.push("2. 🎯 **Campaign Goal & Contact Phone:** What is your primary objective (e.g. **Website Visits & Online Leads** or **Direct Phone Calls**)? Also provide your **business phone or WhatsApp number** *(Google Ads will attach a Click-to-Call extension on your search ads so customers can call you directly)*.");
-      }
-      if (!hasLocation) missingList.push("3. 📍 **Target Location:** Which specific cities, regions, or countries should your ads target (e.g., Ahmedabad, Mumbai, or All India)?");
-      if (!mergedIntake.language) missingList.push("4. 🗣️ **Target Language:** Which languages do your target customers speak (e.g., English, Hindi, etc.)?");
-      if (!hasBudget) missingList.push(`5. 💰 **Daily Budget:** What is your target daily budget (e.g. ₹500/day or ₹1,000/day in ${accountCurrency})?`);
-      if (!mergedIntake.bidding_strategy) missingList.push("6. 📈 **Bidding Strategy:** Do you prefer **Maximize Conversions** *(Recommended for leads & phone calls)* or **Maximize Clicks** *(for highest site traffic within budget)*?");
-      if (!hasLandingPage) missingList.push("7. 🌐 **Landing Page & Sitelinks:** What website or landing page URL should visitors land on? *(Optional: if you have specific custom sitelinks in mind like /pricing, /services, or /contact, mention them too!)*");
+      let formatIntro = "";
 
-      if (hasLandingPage) {
-        if (mergedIntake.is_ecommerce) {
-          missingList.push("8. 🛍️ **E-commerce Campaign Strategy:** I identified your site as an **online store**! Which format do you prefer?\n   • **Option 1 (Standard Shopping):** Classic product card ads on Google Shopping & Search.\n   • **Option 2 (Performance Max Retail):** Multi-channel visual + catalog ads across Shopping, YouTube, Search, Gmail & Display.\n   • **Option 3 (Google Search):** High-intent text ads driving traffic to specific store collections.");
-        } else {
-          missingList.push("8. 🏢 **Campaign Strategy:** Since your website is a **Service / Real Estate / Lead-Gen Business**, choose your format:\n   • **Option 1 (Google Search):** Inbound Phone Calls & Lead Inquiries.\n   • **Option 2 (Performance Max Lead Gen):** Multi-channel reach across Search, Maps, YouTube, Gmail & Display.");
+      if (activeCampaignType === "PERFORMANCE_MAX") {
+        formatIntro = `I've selected your Google Ads account **${activeAccountObj.descriptiveName}** (\`${formattedAccId}\`) for a **Performance Max (PMax)** campaign! ⚡\n\nPerformance Max runs across Google Search, Maps, YouTube, Gmail, and the Display Network using smart automation. To craft your multi-channel blueprint, please share your campaign details:`;
+        if (!hasBusiness) missingList.push("1. 🏢 **Business & Services:** What is your business name, and what specific service or product do you want to promote?");
+        if (!mergedIntake.campaign_goal) {
+          missingList.push("2. 🎯 **Campaign Goal:** What is your primary objective (e.g. **Website Leads & Inquiries**, **Online Conversions**, or **Direct Phone Calls**)? *(Optional: provide your business phone number if you want a direct call button attached)*.");
         }
-        missingList.push("9. 🌐 **Network Placements:** Where should your ads appear?\n   • **Option A (Recommended):** Google Search Only *(High buyer intent, zero display waste)*\n   • **Option B:** Google Search + Search Partners\n   • **Option C:** Include Display Network Expansion");
+        if (!hasLocation) missingList.push("3. 📍 **Target Location:** Which specific cities, regions, or countries should your ads target (e.g., Ahmedabad, Mumbai, or All India)?");
+        if (!mergedIntake.language) missingList.push("4. 🗣️ **Target Language:** Which languages do your target customers speak (e.g., English, Hindi, etc.)?");
+        if (!hasBudget) missingList.push(`5. 💰 **Daily Budget:** What is your target daily budget (e.g. ₹1,000/day or ₹2,000/day in ${accountCurrency})?`);
+        if (!mergedIntake.bidding_strategy) missingList.push("6. 📈 **Bidding Strategy:** Do you prefer **Maximize Conversions** *(Recommended to get maximum results within your budget)* or **Target CPA**?");
+        if (!hasLandingPage) missingList.push("7. 🌐 **Landing Page:** What website URL should visitors land on to convert?");
+
+      } else if (activeCampaignType === "PERFORMANCE_MAX_SHOPPING") {
+        formatIntro = `I've selected your Google Ads account **${activeAccountObj.descriptiveName}** (\`${formattedAccId}\`) for a **Performance Max Shopping (Retail)** campaign! 🛍️⚡\n\nPMax Shopping blends your Google Merchant Center catalog with visual ads across Shopping, YouTube, Search, Gmail, and Display. To build your catalog campaign, please share:`;
+        if (!hasBusiness) missingList.push("1. 🛍️ **Store & Products:** What is your online store name and what product categories are you promoting?");
+        if (!mergedIntake.merchant_id && !linkedGmc?.merchantId) {
+          missingList.push(`2. 📦 **Google Merchant Center (GMC) ID:** What is your GMC Account ID (e.g. \`123-456-7890\`)${linkedGmc?.merchantId ? ` *(Detected linked GMC: \`${linkedGmc.merchantId}\`)*` : ""}?`);
+        }
+        if (!hasLocation) missingList.push("3. 📍 **Country of Sale & Location:** Which country and regions do you sell and ship products in (e.g., India, United States, UK)?");
+        if (!hasBudget) missingList.push(`4. 💰 **Daily Budget:** What is your target daily budget (e.g. ₹1,500/day in ${accountCurrency})?`);
+        if (!mergedIntake.bidding_strategy) missingList.push("5. 📈 **Bidding Strategy:** Do you prefer **Maximize Conversion Value** *(optimize for total store revenue)* or **Maximize Conversions**?");
+        if (!hasLandingPage) missingList.push("6. 🌐 **Store Website URL:** What is your online store or collection URL?");
+
+      } else if (activeCampaignType === "SHOPPING") {
+        formatIntro = `I've selected your Google Ads account **${activeAccountObj.descriptiveName}** (\`${formattedAccId}\`) for a **Standard Shopping** campaign! 🛍️\n\nStandard Shopping showcases your product images, prices, and store name directly in Google Shopping and Google Search product grids. *(Note: Standard Shopping pulls ad copy directly from your Merchant Center catalog, so no search keywords or text copywriting are required!)*\n\nPlease share your campaign details:`;
+        if (!hasBusiness) missingList.push("1. 🛍️ **Store & Products:** What is your store name and main products?");
+        if (!mergedIntake.merchant_id && !linkedGmc?.merchantId) {
+          missingList.push(`2. 📦 **Google Merchant Center (GMC) ID:** What is your GMC Account ID (e.g. \`123-456-7890\`)${linkedGmc?.merchantId ? ` *(Detected linked GMC: \`${linkedGmc.merchantId}\`)*` : ""}?`);
+        }
+        if (!hasLocation) missingList.push("3. 📍 **Country of Sale & Location:** Which country and target regions should your product card ads appear in?");
+        if (!hasBudget) missingList.push(`4. 💰 **Daily Budget:** What is your target daily budget (e.g. ₹800/day or ₹1,200/day in ${accountCurrency})?`);
+        if (!mergedIntake.bidding_strategy) missingList.push("5. 📈 **Bidding Strategy:** Do you prefer **Maximize Clicks** *(drive maximum visitors to product pages)* or **Manual CPC**?");
+        if (!hasLandingPage) missingList.push("6. 🌐 **Store URL:** What is your online storefront URL?");
+
+      } else if (activeCampaignType === "DISPLAY") {
+        formatIntro = `I've selected your Google Ads account **${activeAccountObj.descriptiveName}** (\`${formattedAccId}\`) for a **Google Display Network (GDN)** campaign! 🎨🌐\n\nDisplay campaigns place responsive visual and banner ads across millions of partner websites, apps, and YouTube to build massive brand awareness and re-engage visitors. To design your Display campaign, please share:`;
+        if (!hasBusiness) missingList.push("1. 🏢 **Business & Offer:** What is your business name, and what special offer or service are you highlighting?");
+        if (!mergedIntake.campaign_goal) missingList.push("2. 🎯 **Campaign Goal:** What is your primary objective (e.g., **Brand Awareness & Reach**, **Website Traffic**, or **Lead Conversions**)?");
+        if (!hasLocation) missingList.push("3. 📍 **Target Location:** Which specific cities, regions, or countries should your visual ads reach?");
+        if (!mergedIntake.language) missingList.push("4. 🗣️ **Target Language:** Which languages do your target customers speak?");
+        missingList.push("5. 🎨 **Target Audience & Topics:** What website topics, customer interests, or contextual keywords match your audience (e.g., Technology, Business, Real Estate, Fashion)?");
+        if (!hasBudget) missingList.push(`6. 💰 **Daily Budget:** What is your target daily budget (e.g. ₹500/day or ₹1,000/day in ${accountCurrency})?`);
+        if (!mergedIntake.bidding_strategy) missingList.push("7. 📈 **Bidding Strategy:** Do you prefer **Maximize Clicks** *(highest visual traffic)* or **Maximize Conversions**?");
+        if (!hasLandingPage) missingList.push("8. 🌐 **Landing Page:** What URL should visitors land on when clicking your visual ads?");
+
+      } else {
+        // SEARCH Campaign
+        formatIntro = `I've selected your Google Ads account **${activeAccountObj.descriptiveName}** (\`${formattedAccId}\`) for a **Google Search Ads** campaign! 🔍\n\nTo craft the most effective search keywords, compelling ad copy, extensions, and targeted bidding strategy, please share your campaign details:`;
+        if (!hasBusiness) missingList.push("1. 🏢 **Business & Services:** What is your business name, and what specific service or product do you want to promote?");
+        if (!mergedIntake.campaign_goal || !hasPhone) {
+          missingList.push("2. 🎯 **Campaign Goal & Contact Phone:** What is your primary objective (e.g. **Website Visits & Online Leads** or **Direct Phone Calls**)? Also provide your **business phone or WhatsApp number** *(Google Ads will attach a Click-to-Call extension on your search ads so customers can call you directly)*.");
+        }
+        if (!hasLocation) missingList.push("3. 📍 **Target Location:** Which specific cities, regions, or countries should your ads target (e.g., Ahmedabad, Mumbai, or All India)?");
+        if (!mergedIntake.language) missingList.push("4. 🗣️ **Target Language:** Which languages do your target customers speak (e.g., English, Hindi, etc.)?");
+        if (!hasBudget) missingList.push(`5. 💰 **Daily Budget:** What is your target daily budget (e.g. ₹500/day or ₹1,000/day in ${accountCurrency})?`);
+        if (!mergedIntake.bidding_strategy) missingList.push("6. 📈 **Bidding Strategy:** Do you prefer **Maximize Conversions** *(Recommended for leads & phone calls)* or **Maximize Clicks** *(for highest site traffic within budget)*?");
+        if (!hasLandingPage) missingList.push("7. 🌐 **Landing Page & Sitelinks:** What website or landing page URL should visitors land on? *(Optional: if you have specific custom sitelinks in mind like /pricing, /services, or /contact, mention them too!)*");
       }
 
       const capturedList = [];
@@ -5499,8 +5698,16 @@ Respond with ONLY the JSON object, wrapped in \`\`\`json \`\`\`.
         capturedList.push(`• **Website Type:** ${mergedIntake.is_ecommerce ? "🛍️ E-commerce Store (" + (siteAnalysis.detectedSignals.join(", ") || "Catalog detected") + ")" : "🏢 Service / Lead Gen / Real Estate"}`);
       }
       if (mergedIntake.campaign_type) {
-        capturedList.push(`• **Campaign Format:** ${mergedIntake.campaign_type === "SHOPPING" ? "Standard Shopping" : (mergedIntake.campaign_type === "PERFORMANCE_MAX" ? "Performance Max" : "Google Search")}`);
+        const typeLabels = {
+          PERFORMANCE_MAX: "⚡ Performance Max (All Channels)",
+          PERFORMANCE_MAX_SHOPPING: "🛍️⚡ Performance Max Shopping (Retail Catalog)",
+          SHOPPING: "🛍️ Standard Shopping (Merchant Center Product Ads)",
+          DISPLAY: "🎨 Google Display Network (Banner & Visual Ads)",
+          SEARCH: "🔍 Google Search (High Intent Keywords)",
+        };
+        capturedList.push(`• **Campaign Format:** ${typeLabels[mergedIntake.campaign_type] || mergedIntake.campaign_type}`);
       }
+      if (mergedIntake.merchant_id) capturedList.push(`• **Merchant Center ID:** \`${mergedIntake.merchant_id}\``);
       if (mergedIntake.network_preference) {
         capturedList.push(`• **Network Placement:** ${mergedIntake.network_preference === "DISPLAY_EXPANSION" ? "Search + Search Partners + Display" : (mergedIntake.network_preference === "SEARCH_PARTNERS" ? "Search + Search Partners" : "Google Search Only (High Intent)")}`);
       }
@@ -5519,11 +5726,10 @@ Respond with ONLY the JSON object, wrapped in \`\`\`json \`\`\`.
         : "\n\n";
 
       const questionResponse =
-        `I've selected your Google Ads account **${activeAccountObj.descriptiveName}** (\`${formattedAccId}\`)! 🎯\n` +
+        `${formatIntro}\n` +
         capturedHeader +
-        `To craft the most effective search keywords, compelling ad copy, extensions, and targeted bidding strategy, please share your campaign details:\n\n` +
         missingList.join("\n\n") +
-        `\n\n*(You can reply with all details in one message, e.g.: "GabbarInfo in Ahmedabad, Website leads & calls: +919876543210, English & Gujarati, ₹800/day, Maximize Conversions, https://gabbarinfo.com, Sitelinks: /services, /contact")*`;
+        `\n\n*(You can reply with all details in one message, e.g.: "${mergedIntake.business_name || "GabbarInfo"} in ${mergedIntake.location || "Ahmedabad"}, ₹${mergedIntake.daily_budget || "1,000"}/day, Maximize Conversions, ${mergedIntake.landing_page_url || "https://gabbarinfo.com"}")*`;
 
       return res.status(200).json({
         ok: true,
@@ -5612,12 +5818,64 @@ Respond with ONLY the JSON object, wrapped in \`\`\`json \`\`\`.
       }
     }
 
-    // PHASE 2: KEYWORD & NEGATIVE KEYWORD CURATION & REVIEW
-    // If we haven't completed keyword review yet, generate curated keywords & negative keywords and invite review!
+    // PHASE 2: TARGETING & STRATEGY REVIEW (Tailored by Campaign Format)
     if (gAdsState?.stage !== "KEYWORD_REVIEW" && !isKeywordApproved && gAdsState?.stage !== "PLAN_PROPOSED") {
+      // 2A. Standard Shopping: Does NOT use keywords; uses GMC Catalog & Negative Keywords
+      if (activeCampaignType === "SHOPPING") {
+        const initialNegatives = ["free", "jobs", "cheap copies", "repair", "pdf", "used second hand", "wholesale", "careers"];
+        await supabase
+          .from("agent_memory")
+          .upsert({
+            email: userEmail,
+            memory_type: "google_ads_state",
+            content: JSON.stringify({
+              stage: "KEYWORD_REVIEW",
+              customerId: selectedCustomerId,
+              managerId: activeAccountObj.managerId || null,
+              intake: mergedIntake,
+              targetKeywords: [],
+              negativeKeywords: initialNegatives,
+              updated_at: new Date().toISOString(),
+            }),
+            updated_at: new Date().toISOString(),
+          }, { onConflict: "email,memory_type" });
+
+        const reviewMessage =
+          `🛍️ **Phase 2: Standard Shopping Campaign & Product Feed Architecture**\n\n` +
+          `Standard Shopping campaigns use your Google Merchant Center product catalog rather than search keywords to automatically display rich product cards when shoppers search for items you sell.\n\n` +
+          `• **Target Store / Merchant Center ID:** \`${mergedIntake.merchant_id || "Connected Store"}\`\n` +
+          `• **Country of Sale:** ${mergedIntake.location || "India"}\n` +
+          `• **Product Partition:** All Products (Unit)\n` +
+          `• **Bidding Strategy:** ${mergedIntake.bidding_strategy || "Maximize Clicks (Highest Product Views)"}\n` +
+          `• **Daily Budget:** ${accountCurrency === "INR" ? "₹" : ""}${mergedIntake.daily_budget}/day\n\n` +
+          `### 🛡️ **Waste-Protection Negative Keywords (${initialNegatives.length}):**\n` +
+          initialNegatives.map(n => `• \`${n}\``).join("\n") +
+          `\n*(Excludes searchers seeking free items, job vacancies, or repair guides so you never waste ad spend)*\n\n` +
+          `---\n` +
+          `👉 Reply **"Proceed"** or **"Looks good"**, and I will generate your finalized Standard Shopping campaign plan ready to publish in **PAUSED** mode!`;
+
+        return res.status(200).json({
+          ok: true,
+          text: reviewMessage,
+          targetKeywords: [],
+          negativeKeywords: initialNegatives,
+        });
+      }
+
+      // 2B. Prompt Gemini for format-specific targeting:
+      let promptRole = "Search keywords";
+      let promptTask = "Curate 8-12 high-intent target keywords with proper Google Ads match type notation (Phrase & Exact match)";
+      if (activeCampaignType === "PERFORMANCE_MAX" || activeCampaignType === "PERFORMANCE_MAX_SHOPPING") {
+        promptRole = "Performance Max audience search themes and customer intent signals";
+        promptTask = "Curate 8-12 high-intent search themes and customer intent signals to guide Google's multi-channel AI (Search, Maps, YouTube, Gmail, Display)";
+      } else if (activeCampaignType === "DISPLAY") {
+        promptRole = "Google Display Network contextual keywords and audience topic interests";
+        promptTask = "Curate 8-12 contextual display keywords and topic interests that match relevant publisher websites and apps";
+      }
+
       const keywordPrompt = `
 You are a senior Google Ads specialist.
-Analyze this business and generate a high-intent, high-performing keyword targeting and negative keyword strategy.
+Analyze this business and generate a high-performing targeting strategy for a ${activeCampaignType} campaign.
 
 BUSINESS DETAILS:
 - Business Name: ${mergedIntake.business_name || businessLabel}
@@ -5625,30 +5883,24 @@ BUSINESS DETAILS:
 - Target Location: ${targetLocation}
 - Goal: ${isCallGoal ? "Direct Phone Calls" : "Website Leads"}
 - Landing Page URL: ${landingUrl}
+- Campaign Format: ${activeCampaignType}
 
 TASKS:
-1. Curate 8-12 high-intent target keywords with proper Google Ads match type notation:
-   - Use Phrase Match (e.g. "dental clinic near me") for core intent.
-   - Use Exact Match (e.g. [best dentist in ahmedabad]) for highest commercial queries.
-   - Use Broad Match for wider discovery if appropriate.
+1. ${promptTask}.
 2. Formulate 8-12 industry-tailored Negative Keywords to prevent wasted budget (e.g. "free", "jobs", "vacancy", "career", "salary", "course", "training", "pdf", "diy").
 
 OUTPUT FORMAT:
 JSON wrapped in \`\`\`json \`\`\`:
 {
   "targetKeywords": [
-    "\\"phrase match keyword\\"",
-    "[exact match keyword]",
-    "broad match keyword"
+    "keyword/theme 1",
+    "keyword/theme 2"
   ],
   "negativeKeywords": [
     "free",
     "jobs",
     "vacancy",
-    "salary",
-    "course",
-    "training",
-    "pdf"
+    "salary"
   ]
 }
 `;
@@ -5694,21 +5946,35 @@ JSON wrapped in \`\`\`json \`\`\`:
           updated_at: new Date().toISOString(),
         }, { onConflict: "email,memory_type" });
 
+      let phaseTitle = "Target Keywords & Negative Keywords Strategy";
+      let listTitle = "Curated Target Keywords";
+      let formatHint = "Includes Phrase Match `\"...\"` and Exact Match `[...]` to prevent irrelevant clicks";
+
+      if (activeCampaignType === "PERFORMANCE_MAX" || activeCampaignType === "PERFORMANCE_MAX_SHOPPING") {
+        phaseTitle = "Performance Max Audience Search Themes & Intent Signals";
+        listTitle = "Audience Search Themes & Customer Intent Signals";
+        formatHint = "These signals guide Google's machine learning across Search, Maps, YouTube, Gmail, and Display";
+      } else if (activeCampaignType === "DISPLAY") {
+        phaseTitle = "Google Display Network Contextual & Placement Strategy";
+        listTitle = "Contextual Display Keywords & Topic Themes";
+        formatHint = "These contextual keywords place your banner ads on relevant publisher websites and apps";
+      }
+
       const reviewMessage =
-        `🎯 **Phase 2: Target Keywords & Negative Keywords Strategy**\n\n` +
-        `I have analyzed **${businessLabel}** for **${targetLocation}** and curated the highest-converting search terms and waste-spend protection filters:\n\n` +
-        `### 📌 **Curated Target Keywords (${initialKeywords.length}):**\n` +
+        `🎯 **Phase 2: ${phaseTitle}**\n\n` +
+        `I have analyzed **${businessLabel}** for **${targetLocation}** and curated the highest-converting targeting blueprint:\n\n` +
+        `### 📌 **${listTitle} (${initialKeywords.length}):**\n` +
         initialKeywords.map(k => `• \`${k}\``).join("\n") +
-        `\n*(Includes Phrase Match \`"..."\` and Exact Match \`[...]\` to prevent irrelevant clicks and maximize your Quality Score)*\n\n` +
+        `\n*(${formatHint})*\n\n` +
         `### 🛡️ **Recommended Negative Keywords (${initialNegatives.length}):**\n` +
         initialNegatives.map(n => `• \`${n}\``).join("\n") +
         `\n*(Excludes searchers seeking freebies, job vacancies, salaries, or training courses so you never waste ad budget)*\n\n` +
         `---\n` +
         `**Review & Refinement Options:**\n` +
-        `• Want to **add** any specific keywords of your own?\n` +
-        `• Want to **remove** any keywords from this list?\n` +
-        `• Want to add any more **negative keywords**?\n\n` +
-        `👉 If you are satisfied with this keyword architecture, simply reply **"Looks good"** or **"Proceed"**, and I will craft high-converting Search Ads (Headlines & Descriptions) built directly around these keywords!`;
+        `• Want to **add** any specific keywords/themes of your own?\n` +
+        `• Want to **remove** any items from this list?\n` +
+        `• Want to add any more **negative exclusions**?\n\n` +
+        `👉 If you are satisfied with this targeting architecture, simply reply **"Looks good"** or **"Proceed"**, and I will generate your optimized ${activeCampaignType} campaign blueprint ready to publish!`;
 
       return res.status(200).json({
         ok: true,
@@ -5810,8 +6076,15 @@ ${JSON.stringify(candidateSitelinks, null, 2)}
    - description2: STRICTLY maximum 35 characters`
       : `4. Sitelink Assets: Set "sitelinks": [] (empty array) because this website has no separate subpages and Google Ads forbids sitelinks pointing to the identical homepage URL.`;
 
+    const chosenCampaignType = mergedIntake.campaign_type || (mergedIntake.is_ecommerce ? "PERFORMANCE_MAX" : "SEARCH");
+    let formatPrefix = "Search";
+    if (chosenCampaignType === "PERFORMANCE_MAX_SHOPPING") formatPrefix = "PMax-Shopping";
+    else if (chosenCampaignType === "PERFORMANCE_MAX") formatPrefix = "PMax";
+    else if (chosenCampaignType === "SHOPPING") formatPrefix = "Shopping";
+    else if (chosenCampaignType === "DISPLAY") formatPrefix = "Display";
+
     // Proactively check existing campaign names so the proposed plan uses a guaranteed unique name
-    let proposedUniqueCampaignName = `Search - ${businessLabel.slice(0, 25)} - ${targetLocation.slice(0, 15)}`;
+    let proposedUniqueCampaignName = `${formatPrefix} - ${businessLabel.slice(0, 25)} - ${targetLocation.slice(0, 15)}`;
     try {
       if (refreshToken && selectedCustomerId) {
         const exch = await exchangeRefreshToken({ refreshToken });
@@ -5830,82 +6103,116 @@ ${JSON.stringify(candidateSitelinks, null, 2)}
       console.warn("Pre-planning campaign uniqueness check non-fatal warning:", uniqueErr.message);
     }
 
-    const chosenCampaignType = mergedIntake.campaign_type || (mergedIntake.is_ecommerce ? "PERFORMANCE_MAX" : "SEARCH");
-    const chosenNetPref = mergedIntake.network_preference || "SEARCH_ONLY";
+    const chosenNetPref = mergedIntake.network_preference || (chosenCampaignType === "DISPLAY" ? "DISPLAY_ONLY" : "SEARCH_ONLY");
     const resolvedNetworkSettings = {
-      targetGoogleSearch: true,
-      targetSearchNetwork: chosenNetPref === "SEARCH_PARTNERS" || chosenNetPref === "DISPLAY_EXPANSION",
-      targetContentNetwork: chosenNetPref === "DISPLAY_EXPANSION",
+      targetGoogleSearch: chosenCampaignType !== "DISPLAY",
+      targetSearchNetwork: chosenCampaignType !== "DISPLAY" && (chosenNetPref === "SEARCH_PARTNERS" || chosenNetPref === "DISPLAY_EXPANSION"),
+      targetContentNetwork: chosenCampaignType === "DISPLAY" || chosenNetPref === "DISPLAY_EXPANSION",
     };
 
-    const planPrompt = `
-You are GabbarInfo AI, a world-class Google Ads strategist and copywriter.
-Create a high-performing Google Ads Campaign plan based on the user's verified business details, selected campaign format (${chosenCampaignType}), and FINALIZED KEYWORDS.
+    const formatNameMap = {
+      PERFORMANCE_MAX_SHOPPING: "🛍️⚡ Performance Max Shopping (Retail Catalog)",
+      PERFORMANCE_MAX: "⚡ Performance Max (All Channels)",
+      SHOPPING: "🛍️ Standard Shopping (Merchant Center Product Ads)",
+      DISPLAY: "🎨 Google Display Network (Banner & Visual Ads)",
+      SEARCH: "🔍 Google Search (High Intent Keywords)",
+    };
+    const formatDisplayLabel = formatNameMap[chosenCampaignType] || "Google Search";
 
-ACCOUNT DETAILS:
-- Account Name: ${activeAccountObj.descriptiveName}
-- Customer ID: ${selectedCustomerId}
-- Currency: ${accountCurrency}
+    let formatSpecificRules = "";
+    let formatJsonAdGroups = "";
+    let formatSummaryBulletPoints = "";
 
-VERIFIED BUSINESS DETAILS:
-- Business Name: ${mergedIntake.business_name || businessLabel}
-- Services / Products Offered: ${mergedIntake.services || businessLabel}
-- Campaign Format: ${chosenCampaignType === "SHOPPING" ? "Standard Shopping (Product Ads)" : (chosenCampaignType === "PERFORMANCE_MAX" ? "Performance Max" : "Google Search")}
-- Network Placements: ${chosenNetPref === "DISPLAY_EXPANSION" ? "Google Search + Search Partners + Display Expansion" : (chosenNetPref === "SEARCH_PARTNERS" ? "Google Search + Search Partners" : "Google Search Only (High Intent)")}
-- Primary Campaign Goal: ${isCallGoal ? "Direct Phone Calls (Call Leads)" : "Website Leads & Online Traffic"}
-- Business Phone Number: ${mergedIntake.phone_number || (isCallGoal ? "Required for call asset" : "None")}
-- Target Location: ${targetLocation}
-- Target Language: ${mergedIntake.language || "English"}
-- Daily Budget: ${accountCurrency} ${mergedIntake.daily_budget} (dailyBudgetMicros: ${budgetMicros})
-- Bidding Strategy: ${biddingChoice}
-- Landing Page URL: ${landingUrl}
-- Verified Candidate Sitelinks: ${JSON.stringify(candidateSitelinks)}
-- FINALIZED TARGET KEYWORDS: ${JSON.stringify(finalizedKeywords)}
-- FINALIZED NEGATIVE KEYWORDS: ${JSON.stringify(finalizedNegatives)}
+    if (chosenCampaignType === "SHOPPING") {
+      formatSpecificRules = `STRICT STANDARD SHOPPING RULES:
+1. Standard Shopping does NOT use text ads or search keywords. Google automatically builds Product Listing Ads directly from your Google Merchant Center product catalog!
+2. Ad Group: Create exactly 1 Ad Group with name "${businessLabel.slice(0, 25)} - All Products" and type "SHOPPING_PRODUCT_ADS".
+3. Merchant Center Account: Linked to feed ID ${mergedIntake.merchant_id || "Active GMC Feed"}.
+4. Negative Keywords: Apply the finalized negative keywords (${finalizedNegatives.length} exclusions) to filter out irrelevant product search queries.`;
 
-STRICT COPY & ASSET RULES:
-1. Headlines: Generate EXACTLY 10 to 12 keyword-rich, compelling, unique headlines, STRICTLY maximum 30 characters each.
-   - At least 5-6 headlines MUST directly stuff the top target keywords and services in ${targetLocation} to achieve an EXCELLENT Google Ad Strength and 10/10 Quality Score!
-   - Include 2-3 value propositions / USPs (e.g. "Top Rated Experts", "Verified & Certified", "Affordable & Reliable").
-   - Include 2-3 call-to-actions (e.g. "Get Free Quote Today", "Call For Consultation", "Book Online Now").
-2. Descriptions: Generate EXACTLY 4 compelling, unique descriptions, STRICTLY maximum 90 characters each:
-   - Description 1: Core service overview with primary keywords and target location.
-   - Description 2: Social proof, customer trust, ratings, and experience.
-   - Description 3: Pricing advantages, transparent estimates, fast turnaround, satisfaction guarantee.
-   - Description 4: Strong conversion CTA (Call now or visit our website to get started).
-3. Business Name: Set "businessName" to "${(mergedIntake.business_name || businessLabel).slice(0, 25)}" (STRICTLY max 25 characters) to link as a Google Ads Business Name asset.
+      formatJsonAdGroups = `"adGroups": [
+    {
+      "name": "${businessLabel.slice(0, 25)} - All Products",
+      "type": "SHOPPING_PRODUCT_ADS",
+      "cpcBidMicros": 15000000
+    }
+  ]`;
+
+      formatSummaryBulletPoints = `- 📊 **Campaign Format:** ${formatDisplayLabel}
+- 🏬 **Merchant Center ID:** \`${mergedIntake.merchant_id || "Active GMC Feed"}\`
+- 🌍 **Sales Country / Feed Label:** ${countryIso || "IN"}
+- 📦 **Ad Group Setup:** 1 Ad Group targeting "All Products" (\`SHOPPING_PRODUCT_ADS\`)
+- 📈 **Bidding Strategy:** ${biddingChoice}
+- 📍 **Target Location:** ${targetLocation}
+- 💰 **Daily Budget:** ${accountCurrency === "INR" ? "₹" : accountCurrency + " "}${mergedIntake.daily_budget}/day
+- 🌐 **Destination Store:** ${landingUrl}
+- 🛡️ **Negative Keywords Applied:** ${finalizedNegatives.length > 0 ? finalizedNegatives.join(", ") : "Standard e-commerce exclusions applied"}
+- ℹ️ **Catalog Notice:** Google Shopping will automatically sync your products, prices, images, and inventory from your Merchant Center catalog!`;
+
+    } else if (chosenCampaignType === "DISPLAY") {
+      formatSpecificRules = `STRICT GOOGLE DISPLAY NETWORK (GDN) RULES:
+1. Headlines: Generate EXACTLY 5 short, compelling headlines for Responsive Display Ads, STRICTLY maximum 30 characters each.
+2. Long Headline: Generate EXACTLY 1 compelling long headline, STRICTLY maximum 90 characters.
+3. Descriptions: Generate EXACTLY 5 engaging descriptions, STRICTLY maximum 90 characters each.
+4. Business Name: Set "businessName" to "${(mergedIntake.business_name || businessLabel).slice(0, 25)}" (STRICTLY max 25 characters).
+5. Targeting: Contextual Display Keywords & Topic categories based on: ${JSON.stringify(finalizedKeywords)}.`;
+
+      formatJsonAdGroups = `"adGroups": [
+    {
+      "name": "${businessLabel.slice(0, 25)} - Display Network",
+      "type": "DISPLAY_STANDARD",
+      "cpcBidMicros": 15000000,
+      "keywords": ${JSON.stringify(finalizedKeywords)},
+      "ads": [
+        {
+          "headlines": [
+            "Headline 1 (max 30 chars)",
+            "Headline 2 (max 30 chars)",
+            "Headline 3 (max 30 chars)",
+            "Headline 4 (max 30 chars)",
+            "Headline 5 (max 30 chars)"
+          ],
+          "longHeadline": "Engaging long headline for visual display banner ads (max 90 chars)",
+          "descriptions": [
+            "Description 1 (max 90 chars)",
+            "Description 2 (max 90 chars)",
+            "Description 3 (max 90 chars)",
+            "Description 4 (max 90 chars)",
+            "Description 5 (max 90 chars)"
+          ],
+          "businessName": "${(mergedIntake.business_name || businessLabel).slice(0, 25)}"
+        }
+      ]
+    }
+  ]`;
+
+      formatSummaryBulletPoints = `- 📊 **Campaign Format:** ${formatDisplayLabel}
+- 🌐 **Placements:** Google Display Network (Partner Websites, YouTube placements, Apps)
+- 📍 **Targeting & Location:** ${targetLocation}
+- 💰 **Daily Budget:** ${accountCurrency === "INR" ? "₹" : accountCurrency + " "}${mergedIntake.daily_budget}/day
+- 📈 **Bidding Strategy:** ${biddingChoice}
+- 🏢 **Business Name:** ${(mergedIntake.business_name || businessLabel).slice(0, 25)}
+- 🎯 **Contextual Keywords & Topics (${finalizedKeywords.length}):** ${finalizedKeywords.slice(0, 10).join(", ")}${finalizedKeywords.length > 10 ? "..." : ""}
+- 🛡️ **Negative Exclusions:** ${finalizedNegatives.slice(0, 8).join(", ")}
+- ✍️ **Responsive Display Ad Copy Preview:**
+  - **Headlines (5):** List all 5 headlines with character counts
+  - **Long Headline:** The 90-char long headline
+  - **Descriptions (5):** List all 5 descriptions with character counts
+- 🖼️ **Visual Asset Note:** Google Ads will combine these headlines and descriptions with imagery from your landing page (${landingUrl}) to fit banner placements across millions of websites.`;
+
+    } else if (chosenCampaignType === "PERFORMANCE_MAX" || chosenCampaignType === "PERFORMANCE_MAX_SHOPPING") {
+      formatSpecificRules = `STRICT PERFORMANCE MAX RULES:
+1. Headlines: Generate EXACTLY 5 compelling headlines for the Asset Group, STRICTLY maximum 30 characters each.
+2. Long Headline: Generate EXACTLY 1 compelling long headline, STRICTLY maximum 90 characters.
+3. Descriptions: Generate EXACTLY 4 compelling descriptions, STRICTLY maximum 90 characters each.
+4. Business Name: Set "businessName" to "${(mergedIntake.business_name || businessLabel).slice(0, 25)}" (STRICTLY max 25 characters).
 ${sitelinkPromptRule}
-5. Callout Assets: EXACTLY 4 standout unique selling propositions (USPs) as callout badges, STRICTLY maximum 25 characters each (e.g. "Verified & Certified", "24/7 Fast Support", "Transparent Pricing", "Top Rated Service").
+5. Callout Assets: EXACTLY 4 standout callouts, STRICTLY max 25 characters each.
 6. Call Asset: ${mergedIntake.phone_number ? `Configure callAsset with phoneNumber "${mergedIntake.phone_number}" and countryCode "${countryIso}".` : "Set callAsset to null if no phone number was provided."}
+7. Audience Search Themes: Guide Google's AI with user intent signals from: ${JSON.stringify(finalizedKeywords)}.
+${chosenCampaignType === "PERFORMANCE_MAX_SHOPPING" ? `8. Merchant Center: Connect retail catalog feed ID ${mergedIntake.merchant_id || "Active GMC Feed"} for automated shopping product cards across all channels.` : ""}`;
 
-OUTPUT FORMAT:
-You MUST start with a valid JSON block inside \`\`\`json ... \`\`\` using this EXACT schema:
-\`\`\`json
-{
-  "customerId": "${selectedCustomerId}",
-  "businessName": "${(mergedIntake.business_name || businessLabel).slice(0, 25)}",
-  "location": "${targetLocation}",
-  "campaignType": "${chosenCampaignType}",
-  "merchantId": ${mergedIntake.merchant_id ? `"${mergedIntake.merchant_id}"` : "null"},
-  "networkSettings": ${JSON.stringify(resolvedNetworkSettings)},
-  "biddingStrategy": "${biddingChoice}",
-  "campaign": {
-    "name": "${proposedUniqueCampaignName.replace(/"/g, '\\"')}",
-    "status": "PAUSED",
-    "network": "SEARCH",
-    "campaignType": "${chosenCampaignType}",
-    "merchantId": ${mergedIntake.merchant_id ? `"${mergedIntake.merchant_id}"` : "null"},
-    "networkSettings": ${JSON.stringify(resolvedNetworkSettings)},
-    "location": "${targetLocation}",
-    "dailyBudgetMicros": ${budgetMicros},
-    "finalUrl": "${landingUrl}",
-    "campaignGoal": "${isCallGoal ? "PHONE_CALLS" : "WEBSITE_LEADS"}",
-    "biddingStrategy": "${biddingChoice}",
-    "businessName": "${(mergedIntake.business_name || businessLabel).slice(0, 25)}",
-    "negativeKeywords": ${JSON.stringify(finalizedNegatives)}
-  },
-  "negativeKeywords": ${JSON.stringify(finalizedNegatives)},
-  "sitelinks": ${candidateSitelinks.length > 0 ? JSON.stringify(candidateSitelinks.map(c => ({
+      formatJsonAdGroups = `"sitelinks": ${candidateSitelinks.length > 0 ? JSON.stringify(candidateSitelinks.map(c => ({
     linkText: c.linkText,
     description1: "Helpful insights & information",
     description2: "Learn more & get in touch",
@@ -5920,7 +6227,76 @@ You MUST start with a valid JSON block inside \`\`\`json ... \`\`\` using this E
   "callAsset": ${mergedIntake.phone_number ? JSON.stringify({ countryCode: countryIso, phoneNumber: mergedIntake.phone_number }) : "null"},
   "adGroups": [
     {
-      "name": "${businessLabel.slice(0, 25)} - ${chosenCampaignType}",
+      "name": "${businessLabel.slice(0, 25)} - Asset Group 1",
+      "type": "ASSET_GROUP",
+      "cpcBidMicros": 20000000,
+      "searchThemes": ${JSON.stringify(finalizedKeywords)},
+      "ads": [
+        {
+          "headlines": [
+            "Headline 1 (max 30 chars)",
+            "Headline 2 (max 30 chars)",
+            "Headline 3 (max 30 chars)",
+            "Headline 4 (max 30 chars)",
+            "Headline 5 (max 30 chars)"
+          ],
+          "longHeadline": "Compelling long headline summarizing your brand & value proposition (max 90 chars)",
+          "descriptions": [
+            "Description 1 (max 90 chars)",
+            "Description 2 (max 90 chars)",
+            "Description 3 (max 90 chars)",
+            "Description 4 (max 90 chars)"
+          ],
+          "businessName": "${(mergedIntake.business_name || businessLabel).slice(0, 25)}"
+        }
+      ]
+    }
+  ]`;
+
+      formatSummaryBulletPoints = `- 📊 **Campaign Format:** ${formatDisplayLabel}
+- 🌐 **Omnichannel Reach:** Google Search, YouTube, Google Maps, Gmail, Discover, & Display Network
+${chosenCampaignType === "PERFORMANCE_MAX_SHOPPING" ? `- 🏬 **Merchant Center Catalog:** Linked feed ID \`${mergedIntake.merchant_id || "Active GMC Feed"}\`\n` : ""}- 🎯 **Primary Campaign Goal:** ${isCallGoal ? "Direct Phone Calls / Inbound Leads 📞" : "Maximizing Omnichannel Conversion Value 🌐"}
+- 📈 **Bidding Strategy:** ${biddingChoice}
+- 🏢 **Business Name Asset:** ${(mergedIntake.business_name || businessLabel).slice(0, 25)}
+- 📍 **Targeting & Location:** ${targetLocation}
+- 💰 **Daily Budget:** ${accountCurrency === "INR" ? "₹" : accountCurrency + " "}${mergedIntake.daily_budget}/day
+- 🌐 **Landing Page:** ${landingUrl}
+${mergedIntake.phone_number ? `- 📞 **Call Extension:** Attached with number \`${mergedIntake.phone_number}\`\n` : ""}${candidateSitelinks.length > 0 ? `- 🔗 **Sitelink Extensions (${candidateSitelinks.length}):** Included\n` : ""}- 💡 **Callout Badges (4):** Included
+- 🔍 **Audience Search Themes (${finalizedKeywords.length}):** ${finalizedKeywords.slice(0, 10).join(", ")}${finalizedKeywords.length > 10 ? "..." : ""}
+- ✍️ **Asset Group Copy Preview:**
+  - **Headlines (5):** List with character counts
+  - **Long Headline:** The 90-char long headline
+  - **Descriptions (4):** List with character counts`;
+
+    } else {
+      // SEARCH
+      formatSpecificRules = `STRICT SEARCH COPY & ASSET RULES:
+1. Headlines: Generate EXACTLY 10 to 12 keyword-rich, compelling, unique headlines, STRICTLY maximum 30 characters each.
+   - At least 5-6 headlines MUST directly include the top target keywords and services in ${targetLocation} to achieve an EXCELLENT Google Ad Strength and 10/10 Quality Score!
+   - Include 2-3 value propositions / USPs.
+   - Include 2-3 call-to-actions.
+2. Descriptions: Generate EXACTLY 4 compelling, unique descriptions, STRICTLY maximum 90 characters each.
+3. Business Name: Set "businessName" to "${(mergedIntake.business_name || businessLabel).slice(0, 25)}" (STRICTLY max 25 characters).
+${sitelinkPromptRule}
+5. Callout Assets: EXACTLY 4 standout unique selling propositions (USPs) as callout badges, STRICTLY maximum 25 characters each.
+6. Call Asset: ${mergedIntake.phone_number ? `Configure callAsset with phoneNumber "${mergedIntake.phone_number}" and countryCode "${countryIso}".` : "Set callAsset to null if no phone number was provided."}`;
+
+      formatJsonAdGroups = `"sitelinks": ${candidateSitelinks.length > 0 ? JSON.stringify(candidateSitelinks.map(c => ({
+    linkText: c.linkText,
+    description1: "Helpful insights & information",
+    description2: "Learn more & get in touch",
+    finalUrl: c.finalUrl
+  })), null, 2) : "[]"},
+  "callouts": [
+    "Verified & Certified",
+    "Prompt & Reliable",
+    "Transparent Pricing",
+    "Customer Support"
+  ],
+  "callAsset": ${mergedIntake.phone_number ? JSON.stringify({ countryCode: countryIso, phoneNumber: mergedIntake.phone_number }) : "null"},
+  "adGroups": [
+    {
+      "name": "${businessLabel.slice(0, 25)} - Search Ads",
       "cpcBidMicros": 20000000,
       "keywords": ${JSON.stringify(finalizedKeywords)},
       "ads": [
@@ -5948,12 +6324,9 @@ You MUST start with a valid JSON block inside \`\`\`json ... \`\`\` using this E
         }
       ]
     }
-  ]
-}
-\`\`\`
+  ]`;
 
-Followed by a clean, professional campaign summary highlighting:
-- 📊 **Campaign Format:** ${chosenCampaignType === "SHOPPING" ? "🛍️ Standard Shopping (Merchant Center Product Ads)" : (chosenCampaignType === "PERFORMANCE_MAX" ? "⚡ Performance Max Multi-Channel Campaign" : "🔍 Google Search Campaign")}
+      formatSummaryBulletPoints = `- 📊 **Campaign Format:** ${formatDisplayLabel}
 - 🌐 **Network Placements:** ${chosenNetPref === "DISPLAY_EXPANSION" ? "Google Search + Search Partners + Display Expansion" : (chosenNetPref === "SEARCH_PARTNERS" ? "Google Search + Search Partners" : "Google Search Only (High Intent, Zero Display Waste)")}
 - 🎯 **Primary Campaign Goal:** ${isCallGoal ? "Direct Phone Calls / Inbound Call Leads 📞" : "Website Traffic & Online Leads 🌐"}
 - 📈 **Bidding Strategy:** ${biddingChoice === "MAXIMIZE_CLICKS" ? "Maximize Clicks (Traffic Focus)" : "Maximize Conversions (Lead/Call Focus)"}
@@ -5961,15 +6334,73 @@ Followed by a clean, professional campaign summary highlighting:
 - 📍 **Targeting & Location:** ${targetLocation}
 - 💰 **Daily Budget:** ${accountCurrency === "INR" ? "₹" : accountCurrency + " "}${mergedIntake.daily_budget}/day
 - 🌐 **Landing Page:** ${landingUrl}
-${mergedIntake.phone_number ? `- 📞 **Call Extension (Click-to-Call):** Attached with number \`${mergedIntake.phone_number}\`\n` : ""}
-${candidateSitelinks.length > 0
-  ? `- 🔗 **Sitelink Extension${candidateSitelinks.length > 1 ? "s" : ""} (${candidateSitelinks.length} Link${candidateSitelinks.length > 1 ? "s" : ""}):** List each sitelink with linkText, descriptions, and destination`
-  : `- 🔗 **Sitelink Extensions:** None (landing page has no separate subpages)`}
-- 💡 **Callout Badges (4 USPs):** List the 4 callouts
+${mergedIntake.phone_number ? `- 📞 **Call Extension (Click-to-Call):** Attached with number \`${mergedIntake.phone_number}\`\n` : ""}${candidateSitelinks.length > 0 ? `- 🔗 **Sitelink Extension${candidateSitelinks.length > 1 ? "s" : ""} (${candidateSitelinks.length} Link${candidateSitelinks.length > 1 ? "s" : ""}):** List each sitelink with linkText, descriptions, and destination\n` : `- 🔗 **Sitelink Extensions:** None (landing page has no separate subpages)\n`}- 💡 **Callout Badges (4 USPs):** List the 4 callouts
 - 🛡️ **Negative Keywords Applied:** List the negative exclusions
 - 🎯 **Top Target Keywords (${finalizedKeywords.length})**
 - ✍️ **Ad Copy Preview (10-12 Headlines & 4 Descriptions):** List all generated headlines and descriptions with character counts!
-- ℹ️ **Business Logo Note:** Under Google Ads policy, custom brand logos appear on search ads once advertiser verification is completed in your Google Ads account console.
+- ℹ️ **Business Logo Note:** Under Google Ads policy, custom brand logos appear on search ads once advertiser verification is completed in your Google Ads account console.`;
+    }
+
+    const planPrompt = `
+You are GabbarInfo AI, a world-class Google Ads strategist and copywriter.
+Create a high-performing Google Ads Campaign plan based on the user's verified business details, selected campaign format (${chosenCampaignType}), and targeting details.
+
+ACCOUNT DETAILS:
+- Account Name: ${activeAccountObj.descriptiveName}
+- Customer ID: ${selectedCustomerId}
+- Currency: ${accountCurrency}
+
+VERIFIED BUSINESS DETAILS:
+- Business Name: ${mergedIntake.business_name || businessLabel}
+- Services / Products Offered: ${mergedIntake.services || businessLabel}
+- Campaign Format: ${formatDisplayLabel}
+- Network Placements: ${chosenNetPref}
+- Primary Campaign Goal: ${isCallGoal ? "Direct Phone Calls (Call Leads)" : "Website Leads & Online Traffic"}
+- Business Phone Number: ${mergedIntake.phone_number || (isCallGoal ? "Required for call asset" : "None")}
+- Target Location: ${targetLocation}
+- Target Language: ${mergedIntake.language || "English"}
+- Daily Budget: ${accountCurrency} ${mergedIntake.daily_budget} (dailyBudgetMicros: ${budgetMicros})
+- Bidding Strategy: ${biddingChoice}
+- Landing Page URL: ${landingUrl}
+${mergedIntake.merchant_id ? `- Merchant Center ID: ${mergedIntake.merchant_id}\n` : ""}- Verified Candidate Sitelinks: ${JSON.stringify(candidateSitelinks)}
+- TARGETING SIGNALS / KEYWORDS: ${JSON.stringify(finalizedKeywords)}
+- FINALIZED NEGATIVE KEYWORDS: ${JSON.stringify(finalizedNegatives)}
+
+${formatSpecificRules}
+
+OUTPUT FORMAT:
+You MUST start with a valid JSON block inside \`\`\`json ... \`\`\` using this EXACT schema:
+\`\`\`json
+{
+  "customerId": "${selectedCustomerId}",
+  "businessName": "${(mergedIntake.business_name || businessLabel).slice(0, 25)}",
+  "location": "${targetLocation}",
+  "campaignType": "${chosenCampaignType}",
+  "merchantId": ${mergedIntake.merchant_id ? `"${mergedIntake.merchant_id}"` : "null"},
+  "networkSettings": ${JSON.stringify(resolvedNetworkSettings)},
+  "biddingStrategy": "${biddingChoice}",
+  "campaign": {
+    "name": "${proposedUniqueCampaignName.replace(/"/g, '\\"')}",
+    "status": "PAUSED",
+    "network": "${chosenCampaignType === "DISPLAY" ? "DISPLAY" : (chosenCampaignType === "SHOPPING" ? "SHOPPING" : (chosenCampaignType.includes("PERFORMANCE") ? "PERFORMANCE_MAX" : "SEARCH"))}",
+    "campaignType": "${chosenCampaignType}",
+    "merchantId": ${mergedIntake.merchant_id ? `"${mergedIntake.merchant_id}"` : "null"},
+    "networkSettings": ${JSON.stringify(resolvedNetworkSettings)},
+    "location": "${targetLocation}",
+    "dailyBudgetMicros": ${budgetMicros},
+    "finalUrl": "${landingUrl}",
+    "campaignGoal": "${isCallGoal ? "PHONE_CALLS" : "WEBSITE_LEADS"}",
+    "biddingStrategy": "${biddingChoice}",
+    "businessName": "${(mergedIntake.business_name || businessLabel).slice(0, 25)}",
+    "negativeKeywords": ${JSON.stringify(finalizedNegatives)}
+  },
+  "negativeKeywords": ${JSON.stringify(finalizedNegatives)},
+  ${formatJsonAdGroups}
+}
+\`\`\`
+
+Followed by a clean, professional campaign summary highlighting:
+${formatSummaryBulletPoints}
 
 And conclude with:
 "Reply **YES** to create this campaign in **PAUSED** mode in your Google Ads account: **${activeAccountObj.descriptiveName}** (\`${formattedAccId}\`)."
