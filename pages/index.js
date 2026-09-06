@@ -21,9 +21,11 @@ export default function HomePage() {
   const role = session?.user?.role || "client";
   const [showBuyCredits, setShowBuyCredits] = useState(false);
   const [showSocialPlanner, setShowSocialPlanner] = useState(false);
+  const [hasWpConnected, setHasWpConnected] = useState(false);
+  const [showWpConnectPrompt, setShowWpConnectPrompt] = useState(false);
 
   /* -------------------------
-     LOAD CREDITS
+     LOAD CREDITS & WP STATUS
   ------------------------- */
   useEffect(() => {
     if (!session) return;
@@ -43,7 +45,23 @@ export default function HomePage() {
       }
     }
 
+    async function checkWpConnections() {
+      try {
+        const res = await fetch("/api/wordpress/sync?action=get-connection");
+        if (!res.ok) return;
+        const data = await res.json();
+        if (data.ok) {
+          const all = data.allConnections || {};
+          const hasAny = Boolean(data.connection?.siteUrl || Object.values(all).some((c) => c?.siteUrl));
+          setHasWpConnected(hasAny);
+        }
+      } catch (e) {
+        console.warn("Failed to check wp connection:", e);
+      }
+    }
+
     fetchCredits();
+    checkWpConnections();
   }, [session]);
 
   /* -------------------------
@@ -370,6 +388,12 @@ export default function HomePage() {
 
           <a
             href="/seo"
+            onClick={(e) => {
+              if (!hasWpConnected) {
+                e.preventDefault();
+                setShowWpConnectPrompt(true);
+              }
+            }}
             className="btn-gabbar-primary"
             style={{
               padding: "8px 18px",
@@ -508,6 +532,12 @@ export default function HomePage() {
               </a>
               <a
                 href="/seo"
+                onClick={(e) => {
+                  if (!hasWpConnected) {
+                    e.preventDefault();
+                    setShowWpConnectPrompt(true);
+                  }
+                }}
                 className="btn-gabbar-primary"
                 style={{
                   padding: "12px 24px",
@@ -657,6 +687,7 @@ export default function HomePage() {
         <div style={{ display: "flex", flexDirection: "column", gap: 24 }}>
           {/* 1. WORDPRESS WEBSITE & SEO ENGINE */}
           <section
+            id="wordpress-engine"
             style={{
               padding: "26px 28px",
               borderRadius: 18,
@@ -665,6 +696,7 @@ export default function HomePage() {
               WebkitBackdropFilter: "blur(20px)",
               border: "1px solid rgba(255, 255, 255, 0.12)",
               boxShadow: "0 20px 50px rgba(0,0,0,0.5), 0 0 30px rgba(56, 189, 248, 0.05)",
+              transition: "all 0.5s ease",
             }}
           >
             <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 14, flexWrap: "wrap", gap: 10 }}>
@@ -685,7 +717,7 @@ export default function HomePage() {
                 CORE ENGINE
               </span>
             </div>
-            <WordPressSiteConnect />
+            <WordPressSiteConnect onConnectionChange={(connected) => setHasWpConnected(connected)} />
           </section>
 
           {/* 2. GOOGLE ADS ACCOUNT */}
@@ -766,6 +798,190 @@ export default function HomePage() {
       {/* Autonomous Social Media Planner Modal */}
       {showSocialPlanner && (
         <SocialMediaPlannerModal onClose={() => setShowSocialPlanner(false)} />
+      )}
+
+      {/* ── SEO SUITE ONBOARDING GUIDANCE MODAL ── */}
+      {showWpConnectPrompt && (
+        <div
+          style={{
+            position: "fixed",
+            inset: 0,
+            zIndex: 99999,
+            background: "rgba(4, 7, 13, 0.85)",
+            backdropFilter: "blur(18px)",
+            WebkitBackdropFilter: "blur(18px)",
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            padding: 20,
+          }}
+          onClick={(e) => {
+            if (e.target === e.currentTarget) setShowWpConnectPrompt(false);
+          }}
+        >
+          <div
+            style={{
+              width: "100%",
+              maxWidth: 520,
+              background: "linear-gradient(165deg, #101625 0%, #0a0e18 100%)",
+              border: "1px solid rgba(56, 189, 248, 0.28)",
+              borderRadius: 24,
+              boxShadow: "0 30px 80px rgba(0, 0, 0, 0.9), 0 0 50px rgba(56, 189, 248, 0.15)",
+              padding: "32px 30px",
+              position: "relative",
+              color: "#f8fafc",
+            }}
+          >
+            {/* Close Button */}
+            <button
+              onClick={() => setShowWpConnectPrompt(false)}
+              style={{
+                position: "absolute",
+                top: 18,
+                right: 18,
+                width: 32,
+                height: 32,
+                borderRadius: 8,
+                border: "1px solid rgba(255, 255, 255, 0.1)",
+                background: "rgba(255, 255, 255, 0.05)",
+                color: "#94a3b8",
+                cursor: "pointer",
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
+                fontSize: 16,
+              }}
+            >
+              ✕
+            </button>
+
+            {/* Header Emblem */}
+            <div style={{ display: "flex", alignItems: "center", gap: 14, marginBottom: 18 }}>
+              <div
+                style={{
+                  width: 48,
+                  height: 48,
+                  borderRadius: 14,
+                  background: "rgba(56, 189, 248, 0.15)",
+                  border: "1px solid rgba(56, 189, 248, 0.3)",
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  fontSize: 24,
+                }}
+              >
+                🌐
+              </div>
+              <div>
+                <span
+                  style={{
+                    fontSize: 10,
+                    fontWeight: 800,
+                    letterSpacing: "0.08em",
+                    textTransform: "uppercase",
+                    padding: "3px 8px",
+                    borderRadius: 6,
+                    background: "rgba(56, 189, 248, 0.15)",
+                    color: "#38bdf8",
+                    border: "1px solid rgba(56, 189, 248, 0.3)",
+                  }}
+                >
+                  Step 1 Required for SEO Suite
+                </span>
+                <h3 style={{ margin: "4px 0 0 0", fontSize: 19, fontWeight: 800, color: "#ffffff" }}>
+                  Connect Your Website First
+                </h3>
+              </div>
+            </div>
+
+            {/* Guidance Content */}
+            <p style={{ margin: "0 0 18px 0", fontSize: 13.5, color: "#94a3b8", lineHeight: 1.6 }}>
+              The <strong>SEO Suite</strong> automatically synthesizes 1,500+ word rank-ready articles, tracks high-intent keywords, and schedules publishing directly into your site. To unlock these features, please link your WordPress website first.
+            </p>
+
+            {/* Quick 3-Step Setup Card */}
+            <div
+              style={{
+                background: "rgba(255, 255, 255, 0.03)",
+                border: "1px solid rgba(255, 255, 255, 0.08)",
+                borderRadius: 14,
+                padding: "16px 18px",
+                marginBottom: 22,
+              }}
+            >
+              <div style={{ fontSize: 11, fontWeight: 800, color: "#38bdf8", textTransform: "uppercase", marginBottom: 10 }}>
+                Quick 30-Second Setup:
+              </div>
+              <div style={{ display: "flex", flexDirection: "column", gap: 10, fontSize: 13, color: "#cbd5e1" }}>
+                <div style={{ display: "flex", alignItems: "flex-start", gap: 10 }}>
+                  <span style={{ width: 20, height: 20, borderRadius: "50%", background: "#38bdf8", color: "#041525", fontSize: 11, fontWeight: 800, display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0, marginTop: 1 }}>1</span>
+                  <span>Scroll down to the <strong>WordPress Website &amp; SEO Engine</strong> card.</span>
+                </div>
+                <div style={{ display: "flex", alignItems: "flex-start", gap: 10 }}>
+                  <span style={{ width: 20, height: 20, borderRadius: "50%", background: "#38bdf8", color: "#041525", fontSize: 11, fontWeight: 800, display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0, marginTop: 1 }}>2</span>
+                  <span>Type in your <strong>business or website name</strong> into the field.</span>
+                </div>
+                <div style={{ display: "flex", alignItems: "flex-start", gap: 10 }}>
+                  <span style={{ width: 20, height: 20, borderRadius: "50%", background: "#38bdf8", color: "#041525", fontSize: 11, fontWeight: 800, display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0, marginTop: 1 }}>3</span>
+                  <span>Click <strong>Connect WordPress Website</strong> to link your domain.</span>
+                </div>
+              </div>
+            </div>
+
+            {/* Action Buttons */}
+            <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+              <button
+                onClick={() => {
+                  setShowWpConnectPrompt(false);
+                  const el = document.getElementById("wordpress-engine");
+                  if (el) {
+                    el.scrollIntoView({ behavior: "smooth", block: "center" });
+                    el.style.boxShadow = "0 0 50px rgba(56, 189, 248, 0.6), 0 0 100px rgba(56, 189, 248, 0.3)";
+                    el.style.borderColor = "#38bdf8";
+                    setTimeout(() => {
+                      el.style.boxShadow = "";
+                      el.style.borderColor = "";
+                    }, 3500);
+                  }
+                }}
+                style={{
+                  width: "100%",
+                  padding: "13px 20px",
+                  borderRadius: 12,
+                  fontSize: 14,
+                  fontWeight: 700,
+                  cursor: "pointer",
+                  border: "none",
+                  background: "linear-gradient(135deg, #0284c7 0%, #0369a1 100%)",
+                  color: "#ffffff",
+                  boxShadow: "0 4px 20px rgba(2, 132, 199, 0.4)",
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  gap: 8,
+                  transition: "all 0.2s ease",
+                }}
+              >
+                <span>👇</span> Take Me to Connect Website
+              </button>
+
+              <div style={{ textAlign: "center", marginTop: 4 }}>
+                <a
+                  href="/seo"
+                  onClick={() => setShowWpConnectPrompt(false)}
+                  style={{
+                    fontSize: 12,
+                    color: "#64748b",
+                    textDecoration: "underline",
+                    cursor: "pointer",
+                  }}
+                >
+                  I'll connect later, open SEO Suite anyway ↗
+                </a>
+              </div>
+            </div>
+          </div>
+        </div>
       )}
     </div>
   );

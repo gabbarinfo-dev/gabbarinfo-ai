@@ -166,6 +166,8 @@ export default async function handler(req, res) {
         .eq("memory_type", autoMemoryKey)
         .maybeSingle();
 
+      const isOwner = normalizedEmail === "ndantare@gmail.com" || session?.user?.role === "owner" || session?.user?.role === "admin";
+
       let config = {
         enabled: false,
         destination: hasFacebook && !hasInstagram ? "FACEBOOK_ONLY" : "BOTH", // sensible default based on connection
@@ -177,6 +179,7 @@ export default async function handler(req, res) {
         targetAudience: "Business owners, entrepreneurs, and eCommerce brands",
         queue: [],
         publishedCount: 0,
+        testPostsUsed: 0,
         lastPublishedAt: null,
         history: []
       };
@@ -220,6 +223,7 @@ export default async function handler(req, res) {
       return res.status(200).json({
         ok: true,
         config,
+        isOwner,
         hasFacebook,
         hasInstagram,
         fbPageName: meta?.business_name || (meta?.fb_page_id ? `Page ID: ${meta.fb_page_id}` : null),
@@ -475,6 +479,18 @@ Respond ONLY in JSON: { "hook": "short catchy hook (4-7 words)", "topic": "speci
       if (action === "test-post") {
         console.log(`[Social Autopilot] Executing immediate test post for ${normalizedEmail}...`);
 
+        // Free Test Post Limitation Check
+        const isOwner = normalizedEmail === "ndantare@gmail.com" || session?.user?.role === "owner" || session?.user?.role === "admin";
+        const testPostsUsed = current.testPostsUsed || 0;
+
+        if (!isOwner && testPostsUsed >= 1) {
+          return res.status(403).json({
+            ok: false,
+            error: "You have already used your 1 free test post. Please turn ON Autopilot for scheduled daily automated publishing!",
+            limitReached: true,
+          });
+        }
+
         // Check Meta Connection
         const { data: meta } = await supabase
           .from("meta_connections")
@@ -639,6 +655,7 @@ Respond ONLY in JSON: { "hook": "short catchy hook (4-7 words)", "topic": "speci
         current.queue = queue;
         current.lastPublishedAt = now.toISOString();
         current.publishedCount = (current.publishedCount || 0) + 1;
+        current.testPostsUsed = (current.testPostsUsed || 0) + 1;
         current.destination = destination;
 
         if (!Array.isArray(current.history)) current.history = [];

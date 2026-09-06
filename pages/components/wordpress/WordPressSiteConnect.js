@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 
-export default function WordPressSiteConnect() {
+export default function WordPressSiteConnect({ onConnectionChange }) {
   const [businessName, setBusinessName] = useState("GABBARinfo");
   const [customBusiness, setCustomBusiness] = useState("");
   const [connection, setConnection] = useState(null);
@@ -32,6 +32,10 @@ export default function WordPressSiteConnect() {
       if (data.ok) {
         setConnection(data.connection);
         setAllConnections(data.allConnections || {});
+        if (onConnectionChange) {
+          const hasAny = Boolean(data.connection?.siteUrl || Object.values(data.allConnections || {}).some(c => c?.siteUrl));
+          onConnectionChange(hasAny);
+        }
       }
     } catch (e) {
       console.error("Failed to fetch wp connection:", e);
@@ -103,6 +107,7 @@ export default function WordPressSiteConnect() {
       const data = await res.json();
       if (data.ok) {
         setConnection(data.connection);
+        if (onConnectionChange) onConnectionChange(true);
         setShowModal(false);
         setSiteUrlInput("");
         setApiKeyInput("");
@@ -131,6 +136,7 @@ export default function WordPressSiteConnect() {
       });
       setConnection(null);
       setTestResult(null);
+      if (onConnectionChange) onConnectionChange(false);
     } catch (e) {
       alert("Failed to disconnect: " + e.message);
     }

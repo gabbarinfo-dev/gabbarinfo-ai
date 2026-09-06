@@ -34,6 +34,7 @@ export default function SocialMediaPlannerModal({ onClose }) {
   const [editTopicText, setEditTopicText] = useState("");
   const [editHookText, setEditHookText] = useState("");
   const [testingStatus, setTestingStatus] = useState("");
+  const [isOwner, setIsOwner] = useState(false);
 
   // Load initial config
   useEffect(() => {
@@ -47,6 +48,7 @@ export default function SocialMediaPlannerModal({ onClose }) {
       const data = await res.json();
       if (data.ok) {
         setConfig(data.config);
+        setIsOwner(Boolean(data.isOwner));
         setHasFacebook(data.hasFacebook);
         setHasInstagram(data.hasInstagram);
         setFbPageName(data.fbPageName);
@@ -169,6 +171,12 @@ export default function SocialMediaPlannerModal({ onClose }) {
   }
 
   async function handleTestPostNow() {
+    const testPostsUsed = config.testPostsUsed || 0;
+    if (!isOwner && testPostsUsed >= 1) {
+      alert("You have already used your 1 free complimentary test post.\n\nPlease turn ON Autopilot in the top-right corner to schedule daily automated publishing to your page!");
+      return;
+    }
+
     const destLabel =
       config.destination === "BOTH"
         ? "Both Facebook Page & Instagram"
@@ -509,15 +517,26 @@ export default function SocialMediaPlannerModal({ onClose }) {
                       borderRadius: 8,
                       fontSize: 12,
                       fontWeight: 700,
-                      background: "rgba(56, 189, 248, 0.12)",
-                      border: "1px solid rgba(56, 189, 248, 0.3)",
-                      color: "#38bdf8",
-                      cursor: testingPost ? "not-allowed" : "pointer",
+                      background: (!isOwner && (config.testPostsUsed || 0) >= 1)
+                        ? "rgba(255, 255, 255, 0.05)"
+                        : "rgba(56, 189, 248, 0.12)",
+                      border: (!isOwner && (config.testPostsUsed || 0) >= 1)
+                        ? "1px solid rgba(255, 255, 255, 0.1)"
+                        : "1px solid rgba(56, 189, 248, 0.3)",
+                      color: (!isOwner && (config.testPostsUsed || 0) >= 1) ? "#94a3b8" : "#38bdf8",
+                      cursor: testingPost ? "not-allowed" : (!isOwner && (config.testPostsUsed || 0) >= 1) ? "not-allowed" : "pointer",
                       flex: "1 1 130px",
                       textAlign: "center",
+                      opacity: (!isOwner && (config.testPostsUsed || 0) >= 1) ? 0.75 : 1,
                     }}
                   >
-                    {testingPost ? (testingStatus || "Publishing Test...") : "🚀 Test Post Now"}
+                    {testingPost
+                      ? (testingStatus || "Publishing Test...")
+                      : (!isOwner && (config.testPostsUsed || 0) >= 1)
+                      ? "🔒 Free Test Used"
+                      : !isOwner
+                      ? "🚀 Test Post Now (1 Free Left)"
+                      : "🚀 Test Post Now"}
                   </button>
 
                   <button
