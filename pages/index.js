@@ -7,6 +7,7 @@ import FacebookBusinessConnect from "./components/facebook/FacebookBusinessConne
 import GoogleAdsAccountConnect from "./components/google/googleadsaccountconnect";
 import WordPressSiteConnect from "./components/wordpress/WordPressSiteConnect";
 import BuyCreditsModal from "./components/BuyCreditsModal";
+import SocialMediaPlannerModal from "./components/social/SocialMediaPlannerModal";
 
 import CyberMatrixBackground from "./components/CyberMatrixBackground";
 
@@ -19,6 +20,7 @@ export default function HomePage() {
 
   const role = session?.user?.role || "client";
   const [showBuyCredits, setShowBuyCredits] = useState(false);
+  const [showSocialPlanner, setShowSocialPlanner] = useState(false);
 
   /* -------------------------
      LOAD CREDITS
@@ -378,6 +380,21 @@ export default function HomePage() {
             🌐 SEO Suite ↗
           </a>
 
+          <button
+            onClick={() => setShowSocialPlanner(true)}
+            className="btn-gabbar-secondary"
+            style={{
+              padding: "8px 16px",
+              fontSize: 13,
+              cursor: "pointer",
+              display: "inline-flex",
+              alignItems: "center",
+              gap: 6,
+            }}
+          >
+            📱 Social Planner
+          </button>
+
           {role === "owner" && (
             <a
               href="/admin"
@@ -500,6 +517,20 @@ export default function HomePage() {
               >
                 🌐 Open SEO Suite ↗
               </a>
+              <button
+                onClick={() => setShowSocialPlanner(true)}
+                className="btn-gabbar-secondary"
+                style={{
+                  padding: "12px 22px",
+                  fontSize: 14,
+                  cursor: "pointer",
+                  display: "inline-flex",
+                  alignItems: "center",
+                  gap: 8,
+                }}
+              >
+                📱 Social Media Planner ↗
+              </button>
             </div>
           </div>
 
@@ -720,7 +751,7 @@ export default function HomePage() {
                 SOCIAL SYNDICATE
               </span>
             </div>
-            <FacebookBusinessConnect />
+            <FacebookBusinessConnect onOpenSocialPlanner={() => setShowSocialPlanner(true)} />
           </section>
         </div>
       </main>
@@ -731,6 +762,11 @@ export default function HomePage() {
         onClose={() => setShowBuyCredits(false)}
         userEmail={session?.user?.email}
       />
+
+      {/* Autonomous Social Media Planner Modal */}
+      {showSocialPlanner && (
+        <SocialMediaPlannerModal onClose={() => setShowSocialPlanner(false)} />
+      )}
     </div>
   );
 }

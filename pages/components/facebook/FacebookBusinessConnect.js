@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react";
 import BoostModal from "./meta/BoostModal";
 
-export default function FacebookBusinessConnect() {
+export default function FacebookBusinessConnect({ onOpenSocialPlanner }) {
   const [status, setStatus] = useState("idle"); // idle | connected | loading
   const [meta, setMeta] = useState(null);
   const [showBoostModal, setShowBoostModal] = useState(false);
@@ -295,8 +295,26 @@ export default function FacebookBusinessConnect() {
             </button>
 
             <button
-              onClick={handleBoostClick}
-              className="btn-gabbar-gold"
+              onClick={onOpenSocialPlanner}
+              className="btn-gabbar-primary"
+              style={{
+                padding: "8px 16px",
+                fontSize: "12px",
+                background: "linear-gradient(135deg, #10b981 0%, #059669 100%)",
+                color: "#042416",
+                fontWeight: 800,
+                display: "inline-flex",
+                alignItems: "center",
+                gap: 6,
+                boxShadow: "0 0 20px rgba(16, 185, 129, 0.3)",
+              }}
+            >
+              📱 Social Planner ↗
+            </button>
+
+            <button
+              onClick={() => setShowBoostModal(true)}
+              className="btn-gabbar-secondary"
               style={{
                 padding: "8px 16px",
                 fontSize: "12px",
