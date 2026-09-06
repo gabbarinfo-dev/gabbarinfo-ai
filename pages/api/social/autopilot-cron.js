@@ -1,8 +1,10 @@
 // pages/api/social/autopilot-cron.js
 import { createClient } from "@supabase/supabase-js";
 import OpenAI from "openai";
-import { executeFacebookPost } from "../../../lib/execute-facebook-post";
-import { executeInstagramPost } from "../../../lib/execute-instagram-post";
+import { executeFacebookPost } from "../../../lib/execute-facebook-post.js";
+import { executeInstagramPost } from "../../../lib/execute-instagram-post.js";
+import { generateImage } from "../../../lib/instagram/generate-image.js";
+import { generateCaption } from "../../../lib/instagram/generate-caption.js";
 
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL,
@@ -154,40 +156,46 @@ export default async function handler(req, res) {
         const topic = nextItem.topic || "Practical tips for business growth";
         const hook = nextItem.hook || "Growth Insights";
 
-        // Generate Graphic Art Prompt
-        const imagePrompt = `Award-winning commercial graphic design poster for social media advertising. Subject: "${service}" for brand "${businessName}". Theme: "${hook}: ${topic}". Sleek modern commercial studio lighting, vibrant colors, 3D geometric accents, high contrast, clean agency composition, pristine 4K quality, no text watermark.`;
+        // Build Agent State for Agency-Grade Creative Generation (Matches Dropdown Facebook/Instagram Quality)
+        const agentState = {
+          businessName,
+          businessCategory: config.industry || "Digital Marketing & Business Growth",
+          context: {
+            service,
+            serviceLocked: true,
+            offer: hook || "Special Offer",
+          },
+          assets: {
+            contactMethod: "dm",
+            websiteUrl: "gabbarinfo.com",
+            phone: "+91 97239 27645",
+          },
+        };
 
-        const imageUrl = await generateSocialVisual(imagePrompt);
-        if (!imageUrl) {
-          throw new Error("Failed to synthesize graphic visual image.");
+        // 1. Generate masterclass caption & visual mood
+        let caption = "";
+        let visualMood = "";
+        let tagline = "";
+        try {
+          const captionData = await generateCaption(agentState);
+          const fullHashtags = Array.isArray(captionData.hashtags) ? captionData.hashtags.join(" ") : "";
+          caption = `${captionData.caption}\n\n${fullHashtags}`;
+          visualMood = captionData.visualMood;
+          tagline = captionData.tagline;
+        } catch (capErr) {
+          console.warn("[Social Cron] Gemini caption failed, fallback:", capErr.message);
+          caption = `📢 ${hook.toUpperCase()}\n\n${topic}\n\nRunning a business means staying ahead of the curve. At ${businessName}, we help you turn complex digital challenges into predictable revenue.\n\n👉 Send us a message or visit our website to learn more!\n\n#${service.replace(/[^a-zA-Z0-9]/g, "")} #BusinessGrowth #Marketing #${businessName.replace(/[^a-zA-Z0-9]/g, "")}`;
         }
 
-        // Generate Persuasive Caption & Hashtags
-        let caption = `📢 ${hook.toUpperCase()}\n\n${topic}\n\nRunning a business means staying ahead of the curve. At ${businessName}, we help you turn complex digital challenges into predictable revenue.\n\n👉 Send us a message or visit our website to learn more!\n\n#${service.replace(/[^a-zA-Z0-9]/g, "")} #BusinessGrowth #Marketing #Entrepreneurship #${businessName.replace(/[^a-zA-Z0-9]/g, "")}`;
-
-        const apiKey = process.env.OPENAI_API_KEY;
-        if (apiKey) {
-          try {
-            const openai = new OpenAI({ apiKey });
-            const capResp = await openai.chat.completions.create({
-              model: "gpt-4o-mini",
-              messages: [
-                {
-                  role: "system",
-                  content: "You are a master social media copywriter. Write a punchy, highly engaging caption for Instagram and Facebook with a strong hook, value explanation, bullet points, call to action, and 7-9 relevant hashtags.",
-                },
-                {
-                  role: "user",
-                  content: `Business: ${businessName}\nService: ${service}\nHook: ${hook}\nTopic: ${topic}`,
-                },
-              ],
-            });
-            if (capResp.choices[0]?.message?.content) {
-              caption = capResp.choices[0].message.content.trim();
-            }
-          } catch (capErr) {
-            console.warn("[Social Cron] AI caption generation failed, using structured copy:", capErr.message);
-          }
+        // 2. Generate bespoke commercial 3D poster using gpt-image-2 (Agency Style)
+        let imageUrl = "";
+        try {
+          const imgRes = await generateImage(agentState, visualMood, tagline);
+          imageUrl = imgRes.imageUrl;
+        } catch (imgErr) {
+          console.warn("[Social Cron] generateImage failed, fallback to visual generator:", imgErr.message);
+          const imagePrompt = `Award-winning commercial graphic design poster for social media advertising. Subject: "${service}" for brand "${businessName}". Theme: "${hook}: ${topic}". Sleek modern commercial studio lighting, vibrant colors, 3D geometric accents, high contrast, clean agency composition, pristine 4K quality, no text watermark.`;
+          imageUrl = await generateSocialVisual(imagePrompt);
         }
 
         // Execute Publishing based on destination: "BOTH" | "FACEBOOK_ONLY" | "INSTAGRAM_ONLY"
