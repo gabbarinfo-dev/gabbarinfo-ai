@@ -259,6 +259,7 @@ export default function SocialMediaPlannerModal({ onClose }) {
             background: "rgba(255, 255, 255, 0.02)",
             width: "100%",
             boxSizing: "border-box",
+            flexShrink: 0,
           }}
         >
           <div style={{ display: "flex", alignItems: "center", gap: 10, flex: "1 1 auto", minWidth: 0 }}>
@@ -365,15 +366,18 @@ export default function SocialMediaPlannerModal({ onClose }) {
           style={{
             display: "flex",
             gap: 6,
-            padding: "8px 14px",
+            padding: "10px 16px",
             borderBottom: "1px solid rgba(255, 255, 255, 0.08)",
-            background: "rgba(10, 14, 23, 0.6)",
+            background: "rgba(10, 14, 23, 0.7)",
             overflowX: "auto",
             WebkitOverflowScrolling: "touch",
             scrollbarWidth: "none",
             whiteSpace: "nowrap",
-            maxWidth: "100%",
+            width: "100%",
             boxSizing: "border-box",
+            flexShrink: 0,
+            minHeight: 48,
+            alignItems: "center",
           }}
         >
           {[
@@ -404,7 +408,7 @@ export default function SocialMediaPlannerModal({ onClose }) {
         </div>
 
         {/* ── SCROLLABLE BODY ── */}
-        <div style={{ padding: "16px 14px", overflowY: "auto", flex: 1, maxWidth: "100%", boxSizing: "border-box" }}>
+        <div style={{ padding: "16px 14px", overflowY: "auto", flex: "1 1 auto", minHeight: 0, maxWidth: "100%", boxSizing: "border-box" }}>
           {loading ? (
             <div style={{ textAlign: "center", padding: "60px 0", color: "#94a3b8" }}>
               <div style={{ fontSize: 24, marginBottom: 10 }}>⚡</div>

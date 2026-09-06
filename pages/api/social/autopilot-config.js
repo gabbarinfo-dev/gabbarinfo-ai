@@ -453,7 +453,7 @@ Respond ONLY in JSON: { "hook": "short catchy hook (4-7 words)", "topic": "speci
           .from("meta_connections")
           .select("*")
           .ilike("email", normalizedEmail)
-          .order("created_at", { ascending: false })
+          .order("updated_at", { ascending: false })
           .limit(1)
           .maybeSingle();
 
