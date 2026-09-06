@@ -189,9 +189,11 @@ export default async function handler(req, res) {
 
         // 2. Generate bespoke commercial 3D poster using gpt-image-2 (Agency Style)
         let imageUrl = "";
+        let storageFileName = null;
         try {
           const imgRes = await generateImage(agentState, visualMood, tagline);
           imageUrl = imgRes.imageUrl;
+          storageFileName = imgRes.storageFileName || null;
         } catch (imgErr) {
           console.warn("[Social Cron] generateImage failed, fallback to visual generator:", imgErr.message);
           const imagePrompt = `Award-winning commercial graphic design poster for social media advertising. Subject: "${service}" for brand "${businessName}". Theme: "${hook}: ${topic}". Sleek modern commercial studio lighting, vibrant colors, 3D geometric accents, high contrast, clean agency composition, pristine 4K quality, no text watermark.`;
@@ -231,6 +233,16 @@ export default async function handler(req, res) {
           } catch (igErr) {
             console.error(`[Social Cron] Instagram publish error:`, igErr.message);
             publishedTo.instagram = { ok: false, error: igErr.message };
+          }
+        }
+
+        // ── STORAGE CLEANUP ──
+        if (storageFileName) {
+          try {
+            await supabase.storage.from("instagram-creatives").remove([storageFileName]);
+            console.log(`[Social Cron] Automatically cleaned up storage file: ${storageFileName}`);
+          } catch (cleanErr) {
+            console.warn("[Social Cron] Storage cleanup warning:", cleanErr.message);
           }
         }
 

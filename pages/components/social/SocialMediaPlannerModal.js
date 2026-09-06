@@ -33,6 +33,7 @@ export default function SocialMediaPlannerModal({ onClose }) {
   const [editingIndex, setEditingIndex] = useState(null);
   const [editTopicText, setEditTopicText] = useState("");
   const [editHookText, setEditHookText] = useState("");
+  const [testingStatus, setTestingStatus] = useState("");
 
   // Load initial config
   useEffect(() => {
@@ -181,6 +182,9 @@ export default function SocialMediaPlannerModal({ onClose }) {
     if (!confirmPost) return;
 
     setTestingPost(true);
+    setTestingStatus("Generating 3D creative with AI...");
+    const postStartTime = Date.now();
+
     try {
       const res = await fetch("/api/social/autopilot-config", {
         method: "POST",
@@ -188,30 +192,64 @@ export default function SocialMediaPlannerModal({ onClose }) {
         body: JSON.stringify({ action: "test-post" }),
       });
       const rawText = await res.text();
-      let data = {};
+      let data = null;
       try {
         data = JSON.parse(rawText);
       } catch (parseErr) {
-        if (res.status === 504 || rawText.includes("TIMEOUT") || rawText.includes("FUNCTION_INVOCATION_TIMEOUT")) {
-          throw new Error("Generation timed out on server (504). The AI creative model took longer than expected. Please wait a moment and check your page, or try again.");
-        }
-        throw new Error(`Server returned HTTP ${res.status}: ${rawText.slice(0, 120)}`);
+        // Non-JSON response, likely gateway timeout while Lambda continues
       }
 
-      if (data.ok) {
+      if (data && data.ok) {
         if (data.config) {
           setConfig(data.config);
         }
         const postLink = data.postUrl ? `\n\nDirect Link: ${data.postUrl}` : "";
         alert(`🎉 Success! Autonomous test creative published successfully to ${destLabel}!${postLink}`);
         fetchConfig();
-      } else {
+        return;
+      }
+
+      if (data && !data.ok && !data.error?.includes("TIMEOUT")) {
         alert("Publishing error: " + (data.error || "Unknown error"));
+        return;
+      }
+
+      // If gateway timed out, the server is still finishing publishing to Meta
+      setTestingStatus("Publishing to your page... (almost ready)");
+      let completed = false;
+      for (let attempt = 0; attempt < 12; attempt++) {
+        await new Promise((resolve) => setTimeout(resolve, 3000));
+        try {
+          const pollRes = await fetch("/api/social/autopilot-config");
+          const pollData = await pollRes.json();
+          if (pollData.ok && pollData.config) {
+            const lastPublished = pollData.config.lastPublishedAt
+              ? new Date(pollData.config.lastPublishedAt).getTime()
+              : 0;
+            if (lastPublished >= postStartTime - 5000) {
+              setConfig(pollData.config);
+              const latest = pollData.config.history?.[0];
+              const postLink = latest?.postUrl ? `\n\nDirect Link: ${latest.postUrl}` : "";
+              alert(`🎉 Success! Autonomous test creative published successfully to ${destLabel}!${postLink}`);
+              completed = true;
+              fetchConfig();
+              break;
+            }
+          }
+        } catch (pollErr) {
+          console.warn("Autopilot polling check:", pollErr.message);
+        }
+      }
+
+      if (!completed) {
+        alert("Creative rendering is taking slightly longer on the AI model. Please check your Facebook page in a moment!");
+        fetchConfig();
       }
     } catch (e) {
-      alert("Test post failed: " + e.message);
+      alert("Test post status: " + e.message);
     } finally {
       setTestingPost(false);
+      setTestingStatus("");
     }
   }
 
@@ -479,7 +517,7 @@ export default function SocialMediaPlannerModal({ onClose }) {
                       textAlign: "center",
                     }}
                   >
-                    {testingPost ? "Publishing Test..." : "🚀 Test Post Now"}
+                    {testingPost ? (testingStatus || "Publishing Test...") : "🚀 Test Post Now"}
                   </button>
 
                   <button

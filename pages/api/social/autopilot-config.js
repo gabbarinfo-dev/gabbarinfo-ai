@@ -248,7 +248,7 @@ export default async function handler(req, res) {
       // Fetch current config first
       const { data: mem } = await supabase
         .from("agent_memory")
-        .select("id, content")
+        .select("content")
         .eq("email", normalizedEmail)
         .eq("memory_type", autoMemoryKey)
         .maybeSingle();
@@ -268,19 +268,19 @@ export default async function handler(req, res) {
           updatedAt: new Date().toISOString()
         };
 
-        if (mem?.id) {
-          await supabase
-            .from("agent_memory")
-            .update({ content: JSON.stringify(merged), updated_at: new Date().toISOString() })
-            .eq("id", mem.id);
-        } else {
-          await supabase.from("agent_memory").insert({
+        const { error: saveErr } = await supabase.from("agent_memory").upsert(
+          {
             email: normalizedEmail,
             memory_type: autoMemoryKey,
             content: JSON.stringify(merged),
-            created_at: new Date().toISOString(),
             updated_at: new Date().toISOString()
-          });
+          },
+          { onConflict: "email,memory_type" }
+        );
+
+        if (saveErr) {
+          console.error("[Social Autopilot] Failed to save config:", saveErr.message);
+          return res.status(500).json({ ok: false, error: saveErr.message });
         }
 
         return res.status(200).json({ ok: true, message: "Autopilot configuration saved.", config: merged });
@@ -367,10 +367,19 @@ RULES:
           updatedAt: new Date().toISOString()
         };
 
-        if (mem?.id) {
-          await supabase.from("agent_memory").update({ content: JSON.stringify(merged), updated_at: new Date().toISOString() }).eq("id", mem.id);
-        } else {
-          await supabase.from("agent_memory").insert({ email: normalizedEmail, memory_type: autoMemoryKey, content: JSON.stringify(merged) });
+        const { error: qErr } = await supabase.from("agent_memory").upsert(
+          {
+            email: normalizedEmail,
+            memory_type: autoMemoryKey,
+            content: JSON.stringify(merged),
+            updated_at: new Date().toISOString()
+          },
+          { onConflict: "email,memory_type" }
+        );
+
+        if (qErr) {
+          console.error("[Social Autopilot] Failed to save queue:", qErr.message);
+          return res.status(500).json({ ok: false, error: qErr.message });
         }
 
         return res.status(200).json({ ok: true, message: `Generated ${aiQueue.length} planned topics!`, queue: aiQueue, config: merged });
@@ -420,7 +429,15 @@ Respond ONLY in JSON: { "hook": "short catchy hook (4-7 words)", "topic": "speci
         };
 
         current.queue = queue;
-        await supabase.from("agent_memory").update({ content: JSON.stringify(current), updated_at: new Date().toISOString() }).eq("id", mem.id);
+        await supabase.from("agent_memory").upsert(
+          {
+            email: normalizedEmail,
+            memory_type: autoMemoryKey,
+            content: JSON.stringify(current),
+            updated_at: new Date().toISOString(),
+          },
+          { onConflict: "email,memory_type" }
+        );
 
         return res.status(200).json({ ok: true, updatedItem: queue[index], queue });
       }
@@ -441,7 +458,15 @@ Respond ONLY in JSON: { "hook": "short catchy hook (4-7 words)", "topic": "speci
         };
 
         current.queue = queue;
-        await supabase.from("agent_memory").update({ content: JSON.stringify(current), updated_at: new Date().toISOString() }).eq("id", mem.id);
+        await supabase.from("agent_memory").upsert(
+          {
+            email: normalizedEmail,
+            memory_type: autoMemoryKey,
+            content: JSON.stringify(current),
+            updated_at: new Date().toISOString(),
+          },
+          { onConflict: "email,memory_type" }
+        );
 
         return res.status(200).json({ ok: true, updatedItem: queue[index], queue });
       }
@@ -515,9 +540,11 @@ Respond ONLY in JSON: { "hook": "short catchy hook (4-7 words)", "topic": "speci
           }
         })();
 
+        let storageFileName = null;
         const imageTask = (async () => {
           try {
             const imgRes = await generateImage(agentState, "Dynamic 3D Commercial Agency Graphic", tagline);
+            storageFileName = imgRes.storageFileName || null;
             return imgRes.imageUrl;
           } catch (imgErr) {
             console.warn("[Social Autopilot] generateImage failed, fallback to visual generator:", imgErr.message);
@@ -591,6 +618,17 @@ Respond ONLY in JSON: { "hook": "short catchy hook (4-7 words)", "topic": "speci
           return res.status(400).json({ ok: false, error: errors || "Publishing to designated destination failed." });
         }
 
+        // ── AUTOMATIC STORAGE CLEANUP ──
+        // Once successfully published to Meta CDN, delete temporary image from Supabase storage
+        if (storageFileName) {
+          try {
+            await supabase.storage.from("instagram-creatives").remove([storageFileName]);
+            console.log(`[Social Autopilot] Cleaned up storage file: ${storageFileName}`);
+          } catch (cleanErr) {
+            console.warn("[Social Autopilot] Storage cleanup warning:", cleanErr.message);
+          }
+        }
+
         const now = new Date();
         targetItem.status = "published";
         targetItem.publishedAt = now.toISOString();
@@ -618,17 +656,15 @@ Respond ONLY in JSON: { "hook": "short catchy hook (4-7 words)", "topic": "speci
 
         if (current.history.length > 50) current.history = current.history.slice(0, 50);
 
-        if (mem?.id) {
-          await supabase.from("agent_memory").update({ content: JSON.stringify(current), updated_at: now.toISOString() }).eq("id", mem.id);
-        } else {
-          await supabase.from("agent_memory").insert({
+        await supabase.from("agent_memory").upsert(
+          {
             email: normalizedEmail,
             memory_type: autoMemoryKey,
             content: JSON.stringify(current),
-            created_at: now.toISOString(),
             updated_at: now.toISOString(),
-          });
-        }
+          },
+          { onConflict: "email,memory_type" }
+        );
 
         return res.status(200).json({
           ok: true,
