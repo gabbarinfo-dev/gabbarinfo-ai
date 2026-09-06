@@ -493,31 +493,41 @@ Respond ONLY in JSON: { "hook": "short catchy hook (4-7 words)", "topic": "speci
           },
         };
 
-        // 1. Generate masterclass caption & visual mood
-        let caption = "";
-        let visualMood = "";
-        let tagline = "";
-        try {
-          const captionData = await generateCaption(agentState);
-          const fullHashtags = Array.isArray(captionData.hashtags) ? captionData.hashtags.join(" ") : "";
-          caption = `${captionData.caption}\n\n${fullHashtags}`;
-          visualMood = captionData.visualMood;
-          tagline = captionData.tagline;
-        } catch (capErr) {
-          console.warn("[Social Autopilot] Gemini caption failed, fallback:", capErr.message);
-          caption = `📢 ${hook.toUpperCase()}\n\n${topic}\n\nRunning a business means staying ahead of the curve. At ${businessName}, we help you turn complex digital challenges into predictable revenue.\n\n👉 Send us a message or visit our website to learn more!\n\n#${service.replace(/[^a-zA-Z0-9]/g, "")} #BusinessGrowth #Marketing #${businessName.replace(/[^a-zA-Z0-9]/g, "")}`;
-        }
+        // 1. Generate masterclass caption (Gemini) & bespoke 3D commercial ad poster (gpt-image-2) in PARALLEL
+        const tagline = targetItem.hook || "Dominate Growth with Smart Solutions";
 
-        // 2. Generate bespoke commercial 3D poster using gpt-image-2 (Agency Style)
-        let imageUrl = "";
-        try {
-          const imgRes = await generateImage(agentState, visualMood, tagline);
-          imageUrl = imgRes.imageUrl;
-        } catch (imgErr) {
-          console.warn("[Social Autopilot] generateImage failed, fallback to visual generator:", imgErr.message);
-          const imagePrompt = `Award-winning commercial graphic design poster for social media advertising. Subject: "${service}" for brand "${businessName}". Theme: "${hook}: ${topic}". Sleek modern commercial studio lighting, vibrant colors, 3D geometric accents, high contrast, clean agency composition, pristine 4K quality, no text watermark.`;
-          imageUrl = await generateSocialVisual(imagePrompt);
-        }
+        const captionTask = (async () => {
+          try {
+            const captionData = await generateCaption(agentState);
+            const fullHashtags = Array.isArray(captionData.hashtags) ? captionData.hashtags.join(" ") : "";
+            return {
+              caption: `${captionData.caption}\n\n${fullHashtags}`,
+              visualMood: captionData.visualMood,
+              tagline: captionData.tagline || tagline,
+            };
+          } catch (capErr) {
+            console.warn("[Social Autopilot] Gemini caption failed, fallback:", capErr.message);
+            return {
+              caption: `📢 ${hook.toUpperCase()}\n\n${topic}\n\nRunning a business means staying ahead of the curve. At ${businessName}, we help you turn complex digital challenges into predictable revenue.\n\n👉 Send us a message or visit our website to learn more!\n\n#${service.replace(/[^a-zA-Z0-9]/g, "")} #BusinessGrowth #Marketing #${businessName.replace(/[^a-zA-Z0-9]/g, "")}`,
+              visualMood: "Dynamic 3D Commercial Agency Graphic",
+              tagline,
+            };
+          }
+        })();
+
+        const imageTask = (async () => {
+          try {
+            const imgRes = await generateImage(agentState, "Dynamic 3D Commercial Agency Graphic", tagline);
+            return imgRes.imageUrl;
+          } catch (imgErr) {
+            console.warn("[Social Autopilot] generateImage failed, fallback to visual generator:", imgErr.message);
+            const imagePrompt = `Award-winning commercial graphic design poster for social media advertising. Subject: "${service}" for brand "${businessName}". Theme: "${hook}: ${topic}". Sleek modern commercial studio lighting, vibrant colors, 3D geometric accents, high contrast, clean agency composition, pristine 4K quality, no text watermark.`;
+            return await generateSocialVisual(imagePrompt);
+          }
+        })();
+
+        const [captionResult, imageUrl] = await Promise.all([captionTask, imageTask]);
+        const caption = captionResult.caption;
 
         // Determine destination: respect current.destination, fallback to connection capability
         let destination = current.destination || (hasFacebook && !hasInstagram ? "FACEBOOK_ONLY" : "BOTH");
@@ -640,6 +650,8 @@ Respond ONLY in JSON: { "hook": "short catchy hook (4-7 words)", "topic": "speci
 
   return res.status(405).json({ ok: false, error: "Method not allowed" });
 }
+
+export const maxDuration = 60;
 
 export const config = {
   maxDuration: 60,

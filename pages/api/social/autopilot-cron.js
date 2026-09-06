@@ -291,6 +291,8 @@ export default async function handler(req, res) {
   }
 }
 
+export const maxDuration = 60;
+
 export const config = {
   maxDuration: 60,
 };

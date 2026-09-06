@@ -187,7 +187,17 @@ export default function SocialMediaPlannerModal({ onClose }) {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ action: "test-post" }),
       });
-      const data = await res.json();
+      const rawText = await res.text();
+      let data = {};
+      try {
+        data = JSON.parse(rawText);
+      } catch (parseErr) {
+        if (res.status === 504 || rawText.includes("TIMEOUT") || rawText.includes("FUNCTION_INVOCATION_TIMEOUT")) {
+          throw new Error("Generation timed out on server (504). The AI creative model took longer than expected. Please wait a moment and check your page, or try again.");
+        }
+        throw new Error(`Server returned HTTP ${res.status}: ${rawText.slice(0, 120)}`);
+      }
+
       if (data.ok) {
         if (data.config) {
           setConfig(data.config);
