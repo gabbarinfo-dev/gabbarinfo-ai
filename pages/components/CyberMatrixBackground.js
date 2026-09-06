@@ -189,25 +189,25 @@ export default function CyberMatrixBackground({ showGeometric = true }) {
         const x = i * fontSize;
         const char = chars[Math.floor(Math.random() * chars.length)];
 
-        // Glowing white/cyan head (softened from 0.85 to 0.55)
-        ctx.fillStyle = "rgba(220, 240, 255, 0.55)";
+        // Glowing white/cyan leader head
+        ctx.fillStyle = "rgba(230, 255, 245, 0.95)";
         ctx.fillText(char, x, drop.y);
 
-        // Fading green/cyan body trail (softened from 0.28 to 0.18)
-        for (let j = 1; j < 6; j++) {
+        // Fading vibrant green/cyan body trail
+        for (let j = 1; j < 8; j++) {
           const trailY = drop.y - j * fontSize;
           if (trailY > 0) {
-            const alpha = (1 - j / 6) * 0.18 * drop.brightness;
-            ctx.fillStyle = `rgba(56, 189, 248, ${alpha})`;
+            const alpha = (1 - j / 8) * 0.45 * drop.brightness;
+            ctx.fillStyle = `rgba(16, 185, 129, ${alpha})`;
             const trailChar = chars[Math.floor(Math.random() * chars.length)];
             ctx.fillText(trailChar, x, trailY);
           }
         }
 
         drop.y += fontSize * drop.speed;
-        if (drop.y > height + 50) {
+        if (drop.y > height + 60) {
           drop.y = Math.random() * -60;
-          drop.speed = 0.8 + Math.random() * 1.6;
+          drop.speed = 0.8 + Math.random() * 1.5;
         }
       }
 
@@ -240,7 +240,7 @@ export default function CyberMatrixBackground({ showGeometric = true }) {
         zIndex: 0,
       }}
     >
-      {/* High-Performance Canvas Animation */}
+      {/* High-Performance Canvas Animation - Full Opacity & Clarity */}
       <canvas
         ref={canvasRef}
         style={{
@@ -249,11 +249,11 @@ export default function CyberMatrixBackground({ showGeometric = true }) {
           width: "100%",
           height: "100%",
           display: "block",
-          opacity: 0.75,
+          opacity: 1,
         }}
       />
 
-      {/* Cybernetic Ambient Light Beams - Darkened for deep rich background */}
+      {/* Cybernetic Ambient Glow */}
       <div
         style={{
           position: "absolute",
@@ -263,17 +263,7 @@ export default function CyberMatrixBackground({ showGeometric = true }) {
           width: "100%",
           maxWidth: 1100,
           height: 600,
-          background: "radial-gradient(ellipse 70% 60% at 50% 0%, rgba(59, 130, 246, 0.08) 0%, rgba(16, 185, 129, 0.02) 40%, transparent 75%)",
-          pointerEvents: "none",
-        }}
-      />
-
-      {/* Central Card Contrast Mask - Deep rich darkness */}
-      <div
-        style={{
-          position: "absolute",
-          inset: 0,
-          background: "radial-gradient(ellipse at 50% 50%, rgba(8, 11, 17, 0.40) 0%, rgba(8, 11, 17, 0.92) 85%)",
+          background: "radial-gradient(ellipse 70% 60% at 50% 0%, rgba(59, 130, 246, 0.14) 0%, rgba(16, 185, 129, 0.04) 40%, transparent 75%)",
           pointerEvents: "none",
         }}
       />
