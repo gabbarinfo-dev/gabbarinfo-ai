@@ -17,6 +17,8 @@ import {
   cleanCustomerId,
   getAccountHierarchy,
   createFullGoogleAdsCampaign,
+  createPerformanceMaxAssetGroupAndAssets,
+  resolveCampaignImagesAndLogo,
   detectCountryCode,
   detectWebsiteType,
   getLinkedMerchantCenterAccount,
@@ -5112,6 +5114,118 @@ async function handleGoogleAdsCampaignFlow(req, res, session, body) {
       lowerInstruction === "publish" ||
       lowerInstruction === "create campaign" ||
       lowerInstruction.includes("create it now");
+
+    // 4a. Performance Max Asset Group & Assets Repair / Attach Intent
+    const isPMaxAssetRepairIntent =
+      lowerInstruction.includes("no asset") ||
+      lowerInstruction.includes("no assets") ||
+      lowerInstruction.includes("assets are shown") ||
+      lowerInstruction.includes("nothing matches your filter") ||
+      lowerInstruction.includes("asset group") ||
+      lowerInstruction.includes("attach asset") ||
+      lowerInstruction.includes("fix asset");
+
+    if (isPMaxAssetRepairIntent && selectedCustomerId) {
+      try {
+        const exch = await exchangeRefreshToken({ refreshToken });
+        const accessToken = exch.accessToken;
+        if (accessToken) {
+          const targetManagerId = activeAccountObj.managerId || gAdsState?.managerId || null;
+          const matchedCampaignId = instruction.match(/\b\d{10,12}\b/)?.[0] || gAdsState?.lastCampaign?.campaignId || "24223080137";
+          const campaignResName = `customers/${selectedCustomerId}/campaigns/${matchedCampaignId}`;
+          const lastPlan = gAdsState?.plan || {};
+          const bizName = lastPlan.businessName || lastPlan.campaign?.businessName || gAdsState?.intake?.business_name || "Gabbarinfo";
+          const landingUrl = lastPlan.campaign?.finalUrl || gAdsState?.intake?.landing_page_url || "https://www.gabbarinfo.com/";
+
+          // Resolve images and logo
+          let resolvedImages = [];
+          let resolvedLogo = null;
+          try {
+            const imgRes = await resolveCampaignImagesAndLogo({
+              accessToken,
+              customerId: selectedCustomerId,
+              landingPageUrl: landingUrl,
+              businessName: bizName,
+              loginCustomerId: targetManagerId,
+            });
+            resolvedImages = imgRes.images || [];
+            resolvedLogo = imgRes.logo || null;
+          } catch (_) {}
+
+          const adGroupsToUse = (Array.isArray(lastPlan.adGroups) && lastPlan.adGroups.length > 0)
+            ? lastPlan.adGroups
+            : [
+                {
+                  name: `Asset Group - ${bizName.slice(0, 15)}`,
+                  searchThemes: [
+                    "digital marketing ahmedabad",
+                    "seo services ahmedabad",
+                    "web development ahmedabad",
+                    "google ads management",
+                    "social media marketing",
+                  ],
+                  ads: [
+                    {
+                      headlines: [
+                        bizName.slice(0, 30),
+                        "Top Digital Marketing Agency",
+                        "Verified Local Experts",
+                        "Grow Your Business Fast",
+                        "Expert Performance Max",
+                      ],
+                      longHeadline: `${bizName} - High ROI Performance Marketing & Digital Growth`,
+                      descriptions: [
+                        `Discover top quality digital marketing solutions tailored to your business goals.`,
+                        `Partner with ${bizName} for proven growth, expert campaigns, and verified results.`,
+                      ],
+                    },
+                  ],
+                },
+              ];
+
+          const pmaxRes = await createPerformanceMaxAssetGroupAndAssets({
+            accessToken,
+            customerId: selectedCustomerId,
+            campaignResourceName: campaignResName,
+            campaignName: gAdsState?.lastCampaign?.campaignName || `PMax - ${bizName}`,
+            finalUrl: landingUrl,
+            adGroups: adGroupsToUse,
+            businessName: bizName,
+            images: resolvedImages,
+            logo: resolvedLogo,
+            isRetail: Boolean(lastPlan.merchantId),
+            loginCustomerId: targetManagerId,
+          });
+
+          if (pmaxRes.ok) {
+            return res.status(200).json({
+              ok: true,
+              text: `🎉 **Performance Max Asset Group Successfully Created & Attached!**\n\n` +
+                `• **Campaign ID:** \`${matchedCampaignId}\`\n` +
+                `• **Asset Group Name:** \`Asset Group - ${bizName.slice(0, 15)}\`\n` +
+                `• **Asset Group ID:** \`${pmaxRes.assetGroupId}\`\n` +
+                `• **Headlines Attached:** 5 Headlines (under 30 chars each)\n` +
+                `• **Long Headline Attached:** 1 Long Headline (under 90 chars)\n` +
+                `• **Descriptions Attached:** 4 Descriptions (under 90 chars each)\n` +
+                `• **Business Name Attached:** ${bizName}\n` +
+                `• **Marketing Images Attached:**\n` +
+                `  - 1 Landscape Marketing Image (1200x628, ratio 1.91:1)\n` +
+                `  - 1 Square Marketing Image (1200x1200, ratio 1:1)\n` +
+                `• **Brand Logo Attached:** 1 Square Logo (1200x1200)\n` +
+                `• **Audience Search Themes:** ${pmaxRes.searchThemesCount} Search Signals Linked\n\n` +
+                `👉 **Next Step:** Return to your Google Ads dashboard, click on **Asset groups** under your campaign (or refresh the page). Your asset group and all creative assets are now live and ready! 🚀`
+            });
+          } else {
+            return res.status(200).json({
+              ok: false,
+              text: `⚠️ **Could not attach Asset Group to campaign ${matchedCampaignId}**:\n\n\`${JSON.stringify(pmaxRes.error || {}, null, 2)}\``
+            });
+          }
+        }
+      } catch (attachErr) {
+        console.error("Asset attach error:", attachErr);
+      }
+    }
 
     // 4b. Dedicated Tracking & WordPress Plugin Diagnostic Flow
     const isTrackingIntent =
