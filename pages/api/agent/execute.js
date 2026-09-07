@@ -5139,7 +5139,9 @@ async function handleGoogleAdsCampaignFlow(req, res, session, body) {
           const bizName = lastPlan.businessName || lastPlan.campaign?.businessName || gAdsState?.intake?.business_name || "Gabbarinfo";
           const landingUrl = lastPlan.campaign?.finalUrl || gAdsState?.intake?.landing_page_url || "https://www.gabbarinfo.com/";
 
-          // Resolve images and logo
+          const userServices = String(lastPlan.services || gAdsState?.intake?.services || "").trim();
+
+          // Resolve images and logo (shielded against cross-client contamination)
           let resolvedImages = [];
           let resolvedLogo = null;
           try {
@@ -5148,13 +5150,12 @@ async function handleGoogleAdsCampaignFlow(req, res, session, body) {
               customerId: selectedCustomerId,
               landingPageUrl: landingUrl,
               businessName: bizName,
+              services: userServices,
               loginCustomerId: targetManagerId,
             });
             resolvedImages = imgRes.images || [];
             resolvedLogo = imgRes.logo || null;
           } catch (_) {}
-
-          const userServices = String(lastPlan.services || gAdsState?.intake?.services || "").trim();
           const userLocation = String(lastPlan.location || gAdsState?.intake?.target_location || gAdsState?.intake?.location || "").trim();
           const cleanBiz = String(bizName || "Business").trim().slice(0, 20);
 
