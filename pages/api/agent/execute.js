@@ -5152,32 +5152,78 @@ async function handleGoogleAdsCampaignFlow(req, res, session, body) {
             resolvedLogo = imgRes.logo || null;
           } catch (_) {}
 
-          const adGroupsToUse = (Array.isArray(lastPlan.adGroups) && lastPlan.adGroups.length > 0)
-            ? lastPlan.adGroups
+          const userServices = lastPlan.services || gAdsState?.intake?.services || "Website Design & Development";
+          const userLocation = lastPlan.location || gAdsState?.intake?.location || "Ahmedabad";
+          const isWebDev = userServices.toLowerCase().includes("web") || userServices.toLowerCase().includes("site") || userServices.toLowerCase().includes("design");
+
+          const dynamicHeadlines = isWebDev
+            ? [
+                `Website Design ${userLocation}`.slice(0, 30),
+                "Custom Web Development".slice(0, 30),
+                "WordPress Web Developers".slice(0, 30),
+                "Responsive Website Design".slice(0, 30),
+                "Ecommerce Website Design".slice(0, 30),
+                `Top Web Agency ${userLocation}`.slice(0, 30),
+                "Affordable Web Design".slice(0, 30),
+                "SEO & Web Development".slice(0, 30),
+                "Mobile-Friendly Websites".slice(0, 30),
+                "Get Free Website Quote".slice(0, 30),
+                `${bizName.slice(0, 15)} Web Studio`.slice(0, 30),
+              ]
             : [
+                `${bizName.slice(0, 15)} Services`.slice(0, 30),
+                `Official ${bizName.slice(0, 15)}`.slice(0, 30),
+                `Top Agency ${userLocation}`.slice(0, 30),
+                "Verified Local Experts".slice(0, 30),
+                "Grow Your Business Fast".slice(0, 30),
+                "High ROI Campaigns".slice(0, 30),
+                "Get Free Consultation".slice(0, 30),
+                "Get Started Today".slice(0, 30),
+              ];
+
+          const dynamicDescriptions = isWebDev
+            ? [
+                `Professional website design & development in ${userLocation}. Fast, responsive & SEO-friendly.`.slice(0, 90),
+                "Grow your business with custom WordPress & e-commerce websites built to convert leads.".slice(0, 90),
+                `Partner with ${bizName} for high-converting web design, modern UI/UX, and reliable support.`.slice(0, 90),
+                "Get a high-performance, mobile-ready website tailored to your brand. Request a quote!".slice(0, 90),
+              ]
+            : [
+                `Discover top quality solutions tailored to your business goals at ${bizName}.`.slice(0, 90),
+                `Partner with ${bizName} in ${userLocation} for proven growth, expert campaigns, and verified results.`.slice(0, 90),
+                "High quality professional services tailored to meet your unique business requirements.".slice(0, 90),
+                "Contact our expert team today for prompt assistance and transparent service.".slice(0, 90),
+              ];
+
+          const adGroupsToUse =
+            Array.isArray(lastPlan.adGroups) && lastPlan.adGroups.length > 0
+              ? lastPlan.adGroups
+              : [
                 {
                   name: `Asset Group - ${bizName.slice(0, 15)}`,
-                  searchThemes: [
-                    "digital marketing ahmedabad",
-                    "seo services ahmedabad",
-                    "web development ahmedabad",
-                    "google ads management",
-                    "social media marketing",
-                  ],
+                  type: "ASSET_GROUP",
+                  searchThemes: isWebDev
+                    ? [
+                        `web design ${userLocation}`.toLowerCase(),
+                        `web development ${userLocation}`.toLowerCase(),
+                        "wordpress developers",
+                        "ecommerce website design",
+                        "custom website agency",
+                      ]
+                    : [
+                        `digital marketing ${userLocation}`.toLowerCase(),
+                        `seo services ${userLocation}`.toLowerCase(),
+                        "google ads management",
+                        "lead generation agency",
+                        "social media marketing",
+                      ],
                   ads: [
                     {
-                      headlines: [
-                        bizName.slice(0, 30),
-                        "Top Digital Marketing Agency",
-                        "Verified Local Experts",
-                        "Grow Your Business Fast",
-                        "Expert Performance Max",
-                      ],
-                      longHeadline: `${bizName} - High ROI Performance Marketing & Digital Growth`,
-                      descriptions: [
-                        `Discover top quality digital marketing solutions tailored to your business goals.`,
-                        `Partner with ${bizName} for proven growth, expert campaigns, and verified results.`,
-                      ],
+                      headlines: dynamicHeadlines,
+                      longHeadline: isWebDev
+                        ? `${bizName} - Professional Website Design, Custom Web Development & SEO Solutions`.slice(0, 90)
+                        : `${bizName} - High ROI Performance Marketing & Digital Growth Solutions`.slice(0, 90),
+                      descriptions: dynamicDescriptions,
                     },
                   ],
                 },
@@ -6316,9 +6362,13 @@ ${JSON.stringify(candidateSitelinks, null, 2)}
 
     } else if (chosenCampaignType === "PERFORMANCE_MAX" || chosenCampaignType === "PERFORMANCE_MAX_SHOPPING") {
       formatSpecificRules = `STRICT PERFORMANCE MAX RULES:
-1. Headlines: Generate EXACTLY 5 compelling headlines for the Asset Group, STRICTLY maximum 30 characters each.
-2. Long Headline: Generate EXACTLY 1 compelling long headline, STRICTLY maximum 90 characters.
-3. Descriptions: Generate EXACTLY 4 compelling descriptions, STRICTLY maximum 90 characters each.
+1. Headlines: Generate EXACTLY 10 to 12 compelling, unique, service-specific headlines for the Asset Group, STRICTLY maximum 30 characters each.
+   - At least 5-6 headlines MUST directly mention the specific services offered (${mergedIntake.services || "Website Design & Development"}) and target location (${targetLocation}) to achieve EXCELLENT Google Ad Strength!
+   - Include 2-3 value propositions / USPs (e.g. Custom Design, Mobile-Friendly, Affordable Packages).
+   - Include 2-3 action-oriented call-to-actions (e.g. Get Free Quote, Contact Us Today, Free Consultation).
+   - NEVER generate vague phrases like "Expert Local Solutions" or "Top Quality". Every headline MUST clearly communicate the actual services (${mergedIntake.services || "Website Design & Development"})!
+2. Long Headline: Generate EXACTLY 1 compelling long headline, STRICTLY maximum 90 characters, clearly stating brand, services, and value proposition.
+3. Descriptions: Generate EXACTLY 4 to 5 compelling descriptions, STRICTLY maximum 90 characters each, detailing your specific services, custom solutions, client benefits, and call to action.
 4. Business Name: Set "businessName" to "${(mergedIntake.business_name || businessLabel).slice(0, 25)}" (STRICTLY max 25 characters).
 ${sitelinkPromptRule}
 5. Callout Assets: EXACTLY 4 standout callouts, STRICTLY max 25 characters each.
@@ -6348,18 +6398,23 @@ ${chosenCampaignType === "PERFORMANCE_MAX_SHOPPING" ? `8. Merchant Center: Conne
       "ads": [
         {
           "headlines": [
-            "Headline 1 (max 30 chars)",
-            "Headline 2 (max 30 chars)",
-            "Headline 3 (max 30 chars)",
-            "Headline 4 (max 30 chars)",
-            "Headline 5 (max 30 chars)"
+            "Headline 1: Service + City (max 30 chars)",
+            "Headline 2: Core Service (max 30 chars)",
+            "Headline 3: Specific Feature (max 30 chars)",
+            "Headline 4: Brand + Service (max 30 chars)",
+            "Headline 5: Value Proposition (max 30 chars)",
+            "Headline 6: Quality/Speed (max 30 chars)",
+            "Headline 7: Affordable Pricing (max 30 chars)",
+            "Headline 8: Trusted Experts (max 30 chars)",
+            "Headline 9: Call To Action (max 30 chars)",
+            "Headline 10: Free Consultation (max 30 chars)"
           ],
-          "longHeadline": "Compelling long headline summarizing your brand & value proposition (max 90 chars)",
+          "longHeadline": "Compelling 90-char long headline stating brand, exact services & value proposition",
           "descriptions": [
-            "Description 1 (max 90 chars)",
-            "Description 2 (max 90 chars)",
-            "Description 3 (max 90 chars)",
-            "Description 4 (max 90 chars)"
+            "Description 1: Service details and city location (max 90 chars)",
+            "Description 2: Key benefits, platforms, and client results (max 90 chars)",
+            "Description 3: Why choose us, trust proof, and reliability (max 90 chars)",
+            "Description 4: Clear call to action with phone/quote link (max 90 chars)"
           ],
           "businessName": "${(mergedIntake.business_name || businessLabel).slice(0, 25)}"
         }
@@ -6377,10 +6432,10 @@ ${chosenCampaignType === "PERFORMANCE_MAX_SHOPPING" ? `- 🏬 **Merchant Center 
 - 🌐 **Landing Page:** ${landingUrl}
 ${mergedIntake.phone_number ? `- 📞 **Call Extension:** Attached with number \`${mergedIntake.phone_number}\`\n` : ""}${candidateSitelinks.length > 0 ? `- 🔗 **Sitelink Extensions (${candidateSitelinks.length}):** Included\n` : ""}- 💡 **Callout Badges (4):** Included
 - 🔍 **Audience Search Themes (${finalizedKeywords.length}):** ${finalizedKeywords.slice(0, 10).join(", ")}${finalizedKeywords.length > 10 ? "..." : ""}
-- ✍️ **Asset Group Copy Preview:**
-  - **Headlines (5):** List with character counts
+- ✍️ **Asset Group Copy Preview (10-12 Headlines & 4-5 Descriptions):**
+  - **Headlines (10-12):** List all generated headlines with character counts (mentioning specific services & location)
   - **Long Headline:** The 90-char long headline
-  - **Descriptions (4):** List with character counts`;
+  - **Descriptions (4-5):** List all generated descriptions with character counts`;
 
     } else {
       // SEARCH
