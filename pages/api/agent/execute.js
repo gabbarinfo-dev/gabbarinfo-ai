@@ -5152,77 +5152,78 @@ async function handleGoogleAdsCampaignFlow(req, res, session, body) {
             resolvedLogo = imgRes.logo || null;
           } catch (_) {}
 
-          const userServices = lastPlan.services || gAdsState?.intake?.services || "Website Design & Development";
-          const userLocation = lastPlan.location || gAdsState?.intake?.location || "Ahmedabad";
-          const isWebDev = userServices.toLowerCase().includes("web") || userServices.toLowerCase().includes("site") || userServices.toLowerCase().includes("design");
+          const userServices = String(lastPlan.services || gAdsState?.intake?.services || "").trim();
+          const userLocation = String(lastPlan.location || gAdsState?.intake?.target_location || gAdsState?.intake?.location || "").trim();
+          const cleanBiz = String(bizName || "Business").trim().slice(0, 20);
 
-          const dynamicHeadlines = isWebDev
-            ? [
-                `Website Design ${userLocation}`.slice(0, 30),
-                "Custom Web Development".slice(0, 30),
-                "WordPress Web Developers".slice(0, 30),
-                "Responsive Website Design".slice(0, 30),
-                "Ecommerce Website Design".slice(0, 30),
-                `Top Web Agency ${userLocation}`.slice(0, 30),
-                "Affordable Web Design".slice(0, 30),
-                "SEO & Web Development".slice(0, 30),
-                "Mobile-Friendly Websites".slice(0, 30),
-                "Get Free Website Quote".slice(0, 30),
-                `${bizName.slice(0, 15)} Web Studio`.slice(0, 30),
-              ]
-            : [
-                `${bizName.slice(0, 15)} Services`.slice(0, 30),
-                `Official ${bizName.slice(0, 15)}`.slice(0, 30),
-                `Top Agency ${userLocation}`.slice(0, 30),
-                "Verified Local Experts".slice(0, 30),
-                "Grow Your Business Fast".slice(0, 30),
-                "High ROI Campaigns".slice(0, 30),
-                "Get Free Consultation".slice(0, 30),
-                "Get Started Today".slice(0, 30),
-              ];
+          const serviceKeywords = Array.isArray(lastPlan.keywords) && lastPlan.keywords.length > 0
+            ? lastPlan.keywords
+            : (Array.isArray(lastPlan.searchThemes) ? lastPlan.searchThemes : []);
 
-          const dynamicDescriptions = isWebDev
-            ? [
-                `Professional website design & development in ${userLocation}. Fast, responsive & SEO-friendly.`.slice(0, 90),
-                "Grow your business with custom WordPress & e-commerce websites built to convert leads.".slice(0, 90),
-                `Partner with ${bizName} for high-converting web design, modern UI/UX, and reliable support.`.slice(0, 90),
-                "Get a high-performance, mobile-ready website tailored to your brand. Request a quote!".slice(0, 90),
-              ]
-            : [
-                `Discover top quality solutions tailored to your business goals at ${bizName}.`.slice(0, 90),
-                `Partner with ${bizName} in ${userLocation} for proven growth, expert campaigns, and verified results.`.slice(0, 90),
-                "High quality professional services tailored to meet your unique business requirements.".slice(0, 90),
-                "Contact our expert team today for prompt assistance and transparent service.".slice(0, 90),
-              ];
+          let primaryService = "";
+          if (userServices) {
+            primaryService = userServices.split(/[,&|\/]/)[0].trim();
+          } else if (serviceKeywords.length > 0) {
+            const cand = String(serviceKeywords[0]).replace(/\b(in|near|at|for)\b.*/i, "").trim();
+            if (cand.length >= 3 && cand.length <= 25) {
+              primaryService = cand.replace(/\b\w/g, (c) => c.toUpperCase());
+            }
+          }
+
+          const dynamicHeadlines = [
+            primaryService ? primaryService.slice(0, 30) : null,
+            primaryService && userLocation ? `${primaryService} ${userLocation}`.slice(0, 30) : null,
+            primaryService ? `Top ${primaryService}`.slice(0, 30) : null,
+            primaryService ? `Affordable ${primaryService}`.slice(0, 30) : null,
+            userLocation ? `Top Rated in ${userLocation}`.slice(0, 30) : "Top Rated Professionals",
+            `${cleanBiz} Services`.slice(0, 30),
+            `Official ${cleanBiz}`.slice(0, 30),
+            "Verified Local Experts",
+            "Grow Your Business Fast",
+            "Fast & Reliable Service",
+            "Get Free Consultation",
+            "Get Free Instant Quote",
+            "Contact Our Team Today",
+            "Get Started Today",
+          ].filter(Boolean);
+
+          const dynamicDescriptions = [
+            primaryService && userLocation
+              ? `Looking for trusted ${primaryService} in ${userLocation}? Contact ${cleanBiz} for expert service.`.slice(0, 90)
+              : (primaryService
+                  ? `High quality ${primaryService} tailored to your specific business goals. Contact our team!`.slice(0, 90)
+                  : `Discover top quality professional solutions tailored to your business goals at ${cleanBiz}.`.slice(0, 90)),
+            `Partner with ${cleanBiz} for proven results, expert support, and transparent pricing.`.slice(0, 90),
+            `Get in touch with our team today for a free consultation and customized quote.`.slice(0, 90),
+            `Reliable, customer-focused solutions designed to deliver real business growth.`.slice(0, 90),
+          ];
 
           const adGroupsToUse =
             Array.isArray(lastPlan.adGroups) && lastPlan.adGroups.length > 0
               ? lastPlan.adGroups
               : [
                 {
-                  name: `Asset Group - ${bizName.slice(0, 15)}`,
+                  name: `Asset Group - ${cleanBiz}`,
                   type: "ASSET_GROUP",
-                  searchThemes: isWebDev
-                    ? [
-                        `web design ${userLocation}`.toLowerCase(),
-                        `web development ${userLocation}`.toLowerCase(),
-                        "wordpress developers",
-                        "ecommerce website design",
-                        "custom website agency",
-                      ]
-                    : [
-                        `digital marketing ${userLocation}`.toLowerCase(),
-                        `seo services ${userLocation}`.toLowerCase(),
-                        "google ads management",
-                        "lead generation agency",
-                        "social media marketing",
-                      ],
+                  searchThemes: serviceKeywords.length > 0
+                    ? serviceKeywords.slice(0, 10)
+                    : (primaryService
+                        ? [
+                            primaryService.toLowerCase(),
+                            userLocation ? `${primaryService} ${userLocation}`.toLowerCase() : null,
+                            `best ${primaryService}`.toLowerCase(),
+                            `affordable ${primaryService}`.toLowerCase(),
+                            `${primaryService} services`.toLowerCase(),
+                          ].filter(Boolean)
+                        : ["professional services", "trusted local experts"]),
                   ads: [
                     {
                       headlines: dynamicHeadlines,
-                      longHeadline: isWebDev
-                        ? `${bizName} - Professional Website Design, Custom Web Development & SEO Solutions`.slice(0, 90)
-                        : `${bizName} - High ROI Performance Marketing & Digital Growth Solutions`.slice(0, 90),
+                      longHeadline: primaryService
+                        ? (userLocation
+                            ? `${cleanBiz} - Premier ${primaryService} in ${userLocation} & Professional Solutions`.slice(0, 90)
+                            : `${cleanBiz} - Professional High Quality ${primaryService} & Reliable Solutions`.slice(0, 90))
+                        : `${cleanBiz} - High ROI Performance Marketing & Business Growth Solutions`.slice(0, 90),
                       descriptions: dynamicDescriptions,
                     },
                   ],
@@ -6363,10 +6364,10 @@ ${JSON.stringify(candidateSitelinks, null, 2)}
     } else if (chosenCampaignType === "PERFORMANCE_MAX" || chosenCampaignType === "PERFORMANCE_MAX_SHOPPING") {
       formatSpecificRules = `STRICT PERFORMANCE MAX RULES:
 1. Headlines: Generate EXACTLY 10 to 12 compelling, unique, service-specific headlines for the Asset Group, STRICTLY maximum 30 characters each.
-   - At least 5-6 headlines MUST directly mention the specific services offered (${mergedIntake.services || "Website Design & Development"}) and target location (${targetLocation}) to achieve EXCELLENT Google Ad Strength!
-   - Include 2-3 value propositions / USPs (e.g. Custom Design, Mobile-Friendly, Affordable Packages).
+   - At least 5-6 headlines MUST directly mention the specific services or products offered (${mergedIntake.services || "the business's verified services"}) and target location (${targetLocation}) to achieve EXCELLENT Google Ad Strength!
+   - Include 2-3 value propositions / USPs (e.g. Custom Solutions, Certified Quality, Transparent Pricing).
    - Include 2-3 action-oriented call-to-actions (e.g. Get Free Quote, Contact Us Today, Free Consultation).
-   - NEVER generate vague phrases like "Expert Local Solutions" or "Top Quality". Every headline MUST clearly communicate the actual services (${mergedIntake.services || "Website Design & Development"})!
+   - NEVER generate vague filler phrases like "Expert Local Solutions" or "Top Quality". Every headline MUST clearly communicate the actual services or products offered (${mergedIntake.services || "the business's verified services"})!
 2. Long Headline: Generate EXACTLY 1 compelling long headline, STRICTLY maximum 90 characters, clearly stating brand, services, and value proposition.
 3. Descriptions: Generate EXACTLY 4 to 5 compelling descriptions, STRICTLY maximum 90 characters each, detailing your specific services, custom solutions, client benefits, and call to action.
 4. Business Name: Set "businessName" to "${(mergedIntake.business_name || businessLabel).slice(0, 25)}" (STRICTLY max 25 characters).
