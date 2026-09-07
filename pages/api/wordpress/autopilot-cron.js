@@ -9,7 +9,8 @@ const supabase = createClient(
 export default async function handler(req, res) {
   // Allow secret key verification for secure cron invocation
   const cronSecret = process.env.CRON_SECRET;
-  if (cronSecret && req.headers["authorization"] !== `Bearer ${cronSecret}` && req.query?.secret !== cronSecret) {
+  const isVercelCron = req.headers["x-vercel-cron"] === "1";
+  if (cronSecret && req.headers["authorization"] !== `Bearer ${cronSecret}` && req.query?.secret !== cronSecret && !isVercelCron) {
     // In production cron, verify secret; allow manual trigger if development
     if (process.env.NODE_ENV === "production" && !req.query?.force) {
       return res.status(401).json({ ok: false, error: "Unauthorized cron trigger" });

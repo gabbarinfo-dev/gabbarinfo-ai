@@ -371,12 +371,27 @@ export default async function handler(req, res) {
     // ----------------------------------------------------------------
     if (action === "get-autopilot-config") {
       const autoMemoryKey = `wp_autopilot_${normalizedBusiness}`;
-      const { data: autoMem } = await supabase
+      let { data: autoMem } = await supabase
         .from("agent_memory")
         .select("content")
         .eq("email", userEmail)
         .eq("memory_type", autoMemoryKey)
         .maybeSingle();
+
+      // If not found by specific normalized key, check for ANY wp_autopilot config for this user
+      if (!autoMem?.content) {
+        const { data: anyAutoMem } = await supabase
+          .from("agent_memory")
+          .select("content")
+          .eq("email", userEmail)
+          .like("memory_type", "wp_autopilot_%")
+          .order("updated_at", { ascending: false })
+          .limit(1)
+          .maybeSingle();
+        if (anyAutoMem?.content) {
+          autoMem = anyAutoMem;
+        }
+      }
 
       if (autoMem?.content) {
         try {
@@ -400,9 +415,23 @@ export default async function handler(req, res) {
     // 11. SAVE AUTOPILOT CONFIG
     // ----------------------------------------------------------------
     if (action === "save-autopilot-config") {
-      const autoMemoryKey = `wp_autopilot_${normalizedBusiness}`;
+      let targetBiz = normalizedBusiness;
+      if (!businessName || normalizedBusiness === "default") {
+        // Look up user's active connected site name
+        const { data: connMems } = await supabase
+          .from("agent_memory")
+          .select("memory_type")
+          .eq("email", userEmail)
+          .like("memory_type", "wp_conn_%")
+          .limit(1)
+          .maybeSingle();
+        if (connMems?.memory_type) {
+          targetBiz = connMems.memory_type.replace("wp_conn_", "");
+        }
+      }
+      const autoMemoryKey = `wp_autopilot_${targetBiz}`;
       const configPayload = body.config || {};
-      configPayload.businessName = businessName || normalizedBusiness || "default";
+      configPayload.businessName = businessName || targetBiz || "default";
       configPayload.updatedAt = new Date().toISOString();
 
       const { data: existing } = await supabase

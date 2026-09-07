@@ -171,7 +171,7 @@ export default function SeoHubPage() {
           const bName = data.connection.businessName || activeBusiness;
           if (!activeBusiness && bName) setActiveBusiness(bName);
           fetchContent(data.connection);
-          fetchAutopilotConfig();
+          fetchAutopilotConfig(bName || activeBusiness);
           setSuggestedTopics((prev) => (prev.length === 0 && bName ? getThirtyDefaultTopics(bName) : prev));
         } else {
           setConnection(null);
@@ -188,14 +188,15 @@ export default function SeoHubPage() {
     }
   };
 
-  const fetchAutopilotConfig = async () => {
+  const fetchAutopilotConfig = async (targetBusiness) => {
     try {
+      const bizToUse = targetBusiness || activeBusiness;
       const res = await fetch("/api/wordpress/sync", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           action: "get-autopilot-config",
-          businessName: activeBusiness,
+          businessName: bizToUse,
         }),
       });
       const data = await res.json();
@@ -222,13 +223,14 @@ export default function SeoHubPage() {
     }
     setSavingAutopilotConfig(true);
     const isEnabled = typeof overrideEnabled === "boolean" ? overrideEnabled : autopilotEnabled;
+    const bizToUse = activeBusiness || connection?.businessName || "default";
     try {
       const res = await fetch("/api/wordpress/sync", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           action: "save-autopilot-config",
-          businessName: activeBusiness,
+          businessName: bizToUse,
           config: {
             enabled: isEnabled,
             cadence,
