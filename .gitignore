@@ -35,3 +35,4 @@ gabbarinfo-ai-main/
 # local diagnostic test scripts
 test-gads*.mjs
 test-version.mjs
+scratch/

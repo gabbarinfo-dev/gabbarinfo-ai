@@ -23,6 +23,7 @@ import {
   detectWebsiteType,
   getLinkedMerchantCenterAccount,
   discoverWebsiteSubpages,
+  extractLandingPageIntelligence,
   getExistingCampaignNames,
   getUniqueCampaignName,
   exchangeRefreshToken,
@@ -30,6 +31,7 @@ import {
   listConversionActions,
   createConversionAction,
   auditWebsiteTracking,
+  auditConversionTracking,
 } from "../../../lib/googleAdsHelper";
 
 const Messages = {
@@ -5543,6 +5545,32 @@ async function handleGoogleAdsCampaignFlow(req, res, session, body) {
           ? ` *(Auto-renamed to prevent conflict with existing campaign)*`
           : "";
 
+        let auditReport = "";
+        if (createRes.expertAudit) {
+          const checks = createRes.expertAudit.checks || {};
+          const auditLines = [];
+          if (checks.locationIsolation) {
+            auditLines.push(`• **Location Shield:** ${checks.locationIsolation.message}`);
+          }
+          if (checks.callAsset && checks.callAsset.phoneNumber) {
+            auditLines.push(`• **Call Extension:** ✅ Verified Active (${checks.callAsset.phoneNumber})`);
+          }
+          if (checks.sitelinks && checks.sitelinks.count > 0) {
+            auditLines.push(`• **Sitelink Extensions:** ✅ ${checks.sitelinks.count} deep subpages linked (${checks.sitelinks.items.slice(0, 4).join(", ")})`);
+          }
+          if (checks.creativeVisuals) {
+            const visStatus = checks.creativeVisuals.status === "PASS" ? "✅" : "⚠️";
+            auditLines.push(`• **Visual Assets:** ${visStatus} Landscape (1.91:1) + Square (1:1) + Brand Logo (${checks.creativeVisuals.details})`);
+          }
+          if (checks.conversionTracking) {
+            const trkStatus = checks.conversionTracking.status === "PASS" ? "✅" : "⚠️";
+            auditLines.push(`• **Conversion Tracking:** ${trkStatus} ${checks.conversionTracking.message}`);
+          }
+          if (auditLines.length > 0) {
+            auditReport = `\n🛡️ **Senior PPC Director Quality Assurance Audit:**\n${auditLines.join("\n")}\n`;
+          }
+        }
+
         return res.status(200).json({
           ok: true,
           campaignPublished: true,
@@ -5552,6 +5580,7 @@ async function handleGoogleAdsCampaignFlow(req, res, session, body) {
             `• **Google Ads Account:** ${activeAccountObj.descriptiveName} (\`${formattedAccId}\`)\n` +
             `• **Daily Budget:** ${accountCurrency === "INR" ? "₹" : accountCurrency + " "}${dailyBudgetUnits}/day\n` +
             (assetLines.length > 0 ? `${assetLines.join("\n")}\n` : "") +
+            auditReport +
             `• **Status:** **PAUSED** ⏸️ *(Created in paused mode for safety so you can review in your Google Ads dashboard before enabling)*\n\n` +
             `You can now review your campaign, keywords, extensions, and ads directly inside your Google Ads dashboard!`,
         });
@@ -6197,7 +6226,29 @@ JSON wrapped in \`\`\`json \`\`\`:
       });
     }
 
-    // 3. Discover real internal subpages from the website
+    // 3. Extract comprehensive landing page intelligence (USPs, real meta description, phone numbers, YouTube videos)
+    let landingIntelligence = null;
+    try {
+      landingIntelligence = await extractLandingPageIntelligence(landingUrl);
+      if (landingIntelligence) {
+        console.log(`[Campaign Plan] Discovered landing page intelligence:`, {
+          title: landingIntelligence.title,
+          uspsCount: landingIntelligence.usps?.length || 0,
+          phones: landingIntelligence.phoneNumbers,
+          videos: landingIntelligence.youtubeVideoIds,
+        });
+
+        // Auto-adopt discovered real phone number if user hasn't provided one
+        if (!mergedIntake.phone_number && landingIntelligence.phoneNumbers && landingIntelligence.phoneNumbers.length > 0) {
+          mergedIntake.phone_number = landingIntelligence.phoneNumbers[0];
+          console.log(`[Campaign Plan] Auto-adopted phone number from landing page: ${mergedIntake.phone_number}`);
+        }
+      }
+    } catch (intelErr) {
+      console.warn("extractLandingPageIntelligence non-fatal error:", intelErr.message);
+    }
+
+    // 4. Discover real internal subpages from the website
     let discoveredPages = [];
     try {
       discoveredPages = await discoverWebsiteSubpages(landingUrl);
@@ -6205,7 +6256,7 @@ JSON wrapped in \`\`\`json \`\`\`:
       console.warn("discoverWebsiteSubpages non-fatal error:", e.message);
     }
 
-    // 4. Combine user sitelinks first, then supplement with real discovered subpages up to 4 total
+    // 5. Combine user sitelinks first, then supplement with real discovered subpages up to 4 total
     const candidateSitelinks = [...normalizedUserSitelinks];
     for (const disc of discoveredPages) {
       if (candidateSitelinks.length >= 4) break;
@@ -6365,20 +6416,36 @@ ${JSON.stringify(candidateSitelinks, null, 2)}
 - 🖼️ **Visual Asset Note:** Google Ads will combine these headlines and descriptions with imagery from your landing page (${landingUrl}) to fit banner placements across millions of websites.`;
 
     } else if (chosenCampaignType === "PERFORMANCE_MAX" || chosenCampaignType === "PERFORMANCE_MAX_SHOPPING") {
+      const pmaxUspGuidance = landingIntelligence?.usps?.length > 0
+        ? `\n   - Prominently feature the verified website USPs: ${landingIntelligence.usps.slice(0, 4).map(u => `"${u.slice(0, 28)}"`).join(", ")}.`
+        : `\n   - Include 2-3 authentic value propositions / USPs (e.g. Custom Solutions, Certified Quality, Transparent Pricing).`;
+
+      const pmaxDescGuidance = landingIntelligence?.metaDescription
+        ? ` (align messaging with website value proposition: "${landingIntelligence.metaDescription.slice(0, 80)}...")`
+        : "";
+
       formatSpecificRules = `STRICT PERFORMANCE MAX RULES:
 1. Headlines: Generate EXACTLY 10 to 12 compelling, unique, service-specific headlines for the Asset Group, STRICTLY maximum 30 characters each.
-   - At least 5-6 headlines MUST directly mention the specific services or products offered (${mergedIntake.services || "the business's verified services"}) and target location (${targetLocation}) to achieve EXCELLENT Google Ad Strength!
-   - Include 2-3 value propositions / USPs (e.g. Custom Solutions, Certified Quality, Transparent Pricing).
+   - At least 5-6 headlines MUST directly mention the specific services or products offered (${mergedIntake.services || "the business's verified services"}) and target location (${targetLocation}) to achieve EXCELLENT Google Ad Strength!${pmaxUspGuidance}
    - Include 2-3 action-oriented call-to-actions (e.g. Get Free Quote, Contact Us Today, Free Consultation).
    - NEVER generate vague filler phrases like "Expert Local Solutions" or "Top Quality". Every headline MUST clearly communicate the actual services or products offered (${mergedIntake.services || "the business's verified services"})!
 2. Long Headline: Generate EXACTLY 1 compelling long headline, STRICTLY maximum 90 characters, clearly stating brand, services, and value proposition.
-3. Descriptions: Generate EXACTLY 4 to 5 compelling descriptions, STRICTLY maximum 90 characters each, detailing your specific services, custom solutions, client benefits, and call to action.
+3. Descriptions: Generate EXACTLY 4 to 5 compelling descriptions, STRICTLY maximum 90 characters each, detailing your specific services, custom solutions, client benefits, and call to action${pmaxDescGuidance}.
 4. Business Name: Set "businessName" to "${(mergedIntake.business_name || businessLabel).slice(0, 25)}" (STRICTLY max 25 characters).
 ${sitelinkPromptRule}
-5. Callout Assets: EXACTLY 4 standout callouts, STRICTLY max 25 characters each.
+5. Callout Assets: EXACTLY 4 standout callouts, STRICTLY max 25 characters each${landingIntelligence?.usps?.length >= 4 ? ` (derived from verified USPs: ${landingIntelligence.usps.slice(0, 4).map(u => `"${u.slice(0, 25)}"`).join(", ")})` : ""}.
 6. Call Asset: ${mergedIntake.phone_number ? `Configure callAsset with phoneNumber "${mergedIntake.phone_number}" and countryCode "${countryIso}".` : "Set callAsset to null if no phone number was provided."}
 7. Audience Search Themes: Guide Google's AI with user intent signals from: ${JSON.stringify(finalizedKeywords)}.
 ${chosenCampaignType === "PERFORMANCE_MAX_SHOPPING" ? `8. Merchant Center: Connect retail catalog feed ID ${mergedIntake.merchant_id || "Active GMC Feed"} for automated shopping product cards across all channels.` : ""}`;
+
+      const resolvedCallouts = landingIntelligence?.usps?.length >= 4
+        ? landingIntelligence.usps.slice(0, 4).map(u => u.slice(0, 25))
+        : [
+            "Verified & Certified",
+            "Prompt & Reliable",
+            "Transparent Pricing",
+            "Customer Support",
+          ];
 
       formatJsonAdGroups = `"sitelinks": ${candidateSitelinks.length > 0 ? JSON.stringify(candidateSitelinks.map(c => ({
     linkText: c.linkText,
@@ -6386,12 +6453,7 @@ ${chosenCampaignType === "PERFORMANCE_MAX_SHOPPING" ? `8. Merchant Center: Conne
     description2: "Learn more & get in touch",
     finalUrl: c.finalUrl
   })), null, 2) : "[]"},
-  "callouts": [
-    "Verified & Certified",
-    "Prompt & Reliable",
-    "Transparent Pricing",
-    "Customer Support"
-  ],
+  "callouts": ${JSON.stringify(resolvedCallouts, null, 2)},
   "callAsset": ${mergedIntake.phone_number ? JSON.stringify({ countryCode: countryIso, phoneNumber: mergedIntake.phone_number }) : "null"},
   "adGroups": [
     {
@@ -6443,16 +6505,32 @@ ${mergedIntake.phone_number ? `- 📞 **Call Extension:** Attached with number \
 
     } else {
       // SEARCH
+      const searchUspGuidance = landingIntelligence?.usps?.length > 0
+        ? `\n   - Include 2-3 verified value propositions / USPs from website: ${landingIntelligence.usps.slice(0, 3).map(u => `"${u.slice(0, 28)}"`).join(", ")}.`
+        : `\n   - Include 2-3 value propositions / USPs.`;
+
+      const searchDescGuidance = landingIntelligence?.metaDescription
+        ? ` (reflecting: "${landingIntelligence.metaDescription.slice(0, 80)}...")`
+        : "";
+
       formatSpecificRules = `STRICT SEARCH COPY & ASSET RULES:
 1. Headlines: Generate EXACTLY 10 to 12 keyword-rich, compelling, unique headlines, STRICTLY maximum 30 characters each.
-   - At least 5-6 headlines MUST directly include the top target keywords and services in ${targetLocation} to achieve an EXCELLENT Google Ad Strength and 10/10 Quality Score!
-   - Include 2-3 value propositions / USPs.
+   - At least 5-6 headlines MUST directly include the top target keywords and services in ${targetLocation} to achieve an EXCELLENT Google Ad Strength and 10/10 Quality Score!${searchUspGuidance}
    - Include 2-3 call-to-actions.
-2. Descriptions: Generate EXACTLY 4 compelling, unique descriptions, STRICTLY maximum 90 characters each.
+2. Descriptions: Generate EXACTLY 4 compelling, unique descriptions, STRICTLY maximum 90 characters each${searchDescGuidance}.
 3. Business Name: Set "businessName" to "${(mergedIntake.business_name || businessLabel).slice(0, 25)}" (STRICTLY max 25 characters).
 ${sitelinkPromptRule}
-5. Callout Assets: EXACTLY 4 standout unique selling propositions (USPs) as callout badges, STRICTLY maximum 25 characters each.
+5. Callout Assets: EXACTLY 4 standout unique selling propositions (USPs) as callout badges, STRICTLY maximum 25 characters each${landingIntelligence?.usps?.length >= 4 ? ` (derived from verified USPs: ${landingIntelligence.usps.slice(0, 4).map(u => `"${u.slice(0, 25)}"`).join(", ")})` : ""}.
 6. Call Asset: ${mergedIntake.phone_number ? `Configure callAsset with phoneNumber "${mergedIntake.phone_number}" and countryCode "${countryIso}".` : "Set callAsset to null if no phone number was provided."}`;
+
+      const resolvedSearchCallouts = landingIntelligence?.usps?.length >= 4
+        ? landingIntelligence.usps.slice(0, 4).map(u => u.slice(0, 25))
+        : [
+            "Verified & Certified",
+            "Prompt & Reliable",
+            "Transparent Pricing",
+            "Customer Support",
+          ];
 
       formatJsonAdGroups = `"sitelinks": ${candidateSitelinks.length > 0 ? JSON.stringify(candidateSitelinks.map(c => ({
     linkText: c.linkText,
@@ -6460,12 +6538,7 @@ ${sitelinkPromptRule}
     description2: "Learn more & get in touch",
     finalUrl: c.finalUrl
   })), null, 2) : "[]"},
-  "callouts": [
-    "Verified & Certified",
-    "Prompt & Reliable",
-    "Transparent Pricing",
-    "Customer Support"
-  ],
+  "callouts": ${JSON.stringify(resolvedSearchCallouts, null, 2)},
   "callAsset": ${mergedIntake.phone_number ? JSON.stringify({ countryCode: countryIso, phoneNumber: mergedIntake.phone_number }) : "null"},
   "adGroups": [
     {
@@ -6523,10 +6596,10 @@ ACCOUNT DETAILS:
 - Customer ID: ${selectedCustomerId}
 - Currency: ${accountCurrency}
 
-VERIFIED BUSINESS DETAILS:
+VERIFIED BUSINESS & LANDING PAGE INTELLIGENCE:
 - Business Name: ${mergedIntake.business_name || businessLabel}
 - Services / Products Offered: ${mergedIntake.services || businessLabel}
-- Campaign Format: ${formatDisplayLabel}
+${landingIntelligence?.title ? `- Landing Page Title: "${landingIntelligence.title}"\n` : ""}${landingIntelligence?.metaDescription ? `- Landing Page Meta Description: "${landingIntelligence.metaDescription}"\n` : ""}${landingIntelligence?.usps?.length > 0 ? `- Verified Website USPs & Value Propositions:\n${landingIntelligence.usps.map((u, i) => `  * "${u}"`).join("\n")}\n` : ""}${landingIntelligence?.youtubeVideoIds?.length > 0 ? `- Embedded Official YouTube Videos: ${landingIntelligence.youtubeVideoIds.join(", ")}\n` : ""}- Campaign Format: ${formatDisplayLabel}
 - Network Placements: ${chosenNetPref}
 - Primary Campaign Goal: ${isCallGoal ? "Direct Phone Calls (Call Leads)" : "Website Leads & Online Traffic"}
 - Business Phone Number: ${mergedIntake.phone_number || (isCallGoal ? "Required for call asset" : "None")}
@@ -6630,6 +6703,12 @@ And conclude with:
           }
 
           if (extractedPlan) {
+            if (!extractedPlan.services && (mergedIntake.services || businessLabel)) {
+              extractedPlan.services = mergedIntake.services || businessLabel;
+            }
+            if (extractedPlan.campaign && !extractedPlan.campaign.services && (mergedIntake.services || businessLabel)) {
+              extractedPlan.campaign.services = mergedIntake.services || businessLabel;
+            }
             if (!extractedPlan.location && targetLocation) extractedPlan.location = targetLocation;
             if (extractedPlan.campaign && !extractedPlan.campaign.location && targetLocation) {
               extractedPlan.campaign.location = targetLocation;
