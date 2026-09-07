@@ -291,6 +291,68 @@ function createEmptyChat() {
   };
 }
 
+function renderFormattedMessage(text) {
+  if (!text || typeof text !== "string") return text;
+
+  // Regex to match markdown links [label](url) OR standalone URLs http(s)://...
+  const linkRegex = /\[([^\]]+)\]\((https?:\/\/[^\s)]+)\)|(https?:\/\/[^\s<]+[^<.,:;"')\]\s])/g;
+
+  const parts = [];
+  let lastIndex = 0;
+  let match;
+
+  while ((match = linkRegex.exec(text)) !== null) {
+    if (match.index > lastIndex) {
+      parts.push(text.substring(lastIndex, match.index));
+    }
+    if (match[1] && match[2]) {
+      // Markdown link: [label](url)
+      parts.push(
+        <a
+          key={`link-${match.index}`}
+          href={match[2]}
+          target="_blank"
+          rel="noopener noreferrer"
+          style={{
+            color: "#38bdf8",
+            textDecoration: "underline",
+            fontWeight: 600,
+            wordBreak: "break-all",
+          }}
+        >
+          {match[1]}
+        </a>
+      );
+    } else if (match[3]) {
+      // Plain URL
+      const url = match[3];
+      parts.push(
+        <a
+          key={`url-${match.index}`}
+          href={url}
+          target="_blank"
+          rel="noopener noreferrer"
+          style={{
+            color: "#38bdf8",
+            textDecoration: "underline",
+            fontWeight: 600,
+            wordBreak: "break-all",
+          }}
+        >
+          {url}
+        </a>
+      );
+    }
+    lastIndex = linkRegex.lastIndex;
+  }
+
+  if (lastIndex < text.length) {
+    parts.push(text.substring(lastIndex));
+  }
+
+  return parts.length > 0 ? parts : text;
+}
+
 export default function ChatPage() {
   const { data: session, status } = useSession();
   const role = session?.user?.role || "client";
@@ -1647,11 +1709,11 @@ Now respond as GabbarInfo AI.
                           }}
                         />
                         {m.text && (
-                          <div style={{ marginTop: 10, color: "#cbd5e1" }}>{m.text}</div>
+                          <div style={{ marginTop: 10, color: "#cbd5e1" }}>{renderFormattedMessage(m.text)}</div>
                         )}
                       </div>
                     ) : (
-                      m.text
+                      renderFormattedMessage(m.text)
                     )}
                   </div>
                 </div>

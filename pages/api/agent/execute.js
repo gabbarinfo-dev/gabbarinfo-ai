@@ -4740,7 +4740,7 @@ async function handleSocialPost(req, res, session, body) {
             imageUrl,
             caption: combinedCaption,
           });
-          publishResults.push(`📘 **Facebook Page:** Published successfully! [View Post](${fbData.postUrl}) (ID: \`${fbData.postId}\`)`);
+          publishResults.push(`📘 **Facebook Page:** Published successfully!\n🔗 **Direct Post Link:** ${fbData.postUrl}\n*(Post ID: \`${fbData.postId}\`)*`);
         } catch (fbErr) {
           console.error("[Path A] FB Error:", fbErr);
           publishResults.push(`⚠️ **Facebook Page:** Failed (${fbErr.message})`);
@@ -4809,7 +4809,7 @@ async function handleSocialPost(req, res, session, body) {
             imageUrl,
             caption,
           });
-          publishResults.push(`📘 **Facebook Page:** Published successfully! [View Post](${fbData.postUrl}) (ID: \`${fbData.postId}\`)`);
+          publishResults.push(`📘 **Facebook Page:** Published successfully!\n🔗 **Direct Post Link:** ${fbData.postUrl}\n*(Post ID: \`${fbData.postId}\`)*`);
         } catch (fbErr) {
           console.error("[Path B] FB Publish Error:", fbErr);
           publishResults.push(`⚠️ **Facebook Page:** Failed (${fbErr.message})`);
