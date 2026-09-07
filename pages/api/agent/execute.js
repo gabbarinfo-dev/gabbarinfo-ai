@@ -3,6 +3,11 @@
 
 // pages/api/agent/execute.js
 
+export const maxDuration = 60;
+export const config = {
+  maxDuration: 60,
+};
+
 import { GoogleGenerativeAI } from "@google/generative-ai";
 import { getServerSession } from "next-auth/next";
 import { authOptions } from "../auth/[...nextauth]";

@@ -3,6 +3,12 @@
   "functions": {
     "pages/api/**/*": {
       "maxDuration": 60
+    },
+    "pages/api/**/*.js": {
+      "maxDuration": 60
+    },
+    "pages/api/agent/execute.js": {
+      "maxDuration": 60
     }
   }
 }
