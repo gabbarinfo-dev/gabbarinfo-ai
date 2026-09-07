@@ -5450,6 +5450,8 @@ async function handleGoogleAdsCampaignFlow(req, res, session, body) {
         const negativeKeywords = plan.negativeKeywords || plan.campaign?.negativeKeywords || gAdsState.negativeKeywords || [];
         const biddingStrategy = plan.biddingStrategy || plan.campaign?.biddingStrategy || gAdsState.intake?.bidding_strategy || "MAXIMIZE_CONVERSIONS";
 
+        const services = plan.services || plan.campaign?.services || gAdsState.intake?.services || null;
+
         const createRes = await createFullGoogleAdsCampaign({
           refreshToken,
           customerId: selectedCustomerId,
@@ -5466,6 +5468,7 @@ async function handleGoogleAdsCampaignFlow(req, res, session, body) {
           negativeKeywords,
           biddingStrategy,
           loginCustomerId: targetManagerId,
+          services,
         });
 
         if (!createRes.ok) {
