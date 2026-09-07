@@ -1609,6 +1609,8 @@ Now respond as GabbarInfo AI.
             minHeight: 0,
             boxSizing: "border-box",
             position: "relative",
+            marginRight: isAgentPanelOpen && !isMobile ? 380 : 0,
+            transition: "margin-right 0.25s cubic-bezier(0.4, 0, 0.2, 1)",
             background: "radial-gradient(ellipse at 50% 0%, rgba(37, 99, 235, 0.08), transparent 50%), #080b11",
           }}
         >
