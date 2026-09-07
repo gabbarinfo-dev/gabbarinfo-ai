@@ -6437,7 +6437,8 @@ ${sitelinkPromptRule}
 5. Callout Assets: EXACTLY 4 standout callouts, STRICTLY max 25 characters each${landingIntelligence?.usps?.length >= 4 ? ` (derived from verified USPs: ${landingIntelligence.usps.slice(0, 4).map(u => `"${u.slice(0, 25)}"`).join(", ")})` : ""}.
 6. Call Asset: ${mergedIntake.phone_number ? `Configure callAsset with phoneNumber "${mergedIntake.phone_number}" and countryCode "${countryIso}".` : "Set callAsset to null if no phone number was provided."}
 7. Audience Search Themes: Guide Google's AI with user intent signals from: ${JSON.stringify(finalizedKeywords)}.
-${chosenCampaignType === "PERFORMANCE_MAX_SHOPPING" ? `8. Merchant Center: Connect retail catalog feed ID ${mergedIntake.merchant_id || "Active GMC Feed"} for automated shopping product cards across all channels.` : ""}`;
+8. CRITICAL GOOGLE ADS POLICY: NEVER include phone numbers or digits representing phone numbers in headlines, long headline, descriptions, callouts, or sitelinks! Google Ads strictly prohibits phone numbers in ad text (PHONE_NUMBER_IN_AD_TEXT) and will instantly reject the campaign. Phone numbers belong EXCLUSIVELY in the callAsset object.
+${chosenCampaignType === "PERFORMANCE_MAX_SHOPPING" ? `9. Merchant Center: Connect retail catalog feed ID ${mergedIntake.merchant_id || "Active GMC Feed"} for automated shopping product cards across all channels.` : ""}`;
 
       const resolvedCallouts = landingIntelligence?.usps?.length >= 4
         ? landingIntelligence.usps.slice(0, 4).map(u => u.slice(0, 25))
@@ -6481,7 +6482,7 @@ ${chosenCampaignType === "PERFORMANCE_MAX_SHOPPING" ? `8. Merchant Center: Conne
             "Description 1: Service details and city location (max 90 chars)",
             "Description 2: Key benefits, platforms, and client results (max 90 chars)",
             "Description 3: Why choose us, trust proof, and reliability (max 90 chars)",
-            "Description 4: Clear call to action with phone/quote link (max 90 chars)"
+            "Description 4: Clear call to action to request a free quote or consultation (max 90 chars - NO phone numbers)"
           ],
           "businessName": "${(mergedIntake.business_name || businessLabel).slice(0, 25)}"
         }
@@ -6564,7 +6565,7 @@ ${sitelinkPromptRule}
             "Description 1 with service keywords & location (max 90 chars)",
             "Description 2 with trust proof & ratings (max 90 chars)",
             "Description 3 with pricing & guarantee (max 90 chars)",
-            "Description 4 with call or click CTA (max 90 chars)"
+            "Description 4 with consultation or quote CTA (max 90 chars - NO phone numbers)"
           ],
           "path1": "services",
           "path2": "book"
