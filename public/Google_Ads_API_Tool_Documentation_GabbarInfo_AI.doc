@@ -1,0 +1,263 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Google Ads API Design & Architectural Specification - GabbarInfo AI</title>
+<style>
+  @page {
+    size: A4;
+    margin: 20mm 15mm 20mm 15mm;
+  }
+  body {
+    font-family: 'Segoe UI', -apple-system, Roboto, Helvetica, Arial, sans-serif;
+    color: #1e293b;
+    line-height: 1.55;
+    font-size: 11pt;
+    margin: 0;
+    padding: 0;
+  }
+  .header {
+    border-bottom: 2px solid #2563eb;
+    padding-bottom: 14px;
+    margin-bottom: 24px;
+  }
+  .header h1 {
+    margin: 0 0 6px 0;
+    color: #0f172a;
+    font-size: 22pt;
+    font-weight: 800;
+  }
+  .header .subtitle {
+    color: #475569;
+    font-size: 12pt;
+    font-weight: 600;
+  }
+  .meta-grid {
+    display: table;
+    width: 100%;
+    margin-top: 14px;
+    background: #f8fafc;
+    border: 1px solid #e2e8f0;
+    border-radius: 8px;
+    padding: 10px 14px;
+    font-size: 9.5pt;
+  }
+  .meta-row {
+    display: table-row;
+  }
+  .meta-cell {
+    display: table-cell;
+    padding: 3px 12px 3px 0;
+  }
+  .meta-cell strong {
+    color: #334155;
+  }
+  h2 {
+    color: #1e3a8a;
+    font-size: 14pt;
+    font-weight: 700;
+    border-bottom: 1px solid #e2e8f0;
+    padding-bottom: 5px;
+    margin-top: 26px;
+    margin-bottom: 10px;
+  }
+  h3 {
+    color: #0f172a;
+    font-size: 11.5pt;
+    font-weight: 700;
+    margin-top: 16px;
+    margin-bottom: 6px;
+  }
+  p, li {
+    color: #334155;
+    font-size: 10pt;
+  }
+  ul, ol {
+    margin-top: 4px;
+    margin-bottom: 12px;
+    padding-left: 22px;
+  }
+  li {
+    margin-bottom: 4px;
+  }
+  .callout {
+    background: #eff6ff;
+    border-left: 4px solid #3b82f6;
+    padding: 10px 14px;
+    border-radius: 4px;
+    margin: 14px 0;
+    font-size: 9.5pt;
+  }
+  .table {
+    width: 100%;
+    border-collapse: collapse;
+    margin: 12px 0;
+    font-size: 9.5pt;
+  }
+  .table th {
+    background: #f1f5f9;
+    border: 1px solid #cbd5e1;
+    padding: 8px 10px;
+    text-align: left;
+    font-weight: 700;
+    color: #0f172a;
+  }
+  .table td {
+    border: 1px solid #e2e8f0;
+    padding: 7px 10px;
+    color: #334155;
+  }
+  .diagram-box {
+    background: #0f172a;
+    color: #f8fafc;
+    border-radius: 8px;
+    padding: 14px 18px;
+    font-family: Consolas, monospace;
+    font-size: 8.5pt;
+    line-height: 1.4;
+    margin: 14px 0;
+    white-space: pre;
+  }
+  .footer {
+    margin-top: 40px;
+    border-top: 1px solid #cbd5e1;
+    padding-top: 10px;
+    font-size: 8.5pt;
+    color: #64748b;
+    text-align: center;
+  }
+</style>
+</head>
+<body>
+
+<div class="header">
+  <h1>GabbarInfo AI</h1>
+  <div class="subtitle">Google Ads API Integration & Architectural Design Specification</div>
+  <div class="meta-grid">
+    <div class="meta-row">
+      <div class="meta-cell"><strong>Developer Token:</strong> rs9KbddLU3lsepkMXu6CVg</div>
+      <div class="meta-cell"><strong>Google Ads Manager ID (MCC):</strong> 806-032-0443</div>
+    </div>
+    <div class="meta-row">
+      <div class="meta-cell"><strong>Google Cloud Project Number:</strong> 860054735978</div>
+      <div class="meta-cell"><strong>Primary Website:</strong> https://gabbarinfo.com</div>
+    </div>
+    <div class="meta-row">
+      <div class="meta-cell"><strong>Contact Email:</strong> ndantare@gmail.com</div>
+      <div class="meta-cell"><strong>Application Type:</strong> Web Application / Multi-Tenant SaaS Tool</div>
+    </div>
+  </div>
+</div>
+
+<h2>1. Executive Summary & Business Model</h2>
+<p>
+  <strong>GabbarInfo AI</strong> (hosted at <a href="https://ai.gabbarinfo.com">https://ai.gabbarinfo.com</a>) is an integrated autonomous digital marketing command center developed by <strong>GabbarInfo</strong>. Our platform provides small and medium-sized enterprises (SMEs), e-commerce merchants, and marketing consultants with intelligent digital marketing tools covering on-page search engine optimization (SEO), social media syndication, and search advertising campaign creation.
+</p>
+<p>
+  <strong>Business Model:</strong> GabbarInfo AI operates as a software-as-a-service (SaaS) and marketing technology platform. Clients authenticate their business digital assets (WordPress sites, Meta Business assets, and Google Ads accounts) into our unified dashboard. We assist business owners in generating high-relevance search keywords, drafting responsive search ads, optimizing marketing budgets, and synchronizing organic search insights with targeted paid search campaigns.
+</p>
+
+<h2>2. Intended Audience & Users</h2>
+<p>
+  The tool is accessible to <strong>both internal users and external clients</strong>:
+</p>
+<ul>
+  <li><strong>Internal Users:</strong> Account managers, digital marketing strategists, and operations specialists at GabbarInfo who assist onboarded clients with campaign setup, quality score monitoring, and budget allocations.</li>
+  <li><strong>External Users:</strong> Verified business owners, marketing directors, and retail merchants who sign in to their dedicated GabbarInfo AI portal to review search ad copy, approve suggested keywords, and connect their own Google Ads Customer Accounts.</li>
+</ul>
+
+<h2>3. Google Ads API Functional Scope</h2>
+<p>
+  GabbarInfo AI utilizes the Google Ads API strictly for compliant campaign management, keyword discovery, and performance tracking. The platform operates within the following specific API domains:
+</p>
+
+<table class="table">
+  <thead>
+    <tr>
+      <th style="width: 25%;">API Feature / Service</th>
+      <th style="width: 35%;">Google Ads API Endpoints</th>
+      <th style="width: 40%;">Business Purpose & User Action</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td><strong>Account Selection & Hierarchy</strong></td>
+      <td><code>CustomerService</code><br><code>GoogleAdsService (customer_client)</code></td>
+      <td>Lists accessible client accounts under the authenticated user's profile and allows selecting the active customer ID to manage.</td>
+    </tr>
+    <tr>
+      <td><strong>Keyword Research & Grouping</strong></td>
+      <td><code>KeywordPlanIdeaService</code><br><code>GoogleAdsService (search)</code></td>
+      <td>Derives high-intent search query terms based on client product categories, preventing wasted ad spend and negative keyword conflicts.</td>
+    </tr>
+    <tr>
+      <td><strong>Search Campaign & Ad Creation</strong></td>
+      <td><code>CampaignService</code><br><code>AdGroupService</code><br><code>AdGroupAdService</code></td>
+      <td>Creates structured Search campaigns with user-approved headlines, descriptions, and budget limits as Responsive Search Ads (RSAs).</td>
+    </tr>
+    <tr>
+      <td><strong>Performance Reporting</strong></td>
+      <td><code>GoogleAdsService (metrics)</code></td>
+      <td>Retrieves aggregate click-through rates (CTR), impressions, average CPC, and conversion metrics to show clients campaign return-on-ad-spend (ROAS).</td>
+    </tr>
+  </tbody>
+</table>
+
+<h2>4. User Authentication & Authorization Flow (OAuth 2.0)</h2>
+<p>
+  Our application strictly enforces Google's standard OAuth 2.0 authorization protocol:
+</p>
+<ol>
+  <li><strong>Initiation:</strong> The client navigates to the <em>Google Ads Account</em> panel in their secure dashboard and clicks <strong>"Connect Google Ads Account"</strong>.</li>
+  <li><strong>Consent Screen:</strong> The user is redirected to Google's verified OAuth 2.0 consent screen where they inspect requested scopes (<code>https://www.googleapis.com/auth/adwords</code>).</li>
+  <li><strong>Token Exchange:</strong> Upon user approval, Google redirects back to our secure endpoint with an authorization code, which is exchanged server-side for access and refresh tokens.</li>
+  <li><strong>Account Mapping:</strong> The user selects their specific 10-digit Google Ads Customer ID from their list of accessible accounts. Only this selected account is queried.</li>
+  <li><strong>User Control:</strong> Clients can disconnect their Google Ads account at any time via a 1-click <strong>"Disconnect"</strong> button, which revokes stored session tokens immediately.</li>
+</ol>
+
+<div class="diagram-box">
++--------------------+        +---------------------+        +--------------------+
+|  User / Client     | -----> |  GabbarInfo AI App  | -----> |  Google Ads API    |
+|  (Web Dashboard)   | <----- |  (Next.js Secure)   | <----- |  (OAuth 2.0 v16)   |
++--------------------+        +---------------------+        +--------------------+
+          |                              |                              |
+          | 1. Click "Connect"           |                              |
+          |----------------------------> | 2. Redirect to Google OAuth  |
+          |                              |----------------------------> |
+          | 3. User Consents to Scope    |                              |
+          | <-----------------------------------------------------------|
+          | 4. Auth Code Returned        |                              |
+          |----------------------------> | 5. Exchange for Refresh Token|
+          |                              |----------------------------> |
+          | 6. Render Customer Accounts  | 7. Store securely (encrypted)|
+          | <----------------------------|                              |
+</div>
+
+<h2>5. Data Security, Privacy & Policy Compliance</h2>
+<div class="callout">
+  <strong>Commitment to Google Developer Policies:</strong> GabbarInfo AI does not resell, scrape, or distribute Google Ads data. All data is handled with bank-grade encryption and strictly isolated per tenant.
+</div>
+<ul>
+  <li><strong>Storage & Encryption:</strong> Refresh tokens and credentials are encrypted at rest using industry-standard AES-256 encryption. Environment credentials (Client Secret, Developer Token) are managed via encrypted environment configuration and are never exposed to client browsers.</li>
+  <li><strong>Row-Level Data Isolation:</strong> Every database query utilizes authenticated session tokens with Row-Level Security (RLS) in Supabase. User A cannot view, inspect, or manage User B's Google Ads accounts.</li>
+  <li><strong>No Automated Bidding Overrides:</strong> Campaigns and budgets require explicit human review and authorization before submission. All ads created comply with Google Ads Editorial and Content Policies.</li>
+  <li><strong>Data Deletion & Revocation:</strong> When a user disconnects their account or closes their profile, all cached metrics, account IDs, and OAuth tokens are permanently erased.</li>
+</ul>
+
+<h2>6. Application User Interface Walkthrough</h2>
+<p>
+  Below is the design walkthrough of how users interact with the Google Ads API tool in GabbarInfo AI:
+</p>
+<ul>
+  <li><strong>Step 1 (Dashboard Card):</strong> The client is presented with the <em>Google Ads Account Connect</em> engine card highlighting OAuth verification status and feature highlights.</li>
+  <li><strong>Step 2 (Account Selection):</strong> After authentication, the client chooses their active Google Ads Customer ID (formatted as <code>XXX-XXX-XXXX</code>) from an interactive selector.</li>
+  <li><strong>Step 3 (Campaign Orchestration):</strong> The client inputs target services, location targeting, and daily budgets. The tool synthesizes draft Responsive Search Ads with high-performing headlines and descriptions.</li>
+  <li><strong>Step 4 (Review & Verification):</strong> The client reviews all generated assets, amends text if desired, and confirms final deployment to the Google Ads account.</li>
+</ul>
+
+<div class="footer">
+  GabbarInfo AI · Autonomous Digital Marketing Strategist · Confidential · Submitted for Google Ads API Basic Access Review
+</div>
+
+</body>
+</html>

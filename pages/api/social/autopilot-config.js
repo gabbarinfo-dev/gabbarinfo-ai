@@ -6,6 +6,8 @@ import { executeFacebookPost } from "../../../lib/execute-facebook-post.js";
 import { executeInstagramPost } from "../../../lib/execute-instagram-post.js";
 import { generateImage } from "../../../lib/instagram/generate-image.js";
 import { generateCaption } from "../../../lib/instagram/generate-caption.js";
+import { verifyEntitlement, FEATURES } from "../../../lib/auth/entitlements.js";
+import { reserveCredits } from "../../../lib/billing/credit-meter.js";
 import OpenAI from "openai";
 
 const supabase = supabaseServer;
@@ -292,6 +294,22 @@ export default async function handler(req, res) {
 
       // ── ACTION: GENERATE FULL 30-DAY QUEUE (AI SYNTHESIS) ──
       if (action === "generate-queue") {
+        // 🔒 Entitlement Gate
+        const ent = await verifyEntitlement(session, current.businessId, FEATURES.SOCIAL_PLANNER);
+        if (!ent.allowed) {
+          return res.status(403).json({ ok: false, error: ent.error });
+        }
+
+        // 💳 Credit Reservation (5 credits)
+        const resCred = await reserveCredits({
+          businessId: ent.businessId,
+          userEmail: normalizedEmail,
+          actionType: "PLANNER_QUEUE",
+        });
+        if (!resCred.ok) {
+          return res.status(402).json({ ok: false, error: resCred.error });
+        }
+
         const businessName = updatedConfig?.businessName || current.businessName || "Our Business";
         const industry = updatedConfig?.industry || current.industry || "Professional Business";
         const services = updatedConfig?.services || current.services || ["Core Services", "Client Solutions"];
@@ -479,15 +497,17 @@ Respond ONLY in JSON: { "hook": "short catchy hook (4-7 words)", "topic": "speci
       if (action === "test-post") {
         console.log(`[Social Autopilot] Executing immediate test post for ${normalizedEmail}...`);
 
-        // Free Test Post Limitation Check
-        const isOwner = normalizedEmail === "ndantare@gmail.com" || session?.user?.role === "owner" || session?.user?.role === "admin";
-        const testPostsUsed = current.testPostsUsed || 0;
+        // 💳 Server-Side Atomic Credit Check (10 credits for instant post)
+        const resCred = await reserveCredits({
+          businessId: current.businessId || "default_business",
+          userEmail: normalizedEmail,
+          actionType: "SOCIAL_POST",
+        });
 
-        if (!isOwner && testPostsUsed >= 1) {
-          return res.status(403).json({
+        if (!resCred.ok) {
+          return res.status(402).json({
             ok: false,
-            error: "You have already used your 1 free test post. Please turn ON Autopilot for scheduled daily automated publishing!",
-            limitReached: true,
+            error: resCred.error || "Insufficient credits to publish test post.",
           });
         }
 

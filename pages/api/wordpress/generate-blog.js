@@ -3,6 +3,10 @@ import { getServerSession } from "next-auth/next";
 import { authOptions } from "../auth/[...nextauth]";
 import { createClient } from "@supabase/supabase-js";
 import OpenAI from "openai";
+import { verifyEntitlement, FEATURES } from "../../../lib/auth/entitlements";
+import { reserveCredits, releaseCredits } from "../../../lib/billing/credit-meter";
+import { checkRateLimit } from "../../../lib/middleware/rate-limiter";
+import { generatePlatformGraphic } from "../../../lib/services/image-service";
 
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL,
@@ -21,8 +25,18 @@ export default async function handler(req, res) {
     return res.status(401).json({ ok: false, error: "Unauthorized: Please log in" });
   }
 
+  // 1. Rate Limiting Gate
+  const rateCheck = checkRateLimit(userEmail, "BLOG_GEN", 10, 60000);
+  if (!rateCheck.allowed) {
+    return res.status(429).json({
+      ok: false,
+      error: `Too many blog requests. Please wait ${Math.ceil(rateCheck.resetInMs / 1000)} seconds.`,
+    });
+  }
+
   const {
     businessName = "",
+    businessId = null,
     topic,
     targetMarket,
     city,
@@ -36,6 +50,32 @@ export default async function handler(req, res) {
 
   if (!topic) {
     return res.status(400).json({ ok: false, error: "Blog topic is required" });
+  }
+
+  // 2. Entitlement Gate
+  if (session) {
+    const entitlement = await verifyEntitlement(session, businessId, FEATURES.SEO);
+    if (!entitlement.allowed) {
+      return res.status(403).json({
+        ok: false,
+        error: entitlement.error || "SEO blog generation is not permitted on this account tier.",
+      });
+    }
+  }
+
+  // 3. Server-Side Atomic Credit Reservation
+  const reservation = await reserveCredits({
+    businessId: businessId || "default_business",
+    userEmail,
+    actionType: "SEO_BLOG",
+    referenceId: topic.substring(0, 40),
+  });
+
+  if (!reservation.ok) {
+    return res.status(402).json({
+      ok: false,
+      error: reservation.error || "Insufficient credits to generate blog.",
+    });
   }
 
   const apiKey = process.env.OPENAI_API_KEY;
@@ -211,47 +251,26 @@ Respond ONLY with a valid JSON object matching this schema:
 
     const parsedArticle = JSON.parse(completion.choices[0].message.content);
 
-    // Multi-model AI Image Generator Helper (gpt-image-2, gpt-image-1.5, gpt-image-1)
+    // Multi-model AI Image Generator Helper powered by central ImageService
     const generateAiVisual = async (promptText, label = "visual", imageSize = "1024x1024") => {
-      const candidateModels = [
-        process.env.OPENAI_IMAGE_MODEL,
-        "gpt-image-2",
-        "gpt-image-1.5",
-        "gpt-image-1",
-      ].filter(Boolean);
+      try {
+        const isWidescreen = imageSize === "1792x1024";
+        const result = await generatePlatformGraphic({
+          prompt: promptText,
+          businessId: businessId || "default_business",
+          userEmail,
+          aspectRatio: isWidescreen ? "16:9" : "1:1",
+          actionType: label === "featured" ? "SEO_HERO" : "SEO_MID",
+          meterCredits: false, // Credits already reserved at handler root
+          persistInSupabase: true,
+        });
 
-      for (const modelName of candidateModels) {
-        try {
-          console.log(`[SEO Engine] Generating ${label} image using model ${modelName} at size ${imageSize}...`);
-          const imgResp = await openai.images.generate({
-            model: modelName,
-            prompt: promptText,
-            size: imageSize,
-          });
-
-          let imgBuffer = null;
-          if (imgResp.data?.[0]?.b64_json) {
-            imgBuffer = Buffer.from(imgResp.data[0].b64_json, "base64");
-          } else if (imgResp.data?.[0]?.url) {
-            const fetchRes = await fetch(imgResp.data[0].url);
-            imgBuffer = Buffer.from(await fetchRes.arrayBuffer());
-          }
-
-          if (imgBuffer) {
-            const fileName = `blog_${label}_${Date.now()}_${Math.random().toString(36).substring(7)}.png`;
-            const { data: uploadData, error: uploadErr } = await supabase.storage
-              .from("instagram-creatives")
-              .upload(fileName, imgBuffer, { contentType: "image/png" });
-
-            if (!uploadErr && uploadData) {
-              const { data: pubUrl } = supabase.storage.from("instagram-creatives").getPublicUrl(fileName);
-              console.log(`[SEO Engine] Uploaded ${label} to Supabase: ${pubUrl.publicUrl}`);
-              return pubUrl.publicUrl;
-            }
-          }
-        } catch (imgErr) {
-          console.warn(`[SEO Engine] ${modelName} failed for ${label}:`, imgErr.message);
+        if (result?.ok && result.imageUrl) {
+          console.log(`[SEO Engine] Successfully generated ${label} visual via central image service: ${result.imageUrl}`);
+          return result.imageUrl;
         }
+      } catch (imgErr) {
+        console.warn(`[SEO Engine] Central image service failed for ${label}:`, imgErr.message);
       }
       return null;
     };
@@ -443,6 +462,14 @@ INSTRUCTIONS:
     });
   } catch (err) {
     console.error("Generate blog error:", err);
+    if (reservation?.transactionId && userEmail) {
+      await releaseCredits({
+        userEmail,
+        transactionId: reservation.transactionId,
+        cost: reservation.cost,
+        reason: "Blog generation error: " + err.message,
+      });
+    }
     return res.status(500).json({ ok: false, error: err.message });
   }
 }

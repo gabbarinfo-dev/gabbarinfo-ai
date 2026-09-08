@@ -138,6 +138,22 @@ export default async function handler(req, res) {
           continue;
         }
 
+        // 🔒 Server-Side Pre-Flight Check: Verify Credits Before Invoking AI
+        const isSuperAdmin = item.email?.toLowerCase() === "ndantare@gmail.com";
+        if (!isSuperAdmin) {
+          const { data: userCredit } = await supabase
+            .from("credits")
+            .select("credits_left")
+            .ilike("email", item.email.toLowerCase())
+            .maybeSingle();
+
+          const balance = userCredit ? userCredit.credits_left : 0;
+          if (balance < 10) {
+            console.warn(`[Social Autopilot Cron] Halting for ${item.email}: Insufficient credits (${balance} < 10 required).`);
+            continue;
+          }
+        }
+
         // Pick next topic from queue
         let nextItem = (config.queue || []).find((q) => q.status === "pending");
         if (!nextItem) {
@@ -244,6 +260,28 @@ export default async function handler(req, res) {
             console.log(`[Social Cron] Automatically cleaned up storage file: ${storageFileName}`);
           } catch (cleanErr) {
             console.warn("[Social Cron] Storage cleanup warning:", cleanErr.message);
+          }
+        }
+
+        // 💳 Server-Side Atomic Credit Consumption: 10 credits for Social Post
+        if (!isSuperAdmin) {
+          try {
+            const { data: cRow } = await supabase
+              .from("credits")
+              .select("credits_left")
+              .ilike("email", item.email.toLowerCase())
+              .maybeSingle();
+
+            if (cRow) {
+              const updatedCredits = Math.max(0, (cRow.credits_left || 0) - 10);
+              await supabase
+                .from("credits")
+                .update({ credits_left: updatedCredits, updated_at: now.toISOString() })
+                .ilike("email", item.email.toLowerCase());
+              console.log(`[Social Cron] Debited 10 credits for ${item.email}. Balance: ${updatedCredits}`);
+            }
+          } catch (credDeductErr) {
+            console.warn("[Social Cron] Credit deduction warning:", credDeductErr.message);
           }
         }
 

@@ -12,6 +12,8 @@ import { GoogleGenerativeAI } from "@google/generative-ai";
 import { getServerSession } from "next-auth/next";
 import { authOptions } from "../auth/[...nextauth]";
 import { createClient } from "@supabase/supabase-js";
+import { verifyEntitlement, FEATURES } from "../../../lib/auth/entitlements";
+import { checkRateLimit } from "../../../lib/middleware/rate-limiter";
 import { executeInstagramPost } from "../../../lib/execute-instagram-post";
 import { executeFacebookPost } from "../../../lib/execute-facebook-post";
 import { normalizeImageUrl } from "../../../lib/normalize-image-url";
@@ -219,6 +221,16 @@ export default async function handler(req, res) {
     }
 
     __currentEmail = session.user.email.toLowerCase();
+
+    // 1. Server-Side Rate Limiting Gate (Max 35 requests per minute)
+    const rateCheck = checkRateLimit(__currentEmail, "AGENT_EXECUTE", 35, 60000);
+    if (!rateCheck.allowed) {
+      return res.status(429).json({
+        ok: false,
+        text: `⚠️ Rate limit reached. Please wait ${Math.ceil(rateCheck.resetInMs / 1000)} seconds before sending another message.`,
+      });
+    }
+
     const { instruction = "", chatHistory = [] } = body;
     let mode = body.mode || "generic";
     const lowerInstruction = instruction.toLowerCase();
@@ -260,14 +272,42 @@ export default async function handler(req, res) {
       }
     }
 
-    // 🔒 MODE AUTHORITY GATE — GOOGLE ADS ISOLATION
+    // 🔒 MODE AUTHORITY & ENTITLEMENT GATE — GOOGLE ADS ISOLATION
     if (mode === "google_ads_plan" || (typeof mode === "string" && mode.startsWith("google_ads"))) {
+      const ent = await verifyEntitlement(session, body.businessId, FEATURES.GOOGLE_ADS);
+      if (!ent.allowed) {
+        return res.status(200).json({
+          ok: true,
+          text: `⚠️ **Feature Restricted**: ${ent.error || "Your current business subscription does not include the Google Ads Suite."}`,
+          mode,
+        });
+      }
       return handleGoogleAdsCampaignFlow(req, res, session, body);
     }
 
-    // 🔒 MODE AUTHORITY GATE — INSTAGRAM & FACEBOOK ISOLATION
+    // 🔒 MODE AUTHORITY & ENTITLEMENT GATE — INSTAGRAM & FACEBOOK ISOLATION
     if (mode === "instagram_post" || mode === "facebook_post") {
+      const ent = await verifyEntitlement(session, body.businessId, FEATURES.SOCIAL);
+      if (!ent.allowed) {
+        return res.status(200).json({
+          ok: true,
+          text: `⚠️ **Feature Restricted**: ${ent.error || "Your current business subscription does not include Social Media publishing."}`,
+          mode,
+        });
+      }
       return handleSocialPost(req, res, session, body);
+    }
+
+    // 🔒 MODE AUTHORITY & ENTITLEMENT GATE — META ADS ISOLATION
+    if (mode === "meta_ads_plan") {
+      const ent = await verifyEntitlement(session, body.businessId, FEATURES.META_ADS);
+      if (!ent.allowed) {
+        return res.status(200).json({
+          ok: true,
+          text: `⚠️ **Feature Restricted**: ${ent.error || "Your current business subscription does not include the Meta Ads Suite."}`,
+          mode,
+        });
+      }
     }
 
     // ============================================================

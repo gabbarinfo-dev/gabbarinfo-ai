@@ -59,6 +59,22 @@ export default async function handler(req, res) {
           continue;
         }
 
+        // 🔒 Server-Side Pre-Flight Check: Verify Credits Before Invoking AI
+        const isSuperAdmin = item.email?.toLowerCase() === "ndantare@gmail.com";
+        if (!isSuperAdmin) {
+          const { data: userCredit } = await supabase
+            .from("credits")
+            .select("credits_left")
+            .ilike("email", item.email.toLowerCase())
+            .maybeSingle();
+
+          const balance = userCredit ? userCredit.credits_left : 0;
+          if (balance < 25) {
+            console.warn(`[Autopilot Cron] Halting for ${item.email}: Insufficient credits (${balance} < 25 required).`);
+            continue;
+          }
+        }
+
         // Pick next topic
         const keywords = config.targetKeywords || ["Digital Marketing Strategies", "SEO Growth"];
         const randomKw = keywords[Math.floor(Math.random() * keywords.length)] || "Business Growth";
