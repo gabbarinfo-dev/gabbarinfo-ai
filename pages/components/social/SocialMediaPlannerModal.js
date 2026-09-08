@@ -646,92 +646,128 @@ export default function SocialMediaPlannerModal({ onClose }) {
 
               {/* Queue List / Grid */}
               <div style={{ display: "flex", flexDirection: "column", gap: 12, width: "100%", boxSizing: "border-box" }}>
-                {(config.queue || []).map((item, idx) => {
-                  const badge = pillarBadges[item.pillar] || { label: "💡 Post", color: "#38bdf8", bg: "rgba(56, 189, 248, 0.1)" };
-                  const isRegen = regeneratingIdx === idx;
-                  const isPublished = item.status === "published";
+                {(() => {
+                  let pendingRank = 0;
+                  return (config.queue || []).map((item, idx) => {
+                    const badge = pillarBadges[item.pillar] || { label: "💡 Post", color: "#38bdf8", bg: "rgba(56, 189, 248, 0.1)" };
+                    const isRegen = regeneratingIdx === idx;
+                    const isPublished = item.status === "published";
 
-                  return (
-                    <div
-                      key={idx}
-                      style={{
-                        padding: "14px 16px",
-                        borderRadius: 14,
-                        background: isPublished
-                          ? "rgba(16, 185, 129, 0.05)"
-                          : "rgba(255, 255, 255, 0.025)",
-                        border: `1px solid ${
-                          isPublished
-                            ? "rgba(16, 185, 129, 0.2)"
-                            : "rgba(255, 255, 255, 0.07)"
-                        }`,
-                        display: "flex",
-                        justifyContent: "space-between",
-                        alignItems: "center",
-                        gap: 12,
-                        flexWrap: "wrap",
-                        transition: "all 0.2s ease",
-                        width: "100%",
-                        boxSizing: "border-box",
-                      }}
-                    >
-                      <div style={{ display: "flex", alignItems: "flex-start", gap: 12, flex: "1 1 auto", minWidth: 0 }}>
-                        <div
-                          style={{
-                            width: 36,
-                            height: 36,
-                            borderRadius: 10,
-                            background: isPublished ? "rgba(16, 185, 129, 0.2)" : "rgba(255, 255, 255, 0.05)",
-                            border: `1px solid ${isPublished ? "rgba(16, 185, 129, 0.4)" : "rgba(255, 255, 255, 0.1)"}`,
-                            display: "flex",
-                            alignItems: "center",
-                            justifyContent: "center",
-                            fontSize: 13,
-                            fontWeight: 800,
-                            color: isPublished ? "#34d399" : "#e2e8f0",
-                            flexShrink: 0,
-                          }}
-                        >
-                          {isPublished ? "✓" : `D${item.day || idx + 1}`}
-                        </div>
+                    let projectedDateLabel = null;
+                    if (!isPublished) {
+                      const rank = pendingRank++;
+                      const d = new Date();
+                      let daysToAdd = 0;
+                      if (config.cadence === "daily") {
+                        daysToAdd = rank;
+                      } else if (config.cadence === "alternate") {
+                        daysToAdd = rank * 2;
+                      } else if (config.cadence === "weekly_4") {
+                        daysToAdd = Math.round(rank * 1.75);
+                      } else if (config.cadence === "weekly") {
+                        daysToAdd = rank * 7;
+                      } else {
+                        daysToAdd = rank;
+                      }
+                      d.setDate(d.getDate() + daysToAdd);
+                      projectedDateLabel = daysToAdd === 0 ? "Today" : daysToAdd === 1 ? "Tomorrow" : d.toLocaleDateString("en-US", { weekday: "short", month: "short", day: "numeric" });
+                    }
 
-                        <div style={{ minWidth: 0, flex: 1 }}>
-                          <div style={{ display: "flex", gap: 8, alignItems: "center", marginBottom: 6, flexWrap: "wrap" }}>
-                            <span
-                              style={{
-                                fontSize: 11,
-                                fontWeight: 700,
-                                padding: "2px 8px",
-                                borderRadius: 6,
-                                background: badge.bg,
-                                color: badge.color,
-                                border: `1px solid ${badge.color}33`,
-                              }}
-                            >
-                              {badge.label}
-                            </span>
+                    return (
+                      <div
+                        key={idx}
+                        style={{
+                          padding: "14px 16px",
+                          borderRadius: 14,
+                          background: isPublished
+                            ? "rgba(16, 185, 129, 0.05)"
+                            : "rgba(255, 255, 255, 0.025)",
+                          border: `1px solid ${
+                            isPublished
+                              ? "rgba(16, 185, 129, 0.2)"
+                              : "rgba(255, 255, 255, 0.07)"
+                          }`,
+                          display: "flex",
+                          justifyContent: "space-between",
+                          alignItems: "center",
+                          gap: 12,
+                          flexWrap: "wrap",
+                          transition: "all 0.2s ease",
+                          width: "100%",
+                          boxSizing: "border-box",
+                        }}
+                      >
+                        <div style={{ display: "flex", alignItems: "flex-start", gap: 12, flex: "1 1 auto", minWidth: 0 }}>
+                          <div
+                            style={{
+                              width: 36,
+                              height: 36,
+                              borderRadius: 10,
+                              background: isPublished ? "rgba(16, 185, 129, 0.2)" : "rgba(255, 255, 255, 0.05)",
+                              border: `1px solid ${isPublished ? "rgba(16, 185, 129, 0.4)" : "rgba(255, 255, 255, 0.1)"}`,
+                              display: "flex",
+                              alignItems: "center",
+                              justifyContent: "center",
+                              fontSize: 13,
+                              fontWeight: 800,
+                              color: isPublished ? "#34d399" : "#e2e8f0",
+                              flexShrink: 0,
+                            }}
+                          >
+                            {isPublished ? "✓" : `D${item.day || idx + 1}`}
+                          </div>
 
-                            {item.service && (
+                          <div style={{ minWidth: 0, flex: 1 }}>
+                            <div style={{ display: "flex", gap: 8, alignItems: "center", marginBottom: 6, flexWrap: "wrap" }}>
                               <span
                                 style={{
                                   fontSize: 11,
-                                  fontWeight: 600,
+                                  fontWeight: 700,
                                   padding: "2px 8px",
                                   borderRadius: 6,
-                                  background: "rgba(255, 255, 255, 0.05)",
-                                  color: "#94a3b8",
+                                  background: badge.bg,
+                                  color: badge.color,
+                                  border: `1px solid ${badge.color}33`,
                                 }}
                               >
-                                {item.service}
+                                {badge.label}
                               </span>
-                            )}
 
-                            {isPublished && (
-                              <span style={{ fontSize: 11, color: "#34d399", fontWeight: 700 }}>
-                                Live on Feed
-                              </span>
-                            )}
-                          </div>
+                              {item.service && (
+                                <span
+                                  style={{
+                                    fontSize: 11,
+                                    fontWeight: 600,
+                                    padding: "2px 8px",
+                                    borderRadius: 6,
+                                    background: "rgba(255, 255, 255, 0.05)",
+                                    color: "#94a3b8",
+                                  }}
+                                >
+                                  {item.service}
+                                </span>
+                              )}
+
+                              {isPublished ? (
+                                <span style={{ fontSize: 11, color: "#34d399", fontWeight: 700 }}>
+                                  Live on Feed
+                                </span>
+                              ) : projectedDateLabel ? (
+                                <span
+                                  style={{
+                                    fontSize: 11,
+                                    fontWeight: 600,
+                                    padding: "2px 8px",
+                                    borderRadius: 6,
+                                    background: config.enabled ? "rgba(56, 189, 248, 0.12)" : "rgba(255, 255, 255, 0.05)",
+                                    color: config.enabled ? "#38bdf8" : "#94a3b8",
+                                    border: `1px solid ${config.enabled ? "rgba(56, 189, 248, 0.25)" : "rgba(255, 255, 255, 0.1)"}`,
+                                  }}
+                                >
+                                  📅 {config.enabled ? `Scheduled: ${projectedDateLabel}` : `Slot: ${projectedDateLabel}`}
+                                </span>
+                              ) : null}
+                            </div>
 
                           <h4 style={{ margin: "0 0 4px 0", fontSize: 15, fontWeight: 700, color: "#ffffff", wordBreak: "break-word", overflowWrap: "anywhere" }}>
                             {item.hook}
@@ -782,7 +818,8 @@ export default function SocialMediaPlannerModal({ onClose }) {
                       )}
                     </div>
                   );
-                })}
+                });
+              })()}
               </div>
             </div>
           ) : activeTab === "settings" ? (
@@ -942,6 +979,124 @@ export default function SocialMediaPlannerModal({ onClose }) {
                       <p style={{ margin: 0, fontSize: 11.5, color: "#94a3b8" }}>{cad.desc}</p>
                     </div>
                   ))}
+                </div>
+
+                {/* ── UPCOMING 7-DAY AUTONOMOUS DISPATCH CADENCE (PROJECTED DISPATCH SCHEDULE) ── */}
+                <div
+                  style={{
+                    marginTop: 18,
+                    paddingTop: 16,
+                    borderTop: "1px solid rgba(255, 255, 255, 0.08)",
+                  }}
+                >
+                  <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 12 }}>
+                    <div
+                      style={{
+                        width: 28,
+                        height: 28,
+                        borderRadius: 7,
+                        background: "rgba(56, 189, 248, 0.15)",
+                        display: "flex",
+                        alignItems: "center",
+                        justifyContent: "center",
+                        fontSize: 14,
+                        color: "#38bdf8",
+                      }}
+                    >
+                      📅
+                    </div>
+                    <div>
+                      <h4 style={{ margin: 0, fontSize: 13.5, fontWeight: 700, color: "#fff" }}>
+                        Upcoming 7-Day Velocity Cadence (Projected Dispatch Schedule)
+                      </h4>
+                      <div style={{ fontSize: 11.5, color: "#94a3b8", marginTop: 2 }}>
+                        Preview of automated creative generation days based on your chosen frequency ({
+                          config.cadence === "daily"
+                            ? "Daily Rollout (30 Posts/Mo)"
+                            : config.cadence === "weekly_4"
+                            ? "4 Posts / Week Frequency"
+                            : config.cadence === "alternate"
+                            ? "Every 2 Days Pace (15 Posts/Mo)"
+                            : "Weekly Frequency (4 Posts/Mo)"
+                        }). Creatives are generated & posted to your Meta feeds on active dates.
+                      </div>
+                    </div>
+                  </div>
+
+                  <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(110px, 1fr))", gap: 8 }}>
+                    {[0, 1, 2, 3, 4, 5, 6].map((offset) => {
+                      const d = new Date();
+                      d.setDate(d.getDate() + offset);
+                      const isToday = offset === 0;
+
+                      let isScheduled = false;
+                      if (config.enabled && !isRestricted) {
+                        if (config.cadence === "daily") {
+                          isScheduled = true;
+                        } else if (config.cadence === "alternate") {
+                          isScheduled = offset % 2 === 0;
+                        } else if (config.cadence === "weekly_4") {
+                          isScheduled = [0, 2, 4, 5].includes(offset);
+                        } else if (config.cadence === "weekly") {
+                          isScheduled = offset === 0;
+                        }
+                      }
+
+                      return (
+                        <div
+                          key={offset}
+                          style={{
+                            background: isToday ? "rgba(30, 41, 59, 0.9)" : "rgba(19, 27, 46, 0.7)",
+                            border: isToday ? "1.5px solid #38bdf8" : "1px solid rgba(255, 255, 255, 0.08)",
+                            borderRadius: 10,
+                            padding: "12px 8px",
+                            textAlign: "center",
+                            display: "flex",
+                            flexDirection: "column",
+                            justifyContent: "space-between",
+                            minHeight: 88,
+                          }}
+                        >
+                          <div>
+                            <div style={{ fontSize: 10, color: isToday ? "#38bdf8" : "#94a3b8", fontWeight: 800, textTransform: "uppercase", letterSpacing: "0.5px" }}>
+                              {isToday ? "TODAY" : d.toLocaleDateString("en-US", { weekday: "short" })}
+                            </div>
+                            <div style={{ fontSize: 13.5, fontWeight: 700, color: "#fff", marginTop: 3 }}>
+                              {d.toLocaleDateString("en-US", { month: "short", day: "numeric" })}
+                            </div>
+                          </div>
+                          <div
+                            style={{
+                              fontSize: 10,
+                              marginTop: 8,
+                              fontWeight: 700,
+                              padding: "3px 6px",
+                              borderRadius: 6,
+                              background: !config.enabled
+                                ? "rgba(255, 255, 255, 0.04)"
+                                : isScheduled
+                                ? "rgba(16, 185, 129, 0.15)"
+                                : "rgba(255, 255, 255, 0.04)",
+                              color: !config.enabled
+                                ? "#64748b"
+                                : isScheduled
+                                ? "#34d399"
+                                : "#64748b",
+                              border: isScheduled && config.enabled
+                                ? "1px solid rgba(16, 185, 129, 0.3)"
+                                : "1px solid transparent",
+                            }}
+                          >
+                            {!config.enabled
+                              ? "⚪ Paused"
+                              : isScheduled
+                              ? "🟢 Active Dispatch"
+                              : "⚪ Rest Day"}
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
                 </div>
               </div>
 
