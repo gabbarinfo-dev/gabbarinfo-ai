@@ -120,14 +120,14 @@ export default function AdminPage() {
   }
 
   // ---------------- SERVICE TOGGLE HANDLER ----------------
-  async function handleToggleService(businessId, serviceKey, currentEnabled) {
+  async function handleToggleService(userEmail, serviceKey, currentEnabled) {
     try {
       const res = await fetch("/api/admin/manage-tenant", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           action: "toggle_service",
-          businessId,
+          userEmail,
           serviceKey,
           enabled: !currentEnabled,
         }),
@@ -135,18 +135,24 @@ export default function AdminPage() {
       const data = await res.json();
       if (data.success) {
         setTenants((prev) =>
-          prev.map((t) => ({
-            ...t,
-            businesses: t.businesses.map((b) =>
-              b.id === businessId ? { ...b, features: data.features } : b
-            ),
-          }))
+          prev.map((t) => {
+            if (t.email?.toLowerCase() !== userEmail.toLowerCase()) return t;
+            return {
+              ...t,
+              businesses: t.businesses.map((b) => ({
+                ...b,
+                features: data.features,
+              })),
+            };
+          })
         );
         setTenantActionMessage({
           type: "success",
-          text: `Updated ${serviceKey} permissions successfully.`,
+          text: `Updated ${serviceKey} for ${userEmail}: ${!currentEnabled ? "ENABLED" : "REVOKED"}.`,
         });
         setTimeout(() => setTenantActionMessage(null), 3000);
+      } else {
+        alert(data.error || "Failed to toggle service.");
       }
     } catch (err) {
       console.error("Toggle service error:", err);
@@ -155,9 +161,9 @@ export default function AdminPage() {
   }
 
   // ---------------- SUSPENSION TOGGLE HANDLER ----------------
-  async function handleToggleSuspension(userEmail, businessId, currentSuspended) {
+  async function handleToggleSuspension(userEmail, currentSuspended) {
     const actionName = currentSuspended ? "Reactivate" : "FREEZE / SUSPEND";
-    if (!confirm(`Are you sure you want to ${actionName} this account/business?`)) return;
+    if (!confirm(`Are you sure you want to ${actionName} account ${userEmail}?`)) return;
 
     try {
       const res = await fetch("/api/admin/manage-tenant", {
@@ -166,7 +172,6 @@ export default function AdminPage() {
         body: JSON.stringify({
           action: "set_suspension",
           userEmail,
-          businessId,
           isSuspended: !currentSuspended,
         }),
       });
@@ -175,9 +180,11 @@ export default function AdminPage() {
         await loadTenants();
         setTenantActionMessage({
           type: "success",
-          text: `Account status updated to ${!currentSuspended ? "Suspended" : "Active"}.`,
+          text: `Account ${userEmail} status updated to ${!currentSuspended ? "Suspended" : "Active"}.`,
         });
         setTimeout(() => setTenantActionMessage(null), 3000);
+      } else {
+        alert(data.error || "Failed to update suspension status.");
       }
     } catch (err) {
       console.error("Suspension toggle error:", err);
@@ -746,7 +753,7 @@ export default function AdminPage() {
                                 <button
                                   key={s.key}
                                   onClick={() =>
-                                    handleToggleService(primaryBiz.id, s.key, isEnabled)
+                                    handleToggleService(t.email, s.key, isEnabled)
                                   }
                                   className={`service-toggle ${isEnabled ? "toggle-active" : "toggle-disabled"}`}
                                   title={`Click to ${isEnabled ? "Revoke" : "Grant"} access to ${s.label}`}
@@ -777,7 +784,7 @@ export default function AdminPage() {
                           ) : (
                             <button
                               onClick={() =>
-                                handleToggleSuspension(t.email, primaryBiz.id, isSuspended)
+                                handleToggleSuspension(t.email, isSuspended)
                               }
                               className={`freeze-btn ${isSuspended ? "btn-reactivate" : "btn-freeze"}`}
                             >
