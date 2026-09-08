@@ -446,29 +446,21 @@ export default async function handler(req, res) {
       configPayload.businessName = businessName || targetBiz || "default";
       configPayload.updatedAt = new Date().toISOString();
 
-      const { data: existing } = await supabase
+      const { error: upsertErr } = await supabase
         .from("agent_memory")
-        .select("id")
-        .eq("email", userEmail)
-        .eq("memory_type", autoMemoryKey)
-        .maybeSingle();
-
-      if (existing?.id) {
-        await supabase
-          .from("agent_memory")
-          .update({
+        .upsert(
+          {
+            email: userEmail,
+            memory_type: autoMemoryKey,
             content: JSON.stringify(configPayload),
             updated_at: new Date().toISOString(),
-          })
-          .eq("id", existing.id);
-      } else {
-        await supabase.from("agent_memory").insert({
-          email: userEmail,
-          memory_type: autoMemoryKey,
-          content: JSON.stringify(configPayload),
-          created_at: new Date().toISOString(),
-          updated_at: new Date().toISOString(),
-        });
+          },
+          { onConflict: "email,memory_type" }
+        );
+
+      if (upsertErr) {
+        console.error("Failed to upsert autopilot config:", upsertErr);
+        return res.status(500).json({ ok: false, error: upsertErr.message });
       }
 
       return res.status(200).json({ ok: true, config: configPayload, message: "Autopilot settings saved successfully" });

@@ -246,7 +246,7 @@ Respond ONLY with a valid JSON object matching this schema:
   "mid_image_alt": "Descriptive SEO alt text for mid visual"
 }`;
 
-    const blogModel = process.env.AI_BLOG_MODEL || "gpt-4o-mini";
+    const blogModel = process.env.AI_BLOG_MODEL || "gpt-4o";
     console.log(`[SEO Engine] Using ${blogModel} to generate blog...`);
 
     const completion = await openai.chat.completions.create({
@@ -256,7 +256,7 @@ Respond ONLY with a valid JSON object matching this schema:
         { role: "user", content: userPrompt },
       ],
       response_format: { type: "json_object" },
-      max_tokens: 4000,
+      max_tokens: 6000,
       temperature: 0.7,
     });
 
@@ -286,10 +286,10 @@ Respond ONLY with a valid JSON object matching this schema:
       return null;
     };
 
-    // 4 & 5. Generate Visuals in PARALLEL for maximum speed and zero timeout risk
+    // 4 & 5. Generate Visuals in PARALLEL for maximum speed and zero timeout risk (EXACTLY 2 images: 1 Featured + 1 Mid-Content)
     const [featuredImageUrl, midImageUrl] = await Promise.all([
       generateAiVisual(
-        `Panoramic 16:9 widescreen commercial advertising photograph or 3D graphic banner for a blog titled "${parsedArticle.title}". ${parsedArticle.featured_image_prompt || "Modern digital growth, high technology, vibrant lighting"}. Ultra-wide landscape composition, cinematic lighting, 4K resolution, clean design, no text watermark.`,
+        `Panoramic 16:9 widescreen 3D conceptual artwork of digital search analytics, glowing holographic charts, floating glass geometric shapes, futuristic dark agency aesthetic with neon blue and amber highlights, cinematic studio lighting. STRICTLY NO TEXT, NO WORDS, NO LETTERS, NO TYPOGRAPHY, completely clean visual art.`,
         "featured",
         "1792x1024"
       ).catch((e) => {
@@ -297,7 +297,7 @@ Respond ONLY with a valid JSON object matching this schema:
         return null;
       }),
       generateAiVisual(
-        `Infographic style modern visual illustration explaining "${parsedArticle.title}". ${parsedArticle.mid_image_prompt || "Diagram of search traffic growth, return on investment, analytics"}. Clean geometric layout, soft shadows, vibrant accents, professional design.`,
+        `Clean isometric 3D infographic illustration of modern digital marketing growth, analytics funnel, and search engine optimization flywheel. Sleek geometric layout, soft studio shadows, vibrant modern accents. Clean visual graphic.`,
         "mid",
         "1024x1024"
       ).catch((e) => {
@@ -372,24 +372,36 @@ INSTRUCTIONS:
     if (!hasLiveInternalLinks && existingContent.length > 0) {
       console.log("[SEO Engine] Contextual internal link check: injecting live links...");
       const linkTargets = [
-        { regex: /\b(?:seo\s*(?:&|and)?\s*content\s*writing|content\s*writing)\b/i, url: "https://www.gabbarinfo.com/seo-content-writing/" },
-        { regex: /\b(?:digital\s*marketing(?:\s*services?)?)\b/i, url: "https://www.gabbarinfo.com/digitalmarketing/" },
-        { regex: /\b(?:web(?:site)?\s*design(?:ing)?|web\s*development)\b/i, url: "https://www.gabbarinfo.com/website-design/" },
-        { regex: /\b(?:graphic\s*design(?:ing)?)\b/i, url: "https://www.gabbarinfo.com/graphic-designing/" },
-        { regex: /\b(?:video\s*editing)\b/i, url: "https://www.gabbarinfo.com/video-editing/" },
-        { regex: /\b(?:seo\s*packages|affordable\s*packages)\b/i, url: "https://www.gabbarinfo.com/packages/" },
-        { regex: /\b(?:digital\s*services|professional\s*services)\b/i, url: "https://www.gabbarinfo.com/services/" },
+        { find: /SEO Optimization &amp; Digital Marketing|digital marketing/i, url: "https://www.gabbarinfo.com/digitalmarketing/", text: "high-ROI digital marketing services" },
+        { find: /content creation|content strategy|content writing/i, url: "https://www.gabbarinfo.com/seo-content-writing/", text: "SEO content writing services" },
+        { find: /Core Web Vitals|web development/i, url: "https://www.gabbarinfo.com/website-design/", text: "website design & development" },
+        { find: /graphic design|visual assets/i, url: "https://www.gabbarinfo.com/graphic-designing/", text: "graphic designing and brand assets" },
+        { find: /conversion rate optimization|growth packages/i, url: "https://www.gabbarinfo.com/packages/", text: "tailored SEO & growth packages" },
+        { find: /SEO tools|digital solutions/i, url: "https://www.gabbarinfo.com/services/", text: "comprehensive digital solutions" },
       ];
 
-      let injectedLinks = 0;
       for (const target of linkTargets) {
-        if (injectedLinks >= 4) break;
-        const pRegex = new RegExp(`(<p(?:[^>]*)>)([^<]*?)(${target.regex.source})([^<]*?<\\/p>)`, "i");
-        if (pRegex.test(finalContent)) {
-          finalContent = finalContent.replace(pRegex, (match, pStart, before, term, after) => {
-            injectedLinks++;
-            return `${pStart}${before}<a href="${target.url}"><strong>${term}</strong></a>${after}`;
-          });
+        if (!finalContent.includes(target.url) && target.find.test(finalContent)) {
+          finalContent = finalContent.replace(target.find, `<a href="${target.url}" style="color: #0284c7; font-weight: 700; text-decoration: underline;">${target.text}</a>`);
+        }
+      }
+
+      // Dedicated Strategic Resources Hub
+      if (!finalContent.includes("gabbarinfo-internal-resources-hub")) {
+        const hubHtml = `\n<div class="gabbarinfo-internal-resources-hub" style="margin: 40px 0; padding: 24px 28px; background: linear-gradient(135deg, #0f172a 0%, #1e293b 100%); border-radius: 12px; border-left: 5px solid #38bdf8; color: #f8fafc;">
+  <h3 style="color: #38bdf8; margin-top: 0; font-size: 20px; font-weight: 700;">🚀 Recommended Strategic Growth Resources</h3>
+  <p style="color: #cbd5e1; font-size: 15px; margin-bottom: 16px;">Explore our specialized frameworks, execution packages, and client case studies:</p>
+  <ul style="list-style-type: none; padding: 0; margin: 0; display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 12px;">
+    <li style="background: rgba(255,255,255,0.06); padding: 12px 16px; border-radius: 8px;"><a href="https://www.gabbarinfo.com/seo-content-writing/" style="color: #7dd3fc; font-weight: 600; text-decoration: none;">📌 SEO & Content Writing Services</a></li>
+    <li style="background: rgba(255,255,255,0.06); padding: 12px 16px; border-radius: 8px;"><a href="https://www.gabbarinfo.com/digitalmarketing/" style="color: #7dd3fc; font-weight: 600; text-decoration: none;">📈 High-ROI Digital Marketing</a></li>
+    <li style="background: rgba(255,255,255,0.06); padding: 12px 16px; border-radius: 8px;"><a href="https://www.gabbarinfo.com/website-design/" style="color: #7dd3fc; font-weight: 600; text-decoration: none;">💻 Website Design & Development</a></li>
+    <li style="background: rgba(255,255,255,0.06); padding: 12px 16px; border-radius: 8px;"><a href="https://www.gabbarinfo.com/packages/" style="color: #7dd3fc; font-weight: 600; text-decoration: none;">📦 Tailored SEO & Growth Packages</a></li>
+  </ul>
+</div>\n`;
+        if (finalContent.includes("FAQ") || finalContent.includes("Frequently Asked Questions")) {
+          finalContent = finalContent.replace(/(<h2[^>]*>(?:FAQ|Frequently Asked Questions)[\s\S]*?<\/h2>)/i, `${hubHtml}\n$1`);
+        } else {
+          finalContent += hubHtml;
         }
       }
     }

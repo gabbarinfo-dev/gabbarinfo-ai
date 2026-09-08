@@ -201,7 +201,9 @@ export default function SeoHubPage() {
       });
       const data = await res.json();
       if (data.ok && data.config) {
-        setAutopilotEnabled(Boolean(data.config.enabled));
+        const isEnabled = Boolean(data.config.enabled);
+        setAutopilotEnabled(isEnabled);
+        setMode(isEnabled ? "autopilot" : "manual");
         setCadence(data.config.cadence || "daily");
         setCustomDaysPerWeek(Number(data.config.customDaysPerWeek) || 3);
         setAutoShareFb(data.config.autoShareFacebook !== false);
@@ -245,6 +247,7 @@ export default function SeoHubPage() {
       const data = await res.json();
       if (data.ok) {
         setAutopilotEnabled(isEnabled);
+        setMode(isEnabled ? "autopilot" : "manual");
         const cadLabel = cadence === "daily" ? "Daily" : cadence === "weekly" ? "Weekly" : cadence === "monthly" ? "Monthly" : `${customDaysPerWeek}x/week`;
         setCycleNotice(`✅ Autopilot schedule saved (${isEnabled ? "Active" : "Paused"}, ${cadLabel}). Autonomous social cross-posting preferences updated.`);
         setTimeout(() => setCycleNotice(""), 6000);
@@ -840,7 +843,12 @@ export default function SeoHubPage() {
           {/* Mode Switcher */}
           <div style={{ display: "flex", background: "rgba(16, 22, 34, 0.8)", padding: 4, borderRadius: 10, border: "1px solid rgba(255, 255, 255, 0.12)" }}>
             <button
-              onClick={() => setMode("manual")}
+              onClick={() => {
+                setMode("manual");
+                if (autopilotEnabled) {
+                  handleSaveAutopilotSettings(false);
+                }
+              }}
               style={{
                 padding: "6px 12px",
                 borderRadius: 7,
@@ -852,11 +860,18 @@ export default function SeoHubPage() {
                 cursor: "pointer",
                 transition: "all 0.2s ease",
               }}
+              title="Manual Mode: You generate and publish articles manually"
             >
               ✨ Manual
             </button>
             <button
-              onClick={() => setMode("autopilot")}
+              onClick={() => {
+                setMode("autopilot");
+                setActiveTab("autopilot");
+                if (!autopilotEnabled) {
+                  handleSaveAutopilotSettings(true);
+                }
+              }}
               style={{
                 padding: "6px 12px",
                 borderRadius: 7,
@@ -867,9 +882,16 @@ export default function SeoHubPage() {
                 fontWeight: 700,
                 cursor: "pointer",
                 transition: "all 0.2s ease",
+                display: "inline-flex",
+                alignItems: "center",
+                gap: 5,
               }}
+              title="Autopilot Mode: Engine autonomously publishes on your cadence"
             >
               🤖 Autopilot
+              {autopilotEnabled && (
+                <span style={{ width: 6, height: 6, borderRadius: "50%", background: "#10b981", display: "inline-block" }} />
+              )}
             </button>
           </div>
 
@@ -2942,7 +2964,7 @@ export default function SeoHubPage() {
               </div>
             </div>
 
-            {/* ── SECTION 3: UPCOMING 7-DAY AUTONOMOUS DISPATCH CALENDAR ── */}
+            {/* ── SECTION 3: UPCOMING 7-DAY AUTONOMOUS DISPATCH CADENCE ── */}
             <div style={{ background: "rgba(16, 22, 34, 0.78)", border: "1px solid rgba(255, 255, 255, 0.12)", borderRadius: 14, padding: 28, boxShadow: "0 10px 30px rgba(0,0,0,0.4)" }}>
               <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 18 }}>
                 <div style={{ width: 32, height: 32, borderRadius: 8, background: "rgba(56, 189, 248, 0.15)", display: "flex", alignItems: "center", justifyContent: "center", color: "#38bdf8", fontSize: 16 }}>
@@ -2950,10 +2972,10 @@ export default function SeoHubPage() {
                 </div>
                 <div>
                   <h4 style={{ fontSize: 16, color: "#fff", margin: 0, fontWeight: 700 }}>
-                    Next 7-Day Content Forecast
+                    Upcoming 7-Day Velocity Cadence (Projected Dispatch Schedule)
                   </h4>
                   <div style={{ fontSize: 12, color: "#94a3b8", marginTop: 2 }}>
-                    Preview upcoming autonomous publication slots mapped to your active routine.
+                    Preview of automated publishing days based on your chosen velocity ({cadence === "daily" ? "Daily Rollout" : cadence === "weekly" ? "Weekly Rollout" : cadence === "monthly" ? "Monthly Rollout" : `${customDaysPerWeek} Posts / Week`}). Articles are generated and published autonomously on active dates.
                   </div>
                 </div>
               </div>
@@ -3012,7 +3034,7 @@ export default function SeoHubPage() {
                           border: isScheduled ? "1px solid rgba(16, 185, 129, 0.25)" : "1px solid transparent",
                         }}
                       >
-                        {isScheduled ? "● Scheduled Live Post" : "○ Organic Indexing Buffer"}
+                        {isScheduled ? "🟢 Active Dispatch Day" : "⚪ Rest / Buffer Day"}
                       </div>
                     </div>
                   );
