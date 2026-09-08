@@ -2,6 +2,7 @@
 import { GoogleGenerativeAI } from "@google/generative-ai";
 import { getServerSession } from "next-auth/next";
 import { authOptions } from "./auth/[...nextauth]";
+import { verifyEntitlement, FEATURES } from "../../lib/auth/entitlements";
 
 export default async function handler(req, res) {
   if (req.method !== "POST") {
@@ -15,10 +16,18 @@ export default async function handler(req, res) {
       return res.status(401).json({ error: "Not authenticated" });
     }
 
-    // We now support both text + image
-    const { prompt, type } = req.body || {};
+    const { prompt, type, businessId = null } = req.body || {};
     if (!prompt || typeof prompt !== "string") {
       return res.status(400).json({ error: "Missing prompt" });
+    }
+
+    // 🔒 Entitlement Gate: AI_CHAT or IMAGE_GENERATION
+    const requiredFeature = type === "image" ? FEATURES.IMAGE_GENERATION : FEATURES.AI_CHAT;
+    const entitlement = await verifyEntitlement(session, businessId, requiredFeature);
+    if (!entitlement.allowed) {
+      return res.status(403).json({
+        error: entitlement.error || `The service "${requiredFeature}" has been restricted by platform administrator.`,
+      });
     }
 
     const apiKey = process.env.GEMINI_API_KEY;

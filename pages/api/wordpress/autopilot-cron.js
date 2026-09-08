@@ -1,5 +1,6 @@
 // pages/api/wordpress/autopilot-cron.js
 import { createClient } from "@supabase/supabase-js";
+import { verifyEntitlementByEmail } from "../../../lib/auth/entitlements";
 
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL,
@@ -59,9 +60,15 @@ export default async function handler(req, res) {
           continue;
         }
 
-        // 🔒 Server-Side Pre-Flight Check: Verify Credits Before Invoking AI
+        // 🔒 Server-Side Pre-Flight Check: Verify Entitlements & Subscription
         const isSuperAdmin = item.email?.toLowerCase() === "ndantare@gmail.com";
         if (!isSuperAdmin) {
+          const entCheck = await verifyEntitlementByEmail(item.email, "SEO");
+          if (!entCheck.allowed) {
+            console.warn(`[Autopilot Cron] Halting for ${item.email}: SEO feature is revoked or subscription expired.`);
+            continue;
+          }
+
           const { data: userCredit } = await supabase
             .from("credits")
             .select("credits_left")

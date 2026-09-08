@@ -769,7 +769,23 @@ Now respond as GabbarInfo AI.
 
       if (!res.ok) {
         const text = await res.text();
-        throw new Error(text || "Server error");
+        let parsedError = null;
+        try {
+          const jsonErr = JSON.parse(text);
+          parsedError = jsonErr.error;
+        } catch (e) {}
+
+        if (res.status === 403 || parsedError?.includes("revoked") || parsedError?.includes("restricted") || parsedError?.includes("AI_CHAT")) {
+          const restrictionText = parsedError || "The service AI_CHAT has been revoked or is not enabled for your account. Please contact support.";
+          const assistantMsg = {
+            role: "assistant",
+            text: `⚠️ **Service Restricted**\n\n${restrictionText}`,
+          };
+          updateChatWithAssistantMessage(userText, updatedMessages, assistantMsg);
+          return;
+        }
+
+        throw new Error(parsedError || text || "Server error");
       }
 
       const data = await res.json();
@@ -785,7 +801,7 @@ Now respond as GabbarInfo AI.
       console.error(err);
       const errMsg = {
         role: "assistant",
-        text: "Error: " + (err.message || "Unknown"),
+        text: err.message?.startsWith("⚠️") ? err.message : "Error: " + (err.message || "Unknown"),
       };
 
       setChats((prev) =>

@@ -2,6 +2,7 @@
 import { getServerSession } from "next-auth/next";
 import { authOptions } from "../auth/[...nextauth]";
 import { createClient } from "@supabase/supabase-js";
+import { verifyEntitlement, FEATURES } from "../../../lib/auth/entitlements";
 
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL,
@@ -415,6 +416,17 @@ export default async function handler(req, res) {
     // 11. SAVE AUTOPILOT CONFIG
     // ----------------------------------------------------------------
     if (action === "save-autopilot-config") {
+      // 🔒 Entitlement Gate: SEO feature must be permitted to enable or update Autopilot
+      if (body.config?.enabled && session) {
+        const ent = await verifyEntitlement(session, null, FEATURES.SEO);
+        if (!ent.allowed) {
+          return res.status(403).json({
+            ok: false,
+            error: ent.error || "SEO Autopilot service is restricted for your account. Please contact administrator.",
+          });
+        }
+      }
+
       let targetBiz = normalizedBusiness;
       if (!businessName || normalizedBusiness === "default") {
         // Look up user's active connected site name

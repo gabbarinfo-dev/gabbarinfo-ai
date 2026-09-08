@@ -5,6 +5,7 @@ import { executeFacebookPost } from "../../../lib/execute-facebook-post.js";
 import { executeInstagramPost } from "../../../lib/execute-instagram-post.js";
 import { generateImage } from "../../../lib/instagram/generate-image.js";
 import { generateCaption } from "../../../lib/instagram/generate-caption.js";
+import { verifyEntitlementByEmail, FEATURES } from "../../../lib/auth/entitlements.js";
 
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL,
@@ -116,6 +117,13 @@ export default async function handler(req, res) {
 
         // Specific single-user trigger override
         if (req.query?.email && req.query.email.toLowerCase() !== item.email.toLowerCase()) {
+          continue;
+        }
+
+        // 🔒 Entitlement Gate: Skip tenants whose Social Media feature is revoked or expired
+        const entCheck = await verifyEntitlementByEmail(item.email, FEATURES.SOCIAL);
+        if (!entCheck.allowed) {
+          console.log(`[Social Autopilot Cron] Tenant ${item.email} has SOCIAL revoked or expired. Skipping.`);
           continue;
         }
 

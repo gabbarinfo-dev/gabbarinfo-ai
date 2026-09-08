@@ -3,7 +3,7 @@ import { getServerSession } from "next-auth/next";
 import { authOptions } from "../auth/[...nextauth]";
 import { createClient } from "@supabase/supabase-js";
 import OpenAI from "openai";
-import { verifyEntitlement, FEATURES } from "../../../lib/auth/entitlements";
+import { verifyEntitlement, verifyEntitlementByEmail, FEATURES } from "../../../lib/auth/entitlements";
 import { reserveCredits, releaseCredits } from "../../../lib/billing/credit-meter";
 import { checkRateLimit } from "../../../lib/middleware/rate-limiter";
 import { generatePlatformGraphic } from "../../../lib/services/image-service";
@@ -59,6 +59,14 @@ export default async function handler(req, res) {
       return res.status(403).json({
         ok: false,
         error: entitlement.error || "SEO blog generation is not permitted on this account tier.",
+      });
+    }
+  } else if (userEmail) {
+    const emailEntitlement = await verifyEntitlementByEmail(userEmail, FEATURES.SEO);
+    if (!emailEntitlement.allowed) {
+      return res.status(403).json({
+        ok: false,
+        error: emailEntitlement.error || "SEO blog generation has been revoked for this account.",
       });
     }
   }

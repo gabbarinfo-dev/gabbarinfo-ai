@@ -222,10 +222,15 @@ export default async function handler(req, res) {
         igUsername = meta?.business_name ? meta.business_name.toLowerCase().replace(/[^a-z0-9_.]/g, "") : `ID: ${meta?.ig_business_id || meta?.instagram_actor_id}`;
       }
 
+      // Entitlement check for Social Media feature
+      const ent = await verifyEntitlement(session, config.businessId || meta?.fb_business_id, FEATURES.SOCIAL);
+
       return res.status(200).json({
         ok: true,
         config,
         isOwner,
+        isRestricted: !ent.allowed,
+        restrictionReason: ent.error || null,
         hasFacebook,
         hasInstagram,
         fbPageName: meta?.business_name || (meta?.fb_page_id ? `Page ID: ${meta.fb_page_id}` : null),
@@ -268,6 +273,17 @@ export default async function handler(req, res) {
 
       // ── ACTION: SAVE CONFIG ──
       if (action === "save") {
+        // 🔒 Entitlement Gate: If enabling Autopilot, ensure SOCIAL or SOCIAL_PLANNER is permitted
+        if (updatedConfig?.enabled) {
+          const ent = await verifyEntitlement(session, current.businessId, FEATURES.SOCIAL);
+          if (!ent.allowed) {
+            return res.status(403).json({
+              ok: false,
+              error: ent.error || "Social Media service is restricted for your account. Cannot activate Autopilot.",
+            });
+          }
+        }
+
         const merged = {
           ...current,
           ...updatedConfig,
@@ -497,18 +513,49 @@ Respond ONLY in JSON: { "hook": "short catchy hook (4-7 words)", "topic": "speci
       if (action === "test-post") {
         console.log(`[Social Autopilot] Executing immediate test post for ${normalizedEmail}...`);
 
-        // 💳 Server-Side Atomic Credit Check (10 credits for instant post)
-        const resCred = await reserveCredits({
-          businessId: current.businessId || "default_business",
-          userEmail: normalizedEmail,
-          actionType: "SOCIAL_POST",
-        });
+        const testPostsUsed = current.testPostsUsed || 0;
+        const isFreeTest = !isOwner && testPostsUsed < 1;
 
-        if (!resCred.ok) {
-          return res.status(402).json({
-            ok: false,
-            error: resCred.error || "Insufficient credits to publish test post.",
+        // Entitlement Gate: Check Social Media feature
+        const ent = await verifyEntitlement(session, current.businessId, FEATURES.SOCIAL);
+
+        // If not a free test post and not owner:
+        if (!isFreeTest && !isOwner) {
+          // If service is restricted, no further posts allowed
+          if (!ent.allowed) {
+            return res.status(403).json({
+              ok: false,
+              error: "Feature Restricted: You have already used your 1 free test post. Social Media service is restricted for your account.",
+            });
+          }
+
+          // 💳 Server-Side Atomic Credit Check (10 credits for paid post)
+          const resCred = await reserveCredits({
+            businessId: current.businessId || "default_business",
+            userEmail: normalizedEmail,
+            actionType: "SOCIAL_POST",
           });
+
+          if (!resCred.ok) {
+            return res.status(402).json({
+              ok: false,
+              error: resCred.error || "Insufficient credits. Publishing a post requires 10 credits.",
+            });
+          }
+        }
+
+        // If this is the free test post, mark it consumed immediately so that it cannot be repeated even if client retries or reloads
+        if (isFreeTest) {
+          current.testPostsUsed = 1;
+          await supabase.from("agent_memory").upsert(
+            {
+              email: normalizedEmail,
+              memory_type: autoMemoryKey,
+              content: JSON.stringify(current),
+              updated_at: new Date().toISOString(),
+            },
+            { onConflict: "email,memory_type" }
+          );
         }
 
         // Check Meta Connection

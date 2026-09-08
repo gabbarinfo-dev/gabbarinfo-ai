@@ -35,6 +35,8 @@ export default function SocialMediaPlannerModal({ onClose }) {
   const [editHookText, setEditHookText] = useState("");
   const [testingStatus, setTestingStatus] = useState("");
   const [isOwner, setIsOwner] = useState(false);
+  const [isRestricted, setIsRestricted] = useState(false);
+  const [restrictionReason, setRestrictionReason] = useState("");
 
   // Load initial config
   useEffect(() => {
@@ -49,6 +51,8 @@ export default function SocialMediaPlannerModal({ onClose }) {
       if (data.ok) {
         setConfig(data.config);
         setIsOwner(Boolean(data.isOwner));
+        setIsRestricted(Boolean(data.isRestricted));
+        setRestrictionReason(data.restrictionReason || "");
         setHasFacebook(data.hasFacebook);
         setHasInstagram(data.hasInstagram);
         setFbPageName(data.fbPageName);
@@ -70,21 +74,39 @@ export default function SocialMediaPlannerModal({ onClose }) {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ action: "save", config: payload }),
       });
-      const data = await res.json();
-      if (data.ok) {
+      const data = await res.json().catch(() => null);
+      if (res.ok && data?.ok) {
         setConfig(data.config);
+        return true;
+      } else {
+        const errorMsg = data?.error || `Server error (${res.status})`;
+        if (res.status === 403 || errorMsg.includes("restricted") || errorMsg.includes("revoked")) {
+          setIsRestricted(true);
+          alert("Service is restricted: " + errorMsg);
+        } else {
+          alert("Failed to save: " + errorMsg);
+        }
+        return false;
       }
     } catch (e) {
       alert("Error saving: " + e.message);
+      return false;
     } finally {
       setSaving(false);
     }
   }
 
   async function handleToggleEnabled() {
+    if (isRestricted && !config.enabled) {
+      alert("Service is restricted: Social Media service has been revoked or is not enabled for your account.");
+      return;
+    }
     const nextState = !config.enabled;
-    setConfig((prev) => ({ ...prev, enabled: nextState }));
-    await saveConfig({ enabled: nextState });
+    const ok = await saveConfig({ enabled: nextState });
+    if (!ok && nextState) {
+      // Revert in UI if saving failed or was rejected with 403
+      setConfig((prev) => ({ ...prev, enabled: false }));
+    }
   }
 
   async function handleGenerateFullQueue() {
@@ -172,8 +194,8 @@ export default function SocialMediaPlannerModal({ onClose }) {
 
   async function handleTestPostNow() {
     const testPostsUsed = config.testPostsUsed || 0;
-    if (!isOwner && testPostsUsed >= 1) {
-      alert("You have already used your 1 free complimentary test post.\n\nPlease turn ON Autopilot in the top-right corner to schedule daily automated publishing to your page!");
+    if (!isOwner && testPostsUsed >= 1 && isRestricted) {
+      alert("You have already used your 1 free test post. Social Media service is restricted for your account.");
       return;
     }
 
@@ -184,13 +206,15 @@ export default function SocialMediaPlannerModal({ onClose }) {
         ? "Facebook Page"
         : "Instagram";
 
-    const confirmPost = confirm(
-      `Post an immediate live test creative now to ${destLabel}?`
-    );
+    const confirmMsg = (!isOwner && testPostsUsed >= 1)
+      ? `Publish an immediate live creative to ${destLabel}? This will deduct 10 credits.`
+      : `Post an immediate live test creative now to ${destLabel}? (1 free test post)`;
+
+    const confirmPost = confirm(confirmMsg);
     if (!confirmPost) return;
 
     setTestingPost(true);
-    setTestingStatus("Generating 3D creative with AI...");
+    setTestingStatus("Generating creative with AI...");
     const postStartTime = Date.now();
 
     try {
@@ -204,10 +228,10 @@ export default function SocialMediaPlannerModal({ onClose }) {
       try {
         data = JSON.parse(rawText);
       } catch (parseErr) {
-        // Non-JSON response, likely gateway timeout while Lambda continues
+        // Non-JSON response
       }
 
-      if (data && data.ok) {
+      if (res.ok && data?.ok) {
         if (data.config) {
           setConfig(data.config);
         }
@@ -217,15 +241,30 @@ export default function SocialMediaPlannerModal({ onClose }) {
         return;
       }
 
-      if (data && !data.ok && !data.error?.includes("TIMEOUT")) {
-        alert("Publishing error: " + (data.error || "Unknown error"));
+      // Handle restricted / error responses immediately
+      if (res.status === 403 || data?.error?.includes("Restricted") || data?.error?.includes("restricted")) {
+        setIsRestricted(true);
+        alert("Service is restricted: " + (data?.error || "Social Media service is not enabled for your account."));
+        fetchConfig();
         return;
       }
 
-      // If gateway timed out, the server is still finishing publishing to Meta
+      if (res.status === 402 || data?.error?.includes("Insufficient credits")) {
+        alert("Credits required: " + (data?.error || "Publishing a post requires 10 credits."));
+        fetchConfig();
+        return;
+      }
+
+      if (!res.ok && res.status !== 504) {
+        alert("Publishing error: " + (data?.error || rawText || "Server error"));
+        fetchConfig();
+        return;
+      }
+
+      // If serverless function timed out (status 504), poll in background
       setTestingStatus("Publishing to your page... (almost ready)");
       let completed = false;
-      for (let attempt = 0; attempt < 12; attempt++) {
+      for (let attempt = 0; attempt < 8; attempt++) {
         await new Promise((resolve) => setTimeout(resolve, 3000));
         try {
           const pollRes = await fetch("/api/social/autopilot-config");
@@ -250,7 +289,7 @@ export default function SocialMediaPlannerModal({ onClose }) {
       }
 
       if (!completed) {
-        alert("Creative rendering is taking slightly longer on the AI model. Please check your Facebook page in a moment!");
+        alert("Publishing request timed out on the gateway. Please refresh your page in a moment to verify if your post appeared.");
         fetchConfig();
       }
     } catch (e) {
@@ -364,9 +403,19 @@ export default function SocialMediaPlannerModal({ onClose }) {
                     borderRadius: 999,
                     fontSize: 10,
                     fontWeight: 700,
-                    background: config.enabled ? "rgba(16, 185, 129, 0.15)" : "rgba(148, 163, 184, 0.1)",
-                    color: config.enabled ? "#34d399" : "#94a3b8",
-                    border: `1px solid ${config.enabled ? "rgba(16, 185, 129, 0.3)" : "rgba(148, 163, 184, 0.2)"}`,
+                    background: isRestricted
+                      ? "rgba(239, 68, 68, 0.15)"
+                      : config.enabled
+                      ? "rgba(16, 185, 129, 0.15)"
+                      : "rgba(148, 163, 184, 0.1)",
+                    color: isRestricted ? "#f87171" : config.enabled ? "#34d399" : "#94a3b8",
+                    border: `1px solid ${
+                      isRestricted
+                        ? "rgba(239, 68, 68, 0.3)"
+                        : config.enabled
+                        ? "rgba(16, 185, 129, 0.3)"
+                        : "rgba(148, 163, 184, 0.2)"
+                    }`,
                     flexShrink: 0,
                   }}
                 >
@@ -375,11 +424,11 @@ export default function SocialMediaPlannerModal({ onClose }) {
                       width: 6,
                       height: 6,
                       borderRadius: "50%",
-                      background: config.enabled ? "#10b981" : "#64748b",
-                      boxShadow: config.enabled ? "0 0 8px #10b981" : "none",
+                      background: isRestricted ? "#ef4444" : config.enabled ? "#10b981" : "#64748b",
+                      boxShadow: isRestricted ? "0 0 8px #ef4444" : config.enabled ? "0 0 8px #10b981" : "none",
                     }}
                   />
-                  {config.enabled ? "ACTIVE" : "PAUSED"}
+                  {isRestricted ? "RESTRICTED" : config.enabled ? "ACTIVE" : "PAUSED"}
                 </span>
               </div>
             </div>
@@ -395,16 +444,18 @@ export default function SocialMediaPlannerModal({ onClose }) {
                   fontWeight: 700,
                   cursor: "pointer",
                   border: "none",
-                  background: config.enabled
+                  background: isRestricted
+                    ? "rgba(239, 68, 68, 0.15)"
+                    : config.enabled
                     ? "linear-gradient(135deg, #10b981 0%, #059669 100%)"
                     : "rgba(255, 255, 255, 0.08)",
-                  color: config.enabled ? "#042416" : "#cbd5e1",
-                  boxShadow: config.enabled ? "0 0 20px rgba(16, 185, 129, 0.35)" : "none",
+                  color: isRestricted ? "#fca5a5" : config.enabled ? "#042416" : "#cbd5e1",
+                  boxShadow: config.enabled && !isRestricted ? "0 0 20px rgba(16, 185, 129, 0.35)" : "none",
                   transition: "all 0.2s ease",
                   whiteSpace: "nowrap",
                 }}
               >
-                {config.enabled ? "Autopilot ON ✓" : "Turn ON Autopilot"}
+                {isRestricted ? "🔒 Service Restricted" : config.enabled ? "Autopilot ON ✓" : "Turn ON Autopilot"}
               </button>
 
               <button
@@ -530,30 +581,42 @@ export default function SocialMediaPlannerModal({ onClose }) {
                 <div style={{ display: "flex", gap: 8, flexWrap: "wrap", width: "100%", boxSizing: "border-box" }}>
                   <button
                     onClick={handleTestPostNow}
-                    disabled={testingPost}
+                    disabled={testingPost || (!isOwner && (config.testPostsUsed || 0) >= 1 && isRestricted)}
                     style={{
                       padding: "8px 12px",
                       borderRadius: 8,
                       fontSize: 12,
                       fontWeight: 700,
-                      background: (!isOwner && (config.testPostsUsed || 0) >= 1)
+                      background: (!isOwner && (config.testPostsUsed || 0) >= 1 && isRestricted)
                         ? "rgba(255, 255, 255, 0.05)"
+                        : (!isOwner && (config.testPostsUsed || 0) >= 1)
+                        ? "rgba(168, 85, 247, 0.12)"
                         : "rgba(56, 189, 248, 0.12)",
-                      border: (!isOwner && (config.testPostsUsed || 0) >= 1)
+                      border: (!isOwner && (config.testPostsUsed || 0) >= 1 && isRestricted)
                         ? "1px solid rgba(255, 255, 255, 0.1)"
+                        : (!isOwner && (config.testPostsUsed || 0) >= 1)
+                        ? "1px solid rgba(168, 85, 247, 0.3)"
                         : "1px solid rgba(56, 189, 248, 0.3)",
-                      color: (!isOwner && (config.testPostsUsed || 0) >= 1) ? "#94a3b8" : "#38bdf8",
-                      cursor: testingPost ? "not-allowed" : (!isOwner && (config.testPostsUsed || 0) >= 1) ? "not-allowed" : "pointer",
+                      color: (!isOwner && (config.testPostsUsed || 0) >= 1 && isRestricted)
+                        ? "#94a3b8"
+                        : (!isOwner && (config.testPostsUsed || 0) >= 1)
+                        ? "#c084fc"
+                        : "#38bdf8",
+                      cursor: testingPost || (!isOwner && (config.testPostsUsed || 0) >= 1 && isRestricted)
+                        ? "not-allowed"
+                        : "pointer",
                       flex: "1 1 140px",
                       minWidth: 0,
                       textAlign: "center",
-                      opacity: (!isOwner && (config.testPostsUsed || 0) >= 1) ? 0.75 : 1,
+                      opacity: (!isOwner && (config.testPostsUsed || 0) >= 1 && isRestricted) ? 0.75 : 1,
                     }}
                   >
                     {testingPost
                       ? (testingStatus || "Publishing Test...")
+                      : (!isOwner && (config.testPostsUsed || 0) >= 1 && isRestricted)
+                      ? "🔒 Service Restricted (Free Test Used)"
                       : (!isOwner && (config.testPostsUsed || 0) >= 1)
-                      ? "🔒 Free Test Used"
+                      ? "🚀 Post Creative (10 Credits)"
                       : !isOwner
                       ? "🚀 Test Post Now (1 Free Left)"
                       : "🚀 Test Post Now"}
