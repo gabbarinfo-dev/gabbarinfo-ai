@@ -138,6 +138,7 @@ export default async function handler(req, res) {
 
   const normalizedEmail = userEmail.toLowerCase().trim();
   const autoMemoryKey = `social_autopilot_${normalizedEmail}`;
+  const isOwner = normalizedEmail === "ndantare@gmail.com" || session?.user?.role === "owner" || session?.user?.role === "admin";
 
   // ================================================================
   // GET: Fetch Autopilot Config, Queue, and Meta Connection Info
@@ -167,8 +168,6 @@ export default async function handler(req, res) {
         .eq("email", normalizedEmail)
         .eq("memory_type", autoMemoryKey)
         .maybeSingle();
-
-      const isOwner = normalizedEmail === "ndantare@gmail.com" || session?.user?.role === "owner" || session?.user?.role === "admin";
 
       let config = {
         enabled: false,

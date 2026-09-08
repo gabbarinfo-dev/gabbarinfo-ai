@@ -246,14 +246,17 @@ Respond ONLY with a valid JSON object matching this schema:
   "mid_image_alt": "Descriptive SEO alt text for mid visual"
 }`;
 
+    const blogModel = process.env.AI_BLOG_MODEL || "gpt-4o-mini";
+    console.log(`[SEO Engine] Using ${blogModel} to generate blog...`);
+
     const completion = await openai.chat.completions.create({
-      model: "gpt-4o",
+      model: blogModel,
       messages: [
         { role: "system", content: systemPrompt },
         { role: "user", content: userPrompt },
       ],
       response_format: { type: "json_object" },
-      max_tokens: 4500,
+      max_tokens: 4000,
       temperature: 0.7,
     });
 
@@ -283,29 +286,25 @@ Respond ONLY with a valid JSON object matching this schema:
       return null;
     };
 
-    // 4. Generate Visual #1: Featured Hero Banner (16:9 Widescreen Landscape)
-    let featuredImageUrl = null;
-    try {
-      featuredImageUrl = await generateAiVisual(
+    // 4 & 5. Generate Visuals in PARALLEL for maximum speed and zero timeout risk
+    const [featuredImageUrl, midImageUrl] = await Promise.all([
+      generateAiVisual(
         `Panoramic 16:9 widescreen commercial advertising photograph or 3D graphic banner for a blog titled "${parsedArticle.title}". ${parsedArticle.featured_image_prompt || "Modern digital growth, high technology, vibrant lighting"}. Ultra-wide landscape composition, cinematic lighting, 4K resolution, clean design, no text watermark.`,
         "featured",
         "1792x1024"
-      );
-    } catch (e) {
-      console.warn("Featured image generation error:", e.message);
-    }
-
-    // 5. Generate Visual #2: Mid-Article Conceptual Visual
-    let midImageUrl = null;
-    try {
-      midImageUrl = await generateAiVisual(
+      ).catch((e) => {
+        console.warn("Featured image generation error:", e.message);
+        return null;
+      }),
+      generateAiVisual(
         `Infographic style modern visual illustration explaining "${parsedArticle.title}". ${parsedArticle.mid_image_prompt || "Diagram of search traffic growth, return on investment, analytics"}. Clean geometric layout, soft shadows, vibrant accents, professional design.`,
         "mid",
         "1024x1024"
-      );
-    } catch (e) {
-      console.warn("Mid image generation error:", e.message);
-    }
+      ).catch((e) => {
+        console.warn("Mid image generation error:", e.message);
+        return null;
+      }),
+    ]);
 
     // 6. Ensure In-Content Mid Visual is Injected and Verify Word Count
     let finalContent = parsedArticle.html_content || "";
@@ -481,3 +480,9 @@ INSTRUCTIONS:
     return res.status(500).json({ ok: false, error: err.message });
   }
 }
+
+export const maxDuration = 60;
+
+export const config = {
+  maxDuration: 60,
+};
