@@ -217,9 +217,14 @@ ${existingLinksContext || "None available - write naturally without broken links
 5. TARGET KEYWORD VISIBILITY:
    - Feature and bold (<strong>keyword</strong>) the primary target keyword in the very first paragraph.
    - Organically include the target keywords across at least two <h2> headings and repeatedly in the body paragraphs.
-6. FORMATTING:
+6. FORMATTING & BRAND THEME MANDATES:
    - Use semantic HTML: <h2>, <h3>, <p>, <ul>, <li>, <strong>, <em>.
    - DO NOT include <h1>, <html>, or <body> tags.
+   - STRICTLY DO NOT generate any Table of Contents (TOC), as the site's WordPress ez-toc plugin automatically creates it dynamically. Generating a manual TOC creates a duplicate.
+   - THEME COLORS: This site uses a sleek dark theme with signature gold/amber yellow accents.
+     - All embedded hyperlinks MUST use theme amber/yellow: <a href="URL" style="color: #f59e0b; font-weight: 700; text-decoration: underline;">anchor text</a>. NEVER use blue or #0284c7.
+     - NEVER use light, white, or light gray backgrounds (like #f8fafc, #f1f5f9, or #ffffff) in any boxes or callouts!
+     - Any callouts, key takeaways, or pro-tips must use dark mode styling: style="background: rgba(255, 255, 255, 0.04); border: 1px solid rgba(255, 255, 255, 0.1); border-left: 4px solid #f59e0b; padding: 18px 24px; margin: 24px 0; border-radius: 8px; color: #f1f5f9;"
 7. OUTPUT FORMAT:
    - Output MUST be strictly valid JSON matching the schema.`;
 
@@ -382,20 +387,20 @@ INSTRUCTIONS:
 
       for (const target of linkTargets) {
         if (!finalContent.includes(target.url) && target.find.test(finalContent)) {
-          finalContent = finalContent.replace(target.find, `<a href="${target.url}" style="color: #0284c7; font-weight: 700; text-decoration: underline;">${target.text}</a>`);
+          finalContent = finalContent.replace(target.find, `<a href="${target.url}" style="color: #f59e0b; font-weight: 700; text-decoration: underline;">${target.text}</a>`);
         }
       }
 
-      // Dedicated Strategic Resources Hub
+      // Dedicated Strategic Resources Hub (Dark Theme with Amber Accents)
       if (!finalContent.includes("gabbarinfo-internal-resources-hub")) {
-        const hubHtml = `\n<div class="gabbarinfo-internal-resources-hub" style="margin: 40px 0; padding: 24px 28px; background: linear-gradient(135deg, #0f172a 0%, #1e293b 100%); border-radius: 12px; border-left: 5px solid #38bdf8; color: #f8fafc;">
-  <h3 style="color: #38bdf8; margin-top: 0; font-size: 20px; font-weight: 700;">🚀 Recommended Strategic Growth Resources</h3>
+        const hubHtml = `\n<div class="gabbarinfo-internal-resources-hub" style="margin: 40px 0; padding: 24px 28px; background: #0f172a; border-radius: 12px; border-left: 5px solid #f59e0b; border: 1px solid rgba(255, 255, 255, 0.1); color: #f8fafc;">
+  <h3 style="color: #f59e0b; margin-top: 0; font-size: 20px; font-weight: 700;">🚀 Recommended Strategic Growth Resources</h3>
   <p style="color: #cbd5e1; font-size: 15px; margin-bottom: 16px;">Explore our specialized frameworks, execution packages, and client case studies:</p>
   <ul style="list-style-type: none; padding: 0; margin: 0; display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 12px;">
-    <li style="background: rgba(255,255,255,0.06); padding: 12px 16px; border-radius: 8px;"><a href="https://www.gabbarinfo.com/seo-content-writing/" style="color: #7dd3fc; font-weight: 600; text-decoration: none;">📌 SEO & Content Writing Services</a></li>
-    <li style="background: rgba(255,255,255,0.06); padding: 12px 16px; border-radius: 8px;"><a href="https://www.gabbarinfo.com/digitalmarketing/" style="color: #7dd3fc; font-weight: 600; text-decoration: none;">📈 High-ROI Digital Marketing</a></li>
-    <li style="background: rgba(255,255,255,0.06); padding: 12px 16px; border-radius: 8px;"><a href="https://www.gabbarinfo.com/website-design/" style="color: #7dd3fc; font-weight: 600; text-decoration: none;">💻 Website Design & Development</a></li>
-    <li style="background: rgba(255,255,255,0.06); padding: 12px 16px; border-radius: 8px;"><a href="https://www.gabbarinfo.com/packages/" style="color: #7dd3fc; font-weight: 600; text-decoration: none;">📦 Tailored SEO & Growth Packages</a></li>
+    <li style="background: rgba(255,255,255,0.05); border: 1px solid rgba(255,255,255,0.08); padding: 12px 16px; border-radius: 8px;"><a href="https://www.gabbarinfo.com/seo-content-writing/" style="color: #fbbf24; font-weight: 600; text-decoration: none;">📌 SEO & Content Writing Services</a></li>
+    <li style="background: rgba(255,255,255,0.05); border: 1px solid rgba(255,255,255,0.08); padding: 12px 16px; border-radius: 8px;"><a href="https://www.gabbarinfo.com/digitalmarketing/" style="color: #fbbf24; font-weight: 600; text-decoration: none;">📈 High-ROI Digital Marketing</a></li>
+    <li style="background: rgba(255,255,255,0.05); border: 1px solid rgba(255,255,255,0.08); padding: 12px 16px; border-radius: 8px;"><a href="https://www.gabbarinfo.com/website-design/" style="color: #fbbf24; font-weight: 600; text-decoration: none;">💻 Website Design & Development</a></li>
+    <li style="background: rgba(255,255,255,0.05); border: 1px solid rgba(255,255,255,0.08); padding: 12px 16px; border-radius: 8px;"><a href="https://www.gabbarinfo.com/packages/" style="color: #fbbf24; font-weight: 600; text-decoration: none;">📦 Tailored SEO & Growth Packages</a></li>
   </ul>
 </div>\n`;
         if (finalContent.includes("FAQ") || finalContent.includes("Frequently Asked Questions")) {
@@ -406,10 +411,10 @@ INSTRUCTIONS:
       }
     }
 
-    // External Authority Citations Guarantee
+    // External Authority Citations Guarantee (Dark Theme with Amber Accents)
     if (!finalContent.includes("developers.google.com") && !finalContent.includes("statista.com")) {
       console.log("[SEO Engine] Injecting authoritative industry citations...");
-      const authorityCitationHtml = `\n<div class="gabbarinfo-authority-citations" style="margin: 32px 0; padding: 18px 22px; background: rgba(241, 245, 249, 0.7); border-left: 4px solid #0284c7; border-radius: 8px; font-size: 14px; color: #334155; line-height: 1.6;"><strong>Official Search Authority & Industry Benchmarks:</strong> For technical documentation on search indexing, structured data, and search ranking systems, consult <a href="https://developers.google.com/search/docs" target="_blank" rel="noopener">Google Search Central</a> and verify competitive digital benchmarks via <a href="https://www.statista.com" target="_blank" rel="noopener">Statista</a>.</div>\n`;
+      const authorityCitationHtml = `\n<div class="gabbarinfo-authority-citations" style="margin: 32px 0; padding: 20px 24px; background: rgba(255, 255, 255, 0.04); border: 1px solid rgba(255, 255, 255, 0.1); border-left: 4px solid #f59e0b; border-radius: 8px; font-size: 14px; color: #cbd5e1; line-height: 1.6;"><strong>Official Search Authority & Industry Benchmarks:</strong> For technical documentation on search indexing, structured data, and search ranking systems, consult <a href="https://developers.google.com/search/docs" target="_blank" rel="noopener" style="color: #f59e0b; font-weight: 700; text-decoration: underline;">Google Search Central</a> and verify competitive digital benchmarks via <a href="https://www.statista.com" target="_blank" rel="noopener" style="color: #f59e0b; font-weight: 700; text-decoration: underline;">Statista</a>.</div>\n`;
       const closingH2Index = finalContent.lastIndexOf("<h2>");
       if (closingH2Index > 0) {
         finalContent = finalContent.slice(0, closingH2Index) + authorityCitationHtml + finalContent.slice(closingH2Index);
@@ -425,6 +430,15 @@ INSTRUCTIONS:
         finalContent = finalContent.replace(kwRegex, `$1<strong>$2</strong>$3`);
       }
     }
+
+    // Final Sanitization Pass: Guarantee NO Duplicate TOC and NO Light/White Backgrounds
+    finalContent = finalContent.replace(/<nav[\s\S]*?<\/nav>/gi, "");
+    finalContent = finalContent.replace(/<div id="ez-toc-container"[\s\S]*?<\/div>/gi, "");
+    finalContent = finalContent.replace(/<ul class="ez-toc-list[\s\S]*?<\/ul>/gi, "");
+    finalContent = finalContent.replace(/<p[^>]*>\s*<strong>\s*Table of Contents[\s\S]*?<\/ul>/gi, "");
+    finalContent = finalContent.replaceAll("#0284c7", "#f59e0b");
+    finalContent = finalContent.replaceAll("#f8fafc", "rgba(255, 255, 255, 0.04)");
+    finalContent = finalContent.replaceAll("#f1f5f9", "#cbd5e1");
 
     // 8. Push Live Article to WordPress via Plugin
     console.log(`[SEO Engine] Pushing article to WordPress: ${siteUrl}/wp-json/gabbarinfo/v1/create-post`);

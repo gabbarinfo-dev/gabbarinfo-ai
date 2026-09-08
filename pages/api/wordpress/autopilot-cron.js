@@ -45,14 +45,14 @@ export default async function handler(req, res) {
         const now = new Date();
         const cadence = config.cadence || "daily";
 
-        let minIntervalMs = 20 * 60 * 60 * 1000; // default daily: ~20 hours
+        let minIntervalMs = 12 * 60 * 60 * 1000; // daily: ~12 hours to safely execute next-day cron cycles
         if (cadence === "weekly") {
-          minIntervalMs = 6 * 24 * 60 * 60 * 1000; // ~6 days
+          minIntervalMs = 5 * 24 * 60 * 60 * 1000; // ~5 days
         } else if (cadence === "monthly") {
-          minIntervalMs = 27 * 24 * 60 * 60 * 1000; // ~27 days
+          minIntervalMs = 25 * 24 * 60 * 60 * 1000; // ~25 days
         } else if (cadence === "custom") {
           const daysPerWeek = Number(config.customDaysPerWeek) || 3;
-          minIntervalMs = Math.floor((7 / daysPerWeek) * 24 * 60 * 60 * 1000 * 0.85);
+          minIntervalMs = Math.floor((7 / daysPerWeek) * 24 * 60 * 60 * 1000 * 0.7);
         }
 
         if (lastPublished && now - lastPublished < minIntervalMs && !req.query?.force) {

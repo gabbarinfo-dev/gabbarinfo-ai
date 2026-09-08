@@ -134,11 +134,11 @@ export default async function handler(req, res) {
         const now = new Date();
         const cadence = config.cadence || "daily";
 
-        let minIntervalMs = 20 * 60 * 60 * 1000; // ~20 hours for daily
+        let minIntervalMs = 12 * 60 * 60 * 1000; // ~12 hours for daily to reliably execute next-day cron cycles
         if (cadence === "alternate" || cadence === "weekly_4") {
-          minIntervalMs = 40 * 60 * 60 * 1000; // ~40 hours
+          minIntervalMs = 30 * 60 * 60 * 1000; // ~30 hours
         } else if (cadence === "weekly") {
-          minIntervalMs = 6 * 24 * 60 * 60 * 1000; // ~6 days
+          minIntervalMs = 5 * 24 * 60 * 60 * 1000; // ~5 days
         }
 
         if (lastPublished && now - lastPublished < minIntervalMs && !req.query?.force) {
