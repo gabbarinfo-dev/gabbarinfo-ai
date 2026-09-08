@@ -229,6 +229,36 @@ export default function AdminPage() {
     }
   }
 
+  // ---------------- ASSIGN SUBSCRIPTION PLAN HANDLER ----------------
+  async function handleAssignPlan(userEmail, planId) {
+    try {
+      const res = await fetch("/api/admin/manage-tenant", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          action: "assign_plan",
+          userEmail,
+          planId,
+          durationDays: 30,
+        }),
+      });
+      const data = await res.json();
+      if (data.success) {
+        setTenantActionMessage({
+          type: "success",
+          text: data.message || `Plan ${planId} assigned to ${userEmail}.`,
+        });
+        setTimeout(() => setTenantActionMessage(null), 3500);
+        loadTenants();
+      } else {
+        alert(data.error || "Failed to assign plan");
+      }
+    } catch (err) {
+      console.error("Assign plan error:", err);
+      alert("Failed to assign plan.");
+    }
+  }
+
   // ---------------- SAVE CREDITS HANDLER ----------------
   async function handleAdjustCredits(e) {
     e.preventDefault();
@@ -674,7 +704,8 @@ export default function AdminPage() {
                 <tr>
                   <th>Tenant / Account</th>
                   <th>Workspace Details</th>
-                  <th>Credits Balance</th>
+                  <th>Assigned Plan</th>
+                  <th>Credits Balance (Audit)</th>
                   <th>Granular Service Switchboard</th>
                   <th>Max Workspaces</th>
                   <th>Account Status</th>
@@ -683,7 +714,7 @@ export default function AdminPage() {
               <tbody>
                 {filteredTenants.length === 0 ? (
                   <tr>
-                    <td colSpan={6} className="empty-state">
+                    <td colSpan={7} className="empty-state">
                       {loadingTenants ? "Scanning tenant database..." : "No matching tenants found."}
                     </td>
                   </tr>
@@ -716,6 +747,35 @@ export default function AdminPage() {
                           <div className="workspace-id">
                             ID: {primaryBiz.id ? `${primaryBiz.id.slice(0, 16)}...` : "System-Assigned"}
                           </div>
+                        </td>
+
+                        {/* Assigned Subscription Plan */}
+                        <td>
+                          {isSelfAdmin ? (
+                            <span className="master-badge">👑 OWNER</span>
+                          ) : (
+                            <select
+                              value={t.subscription?.plan?.toLowerCase() || "try"}
+                              onChange={(e) => handleAssignPlan(t.email, e.target.value)}
+                              className="dark-input"
+                              style={{
+                                fontSize: 11,
+                                padding: "4px 8px",
+                                background: "#1e293b",
+                                color: "#38bdf8",
+                                fontWeight: 600,
+                                borderRadius: 6,
+                                border: "1px solid rgba(56, 189, 248, 0.3)",
+                                cursor: "pointer",
+                              }}
+                            >
+                              <option value="try">Try (₹499)</option>
+                              <option value="starter">Starter (₹999)</option>
+                              <option value="growth">Growth (₹2,499)</option>
+                              <option value="business">Business (₹4,999)</option>
+                              <option value="agency">Agency (₹9,999)</option>
+                            </select>
+                          )}
                         </td>
 
                         {/* Credit Balance & Manage */}

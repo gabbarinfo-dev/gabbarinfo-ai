@@ -6,7 +6,7 @@ import Head from "next/head";
 import FacebookBusinessConnect from "./components/facebook/FacebookBusinessConnect";
 import GoogleAdsAccountConnect from "./components/google/googleadsaccountconnect";
 import WordPressSiteConnect from "./components/wordpress/WordPressSiteConnect";
-import BuyCreditsModal from "./components/BuyCreditsModal";
+import SubscriptionModal from "./components/SubscriptionModal";
 import SocialMediaPlannerModal from "./components/social/SocialMediaPlannerModal";
 
 import CyberMatrixBackground from "./components/CyberMatrixBackground";
@@ -14,34 +14,33 @@ import CyberMatrixBackground from "./components/CyberMatrixBackground";
 export default function HomePage() {
   const { data: session, status } = useSession();
 
-  const [credits, setCredits] = useState(null);
-  const [unlimited, setUnlimited] = useState(false);
-  const [loadingCredits, setLoadingCredits] = useState(true);
+  const [subData, setSubData] = useState(null);
+  const [loadingSub, setLoadingSub] = useState(true);
 
   const role = session?.user?.role || "client";
-  const [showBuyCredits, setShowBuyCredits] = useState(false);
+  const [showSubscriptionModal, setShowSubscriptionModal] = useState(false);
   const [showSocialPlanner, setShowSocialPlanner] = useState(false);
   const [hasWpConnected, setHasWpConnected] = useState(false);
   const [showWpConnectPrompt, setShowWpConnectPrompt] = useState(false);
 
   /* -------------------------
-     LOAD CREDITS & WP STATUS
+     LOAD SUBSCRIPTION & WP STATUS
   ------------------------- */
   useEffect(() => {
     if (!session) return;
 
-    async function fetchCredits() {
+    async function fetchSubscriptionStatus() {
       try {
-        const res = await fetch("/api/credits/get");
+        const res = await fetch("/api/subscriptions/status");
         if (!res.ok) return;
-
         const data = await res.json();
-        setCredits(typeof data.credits === "number" ? data.credits : null);
-        setUnlimited(Boolean(data.unlimited));
+        if (data.ok) {
+          setSubData(data);
+        }
       } catch (err) {
-        console.error(err);
+        console.error("Subscription status fetch error:", err);
       } finally {
-        setLoadingCredits(false);
+        setLoadingSub(false);
       }
     }
 
@@ -60,7 +59,7 @@ export default function HomePage() {
       }
     }
 
-    fetchCredits();
+    fetchSubscriptionStatus();
     checkWpConnections();
   }, [session]);
 
@@ -346,7 +345,7 @@ export default function HomePage() {
                 letterSpacing: "0.5px",
               }}
             >
-              👑 Owner · Unlimited
+              👑 Owner · Unlimited Plan
             </span>
           ) : (
             <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
@@ -358,25 +357,29 @@ export default function HomePage() {
                   border: "1px solid rgba(59, 130, 246, 0.3)",
                   background: "rgba(59, 130, 246, 0.1)",
                   color: "#60a5fa",
-                  fontWeight: 600,
+                  fontWeight: 700,
+                  letterSpacing: "0.5px",
                 }}
               >
-                {loadingCredits ? "Credits: …" : `⚡ Credits: ${credits ?? 0}`}
+                {loadingSub
+                  ? "Plan: …"
+                  : `⚡ Plan: ${subData?.subscription?.planName || "TRY"}`}
               </span>
               <button
-                onClick={() => setShowBuyCredits(true)}
+                onClick={() => setShowSubscriptionModal(true)}
                 style={{
-                  padding: "5px 10px",
-                  borderRadius: 6,
+                  padding: "5px 12px",
+                  borderRadius: 8,
                   border: "none",
-                  background: "#2563eb",
+                  background: "linear-gradient(135deg, #2563eb 0%, #1d4ed8 100%)",
                   color: "#fff",
                   fontSize: 11,
-                  fontWeight: 600,
+                  fontWeight: 700,
                   cursor: "pointer",
+                  boxShadow: "0 0 15px rgba(37, 99, 235, 0.3)",
                 }}
               >
-                + Add
+                Manage Plan
               </button>
             </div>
           )}
@@ -590,6 +593,105 @@ export default function HomePage() {
               </button>
             </div>
           </div>
+
+          {/* ── MONTHLY SERVICE QUOTAS & PLAN OVERVIEW ── */}
+          {subData && (
+            <div
+              style={{
+                marginTop: 24,
+                padding: "20px",
+                borderRadius: 16,
+                background: "rgba(255, 255, 255, 0.03)",
+                border: "1px solid rgba(255, 255, 255, 0.08)",
+              }}
+            >
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 16, flexWrap: "wrap", gap: 10 }}>
+                <div>
+                  <div style={{ fontSize: 11, fontWeight: 800, textTransform: "uppercase", letterSpacing: "1px", color: "#60a5fa" }}>
+                    Monthly Plan Allowances · {subData.subscription?.planName || "TRY"}
+                  </div>
+                  <div style={{ fontSize: 12, color: "#94a3b8", marginTop: 2 }}>
+                    Active Cycle: {new Date(subData.subscription?.cycleStart).toLocaleDateString()} — {new Date(subData.subscription?.cycleEnd).toLocaleDateString()}
+                  </div>
+                </div>
+                <button
+                  onClick={() => setShowSubscriptionModal(true)}
+                  style={{
+                    padding: "6px 14px",
+                    borderRadius: 8,
+                    border: "1px solid rgba(59, 130, 246, 0.4)",
+                    background: "rgba(59, 130, 246, 0.12)",
+                    color: "#93c5fd",
+                    fontSize: 12,
+                    fontWeight: 700,
+                    cursor: "pointer",
+                  }}
+                >
+                  Upgrade / Change Plan
+                </button>
+              </div>
+
+              <div
+                style={{
+                  display: "grid",
+                  gridTemplateColumns: "repeat(auto-fit, minmax(140px, 1fr))",
+                  gap: 12,
+                }}
+              >
+                {/* SEO Articles */}
+                <div style={{ padding: "12px 14px", borderRadius: 12, background: "rgba(15, 23, 42, 0.6)", border: "1px solid rgba(255,255,255,0.06)" }}>
+                  <div style={{ fontSize: 11, color: "#94a3b8", marginBottom: 4 }}>📝 SEO Articles</div>
+                  <div style={{ fontSize: 18, fontWeight: 800, color: "#f8fafc" }}>
+                    {subData.quotas?.seoArticles?.used} <span style={{ fontSize: 13, color: "#64748b" }}>/ {subData.quotas?.seoArticles?.limit}</span>
+                  </div>
+                </div>
+
+                {/* Social Posts */}
+                <div style={{ padding: "12px 14px", borderRadius: 12, background: "rgba(15, 23, 42, 0.6)", border: "1px solid rgba(255,255,255,0.06)" }}>
+                  <div style={{ fontSize: 11, color: "#94a3b8", marginBottom: 4 }}>📱 Social Posts</div>
+                  <div style={{ fontSize: 18, fontWeight: 800, color: "#f8fafc" }}>
+                    {subData.quotas?.socialPosts?.used} <span style={{ fontSize: 13, color: "#64748b" }}>/ {subData.quotas?.socialPosts?.limit}</span>
+                  </div>
+                </div>
+
+                {/* AI Images */}
+                <div style={{ padding: "12px 14px", borderRadius: 12, background: "rgba(15, 23, 42, 0.6)", border: "1px solid rgba(255,255,255,0.06)" }}>
+                  <div style={{ fontSize: 11, color: "#94a3b8", marginBottom: 4 }}>🎨 AI Images</div>
+                  <div style={{ fontSize: 18, fontWeight: 800, color: "#f8fafc" }}>
+                    {subData.quotas?.images?.used} <span style={{ fontSize: 13, color: "#64748b" }}>/ {subData.quotas?.images?.limit}</span>
+                  </div>
+                </div>
+
+                {/* Meta Ads */}
+                <div style={{ padding: "12px 14px", borderRadius: 12, background: "rgba(15, 23, 42, 0.6)", border: "1px solid rgba(255,255,255,0.06)" }}>
+                  <div style={{ fontSize: 11, color: "#94a3b8", marginBottom: 4 }}>🎯 Meta Ads</div>
+                  <div style={{ fontSize: 18, fontWeight: 800, color: subData.quotas?.metaCampaigns?.included ? "#38bdf8" : "#64748b" }}>
+                    {subData.quotas?.metaCampaigns?.included
+                      ? `${subData.quotas?.metaCampaigns?.used} / ${subData.quotas?.metaCampaigns?.limit}`
+                      : "Locked"}
+                  </div>
+                </div>
+
+                {/* Google Ads */}
+                <div style={{ padding: "12px 14px", borderRadius: 12, background: "rgba(15, 23, 42, 0.6)", border: "1px solid rgba(255,255,255,0.06)" }}>
+                  <div style={{ fontSize: 11, color: "#94a3b8", marginBottom: 4 }}>📈 Google Ads</div>
+                  <div style={{ fontSize: 18, fontWeight: 800, color: subData.quotas?.googleCampaigns?.included ? "#facc15" : "#64748b" }}>
+                    {subData.quotas?.googleCampaigns?.included
+                      ? `${subData.quotas?.googleCampaigns?.used} / ${subData.quotas?.googleCampaigns?.limit}`
+                      : "Locked"}
+                  </div>
+                </div>
+
+                {/* AI Queries */}
+                <div style={{ padding: "12px 14px", borderRadius: 12, background: "rgba(15, 23, 42, 0.6)", border: "1px solid rgba(255,255,255,0.06)" }}>
+                  <div style={{ fontSize: 11, color: "#94a3b8", marginBottom: 4 }}>💬 AI Queries</div>
+                  <div style={{ fontSize: 18, fontWeight: 800, color: "#f8fafc" }}>
+                    {subData.quotas?.aiQueries?.used} <span style={{ fontSize: 13, color: "#64748b" }}>/ {subData.quotas?.aiQueries?.limit}</span>
+                  </div>
+                </div>
+              </div>
+            </div>
+          )}
 
           {/* ── INTERACTIVE 4-STAGE PIPELINE VISUALIZER (WHIZWISER #HOW-IT-WORKS STYLE) ── */}
           <div style={{ marginTop: 32, paddingTop: 26, borderTop: "1px solid rgba(255, 255, 255, 0.08)" }}>
@@ -823,11 +925,17 @@ export default function HomePage() {
         </div>
       </main>
 
-      {/* Buy Credits Modal */}
-      <BuyCreditsModal
-        isOpen={showBuyCredits}
-        onClose={() => setShowBuyCredits(false)}
-        userEmail={session?.user?.email}
+      {/* Subscription Plans Modal */}
+      <SubscriptionModal
+        isOpen={showSubscriptionModal}
+        onClose={() => setShowSubscriptionModal(false)}
+        currentPlanId={subData?.subscription?.planId || "try"}
+        subscriptionStatus={subData?.subscription}
+        onSubscriptionUpdated={() => {
+          fetch("/api/subscriptions/status")
+            .then((r) => r.json())
+            .then((d) => d.ok && setSubData(d));
+        }}
       />
 
       {/* Autonomous Social Media Planner Modal */}

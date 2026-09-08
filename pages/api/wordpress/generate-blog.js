@@ -7,6 +7,7 @@ import { verifyEntitlement, verifyEntitlementByEmail, FEATURES } from "../../../
 import { reserveCredits, releaseCredits } from "../../../lib/billing/credit-meter";
 import { checkRateLimit } from "../../../lib/middleware/rate-limiter";
 import { generatePlatformGraphic } from "../../../lib/services/image-service";
+import { reserveQuota, commitQuota, releaseQuota } from "../../../lib/billing/quota-service";
 
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL,
@@ -52,37 +53,43 @@ export default async function handler(req, res) {
     return res.status(400).json({ ok: false, error: "Blog topic is required" });
   }
 
-  // 2. Entitlement Gate
-  if (session) {
-    const entitlement = await verifyEntitlement(session, businessId, FEATURES.SEO);
-    if (!entitlement.allowed) {
-      return res.status(403).json({
-        ok: false,
-        error: entitlement.error || "SEO blog generation is not permitted on this account tier.",
-      });
-    }
-  } else if (userEmail) {
-    const emailEntitlement = await verifyEntitlementByEmail(userEmail, FEATURES.SEO);
-    if (!emailEntitlement.allowed) {
-      return res.status(403).json({
-        ok: false,
-        error: emailEntitlement.error || "SEO blog generation has been revoked for this account.",
-      });
-    }
+  // 2. Entitlement & Service Quota Gate (Server-Enforced)
+  const quotaRes = await reserveQuota({
+    session,
+    userEmail,
+    businessId,
+    actionType: "SEO_ARTICLE",
+  });
+
+  if (!quotaRes.ok) {
+    return res.status(quotaRes.code === "FEATURE_NOT_INCLUDED" ? 403 : 402).json({
+      ok: false,
+      code: quotaRes.code,
+      error: quotaRes.error,
+      planId: quotaRes.planId,
+      nextResetDate: quotaRes.nextResetDate,
+    });
   }
 
-  // 3. Server-Side Atomic Credit Reservation
+  // 3. Server-Side Atomic Credit Reservation (Internal Accounting)
   const reservation = await reserveCredits({
-    businessId: businessId || "default_business",
+    businessId: quotaRes.businessId || businessId || "default_business",
     userEmail,
     actionType: "SEO_BLOG",
     referenceId: topic.substring(0, 40),
   });
 
   if (!reservation.ok) {
+    await releaseQuota({
+      reservationId: quotaRes.reservationId,
+      businessId: quotaRes.businessId,
+      cycleStart: quotaRes.cycleStart,
+      actionType: "SEO_ARTICLE",
+      reason: "Credit reservation failure",
+    });
     return res.status(402).json({
       ok: false,
-      error: reservation.error || "Insufficient credits to generate blog.",
+      error: reservation.error || "Insufficient internal credits to execute blog generation.",
     });
   }
 
@@ -478,6 +485,15 @@ INSTRUCTIONS:
 
     console.log(`[SEO Engine] Successfully published! Post ID: ${wpResult.post_id}, URL: ${wpResult.post_url}`);
 
+    // Commit successful SEO Article usage to persistent quota ledger
+    await commitQuota({
+      reservationId: quotaRes.reservationId,
+      businessId: quotaRes.businessId,
+      cycleStart: quotaRes.cycleStart,
+      actionType: "SEO_ARTICLE",
+      userEmail,
+    });
+
     return res.status(200).json({
       ok: true,
       post_id: wpResult.post_id,
@@ -495,6 +511,15 @@ INSTRUCTIONS:
     });
   } catch (err) {
     console.error("Generate blog error:", err);
+    if (quotaRes?.reservationId) {
+      await releaseQuota({
+        reservationId: quotaRes.reservationId,
+        businessId: quotaRes.businessId,
+        cycleStart: quotaRes.cycleStart,
+        actionType: "SEO_ARTICLE",
+        reason: "Blog generation error: " + err.message,
+      });
+    }
     if (reservation?.transactionId && userEmail) {
       await releaseCredits({
         userEmail,

@@ -11,6 +11,7 @@ import { getServerSession } from "next-auth/next";
 import { authOptions } from "../auth/[...nextauth]";
 import { supabaseServer } from "../../../lib/supabaseServer";
 import { adminAdjustCredits } from "../../../lib/billing/credit-meter";
+import { SUBSCRIPTION_PLANS } from "../../../lib/billing/plans";
 import {
   getTenantRegistry,
   getOrCreateTenantConfig,
@@ -176,6 +177,133 @@ export default async function handler(req, res) {
       });
 
       return res.status(200).json({ success: true, subscription });
+    }
+
+    // -------------------------------------------------------------
+    // 7. ASSIGN PRODUCTION SUBSCRIPTION PLAN (TRY, STARTER, GROWTH, BUSINESS, AGENCY)
+    // -------------------------------------------------------------
+    if (action === "assign_plan") {
+      const { userEmail: targetEmail, planId = "starter", durationDays = 30 } = req.body;
+      if (!targetEmail) {
+        return res.status(400).json({ error: "userEmail is required" });
+      }
+
+      const planKey = (planId || "starter").toUpperCase();
+      const plan = SUBSCRIPTION_PLANS[planKey] || SUBSCRIPTION_PLANS.STARTER;
+
+      const now = new Date();
+      const expiresAt = new Date(now.getTime() + Number(durationDays) * 24 * 60 * 60 * 1000);
+
+      const subscription = await updateTenantSubscription(targetEmail, {
+        durationDays: Number(durationDays) || 30,
+        status: "active",
+        plan: plan.id,
+        startDate: now.toISOString(),
+        expiresAt: expiresAt.toISOString(),
+      });
+
+      await setTenantMaxBusinesses(targetEmail, plan.maxBusinesses);
+
+      try {
+        const normEmail = targetEmail.toLowerCase().trim();
+        const bizId = `biz_${normEmail.replace(/[^a-zA-Z0-9]/g, "_")}`;
+        await supabaseServer.from("subscriptions").upsert({
+          business_id: bizId,
+          plan_id: plan.id,
+          status: "active",
+          cycle_start: now.toISOString(),
+          cycle_end: expiresAt.toISOString(),
+          current_period_end: expiresAt.toISOString(),
+          updated_at: now.toISOString(),
+        }, { onConflict: "business_id" });
+      } catch (dbErr) {
+        console.warn("Supabase subscriptions sync note:", dbErr.message);
+      }
+
+      return res.status(200).json({
+        success: true,
+        message: `Plan ${plan.name} (${plan.priceMonthly}) successfully assigned to ${targetEmail}`,
+        plan: plan.id,
+        subscription,
+      });
+    }
+
+    // -------------------------------------------------------------
+    // 8. LIST PENDING SUBSCRIPTION ORDERS
+    // -------------------------------------------------------------
+    if (action === "list_orders") {
+      const { data: orders, error: orderErr } = await supabaseServer
+        .from("subscription_orders")
+        .select("*")
+        .order("created_at", { ascending: false })
+        .limit(50);
+
+      if (orderErr) {
+        return res.status(500).json({ error: "Failed to fetch orders: " + orderErr.message });
+      }
+
+      return res.status(200).json({ success: true, orders: orders || [] });
+    }
+
+    // -------------------------------------------------------------
+    // 9. VERIFY / APPROVE SUBSCRIPTION ORDER
+    // -------------------------------------------------------------
+    if (action === "verify_order") {
+      const { orderId } = req.body;
+      if (!orderId) {
+        return res.status(400).json({ error: "orderId is required" });
+      }
+
+      const { data: order, error: fetchErr } = await supabaseServer
+        .from("subscription_orders")
+        .select("*")
+        .eq("id", orderId)
+        .single();
+
+      if (fetchErr || !order) {
+        return res.status(404).json({ error: "Order not found" });
+      }
+
+      const planKey = (order.plan_id || "starter").toUpperCase();
+      const plan = SUBSCRIPTION_PLANS[planKey] || SUBSCRIPTION_PLANS.STARTER;
+      const now = new Date();
+      const expiresAt = new Date(now.getTime() + 30 * 24 * 60 * 60 * 1000);
+
+      // 1. Mark order verified
+      await supabaseServer
+        .from("subscription_orders")
+        .update({
+          status: "verified",
+          verified_at: now.toISOString(),
+          verified_by: userEmail,
+        })
+        .eq("id", orderId);
+
+      // 2. Activate subscription
+      await supabaseServer.from("subscriptions").upsert({
+        business_id: order.business_id,
+        plan_id: plan.id,
+        status: "active",
+        cycle_start: now.toISOString(),
+        cycle_end: expiresAt.toISOString(),
+        current_period_end: expiresAt.toISOString(),
+        updated_at: now.toISOString(),
+      }, { onConflict: "business_id" });
+
+      // 3. Update tenant config
+      await updateTenantSubscription(order.user_email, {
+        durationDays: 30,
+        status: "active",
+        plan: plan.id,
+        startDate: now.toISOString(),
+        expiresAt: expiresAt.toISOString(),
+      });
+      await setTenantMaxBusinesses(order.user_email, plan.maxBusinesses);
+
+      return res.status(200).json({
+        success: true,
+        message: `Order ${orderId} verified and Plan ${plan.name} activated for ${order.user_email}.`,
+      });
     }
 
     return res.status(400).json({ error: `Unknown action: ${action}` });

@@ -36,3 +36,4 @@ gabbarinfo-ai-main/
 test-gads*.mjs
 test-version.mjs
 scratch/
+supabase/.temp/

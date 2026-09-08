@@ -4,7 +4,7 @@
 import { useEffect, useState } from "react";
 import Link from "next/link";
 import { signIn, signOut, useSession } from "next-auth/react";
-import BuyCreditsModal from "./components/BuyCreditsModal";
+import SubscriptionModal from "./components/SubscriptionModal";
 import CyberMatrixBackground from "./components/CyberMatrixBackground";
 
 const SYSTEM_PROMPT = `
@@ -365,7 +365,8 @@ export default function ChatPage() {
   const [credits, setCredits] = useState(null);
   const [unlimited, setUnlimited] = useState(false);
   const [creditsLoading, setCreditsLoading] = useState(true);
-  // ── Buy Credits modal state ──
+  const [planInfo, setPlanInfo] = useState(null);
+  // ── Subscription modal state ──
   const [showBuyCredits, setShowBuyCredits] = useState(false);
 
   // simple responsive flag – ONLY used for layout decisions (column vs row)
@@ -487,16 +488,23 @@ export default function ChatPage() {
   useEffect(() => {
     async function fetchCredits() {
       try {
-        const res = await fetch("/api/credits/get", { credentials: "include" });
-        if (!res.ok) {
-          console.error("Failed to load credits", await res.text());
-          return;
+        const [credRes, subRes] = await Promise.allSettled([
+          fetch("/api/credits/get", { credentials: "include" }),
+          fetch("/api/subscriptions/status", { credentials: "include" })
+        ]);
+
+        if (credRes.status === "fulfilled" && credRes.value.ok) {
+          const data = await credRes.value.json();
+          setCredits(typeof data.credits === "number" ? data.credits : null);
+          setUnlimited(Boolean(data.unlimited));
         }
-        const data = await res.json();
-        setCredits(typeof data.credits === "number" ? data.credits : null);
-        setUnlimited(Boolean(data.unlimited));
+
+        if (subRes.status === "fulfilled" && subRes.value.ok) {
+          const subData = await subRes.value.json();
+          setPlanInfo(subData);
+        }
       } catch (err) {
-        console.error("Error loading credits:", err);
+        console.error("Error loading credits or subscription:", err);
       } finally {
         setCreditsLoading(false);
       }
@@ -1395,11 +1403,11 @@ Now respond as GabbarInfo AI.
             {role === "owner"
               ? "👑 Owner · Unlimited"
               : creditsLoading
-                ? "⚡ Credits: …"
-                : `⚡ Credits: ${credits ?? 0}`}
+                ? "⚡ Plan: …"
+                : `⚡ Plan: ${planInfo?.plan?.name || "Try"}`}
           </span>
 
-          {/* ➕ Add Credits button — visible to non-owners only */}
+          {/* Upgrade / Manage Plan button */}
           {role !== "owner" && (
             <button
               onClick={() => setShowBuyCredits(true)}
@@ -1416,7 +1424,7 @@ Now respond as GabbarInfo AI.
                 transition: "all 0.15s ease",
               }}
             >
-              ➕ Add Credits
+              ⚡ Upgrade Plan
             </button>
           )}
 
@@ -2208,8 +2216,8 @@ Now respond as GabbarInfo AI.
         </section>
       </main>
 
-      {/* ── Buy Credits Modal ── */}
-      <BuyCreditsModal
+      {/* ── Subscription / Plan Modal ── */}
+      <SubscriptionModal
         isOpen={showBuyCredits}
         onClose={() => setShowBuyCredits(false)}
         userEmail={session?.user?.email}

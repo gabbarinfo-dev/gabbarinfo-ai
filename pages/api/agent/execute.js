@@ -14,6 +14,7 @@ import { authOptions } from "../auth/[...nextauth]";
 import { createClient } from "@supabase/supabase-js";
 import { verifyEntitlement, FEATURES } from "../../../lib/auth/entitlements";
 import { checkRateLimit } from "../../../lib/middleware/rate-limiter";
+import { reserveQuota, commitQuota, releaseQuota } from "../../../lib/billing/quota-service";
 import { executeInstagramPost } from "../../../lib/execute-instagram-post";
 import { executeFacebookPost } from "../../../lib/execute-facebook-post";
 import { normalizeImageUrl } from "../../../lib/normalize-image-url";
@@ -4748,6 +4749,21 @@ async function handleSocialPost(req, res, session, body) {
 
       console.log(`[Path A] Direct Publish detected (Mode: ${mode}). URL: ${imageUrl}`);
 
+      // 🛡️ SERVER-SIDE ENTITLEMENT & QUOTA GATE: SOCIAL_POST
+      const reservation = await reserveQuota({
+        session,
+        userEmail,
+        actionType: "SOCIAL_POST",
+      });
+
+      if (!reservation.ok) {
+        return res.status(403).json({
+          ok: false,
+          code: reservation.code,
+          text: `🚫 Action Blocked: ${reservation.error}`,
+        });
+      }
+
       await clearCreativeState(supabase, userEmail);
 
       const isBoth = lowerInstruction.includes("both") || (lowerInstruction.includes("facebook") && lowerInstruction.includes("instagram"));
@@ -4787,6 +4803,12 @@ async function handleSocialPost(req, res, session, body) {
         }
       }
 
+      if (igData || fbData) {
+        await commitQuota({ reservationId: reservation.reservationId });
+      } else {
+        await releaseQuota({ reservationId: reservation.reservationId, reason: "Social publish failed on both destinations" });
+      }
+
       const headerText = isBoth
         ? "🎉 Post Successfully Published to Both Platforms!"
         : (isFbOnly ? "🎉 Facebook Page Post Published!" : "🎉 Instagram Post Published!");
@@ -4821,6 +4843,21 @@ async function handleSocialPost(req, res, session, body) {
     try {
       const { imageUrl, caption, storageFileName, destination = (isFacebookMode ? "FACEBOOK_ONLY" : "INSTAGRAM_ONLY") } = creativeResult.assets;
 
+      // 🛡️ SERVER-SIDE ENTITLEMENT & QUOTA GATE: SOCIAL_POST
+      const reservation = await reserveQuota({
+        session,
+        userEmail,
+        actionType: "SOCIAL_POST",
+      });
+
+      if (!reservation.ok) {
+        return res.status(403).json({
+          ok: false,
+          code: reservation.code,
+          text: `🚫 Action Blocked: ${reservation.error}`,
+        });
+      }
+
       const publishResults = [];
       let igData = null;
       let fbData = null;
@@ -4854,6 +4891,12 @@ async function handleSocialPost(req, res, session, body) {
           console.error("[Path B] FB Publish Error:", fbErr);
           publishResults.push(`⚠️ **Facebook Page:** Failed (${fbErr.message})`);
         }
+      }
+
+      if (igData || fbData) {
+        await commitQuota({ reservationId: reservation.reservationId });
+      } else {
+        await releaseQuota({ reservationId: reservation.reservationId, reason: "Social publish failed on both destinations" });
       }
 
       // 🧹 STORAGE CLEANUP: Delete the creative after successful publish
@@ -5500,6 +5543,21 @@ async function handleGoogleAdsCampaignFlow(req, res, session, body) {
 
         const services = plan.services || plan.campaign?.services || gAdsState.intake?.services || null;
 
+        // 🛡️ SERVER-SIDE ENTITLEMENT & QUOTA GATE: GOOGLE_CAMPAIGN
+        const gReservation = await reserveQuota({
+          session,
+          userEmail,
+          actionType: "GOOGLE_CAMPAIGN",
+        });
+
+        if (!gReservation.ok) {
+          return res.status(403).json({
+            ok: false,
+            code: gReservation.code,
+            text: `🚫 Action Blocked: ${gReservation.error}`,
+          });
+        }
+
         const createRes = await createFullGoogleAdsCampaign({
           refreshToken,
           customerId: selectedCustomerId,
@@ -5520,11 +5578,18 @@ async function handleGoogleAdsCampaignFlow(req, res, session, body) {
         });
 
         if (!createRes.ok) {
+          if (gReservation?.reservationId) {
+            await releaseQuota({ reservationId: gReservation.reservationId, reason: createRes.message });
+          }
           console.error("Google Ads creation error:", createRes);
           return res.status(200).json({
             ok: false,
             text: `⚠️ **Failed to create campaign in Google Ads**:\n\n${createRes.message || "Unknown error"}\n\nDetails: \`${JSON.stringify(createRes.error || {})}\``,
           });
+        }
+
+        if (gReservation?.reservationId) {
+          await commitQuota({ reservationId: gReservation.reservationId });
         }
 
         // Mark completed in memory
@@ -5631,6 +5696,9 @@ async function handleGoogleAdsCampaignFlow(req, res, session, body) {
             `You can now review your campaign, keywords, extensions, and ads directly inside your Google Ads dashboard!`,
         });
       } catch (createErr) {
+        if (typeof gReservation !== "undefined" && gReservation?.reservationId) {
+          await releaseQuota({ reservationId: gReservation.reservationId, reason: createErr.message });
+        }
         console.error("Error executing Google Ads campaign:", createErr);
         return res.status(200).json({
           ok: false,

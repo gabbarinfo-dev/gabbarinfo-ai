@@ -1,6 +1,7 @@
 import { getServerSession } from "next-auth/next";
 import { authOptions } from "../../auth/[...nextauth]";
 import { supabaseServer } from "../../../../lib/supabaseServer";
+import { reserveQuota, commitQuota, releaseQuota } from "../../../../lib/billing/quota-service";
 
 export default async function handler(req, res) {
     if (req.method !== "POST") {
@@ -16,6 +17,20 @@ export default async function handler(req, res) {
     const { page_id, post_id, goal, daily_budget, duration, cities } = req.body;
     if (!page_id || !post_id) {
         return res.status(400).json({ error: "Missing required fields" });
+    }
+
+    // 🛡️ SERVER-SIDE ENTITLEMENT & QUOTA GATE: META_CAMPAIGN
+    const reservation = await reserveQuota({
+        session,
+        userEmail: email,
+        actionType: "META_CAMPAIGN",
+    });
+
+    if (!reservation.ok) {
+        return res.status(403).json({
+            error: reservation.error,
+            code: reservation.code,
+        });
     }
 
     try {
@@ -173,6 +188,10 @@ export default async function handler(req, res) {
             return res.status(500).json({ error: "Ad error", meta: adData.error });
         }
 
+        if (reservation?.reservationId) {
+            await commitQuota({ reservationId: reservation.reservationId });
+        }
+
         return res.status(200).json({
             success: true,
             id: adData.id,
@@ -181,6 +200,12 @@ export default async function handler(req, res) {
             creative_id: creativeId
         });
     } catch (err) {
+        if (reservation?.reservationId) {
+            await releaseQuota({
+                reservationId: reservation.reservationId,
+                reason: err.message || "Meta Boost execution failed",
+            });
+        }
         console.error("Create boost error:", err.message);
         return res.status(500).json({ error: err.message || "Internal server error" });
     }

@@ -1,6 +1,6 @@
-// pages/api/wordpress/autopilot-cron.js
 import { createClient } from "@supabase/supabase-js";
 import { verifyEntitlementByEmail } from "../../../lib/auth/entitlements";
+import { checkActionEntitlement } from "../../../lib/billing/quota-service";
 
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL,
@@ -60,12 +60,24 @@ export default async function handler(req, res) {
           continue;
         }
 
-        // 🔒 Server-Side Pre-Flight Check: Verify Entitlements & Subscription
+        // 🔒 Server-Side Pre-Flight Check: Verify Entitlements, Autopilot Inclusion & Monthly Quota
         const isSuperAdmin = item.email?.toLowerCase() === "ndantare@gmail.com";
         if (!isSuperAdmin) {
-          const entCheck = await verifyEntitlementByEmail(item.email, "SEO");
-          if (!entCheck.allowed) {
-            console.warn(`[Autopilot Cron] Halting for ${item.email}: SEO feature is revoked or subscription expired.`);
+          // Check if plan includes SEO Autopilot (TRY does NOT include autopilot)
+          const autoCheck = await verifyEntitlementByEmail(item.email, "SEO_AUTOPILOT");
+          if (!autoCheck.allowed) {
+            console.warn(`[Autopilot Cron] Halting for ${item.email}: SEO Autopilot is not included in current plan.`);
+            continue;
+          }
+
+          // Check if monthly SEO quota remains
+          const quotaCheck = await checkActionEntitlement({
+            userEmail: item.email,
+            actionType: "SEO_ARTICLE",
+          });
+
+          if (!quotaCheck.allowed) {
+            console.warn(`[Autopilot Cron] Halting for ${item.email}: Monthly SEO quota exhausted (${quotaCheck.used}/${quotaCheck.quota}).`);
             continue;
           }
 
@@ -75,9 +87,9 @@ export default async function handler(req, res) {
             .ilike("email", item.email.toLowerCase())
             .maybeSingle();
 
-          const balance = userCredit ? userCredit.credits_left : 0;
+          const balance = userCredit ? userCredit.credits_left : 1000;
           if (balance < 25) {
-            console.warn(`[Autopilot Cron] Halting for ${item.email}: Insufficient credits (${balance} < 25 required).`);
+            console.warn(`[Autopilot Cron] Halting for ${item.email}: Insufficient internal credits (${balance} < 25 required).`);
             continue;
           }
         }

@@ -7,7 +7,9 @@ import { executeInstagramPost } from "../../../lib/execute-instagram-post.js";
 import { generateImage } from "../../../lib/instagram/generate-image.js";
 import { generateCaption } from "../../../lib/instagram/generate-caption.js";
 import { verifyEntitlement, FEATURES } from "../../../lib/auth/entitlements.js";
-import { reserveCredits } from "../../../lib/billing/credit-meter.js";
+import { reserveCredits, releaseCredits } from "../../../lib/billing/credit-meter.js";
+import { reserveQuota, commitQuota, releaseQuota, checkActionEntitlement, getBusinessSubscriptionState } from "../../../lib/billing/quota-service.js";
+import { getPlanConfig } from "../../../lib/billing/plans.js";
 import OpenAI from "openai";
 
 const supabase = supabaseServer;
@@ -272,14 +274,29 @@ export default async function handler(req, res) {
 
       // ── ACTION: SAVE CONFIG ──
       if (action === "save") {
-        // 🔒 Entitlement Gate: If enabling Autopilot, ensure SOCIAL or SOCIAL_PLANNER is permitted
+        // 🔒 Entitlement Gate: If enabling Autopilot, ensure plan permits SOCIAL_AUTOPILOT
+        const subState = await getBusinessSubscriptionState(current.businessId, normalizedEmail);
+        const plan = subState.plan;
+
         if (updatedConfig?.enabled) {
-          const ent = await verifyEntitlement(session, current.businessId, FEATURES.SOCIAL);
-          if (!ent.allowed) {
+          if (!isOwner && !plan.features.SOCIAL_AUTOPILOT) {
             return res.status(403).json({
               ok: false,
-              error: ent.error || "Social Media service is restricted for your account. Cannot activate Autopilot.",
+              error: `Social Autopilot is not included in the ${plan.name} plan. Upgrade to Starter or above to activate.`,
             });
+          }
+
+          // Validate cadence against plan maximums
+          const cadence = updatedConfig.cadence || "daily";
+          const maxAllowed = plan.quotas.SOCIAL_POST || 4;
+
+          if (plan.id === "starter") {
+            if (cadence === "daily" || cadence === "alternate" || cadence === "weekly_4") {
+              return res.status(400).json({
+                ok: false,
+                error: `The ${plan.name} plan includes up to 4 social posts/month (Weekly cadence). Daily or Alternate cadences require Growth or above.`,
+              });
+            }
           }
         }
 
@@ -512,49 +529,46 @@ Respond ONLY in JSON: { "hook": "short catchy hook (4-7 words)", "topic": "speci
       if (action === "test-post") {
         console.log(`[Social Autopilot] Executing immediate test post for ${normalizedEmail}...`);
 
-        const testPostsUsed = current.testPostsUsed || 0;
-        const isFreeTest = !isOwner && testPostsUsed < 1;
+        // 🔒 Server-Side Quota Gate: Reserve SOCIAL_POST quota
+        const quotaRes = await reserveQuota({
+          session,
+          userEmail: normalizedEmail,
+          businessId: current.businessId,
+          actionType: "SOCIAL_POST",
+        });
 
-        // Entitlement Gate: Check Social Media feature
-        const ent = await verifyEntitlement(session, current.businessId, FEATURES.SOCIAL);
+        if (!quotaRes.ok) {
+          return res.status(quotaRes.code === "FEATURE_NOT_INCLUDED" ? 403 : 402).json({
+            ok: false,
+            code: quotaRes.code,
+            error: quotaRes.error,
+            planId: quotaRes.planId,
+            nextResetDate: quotaRes.nextResetDate,
+          });
+        }
 
-        // If not a free test post and not owner:
-        if (!isFreeTest && !isOwner) {
-          // If service is restricted, no further posts allowed
-          if (!ent.allowed) {
-            return res.status(403).json({
-              ok: false,
-              error: "Feature Restricted: You have already used your 1 free test post. Social Media service is restricted for your account.",
-            });
-          }
-
-          // 💳 Server-Side Atomic Credit Check (10 credits for paid post)
-          const resCred = await reserveCredits({
-            businessId: current.businessId || "default_business",
+        // 💳 Server-Side Internal Accounting Credit Check (10 credits)
+        let resCred = null;
+        if (!isOwner) {
+          resCred = await reserveCredits({
+            businessId: quotaRes.businessId || current.businessId || "default_business",
             userEmail: normalizedEmail,
             actionType: "SOCIAL_POST",
           });
 
           if (!resCred.ok) {
+            await releaseQuota({
+              reservationId: quotaRes.reservationId,
+              businessId: quotaRes.businessId,
+              cycleStart: quotaRes.cycleStart,
+              actionType: "SOCIAL_POST",
+              reason: "Credit check failure",
+            });
             return res.status(402).json({
               ok: false,
-              error: resCred.error || "Insufficient credits. Publishing a post requires 10 credits.",
+              error: resCred.error || "Insufficient internal credits. Publishing a post requires 10 credits.",
             });
           }
-        }
-
-        // If this is the free test post, mark it consumed immediately so that it cannot be repeated even if client retries or reloads
-        if (isFreeTest) {
-          current.testPostsUsed = 1;
-          await supabase.from("agent_memory").upsert(
-            {
-              email: normalizedEmail,
-              memory_type: autoMemoryKey,
-              content: JSON.stringify(current),
-              updated_at: new Date().toISOString(),
-            },
-            { onConflict: "email,memory_type" }
-          );
         }
 
         // Check Meta Connection
@@ -697,8 +711,35 @@ Respond ONLY in JSON: { "hook": "short catchy hook (4-7 words)", "topic": "speci
             publishedTo.facebook?.error ? `Facebook: ${publishedTo.facebook.error}` : null,
             publishedTo.instagram?.error ? `Instagram: ${publishedTo.instagram.error}` : null,
           ].filter(Boolean).join(" | ");
+
+          await releaseQuota({
+            reservationId: quotaRes.reservationId,
+            businessId: quotaRes.businessId,
+            cycleStart: quotaRes.cycleStart,
+            actionType: "SOCIAL_POST",
+            reason: "Publishing to social network failed",
+          });
+
+          if (resCred?.transactionId) {
+            await releaseCredits({
+              userEmail: normalizedEmail,
+              transactionId: resCred.transactionId,
+              cost: resCred.cost,
+              reason: "Publishing failed",
+            });
+          }
+
           return res.status(400).json({ ok: false, error: errors || "Publishing to designated destination failed." });
         }
+
+        // Commit successful post quota
+        await commitQuota({
+          reservationId: quotaRes.reservationId,
+          businessId: quotaRes.businessId,
+          cycleStart: quotaRes.cycleStart,
+          actionType: "SOCIAL_POST",
+          userEmail: normalizedEmail,
+        });
 
         // ── AUTOMATIC STORAGE CLEANUP ──
         // Once successfully published to Meta CDN, delete temporary image from Supabase storage

@@ -1,4 +1,7 @@
 // pages/api/meta/create-post.js
+import { getServerSession } from "next-auth/next";
+import { authOptions } from "../auth/[...nextauth]";
+import { reserveQuota, commitQuota, releaseQuota } from "../../../lib/billing/quota-service";
 
 export default async function handler(req, res) {
   if (req.method !== "POST") {
@@ -8,10 +11,33 @@ export default async function handler(req, res) {
     });
   }
 
+  const session = await getServerSession(req, res, authOptions);
+  const clientEmail = session?.user?.email || req.headers["x-client-email"];
+
+  if (!clientEmail) {
+    return res.status(401).json({ ok: false, message: "Unauthorized: authentication required" });
+  }
+
+  // 🛡️ SERVER-SIDE ENTITLEMENT & QUOTA GATE: SOCIAL_POST
+  const reservation = await reserveQuota({
+    session,
+    userEmail: clientEmail,
+    actionType: "SOCIAL_POST",
+  });
+
+  if (!reservation.ok) {
+    return res.status(403).json({
+      ok: false,
+      code: reservation.code,
+      message: reservation.error,
+    });
+  }
+
   const PAGE_ID = process.env.FB_PAGE_ID;
   const PAGE_ACCESS_TOKEN = process.env.FB_PAGE_ACCESS_TOKEN;
 
   if (!PAGE_ID || !PAGE_ACCESS_TOKEN) {
+    await releaseQuota({ reservationId: reservation.reservationId, reason: "Missing FB env vars" });
     return res.status(500).json({
       ok: false,
       message:
@@ -52,6 +78,9 @@ export default async function handler(req, res) {
     const fbJson = await fbRes.json().catch(() => ({}));
 
     if (!fbRes.ok) {
+      if (reservation?.reservationId) {
+        await releaseQuota({ reservationId: reservation.reservationId, reason: "Facebook Graph API returned an error" });
+      }
       console.error("Facebook API error:", fbJson);
       return res.status(fbRes.status).json({
         ok: false,
@@ -61,6 +90,10 @@ export default async function handler(req, res) {
       });
     }
 
+    if (reservation?.reservationId) {
+      await commitQuota({ reservationId: reservation.reservationId });
+    }
+
     // On success, Facebook returns something like: { id: "PAGEID_postID" }
     return res.status(200).json({
       ok: true,
@@ -68,6 +101,9 @@ export default async function handler(req, res) {
       fbResponse: fbJson,
     });
   } catch (err) {
+    if (reservation?.reservationId) {
+      await releaseQuota({ reservationId: reservation.reservationId, reason: err.message });
+    }
     console.error("Meta create-post error:", err);
     return res.status(500).json({
       ok: false,

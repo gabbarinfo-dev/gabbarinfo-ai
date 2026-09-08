@@ -207,7 +207,7 @@ export default function SocialMediaPlannerModal({ onClose }) {
         : "Instagram";
 
     const confirmMsg = (!isOwner && testPostsUsed >= 1)
-      ? `Publish an immediate live creative to ${destLabel}? This will deduct 10 credits.`
+      ? `Publish an immediate live creative to ${destLabel}? This will consume 1 social post allowance from your monthly plan.`
       : `Post an immediate live test creative now to ${destLabel}? (1 free test post)`;
 
     const confirmPost = confirm(confirmMsg);
@@ -242,15 +242,15 @@ export default function SocialMediaPlannerModal({ onClose }) {
       }
 
       // Handle restricted / error responses immediately
-      if (res.status === 403 || data?.error?.includes("Restricted") || data?.error?.includes("restricted")) {
+      if (res.status === 403 || data?.error?.includes("Restricted") || data?.error?.includes("restricted") || data?.code === "FEATURE_NOT_INCLUDED" || data?.code === "MONTHLY_QUOTA_EXHAUSTED") {
         setIsRestricted(true);
-        alert("Service is restricted: " + (data?.error || "Social Media service is not enabled for your account."));
+        alert(data?.error || "Social post quota exhausted or feature not included in current plan. Please upgrade.");
         fetchConfig();
         return;
       }
 
       if (res.status === 402 || data?.error?.includes("Insufficient credits")) {
-        alert("Credits required: " + (data?.error || "Publishing a post requires 10 credits."));
+        alert(data?.error || "Publishing a post requires remaining social post quota on your plan.");
         fetchConfig();
         return;
       }
@@ -616,7 +616,7 @@ export default function SocialMediaPlannerModal({ onClose }) {
                       : (!isOwner && (config.testPostsUsed || 0) >= 1 && isRestricted)
                       ? "🔒 Service Restricted (Free Test Used)"
                       : (!isOwner && (config.testPostsUsed || 0) >= 1)
-                      ? "🚀 Post Creative (10 Credits)"
+                      ? "🚀 Post Creative Now"
                       : !isOwner
                       ? "🚀 Test Post Now (1 Free Left)"
                       : "🚀 Test Post Now"}

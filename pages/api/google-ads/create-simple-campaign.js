@@ -10,6 +10,7 @@ import {
   cleanCustomerId,
   createFullGoogleAdsCampaign,
 } from "../../../lib/googleAdsHelper";
+import { reserveQuota, commitQuota, releaseQuota } from "../../../lib/billing/quota-service";
 
 const SUPABASE_URL = process.env.NEXT_PUBLIC_SUPABASE_URL;
 const SUPABASE_SERVICE_ROLE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY;
@@ -37,9 +38,27 @@ export default async function handler(req, res) {
       refreshToken: incomingRefreshToken,
     } = body;
 
-    // 1) Authenticate user session
+    // 1) Authenticate user session & Check GOOGLE_CAMPAIGN Plan Quota
     const session = await getServerSession(req, res, authOptions);
     const email = session?.user?.email?.toLowerCase()?.trim();
+    const { businessId = null } = body;
+
+    const quotaRes = await reserveQuota({
+      session,
+      userEmail: email,
+      businessId,
+      actionType: "GOOGLE_CAMPAIGN",
+    });
+
+    if (!quotaRes.ok) {
+      return res.status(quotaRes.code === "FEATURE_NOT_INCLUDED" ? 403 : 402).json({
+        ok: false,
+        code: quotaRes.code,
+        message: quotaRes.error,
+        planId: quotaRes.planId,
+        nextResetDate: quotaRes.nextResetDate,
+      });
+    }
 
     let refreshTokenToUse = incomingRefreshToken || null;
     let customerIdToUse = incomingCustomerId || null;
@@ -126,11 +145,30 @@ export default async function handler(req, res) {
 
     if (!result.ok) {
       console.error("Google Ads Campaign Creation Failed:", result);
+      if (quotaRes?.reservationId) {
+        await releaseQuota({
+          reservationId: quotaRes.reservationId,
+          businessId: quotaRes.businessId,
+          cycleStart: quotaRes.cycleStart,
+          actionType: "GOOGLE_CAMPAIGN",
+          reason: result.message || "Google Ads API failure",
+        });
+      }
       return res.status(500).json({
         ok: false,
         step: result.step || "google_ads_api",
         message: result.message || "Failed to create campaign in Google Ads.",
         error: result.error,
+      });
+    }
+
+    if (quotaRes?.reservationId) {
+      await commitQuota({
+        reservationId: quotaRes.reservationId,
+        businessId: quotaRes.businessId,
+        cycleStart: quotaRes.cycleStart,
+        actionType: "GOOGLE_CAMPAIGN",
+        userEmail: email,
       });
     }
 

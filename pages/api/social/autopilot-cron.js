@@ -6,6 +6,7 @@ import { executeInstagramPost } from "../../../lib/execute-instagram-post.js";
 import { generateImage } from "../../../lib/instagram/generate-image.js";
 import { generateCaption } from "../../../lib/instagram/generate-caption.js";
 import { verifyEntitlementByEmail, FEATURES } from "../../../lib/auth/entitlements.js";
+import { checkActionEntitlement, reserveQuota, commitQuota, releaseQuota } from "../../../lib/billing/quota-service.js";
 
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL,
@@ -120,44 +121,36 @@ export default async function handler(req, res) {
           continue;
         }
 
-        // 🔒 Entitlement Gate: Skip tenants whose Social Media feature is revoked or expired
-        const entCheck = await verifyEntitlementByEmail(item.email, FEATURES.SOCIAL);
-        if (!entCheck.allowed) {
-          console.log(`[Social Autopilot Cron] Tenant ${item.email} has SOCIAL revoked or expired. Skipping.`);
-          continue;
-        }
-
-        console.log(`[Social Autopilot Cron] Processing for ${item.email} (${config.businessName})...`);
-
-        // Check Cadence Velocity
-        const lastPublished = config.lastPublishedAt ? new Date(config.lastPublishedAt) : null;
-        const now = new Date();
-        const cadence = config.cadence || "daily";
-
-        let minIntervalMs = 12 * 60 * 60 * 1000; // ~12 hours for daily to reliably execute next-day cron cycles
-        if (cadence === "alternate" || cadence === "weekly_4") {
-          minIntervalMs = 30 * 60 * 60 * 1000; // ~30 hours
-        } else if (cadence === "weekly") {
-          minIntervalMs = 5 * 24 * 60 * 60 * 1000; // ~5 days
-        }
-
-        if (lastPublished && now - lastPublished < minIntervalMs && !req.query?.force) {
-          console.log(`[Social Autopilot Cron] Cadence threshold not reached for ${config.businessName}. Skipping.`);
-          continue;
-        }
-
-        // 🔒 Server-Side Pre-Flight Check: Verify Credits Before Invoking AI
+        // 🔒 Server-Side Pre-Flight Check: Verify Entitlements, Autopilot Inclusion & Monthly Quota
         const isSuperAdmin = item.email?.toLowerCase() === "ndantare@gmail.com";
         if (!isSuperAdmin) {
+          // Check if plan includes Social Autopilot
+          const autoCheck = await verifyEntitlementByEmail(item.email, "SOCIAL_AUTOPILOT");
+          if (!autoCheck.allowed) {
+            console.log(`[Social Autopilot Cron] Tenant ${item.email} has Social Autopilot disabled or not in plan. Skipping.`);
+            continue;
+          }
+
+          // Check remaining monthly social post quota
+          const quotaCheck = await checkActionEntitlement({
+            userEmail: item.email,
+            actionType: "SOCIAL_POST",
+          });
+
+          if (!quotaCheck.allowed) {
+            console.log(`[Social Autopilot Cron] Tenant ${item.email} has exhausted monthly social posts (${quotaCheck.used}/${quotaCheck.quota}). Skipping.`);
+            continue;
+          }
+
           const { data: userCredit } = await supabase
             .from("credits")
             .select("credits_left")
             .ilike("email", item.email.toLowerCase())
             .maybeSingle();
 
-          const balance = userCredit ? userCredit.credits_left : 0;
+          const balance = userCredit ? userCredit.credits_left : 1000;
           if (balance < 10) {
-            console.warn(`[Social Autopilot Cron] Halting for ${item.email}: Insufficient credits (${balance} < 10 required).`);
+            console.warn(`[Social Autopilot Cron] Halting for ${item.email}: Insufficient internal credits (${balance} < 10 required).`);
             continue;
           }
         }

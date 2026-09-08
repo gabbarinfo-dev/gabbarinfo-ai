@@ -3,6 +3,7 @@ import { GoogleGenerativeAI } from "@google/generative-ai";
 import { getServerSession } from "next-auth/next";
 import { authOptions } from "./auth/[...nextauth]";
 import { verifyEntitlement, FEATURES } from "../../lib/auth/entitlements";
+import { reserveQuota, commitQuota, releaseQuota } from "../../lib/billing/quota-service";
 
 export default async function handler(req, res) {
   if (req.method !== "POST") {
@@ -21,12 +22,21 @@ export default async function handler(req, res) {
       return res.status(400).json({ error: "Missing prompt" });
     }
 
-    // 🔒 Entitlement Gate: AI_CHAT or IMAGE_GENERATION
-    const requiredFeature = type === "image" ? FEATURES.IMAGE_GENERATION : FEATURES.AI_CHAT;
-    const entitlement = await verifyEntitlement(session, businessId, requiredFeature);
-    if (!entitlement.allowed) {
-      return res.status(403).json({
-        error: entitlement.error || `The service "${requiredFeature}" has been restricted by platform administrator.`,
+    // 🔒 Entitlement Gate & Monthly Service Quota
+    const actionType = type === "image" ? "IMAGE_GENERATION" : "AI_QUERY";
+    const quotaRes = await reserveQuota({
+      session,
+      userEmail: session.user.email,
+      businessId,
+      actionType,
+    });
+
+    if (!quotaRes.ok) {
+      return res.status(quotaRes.code === "FEATURE_NOT_INCLUDED" ? 403 : 402).json({
+        error: quotaRes.error,
+        code: quotaRes.code,
+        planId: quotaRes.planId,
+        nextResetDate: quotaRes.nextResetDate,
       });
     }
 
@@ -114,11 +124,26 @@ export default async function handler(req, res) {
       });
     }
 
+    if (quotaRes?.reservationId) {
+      await commitQuota({
+        reservationId: quotaRes.reservationId,
+        businessId: quotaRes.businessId,
+        cycleStart: quotaRes.cycleStart,
+        actionType,
+        userEmail: session.user.email,
+      });
+    }
+
     return res.status(200).json({ text: text.trim() });
   } catch (err) {
-    console.error("GENERATION ERROR:", err);
+    if (quotaRes?.reservationId) {
+      await releaseQuota({
+        reservationId: quotaRes.reservationId,
+      });
+    }
+    console.error("API /api/generate error:", err);
     return res.status(500).json({
-      error: "Server error",
+      error: "Error generating response",
       details: err?.message || String(err),
     });
   }

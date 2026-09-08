@@ -5,6 +5,7 @@
 import { getServerSession } from "next-auth/next";
 import { authOptions } from "../auth/[...nextauth]";
 import { createClient } from "@supabase/supabase-js";
+import { reserveQuota, commitQuota, releaseQuota } from "../../../lib/billing/quota-service";
 
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL,
@@ -18,23 +19,30 @@ export default async function handler(req, res) {
 
   try {
     // ---------------------------
-    // 1) AUTH + ADMIN CHECK
+    // 1) AUTH + PLAN ENTITLEMENT & QUOTA CHECK
     // ---------------------------
     const session = await getServerSession(req, res, authOptions);
     if (!session) {
       return res.status(401).json({ ok: false, message: "Not authenticated" });
     }
 
-    const ADMIN_EMAILS = ["ndantare@gmail.com"];
-    const isAdmin = ADMIN_EMAILS.includes(
-      (session.user.email || "").toLowerCase()
-    );
-    const allowAll = process.env.ALLOW_META_CREATE_FOR_ALL === "true";
+    const userEmail = (session.user.email || "").toLowerCase().trim();
+    const { businessId = null } = req.body || {};
 
-    if (!isAdmin && !allowAll) {
-      return res.status(403).json({
+    const quotaRes = await reserveQuota({
+      session,
+      userEmail,
+      businessId,
+      actionType: "META_CAMPAIGN",
+    });
+
+    if (!quotaRes.ok) {
+      return res.status(quotaRes.code === "FEATURE_NOT_INCLUDED" ? 403 : 402).json({
         ok: false,
-        message: "Only admin can execute Meta campaigns. Set ALLOW_META_CREATE_FOR_ALL=true to allow all authenticated users.",
+        code: quotaRes.code,
+        message: quotaRes.error,
+        planId: quotaRes.planId,
+        nextResetDate: quotaRes.nextResetDate,
       });
     }
 
@@ -116,7 +124,16 @@ export default async function handler(req, res) {
 
     const fbJson = await fbRes.json().catch(() => ({}));
 
-    if (!fbRes.ok || fbJson.error) {
+    if (!fbRes.ok) {
+      if (quotaRes?.reservationId) {
+        await releaseQuota({
+          reservationId: quotaRes.reservationId,
+          businessId: quotaRes.businessId,
+          cycleStart: quotaRes.cycleStart,
+          actionType: "META_CAMPAIGN",
+          reason: "Meta API error",
+        });
+      }
       return res.status(400).json({
         ok: false,
         message: "Meta API error while creating campaign",
@@ -126,8 +143,18 @@ export default async function handler(req, res) {
     }
 
     // ---------------------------
-    // 5) SUCCESS
+    // 5) SUCCESS & COMMIT QUOTA
     // ---------------------------
+    if (quotaRes?.reservationId) {
+      await commitQuota({
+        reservationId: quotaRes.reservationId,
+        businessId: quotaRes.businessId,
+        cycleStart: quotaRes.cycleStart,
+        actionType: "META_CAMPAIGN",
+        userEmail,
+      });
+    }
+
     return res.status(200).json({
       ok: true,
       message: "Active Meta campaign created successfully",

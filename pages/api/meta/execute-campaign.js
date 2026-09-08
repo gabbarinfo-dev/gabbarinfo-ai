@@ -4,6 +4,7 @@ import { getServerSession } from "next-auth/next";
 import { authOptions } from "../auth/[...nextauth]";
 import { createClient } from "@supabase/supabase-js";
 import fetch from "node-fetch";
+import { reserveQuota, commitQuota, releaseQuota } from "../../../lib/billing/quota-service";
 
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL,
@@ -72,6 +73,20 @@ export default async function handler(req, res) {
   if (!clientEmail) {
     return res.status(401).json({
       ok: false, message: "Unauthorized"
+    });
+  }
+
+  // 🛡️ SERVER-SIDE ENTITLEMENT & QUOTA GATE: META_CAMPAIGN
+  const reservation = await reserveQuota({
+    userEmail: clientEmail,
+    actionType: "META_CAMPAIGN",
+  });
+
+  if (!reservation.ok) {
+    return res.status(403).json({
+      ok: false,
+      code: reservation.code,
+      message: reservation.error,
     });
   }
 
@@ -868,6 +883,10 @@ ${JSON.stringify(lastCreativeError, null, 2)}`);
       createdAssets.ads.push(adJson.id);
     }
 
+    // 🔒 Commit successful Meta Campaign creation
+    if (reservation?.reservationId) {
+      await commitQuota({ reservationId: reservation.reservationId });
+    }
 
     return res.status(200).json({
       ok: true,
@@ -877,6 +896,12 @@ ${JSON.stringify(lastCreativeError, null, 2)}`);
     });
 
   } catch (err) {
+    if (reservation?.reservationId) {
+      await releaseQuota({
+        reservationId: reservation.reservationId,
+        reason: err.message || "Meta Campaign execution failed",
+      });
+    }
     console.error("[Campaign Executor] Error:", err.message);
     return res.status(500).json({ ok: false, message: err.message });
   }

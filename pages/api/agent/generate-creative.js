@@ -1,14 +1,30 @@
 import { getServerSession } from "next-auth/next";
 import { authOptions } from "../auth/[...nextauth]";
 import { GoogleGenerativeAI } from "@google/generative-ai";
+import { reserveQuota, commitQuota, releaseQuota } from "../../../lib/billing/quota-service";
 
 const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
 
 export default async function handler(req, res) {
+  let reservation = null;
   try {
     const session = await getServerSession(req, res, authOptions);
     if (!session?.user?.email) {
       return res.status(401).json({ ok: false });
+    }
+
+    // 🛡️ SERVER-SIDE ENTITLEMENT & QUOTA GATE: AI_QUERY
+    reservation = await reserveQuota({
+      session,
+      actionType: "AI_QUERY",
+    });
+
+    if (!reservation.ok) {
+      return res.status(403).json({
+        ok: false,
+        code: reservation.code,
+        error: reservation.error,
+      });
     }
 
     const { intake, objective = "Traffic", offer = "" } = req.body;
@@ -87,12 +103,19 @@ Return STRICT JSON in this exact shape:
     if (!creative.primary_texts) creative.primary_texts = [intake.business_about || "Check out our services"];
     if (!creative.cta) creative.cta = "LEARN_MORE";
 
+    if (reservation?.reservationId) {
+      await commitQuota({ reservationId: reservation.reservationId });
+    }
+
     return res.json({
       ok: true,
       creative
     });
 
   } catch (err) {
+    if (reservation?.reservationId) {
+      await releaseQuota({ reservationId: reservation.reservationId, reason: err.message });
+    }
     console.error("Creative generation error:", err);
     return res.status(500).json({
       ok: false,

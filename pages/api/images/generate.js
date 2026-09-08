@@ -9,6 +9,7 @@ import { authOptions } from "../auth/[...nextauth]";
 import { verifyEntitlement, FEATURES } from "../../../lib/auth/entitlements";
 import { generatePlatformGraphic } from "../../../lib/services/image-service";
 import { checkRateLimit } from "../../../lib/middleware/rate-limiter";
+import { reserveQuota, commitQuota, releaseQuota } from "../../../lib/billing/quota-service";
 
 export default async function handler(req, res) {
   if (req.method !== "POST") {
@@ -45,13 +46,23 @@ export default async function handler(req, res) {
       return res.status(400).json({ ok: false, error: "Missing prompt parameter." });
     }
 
-    // 4. Entitlement Gate
+    // 4. Entitlement & Monthly Service Quota Gate
+    let quotaRes = null;
     if (session) {
-      const entitlement = await verifyEntitlement(session, businessId, FEATURES.IMAGE_GENERATION);
-      if (!entitlement.allowed) {
-        return res.status(403).json({
+      quotaRes = await reserveQuota({
+        session,
+        userEmail,
+        businessId,
+        actionType: "IMAGE_GENERATION",
+      });
+
+      if (!quotaRes.ok) {
+        return res.status(quotaRes.code === "FEATURE_NOT_INCLUDED" ? 403 : 402).json({
           ok: false,
-          error: entitlement.error || "Image generation is not permitted for your current business tier.",
+          code: quotaRes.code,
+          error: quotaRes.error,
+          planId: quotaRes.planId,
+          nextResetDate: quotaRes.nextResetDate,
         });
       }
     }
@@ -59,7 +70,7 @@ export default async function handler(req, res) {
     // 5. Central Unified Image Service Execution
     const result = await generatePlatformGraphic({
       prompt: prompt.trim(),
-      businessId: businessId || "default_business",
+      businessId: quotaRes?.businessId || businessId || "default_business",
       userEmail,
       aspectRatio,
       actionType: "IMAGE_GENERATION",
@@ -68,9 +79,28 @@ export default async function handler(req, res) {
     });
 
     if (!result.ok) {
+      if (quotaRes?.reservationId) {
+        await releaseQuota({
+          reservationId: quotaRes.reservationId,
+          businessId: quotaRes.businessId,
+          cycleStart: quotaRes.cycleStart,
+          actionType: "IMAGE_GENERATION",
+          reason: result.error || "Image generation failure",
+        });
+      }
       return res.status(500).json({
         ok: false,
         error: result.error || "Error generating image.",
+      });
+    }
+
+    if (quotaRes?.reservationId) {
+      await commitQuota({
+        reservationId: quotaRes.reservationId,
+        businessId: quotaRes.businessId,
+        cycleStart: quotaRes.cycleStart,
+        actionType: "IMAGE_GENERATION",
+        userEmail,
       });
     }
 

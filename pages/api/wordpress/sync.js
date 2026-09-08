@@ -3,6 +3,7 @@ import { getServerSession } from "next-auth/next";
 import { authOptions } from "../auth/[...nextauth]";
 import { createClient } from "@supabase/supabase-js";
 import { verifyEntitlement, FEATURES } from "../../../lib/auth/entitlements";
+import { getBusinessSubscriptionState } from "../../../lib/billing/quota-service";
 
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL,
@@ -110,11 +111,34 @@ export default async function handler(req, res) {
     }
 
     // ----------------------------------------------------------------
-    // 3. SAVE / CONNECT WORDPRESS WEBSITE
+    // 3. SAVE / CONNECT WORDPRESS WEBSITE (With Resource Limit Gate)
     // ----------------------------------------------------------------
     if (action === "save-connection") {
       if (!siteUrl || !apiKey) {
         return res.status(400).json({ ok: false, error: "Site URL and API Key are required" });
+      }
+
+      // Check simultaneous site resource limits
+      const subState = await getBusinessSubscriptionState(null, userEmail);
+      const plan = subState.plan;
+      const maxSites = plan.limits?.maxWordPressSites || 1;
+
+      // Count existing connected sites
+      const { data: existingSites } = await supabase
+        .from("agent_memory")
+        .select("memory_type")
+        .eq("email", userEmail)
+        .like("memory_type", "wp_conn_%");
+
+      const existingCount = (existingSites || []).length;
+      const isUpdatingExisting = existingSites?.some(s => s.memory_type === memoryKey);
+
+      if (!isUpdatingExisting && existingCount >= maxSites && !subState.isUnlimited) {
+        return res.status(403).json({
+          ok: false,
+          code: "RESOURCE_LIMIT_REACHED",
+          error: `Your current ${plan.name} plan permits up to ${maxSites} connected WordPress website(s). You currently have ${existingCount}. Upgrade your plan to connect additional websites.`,
+        });
       }
 
       const cleanUrl = formatUrl(siteUrl);
