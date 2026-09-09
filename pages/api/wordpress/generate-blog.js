@@ -256,7 +256,15 @@ CRITICAL LENGTH & DEPTH MANDATES:
      - NEVER use light, white, or light gray backgrounds (like #f8fafc, #f1f5f9, or #ffffff) in any boxes or callouts!
      - Any callouts, key takeaways, or pro-tips must use dark mode styling: style="background: rgba(255, 255, 255, 0.04); border: 1px solid rgba(255, 255, 255, 0.1); border-left: 4px solid #f59e0b; padding: 18px 24px; margin: 24px 0; border-radius: 8px; color: #f1f5f9;"
 
-6. OUTPUT FORMAT:
+6. CRITICAL VISUAL PROMPTING MANDATES:
+   - "featured_image_prompt": You MUST write an ultra-specific, topic-tailored visual prompt for a 16:9 panoramic widescreen hero banner that directly illustrates the core subject "${topic}".
+     - If an SEO or digital marketing guide: describe an ultra-thin modern glass laptop displaying a realistic Google search results page with a glowing #1 rank badge, golden magnifying glass, analytics trendline charts (organic traffic, keyword rankings, revenue), stacked gold coins, and a target with an arrow hitting the bullseye. Specify Octane 3D render, dark sleek slate background, cinematic studio lighting, and crisp English headline typography on the graphic.
+     - If comparing two platforms (e.g. Google Ads vs SEO): describe a split comparative showcase with realistic interface screens on each side, platform logos/plaques, and a glowing "VS" emblem in the center.
+     - If social media marketing: describe modern 3D smartphones showing engaging feed layouts with viral analytics and engagement badges.
+     - NEVER create abstract, vague sci-fi command centers or irrelevant cubes/spheres! Every image MUST be instantly recognizable and directly relevant to the topic.
+   - "mid_image_prompt": You MUST write an ultra-specific, educational visual prompt for a 1:1 square infographic diagram or process breakdown that illustrates a key concept or framework from the article. It must look like a high-end editorial infographic poster or flowchart with clearly labeled tiers, steps, or comparison columns (e.g. 4-tier SEO growth architecture pyramid, step-by-step workflow, or side-by-side feature matrix). Specify: crisp typography, clear iconography, clean layout, signature amber/yellow highlights.
+
+7. OUTPUT FORMAT:
    - Output MUST be strictly valid JSON matching the schema.`;
 
     const userPrompt = `Business: ${effectiveBusiness}
@@ -309,24 +317,36 @@ Respond ONLY with a valid JSON object matching this schema:
 
     // For autonomous autopilot cycles, prioritize high-velocity model (gpt-4o-mini) to stay well within 60s Vercel limit
     const blogModel = req.body?.model || (req.body?.isAutopilot ? "gpt-4o-mini" : (process.env.AI_BLOG_MODEL || "gpt-4o-mini"));
-    console.log(`[SEO Engine] Initiating concurrent parallel generation: ${blogModel} text + 2 gpt-image-2 visuals simultaneously...`);
+    console.log(`[SEO Engine] Step 1: Generating full 1600+ word article and bespoke image prompts with ${blogModel}...`);
 
-    const featuredPrompt = `Panoramic 16:9 widescreen 3D conceptual artwork of "${topic}" for ${effectiveBusiness}. Sleek futuristic analytics command center, glowing golden trophy and amber bar charts, upward growth arrow, dark navy and slate aesthetic, cinematic studio lighting, Octane 3D render. STRICTLY NO TEXT, NO WORDS, NO LETTERS, NO TYPOGRAPHY, completely clean visual art.`;
+    const completion = await openai.chat.completions.create({
+      model: blogModel,
+      messages: [
+        { role: "system", content: systemPrompt },
+        { role: "user", content: userPrompt },
+      ],
+      response_format: { type: "json_object" },
+      max_tokens: 8000,
+      temperature: 0.7,
+    });
 
-    const midPrompt = `Clean isometric 3D infographic diagram illustrating "${topic}" and modern digital marketing growth flywheel. Floating glass geometric layers, golden gears, upward trajectory, dark slate background, warm amber glowing accents, studio lighting. STRICTLY NO TEXT, NO WORDS, NO LETTERS, completely clean visual art.`;
+    const parsedArticle = JSON.parse(completion.choices[0].message.content);
 
-    // Execute LLM text generation AND both visual generations CONCURRENTLY in parallel
-    const [completion, featuredImageUrl, midImageUrl] = await Promise.all([
-      openai.chat.completions.create({
-        model: blogModel,
-        messages: [
-          { role: "system", content: systemPrompt },
-          { role: "user", content: userPrompt },
-        ],
-        response_format: { type: "json_object" },
-        max_tokens: 8000,
-        temperature: 0.7,
-      }),
+    // Step 2: Generate bespoke topic-relevant visuals concurrently using the LLM's tailored prompts
+    console.log(`[SEO Engine] Step 2: Generating topic-relevant dual gpt-image-2 visuals concurrently...`);
+
+    const fallbackHero = `A stunning, highly relevant 16:9 widescreen 3D concept render for '${topic}' for ${effectiveBusiness}. Modern glass laptop displaying search results with glowing #1 rank badge, golden magnifying glass, upward green and gold revenue charts, stacked gold coins, dark sleek theme, Octane 3D render.`;
+    const fallbackMid = `A clean educational 1:1 square 3D infographic diagram illustrating the core framework for '${topic}'. Sleek multi-tier architecture with labeled steps, glowing connection lines, warm amber accents, crisp clean studio lighting.`;
+
+    const featuredPrompt = parsedArticle.featured_image_prompt
+      ? `${parsedArticle.featured_image_prompt}. Panoramic 16:9 widescreen, cinematic studio lighting, Octane 3D render.`
+      : fallbackHero;
+
+    const midPrompt = parsedArticle.mid_image_prompt
+      ? `${parsedArticle.mid_image_prompt}. 1:1 square educational infographic diagram, crisp typography, clean layout, signature amber highlights.`
+      : fallbackMid;
+
+    const [featuredImageUrl, midImageUrl] = await Promise.all([
       generateAiVisual(featuredPrompt, "featured", "1792x1024").catch((e) => {
         console.warn("Featured image generation error:", e.message);
         return null;
@@ -336,8 +356,6 @@ Respond ONLY with a valid JSON object matching this schema:
         return null;
       }),
     ]);
-
-    const parsedArticle = JSON.parse(completion.choices[0].message.content);
 
     // 6. Ensure In-Content Mid Visual is Injected and Verify Word Count
     let finalContent = parsedArticle.html_content || "";
