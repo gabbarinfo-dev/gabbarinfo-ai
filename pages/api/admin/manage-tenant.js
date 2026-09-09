@@ -74,7 +74,8 @@ export default async function handler(req, res) {
 
         let features = Array.isArray(config.features) ? config.features : null;
         if (currentPlan === "none") {
-          features = [];
+          // If plan is none, keep whatever admin explicitly enabled, or empty array if none
+          features = features || [];
         } else if (!features || features.length === 0) {
           // Auto-heal: active plan had empty features list
           features = getFeaturesForPlan(currentPlan);
