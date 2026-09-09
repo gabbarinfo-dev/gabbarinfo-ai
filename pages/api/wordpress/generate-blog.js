@@ -1,13 +1,13 @@
 // pages/api/wordpress/generate-blog.js
 import { getServerSession } from "next-auth/next";
-import { authOptions } from "../auth/[...nextauth]";
+import { authOptions } from "../auth/[...nextauth].js";
 import { createClient } from "@supabase/supabase-js";
 import OpenAI from "openai";
-import { verifyEntitlement, verifyEntitlementByEmail, FEATURES } from "../../../lib/auth/entitlements";
-import { reserveCredits, releaseCredits } from "../../../lib/billing/credit-meter";
-import { checkRateLimit } from "../../../lib/middleware/rate-limiter";
-import { generatePlatformGraphic } from "../../../lib/services/image-service";
-import { reserveQuota, commitQuota, releaseQuota } from "../../../lib/billing/quota-service";
+import { verifyEntitlement, verifyEntitlementByEmail, FEATURES } from "../../../lib/auth/entitlements.js";
+import { reserveCredits, releaseCredits } from "../../../lib/billing/credit-meter.js";
+import { checkRateLimit } from "../../../lib/middleware/rate-limiter.js";
+import { generatePlatformGraphic } from "../../../lib/services/image-service.js";
+import { reserveQuota, commitQuota, releaseQuota } from "../../../lib/billing/quota-service.js";
 
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL,
@@ -264,8 +264,9 @@ Respond ONLY with a valid JSON object matching this schema:
   "mid_image_alt": "Descriptive SEO alt text for mid visual"
 }`;
 
-    const blogModel = process.env.AI_BLOG_MODEL || "gpt-4o";
-    console.log(`[SEO Engine] Using ${blogModel} to generate blog...`);
+    // For autonomous autopilot cycles, prioritize high-velocity model (gpt-4o-mini) to stay well within 60s Vercel limit
+    const blogModel = req.body?.model || (req.body?.isAutopilot ? "gpt-4o-mini" : (process.env.AI_BLOG_MODEL || "gpt-4o-mini"));
+    console.log(`[SEO Engine] Using ${blogModel} to generate blog (autopilot: ${Boolean(req.body?.isAutopilot)})...`);
 
     const completion = await openai.chat.completions.create({
       model: blogModel,

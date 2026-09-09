@@ -10,9 +10,16 @@ const supabase = createClient(
 export default async function handler(req, res) {
   // Allow secret key verification for secure cron invocation
   const cronSecret = process.env.CRON_SECRET;
-  const isVercelCron = req.headers["x-vercel-cron"] === "1";
-  if (cronSecret && req.headers["authorization"] !== `Bearer ${cronSecret}` && req.query?.secret !== cronSecret && !isVercelCron) {
-    // In production cron, verify secret; allow manual trigger if development
+  const isVercelCron =
+    req.headers["x-vercel-cron"] === "1" ||
+    (req.headers["user-agent"] || "").toLowerCase().includes("vercel-cron");
+  if (
+    cronSecret &&
+    req.headers["authorization"] !== `Bearer ${cronSecret}` &&
+    req.query?.secret !== cronSecret &&
+    !isVercelCron
+  ) {
+    // In production cron, verify secret; allow manual trigger if development or force param
     if (process.env.NODE_ENV === "production" && !req.query?.force) {
       return res.status(401).json({ ok: false, error: "Unauthorized cron trigger" });
     }
@@ -109,10 +116,11 @@ export default async function handler(req, res) {
             businessName: config.businessName || "GABBARinfo",
             topic: generatedTopic,
             targetKeywords: keywords,
-            wordCount: config.wordCount || 1500,
+            wordCount: config.wordCount || 1200,
             brandVoice: config.brandVoice || "consultative and results-oriented",
             industry: config.industry || "Business",
             publishStatus: "publish",
+            isAutopilot: true,
           }),
         });
 

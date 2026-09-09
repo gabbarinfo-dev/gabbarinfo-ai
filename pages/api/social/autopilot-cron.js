@@ -91,8 +91,15 @@ async function generateSocialVisual(prompt, label = "social") {
 
 export default async function handler(req, res) {
   const cronSecret = process.env.CRON_SECRET;
-  const isVercelCron = req.headers["x-vercel-cron"] === "1";
-  if (cronSecret && req.headers["authorization"] !== `Bearer ${cronSecret}` && req.query?.secret !== cronSecret && !isVercelCron) {
+  const isVercelCron =
+    req.headers["x-vercel-cron"] === "1" ||
+    (req.headers["user-agent"] || "").toLowerCase().includes("vercel-cron");
+  if (
+    cronSecret &&
+    req.headers["authorization"] !== `Bearer ${cronSecret}` &&
+    req.query?.secret !== cronSecret &&
+    !isVercelCron
+  ) {
     if (process.env.NODE_ENV === "production" && !req.query?.force) {
       return res.status(401).json({ ok: false, error: "Unauthorized cron trigger" });
     }

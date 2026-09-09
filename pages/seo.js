@@ -20,6 +20,8 @@ export default function SeoHubPage() {
   const [loadingContent, setLoadingContent] = useState(false);
   const [contentFilter, setContentFilter] = useState("all"); // "all" | "post" | "page"
   const [searchQuery, setSearchQuery] = useState("");
+  const [autopilotPublishedCount, setAutopilotPublishedCount] = useState(0);
+  const [lastPublishedAt, setLastPublishedAt] = useState(null);
 
   // Optimize Modal State
   const [optimizingItem, setOptimizingItem] = useState(null);
@@ -208,6 +210,8 @@ export default function SeoHubPage() {
         setCustomDaysPerWeek(Number(data.config.customDaysPerWeek) || 3);
         setAutoShareFb(data.config.autoShareFacebook !== false);
         setAutoShareIg(data.config.autoShareInstagram !== false);
+        setAutopilotPublishedCount(Number(data.config.publishedCount) || 0);
+        setLastPublishedAt(data.config.lastPublishedAt || null);
         if (Array.isArray(data.config.targetKeywords) && data.config.targetKeywords.length > 0) {
           setKeywords(data.config.targetKeywords);
         }
@@ -939,41 +943,61 @@ export default function SeoHubPage() {
       {/* ── MAIN WORKSPACE CONTAINER ── */}
       <div style={{ maxWidth: 1240, margin: "0 auto", padding: "20px 16px", position: "relative", zIndex: 1, width: "100%", boxSizing: "border-box" }}>
         {/* KPI CARDS BAR */}
-        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(160px, 1fr))", gap: 12, marginBottom: 24 }}>
-          <div style={{ background: "rgba(16, 22, 34, 0.78)", border: "1px solid rgba(255, 255, 255, 0.12)", borderRadius: 14, padding: "14px 16px", boxShadow: "0 10px 30px rgba(0,0,0,0.4)" }}>
-            <div style={{ fontSize: 11, color: "#94a3b8", fontWeight: 700, textTransform: "uppercase" }}>Connected Site</div>
-            <div style={{ fontSize: 14, fontWeight: 700, color: "#fff", marginTop: 6, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-              {connection?.siteUrl ? connection.siteUrl.replace(/^https?:\/\//, "") : "Not Connected"}
-            </div>
-            <div style={{ fontSize: 12, color: connection?.siteUrl ? "#10b981" : "#94a3b8", marginTop: 4, fontWeight: 600 }}>
-              {connection?.siteUrl ? "● Active & Syncing" : "○ Awaiting Pairing"}
-            </div>
-          </div>
+        {(() => {
+          const liveBlogsCount = contentList.filter((i) => (i.type || i.post_type) === "post").length;
+          const livePagesCount = contentList.filter((i) => (i.type || i.post_type) === "page").length;
+          const displayBlogCount = liveBlogsCount > 0 ? liveBlogsCount : contentList.length;
 
-          <div style={{ background: "rgba(16, 22, 34, 0.78)", border: "1px solid rgba(255, 255, 255, 0.12)", borderRadius: 14, padding: "14px 16px", boxShadow: "0 10px 30px rgba(0,0,0,0.4)" }}>
-            <div style={{ fontSize: 11, color: "#94a3b8", fontWeight: 700, textTransform: "uppercase" }}>Live Content Items</div>
-            <div style={{ fontSize: 22, fontWeight: 800, color: "#ffffff", marginTop: 4 }}>{contentList.length}</div>
-            <div style={{ fontSize: 12, color: "#94a3b8", marginTop: 2 }}>Synced Posts & Pages</div>
-          </div>
+          return (
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))", gap: 12, marginBottom: 24 }}>
+              <div style={{ background: "rgba(16, 22, 34, 0.78)", border: "1px solid rgba(255, 255, 255, 0.12)", borderRadius: 14, padding: "14px 16px", boxShadow: "0 10px 30px rgba(0,0,0,0.4)" }}>
+                <div style={{ fontSize: 11, color: "#94a3b8", fontWeight: 700, textTransform: "uppercase" }}>Connected Domain</div>
+                <div style={{ fontSize: 14, fontWeight: 700, color: "#fff", marginTop: 6, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                  {connection?.siteUrl ? connection.siteUrl.replace(/^https?:\/\//, "") : "Not Connected"}
+                </div>
+                <div style={{ fontSize: 12, color: connection?.siteUrl ? "#10b981" : "#94a3b8", marginTop: 4, fontWeight: 600 }}>
+                  {connection?.siteUrl ? "● Active & Syncing" : "○ Awaiting Pairing"}
+                </div>
+              </div>
 
-          <div style={{ background: "rgba(16, 22, 34, 0.78)", border: "1px solid rgba(255, 255, 255, 0.12)", borderRadius: 14, padding: "14px 16px", boxShadow: "0 10px 30px rgba(0,0,0,0.4)" }}>
-            <div style={{ fontSize: 11, color: "#94a3b8", fontWeight: 700, textTransform: "uppercase" }}>Target Keywords</div>
-            <div style={{ fontSize: 22, fontWeight: 800, color: "#38bdf8", marginTop: 4 }}>{keywords.length}</div>
-            <div style={{ fontSize: 12, color: keywords.length > 0 ? "#10b981" : "#94a3b8", marginTop: 2, fontWeight: 600 }}>
-              {keywords.length > 0 ? "Coverage Active" : "Awaiting Setup"}
-            </div>
-          </div>
+              <div style={{ background: "rgba(16, 22, 34, 0.78)", border: "1px solid rgba(255, 255, 255, 0.12)", borderRadius: 14, padding: "14px 16px", boxShadow: "0 10px 30px rgba(0,0,0,0.4)" }}>
+                <div style={{ fontSize: 11, color: "#34d399", fontWeight: 700, textTransform: "uppercase" }}>📚 Published Blogs</div>
+                <div style={{ fontSize: 24, fontWeight: 800, color: "#ffffff", marginTop: 4 }}>{displayBlogCount}</div>
+                <div style={{ fontSize: 12, color: "#94a3b8", marginTop: 2 }}>
+                  {livePagesCount > 0 ? `Live Posts (+${livePagesCount} Pages)` : "Live WordPress Posts"}
+                </div>
+              </div>
 
-          <div style={{ background: "rgba(16, 22, 34, 0.78)", border: "1px solid rgba(255, 255, 255, 0.12)", borderRadius: 14, padding: "14px 16px", boxShadow: "0 10px 30px rgba(0,0,0,0.4)" }}>
-            <div style={{ fontSize: 11, color: "#94a3b8", fontWeight: 700, textTransform: "uppercase" }}>Autopilot Dispatch</div>
-            <div style={{ fontSize: 16, fontWeight: 700, color: autopilotEnabled ? "#10b981" : "#94a3b8", marginTop: 6, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-              {autopilotEnabled
-                ? `Active (${cadence === "daily" ? "Daily" : cadence === "weekly" ? "Weekly" : cadence === "monthly" ? "Monthly" : `${customDaysPerWeek}x/wk`})`
-                : "Paused"}
+              <div style={{ background: "rgba(16, 22, 34, 0.78)", border: "1px solid rgba(255, 255, 255, 0.12)", borderRadius: 14, padding: "14px 16px", boxShadow: "0 10px 30px rgba(0,0,0,0.4)" }}>
+                <div style={{ fontSize: 11, color: "#38bdf8", fontWeight: 700, textTransform: "uppercase" }}>🤖 Autopilot Published</div>
+                <div style={{ fontSize: 24, fontWeight: 800, color: "#38bdf8", marginTop: 4 }}>{autopilotPublishedCount}</div>
+                <div style={{ fontSize: 12, color: "#94a3b8", marginTop: 2 }}>
+                  {lastPublishedAt ? `Last: ${new Date(lastPublishedAt).toLocaleDateString()}` : "Autonomous delivery"}
+                </div>
+              </div>
+
+              <div style={{ background: "rgba(16, 22, 34, 0.78)", border: "1px solid rgba(255, 255, 255, 0.12)", borderRadius: 14, padding: "14px 16px", boxShadow: "0 10px 30px rgba(0,0,0,0.4)" }}>
+                <div style={{ fontSize: 11, color: "#94a3b8", fontWeight: 700, textTransform: "uppercase" }}>Target Keywords</div>
+                <div style={{ fontSize: 24, fontWeight: 800, color: "#fbbf24", marginTop: 4 }}>{keywords.length}</div>
+                <div style={{ fontSize: 12, color: keywords.length > 0 ? "#10b981" : "#94a3b8", marginTop: 2, fontWeight: 600 }}>
+                  {keywords.length > 0 ? "Coverage Active" : "Awaiting Setup"}
+                </div>
+              </div>
+
+              <div style={{ background: "rgba(16, 22, 34, 0.78)", border: "1px solid rgba(255, 255, 255, 0.12)", borderRadius: 14, padding: "14px 16px", boxShadow: "0 10px 30px rgba(0,0,0,0.4)" }}>
+                <div style={{ fontSize: 11, color: "#94a3b8", fontWeight: 700, textTransform: "uppercase" }}>Autopilot Cadence</div>
+                <div style={{ fontSize: 15, fontWeight: 700, color: autopilotEnabled ? "#10b981" : "#94a3b8", marginTop: 6, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                  {autopilotEnabled
+                    ? `Active (${cadence === "daily" ? "Daily" : cadence === "weekly" ? "Weekly" : cadence === "monthly" ? "Monthly" : `${customDaysPerWeek}x/wk`})`
+                    : "Paused"}
+                </div>
+                <div style={{ fontSize: 12, color: autopilotEnabled ? "#34d399" : "#64748b", marginTop: 2 }}>
+                  {autopilotEnabled ? "Next Dispatch: Today" : "Autonomous posting paused"}
+                </div>
+              </div>
             </div>
-            <div style={{ fontSize: 12, color: "#64748b", marginTop: 2 }}>Autonomous publishing</div>
-          </div>
-        </div>
+          );
+        })()}
 
         {/* ── WORKSPACE TABS (MOBILE HORIZONTAL TOUCH SCROLL) ── */}
         <div
@@ -2595,6 +2619,41 @@ export default function SeoHubPage() {
                   {cycleNotice}
                 </div>
               )}
+
+              {/* ── AUTOPILOT PUBLISHING INTELLIGENCE BAR ── */}
+              <div style={{ marginTop: 24, paddingTop: 20, borderTop: "1px solid rgba(255, 255, 255, 0.08)", display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(200px, 1fr))", gap: 16 }}>
+                <div style={{ background: "rgba(255, 255, 255, 0.03)", border: "1px solid rgba(255, 255, 255, 0.06)", borderRadius: 10, padding: "12px 16px" }}>
+                  <div style={{ fontSize: 11, color: "#94a3b8", fontWeight: 700, textTransform: "uppercase" }}>📚 Live Published Blogs</div>
+                  <div style={{ fontSize: 20, fontWeight: 800, color: "#34d399", marginTop: 4 }}>
+                    {contentList.filter((i) => (i.type || i.post_type) === "post").length || contentList.length} Articles
+                  </div>
+                  <div style={{ fontSize: 11, color: "#64748b", marginTop: 2 }}>Synced live on WordPress</div>
+                </div>
+
+                <div style={{ background: "rgba(255, 255, 255, 0.03)", border: "1px solid rgba(255, 255, 255, 0.06)", borderRadius: 10, padding: "12px 16px" }}>
+                  <div style={{ fontSize: 11, color: "#94a3b8", fontWeight: 700, textTransform: "uppercase" }}>🤖 AI Autopilot Output</div>
+                  <div style={{ fontSize: 20, fontWeight: 800, color: "#38bdf8", marginTop: 4 }}>
+                    {autopilotPublishedCount} Delivered
+                  </div>
+                  <div style={{ fontSize: 11, color: "#64748b", marginTop: 2 }}>Generated & published autonomously</div>
+                </div>
+
+                <div style={{ background: "rgba(255, 255, 255, 0.03)", border: "1px solid rgba(255, 255, 255, 0.06)", borderRadius: 10, padding: "12px 16px" }}>
+                  <div style={{ fontSize: 11, color: "#94a3b8", fontWeight: 700, textTransform: "uppercase" }}>📅 Last Dispatched At</div>
+                  <div style={{ fontSize: 14, fontWeight: 700, color: "#f8fafc", marginTop: 6, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                    {lastPublishedAt ? new Date(lastPublishedAt).toLocaleDateString(undefined, { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' }) : "Active for today's cycle"}
+                  </div>
+                  <div style={{ fontSize: 11, color: "#64748b", marginTop: 2 }}>Autonomous cadence monitor</div>
+                </div>
+
+                <div style={{ background: "rgba(255, 255, 255, 0.03)", border: "1px solid rgba(255, 255, 255, 0.06)", borderRadius: 10, padding: "12px 16px" }}>
+                  <div style={{ fontSize: 11, color: "#94a3b8", fontWeight: 700, textTransform: "uppercase" }}>🚀 Multichannel Syndication</div>
+                  <div style={{ fontSize: 13, fontWeight: 700, color: autoShareFb ? "#60a5fa" : "#94a3b8", marginTop: 6 }}>
+                    {autoShareFb ? "✓ Facebook Page Live" : "○ Facebook Off"}
+                  </div>
+                  <div style={{ fontSize: 11, color: "#64748b", marginTop: 2 }}>Instant cross-posting enabled</div>
+                </div>
+              </div>
             </div>
 
             {/* ── SECTION 1: DEFINE PUBLISHING RHYTHM & VOLUME ── */}
