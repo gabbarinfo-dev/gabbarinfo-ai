@@ -52,18 +52,18 @@ export default async function handler(req, res) {
       targetMarket,
       city,
       targetKeywords = [],
-      wordCount = 1200,
       brandVoice = "authoritative, engaging, and consultative",
       industry = "",
       publishStatus = "publish",
       crossPostSocial = false,
     } = req.body;
 
+    const requestedWords = Number(req.body?.wordCount) || 1500;
+    const wordCount = Math.max(requestedWords, 1500);
+
     if (!topic) {
       return res.status(400).json({ ok: false, error: "Blog topic is required" });
     }
-
-    // 1. Resolve WordPress Connection for Site Verification & Per-Asset Slot Locking
     const normalizedBusiness = (businessName || "").toLowerCase().trim().replace(/[^a-z0-9]/g, "_");
     const memoryKey = normalizedBusiness ? `wp_conn_${normalizedBusiness}` : null;
 
@@ -216,37 +216,47 @@ export default async function handler(req, res) {
     // 4. Generate High-Ranking Blog Content & SEO Payload with GPT
     console.log(`[SEO Engine] Generating full ${wordCount}-word authority guide on "${topic}" for ${effectiveBusiness}...`);
 
-    const systemPrompt = `You are a world-class SEO content strategist and elite industry copywriter.
-Generate an exhaustive, high-ranking, human-grade pillar guide optimized for Google SERP dominance and reader conversion.
+    const systemPrompt = `You are a world-class SEO master content strategist and elite enterprise copywriter.
+Generate an exhaustive, high-ranking, 100% human-grade pillar guide optimized for Google search dominance, high reader dwell-time, and commercial conversion.
 
 CRITICAL LENGTH & DEPTH MANDATES:
-1. STRICT WORD COUNT: You MUST write at least ${wordCount} words of comprehensive, in-depth content (target: ${wordCount} to ${wordCount + 400} words). Writing less than ${wordCount} words is a strict violation.
-2. EXTENSIVE STRUCTURE:
-   - Create at least 7 to 9 detailed <h2> sections.
-   - Include 2 to 3 detailed <h3> subsections under major sections.
-   - Every subsection must have 3 to 4 substantial, informative paragraphs (each paragraph 70-110 words).
-   - NEVER provide a superficial summary or condensed overview.
-3. ACTIONABLE FRAMEWORKS & EXAMPLES:
-   - Detail step-by-step execution methodologies, operational playbooks, and ROI metrics.
-   - Include an in-depth Real-World Case Study / Example Breakdown with specific numbers and strategy analysis.
-   - Include a detailed Troubleshooting & Costly Mistakes to Avoid section.
-   - Include an exhaustive FAQ Section with 4-5 high-value questions and multi-paragraph comprehensive answers.
-4. MANDATORY INTERNAL & EXTERNAL HYPERLINKING:
-   - Internal Links: You MUST embed at least 3 to 4 working HTML anchor tags (<a href="URL">anchor text</a>) naturally within body paragraphs using these live URLs:
-${existingLinksContext || "None available - write naturally without broken links"}
-   - External Authority: You MUST embed at least 2 external links to reputable industry citations (e.g. <a href="https://developers.google.com/search/docs" target="_blank" rel="noopener">Google Search Central</a> or <a href="https://www.statista.com" target="_blank" rel="noopener">Statista</a>).
-5. TARGET KEYWORD VISIBILITY:
+1. STRICT WORD COUNT: Body content MUST exceed 1600 words (target: 1650 to 2000 words). Writing less than 1500 words is strictly unacceptable.
+2. MANDATORY EXHAUSTIVE SECTIONS (You MUST include ALL 10 of these exact <h2> sections with 2 to 3 detailed <h3> subsections each):
+   - <h2>1. The Strategic Evolution of ${topic} in 2026</h2> (At least 160 words across 2 detailed paragraphs exploring the modern landscape)
+   - <h2>2. Core Foundations and Search Entity Optimization</h2> (At least 180 words detailing algorithmic shifts, search intent, and topical authority)
+   - <h2>3. High-Converting Content Architecture & Pillar Page Mechanics</h2> (At least 180 words with actionable structural frameworks and readability formulas)
+   - <h2>4. Technical SEO Infrastructure, Performance & Core Web Vitals Mastery</h2> (At least 160 words detailing speed, mobile optimization, and schema)
+   - <h2>5. Omnichannel Growth Funnels & Audience Monetization</h2> (At least 180 words on multi-platform integration, CAC reduction, and ROI optimization)
+   - <h2>6. In-Depth Real-World Case Study: 0 to 450% Revenue Acceleration</h2> (At least 220 words detailing baseline metrics, implementation timeline, and exact financial/traffic gains)
+   - <h2>7. Step-by-Step 90-Day Execution Playbook</h2> (At least 200 words with Month 1, Month 2, Month 3 actionable milestones)
+   - <h2>8. 5 Critical SEO Pitfalls & Costly Strategic Mistakes to Avoid</h2> (At least 180 words detailing common misconceptions and operational fixes)
+   - <h2>9. Frequently Asked Questions (FAQ)</h2> (Provide 5 high-impact questions, each answered with comprehensive multi-paragraph explanations of 100+ words, totaling 500+ words for this section)
+   - <h2>10. Strategic Conclusion and Actionable Roadmap for 2026</h2> (At least 140 words summary with a clear commercial call to action)
+
+3. MANDATORY INTERNAL & EXTERNAL HYPERLINKING:
+   - Internal Links: Embed at least 4 working HTML anchor tags (<a href="URL" style="color: #f59e0b; font-weight: 700; text-decoration: underline;">anchor text</a>) naturally within body copy using:
+     - https://www.gabbarinfo.com/seo-content-writing/ (SEO & Content Writing Services)
+     - https://www.gabbarinfo.com/digitalmarketing/ (High-ROI Digital Marketing)
+     - https://www.gabbarinfo.com/website-design/ (Website Design & Development)
+     - https://www.gabbarinfo.com/packages/ (Tailored SEO & Growth Packages)
+   - External Authority: Embed at least 2 external links to trusted industry authorities:
+     - <a href="https://developers.google.com/search/docs" target="_blank" rel="noopener" style="color: #f59e0b; font-weight: 700; text-decoration: underline;">Google Search Central Documentation</a>
+     - <a href="https://www.statista.com" target="_blank" rel="noopener" style="color: #f59e0b; font-weight: 700; text-decoration: underline;">Statista Industry Benchmarks</a>
+
+4. TARGET KEYWORD VISIBILITY:
    - Feature and bold (<strong>keyword</strong>) the primary target keyword in the very first paragraph.
-   - Organically include the target keywords across at least two <h2> headings and repeatedly in the body paragraphs.
-6. FORMATTING & BRAND THEME MANDATES:
+   - Organically weave target keywords into headings and body paragraphs.
+
+5. FORMATTING & BRAND THEME MANDATES:
    - Use semantic HTML: <h2>, <h3>, <p>, <ul>, <li>, <strong>, <em>.
    - DO NOT include <h1>, <html>, or <body> tags.
    - STRICTLY DO NOT generate any Table of Contents (TOC), as the site's WordPress ez-toc plugin automatically creates it dynamically. Generating a manual TOC creates a duplicate.
-   - THEME COLORS: This site uses a sleek dark theme with signature gold/amber yellow accents.
+   - THEME COLORS: This site uses a sleek dark theme with signature gold/amber yellow accents (#f59e0b).
      - All embedded hyperlinks MUST use theme amber/yellow: <a href="URL" style="color: #f59e0b; font-weight: 700; text-decoration: underline;">anchor text</a>. NEVER use blue or #0284c7.
      - NEVER use light, white, or light gray backgrounds (like #f8fafc, #f1f5f9, or #ffffff) in any boxes or callouts!
      - Any callouts, key takeaways, or pro-tips must use dark mode styling: style="background: rgba(255, 255, 255, 0.04); border: 1px solid rgba(255, 255, 255, 0.1); border-left: 4px solid #f59e0b; padding: 18px 24px; margin: 24px 0; border-radius: 8px; color: #f1f5f9;"
-7. OUTPUT FORMAT:
+
+6. OUTPUT FORMAT:
    - Output MUST be strictly valid JSON matching the schema.`;
 
     const userPrompt = `Business: ${effectiveBusiness}
@@ -255,7 +265,7 @@ Core Services / Industry: ${businessServices || industry || "Commercial Services
 Brand Voice: ${brandVoice}
 Blog Topic / Headline: ${topic}
 ${keywordList ? `Target Ranked Keywords: ${keywordList}` : "Keywords: Automatically target high-volume commercial and topical ranking phrases."}
-MANDATORY MINIMUM WORD COUNT: ${wordCount} Words.
+MANDATORY MINIMUM WORD COUNT: Strictly 1600+ Words across all 10 detailed sections.
 
 Respond ONLY with a valid JSON object matching this schema:
 {
@@ -265,7 +275,8 @@ Respond ONLY with a valid JSON object matching this schema:
   "meta_description": "SEO Meta Description (max 155 chars)",
   "focus_keyword": "Primary target keyword",
   "secondary_keywords": ["ranked keyword 2", "ranked keyword 3", "ranked keyword 4"],
-  "html_content": "Full exhaustive pillar article HTML (minimum ${wordCount} words with at least 3 internal links and 2 external links)",
+  "tags": ["SEO Optimization", "Digital Marketing", "Business Growth", "Content Strategy", "Online Marketing"],
+  "html_content": "Full exhaustive pillar article HTML (strictly 1600+ words with all 10 detailed sections, at least 4 internal links and 2 external links)",
   "featured_image_prompt": "Specific visual scene prompt for a 16:9 panoramic widescreen hero banner",
   "featured_image_alt": "Descriptive SEO alt text for hero image",
   "mid_image_prompt": "Specific visual infographic prompt for the mid-content visual",
@@ -300,9 +311,9 @@ Respond ONLY with a valid JSON object matching this schema:
     const blogModel = req.body?.model || (req.body?.isAutopilot ? "gpt-4o-mini" : (process.env.AI_BLOG_MODEL || "gpt-4o-mini"));
     console.log(`[SEO Engine] Initiating concurrent parallel generation: ${blogModel} text + 2 gpt-image-2 visuals simultaneously...`);
 
-    const featuredPrompt = `Panoramic 16:9 widescreen 3D conceptual artwork of "${topic}" for ${effectiveBusiness}. Glowing holographic analytics charts, floating glass geometric shapes, futuristic dark agency aesthetic with neon amber highlights, cinematic studio lighting. STRICTLY NO TEXT, NO WORDS, NO LETTERS, NO TYPOGRAPHY, completely clean visual art.`;
+    const featuredPrompt = `Panoramic 16:9 widescreen 3D conceptual artwork of "${topic}" for ${effectiveBusiness}. Sleek futuristic analytics command center, glowing golden trophy and amber bar charts, upward growth arrow, dark navy and slate aesthetic, cinematic studio lighting, Octane 3D render. STRICTLY NO TEXT, NO WORDS, NO LETTERS, NO TYPOGRAPHY, completely clean visual art.`;
 
-    const midPrompt = `Clean isometric 3D infographic illustration of "${topic}" and modern digital marketing growth flywheel. Sleek geometric layout, soft studio shadows, vibrant amber accents. Clean visual graphic. STRICTLY NO TEXT, NO WORDS, NO LETTERS.`;
+    const midPrompt = `Clean isometric 3D infographic diagram illustrating "${topic}" and modern digital marketing growth flywheel. Floating glass geometric layers, golden gears, upward trajectory, dark slate background, warm amber glowing accents, studio lighting. STRICTLY NO TEXT, NO WORDS, NO LETTERS, completely clean visual art.`;
 
     // Execute LLM text generation AND both visual generations CONCURRENTLY in parallel
     const [completion, featuredImageUrl, midImageUrl] = await Promise.all([
@@ -313,7 +324,7 @@ Respond ONLY with a valid JSON object matching this schema:
           { role: "user", content: userPrompt },
         ],
         response_format: { type: "json_object" },
-        max_tokens: 6000,
+        max_tokens: 8000,
         temperature: 0.7,
       }),
       generateAiVisual(featuredPrompt, "featured", "1792x1024").catch((e) => {
@@ -476,6 +487,7 @@ INSTRUCTIONS:
       meta_title: parsedArticle.meta_title,
       meta_description: parsedArticle.meta_description,
       focus_keyword: parsedArticle.focus_keyword,
+      tags: parsedArticle.tags || parsedArticle.secondary_keywords || ["SEO Optimization", "Digital Marketing", "Business Growth"],
     };
 
     const wpPostResp = await fetch(`${siteUrl}/wp-json/gabbarinfo/v1/create-post`, {
@@ -519,6 +531,7 @@ INSTRUCTIONS:
       meta_title: parsedArticle.meta_title,
       meta_description: parsedArticle.meta_description,
       focus_keyword: parsedArticle.focus_keyword,
+      tags: parsedArticle.tags || parsedArticle.secondary_keywords || [],
       featured_image: featuredImageUrl,
       mid_image: midImageUrl,
       status: wpResult.status,

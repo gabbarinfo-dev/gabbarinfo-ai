@@ -116,7 +116,7 @@ export default async function handler(req, res) {
             businessName: config.businessName || "GABBARinfo",
             topic: generatedTopic,
             targetKeywords: keywords,
-            wordCount: config.wordCount || 1200,
+            wordCount: Math.max(Number(config.wordCount) || 1500, 1500),
             brandVoice: config.brandVoice || "consultative and results-oriented",
             industry: config.industry || "Business",
             publishStatus: "publish",

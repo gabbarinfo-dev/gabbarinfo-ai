@@ -622,6 +622,12 @@ document.addEventListener('DOMContentLoaded', function() {
             return new WP_Error( 'post_creation_failed', $post_id->get_error_message(), array( 'status' => 500 ) );
         }
 
+        // Set Post Tags if supplied
+        if ( ! empty( $params['tags'] ) ) {
+            $tags_data = is_array( $params['tags'] ) ? $params['tags'] : explode( ',', $params['tags'] );
+            wp_set_post_tags( $post_id, $tags_data );
+        }
+
         // Attach Featured Image if supplied
         $featured_attach_id = null;
         if ( ! empty( $params['featured_image_url'] ) ) {
