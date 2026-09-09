@@ -272,23 +272,6 @@ Respond ONLY with a valid JSON object matching this schema:
   "mid_image_alt": "Descriptive SEO alt text for mid visual"
 }`;
 
-    // For autonomous autopilot cycles, prioritize high-velocity model (gpt-4o-mini) to stay well within 60s Vercel limit
-    const blogModel = req.body?.model || (req.body?.isAutopilot ? "gpt-4o-mini" : (process.env.AI_BLOG_MODEL || "gpt-4o-mini"));
-    console.log(`[SEO Engine] Using ${blogModel} to generate blog (autopilot: ${Boolean(req.body?.isAutopilot)})...`);
-
-    const completion = await openai.chat.completions.create({
-      model: blogModel,
-      messages: [
-        { role: "system", content: systemPrompt },
-        { role: "user", content: userPrompt },
-      ],
-      response_format: { type: "json_object" },
-      max_tokens: 6000,
-      temperature: 0.7,
-    });
-
-    const parsedArticle = JSON.parse(completion.choices[0].message.content);
-
     // Multi-model AI Image Generator Helper powered by central ImageService
     const generateAiVisual = async (promptText, label = "visual", imageSize = "1024x1024") => {
       try {
@@ -313,16 +296,26 @@ Respond ONLY with a valid JSON object matching this schema:
       return null;
     };
 
-    // 4 & 5. Generate Visuals in PARALLEL for maximum speed and zero timeout risk (EXACTLY 2 images: 1 Featured + 1 Mid-Content)
-    const featuredPrompt = parsedArticle.featured_image_prompt
-      ? `${parsedArticle.featured_image_prompt}. Panoramic 16:9 widescreen 3D conceptual visual art, glowing sleek dark agency aesthetics with amber highlights, cinematic lighting. STRICTLY NO TEXT, NO WORDS, NO LETTERS, NO TYPOGRAPHY.`
-      : `Panoramic 16:9 widescreen 3D conceptual artwork of digital search analytics, glowing holographic charts, floating glass geometric shapes, futuristic dark agency aesthetic with neon blue and amber highlights, cinematic studio lighting. STRICTLY NO TEXT, NO WORDS, NO LETTERS, NO TYPOGRAPHY, completely clean visual art.`;
+    // For autonomous autopilot cycles, prioritize high-velocity model (gpt-4o-mini) to stay well within 60s Vercel limit
+    const blogModel = req.body?.model || (req.body?.isAutopilot ? "gpt-4o-mini" : (process.env.AI_BLOG_MODEL || "gpt-4o-mini"));
+    console.log(`[SEO Engine] Initiating concurrent parallel generation: ${blogModel} text + 2 gpt-image-2 visuals simultaneously...`);
 
-    const midPrompt = parsedArticle.mid_image_prompt
-      ? `${parsedArticle.mid_image_prompt}. Clean 3D isometric infographic visual art, vibrant modern accents, sleek layout. STRICTLY NO TEXT, NO WORDS, NO LETTERS.`
-      : `Clean isometric 3D infographic illustration of modern digital marketing growth, analytics funnel, and search engine optimization flywheel. Sleek geometric layout, soft studio shadows, vibrant modern accents. Clean visual graphic. STRICTLY NO TEXT, NO LETTERS.`;
+    const featuredPrompt = `Panoramic 16:9 widescreen 3D conceptual artwork of "${topic}" for ${effectiveBusiness}. Glowing holographic analytics charts, floating glass geometric shapes, futuristic dark agency aesthetic with neon amber highlights, cinematic studio lighting. STRICTLY NO TEXT, NO WORDS, NO LETTERS, NO TYPOGRAPHY, completely clean visual art.`;
 
-    const [featuredImageUrl, midImageUrl] = await Promise.all([
+    const midPrompt = `Clean isometric 3D infographic illustration of "${topic}" and modern digital marketing growth flywheel. Sleek geometric layout, soft studio shadows, vibrant amber accents. Clean visual graphic. STRICTLY NO TEXT, NO WORDS, NO LETTERS.`;
+
+    // Execute LLM text generation AND both visual generations CONCURRENTLY in parallel
+    const [completion, featuredImageUrl, midImageUrl] = await Promise.all([
+      openai.chat.completions.create({
+        model: blogModel,
+        messages: [
+          { role: "system", content: systemPrompt },
+          { role: "user", content: userPrompt },
+        ],
+        response_format: { type: "json_object" },
+        max_tokens: 6000,
+        temperature: 0.7,
+      }),
       generateAiVisual(featuredPrompt, "featured", "1792x1024").catch((e) => {
         console.warn("Featured image generation error:", e.message);
         return null;
@@ -332,6 +325,8 @@ Respond ONLY with a valid JSON object matching this schema:
         return null;
       }),
     ]);
+
+    const parsedArticle = JSON.parse(completion.choices[0].message.content);
 
     // 6. Ensure In-Content Mid Visual is Injected and Verify Word Count
     let finalContent = parsedArticle.html_content || "";
