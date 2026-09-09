@@ -231,6 +231,25 @@ export default function AdminPage() {
 
   // ---------------- ASSIGN SUBSCRIPTION PLAN HANDLER ----------------
   async function handleAssignPlan(userEmail, planId) {
+    // Optimistic UI update: immediately change plan and switchboard in local state!
+    setTenants((prev) =>
+      prev.map((t) => {
+        if (t.email?.toLowerCase() !== userEmail.toLowerCase()) return t;
+        return {
+          ...t,
+          subscription: {
+            ...t.subscription,
+            plan: planId,
+            status: planId === "none" ? "inactive" : "active",
+          },
+          businesses: t.businesses.map((b) => ({
+            ...b,
+            features: planId === "none" ? [] : b.features,
+          })),
+        };
+      })
+    );
+
     try {
       const res = await fetch("/api/admin/manage-tenant", {
         method: "POST",
@@ -244,18 +263,72 @@ export default function AdminPage() {
       });
       const data = await res.json();
       if (data.success) {
+        if (data.features) {
+          setTenants((prev) =>
+            prev.map((t) => {
+              if (t.email?.toLowerCase() !== userEmail.toLowerCase()) return t;
+              return {
+                ...t,
+                businesses: t.businesses.map((b) => ({
+                  ...b,
+                  features: data.features,
+                })),
+              };
+            })
+          );
+        }
         setTenantActionMessage({
           type: "success",
           text: data.message || `Plan ${planId} assigned to ${userEmail}.`,
         });
         setTimeout(() => setTenantActionMessage(null), 3500);
-        loadTenants();
       } else {
         alert(data.error || "Failed to assign plan");
+        loadTenants();
       }
     } catch (err) {
       console.error("Assign plan error:", err);
       alert("Failed to assign plan.");
+      loadTenants();
+    }
+  }
+
+  // ---------------- RE-SYNC SWITCHBOARD TO PLAN DEFAULTS ----------------
+  async function handleSyncPlanFeatures(userEmail) {
+    try {
+      const res = await fetch("/api/admin/manage-tenant", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          action: "sync_plan_features",
+          userEmail,
+        }),
+      });
+      const data = await res.json();
+      if (data.success && data.features) {
+        setTenants((prev) =>
+          prev.map((t) => {
+            if (t.email?.toLowerCase() !== userEmail.toLowerCase()) return t;
+            return {
+              ...t,
+              businesses: t.businesses.map((b) => ({
+                ...b,
+                features: data.features,
+              })),
+            };
+          })
+        );
+        setTenantActionMessage({
+          type: "success",
+          text: data.message || `Services re-synced to plan defaults for ${userEmail}.`,
+        });
+        setTimeout(() => setTenantActionMessage(null), 3500);
+      } else {
+        alert(data.error || "Failed to sync services.");
+      }
+    } catch (err) {
+      console.error("Sync plan features error:", err);
+      alert("Failed to sync services.");
     }
   }
 
@@ -832,6 +905,7 @@ export default function AdminPage() {
                                   width: "100%",
                                 }}
                               >
+                                <option value="none">🚫 None (Revoke All Services)</option>
                                 <optgroup label="⚡ Growth Suites (All-in-One)">
                                   <option value="suite_1">Solo Growth (1 Biz) — ₹2,499</option>
                                   <option value="suite_2">Duo Growth (2 Biz) — ₹4,499</option>
@@ -871,7 +945,7 @@ export default function AdminPage() {
                                   style={{
                                     flex: 1,
                                     fontSize: 10,
-                                    padding: "3px 6px",
+                                    padding: "3px 4px",
                                     background: "rgba(16, 185, 129, 0.15)",
                                     border: "1px solid rgba(16, 185, 129, 0.4)",
                                     color: "#34d399",
@@ -883,12 +957,29 @@ export default function AdminPage() {
                                   📅 +30d
                                 </button>
                                 <button
+                                  onClick={() => handleSyncPlanFeatures(t.email)}
+                                  title="Re-sync switchboard services to plan defaults"
+                                  style={{
+                                    flex: 1,
+                                    fontSize: 10,
+                                    padding: "3px 4px",
+                                    background: "rgba(56, 189, 248, 0.15)",
+                                    border: "1px solid rgba(56, 189, 248, 0.4)",
+                                    color: "#38bdf8",
+                                    borderRadius: 4,
+                                    cursor: "pointer",
+                                    fontWeight: 600,
+                                  }}
+                                >
+                                  ↺ Sync
+                                </button>
+                                <button
                                   onClick={() => handleResetQuotas(t.email)}
                                   title="Reset monthly usage quotas to 0"
                                   style={{
                                     flex: 1,
                                     fontSize: 10,
-                                    padding: "3px 6px",
+                                    padding: "3px 4px",
                                     background: "rgba(239, 68, 68, 0.15)",
                                     border: "1px solid rgba(239, 68, 68, 0.4)",
                                     color: "#f87171",

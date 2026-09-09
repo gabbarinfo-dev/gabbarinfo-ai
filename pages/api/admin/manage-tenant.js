@@ -14,8 +14,11 @@ import { adminAdjustCredits } from "../../../lib/billing/credit-meter";
 import { SUBSCRIPTION_PLANS, getPlanConfig } from "../../../lib/billing/plans";
 import {
   getTenantRegistry,
+  saveTenantRegistry,
   getOrCreateTenantConfig,
   setTenantFeature,
+  setTenantFeatures,
+  getFeaturesForPlan,
   setTenantSuspension,
   setTenantMaxBusinesses,
   updateTenantSubscription,
@@ -60,13 +63,24 @@ export default async function handler(req, res) {
 
       // 3. Fetch persistent registry from Supabase
       const registry = await getTenantRegistry();
+      let registryModified = false;
 
       const tenants = (users || []).map((u) => {
         const emailNorm = u.email.toLowerCase().trim();
         const config = getOrCreateTenantConfig(registry, emailNorm);
 
         const isSelfAdmin = emailNorm === "ndantare@gmail.com";
-        const features = Array.isArray(config.features) ? config.features : [...ALL_SERVICE_KEYS];
+        const currentPlan = (config.subscription?.plan || "try").toLowerCase().trim();
+
+        let features = Array.isArray(config.features) ? config.features : null;
+        if (currentPlan === "none") {
+          features = [];
+        } else if (!features || features.length === 0) {
+          // Auto-heal: active plan had empty features list
+          features = getFeaturesForPlan(currentPlan);
+          config.features = features;
+          registryModified = true;
+        }
 
         return {
           email: u.email,
@@ -75,8 +89,8 @@ export default async function handler(req, res) {
           isSuspended: Boolean(config.isSuspended),
           maxBusinesses: config.maxBusinesses || 1,
           subscription: config.subscription || {
-            status: "active",
-            plan: "pro_30d",
+            status: currentPlan === "none" ? "inactive" : "active",
+            plan: currentPlan,
             startDate: new Date().toISOString(),
             expiresAt: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString(),
             durationDays: 30,
@@ -93,6 +107,10 @@ export default async function handler(req, res) {
           ],
         };
       });
+
+      if (registryModified) {
+        saveTenantRegistry(registry).catch(() => {});
+      }
 
       return res.status(200).json({ success: true, tenants });
     }
@@ -180,12 +198,45 @@ export default async function handler(req, res) {
     }
 
     // -------------------------------------------------------------
-    // 7. ASSIGN PRODUCTION SUBSCRIPTION PLAN (TRY, STARTER, GROWTH, BUSINESS, AGENCY)
+    // 7. ASSIGN PRODUCTION SUBSCRIPTION PLAN
     // -------------------------------------------------------------
     if (action === "assign_plan") {
-      const { userEmail: targetEmail, planId = "starter", durationDays = 30 } = req.body;
+      const { userEmail: targetEmail, planId = "suite_1", durationDays = 30 } = req.body;
       if (!targetEmail) {
         return res.status(400).json({ error: "userEmail is required" });
+      }
+
+      const isNone = (planId || "").toLowerCase().trim() === "none";
+
+      if (isNone) {
+        // 1. Revoke subscription & set to inactive
+        const subscription = await updateTenantSubscription(targetEmail, {
+          durationDays: 0,
+          status: "inactive",
+          plan: "none",
+        });
+
+        // 2. Clear all features to empty array (all switchboard buttons turn grey)
+        const updatedFeatures = await setTenantFeatures(targetEmail, []);
+
+        try {
+          const normEmail = targetEmail.toLowerCase().trim();
+          const bizId = `biz_${normEmail.replace(/[^a-zA-Z0-9]/g, "_")}`;
+          await supabaseServer.from("subscriptions").upsert({
+            business_id: bizId,
+            plan_id: "none",
+            status: "inactive",
+            updated_at: new Date().toISOString(),
+          }, { onConflict: "business_id" });
+        } catch (_) {}
+
+        return res.status(200).json({
+          success: true,
+          message: `Subscription set to None. All services revoked for ${targetEmail}.`,
+          plan: "none",
+          subscription,
+          features: updatedFeatures,
+        });
       }
 
       const plan = getPlanConfig(planId);
@@ -202,6 +253,10 @@ export default async function handler(req, res) {
       });
 
       await setTenantMaxBusinesses(targetEmail, plan.limits?.maxBusinesses || 1);
+
+      // AUTOMATICALLY ACTIVATE ALL FEATURES ENTITLED BY THIS PLAN (ALL TURN GREEN)
+      const defaultFeatures = getFeaturesForPlan(plan.id);
+      const updatedFeatures = await setTenantFeatures(targetEmail, defaultFeatures);
 
       try {
         const normEmail = targetEmail.toLowerCase().trim();
@@ -221,9 +276,31 @@ export default async function handler(req, res) {
 
       return res.status(200).json({
         success: true,
-        message: `Plan ${plan.name} (${plan.priceINR ? "₹" + plan.priceINR : "Free"}) successfully assigned to ${targetEmail} (+${durationDays} days)`,
+        message: `Plan ${plan.name} assigned to ${targetEmail} (+${durationDays}d). All entitled plan services activated.`,
         plan: plan.id,
         subscription,
+        features: updatedFeatures,
+      });
+    }
+
+    // -------------------------------------------------------------
+    // 7b. RE-SYNC SERVICES TO CURRENT PLAN DEFAULTS
+    // -------------------------------------------------------------
+    if (action === "sync_plan_features") {
+      const { userEmail: targetEmail } = req.body;
+      if (!targetEmail) return res.status(400).json({ error: "userEmail is required" });
+
+      const registry = await getTenantRegistry();
+      const config = getOrCreateTenantConfig(registry, targetEmail);
+      const planId = (config.subscription?.plan || "suite_1").toLowerCase().trim();
+
+      const defaultFeatures = getFeaturesForPlan(planId);
+      const updatedFeatures = await setTenantFeatures(targetEmail, defaultFeatures);
+
+      return res.status(200).json({
+        success: true,
+        message: `Services re-synced to plan defaults (${planId}) for ${targetEmail}.`,
+        features: updatedFeatures,
       });
     }
 
