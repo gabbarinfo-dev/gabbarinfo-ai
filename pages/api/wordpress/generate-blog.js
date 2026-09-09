@@ -1,6 +1,6 @@
 // pages/api/wordpress/generate-blog.js
 import { getServerSession } from "next-auth/next";
-import { authOptions } from "../auth/[...nextauth].js";
+import { authOptions } from "../auth/[...nextauth]";
 import { createClient } from "@supabase/supabase-js";
 import OpenAI from "openai";
 import { verifyEntitlement, verifyEntitlementByEmail, FEATURES } from "../../../lib/auth/entitlements.js";
@@ -20,139 +20,144 @@ export default async function handler(req, res) {
   }
 
   let userEmail = req.body?.userEmail;
+  let session = null;
   if (!userEmail) {
-    const session = await getServerSession(req, res, authOptions);
-    userEmail = session?.user?.email;
+    try {
+      session = await getServerSession(req, res, authOptions);
+      userEmail = session?.user?.email;
+    } catch (_) {}
   }
 
   if (!userEmail) {
     return res.status(401).json({ ok: false, error: "Unauthorized: Please log in" });
   }
 
-  // 1. Rate Limiting Gate
-  const rateCheck = checkRateLimit(userEmail, "BLOG_GEN", 10, 60000);
-  if (!rateCheck.allowed) {
-    return res.status(429).json({
-      ok: false,
-      error: `Too many blog requests. Please wait ${Math.ceil(rateCheck.resetInMs / 1000)} seconds.`,
-    });
-  }
+  let quotaRes = null;
+  let reservation = null;
 
-  const {
-    businessName = "",
-    businessId = null,
-    topic,
-    targetMarket,
-    city,
-    targetKeywords = [],
-    wordCount = 1200,
-    brandVoice = "authoritative, engaging, and consultative",
-    industry = "",
-    publishStatus = "publish",
-    crossPostSocial = false,
-  } = req.body;
-
-  if (!topic) {
-    return res.status(400).json({ ok: false, error: "Blog topic is required" });
-  }
-
-  // 1. Resolve WordPress Connection for Site Verification & Per-Asset Slot Locking
-  const normalizedBusiness = (businessName || "").toLowerCase().trim().replace(/[^a-z0-9]/g, "_");
-  const memoryKey = normalizedBusiness ? `wp_conn_${normalizedBusiness}` : null;
-
-  let targetMem = null;
-  if (memoryKey) {
-    const { data: mem } = await supabase
-      .from("agent_memory")
-      .select("content")
-      .eq("email", userEmail)
-      .in("memory_type", [memoryKey, "wordpress_connection"])
-      .order("updated_at", { ascending: false })
-      .limit(1)
-      .maybeSingle();
-    targetMem = mem;
-  }
-
-  if (!targetMem?.content) {
-    const { data: fallbackMem } = await supabase
-      .from("agent_memory")
-      .select("content")
-      .eq("email", userEmail)
-      .or("memory_type.like.wp_conn_%,memory_type.eq.wordpress_connection")
-      .order("updated_at", { ascending: false })
-      .limit(1)
-      .maybeSingle();
-    targetMem = fallbackMem;
-  }
-
-  if (!targetMem?.content) {
-    return res.status(400).json({
-      ok: false,
-      error: businessName && businessName !== "GABBARinfo"
-        ? `No connected WordPress website found for "${businessName}". Please connect your website in the WordPress Connector first.`
-        : `No connected WordPress website found. Please connect your WordPress website in the WordPress Connector first.`,
-    });
-  }
-
-  let conn = {};
   try {
-    conn = JSON.parse(targetMem.content);
-  } catch (_) {
-    conn = {};
-  }
-  const siteUrl = conn.siteUrl;
-  const wpApiKey = conn.apiKey;
-  const effectiveBusiness = businessName || conn.businessName || conn.siteName || "Our Business";
+    // 1. Rate Limiting Gate
+    const rateCheck = checkRateLimit(userEmail, "BLOG_GEN", 10, 60000);
+    if (!rateCheck.allowed) {
+      return res.status(429).json({
+        ok: false,
+        error: `Too many blog requests. Please wait ${Math.ceil(rateCheck.resetInMs / 1000)} seconds.`,
+      });
+    }
 
-  // 2. Entitlement & Service Quota Gate (Server-Enforced with per-site slot locking)
-  const quotaRes = await reserveQuota({
-    session,
-    userEmail,
-    businessId,
-    actionType: "SEO_ARTICLE",
-    assetId: siteUrl,
-  });
+    const {
+      businessName = "",
+      businessId = null,
+      topic,
+      targetMarket,
+      city,
+      targetKeywords = [],
+      wordCount = 1200,
+      brandVoice = "authoritative, engaging, and consultative",
+      industry = "",
+      publishStatus = "publish",
+      crossPostSocial = false,
+    } = req.body;
 
-  if (!quotaRes.ok) {
-    return res.status(quotaRes.code === "FEATURE_NOT_INCLUDED" ? 403 : 402).json({
-      ok: false,
-      code: quotaRes.code,
-      error: quotaRes.error,
-      planId: quotaRes.planId,
-      nextResetDate: quotaRes.nextResetDate,
-    });
-  }
+    if (!topic) {
+      return res.status(400).json({ ok: false, error: "Blog topic is required" });
+    }
 
-  // 3. Server-Side Atomic Credit Reservation (Internal Accounting)
-  const reservation = await reserveCredits({
-    businessId: quotaRes.businessId || businessId || "default_business",
-    userEmail,
-    actionType: "SEO_BLOG",
-    referenceId: topic.substring(0, 40),
-  });
+    // 1. Resolve WordPress Connection for Site Verification & Per-Asset Slot Locking
+    const normalizedBusiness = (businessName || "").toLowerCase().trim().replace(/[^a-z0-9]/g, "_");
+    const memoryKey = normalizedBusiness ? `wp_conn_${normalizedBusiness}` : null;
 
-  if (!reservation.ok) {
-    await releaseQuota({
-      reservationId: quotaRes.reservationId,
-      businessId: quotaRes.businessId,
-      cycleStart: quotaRes.cycleStart,
+    let targetMem = null;
+    if (memoryKey) {
+      const { data: mem } = await supabase
+        .from("agent_memory")
+        .select("content")
+        .eq("email", userEmail)
+        .in("memory_type", [memoryKey, "wordpress_connection"])
+        .order("updated_at", { ascending: false })
+        .limit(1)
+        .maybeSingle();
+      targetMem = mem;
+    }
+
+    if (!targetMem?.content) {
+      const { data: fallbackMem } = await supabase
+        .from("agent_memory")
+        .select("content")
+        .eq("email", userEmail)
+        .or("memory_type.like.wp_conn_%,memory_type.eq.wordpress_connection")
+        .order("updated_at", { ascending: false })
+        .limit(1)
+        .maybeSingle();
+      targetMem = fallbackMem;
+    }
+
+    if (!targetMem?.content) {
+      return res.status(400).json({
+        ok: false,
+        error: businessName && businessName !== "GABBARinfo"
+          ? `No connected WordPress website found for "${businessName}". Please connect your website in the WordPress Connector first.`
+          : `No connected WordPress website found. Please connect your WordPress website in the WordPress Connector first.`,
+      });
+    }
+
+    let conn = {};
+    try {
+      conn = JSON.parse(targetMem.content);
+    } catch (_) {
+      conn = {};
+    }
+    const siteUrl = conn.siteUrl;
+    const wpApiKey = conn.apiKey;
+    const effectiveBusiness = businessName || conn.businessName || conn.siteName || "Our Business";
+
+    // 2. Entitlement & Service Quota Gate (Server-Enforced with per-site slot locking)
+    quotaRes = await reserveQuota({
+      session,
+      userEmail,
+      businessId,
       actionType: "SEO_ARTICLE",
-      reason: "Credit reservation failure",
+      assetId: siteUrl,
     });
-    return res.status(402).json({
-      ok: false,
-      error: reservation.error || "Insufficient internal credits to execute blog generation.",
+
+    if (!quotaRes.ok) {
+      return res.status(quotaRes.code === "FEATURE_NOT_INCLUDED" ? 403 : 402).json({
+        ok: false,
+        code: quotaRes.code,
+        error: quotaRes.error,
+        planId: quotaRes.planId,
+        nextResetDate: quotaRes.nextResetDate,
+      });
+    }
+
+    // 3. Server-Side Atomic Credit Reservation (Internal Accounting)
+    reservation = await reserveCredits({
+      businessId: quotaRes.businessId || businessId || "default_business",
+      userEmail,
+      actionType: "SEO_BLOG",
+      referenceId: topic.substring(0, 40),
     });
-  }
 
-  const apiKey = process.env.OPENAI_API_KEY;
-  if (!apiKey) {
-    return res.status(500).json({ ok: false, error: "OpenAI API key missing in environment" });
-  }
+    if (!reservation.ok) {
+      await releaseQuota({
+        reservationId: quotaRes.reservationId,
+        businessId: quotaRes.businessId,
+        cycleStart: quotaRes.cycleStart,
+        actionType: "SEO_ARTICLE",
+        reason: "Credit reservation failure",
+      });
+      return res.status(402).json({
+        ok: false,
+        error: reservation.error || "Insufficient internal credits to execute blog generation.",
+      });
+    }
 
-  const openai = new OpenAI({ apiKey });
+    const apiKey = process.env.OPENAI_API_KEY;
+    if (!apiKey) {
+      return res.status(500).json({ ok: false, error: "OpenAI API key missing in environment" });
+    }
 
-  try {
+    const openai = new OpenAI({ apiKey });
 
     // 2. Fetch Client Profile Memory (Target Market / Location / Services)
     let businessLocation = (targetMarket || city || "").trim();
