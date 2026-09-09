@@ -53,12 +53,61 @@ export default async function handler(req, res) {
     return res.status(400).json({ ok: false, error: "Blog topic is required" });
   }
 
-  // 2. Entitlement & Service Quota Gate (Server-Enforced)
+  // 1. Resolve WordPress Connection for Site Verification & Per-Asset Slot Locking
+  const normalizedBusiness = (businessName || "").toLowerCase().trim().replace(/[^a-z0-9]/g, "_");
+  const memoryKey = normalizedBusiness ? `wp_conn_${normalizedBusiness}` : null;
+
+  let targetMem = null;
+  if (memoryKey) {
+    const { data: mem } = await supabase
+      .from("agent_memory")
+      .select("content")
+      .eq("email", userEmail)
+      .in("memory_type", [memoryKey, "wordpress_connection"])
+      .order("updated_at", { ascending: false })
+      .limit(1)
+      .maybeSingle();
+    targetMem = mem;
+  }
+
+  if (!targetMem?.content) {
+    const { data: fallbackMem } = await supabase
+      .from("agent_memory")
+      .select("content")
+      .eq("email", userEmail)
+      .or("memory_type.like.wp_conn_%,memory_type.eq.wordpress_connection")
+      .order("updated_at", { ascending: false })
+      .limit(1)
+      .maybeSingle();
+    targetMem = fallbackMem;
+  }
+
+  if (!targetMem?.content) {
+    return res.status(400).json({
+      ok: false,
+      error: businessName && businessName !== "GABBARinfo"
+        ? `No connected WordPress website found for "${businessName}". Please connect your website in the WordPress Connector first.`
+        : `No connected WordPress website found. Please connect your WordPress website in the WordPress Connector first.`,
+    });
+  }
+
+  let conn = {};
+  try {
+    conn = JSON.parse(targetMem.content);
+  } catch (_) {
+    conn = {};
+  }
+  const siteUrl = conn.siteUrl;
+  const wpApiKey = conn.apiKey;
+  const effectiveBusiness = businessName || conn.businessName || conn.siteName || "Our Business";
+
+  // 2. Entitlement & Service Quota Gate (Server-Enforced with per-site slot locking)
   const quotaRes = await reserveQuota({
     session,
     userEmail,
     businessId,
     actionType: "SEO_ARTICLE",
+    assetId: siteUrl,
   });
 
   if (!quotaRes.ok) {
@@ -101,49 +150,6 @@ export default async function handler(req, res) {
   const openai = new OpenAI({ apiKey });
 
   try {
-    // 1. Resolve WordPress Connection
-    const normalizedBusiness = (businessName || "").toLowerCase().trim().replace(/[^a-z0-9]/g, "_");
-    const memoryKey = normalizedBusiness ? `wp_conn_${normalizedBusiness}` : null;
-
-    let targetMem = null;
-    if (memoryKey) {
-      const { data: mem } = await supabase
-        .from("agent_memory")
-        .select("content")
-        .eq("email", userEmail)
-        .in("memory_type", [memoryKey, "wordpress_connection"])
-        .order("updated_at", { ascending: false })
-        .limit(1)
-        .maybeSingle();
-      targetMem = mem;
-    }
-
-    if (!targetMem?.content) {
-      // Fallback: check if user has any active wp_conn_* or wordpress_connection
-      const { data: fallbackMem } = await supabase
-        .from("agent_memory")
-        .select("content")
-        .eq("email", userEmail)
-        .or("memory_type.like.wp_conn_%,memory_type.eq.wordpress_connection")
-        .order("updated_at", { ascending: false })
-        .limit(1)
-        .maybeSingle();
-      targetMem = fallbackMem;
-    }
-
-    if (!targetMem?.content) {
-      return res.status(400).json({
-        ok: false,
-        error: businessName && businessName !== "GABBARinfo"
-          ? `No connected WordPress website found for "${businessName}". Please connect your website in the WordPress Connector first.`
-          : `No connected WordPress website found. Please connect your WordPress website in the WordPress Connector first.`,
-      });
-    }
-
-    const conn = JSON.parse(targetMem.content);
-    const siteUrl = conn.siteUrl;
-    const wpApiKey = conn.apiKey;
-    const effectiveBusiness = businessName || conn.businessName || conn.siteName || "Our Business";
 
     // 2. Fetch Client Profile Memory (Target Market / Location / Services)
     let businessLocation = (targetMarket || city || "").trim();
@@ -491,6 +497,7 @@ INSTRUCTIONS:
       businessId: quotaRes.businessId,
       cycleStart: quotaRes.cycleStart,
       actionType: "SEO_ARTICLE",
+      assetId: siteUrl,
       userEmail,
     });
 

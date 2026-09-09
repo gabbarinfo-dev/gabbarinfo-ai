@@ -4749,11 +4749,12 @@ async function handleSocialPost(req, res, session, body) {
 
       console.log(`[Path A] Direct Publish detected (Mode: ${mode}). URL: ${imageUrl}`);
 
-      // 🛡️ SERVER-SIDE ENTITLEMENT & QUOTA GATE: SOCIAL_POST
+      // 🛡️ SERVER-SIDE ENTITLEMENT & QUOTA GATE: SOCIAL_POST (with per-asset slot locking)
       const reservation = await reserveQuota({
         session,
         userEmail,
         actionType: "SOCIAL_POST",
+        assetId: metaRow?.fb_page_id || metaRow?.ig_business_id || null,
       });
 
       if (!reservation.ok) {
@@ -4843,11 +4844,12 @@ async function handleSocialPost(req, res, session, body) {
     try {
       const { imageUrl, caption, storageFileName, destination = (isFacebookMode ? "FACEBOOK_ONLY" : "INSTAGRAM_ONLY") } = creativeResult.assets;
 
-      // 🛡️ SERVER-SIDE ENTITLEMENT & QUOTA GATE: SOCIAL_POST
+      // 🛡️ SERVER-SIDE ENTITLEMENT & QUOTA GATE: SOCIAL_POST (with per-asset slot locking)
       const reservation = await reserveQuota({
         session,
         userEmail,
         actionType: "SOCIAL_POST",
+        assetId: metaRow?.fb_page_id || metaRow?.ig_business_id || null,
       });
 
       if (!reservation.ok) {
@@ -5089,13 +5091,27 @@ async function handleGoogleAdsCampaignFlow(req, res, session, body) {
       }
     }
 
-    // Fallback to previously stored customerId from agent_memory or google_connections
-    if (!selectedCustomerId) {
-      selectedCustomerId = gAdsState?.customerId || (googleConn?.customer_id ? cleanCustomerId(googleConn.customer_id) : null);
-      selectedManagerId = gAdsState?.managerId || (googleConn?.manager_id ? cleanCustomerId(googleConn.manager_id) : null);
+    // Priority 1: Check active account explicitly selected on Dashboard (google_connections)
+    const dashboardCustomerId = googleConn?.customer_id ? cleanCustomerId(googleConn.customer_id) : null;
+    const dashboardManagerId = googleConn?.manager_id ? cleanCustomerId(googleConn.manager_id) : null;
+
+    if (!selectedCustomerId && dashboardCustomerId) {
+      selectedCustomerId = dashboardCustomerId;
+      selectedManagerId = dashboardManagerId;
+      // If managerId wasn't stored in google_connections, lookup from hierarchy
+      if (!selectedManagerId) {
+        const found = accessibleAccounts.find(a => a.customerId === dashboardCustomerId);
+        if (found?.managerId) selectedManagerId = found.managerId;
+      }
     }
 
-    // If no account selected yet
+    // Priority 2: Stored state from previous session in agent_memory
+    if (!selectedCustomerId) {
+      selectedCustomerId = gAdsState?.customerId ? cleanCustomerId(gAdsState.customerId) : null;
+      selectedManagerId = gAdsState?.managerId ? cleanCustomerId(gAdsState.managerId) : null;
+    }
+
+    // Priority 3: If still no account selected, check if only 1 account exists or prompt
     if (!selectedCustomerId) {
       if (accessibleAccounts.length === 0) {
         return res.status(200).json({
@@ -5110,7 +5126,7 @@ async function handleGoogleAdsCampaignFlow(req, res, session, body) {
         selectedCustomerId = accessibleAccounts[0].customerId;
         selectedManagerId = accessibleAccounts[0].managerId || null;
       } else {
-        // Save user's initial prompt & detected campaign type into memory so it is NOT lost when they choose an account!
+        // Prompt user to select or activate on dashboard
         const initialIntake = {
           ...(gAdsState?.intake || {}),
           pending_instruction: instruction,
@@ -5131,14 +5147,13 @@ async function handleGoogleAdsCampaignFlow(req, res, session, body) {
             }, { onConflict: "email,memory_type" });
         } catch (_) {}
 
-        // Ask user to select an account
         const accountsList = accessibleAccounts
           .map(a => `• **${a.descriptiveName}** — ID: \`${a.customerId.slice(0,3)}-${a.customerId.slice(3,6)}-${a.customerId.slice(6)}\``)
           .join("\n");
 
         return res.status(200).json({
           ok: true,
-          text: `Which Google Ads account would you like to create campaigns for?\n\n${accountsList}\n\nPlease reply with your **Account ID** to continue.`,
+          text: `Which Google Ads account would you like to create campaigns for?\n\n${accountsList}\n\nPlease reply with your **Account ID** or activate your preferred account directly on your Dashboard to proceed.`,
         });
       }
     }
@@ -5543,11 +5558,12 @@ async function handleGoogleAdsCampaignFlow(req, res, session, body) {
 
         const services = plan.services || plan.campaign?.services || gAdsState.intake?.services || null;
 
-        // 🛡️ SERVER-SIDE ENTITLEMENT & QUOTA GATE: GOOGLE_CAMPAIGN
+        // 🛡️ SERVER-SIDE ENTITLEMENT & QUOTA GATE: GOOGLE_CAMPAIGN (with per-account slot locking)
         const gReservation = await reserveQuota({
           session,
           userEmail,
           actionType: "GOOGLE_CAMPAIGN",
+          assetId: selectedCustomerId,
         });
 
         if (!gReservation.ok) {
@@ -5888,8 +5904,10 @@ Respond with ONLY the JSON object, wrapped in \`\`\`json \`\`\`.
         ? `\n\n🛍️ **Google Merchant Center Connected:** Detected active Merchant Center catalog feed (\`${linkedGmc.merchantId}\`) on this account! *(Ideal for **Standard Shopping** or **Performance Max Shopping**)*`
         : "";
 
+      const activeAccountNotice = `Your active Google Ads account is **${activeAccountObj.descriptiveName}** (\`${formattedAccId}\`). We are building this campaign on this active account. (If you want to use a different account, please activate it from your Dashboard.)`;
+
       const promptText =
-        `I've selected your Google Ads account **${activeAccountObj.descriptiveName}** (\`${formattedAccId}\`)! 🎯${gmcNotice}\n\n` +
+        `${activeAccountNotice} 🎯${gmcNotice}\n\n` +
         `Which Google Ads campaign format would you like to create?\n\n` +
         `1. ⚡ **Performance Max (PMax)** — AI omnichannel campaign across Google Search, Maps, YouTube, Gmail, Discover, & Display.\n` +
         `2. 🛍️⚡ **Performance Max Shopping (Retail)** — Multi-channel visual ads powered by your Google Merchant Center product catalog.\n` +
@@ -5938,9 +5956,10 @@ Respond with ONLY the JSON object, wrapped in \`\`\`json \`\`\`.
 
       const missingList = [];
       let formatIntro = "";
+      const accountNoticeHeader = `Your active Google Ads account is **${activeAccountObj.descriptiveName}** (\`${formattedAccId}\`). We are building this campaign on this active account. (If you want to use a different account, please activate it from your Dashboard.)`;
 
       if (activeCampaignType === "PERFORMANCE_MAX") {
-        formatIntro = `I've selected your Google Ads account **${activeAccountObj.descriptiveName}** (\`${formattedAccId}\`) for a **Performance Max (PMax)** campaign! ⚡\n\nPerformance Max runs across Google Search, Maps, YouTube, Gmail, and the Display Network using smart automation. To craft your multi-channel blueprint, please share your campaign details:`;
+        formatIntro = `${accountNoticeHeader}\n\n⚡ **Performance Max (PMax) Campaign**\nPerformance Max runs across Google Search, Maps, YouTube, Gmail, and the Display Network using smart automation. To craft your multi-channel blueprint, please share your campaign details:`;
         if (!hasBusiness) missingList.push("1. 🏢 **Business & Services:** What is your business name, and what specific service or product do you want to promote?");
         if (!mergedIntake.campaign_goal) {
           missingList.push("2. 🎯 **Campaign Goal:** What is your primary objective (e.g. **Website Leads & Inquiries**, **Online Conversions**, or **Direct Phone Calls**)? *(Optional: provide your business phone number if you want a direct call button attached)*.");
@@ -5952,7 +5971,7 @@ Respond with ONLY the JSON object, wrapped in \`\`\`json \`\`\`.
         if (!hasLandingPage) missingList.push("7. 🌐 **Landing Page:** What website URL should visitors land on to convert?");
 
       } else if (activeCampaignType === "PERFORMANCE_MAX_SHOPPING") {
-        formatIntro = `I've selected your Google Ads account **${activeAccountObj.descriptiveName}** (\`${formattedAccId}\`) for a **Performance Max Shopping (Retail)** campaign! 🛍️⚡\n\nPMax Shopping blends your Google Merchant Center catalog with visual ads across Shopping, YouTube, Search, Gmail, and Display. To build your catalog campaign, please share:`;
+        formatIntro = `${accountNoticeHeader}\n\n🛍️⚡ **Performance Max Shopping (Retail) Campaign**\nPMax Shopping blends your Google Merchant Center catalog with visual ads across Shopping, YouTube, Search, Gmail, and Display. To build your catalog campaign, please share:`;
         if (!hasBusiness) missingList.push("1. 🛍️ **Store & Products:** What is your online store name and what product categories are you promoting?");
         if (!mergedIntake.merchant_id && !linkedGmc?.merchantId) {
           missingList.push(`2. 📦 **Google Merchant Center (GMC) ID:** What is your GMC Account ID (e.g. \`123-456-7890\`)${linkedGmc?.merchantId ? ` *(Detected linked GMC: \`${linkedGmc.merchantId}\`)*` : ""}?`);
@@ -5963,7 +5982,7 @@ Respond with ONLY the JSON object, wrapped in \`\`\`json \`\`\`.
         if (!hasLandingPage) missingList.push("6. 🌐 **Store Website URL:** What is your online store or collection URL?");
 
       } else if (activeCampaignType === "SHOPPING") {
-        formatIntro = `I've selected your Google Ads account **${activeAccountObj.descriptiveName}** (\`${formattedAccId}\`) for a **Standard Shopping** campaign! 🛍️\n\nStandard Shopping showcases your product images, prices, and store name directly in Google Shopping and Google Search product grids. *(Note: Standard Shopping pulls ad copy directly from your Merchant Center catalog, so no search keywords or text copywriting are required!)*\n\nPlease share your campaign details:`;
+        formatIntro = `${accountNoticeHeader}\n\n🛍️ **Standard Shopping Campaign**\nStandard Shopping showcases your product images, prices, and store name directly in Google Shopping and Google Search product grids. *(Note: Standard Shopping pulls ad copy directly from your Merchant Center catalog, so no search keywords or text copywriting are required!)*\n\nPlease share your campaign details:`;
         if (!hasBusiness) missingList.push("1. 🛍️ **Store & Products:** What is your store name and main products?");
         if (!mergedIntake.merchant_id && !linkedGmc?.merchantId) {
           missingList.push(`2. 📦 **Google Merchant Center (GMC) ID:** What is your GMC Account ID (e.g. \`123-456-7890\`)${linkedGmc?.merchantId ? ` *(Detected linked GMC: \`${linkedGmc.merchantId}\`)*` : ""}?`);
@@ -5974,7 +5993,7 @@ Respond with ONLY the JSON object, wrapped in \`\`\`json \`\`\`.
         if (!hasLandingPage) missingList.push("6. 🌐 **Store URL:** What is your online storefront URL?");
 
       } else if (activeCampaignType === "DISPLAY") {
-        formatIntro = `I've selected your Google Ads account **${activeAccountObj.descriptiveName}** (\`${formattedAccId}\`) for a **Google Display Network (GDN)** campaign! 🎨🌐\n\nDisplay campaigns place responsive visual and banner ads across millions of partner websites, apps, and YouTube to build massive brand awareness and re-engage visitors. To design your Display campaign, please share:`;
+        formatIntro = `${accountNoticeHeader}\n\n🎨🌐 **Google Display Network (GDN) Campaign**\nDisplay campaigns place responsive visual and banner ads across millions of partner websites, apps, and YouTube to build massive brand awareness and re-engage visitors. To design your Display campaign, please share:`;
         if (!hasBusiness) missingList.push("1. 🏢 **Business & Offer:** What is your business name, and what special offer or service are you highlighting?");
         if (!mergedIntake.campaign_goal) missingList.push("2. 🎯 **Campaign Goal:** What is your primary objective (e.g., **Brand Awareness & Reach**, **Website Traffic**, or **Lead Conversions**)?");
         if (!hasLocation) missingList.push("3. 📍 **Target Location:** Which specific cities, regions, or countries should your visual ads reach?");
@@ -5986,7 +6005,7 @@ Respond with ONLY the JSON object, wrapped in \`\`\`json \`\`\`.
 
       } else {
         // SEARCH Campaign
-        formatIntro = `I've selected your Google Ads account **${activeAccountObj.descriptiveName}** (\`${formattedAccId}\`) for a **Google Search Ads** campaign! 🔍\n\nTo craft the most effective search keywords, compelling ad copy, extensions, and targeted bidding strategy, please share your campaign details:`;
+        formatIntro = `${accountNoticeHeader}\n\n🔍 **Google Search Ads Campaign**\nTo craft the most effective search keywords, compelling ad copy, extensions, and targeted bidding strategy, please share your campaign details:`;
         if (!hasBusiness) missingList.push("1. 🏢 **Business & Services:** What is your business name, and what specific service or product do you want to promote?");
         if (!mergedIntake.campaign_goal || !hasPhone) {
           missingList.push("2. 🎯 **Campaign Goal & Contact Phone:** What is your primary objective (e.g. **Website Visits & Online Leads** or **Direct Phone Calls**)? Also provide your **business phone or WhatsApp number** *(Google Ads will attach a Click-to-Call extension on your search ads so customers can call you directly)*.");

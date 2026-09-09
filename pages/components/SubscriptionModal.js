@@ -1,16 +1,43 @@
 // pages/components/SubscriptionModal.js
 /**
- * Modern Subscription Plan Selection & Management Modal
+ * Modern Modular Subscription Plan Selection & Management Modal
  * 
- * Replaces the obsolete "Buy Credits / Credit Packs / Top-Ups" modal.
- * Displays the 5 official plans: TRY, STARTER, GROWTH, BUSINESS, AGENCY
- * with real monthly service allowances and transparent pricing.
+ * Displays the modular subscription categories:
+ * 1. ⚡ All-in-One Growth Suites (suite_1, suite_2, suite_3)
+ * 2. 📝 SEO Content Plans (seo_1, seo_2, seo_3)
+ * 3. 📱 Social Media Autopilot (social_1, social_2, social_3)
+ * 4. 🚀 Performance Ads Engine (ads_1, ads_2, ads_3)
+ * 5. 🏢 Agency Scale (agency_scale)
+ * 
+ * Featuring clean per-asset isolated quotas (strictly 30 blogs/site, 30 posts/brand, 2 GAds + 2 Meta Ads per account).
  */
 
 import { useState } from "react";
 import { SUBSCRIPTION_PLANS } from "../../lib/billing/plans";
 
-const PLAN_LIST = Object.values(SUBSCRIPTION_PLANS);
+const CATEGORIES = [
+  { key: "suite", label: "⚡ Growth Suites (All-in-One)" },
+  { key: "seo", label: "📝 SEO Content" },
+  { key: "social", label: "📱 Social Autopilot" },
+  { key: "ads", label: "🚀 Performance Ads" },
+  { key: "agency", label: "🏢 Agency Scale" },
+];
+
+const MODULAR_PLANS = [
+  SUBSCRIPTION_PLANS.suite_1,
+  SUBSCRIPTION_PLANS.suite_2,
+  SUBSCRIPTION_PLANS.suite_3,
+  SUBSCRIPTION_PLANS.seo_1,
+  SUBSCRIPTION_PLANS.seo_2,
+  SUBSCRIPTION_PLANS.seo_3,
+  SUBSCRIPTION_PLANS.social_1,
+  SUBSCRIPTION_PLANS.social_2,
+  SUBSCRIPTION_PLANS.social_3,
+  SUBSCRIPTION_PLANS.ads_1,
+  SUBSCRIPTION_PLANS.ads_2,
+  SUBSCRIPTION_PLANS.ads_3,
+  SUBSCRIPTION_PLANS.agency_scale,
+].filter(Boolean);
 
 export default function SubscriptionModal({
   isOpen,
@@ -20,6 +47,7 @@ export default function SubscriptionModal({
   onSubscriptionUpdated,
 }) {
   const [selectedPlan, setSelectedPlan] = useState(null);
+  const [selectedCategory, setSelectedCategory] = useState("suite");
   const [step, setStep] = useState("plans"); // "plans" | "checkout" | "confirmation"
   const [paymentRef, setPaymentRef] = useState("");
   const [submitting, setSubmitting] = useState(false);
@@ -72,12 +100,14 @@ export default function SubscriptionModal({
     }
   }
 
+  const filteredPlans = MODULAR_PLANS.filter((p) => p.category === selectedCategory);
+
   return (
     <div
       style={{
         position: "fixed",
         inset: 0,
-        background: "rgba(3, 7, 18, 0.85)",
+        background: "rgba(3, 7, 18, 0.88)",
         backdropFilter: "blur(12px)",
         WebkitBackdropFilter: "blur(12px)",
         zIndex: 9999,
@@ -95,7 +125,7 @@ export default function SubscriptionModal({
           background: "linear-gradient(180deg, #0d1527 0%, #080d1a 100%)",
           border: "1px solid rgba(255, 255, 255, 0.12)",
           borderRadius: 24,
-          maxWidth: step === "plans" ? 1040 : 540,
+          maxWidth: step === "plans" ? 1080 : 540,
           width: "100%",
           maxHeight: "92vh",
           overflowY: "auto",
@@ -109,7 +139,7 @@ export default function SubscriptionModal({
         {/* Header */}
         <div
           style={{
-            padding: "24px 28px 20px",
+            padding: "24px 28px 18px",
             borderBottom: "1px solid rgba(255, 255, 255, 0.08)",
             display: "flex",
             alignItems: "center",
@@ -120,12 +150,12 @@ export default function SubscriptionModal({
             <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 4 }}>
               <span style={{ fontSize: 18 }}>⚡</span>
               <h2 style={{ margin: 0, fontSize: 20, fontWeight: 800, letterSpacing: "-0.02em" }}>
-                {step === "plans" ? "Select Your Marketing Subscription" : "Subscription Checkout"}
+                {step === "plans" ? "Select Your Subscription Plan" : "Subscription Checkout"}
               </h2>
             </div>
             <p style={{ margin: 0, fontSize: 13, color: "#94a3b8" }}>
               {step === "plans"
-                ? "Monthly plans with guaranteed service allowances, isolated business workspaces, and autopilot."
+                ? "Transparent per-asset isolated quotas. Zero pool contention. 30-day billing cycle."
                 : `Complete activation for ${selectedPlan?.name || "selected plan"}.`}
             </p>
           </div>
@@ -152,7 +182,7 @@ export default function SubscriptionModal({
         </div>
 
         {/* Modal Body */}
-        <div style={{ padding: "28px" }}>
+        <div style={{ padding: "24px 28px 28px" }}>
           {errorMsg && (
             <div
               style={{
@@ -170,141 +200,214 @@ export default function SubscriptionModal({
             </div>
           )}
 
-          {/* STEP 1: PLANS GRID */}
+          {/* STEP 1: CATEGORY TABS + PLANS GRID */}
           {step === "plans" && (
-            <div
-              style={{
-                display: "grid",
-                gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))",
-                gap: 16,
-              }}
-            >
-              {PLAN_LIST.map((p) => {
-                const isCurrent = currentPlanId?.toLowerCase() === p.id;
-                const isPopular = p.id === "growth";
-
-                return (
-                  <div
-                    key={p.id}
-                    style={{
-                      background: isPopular
-                        ? "linear-gradient(180deg, rgba(37, 99, 235, 0.15) 0%, rgba(15, 23, 42, 0.8) 100%)"
-                        : "rgba(255, 255, 255, 0.03)",
-                      border: isPopular
-                        ? "1.5px solid #3b82f6"
-                        : isCurrent
-                        ? "1.5px solid rgba(16, 185, 129, 0.6)"
-                        : "1px solid rgba(255, 255, 255, 0.08)",
-                      borderRadius: 18,
-                      padding: "20px 16px",
-                      display: "flex",
-                      flexDirection: "column",
-                      justifyContent: "space-between",
-                      position: "relative",
-                      transition: "transform 0.15s ease",
-                    }}
-                  >
-                    {isPopular && (
-                      <div
-                        style={{
-                          position: "absolute",
-                          top: -10,
-                          left: "50%",
-                          transform: "translateX(-50%)",
-                          background: "#2563eb",
-                          color: "#fff",
-                          fontSize: 10,
-                          fontWeight: 800,
-                          padding: "2px 10px",
-                          borderRadius: 999,
-                          letterSpacing: "0.5px",
-                          textTransform: "uppercase",
-                        }}
-                      >
-                        Most Popular
-                      </div>
-                    )}
-
-                    <div>
-                      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline" }}>
-                        <h3 style={{ margin: "0 0 6px", fontSize: 16, fontWeight: 800, color: "#f8fafc" }}>
-                          {p.name}
-                        </h3>
-                        {isCurrent && (
-                          <span style={{ fontSize: 10, color: "#34d399", fontWeight: 700, textTransform: "uppercase" }}>
-                            Current
-                          </span>
-                        )}
-                      </div>
-
-                      <div style={{ marginBottom: 16 }}>
-                        <span style={{ fontSize: 24, fontWeight: 800, color: "#ffffff" }}>
-                          ₹{p.priceINR.toLocaleString("en-IN")}
-                        </span>
-                        <span style={{ fontSize: 11, color: "#94a3b8" }}> / month</span>
-                      </div>
-
-                      {/* Feature Bullet Allowances */}
-                      <ul style={{ listStyle: "none", padding: 0, margin: "0 0 20px 0", fontSize: 12, lineHeight: "1.8" }}>
-                        <li style={{ color: "#cbd5e1" }}>
-                          🏢 <strong>{p.limits.maxBusinesses}</strong> {p.limits.maxBusinesses === 1 ? "Business" : "Businesses"}
-                        </li>
-                        <li style={{ color: "#cbd5e1" }}>
-                          📝 <strong>{p.quotas.SEO_ARTICLE}</strong> SEO {p.quotas.SEO_ARTICLE === 1 ? "Article" : "Articles"}/mo
-                        </li>
-                        <li style={{ color: "#cbd5e1" }}>
-                          📱 <strong>{p.quotas.SOCIAL_POST}</strong> Social Posts/mo
-                        </li>
-                        <li style={{ color: "#cbd5e1" }}>
-                          🎨 <strong>{p.quotas.IMAGE_GENERATION}</strong> AI Images/mo
-                        </li>
-                        <li style={{ color: "#cbd5e1" }}>
-                          💬 <strong>{p.quotas.AI_QUERY}</strong> AI Queries/mo
-                        </li>
-                        <li style={{ color: "#cbd5e1" }}>
-                          🌐 <strong>{p.limits.maxWordPressSites}</strong> WordPress Site(s)
-                        </li>
-                        <li style={{ color: p.features.SEO_AUTOPILOT ? "#34d399" : "#64748b" }}>
-                          {p.features.SEO_AUTOPILOT ? "✓ SEO Autopilot" : "✕ No SEO Autopilot"}
-                        </li>
-                        <li style={{ color: p.features.SOCIAL_AUTOPILOT ? "#34d399" : "#64748b" }}>
-                          {p.features.SOCIAL_AUTOPILOT ? "✓ Social Autopilot" : "✕ No Social Autopilot"}
-                        </li>
-                        <li style={{ color: p.features.META_ADS ? "#38bdf8" : "#64748b" }}>
-                          {p.features.META_ADS ? `🎯 ${p.quotas.META_CAMPAIGN} Meta Ads/mo` : "✕ No Meta Ads"}
-                        </li>
-                        <li style={{ color: p.features.GOOGLE_ADS ? "#facc15" : "#64748b" }}>
-                          {p.features.GOOGLE_ADS ? `📈 ${p.quotas.GOOGLE_CAMPAIGN} Google Ads/mo` : "✕ No Google Ads"}
-                        </li>
-                      </ul>
-                    </div>
-
+            <>
+              {/* Category Tab Switcher */}
+              <div
+                style={{
+                  display: "flex",
+                  gap: 8,
+                  marginBottom: 24,
+                  overflowX: "auto",
+                  paddingBottom: 4,
+                  borderBottom: "1px solid rgba(255, 255, 255, 0.06)",
+                }}
+              >
+                {CATEGORIES.map((cat) => {
+                  const isActive = selectedCategory === cat.key;
+                  return (
                     <button
-                      onClick={() => handleSelectPlan(p)}
-                      disabled={isCurrent}
+                      key={cat.key}
+                      onClick={() => setSelectedCategory(cat.key)}
                       style={{
-                        width: "100%",
-                        padding: "10px",
+                        padding: "8px 16px",
                         borderRadius: 12,
                         border: "none",
-                        background: isCurrent
-                          ? "rgba(255, 255, 255, 0.08)"
-                          : isPopular
-                          ? "#2563eb"
-                          : "rgba(255, 255, 255, 0.12)",
-                        color: isCurrent ? "#94a3b8" : "#ffffff",
+                        background: isActive
+                          ? "linear-gradient(135deg, #2563eb 0%, #1d4ed8 100%)"
+                          : "rgba(255, 255, 255, 0.04)",
+                        color: isActive ? "#ffffff" : "#94a3b8",
                         fontWeight: 700,
-                        fontSize: 12,
-                        cursor: isCurrent ? "default" : "pointer",
-                        transition: "all 0.15s ease",
+                        fontSize: 13,
+                        cursor: "pointer",
+                        whiteSpace: "nowrap",
+                        boxShadow: isActive ? "0 4px 14px rgba(37, 99, 235, 0.35)" : "none",
+                        transition: "all 0.2s ease",
                       }}
                     >
-                      {isCurrent ? "Active Plan" : `Select ${p.name}`}
+                      {cat.label}
                     </button>
-                  </div>
-                );
-              })}
-            </div>
+                  );
+                })}
+              </div>
+
+              {/* Plans Grid */}
+              <div
+                style={{
+                  display: "grid",
+                  gridTemplateColumns:
+                    filteredPlans.length === 1
+                      ? "1fr"
+                      : "repeat(auto-fit, minmax(280px, 1fr))",
+                  gap: 20,
+                  maxWidth: filteredPlans.length === 1 ? 480 : "100%",
+                  margin: filteredPlans.length === 1 ? "0 auto" : "0",
+                }}
+              >
+                {filteredPlans.map((p) => {
+                  const isCurrent = currentPlanId?.toLowerCase() === p.id;
+                  const isPopular = p.id === "suite_1" || p.id === "seo_1" || p.id === "social_1" || p.id === "ads_1";
+
+                  return (
+                    <div
+                      key={p.id}
+                      style={{
+                        background: isPopular
+                          ? "linear-gradient(180deg, rgba(37, 99, 235, 0.12) 0%, rgba(15, 23, 42, 0.85) 100%)"
+                          : "rgba(255, 255, 255, 0.03)",
+                        border: isPopular
+                          ? "1.5px solid #3b82f6"
+                          : isCurrent
+                          ? "1.5px solid rgba(16, 185, 129, 0.6)"
+                          : "1px solid rgba(255, 255, 255, 0.08)",
+                        borderRadius: 20,
+                        padding: "24px 20px",
+                        display: "flex",
+                        flexDirection: "column",
+                        justifyContent: "space-between",
+                        position: "relative",
+                        transition: "transform 0.15s ease",
+                      }}
+                    >
+                      {isPopular && (
+                        <div
+                          style={{
+                            position: "absolute",
+                            top: -10,
+                            left: "50%",
+                            transform: "translateX(-50%)",
+                            background: "#2563eb",
+                            color: "#fff",
+                            fontSize: 10,
+                            fontWeight: 800,
+                            padding: "3px 12px",
+                            borderRadius: 999,
+                            letterSpacing: "0.5px",
+                            textTransform: "uppercase",
+                          }}
+                        >
+                          Recommended
+                        </div>
+                      )}
+
+                      <div>
+                        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", marginBottom: 6 }}>
+                          <h3 style={{ margin: 0, fontSize: 17, fontWeight: 800, color: "#f8fafc" }}>
+                            {p.name}
+                          </h3>
+                          {isCurrent && (
+                            <span style={{ fontSize: 10, color: "#34d399", fontWeight: 700, textTransform: "uppercase" }}>
+                              Current
+                            </span>
+                          )}
+                        </div>
+
+                        <p style={{ fontSize: 12, color: "#94a3b8", margin: "0 0 16px", minHeight: 34, lineHeight: 1.4 }}>
+                          {p.description}
+                        </p>
+
+                        <div style={{ marginBottom: 20, paddingBottom: 16, borderBottom: "1px solid rgba(255, 255, 255, 0.08)" }}>
+                          <span style={{ fontSize: 28, fontWeight: 800, color: "#ffffff" }}>
+                            ₹{p.priceINR.toLocaleString("en-IN")}
+                          </span>
+                          <span style={{ fontSize: 12, color: "#94a3b8" }}> / month</span>
+                        </div>
+
+                        {/* Feature Bullet Allowances */}
+                        <ul style={{ listStyle: "none", padding: 0, margin: "0 0 24px 0", fontSize: 12.5, lineHeight: "2" }}>
+                          {/* WordPress Sites & Isolated Blogs */}
+                          {p.limits.maxWordPressSites > 0 ? (
+                            <li style={{ color: "#cbd5e1" }}>
+                              🌐 <strong>{p.limits.maxWordPressSites}</strong> {p.limits.maxWordPressSites === 1 ? "Website Slot" : "Website Slots"}{" "}
+                              <span style={{ color: "#38bdf8", fontWeight: 600 }}>({p.perAssetQuotas?.blogsPerSite || 30} blogs/site)</span>
+                            </li>
+                          ) : (
+                            <li style={{ color: "#64748b" }}>🌐 No WordPress Sites</li>
+                          )}
+
+                          {/* Social Brands & Isolated Posts */}
+                          {p.limits.maxSocialBrands > 0 ? (
+                            <li style={{ color: "#cbd5e1" }}>
+                              📱 <strong>{p.limits.maxSocialBrands}</strong> {p.limits.maxSocialBrands === 1 ? "Social Brand" : "Social Brands"}{" "}
+                              <span style={{ color: "#a855f7", fontWeight: 600 }}>({p.perAssetQuotas?.postsPerBrand || 30} posts/brand)</span>
+                            </li>
+                          ) : (
+                            <li style={{ color: "#64748b" }}>📱 No Social Media Brands</li>
+                          )}
+
+                          {/* Ads Units & Isolated Campaigns */}
+                          {p.limits.maxAdAccounts > 0 ? (
+                            <li style={{ color: "#cbd5e1" }}>
+                              🎯 <strong>{p.limits.maxAdAccounts}</strong> {p.limits.maxAdAccounts === 1 ? "Ad Unit" : "Ad Units"}{" "}
+                              <span style={{ color: "#facc15", fontWeight: 600 }}>
+                                ({p.perAssetQuotas?.googleAdsPerAccount || 2} Google + {p.perAssetQuotas?.metaAdsPerAccount || 2} Meta)
+                              </span>
+                            </li>
+                          ) : (
+                            <li style={{ color: "#64748b" }}>🎯 No Ad Engine Access</li>
+                          )}
+
+                          {/* Businesses */}
+                          <li style={{ color: "#cbd5e1" }}>
+                            🏢 <strong>{p.limits.maxBusinesses}</strong> {p.limits.maxBusinesses === 1 ? "Isolated Workspace" : "Workspaces"}
+                          </li>
+
+                          {/* Image Generation */}
+                          <li style={{ color: "#cbd5e1" }}>
+                            🎨 <strong>{p.quotas.IMAGE_GENERATION}</strong> AI Images/mo (gpt-image-2)
+                          </li>
+
+                          {/* Autopilot Toggles */}
+                          <li style={{ color: p.features.SEO_AUTOPILOT ? "#34d399" : "#64748b" }}>
+                            {p.features.SEO_AUTOPILOT ? "✓ Autonomous SEO Autopilot" : "✕ SEO Autopilot Not Included"}
+                          </li>
+                          <li style={{ color: p.features.SOCIAL_AUTOPILOT ? "#34d399" : "#64748b" }}>
+                            {p.features.SOCIAL_AUTOPILOT ? "✓ Autonomous Social Autopilot" : "✕ Social Autopilot Not Included"}
+                          </li>
+                          <li style={{ color: "#34d399", fontSize: 11.5 }}>
+                            ✓ 1 Free Test Post Included (Zero Slot Lock)
+                          </li>
+                        </ul>
+                      </div>
+
+                      <button
+                        onClick={() => handleSelectPlan(p)}
+                        disabled={isCurrent}
+                        style={{
+                          width: "100%",
+                          padding: "12px",
+                          borderRadius: 14,
+                          border: "none",
+                          background: isCurrent
+                            ? "rgba(255, 255, 255, 0.08)"
+                            : isPopular
+                            ? "#2563eb"
+                            : "rgba(255, 255, 255, 0.12)",
+                          color: isCurrent ? "#94a3b8" : "#ffffff",
+                          fontWeight: 700,
+                          fontSize: 13,
+                          cursor: isCurrent ? "default" : "pointer",
+                          transition: "all 0.15s ease",
+                        }}
+                      >
+                        {isCurrent ? "Active Plan" : `Select ${p.name}`}
+                      </button>
+                    </div>
+                  );
+                })}
+              </div>
+            </>
           )}
 
           {/* STEP 2: CHECKOUT */}
@@ -337,7 +440,7 @@ export default function SubscriptionModal({
 
               <div style={{ marginBottom: 20 }}>
                 <label style={{ display: "block", fontSize: 12, fontWeight: 700, color: "#cbd5e1", marginBottom: 6 }}>
-                  Payment / Transaction Reference (Optional)
+                  Payment / UPI Reference (Optional)
                 </label>
                 <input
                   type="text"
@@ -389,7 +492,7 @@ export default function SubscriptionModal({
                     boxShadow: "0 0 20px rgba(37, 99, 235, 0.4)",
                   }}
                 >
-                  {submitting ? "Processing Request…" : `Confirm ${selectedPlan.name} Plan`}
+                  {submitting ? "Processing Request…" : `Confirm ${selectedPlan.name}`}
                 </button>
               </div>
             </div>

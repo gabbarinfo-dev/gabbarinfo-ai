@@ -11,7 +11,7 @@ import { getServerSession } from "next-auth/next";
 import { authOptions } from "../auth/[...nextauth]";
 import { supabaseServer } from "../../../lib/supabaseServer";
 import { adminAdjustCredits } from "../../../lib/billing/credit-meter";
-import { SUBSCRIPTION_PLANS } from "../../../lib/billing/plans";
+import { SUBSCRIPTION_PLANS, getPlanConfig } from "../../../lib/billing/plans";
 import {
   getTenantRegistry,
   getOrCreateTenantConfig,
@@ -188,8 +188,7 @@ export default async function handler(req, res) {
         return res.status(400).json({ error: "userEmail is required" });
       }
 
-      const planKey = (planId || "starter").toUpperCase();
-      const plan = SUBSCRIPTION_PLANS[planKey] || SUBSCRIPTION_PLANS.STARTER;
+      const plan = getPlanConfig(planId);
 
       const now = new Date();
       const expiresAt = new Date(now.getTime() + Number(durationDays) * 24 * 60 * 60 * 1000);
@@ -202,7 +201,7 @@ export default async function handler(req, res) {
         expiresAt: expiresAt.toISOString(),
       });
 
-      await setTenantMaxBusinesses(targetEmail, plan.maxBusinesses);
+      await setTenantMaxBusinesses(targetEmail, plan.limits?.maxBusinesses || 1);
 
       try {
         const normEmail = targetEmail.toLowerCase().trim();
@@ -222,9 +221,36 @@ export default async function handler(req, res) {
 
       return res.status(200).json({
         success: true,
-        message: `Plan ${plan.name} (${plan.priceMonthly}) successfully assigned to ${targetEmail}`,
+        message: `Plan ${plan.name} (${plan.priceINR ? "₹" + plan.priceINR : "Free"}) successfully assigned to ${targetEmail} (+${durationDays} days)`,
         plan: plan.id,
         subscription,
+      });
+    }
+
+    // -------------------------------------------------------------
+    // 7b. RESET TENANT QUOTAS
+    // -------------------------------------------------------------
+    if (action === "reset_quotas") {
+      const { userEmail: targetEmail } = req.body;
+      if (!targetEmail) return res.status(400).json({ error: "userEmail is required" });
+      const normEmail = targetEmail.toLowerCase().trim();
+      const bizId = `biz_${normEmail.replace(/[^a-zA-Z0-9]/g, "_")}`;
+
+      try {
+        await supabaseServer
+          .from("monthly_service_usage")
+          .delete()
+          .eq("business_id", bizId);
+
+        await supabaseServer
+          .from("monthly_asset_usage")
+          .delete()
+          .eq("business_id", bizId);
+      } catch (_) {}
+
+      return res.status(200).json({
+        success: true,
+        message: `Quotas and asset usage successfully reset for ${targetEmail}.`,
       });
     }
 

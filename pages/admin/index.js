@@ -259,6 +259,67 @@ export default function AdminPage() {
     }
   }
 
+  // ---------------- EXTEND SUBSCRIPTION PLAN (+30 DAYS) ----------------
+  async function handleExtendPlan(userEmail, currentPlan) {
+    const planToExtend = currentPlan || "suite_1";
+    if (!confirm(`Extend subscription for ${userEmail} by +30 days on plan [${planToExtend}]?`)) return;
+    try {
+      const res = await fetch("/api/admin/manage-tenant", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          action: "assign_plan",
+          userEmail,
+          planId: planToExtend,
+          durationDays: 30,
+        }),
+      });
+      const data = await res.json();
+      if (data.success) {
+        setTenantActionMessage({
+          type: "success",
+          text: data.message || `Plan ${planToExtend} extended +30 days for ${userEmail}.`,
+        });
+        setTimeout(() => setTenantActionMessage(null), 3500);
+        loadTenants();
+      } else {
+        alert(data.error || "Failed to extend plan.");
+      }
+    } catch (err) {
+      console.error("Extend plan error:", err);
+      alert("Failed to extend plan.");
+    }
+  }
+
+  // ---------------- RESET MONTHLY USAGE QUOTAS ----------------
+  async function handleResetQuotas(userEmail) {
+    if (!confirm(`Reset all monthly service and per-asset usage quotas to 0 for ${userEmail}?`)) return;
+    try {
+      const res = await fetch("/api/admin/manage-tenant", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          action: "reset_quotas",
+          userEmail,
+        }),
+      });
+      const data = await res.json();
+      if (data.success) {
+        setTenantActionMessage({
+          type: "success",
+          text: data.message || `Usage quotas reset to 0 for ${userEmail}.`,
+        });
+        setTimeout(() => setTenantActionMessage(null), 3500);
+        loadTenants();
+      } else {
+        alert(data.error || "Failed to reset quotas.");
+      }
+    } catch (err) {
+      console.error("Reset quotas error:", err);
+      alert("Failed to reset quotas.");
+    }
+  }
+
   // ---------------- SAVE CREDITS HANDLER ----------------
   async function handleAdjustCredits(e) {
     e.preventDefault();
@@ -754,27 +815,98 @@ export default function AdminPage() {
                           {isSelfAdmin ? (
                             <span className="master-badge">👑 OWNER</span>
                           ) : (
-                            <select
-                              value={t.subscription?.plan?.toLowerCase() || "try"}
-                              onChange={(e) => handleAssignPlan(t.email, e.target.value)}
-                              className="dark-input"
-                              style={{
-                                fontSize: 11,
-                                padding: "4px 8px",
-                                background: "#1e293b",
-                                color: "#38bdf8",
-                                fontWeight: 600,
-                                borderRadius: 6,
-                                border: "1px solid rgba(56, 189, 248, 0.3)",
-                                cursor: "pointer",
-                              }}
-                            >
-                              <option value="try">Try (₹499)</option>
-                              <option value="starter">Starter (₹999)</option>
-                              <option value="growth">Growth (₹2,499)</option>
-                              <option value="business">Business (₹4,999)</option>
-                              <option value="agency">Agency (₹9,999)</option>
-                            </select>
+                            <div style={{ display: "flex", flexDirection: "column", gap: 6, minWidth: 160 }}>
+                              <select
+                                value={t.subscription?.plan?.toLowerCase() || "try"}
+                                onChange={(e) => handleAssignPlan(t.email, e.target.value)}
+                                className="dark-input"
+                                style={{
+                                  fontSize: 11,
+                                  padding: "4px 8px",
+                                  background: "#1e293b",
+                                  color: "#38bdf8",
+                                  fontWeight: 600,
+                                  borderRadius: 6,
+                                  border: "1px solid rgba(56, 189, 248, 0.3)",
+                                  cursor: "pointer",
+                                  width: "100%",
+                                }}
+                              >
+                                <optgroup label="⚡ Growth Suites (All-in-One)">
+                                  <option value="suite_1">Solo Growth (1 Biz) — ₹2,499</option>
+                                  <option value="suite_2">Duo Growth (2 Biz) — ₹4,499</option>
+                                  <option value="suite_3">Trio Growth (3 Biz) — ₹6,499</option>
+                                </optgroup>
+                                <optgroup label="📝 SEO Content (30 blogs/site)">
+                                  <option value="seo_1">SEO Solo (1 Site) — ₹1,299</option>
+                                  <option value="seo_2">SEO Duo (2 Sites) — ₹2,299</option>
+                                  <option value="seo_3">SEO Trio (3 Sites) — ₹3,199</option>
+                                </optgroup>
+                                <optgroup label="📱 Social Autopilot (30 posts/brand)">
+                                  <option value="social_1">Social Solo (1 Brand) — ₹1,299</option>
+                                  <option value="social_2">Social Duo (2 Brands) — ₹2,299</option>
+                                  <option value="social_3">Social Trio (3 Brands) — ₹3,199</option>
+                                </optgroup>
+                                <optgroup label="🚀 Performance Ads (2 GAds + 2 Meta)">
+                                  <option value="ads_1">Ads Solo (1 Unit) — ₹1,099</option>
+                                  <option value="ads_2">Ads Duo (2 Units) — ₹1,999</option>
+                                  <option value="ads_3">Ads Trio (3 Units) — ₹2,799</option>
+                                </optgroup>
+                                <optgroup label="🏢 Agency Scale">
+                                  <option value="agency_scale">Agency Scale (15 Sites/8 Brands) — ₹14,999</option>
+                                </optgroup>
+                                <optgroup label="Legacy & Trial">
+                                  <option value="try">Free Trial / Starter Mode</option>
+                                  <option value="starter">Starter (₹999)</option>
+                                  <option value="growth">Growth (₹2,499)</option>
+                                  <option value="business">Business (₹4,999)</option>
+                                  <option value="agency">Agency (₹9,999)</option>
+                                </optgroup>
+                              </select>
+
+                              <div style={{ display: "flex", gap: 4 }}>
+                                <button
+                                  onClick={() => handleExtendPlan(t.email, t.subscription?.plan)}
+                                  title="Extend subscription by +30 days"
+                                  style={{
+                                    flex: 1,
+                                    fontSize: 10,
+                                    padding: "3px 6px",
+                                    background: "rgba(16, 185, 129, 0.15)",
+                                    border: "1px solid rgba(16, 185, 129, 0.4)",
+                                    color: "#34d399",
+                                    borderRadius: 4,
+                                    cursor: "pointer",
+                                    fontWeight: 600,
+                                  }}
+                                >
+                                  📅 +30d
+                                </button>
+                                <button
+                                  onClick={() => handleResetQuotas(t.email)}
+                                  title="Reset monthly usage quotas to 0"
+                                  style={{
+                                    flex: 1,
+                                    fontSize: 10,
+                                    padding: "3px 6px",
+                                    background: "rgba(239, 68, 68, 0.15)",
+                                    border: "1px solid rgba(239, 68, 68, 0.4)",
+                                    color: "#f87171",
+                                    borderRadius: 4,
+                                    cursor: "pointer",
+                                    fontWeight: 600,
+                                  }}
+                                >
+                                  🔄 Reset
+                                </button>
+                              </div>
+
+                              {t.subscription?.expiresAt && (
+                                <div style={{ fontSize: 9, color: "#94a3b8" }}>
+                                  Exp: {new Date(t.subscription.expiresAt).toLocaleDateString()}
+                                </div>
+                              )}
+                            </div>
                           )}
                         </td>
 

@@ -29,11 +29,23 @@ export default async function handler(req, res) {
     const userEmail = (session.user.email || "").toLowerCase().trim();
     const { businessId = null } = req.body || {};
 
+    // ---------------------------
+    // 2) FETCH META CONNECTION FOR ASSET LOCKING
+    // ---------------------------
+    const { data: conn, error: connErr } = await supabase
+      .from("meta_connections")
+      .select("fb_ad_account_id")
+      .eq("email", userEmail)
+      .maybeSingle();
+
+    const adAccountId = conn?.fb_ad_account_id || null;
+
     const quotaRes = await reserveQuota({
       session,
       userEmail,
       businessId,
       actionType: "META_CAMPAIGN",
+      assetId: adAccountId,
     });
 
     if (!quotaRes.ok) {
@@ -46,16 +58,7 @@ export default async function handler(req, res) {
       });
     }
 
-    // ---------------------------
-    // 2) FETCH META CONNECTION
-    // ---------------------------
-    const { data: conn, error } = await supabase
-      .from("meta_connections")
-      .select("fb_ad_account_id")
-      .eq("email", session.user.email.toLowerCase())
-      .single();
-
-    if (error || !conn) {
+    if (connErr || !conn) {
       return res.status(400).json({
         ok: false,
         message: "Meta account not connected for this user",

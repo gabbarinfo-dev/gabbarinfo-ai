@@ -23,17 +23,36 @@ CREATE TABLE IF NOT EXISTS public.subscription_plans (
     created_at TIMESTAMPTZ DEFAULT now()
 );
 
--- Seed Initial Plans
+-- Seed Initial Plans (Modular Asset-Slot Catalog)
 INSERT INTO public.subscription_plans (
     id, name, price_inr, max_businesses, max_wordpress_sites, max_facebook_pages, max_instagram_accounts,
     quota_seo_articles, quota_social_posts, quota_meta_campaigns, quota_google_campaigns,
     quota_image_generations, quota_ai_queries, features
 ) VALUES 
-('try', 'TRY', 499, 1, 1, 1, 1, 1, 4, 0, 0, 2, 20, '{"SEO": true, "SEO_AUTOPILOT": false, "SOCIAL": true, "SOCIAL_AUTOPILOT": false, "META_ADS": false, "GOOGLE_ADS": false, "IMAGE_GENERATION": true, "AI_CHAT": true}'::jsonb),
-('starter', 'STARTER', 999, 1, 1, 1, 1, 4, 4, 0, 0, 5, 50, '{"SEO": true, "SEO_AUTOPILOT": true, "SOCIAL": true, "SOCIAL_AUTOPILOT": true, "META_ADS": false, "GOOGLE_ADS": false, "IMAGE_GENERATION": true, "AI_CHAT": true}'::jsonb),
-('growth', 'GROWTH', 2499, 1, 2, 2, 2, 30, 30, 2, 2, 10, 150, '{"SEO": true, "SEO_AUTOPILOT": true, "SOCIAL": true, "SOCIAL_AUTOPILOT": true, "META_ADS": true, "GOOGLE_ADS": true, "IMAGE_GENERATION": true, "AI_CHAT": true}'::jsonb),
-('business', 'BUSINESS', 4999, 2, 3, 3, 3, 30, 30, 5, 5, 20, 300, '{"SEO": true, "SEO_AUTOPILOT": true, "SOCIAL": true, "SOCIAL_AUTOPILOT": true, "META_ADS": true, "GOOGLE_ADS": true, "IMAGE_GENERATION": true, "AI_CHAT": true}'::jsonb),
-('agency', 'AGENCY', 9999, 5, 3, 3, 3, 30, 30, 5, 5, 20, 300, '{"SEO": true, "SEO_AUTOPILOT": true, "SOCIAL": true, "SOCIAL_AUTOPILOT": true, "META_ADS": true, "GOOGLE_ADS": true, "IMAGE_GENERATION": true, "AI_CHAT": true}'::jsonb)
+-- Growth Suites
+('suite_1', 'Solo Growth Suite (1 Business)', 2499, 1, 1, 1, 1, 30, 30, 2, 2, 30, 150, '{"SEO": true, "SEO_AUTOPILOT": true, "SOCIAL": true, "SOCIAL_AUTOPILOT": true, "META_ADS": true, "GOOGLE_ADS": true, "IMAGE_GENERATION": true, "AI_CHAT": true}'::jsonb),
+('suite_2', 'Duo Growth Suite (2 Businesses)', 4499, 2, 2, 2, 2, 60, 60, 4, 4, 60, 300, '{"SEO": true, "SEO_AUTOPILOT": true, "SOCIAL": true, "SOCIAL_AUTOPILOT": true, "META_ADS": true, "GOOGLE_ADS": true, "IMAGE_GENERATION": true, "AI_CHAT": true}'::jsonb),
+('suite_3', 'Trio Growth Suite (3 Businesses)', 6499, 3, 3, 3, 3, 90, 90, 6, 6, 90, 450, '{"SEO": true, "SEO_AUTOPILOT": true, "SOCIAL": true, "SOCIAL_AUTOPILOT": true, "META_ADS": true, "GOOGLE_ADS": true, "IMAGE_GENERATION": true, "AI_CHAT": true}'::jsonb),
+-- Standalone SEO
+('seo_1', 'SEO Solo (1 Website)', 1299, 1, 1, 0, 0, 30, 0, 0, 0, 30, 100, '{"SEO": true, "SEO_AUTOPILOT": true, "SOCIAL": false, "SOCIAL_AUTOPILOT": false, "META_ADS": false, "GOOGLE_ADS": false, "IMAGE_GENERATION": true, "AI_CHAT": true}'::jsonb),
+('seo_2', 'SEO Duo (2 Websites)', 2299, 2, 2, 0, 0, 60, 0, 0, 0, 60, 200, '{"SEO": true, "SEO_AUTOPILOT": true, "SOCIAL": false, "SOCIAL_AUTOPILOT": false, "META_ADS": false, "GOOGLE_ADS": false, "IMAGE_GENERATION": true, "AI_CHAT": true}'::jsonb),
+('seo_3', 'SEO Trio (3 Websites)', 3199, 3, 3, 0, 0, 90, 0, 0, 0, 90, 300, '{"SEO": true, "SEO_AUTOPILOT": true, "SOCIAL": false, "SOCIAL_AUTOPILOT": false, "META_ADS": false, "GOOGLE_ADS": false, "IMAGE_GENERATION": true, "AI_CHAT": true}'::jsonb),
+-- Standalone Social
+('social_1', 'Social Solo (1 Brand)', 1299, 1, 0, 1, 1, 0, 30, 0, 0, 30, 100, '{"SEO": false, "SEO_AUTOPILOT": false, "SOCIAL": true, "SOCIAL_AUTOPILOT": true, "META_ADS": false, "GOOGLE_ADS": false, "IMAGE_GENERATION": true, "AI_CHAT": true}'::jsonb),
+('social_2', 'Social Duo (2 Brands)', 2299, 2, 0, 2, 2, 0, 60, 0, 0, 60, 200, '{"SEO": false, "SEO_AUTOPILOT": false, "SOCIAL": true, "SOCIAL_AUTOPILOT": true, "META_ADS": false, "GOOGLE_ADS": false, "IMAGE_GENERATION": true, "AI_CHAT": true}'::jsonb),
+('social_3', 'Social Trio (3 Brands)', 3199, 3, 0, 3, 3, 0, 90, 0, 0, 90, 300, '{"SEO": false, "SEO_AUTOPILOT": false, "SOCIAL": true, "SOCIAL_AUTOPILOT": true, "META_ADS": false, "GOOGLE_ADS": false, "IMAGE_GENERATION": true, "AI_CHAT": true}'::jsonb),
+-- Standalone Ads
+('ads_1', 'Ads Solo (1 Business)', 1099, 1, 0, 0, 0, 0, 0, 2, 2, 10, 80, '{"SEO": false, "SEO_AUTOPILOT": false, "SOCIAL": false, "SOCIAL_AUTOPILOT": false, "META_ADS": true, "GOOGLE_ADS": true, "IMAGE_GENERATION": true, "AI_CHAT": true}'::jsonb),
+('ads_2', 'Ads Duo (2 Businesses)', 1999, 2, 0, 0, 0, 0, 0, 4, 4, 20, 150, '{"SEO": false, "SEO_AUTOPILOT": false, "SOCIAL": false, "SOCIAL_AUTOPILOT": false, "META_ADS": true, "GOOGLE_ADS": true, "IMAGE_GENERATION": true, "AI_CHAT": true}'::jsonb),
+('ads_3', 'Ads Trio (3 Businesses)', 2799, 3, 0, 0, 0, 0, 0, 6, 6, 30, 220, '{"SEO": false, "SEO_AUTOPILOT": false, "SOCIAL": false, "SOCIAL_AUTOPILOT": false, "META_ADS": true, "GOOGLE_ADS": true, "IMAGE_GENERATION": true, "AI_CHAT": true}'::jsonb),
+-- Agency Scale
+('agency_scale', 'Agency Scale (Up to 15 Clients)', 14999, 15, 15, 8, 8, 450, 240, 16, 16, 300, 1000, '{"SEO": true, "SEO_AUTOPILOT": true, "SOCIAL": true, "SOCIAL_AUTOPILOT": true, "META_ADS": true, "GOOGLE_ADS": true, "IMAGE_GENERATION": true, "AI_CHAT": true}'::jsonb),
+-- Legacy Aliases
+('try', 'TRY', 0, 1, 1, 1, 1, 1, 1, 0, 0, 2, 20, '{"SEO": true, "SEO_AUTOPILOT": false, "SOCIAL": true, "SOCIAL_AUTOPILOT": false, "META_ADS": false, "GOOGLE_ADS": false, "IMAGE_GENERATION": true, "AI_CHAT": true}'::jsonb),
+('starter', 'STARTER', 2499, 1, 1, 1, 1, 30, 30, 2, 2, 30, 150, '{"SEO": true, "SEO_AUTOPILOT": true, "SOCIAL": true, "SOCIAL_AUTOPILOT": true, "META_ADS": true, "GOOGLE_ADS": true, "IMAGE_GENERATION": true, "AI_CHAT": true}'::jsonb),
+('growth', 'GROWTH', 4499, 2, 2, 2, 2, 60, 60, 4, 4, 60, 300, '{"SEO": true, "SEO_AUTOPILOT": true, "SOCIAL": true, "SOCIAL_AUTOPILOT": true, "META_ADS": true, "GOOGLE_ADS": true, "IMAGE_GENERATION": true, "AI_CHAT": true}'::jsonb),
+('business', 'BUSINESS', 6499, 3, 3, 3, 3, 90, 90, 6, 6, 90, 450, '{"SEO": true, "SEO_AUTOPILOT": true, "SOCIAL": true, "SOCIAL_AUTOPILOT": true, "META_ADS": true, "GOOGLE_ADS": true, "IMAGE_GENERATION": true, "AI_CHAT": true}'::jsonb),
+('agency', 'AGENCY', 14999, 15, 15, 8, 8, 450, 240, 16, 16, 300, 1000, '{"SEO": true, "SEO_AUTOPILOT": true, "SOCIAL": true, "SOCIAL_AUTOPILOT": true, "META_ADS": true, "GOOGLE_ADS": true, "IMAGE_GENERATION": true, "AI_CHAT": true}'::jsonb)
 ON CONFLICT (id) DO UPDATE SET
     price_inr = EXCLUDED.price_inr,
     max_businesses = EXCLUDED.max_businesses,
@@ -53,7 +72,7 @@ CREATE TABLE IF NOT EXISTS public.monthly_service_usage (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     business_id TEXT NOT NULL,
     cycle_start TIMESTAMPTZ NOT NULL,
-    action_type TEXT NOT NULL, -- 'SEO_ARTICLE', 'SOCIAL_POST', 'META_CAMPAIGN', 'GOOGLE_CAMPAIGN', 'IMAGE_GENERATION', 'AI_QUERY'
+    action_type TEXT NOT NULL,
     used_count INT NOT NULL DEFAULT 0 CHECK (used_count >= 0),
     created_at TIMESTAMPTZ DEFAULT now(),
     updated_at TIMESTAMPTZ DEFAULT now(),
@@ -61,6 +80,22 @@ CREATE TABLE IF NOT EXISTS public.monthly_service_usage (
 );
 
 CREATE INDEX IF NOT EXISTS idx_monthly_usage_lookup ON public.monthly_service_usage(business_id, cycle_start);
+
+-- 2b. PER-ASSET USAGE & SLOT LOCKING (First Post Locks the Slot)
+CREATE TABLE IF NOT EXISTS public.monthly_asset_usage (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    business_id TEXT NOT NULL,
+    cycle_start TIMESTAMPTZ NOT NULL,
+    asset_type TEXT NOT NULL, -- 'social_brand', 'wordpress_site', 'google_ads', 'meta_ads'
+    asset_id TEXT NOT NULL,   -- fb_page_id, site_url, customer_id
+    used_count INT NOT NULL DEFAULT 0,
+    metadata JSONB,
+    created_at TIMESTAMPTZ DEFAULT now(),
+    updated_at TIMESTAMPTZ DEFAULT now(),
+    UNIQUE(business_id, cycle_start, asset_type, asset_id)
+);
+
+CREATE INDEX IF NOT EXISTS idx_monthly_asset_usage ON public.monthly_asset_usage(business_id, cycle_start, asset_type);
 
 -- 3. SUBSCRIPTION PURCHASE ORDERS (Customer Plan Order Request & Admin Verification)
 CREATE TABLE IF NOT EXISTS public.subscription_orders (
