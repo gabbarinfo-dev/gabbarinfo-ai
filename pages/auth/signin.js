@@ -152,6 +152,7 @@ export default function SignInPage() {
             paddingTop: 18,
             borderTop: "1px solid rgba(255, 255, 255, 0.08)",
             display: "flex",
+            flexDirection: "column",
             alignItems: "center",
             justifyContent: "center",
             gap: 8,
@@ -159,8 +160,27 @@ export default function SignInPage() {
             color: "#64748b",
           }}
         >
-          <span style={{ color: "#F5B716" }}>🔒</span>
-          <span>Enterprise 256-Bit Neural Encrypted OAuth 2.0 Security</span>
+          <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+            <span style={{ color: "#F5B716" }}>🔒</span>
+            <span>Enterprise 256-Bit Neural Encrypted OAuth 2.0 Security</span>
+          </div>
+          <div>
+            <a
+              href="https://www.gabbarinfo.com/privacy-policy/"
+              target="_blank"
+              rel="noopener noreferrer"
+              style={{
+                color: "#94a3b8",
+                textDecoration: "underline",
+                fontSize: 12,
+                transition: "color 0.2s ease",
+              }}
+              onMouseEnter={(e) => (e.currentTarget.style.color = "#F5B716")}
+              onMouseLeave={(e) => (e.currentTarget.style.color = "#94a3b8")}
+            >
+              Privacy Policy
+            </a>
+          </div>
         </div>
       </div>
 

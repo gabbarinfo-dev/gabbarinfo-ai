@@ -259,8 +259,27 @@ export default function HomePage() {
             </button>
           </div>
 
-          <div style={{ marginTop: 26, fontSize: 12, color: "#64748b", display: "flex", alignItems: "center", justifyContent: "center", gap: 6 }}>
-            <span>🔒</span> Enterprise 256-Bit Encrypted OAuth Security
+          <div style={{ marginTop: 26, fontSize: 12, color: "#64748b", display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 8 }}>
+            <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+              <span>🔒</span> Enterprise 256-Bit Encrypted OAuth Security
+            </div>
+            <div>
+              <a
+                href="https://www.gabbarinfo.com/privacy-policy/"
+                target="_blank"
+                rel="noopener noreferrer"
+                style={{
+                  color: "#94a3b8",
+                  textDecoration: "underline",
+                  fontSize: 12,
+                  transition: "color 0.2s ease",
+                }}
+                onMouseEnter={(e) => (e.currentTarget.style.color = "#38bdf8")}
+                onMouseLeave={(e) => (e.currentTarget.style.color = "#94a3b8")}
+              >
+                Privacy Policy
+              </a>
+            </div>
           </div>
         </div>
       </div>
@@ -1151,6 +1170,42 @@ export default function HomePage() {
           </div>
         </div>
       )}
+
+      {/* FOOTER */}
+      <footer
+        style={{
+          marginTop: 60,
+          padding: "24px 0",
+          borderTop: "1px solid rgba(255, 255, 255, 0.08)",
+          display: "flex",
+          justifyContent: "space-between",
+          alignItems: "center",
+          flexWrap: "wrap",
+          gap: 12,
+          fontSize: 12,
+          color: "#64748b",
+        }}
+      >
+        <div>
+          © {new Date().getFullYear()} GabbarInfo AI. All rights reserved.
+        </div>
+        <div style={{ display: "flex", gap: 16 }}>
+          <a
+            href="https://www.gabbarinfo.com/privacy-policy/"
+            target="_blank"
+            rel="noopener noreferrer"
+            style={{
+              color: "#94a3b8",
+              textDecoration: "underline",
+              transition: "color 0.2s ease",
+            }}
+            onMouseEnter={(e) => (e.currentTarget.style.color = "#38bdf8")}
+            onMouseLeave={(e) => (e.currentTarget.style.color = "#94a3b8")}
+          >
+            Privacy Policy
+          </a>
+        </div>
+      </footer>
     </div>
   );
 }
