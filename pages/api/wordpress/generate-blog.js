@@ -19,8 +19,11 @@ export default async function handler(req, res) {
     return res.status(405).json({ ok: false, error: "Method not allowed" });
   }
 
-  const session = await getServerSession(req, res, authOptions);
-  const userEmail = session?.user?.email || req.body?.userEmail;
+  let userEmail = req.body?.userEmail;
+  if (!userEmail) {
+    const session = await getServerSession(req, res, authOptions);
+    userEmail = session?.user?.email;
+  }
 
   if (!userEmail) {
     return res.status(401).json({ ok: false, error: "Unauthorized: Please log in" });
@@ -306,20 +309,20 @@ Respond ONLY with a valid JSON object matching this schema:
     };
 
     // 4 & 5. Generate Visuals in PARALLEL for maximum speed and zero timeout risk (EXACTLY 2 images: 1 Featured + 1 Mid-Content)
+    const featuredPrompt = parsedArticle.featured_image_prompt
+      ? `${parsedArticle.featured_image_prompt}. Panoramic 16:9 widescreen 3D conceptual visual art, glowing sleek dark agency aesthetics with amber highlights, cinematic lighting. STRICTLY NO TEXT, NO WORDS, NO LETTERS, NO TYPOGRAPHY.`
+      : `Panoramic 16:9 widescreen 3D conceptual artwork of digital search analytics, glowing holographic charts, floating glass geometric shapes, futuristic dark agency aesthetic with neon blue and amber highlights, cinematic studio lighting. STRICTLY NO TEXT, NO WORDS, NO LETTERS, NO TYPOGRAPHY, completely clean visual art.`;
+
+    const midPrompt = parsedArticle.mid_image_prompt
+      ? `${parsedArticle.mid_image_prompt}. Clean 3D isometric infographic visual art, vibrant modern accents, sleek layout. STRICTLY NO TEXT, NO WORDS, NO LETTERS.`
+      : `Clean isometric 3D infographic illustration of modern digital marketing growth, analytics funnel, and search engine optimization flywheel. Sleek geometric layout, soft studio shadows, vibrant modern accents. Clean visual graphic. STRICTLY NO TEXT, NO LETTERS.`;
+
     const [featuredImageUrl, midImageUrl] = await Promise.all([
-      generateAiVisual(
-        `Panoramic 16:9 widescreen 3D conceptual artwork of digital search analytics, glowing holographic charts, floating glass geometric shapes, futuristic dark agency aesthetic with neon blue and amber highlights, cinematic studio lighting. STRICTLY NO TEXT, NO WORDS, NO LETTERS, NO TYPOGRAPHY, completely clean visual art.`,
-        "featured",
-        "1792x1024"
-      ).catch((e) => {
+      generateAiVisual(featuredPrompt, "featured", "1792x1024").catch((e) => {
         console.warn("Featured image generation error:", e.message);
         return null;
       }),
-      generateAiVisual(
-        `Clean isometric 3D infographic illustration of modern digital marketing growth, analytics funnel, and search engine optimization flywheel. Sleek geometric layout, soft studio shadows, vibrant modern accents. Clean visual graphic.`,
-        "mid",
-        "1024x1024"
-      ).catch((e) => {
+      generateAiVisual(midPrompt, "mid", "1024x1024").catch((e) => {
         console.warn("Mid image generation error:", e.message);
         return null;
       }),
@@ -347,14 +350,17 @@ Respond ONLY with a valid JSON object matching this schema:
     console.log(`[SEO Engine] Initial article word count: ${actualWords} words (Target: ${wordCount})`);
 
     if (actualWords < wordCount * 0.82) {
-      console.log(`[SEO Engine] Word count (${actualWords}) below target (${wordCount}). Executing automatic enrichment & expansion pass...`);
-      try {
-        const expandResp = await openai.chat.completions.create({
-          model: "gpt-4o",
-          messages: [
-            {
-              role: "system",
-              content: `You are an elite SEO editor and authority content architect.
+      if (req.body?.isAutopilot && actualWords >= 900) {
+        console.log(`[SEO Engine] Autopilot mode: current word count is ${actualWords}. Skipping secondary expansion pass to guarantee serverless completion.`);
+      } else {
+        console.log(`[SEO Engine] Word count (${actualWords}) below target (${wordCount}). Executing automatic enrichment & expansion pass...`);
+        try {
+          const expandResp = await openai.chat.completions.create({
+            model: blogModel || "gpt-4o-mini",
+            messages: [
+              {
+                role: "system",
+                content: `You are an elite SEO editor and authority content architect.
 The user requested a full ${wordCount}-word comprehensive pillar guide, but the draft currently has ${actualWords} words.
 Your task is to expand and enrich this article so that the total word count exceeds ${wordCount} words.
 INSTRUCTIONS:
@@ -363,25 +369,26 @@ INSTRUCTIONS:
 3. Add or expand an exhaustive FAQ section with 5 high-impact questions and detailed multi-paragraph answers.
 4. Keep all existing internal and external links and image tags intact.
 5. Return ONLY valid JSON: { "expanded_html": "full comprehensive expanded HTML" }`,
-            },
-            {
-              role: "user",
-              content: `Headline: ${parsedArticle.title}\nTarget Word Count: ${wordCount}\nCurrent HTML Content:\n${finalContent}`,
-            },
-          ],
-          response_format: { type: "json_object" },
-          max_tokens: 4500,
-          temperature: 0.7,
-        });
+              },
+              {
+                role: "user",
+                content: `Headline: ${parsedArticle.title}\nTarget Word Count: ${wordCount}\nCurrent HTML Content:\n${finalContent}`,
+              },
+            ],
+            response_format: { type: "json_object" },
+            max_tokens: 4500,
+            temperature: 0.7,
+          });
 
-        const expParsed = JSON.parse(expandResp.choices[0].message.content);
-        if (expParsed?.expanded_html && expParsed.expanded_html.length > finalContent.length) {
-          finalContent = expParsed.expanded_html;
-          const newCount = finalContent.replace(/<[^>]+>/g, " ").trim().split(/\s+/).filter(Boolean).length;
-          console.log(`[SEO Engine] Expansion successful! New word count: ${newCount} words.`);
+          const expParsed = JSON.parse(expandResp.choices[0].message.content);
+          if (expParsed?.expanded_html && expParsed.expanded_html.length > finalContent.length) {
+            finalContent = expParsed.expanded_html;
+            const newCount = finalContent.replace(/<[^>]+>/g, " ").trim().split(/\s+/).filter(Boolean).length;
+            console.log(`[SEO Engine] Expansion successful! New word count: ${newCount} words.`);
+          }
+        } catch (expErr) {
+          console.warn("[SEO Engine] Expansion pass skipped:", expErr.message);
         }
-      } catch (expErr) {
-        console.warn("[SEO Engine] Expansion pass skipped:", expErr.message);
       }
     }
 

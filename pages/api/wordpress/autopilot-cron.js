@@ -124,7 +124,13 @@ export default async function handler(req, res) {
           }),
         });
 
-        const genData = await genRes.json();
+        let genData = null;
+        try {
+          const genText = await genRes.text();
+          genData = JSON.parse(genText);
+        } catch (parseErr) {
+          console.error(`[Autopilot Cron] Failed to parse blog generator response (HTTP ${genRes.status})`);
+        }
 
         if (genData?.ok) {
           // Update lastPublishedAt

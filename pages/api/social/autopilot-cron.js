@@ -20,7 +20,7 @@ async function generateSocialVisual(prompt, label = "social") {
   if (apiKey) {
     try {
       const openai = new OpenAI({ apiKey });
-      const modelToUse = process.env.OPENAI_IMAGE_MODEL || "dall-e-3";
+      const modelToUse = process.env.OPENAI_IMAGE_MODEL || "gpt-image-2";
       console.log(`[Social Cron] Generating visual with OpenAI (${modelToUse})...`);
 
       let response;
@@ -31,9 +31,9 @@ async function generateSocialVisual(prompt, label = "social") {
           size: "1024x1024",
         });
       } catch (err) {
-        console.warn(`[Social Cron] Primary model failed, trying fallback:`, err.message);
+        console.warn(`[Social Cron] Primary model ${modelToUse} failed, trying gpt-image-1.5:`, err.message);
         response = await openai.images.generate({
-          model: "dall-e-2",
+          model: "gpt-image-1.5",
           prompt,
           size: "1024x1024",
         });
@@ -120,6 +120,7 @@ export default async function handler(req, res) {
 
     for (const item of configs || []) {
       try {
+        const now = new Date();
         const config = JSON.parse(item.content);
         if (!config.enabled && !req.query?.force) continue;
 
