@@ -40,7 +40,7 @@ export default async function handler(req, res) {
       // 1. Fetch user's Google connection from Supabase
       const { data: connection, error: connErr } = await supabase
         .from("google_connections")
-        .select("refresh_token, customer_id, manager_id, updated_at")
+        .select("refresh_token, customer_id, updated_at")
         .eq("email", email)
         .maybeSingle();
 
@@ -55,6 +55,7 @@ export default async function handler(req, res) {
         return res.status(200).json({
           ok: true,
           connected: false,
+          hasAdsScope: false,
           message:
             "No Google Ads authorization found. Please sign in with Google to connect your account.",
           accounts: [],
@@ -78,6 +79,7 @@ export default async function handler(req, res) {
         return res.status(200).json({
           ok: false,
           connected: true,
+          hasAdsScope: hierarchyResp.hasAdsScope ?? false,
           error: "failed_to_list_accounts",
           message: `Failed to retrieve Google Ads accounts: ${apiError}`,
           details: hierarchyResp.json,
@@ -94,9 +96,7 @@ export default async function handler(req, res) {
       // Auto-select if only one account and none selected yet
       if (!selectedCustomerId && accountDetails.length === 1) {
         selectedCustomerId = accountDetails[0].customerId;
-        const autoManagerId = accountDetails[0].managerId || null;
 
-        // Save the auto-selected account + its manager_id
         try {
           await supabase
             .from("google_connections")
@@ -104,32 +104,19 @@ export default async function handler(req, res) {
               {
                 email,
                 customer_id: selectedCustomerId,
-                manager_id: autoManagerId,
                 updated_at: new Date().toISOString(),
               },
               { onConflict: "email" }
             );
-        } catch (saveErr) {
-          // manager_id column may not exist yet — save without it
-          await supabase
-            .from("google_connections")
-            .upsert(
-              {
-                email,
-                customer_id: selectedCustomerId,
-                updated_at: new Date().toISOString(),
-              },
-              { onConflict: "email" }
-            );
-        }
+        } catch (_) {}
       }
 
       return res.status(200).json({
         ok: true,
         connected: true,
+        hasAdsScope: hierarchyResp.hasAdsScope !== false,
         accounts: accountDetails, // Each account includes managerId for campaign creation
         selectedCustomerId,
-        selectedManagerId: connection?.manager_id || null,
       });
     } catch (err) {
       console.error("GET /api/google-ads/accounts error:", err);

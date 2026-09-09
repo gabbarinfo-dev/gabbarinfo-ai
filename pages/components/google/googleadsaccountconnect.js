@@ -26,15 +26,13 @@ export default function GoogleAdsAccountConnect() {
         setConnected(Boolean(data.connected));
         setAccounts(data.accounts || []);
         setSelectedCustomerId(data.selectedCustomerId || null);
-        // If connected but no accounts returned, the refresh token
-        // likely lacks the adwords scope — user needs to re-authenticate
-        if (data.connected && (!data.accounts || data.accounts.length === 0)) {
+        // Only require re-authentication if the Google Ads scope is explicitly missing
+        if (data.connected && data.hasAdsScope === false) {
           setNeedsReauth(true);
         }
       } else {
         setConnected(Boolean(data.connected));
-        // Scope/permission errors → prompt re-auth
-        if (data.error === "failed_to_list_accounts" || data.needsReauth) {
+        if (data.hasAdsScope === false || data.needsReauth) {
           setNeedsReauth(true);
         }
         setError(data.message || "Failed to load Google Ads accounts.");
@@ -263,7 +261,38 @@ export default function GoogleAdsAccountConnect() {
               </button>
             </>
           ) : (
-            "No Google Ads customer accounts found for this Google login. Make sure your Google account has access to at least one active Google Ads account."
+            <div>
+              <div style={{ fontSize: "22px", marginBottom: "8px" }}>📊</div>
+              <strong style={{ display: "block", marginBottom: "6px", fontSize: "14px", color: "#f8fafc" }}>
+                Google Ads Connected · No Ad Accounts Found
+              </strong>
+              <p style={{ margin: "0 0 14px", lineHeight: 1.6, color: "#cbd5e1", maxWidth: 500, marginInline: "auto" }}>
+                Your Google login is authorized, but Google reported no active Google Ads accounts under 
+                this email address.
+                <br /><br />
+                To manage ads with GabbarInfo AI, please create an account at{" "}
+                <a 
+                  href="https://ads.google.com" 
+                  target="_blank" 
+                  rel="noreferrer" 
+                  style={{ color: "#60a5fa", textDecoration: "underline", fontWeight: 600 }}
+                >
+                  ads.google.com ↗
+                </a>{" "}
+                or ask your agency administrator to invite this email to their Google Ads account.
+              </p>
+              <button
+                onClick={fetchAccounts}
+                className="btn-gabbar-secondary"
+                style={{
+                  padding: "8px 18px",
+                  fontSize: "12px",
+                  cursor: "pointer",
+                }}
+              >
+                🔄 Refresh Account List
+              </button>
+            </div>
           )}
         </div>
       ) : (
