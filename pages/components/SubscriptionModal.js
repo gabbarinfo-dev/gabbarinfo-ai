@@ -256,7 +256,12 @@ export default function SubscriptionModal({
                 }}
               >
                 {filteredPlans.map((p) => {
-                  const isCurrent = currentPlanId?.toLowerCase() === p.id;
+                  const normalizedCurrent = (currentPlanId || "").toLowerCase().trim();
+                  const isCurrent =
+                    normalizedCurrent &&
+                    normalizedCurrent !== "none" &&
+                    normalizedCurrent !== "try" &&
+                    normalizedCurrent === p.id;
                   const isPopular = p.id === "suite_1" || p.id === "seo_1" || p.id === "social_1" || p.id === "ads_1";
 
                   return (

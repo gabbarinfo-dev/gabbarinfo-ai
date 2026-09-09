@@ -349,38 +349,56 @@ export default function HomePage() {
             </span>
           ) : (
             <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-              <span
-                style={{
-                  fontSize: 12,
-                  padding: "5px 12px",
-                  borderRadius: 999,
-                  border: "1px solid rgba(59, 130, 246, 0.3)",
-                  background: "rgba(59, 130, 246, 0.1)",
-                  color: "#60a5fa",
-                  fontWeight: 700,
-                  letterSpacing: "0.5px",
-                }}
-              >
-                {loadingSub
-                  ? "Plan: …"
-                  : `⚡ Plan: ${subData?.subscription?.planName || "TRY"}`}
-              </span>
-              <button
-                onClick={() => setShowSubscriptionModal(true)}
-                style={{
-                  padding: "5px 12px",
-                  borderRadius: 8,
-                  border: "none",
-                  background: "linear-gradient(135deg, #2563eb 0%, #1d4ed8 100%)",
-                  color: "#fff",
-                  fontSize: 11,
-                  fontWeight: 700,
-                  cursor: "pointer",
-                  boxShadow: "0 0 15px rgba(37, 99, 235, 0.3)",
-                }}
-              >
-                Manage Plan
-              </button>
+              {(() => {
+                const planId = (subData?.subscription?.planId || "none").toLowerCase();
+                const isTrialOrNone = planId === "none" || planId === "try";
+                return (
+                  <>
+                    <span
+                      style={{
+                        fontSize: 12,
+                        padding: "5px 12px",
+                        borderRadius: 999,
+                        border: isTrialOrNone
+                          ? "1px solid rgba(245, 158, 11, 0.4)"
+                          : "1px solid rgba(59, 130, 246, 0.3)",
+                        background: isTrialOrNone
+                          ? "rgba(245, 158, 11, 0.12)"
+                          : "rgba(59, 130, 246, 0.1)",
+                        color: isTrialOrNone ? "#fbbf24" : "#60a5fa",
+                        fontWeight: 700,
+                        letterSpacing: "0.5px",
+                      }}
+                    >
+                      {loadingSub
+                        ? "Plan: …"
+                        : isTrialOrNone
+                        ? "⚡ Active Plan: None (Free Trial)"
+                        : `⚡ Plan: ${subData?.subscription?.planName}`}
+                    </span>
+                    <button
+                      onClick={() => setShowSubscriptionModal(true)}
+                      style={{
+                        padding: "5px 12px",
+                        borderRadius: 8,
+                        border: "none",
+                        background: isTrialOrNone
+                          ? "linear-gradient(135deg, #f59e0b 0%, #d97706 100%)"
+                          : "linear-gradient(135deg, #2563eb 0%, #1d4ed8 100%)",
+                        color: "#fff",
+                        fontSize: 11,
+                        fontWeight: 700,
+                        cursor: "pointer",
+                        boxShadow: isTrialOrNone
+                          ? "0 0 15px rgba(245, 158, 11, 0.3)"
+                          : "0 0 15px rgba(37, 99, 235, 0.3)",
+                      }}
+                    >
+                      {isTrialOrNone ? "Subscribe to a Plan ↗" : "Manage Plan"}
+                    </button>
+                  </>
+                );
+              })()}
             </div>
           )}
 
@@ -595,41 +613,47 @@ export default function HomePage() {
           </div>
 
           {/* ── MONTHLY SERVICE QUOTAS & PLAN OVERVIEW ── */}
-          {subData && (
-            <div
-              style={{
-                marginTop: 24,
-                padding: "20px",
-                borderRadius: 16,
-                background: "rgba(255, 255, 255, 0.03)",
-                border: "1px solid rgba(255, 255, 255, 0.08)",
-              }}
-            >
-              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 16, flexWrap: "wrap", gap: 10 }}>
-                <div>
-                  <div style={{ fontSize: 11, fontWeight: 800, textTransform: "uppercase", letterSpacing: "1px", color: "#60a5fa" }}>
-                    Monthly Plan Allowances · {subData.subscription?.planName || "TRY"}
+          {subData && (() => {
+            const planId = (subData?.subscription?.planId || "none").toLowerCase();
+            const isTrialOrNone = planId === "none" || planId === "try";
+
+            return (
+              <div
+                style={{
+                  marginTop: 24,
+                  padding: "20px",
+                  borderRadius: 16,
+                  background: isTrialOrNone ? "rgba(245, 158, 11, 0.04)" : "rgba(255, 255, 255, 0.03)",
+                  border: isTrialOrNone ? "1px solid rgba(245, 158, 11, 0.25)" : "1px solid rgba(255, 255, 255, 0.08)",
+                }}
+              >
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 16, flexWrap: "wrap", gap: 10 }}>
+                  <div>
+                    <div style={{ fontSize: 11, fontWeight: 800, textTransform: "uppercase", letterSpacing: "1px", color: isTrialOrNone ? "#fbbf24" : "#60a5fa" }}>
+                      {isTrialOrNone ? "Free Trial Allowances · No Active Plan" : `Monthly Plan Allowances · ${subData.subscription?.planName}`}
+                    </div>
+                    <div style={{ fontSize: 12, color: "#94a3b8", marginTop: 2 }}>
+                      {isTrialOrNone
+                        ? "Includes 1 test blog, 1 test social post, 1 AI image & 1 AI query · No free Ads campaigns."
+                        : `Active Cycle: ${new Date(subData.subscription?.cycleStart).toLocaleDateString()} — ${new Date(subData.subscription?.cycleEnd).toLocaleDateString()}`}
+                    </div>
                   </div>
-                  <div style={{ fontSize: 12, color: "#94a3b8", marginTop: 2 }}>
-                    Active Cycle: {new Date(subData.subscription?.cycleStart).toLocaleDateString()} — {new Date(subData.subscription?.cycleEnd).toLocaleDateString()}
-                  </div>
+                  <button
+                    onClick={() => setShowSubscriptionModal(true)}
+                    style={{
+                      padding: "6px 14px",
+                      borderRadius: 8,
+                      border: isTrialOrNone ? "1px solid rgba(245, 158, 11, 0.4)" : "1px solid rgba(59, 130, 246, 0.4)",
+                      background: isTrialOrNone ? "rgba(245, 158, 11, 0.15)" : "rgba(59, 130, 246, 0.12)",
+                      color: isTrialOrNone ? "#fbbf24" : "#93c5fd",
+                      fontSize: 12,
+                      fontWeight: 700,
+                      cursor: "pointer",
+                    }}
+                  >
+                    {isTrialOrNone ? "Subscribe to a Plan ↗" : "Upgrade / Change Plan"}
+                  </button>
                 </div>
-                <button
-                  onClick={() => setShowSubscriptionModal(true)}
-                  style={{
-                    padding: "6px 14px",
-                    borderRadius: 8,
-                    border: "1px solid rgba(59, 130, 246, 0.4)",
-                    background: "rgba(59, 130, 246, 0.12)",
-                    color: "#93c5fd",
-                    fontSize: 12,
-                    fontWeight: 700,
-                    cursor: "pointer",
-                  }}
-                >
-                  Upgrade / Change Plan
-                </button>
-              </div>
 
               <div
                 style={{
@@ -691,7 +715,8 @@ export default function HomePage() {
                 </div>
               </div>
             </div>
-          )}
+            );
+          })()}
 
           {/* ── INTERACTIVE 4-STAGE PIPELINE VISUALIZER (WHIZWISER #HOW-IT-WORKS STYLE) ── */}
           <div style={{ marginTop: 32, paddingTop: 26, borderTop: "1px solid rgba(255, 255, 255, 0.08)" }}>
