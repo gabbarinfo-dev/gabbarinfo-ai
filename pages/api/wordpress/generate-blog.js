@@ -350,8 +350,8 @@ Respond ONLY with a valid JSON object matching this schema:
     console.log(`[SEO Engine] Initial article word count: ${actualWords} words (Target: ${wordCount})`);
 
     if (actualWords < wordCount * 0.82) {
-      if (req.body?.isAutopilot && actualWords >= 900) {
-        console.log(`[SEO Engine] Autopilot mode: current word count is ${actualWords}. Skipping secondary expansion pass to guarantee serverless completion.`);
+      if (req.body?.isAutopilot) {
+        console.log(`[SEO Engine] Autopilot mode: word count is ${actualWords}. Skipping secondary expansion pass to guarantee high-velocity serverless completion.`);
       } else {
         console.log(`[SEO Engine] Word count (${actualWords}) below target (${wordCount}). Executing automatic enrichment & expansion pass...`);
         try {
