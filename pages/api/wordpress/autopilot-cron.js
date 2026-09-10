@@ -144,6 +144,7 @@ export default async function handler(req, res) {
                 userEmail: item.email,
                 imageUrl: genData.featured_image,
                 caption: fullCaption,
+                skipPermalinkFetch: true,
               });
               socialShares.facebook = { ok: true, id: fbRes?.postId || fbRes?.id };
               console.log(`[Autopilot Cron] Facebook syndication successful: ${fbRes?.postId || fbRes?.id}`);

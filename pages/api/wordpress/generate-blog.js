@@ -310,7 +310,7 @@ MANDATORY MINIMUM WORD COUNT: Strictly 1600+ Words across all 10 detailed sectio
           { role: "user", content: userPrompt },
         ],
         response_format: { type: "json_object" },
-        max_tokens: 6500,
+        max_tokens: 4500,
         temperature: 0.7,
       }),
       Promise.all([
