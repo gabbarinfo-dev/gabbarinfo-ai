@@ -140,12 +140,18 @@ export default async function handler(req, res) {
             try {
               console.log(`[Autopilot Cron] In-process Facebook post for ${config.businessName}...`);
               const fullCaption = `📢 ${genData.title}\n\n${genData.meta_description}\n\nRead full article here 👇\n${genData.post_url}\n\n#DigitalMarketing #SEO #BusinessGrowth #GABBARinfo`;
-              const fbRes = await executeFacebookPost({
+              const fbPromise = executeFacebookPost({
                 userEmail: item.email,
                 imageUrl: genData.featured_image,
                 caption: fullCaption,
                 skipPermalinkFetch: true,
               });
+
+              const timeoutPromise = new Promise((_, reject) =>
+                setTimeout(() => reject(new Error("Facebook syndication timed out after 6s")), 6000)
+              );
+
+              const fbRes = await Promise.race([fbPromise, timeoutPromise]);
               socialShares.facebook = { ok: true, id: fbRes?.postId || fbRes?.id };
               console.log(`[Autopilot Cron] Facebook syndication successful: ${fbRes?.postId || fbRes?.id}`);
             } catch (fbErr) {

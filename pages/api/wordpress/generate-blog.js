@@ -105,14 +105,30 @@ export async function executeBlogGeneration({
     const wpApiKey = conn.apiKey;
     const effectiveBusiness = businessName || conn.businessName || conn.siteName || "Our Business";
 
-    // 2. Entitlement & Service Quota Gate (Server-Enforced with per-site slot locking)
-    quotaRes = await reserveQuota({
-      session,
-      userEmail,
-      businessId,
-      actionType: "SEO_ARTICLE",
-      assetId: siteUrl,
-    });
+    // 2. Parallel Pre-Flight: Entitlement & Service Quota Gate + Client Profile Memory Fetch
+    const [quotaResResult, clientMemRes] = await Promise.all([
+      reserveQuota({
+        session,
+        userEmail,
+        businessId,
+        actionType: "SEO_ARTICLE",
+        assetId: siteUrl,
+      }),
+      (async () => {
+        try {
+          return await supabase
+            .from("agent_memory")
+            .select("content")
+            .eq("email", userEmail)
+            .eq("memory_type", "client")
+            .maybeSingle();
+        } catch (e) {
+          return { data: null };
+        }
+      })(),
+    ]);
+
+    quotaRes = quotaResResult;
 
     if (!quotaRes.ok) {
       return {
@@ -155,45 +171,40 @@ export async function executeBlogGeneration({
 
     const openai = new OpenAI({ apiKey });
 
-    // 4. Fetch Client Profile Memory (Target Market / Location / Services)
+    // 4. Resolve Target Market / Location / Services from Client Memory
     let businessLocation = (targetMarket || city || "").trim();
     let businessServices = "";
-    try {
-      const { data: clientMem } = await supabase
-        .from("agent_memory")
-        .select("content")
-        .eq("email", userEmail)
-        .eq("memory_type", "client")
-        .maybeSingle();
-
-      if (clientMem?.content) {
-        const parsed = JSON.parse(clientMem.content);
+    if (clientMemRes?.data?.content) {
+      try {
+        const parsed = JSON.parse(clientMemRes.data.content);
         const answers = parsed?.business_answers?.[businessName] || parsed?.business_answers?.["default_business"] || parsed || {};
         if (!businessLocation) {
           businessLocation = answers.target_market || answers.location || answers.country || answers.city || "";
         }
         businessServices = answers.service || answers.services || "";
+      } catch (e) {
+        console.warn("Could not parse client location/service memory:", e.message);
       }
-    } catch (e) {
-      console.warn("Could not load client location/service memory:", e.message);
     }
     if (!businessLocation) {
       businessLocation = "National & Global Commercial";
     }
 
-    // 5. Fetch existing posts & pages for Anti-Duplication & Smart Internal Linking
+    // 5. Fetch existing posts & pages for Anti-Duplication (Skip during autopilot for sub-40s speed)
     let existingContent = [];
-    try {
-      const listResp = await fetch(`${siteUrl}/wp-json/gabbarinfo/v1/list-content?per_page=30`, {
-        method: "GET",
-        headers: { Authorization: `Bearer ${wpApiKey}` },
-      });
-      const listData = await listResp.json();
-      if (listData?.ok && Array.isArray(listData.items)) {
-        existingContent = listData.items;
+    if (!isAutopilot) {
+      try {
+        const listResp = await fetch(`${siteUrl}/wp-json/gabbarinfo/v1/list-content?per_page=30`, {
+          method: "GET",
+          headers: { Authorization: `Bearer ${wpApiKey}` },
+        });
+        const listData = await listResp.json();
+        if (listData?.ok && Array.isArray(listData.items)) {
+          existingContent = listData.items;
+        }
+      } catch (e) {
+        console.warn("Could not pre-fetch existing content for internal linking:", e.message);
       }
-    } catch (e) {
-      console.warn("Could not pre-fetch existing content for internal linking:", e.message);
     }
 
     const keywordList = Array.isArray(targetKeywords)
@@ -310,7 +321,7 @@ MANDATORY MINIMUM WORD COUNT: Strictly 1600+ Words across all 10 detailed sectio
           { role: "user", content: userPrompt },
         ],
         response_format: { type: "json_object" },
-        max_tokens: 4500,
+        max_tokens: isAutopilot ? 4000 : 5000,
         temperature: 0.7,
       }),
       Promise.all([
@@ -318,10 +329,12 @@ MANDATORY MINIMUM WORD COUNT: Strictly 1600+ Words across all 10 detailed sectio
           console.warn("Featured image generation error:", e.message);
           return null;
         }),
-        generateAiVisual(midPrompt, "mid", "1024x1024").catch((e) => {
-          console.warn("Mid image generation error:", e.message);
-          return null;
-        }),
+        new Promise((resolve) => setTimeout(resolve, 1500))
+          .then(() => generateAiVisual(midPrompt, "mid", "1024x1024"))
+          .catch((e) => {
+            console.warn("Mid image generation error:", e.message);
+            return null;
+          }),
       ]),
     ]);
 
