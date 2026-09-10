@@ -100,13 +100,44 @@ export default async function handler(req, res) {
           }
         }
 
-        // Pick next topic
-        const keywords = config.targetKeywords || ["Digital Marketing Strategies", "SEO Growth"];
-        const randomKw = keywords[Math.floor(Math.random() * keywords.length)] || "Business Growth";
-        const generatedTopic = `The Essential Guide to ${randomKw}: Proven Strategies That Drive Revenue in 2026`;
+        // Intelligent Anti-Duplication Topic Generator
+        const keywords = Array.isArray(config.targetKeywords) && config.targetKeywords.length > 0
+          ? config.targetKeywords
+          : ["SEO Optimization", "Google Ads Management", "Digital Marketing"];
+
+        const templates = [
+          "The Comprehensive Guide to %KW%: Actionable Tactics for Sustainable 2026 Growth",
+          "Mastering %KW%: The Blueprint for Outranking Competitors and Scaling ROI in 2026",
+          "High-Impact %KW% Strategies That Modern Enterprise Leaders Swear By",
+          "The 2026 Playbook for %KW%: From Strategy to Real-World Revenue Acceleration",
+          "Advanced %KW% Optimization: Core Frameworks and Conversion Strategies for 2026",
+          "How Elite Brands Scale Revenue with %KW%: Deep-Dive Analysis & Playbook"
+        ];
+
+        config.publishedTopics = Array.isArray(config.publishedTopics) ? config.publishedTopics : [];
+
+        // Generate a fresh topic that has never been used
+        let generatedTopic = "";
+        for (const kw of keywords) {
+          for (const tpl of templates) {
+            const candidate = tpl.replace("%KW%", kw);
+            if (!config.publishedTopics.includes(candidate)) {
+              generatedTopic = candidate;
+              break;
+            }
+          }
+          if (generatedTopic) break;
+        }
+
+        // If all candidates exhausted, pick a fresh variant with timestamp seed
+        if (!generatedTopic) {
+          const kw = keywords[Math.floor(Math.random() * keywords.length)];
+          const tpl = templates[Math.floor(Math.random() * templates.length)];
+          generatedTopic = tpl.replace("%KW%", kw);
+        }
 
         // Direct In-Process Autonomous Blog Engine Execution (No external HTTP fetch overhead)
-        console.log(`[Autopilot Cron] Invoking in-process blog generation for ${config.businessName}...`);
+        console.log(`[Autopilot Cron] Invoking in-process blog generation for ${config.businessName}... Topic: "${generatedTopic}"`);
         const genData = await executeBlogGeneration({
           userEmail: item.email,
           businessName: config.businessName || "GABBARinfo",
@@ -120,7 +151,11 @@ export default async function handler(req, res) {
         });
 
         if (genData?.ok) {
-          // Immediately update lastPublishedAt & publishedCount in Supabase
+          // Immediately update lastPublishedAt, publishedCount & publishedTopics in Supabase
+          config.publishedTopics = config.publishedTopics || [];
+          if (!config.publishedTopics.includes(generatedTopic)) {
+            config.publishedTopics.push(generatedTopic);
+          }
           config.lastPublishedAt = new Date().toISOString();
           config.publishedCount = (config.publishedCount || 0) + 1;
           await supabase
