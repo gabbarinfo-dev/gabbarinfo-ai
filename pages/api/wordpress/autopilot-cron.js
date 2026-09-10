@@ -183,7 +183,7 @@ export default async function handler(req, res) {
               });
 
               const timeoutPromise = new Promise((_, reject) =>
-                setTimeout(() => reject(new Error("Facebook syndication timed out after 6s")), 6000)
+                setTimeout(() => reject(new Error("Facebook syndication timed out after 25s")), 25000)
               );
 
               const fbRes = await Promise.race([fbPromise, timeoutPromise]);
