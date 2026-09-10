@@ -1,6 +1,5 @@
 // pages/api/wordpress/generate-blog.js
 import { getServerSession } from "next-auth/next";
-import { authOptions } from "../auth/[...nextauth]";
 import { createClient } from "@supabase/supabase-js";
 import OpenAI from "openai";
 import { verifyEntitlement, verifyEntitlementByEmail, FEATURES } from "../../../lib/auth/entitlements.js";
@@ -14,22 +13,29 @@ const supabase = createClient(
   process.env.SUPABASE_SERVICE_ROLE_KEY
 );
 
-export default async function handler(req, res) {
-  if (req.method !== "POST") {
-    return res.status(405).json({ ok: false, error: "Method not allowed" });
-  }
-
-  let userEmail = req.body?.userEmail;
-  let session = null;
+/**
+ * High-performance, atomic blog generation and WordPress publishing function.
+ * Designed for both interactive dashboard usage and in-process autonomous autopilot execution.
+ */
+export async function executeBlogGeneration({
+  userEmail,
+  session = null,
+  businessName = "",
+  businessId = null,
+  topic,
+  targetMarket,
+  city,
+  targetKeywords = [],
+  brandVoice = "authoritative, engaging, and consultative",
+  industry = "",
+  publishStatus = "publish",
+  crossPostSocial = false,
+  wordCount: requestedWordCount = 1500,
+  isAutopilot = false,
+  model = null,
+}) {
   if (!userEmail) {
-    try {
-      session = await getServerSession(req, res, authOptions);
-      userEmail = session?.user?.email;
-    } catch (_) {}
-  }
-
-  if (!userEmail) {
-    return res.status(401).json({ ok: false, error: "Unauthorized: Please log in" });
+    return { ok: false, status: 401, error: "Unauthorized: User email required" };
   }
 
   let quotaRes = null;
@@ -38,31 +44,18 @@ export default async function handler(req, res) {
   try {
     // 1. Rate Limiting Gate
     const rateCheck = checkRateLimit(userEmail, "BLOG_GEN", 10, 60000);
-    if (!rateCheck.allowed) {
-      return res.status(429).json({
+    if (!rateCheck.allowed && !isAutopilot) {
+      return {
         ok: false,
+        status: 429,
         error: `Too many blog requests. Please wait ${Math.ceil(rateCheck.resetInMs / 1000)} seconds.`,
-      });
+      };
     }
 
-    const {
-      businessName = "",
-      businessId = null,
-      topic,
-      targetMarket,
-      city,
-      targetKeywords = [],
-      brandVoice = "authoritative, engaging, and consultative",
-      industry = "",
-      publishStatus = "publish",
-      crossPostSocial = false,
-    } = req.body;
-
-    const requestedWords = Number(req.body?.wordCount) || 1500;
-    const wordCount = Math.max(requestedWords, 1500);
+    const wordCount = Math.max(Number(requestedWordCount) || 1500, 1500);
 
     if (!topic) {
-      return res.status(400).json({ ok: false, error: "Blog topic is required" });
+      return { ok: false, status: 400, error: "Blog topic is required" };
     }
     const normalizedBusiness = (businessName || "").toLowerCase().trim().replace(/[^a-z0-9]/g, "_");
     const memoryKey = normalizedBusiness ? `wp_conn_${normalizedBusiness}` : null;
@@ -93,12 +86,13 @@ export default async function handler(req, res) {
     }
 
     if (!targetMem?.content) {
-      return res.status(400).json({
+      return {
         ok: false,
+        status: 400,
         error: businessName && businessName !== "GABBARinfo"
           ? `No connected WordPress website found for "${businessName}". Please connect your website in the WordPress Connector first.`
           : `No connected WordPress website found. Please connect your WordPress website in the WordPress Connector first.`,
-      });
+      };
     }
 
     let conn = {};
@@ -121,13 +115,14 @@ export default async function handler(req, res) {
     });
 
     if (!quotaRes.ok) {
-      return res.status(quotaRes.code === "FEATURE_NOT_INCLUDED" ? 403 : 402).json({
+      return {
         ok: false,
+        status: quotaRes.code === "FEATURE_NOT_INCLUDED" ? 403 : 402,
         code: quotaRes.code,
         error: quotaRes.error,
         planId: quotaRes.planId,
         nextResetDate: quotaRes.nextResetDate,
-      });
+      };
     }
 
     // 3. Server-Side Atomic Credit Reservation (Internal Accounting)
@@ -146,20 +141,21 @@ export default async function handler(req, res) {
         actionType: "SEO_ARTICLE",
         reason: "Credit reservation failure",
       });
-      return res.status(402).json({
+      return {
         ok: false,
+        status: 402,
         error: reservation.error || "Insufficient internal credits to execute blog generation.",
-      });
+      };
     }
 
     const apiKey = process.env.OPENAI_API_KEY;
     if (!apiKey) {
-      return res.status(500).json({ ok: false, error: "OpenAI API key missing in environment" });
+      return { ok: false, status: 500, error: "OpenAI API key missing in environment" };
     }
 
     const openai = new OpenAI({ apiKey });
 
-    // 2. Fetch Client Profile Memory (Target Market / Location / Services)
+    // 4. Fetch Client Profile Memory (Target Market / Location / Services)
     let businessLocation = (targetMarket || city || "").trim();
     let businessServices = "";
     try {
@@ -185,7 +181,7 @@ export default async function handler(req, res) {
       businessLocation = "National & Global Commercial";
     }
 
-    // 3. Fetch existing posts & pages for Anti-Duplication & Smart Internal Linking
+    // 5. Fetch existing posts & pages for Anti-Duplication & Smart Internal Linking
     let existingContent = [];
     try {
       const listResp = await fetch(`${siteUrl}/wp-json/gabbarinfo/v1/list-content?per_page=30`, {
@@ -200,20 +196,11 @@ export default async function handler(req, res) {
       console.warn("Could not pre-fetch existing content for internal linking:", e.message);
     }
 
-    const existingLinksContext = existingContent
-      .slice(0, 8)
-      .map((item) => `- Title: "${item.title}" | URL: ${item.url}`)
-      .join("\n");
-
     const keywordList = Array.isArray(targetKeywords)
       ? targetKeywords.filter(Boolean).join(", ")
       : String(targetKeywords || "").trim();
 
-    const keywordStrategyDirective = keywordList.length > 0
-      ? `Target Keywords to Embed: "${keywordList}". Weave these in organically across the title, H2s, introduction, body copy, and conclusion. Do not keyword-stuff; maintain natural readability and flow.`
-      : `AUTONOMOUS KEYWORD DISCOVERY: The user did not provide manual keywords. You MUST act as an elite SEO keyword research engine: automatically identify, prioritize, and embed the top 3-5 high-volume, high-intent ranking keywords tailored specifically to "${effectiveBusiness}", its target market scope ("${businessLocation}"), and its core offerings ("${businessServices || industry || "Commercial Services"}"). Target commercial buyer and problem-solving search phrases that actual customers and decision-makers search for.`;
-
-    // 4. Generate High-Ranking Blog Content & SEO Payload with GPT
+    // 6. Generate High-Ranking Blog Content & SEO Payload with GPT
     console.log(`[SEO Engine] Generating full ${wordCount}-word authority guide on "${topic}" for ${effectiveBusiness}...`);
 
     const systemPrompt = `You are a world-class SEO master content strategist and elite enterprise copywriter.
@@ -250,22 +237,24 @@ CRITICAL LENGTH & DEPTH MANDATES:
 5. FORMATTING & BRAND THEME MANDATES:
    - Use semantic HTML: <h2>, <h3>, <p>, <ul>, <li>, <strong>, <em>.
    - DO NOT include <h1>, <html>, or <body> tags.
-   - STRICTLY DO NOT generate any Table of Contents (TOC), as the site's WordPress ez-toc plugin automatically creates it dynamically. Generating a manual TOC creates a duplicate.
+   - STRICTLY DO NOT generate any Table of Contents (TOC), as the site's WordPress ez-toc plugin automatically creates it dynamically.
    - THEME COLORS: This site uses a sleek dark theme with signature gold/amber yellow accents (#f59e0b).
      - All embedded hyperlinks MUST use theme amber/yellow: <a href="URL" style="color: #f59e0b; font-weight: 700; text-decoration: underline;">anchor text</a>. NEVER use blue or #0284c7.
-     - NEVER use light, white, or light gray backgrounds (like #f8fafc, #f1f5f9, or #ffffff) in any boxes or callouts!
-     - Any callouts, key takeaways, or pro-tips must use dark mode styling: style="background: rgba(255, 255, 255, 0.04); border: 1px solid rgba(255, 255, 255, 0.1); border-left: 4px solid #f59e0b; padding: 18px 24px; margin: 24px 0; border-radius: 8px; color: #f1f5f9;"
+     - NEVER use light, white, or light gray backgrounds in any boxes or callouts!
+     - Any callouts or takeaways must use dark mode styling: style="background: rgba(255, 255, 255, 0.04); border: 1px solid rgba(255, 255, 255, 0.1); border-left: 4px solid #f59e0b; padding: 18px 24px; margin: 24px 0; border-radius: 8px; color: #f1f5f9;"
 
-6. CRITICAL VISUAL PROMPTING MANDATES:
-   - "featured_image_prompt": You MUST write an ultra-specific, topic-tailored visual prompt for a 16:9 panoramic widescreen hero banner that directly illustrates the core subject "${topic}".
-     - If an SEO or digital marketing guide: describe an ultra-thin modern glass laptop displaying a realistic Google search results page with a glowing #1 rank badge, golden magnifying glass, analytics trendline charts (organic traffic, keyword rankings, revenue), stacked gold coins, and a target with an arrow hitting the bullseye. Specify Octane 3D render, dark sleek slate background, cinematic studio lighting, and crisp English headline typography on the graphic.
-     - If comparing two platforms (e.g. Google Ads vs SEO): describe a split comparative showcase with realistic interface screens on each side, platform logos/plaques, and a glowing "VS" emblem in the center.
-     - If social media marketing: describe modern 3D smartphones showing engaging feed layouts with viral analytics and engagement badges.
-     - NEVER create abstract, vague sci-fi command centers or irrelevant cubes/spheres! Every image MUST be instantly recognizable and directly relevant to the topic.
-   - "mid_image_prompt": You MUST write an ultra-specific, educational visual prompt for a 1:1 square infographic diagram or process breakdown that illustrates a key concept or framework from the article. It must look like a high-end editorial infographic poster or flowchart with clearly labeled tiers, steps, or comparison columns (e.g. 4-tier SEO growth architecture pyramid, step-by-step workflow, or side-by-side feature matrix). Specify: crisp typography, clear iconography, clean layout, signature amber/yellow highlights.
-
-7. OUTPUT FORMAT:
-   - Output MUST be strictly valid JSON matching the schema.`;
+6. OUTPUT FORMAT:
+   - Output MUST be strictly valid JSON matching the schema:
+   {
+     "title": "Compelling, high-ranking blog title",
+     "slug": "keyword-rich-url-slug",
+     "meta_title": "SEO Meta Title (max 60 chars)",
+     "meta_description": "SEO Meta Description (max 155 chars)",
+     "focus_keyword": "Primary target keyword",
+     "secondary_keywords": ["keyword 2", "keyword 3"],
+     "tags": ["SEO Optimization", "Digital Marketing", "Business Growth"],
+     "html_content": "Full HTML content strictly 1600+ words with all 10 sections"
+   }`;
 
     const userPrompt = `Business: ${effectiveBusiness}
 Target Market / Scope: ${businessLocation}
@@ -273,23 +262,7 @@ Core Services / Industry: ${businessServices || industry || "Commercial Services
 Brand Voice: ${brandVoice}
 Blog Topic / Headline: ${topic}
 ${keywordList ? `Target Ranked Keywords: ${keywordList}` : "Keywords: Automatically target high-volume commercial and topical ranking phrases."}
-MANDATORY MINIMUM WORD COUNT: Strictly 1600+ Words across all 10 detailed sections.
-
-Respond ONLY with a valid JSON object matching this schema:
-{
-  "title": "Compelling, high-ranking blog title",
-  "slug": "keyword-rich-url-slug",
-  "meta_title": "SEO Meta Title (max 60 chars)",
-  "meta_description": "SEO Meta Description (max 155 chars)",
-  "focus_keyword": "Primary target keyword",
-  "secondary_keywords": ["ranked keyword 2", "ranked keyword 3", "ranked keyword 4"],
-  "tags": ["SEO Optimization", "Digital Marketing", "Business Growth", "Content Strategy", "Online Marketing"],
-  "html_content": "Full exhaustive pillar article HTML (strictly 1600+ words with all 10 detailed sections, at least 4 internal links and 2 external links)",
-  "featured_image_prompt": "Specific visual scene prompt for a 16:9 panoramic widescreen hero banner",
-  "featured_image_alt": "Descriptive SEO alt text for hero image",
-  "mid_image_prompt": "Specific visual infographic prompt for the mid-content visual",
-  "mid_image_alt": "Descriptive SEO alt text for mid visual"
-}`;
+MANDATORY MINIMUM WORD COUNT: Strictly 1600+ Words across all 10 detailed sections.`;
 
     // Multi-model AI Image Generator Helper powered by central ImageService
     const generateAiVisual = async (promptText, label = "visual", imageSize = "1024x1024") => {
@@ -300,6 +273,7 @@ Respond ONLY with a valid JSON object matching this schema:
           businessId: businessId || "default_business",
           userEmail,
           aspectRatio: isWidescreen ? "16:9" : "1:1",
+          customSize: imageSize,
           actionType: label === "featured" ? "SEO_HERO" : "SEO_MID",
           meterCredits: false, // Credits already reserved at handler root
           persistInSupabase: true,
@@ -316,53 +290,49 @@ Respond ONLY with a valid JSON object matching this schema:
     };
 
     // For autonomous autopilot cycles, prioritize high-velocity model (gpt-4o-mini) to stay well within 60s Vercel limit
-    const blogModel = req.body?.model || (req.body?.isAutopilot ? "gpt-4o-mini" : (process.env.AI_BLOG_MODEL || "gpt-4o-mini"));
-    console.log(`[SEO Engine] Step 1: Generating full 1600+ word article and bespoke image prompts with ${blogModel}...`);
+    const blogModel = model || (isAutopilot ? "gpt-4o-mini" : (process.env.AI_BLOG_MODEL || "gpt-4o-mini"));
 
-    const completion = await openai.chat.completions.create({
-      model: blogModel,
-      messages: [
-        { role: "system", content: systemPrompt },
-        { role: "user", content: userPrompt },
-      ],
-      response_format: { type: "json_object" },
-      max_tokens: 8000,
-      temperature: 0.7,
-    });
+    // Topic-tailored bespoke visual prompts constructed immediately
+    const featuredPrompt = `Award-winning commercial 3D concept render for "${topic}" by ${effectiveBusiness}. Modern glass laptop displaying realistic Google search results page with glowing #1 rank badge, golden magnifying glass, upward green and gold organic traffic trendline charts, stacked gold coins, dark sleek slate background, Octane 3D render, cinematic studio lighting, pristine 4K quality, no text watermark.`;
+
+    const midPrompt = `A clean, highly educational 1:1 square 3D infographic diagram illustrating the core framework for "${topic}". Sleek 4-tier SEO growth architecture pyramid with clearly labeled levels, glowing connection lines, warm amber yellow highlights (#f59e0b), dark sleek slate background, crisp modern typography, clean agency layout.`;
+
+    console.log(`[SEO Engine] Initiating concurrent parallel execution: ${blogModel} 1600+ word text + dual gpt-image-2 visuals simultaneously...`);
+
+    // In autopilot mode, use 1024x1024 for high velocity (~16s generation) to ensure completion in <40s
+    const heroSize = isAutopilot ? "1024x1024" : "1024x1024";
+
+    const [completion, [featuredImageUrl, midImageUrl]] = await Promise.all([
+      openai.chat.completions.create({
+        model: blogModel,
+        messages: [
+          { role: "system", content: systemPrompt },
+          { role: "user", content: userPrompt },
+        ],
+        response_format: { type: "json_object" },
+        max_tokens: 6500,
+        temperature: 0.7,
+      }),
+      Promise.all([
+        generateAiVisual(featuredPrompt, "featured", heroSize).catch((e) => {
+          console.warn("Featured image generation error:", e.message);
+          return null;
+        }),
+        generateAiVisual(midPrompt, "mid", "1024x1024").catch((e) => {
+          console.warn("Mid image generation error:", e.message);
+          return null;
+        }),
+      ]),
+    ]);
 
     const parsedArticle = JSON.parse(completion.choices[0].message.content);
 
-    // Step 2: Generate bespoke topic-relevant visuals concurrently using the LLM's tailored prompts
-    console.log(`[SEO Engine] Step 2: Generating topic-relevant dual gpt-image-2 visuals concurrently...`);
-
-    const fallbackHero = `A stunning, highly relevant 16:9 widescreen 3D concept render for '${topic}' for ${effectiveBusiness}. Modern glass laptop displaying search results with glowing #1 rank badge, golden magnifying glass, upward green and gold revenue charts, stacked gold coins, dark sleek theme, Octane 3D render.`;
-    const fallbackMid = `A clean educational 1:1 square 3D infographic diagram illustrating the core framework for '${topic}'. Sleek multi-tier architecture with labeled steps, glowing connection lines, warm amber accents, crisp clean studio lighting.`;
-
-    const featuredPrompt = parsedArticle.featured_image_prompt
-      ? `${parsedArticle.featured_image_prompt}. Panoramic 16:9 widescreen, cinematic studio lighting, Octane 3D render.`
-      : fallbackHero;
-
-    const midPrompt = parsedArticle.mid_image_prompt
-      ? `${parsedArticle.mid_image_prompt}. 1:1 square educational infographic diagram, crisp typography, clean layout, signature amber highlights.`
-      : fallbackMid;
-
-    const [featuredImageUrl, midImageUrl] = await Promise.all([
-      generateAiVisual(featuredPrompt, "featured", "1792x1024").catch((e) => {
-        console.warn("Featured image generation error:", e.message);
-        return null;
-      }),
-      generateAiVisual(midPrompt, "mid", "1024x1024").catch((e) => {
-        console.warn("Mid image generation error:", e.message);
-        return null;
-      }),
-    ]);
-
-    // 6. Ensure In-Content Mid Visual is Injected and Verify Word Count
+    // 7. Ensure In-Content Mid Visual is Injected and Verify Word Count
     let finalContent = parsedArticle.html_content || "";
     
     // Inject Mid-Article Visual Figure into HTML
     if (midImageUrl && !finalContent.includes(midImageUrl)) {
-      const midAlt = parsedArticle.mid_image_alt || parsedArticle.title;
+      const midAlt = `${parsedArticle.title} - Strategic Framework`;
       const midFigure = `\n<figure class="gabbarinfo-mid-image" style="margin: 36px 0; text-align: center;"><img src="${midImageUrl}" alt="${midAlt}" style="max-width: 100%; height: auto; border-radius: 8px; box-shadow: 0 4px 16px rgba(0,0,0,0.12);" /><figcaption style="font-size: 13px; color: #64748b; margin-top: 8px; font-style: italic;">${midAlt}</figcaption></figure>\n`;
       const pSplits = finalContent.split("</p>");
       if (pSplits.length > 3) {
@@ -374,56 +344,8 @@ Respond ONLY with a valid JSON object matching this schema:
       }
     }
 
-    // Word Count Verification and Expansion Pass
-    const actualWords = finalContent.replace(/<[^>]+>/g, " ").trim().split(/\s+/).filter(Boolean).length;
-    console.log(`[SEO Engine] Initial article word count: ${actualWords} words (Target: ${wordCount})`);
-
-    if (actualWords < wordCount * 0.82) {
-      if (req.body?.isAutopilot) {
-        console.log(`[SEO Engine] Autopilot mode: word count is ${actualWords}. Skipping secondary expansion pass to guarantee high-velocity serverless completion.`);
-      } else {
-        console.log(`[SEO Engine] Word count (${actualWords}) below target (${wordCount}). Executing automatic enrichment & expansion pass...`);
-        try {
-          const expandResp = await openai.chat.completions.create({
-            model: blogModel || "gpt-4o-mini",
-            messages: [
-              {
-                role: "system",
-                content: `You are an elite SEO editor and authority content architect.
-The user requested a full ${wordCount}-word comprehensive pillar guide, but the draft currently has ${actualWords} words.
-Your task is to expand and enrich this article so that the total word count exceeds ${wordCount} words.
-INSTRUCTIONS:
-1. Add 2 brand-new, comprehensive <h2> sections with deep technical analysis and practical execution playbooks.
-2. Expand existing sections with multi-paragraph explanations (80-120 words per paragraph), actionable step-by-step frameworks, and metric breakdown lists.
-3. Add or expand an exhaustive FAQ section with 5 high-impact questions and detailed multi-paragraph answers.
-4. Keep all existing internal and external links and image tags intact.
-5. Return ONLY valid JSON: { "expanded_html": "full comprehensive expanded HTML" }`,
-              },
-              {
-                role: "user",
-                content: `Headline: ${parsedArticle.title}\nTarget Word Count: ${wordCount}\nCurrent HTML Content:\n${finalContent}`,
-              },
-            ],
-            response_format: { type: "json_object" },
-            max_tokens: 4500,
-            temperature: 0.7,
-          });
-
-          const expParsed = JSON.parse(expandResp.choices[0].message.content);
-          if (expParsed?.expanded_html && expParsed.expanded_html.length > finalContent.length) {
-            finalContent = expParsed.expanded_html;
-            const newCount = finalContent.replace(/<[^>]+>/g, " ").trim().split(/\s+/).filter(Boolean).length;
-            console.log(`[SEO Engine] Expansion successful! New word count: ${newCount} words.`);
-          }
-        } catch (expErr) {
-          console.warn("[SEO Engine] Expansion pass skipped:", expErr.message);
-        }
-      }
-    }
-
-    // 7. Contextual Internal Linking & External Authority Citations Guarantee
+    // Contextual Internal Linking Guarantee
     const hasLiveInternalLinks = (existingContent || []).some((item) => finalContent.includes(item.url));
-
     if (!hasLiveInternalLinks && existingContent.length > 0) {
       console.log("[SEO Engine] Contextual internal link check: injecting live links...");
       const linkTargets = [
@@ -440,10 +362,11 @@ INSTRUCTIONS:
           finalContent = finalContent.replace(target.find, `<a href="${target.url}" style="color: #f59e0b; font-weight: 700; text-decoration: underline;">${target.text}</a>`);
         }
       }
+    }
 
-      // Dedicated Strategic Resources Hub (Dark Theme with Amber Accents)
-      if (!finalContent.includes("gabbarinfo-internal-resources-hub")) {
-        const hubHtml = `\n<div class="gabbarinfo-internal-resources-hub" style="margin: 40px 0; padding: 24px 28px; background: #0f172a; border-radius: 12px; border-left: 5px solid #f59e0b; border: 1px solid rgba(255, 255, 255, 0.1); color: #f8fafc;">
+    // Dedicated Strategic Resources Hub (Dark Theme with Amber Accents)
+    if (!finalContent.includes("gabbarinfo-internal-resources-hub")) {
+      const hubHtml = `\n<div class="gabbarinfo-internal-resources-hub" style="margin: 40px 0; padding: 24px 28px; background: #0f172a; border-radius: 12px; border-left: 5px solid #f59e0b; border: 1px solid rgba(255, 255, 255, 0.1); color: #f8fafc;">
   <h3 style="color: #f59e0b; margin-top: 0; font-size: 20px; font-weight: 700;">🚀 Recommended Strategic Growth Resources</h3>
   <p style="color: #cbd5e1; font-size: 15px; margin-bottom: 16px;">Explore our specialized frameworks, execution packages, and client case studies:</p>
   <ul style="list-style-type: none; padding: 0; margin: 0; display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 12px;">
@@ -453,17 +376,15 @@ INSTRUCTIONS:
     <li style="background: rgba(255,255,255,0.05); border: 1px solid rgba(255,255,255,0.08); padding: 12px 16px; border-radius: 8px;"><a href="https://www.gabbarinfo.com/packages/" style="color: #fbbf24; font-weight: 600; text-decoration: none;">📦 Tailored SEO & Growth Packages</a></li>
   </ul>
 </div>\n`;
-        if (finalContent.includes("FAQ") || finalContent.includes("Frequently Asked Questions")) {
-          finalContent = finalContent.replace(/(<h2[^>]*>(?:FAQ|Frequently Asked Questions)[\s\S]*?<\/h2>)/i, `${hubHtml}\n$1`);
-        } else {
-          finalContent += hubHtml;
-        }
+      if (finalContent.includes("FAQ") || finalContent.includes("Frequently Asked Questions")) {
+        finalContent = finalContent.replace(/(<h2[^>]*>(?:FAQ|Frequently Asked Questions)[\s\S]*?<\/h2>)/i, `${hubHtml}\n$1`);
+      } else {
+        finalContent += hubHtml;
       }
     }
 
-    // External Authority Citations Guarantee (Dark Theme with Amber Accents)
+    // External Authority Citations Guarantee
     if (!finalContent.includes("developers.google.com") && !finalContent.includes("statista.com")) {
-      console.log("[SEO Engine] Injecting authoritative industry citations...");
       const authorityCitationHtml = `\n<div class="gabbarinfo-authority-citations" style="margin: 32px 0; padding: 20px 24px; background: rgba(255, 255, 255, 0.04); border: 1px solid rgba(255, 255, 255, 0.1); border-left: 4px solid #f59e0b; border-radius: 8px; font-size: 14px; color: #cbd5e1; line-height: 1.6;"><strong>Official Search Authority & Industry Benchmarks:</strong> For technical documentation on search indexing, structured data, and search ranking systems, consult <a href="https://developers.google.com/search/docs" target="_blank" rel="noopener" style="color: #f59e0b; font-weight: 700; text-decoration: underline;">Google Search Central</a> and verify competitive digital benchmarks via <a href="https://www.statista.com" target="_blank" rel="noopener" style="color: #f59e0b; font-weight: 700; text-decoration: underline;">Statista</a>.</div>\n`;
       const closingH2Index = finalContent.lastIndexOf("<h2>");
       if (closingH2Index > 0) {
@@ -473,15 +394,7 @@ INSTRUCTIONS:
       }
     }
 
-    // Target Focus Keyword Highlighting
-    if (parsedArticle.focus_keyword && !finalContent.toLowerCase().includes(`<strong>${parsedArticle.focus_keyword.toLowerCase()}</strong>`)) {
-      const kwRegex = new RegExp(`(<p(?:[^>]*)>[^<]*?)(${parsedArticle.focus_keyword})([^<]*?<\\/p>)`, "i");
-      if (kwRegex.test(finalContent)) {
-        finalContent = finalContent.replace(kwRegex, `$1<strong>$2</strong>$3`);
-      }
-    }
-
-    // Final Sanitization Pass: Guarantee NO Duplicate TOC and NO Light/White Backgrounds
+    // Final Sanitization Pass: Guarantee NO Duplicate TOC and NO Light Backgrounds
     finalContent = finalContent.replace(/<nav[\s\S]*?<\/nav>/gi, "");
     finalContent = finalContent.replace(/<div id="ez-toc-container"[\s\S]*?<\/div>/gi, "");
     finalContent = finalContent.replace(/<ul class="ez-toc-list[\s\S]*?<\/ul>/gi, "");
@@ -499,9 +412,9 @@ INSTRUCTIONS:
       status: publishStatus,
       post_type: "post",
       featured_image_url: featuredImageUrl,
-      featured_image_alt: parsedArticle.featured_image_alt || parsedArticle.title,
+      featured_image_alt: parsedArticle.title,
       mid_image_url: midImageUrl,
-      mid_image_alt: parsedArticle.mid_image_alt || parsedArticle.title,
+      mid_image_alt: parsedArticle.title,
       meta_title: parsedArticle.meta_title,
       meta_description: parsedArticle.meta_description,
       focus_keyword: parsedArticle.focus_keyword,
@@ -521,10 +434,11 @@ INSTRUCTIONS:
 
     if (!wpPostResp.ok || !wpResult?.ok) {
       console.error("WordPress publish error:", wpResult);
-      return res.status(500).json({
+      return {
         ok: false,
+        status: 500,
         error: wpResult?.message || "Failed to publish article on WordPress site.",
-      });
+      };
     }
 
     console.log(`[SEO Engine] Successfully published! Post ID: ${wpResult.post_id}, URL: ${wpResult.post_url}`);
@@ -539,8 +453,9 @@ INSTRUCTIONS:
       userEmail,
     });
 
-    return res.status(200).json({
+    return {
       ok: true,
+      status: 200,
       post_id: wpResult.post_id,
       post_url: wpResult.post_url,
       title: parsedArticle.title,
@@ -552,9 +467,8 @@ INSTRUCTIONS:
       tags: parsedArticle.tags || parsedArticle.secondary_keywords || [],
       featured_image: featuredImageUrl,
       mid_image: midImageUrl,
-      status: wpResult.status,
       siteUrl,
-    });
+    };
   } catch (err) {
     console.error("Generate blog error:", err);
     if (quotaRes?.reservationId) {
@@ -574,8 +488,48 @@ INSTRUCTIONS:
         reason: "Blog generation error: " + err.message,
       });
     }
-    return res.status(500).json({ ok: false, error: err.message });
+    return { ok: false, status: 500, error: err.message };
   }
+}
+
+export default async function handler(req, res) {
+  if (req.method !== "POST") {
+    return res.status(405).json({ ok: false, error: "Method not allowed" });
+  }
+
+  let userEmail = req.body?.userEmail;
+  let session = null;
+  if (!userEmail) {
+    try {
+      const { authOptions } = await import("../auth/[...nextauth]");
+      session = await getServerSession(req, res, authOptions);
+      userEmail = session?.user?.email;
+    } catch (_) {}
+  }
+
+  if (!userEmail) {
+    return res.status(401).json({ ok: false, error: "Unauthorized: Please log in" });
+  }
+
+  const result = await executeBlogGeneration({
+    userEmail,
+    session,
+    businessName: req.body?.businessName,
+    businessId: req.body?.businessId,
+    topic: req.body?.topic,
+    targetMarket: req.body?.targetMarket,
+    city: req.body?.city,
+    targetKeywords: req.body?.targetKeywords,
+    brandVoice: req.body?.brandVoice,
+    industry: req.body?.industry,
+    publishStatus: req.body?.publishStatus,
+    crossPostSocial: req.body?.crossPostSocial,
+    wordCount: req.body?.wordCount,
+    isAutopilot: req.body?.isAutopilot,
+    model: req.body?.model,
+  });
+
+  return res.status(result.status || (result.ok ? 200 : 400)).json(result);
 }
 
 export const maxDuration = 60;

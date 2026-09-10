@@ -1,6 +1,8 @@
 import { createClient } from "@supabase/supabase-js";
-import { verifyEntitlementByEmail } from "../../../lib/auth/entitlements";
-import { checkActionEntitlement } from "../../../lib/billing/quota-service";
+import { verifyEntitlementByEmail } from "../../../lib/auth/entitlements.js";
+import { checkActionEntitlement } from "../../../lib/billing/quota-service.js";
+import { executeBlogGeneration } from "./generate-blog.js";
+import { executeFacebookPost } from "../../../lib/execute-facebook-post.js";
 
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL,
@@ -19,7 +21,6 @@ export default async function handler(req, res) {
     req.query?.secret !== cronSecret &&
     !isVercelCron
   ) {
-    // In production cron, verify secret; allow manual trigger if development or force param
     if (process.env.NODE_ENV === "production" && !req.query?.force) {
       return res.status(401).json({ ok: false, error: "Unauthorized cron trigger" });
     }
@@ -43,7 +44,7 @@ export default async function handler(req, res) {
     for (const item of configs || []) {
       try {
         const config = JSON.parse(item.content);
-        if (!config.enabled) continue;
+        if (!config.enabled && !req.query?.force) continue;
 
         console.log(`[Autopilot Cron] Processing cycle for ${item.email} (${config.businessName || "GABBARinfo"})...`);
 
@@ -67,17 +68,15 @@ export default async function handler(req, res) {
           continue;
         }
 
-        // 🔒 Server-Side Pre-Flight Check: Verify Entitlements, Autopilot Inclusion & Monthly Quota
+        // 🔒 Server-Side Pre-Flight Check: Verify Entitlements & Quotas
         const isSuperAdmin = item.email?.toLowerCase() === "ndantare@gmail.com";
         if (!isSuperAdmin) {
-          // Check if plan includes SEO Autopilot (TRY does NOT include autopilot)
           const autoCheck = await verifyEntitlementByEmail(item.email, "SEO_AUTOPILOT");
           if (!autoCheck.allowed) {
             console.warn(`[Autopilot Cron] Halting for ${item.email}: SEO Autopilot is not included in current plan.`);
             continue;
           }
 
-          // Check if monthly SEO quota remains
           const quotaCheck = await checkActionEntitlement({
             userEmail: item.email,
             actionType: "SEO_ARTICLE",
@@ -106,86 +105,51 @@ export default async function handler(req, res) {
         const randomKw = keywords[Math.floor(Math.random() * keywords.length)] || "Business Growth";
         const generatedTopic = `The Essential Guide to ${randomKw}: Proven Strategies That Drive Revenue in 2026`;
 
-        // Invoke blog generation internal API
-        const baseUrl = process.env.NEXT_PUBLIC_BASE_URL || "https://ai.gabbarinfo.com";
-        const genRes = await fetch(`${baseUrl}/api/wordpress/generate-blog`, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            userEmail: item.email,
-            businessName: config.businessName || "GABBARinfo",
-            topic: generatedTopic,
-            targetKeywords: keywords,
-            wordCount: Math.max(Number(config.wordCount) || 1500, 1500),
-            brandVoice: config.brandVoice || "consultative and results-oriented",
-            industry: config.industry || "Business",
-            publishStatus: "publish",
-            isAutopilot: true,
-          }),
+        // Direct In-Process Autonomous Blog Engine Execution (No external HTTP fetch overhead)
+        console.log(`[Autopilot Cron] Invoking in-process blog generation for ${config.businessName}...`);
+        const genData = await executeBlogGeneration({
+          userEmail: item.email,
+          businessName: config.businessName || "GABBARinfo",
+          topic: generatedTopic,
+          targetKeywords: keywords,
+          wordCount: Math.max(Number(config.wordCount) || 1500, 1500),
+          brandVoice: config.brandVoice || "consultative and results-oriented",
+          industry: config.industry || "Business",
+          publishStatus: "publish",
+          isAutopilot: true,
         });
 
-        let genData = null;
-        try {
-          const genText = await genRes.text();
-          genData = JSON.parse(genText);
-        } catch (parseErr) {
-          console.error(`[Autopilot Cron] Failed to parse blog generator response (HTTP ${genRes.status})`);
-        }
-
         if (genData?.ok) {
-          // Update lastPublishedAt
+          // Immediately update lastPublishedAt & publishedCount in Supabase
           config.lastPublishedAt = new Date().toISOString();
           config.publishedCount = (config.publishedCount || 0) + 1;
-          await supabase.from("agent_memory").update({
-            content: JSON.stringify(config),
-            updated_at: new Date().toISOString(),
-          }).eq("email", item.email).eq("memory_type", item.memory_type);
+          await supabase
+            .from("agent_memory")
+            .update({
+              content: JSON.stringify(config),
+              updated_at: new Date().toISOString(),
+            })
+            .eq("email", item.email)
+            .eq("memory_type", item.memory_type);
 
-          // Autonomous Multichannel Social Amplification (Instant Cross-Posting)
+          console.log(`[Autopilot Cron] Memory state updated for ${item.email}. Published count: ${config.publishedCount}`);
+
+          // In-Process Direct Facebook Syndication (Zero HTTP overhead)
           const socialShares = {};
-          if (config.autoShareFacebook) {
+          if (config.autoShareFacebook && genData.featured_image) {
             try {
-              console.log(`[Autopilot Cron] Auto-sharing to Facebook Page for ${config.businessName}...`);
-              const fbRes = await fetch(`${baseUrl}/api/wordpress/social-share`, {
-                method: "POST",
-                headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({
-                  userEmail: item.email,
-                  businessName: config.businessName,
-                  platform: "facebook",
-                  title: genData.title,
-                  postUrl: genData.post_url,
-                  featuredImageUrl: genData.featured_image,
-                  caption: genData.meta_description,
-                }),
+              console.log(`[Autopilot Cron] In-process Facebook post for ${config.businessName}...`);
+              const fullCaption = `📢 ${genData.title}\n\n${genData.meta_description}\n\nRead full article here 👇\n${genData.post_url}\n\n#DigitalMarketing #SEO #BusinessGrowth #GABBARinfo`;
+              const fbRes = await executeFacebookPost({
+                userEmail: item.email,
+                imageUrl: genData.featured_image,
+                caption: fullCaption,
               });
-              socialShares.facebook = await fbRes.json().catch(() => ({ ok: false }));
+              socialShares.facebook = { ok: true, id: fbRes?.postId || fbRes?.id };
+              console.log(`[Autopilot Cron] Facebook syndication successful: ${fbRes?.postId || fbRes?.id}`);
             } catch (fbErr) {
-              console.warn("[Autopilot] Auto FB share failed:", fbErr.message);
+              console.warn("[Autopilot Cron] In-process Facebook share warning:", fbErr.message);
               socialShares.facebook = { ok: false, error: fbErr.message };
-            }
-          }
-
-          if (config.autoShareInstagram) {
-            try {
-              console.log(`[Autopilot Cron] Auto-sharing to Instagram for ${config.businessName}...`);
-              const igRes = await fetch(`${baseUrl}/api/wordpress/social-share`, {
-                method: "POST",
-                headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({
-                  userEmail: item.email,
-                  businessName: config.businessName,
-                  platform: "instagram",
-                  title: genData.title,
-                  postUrl: genData.post_url,
-                  featuredImageUrl: genData.featured_image,
-                  caption: genData.meta_description,
-                }),
-              });
-              socialShares.instagram = await igRes.json().catch(() => ({ ok: false }));
-            } catch (igErr) {
-              console.warn("[Autopilot] Auto IG share failed:", igErr.message);
-              socialShares.instagram = { ok: false, error: igErr.message };
             }
           }
 
@@ -197,6 +161,7 @@ export default async function handler(req, res) {
             socialShares,
           });
         } else {
+          console.error(`[Autopilot Cron] Generation failed for ${item.email}:`, genData?.error);
           results.push({
             email: item.email,
             business: config.businessName,
