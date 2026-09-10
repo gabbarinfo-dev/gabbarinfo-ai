@@ -545,8 +545,8 @@ export default async function handler(req, res) {
   return res.status(result.status || (result.ok ? 200 : 400)).json(result);
 }
 
-export const maxDuration = 60;
+export const maxDuration = 300;
 
 export const config = {
-  maxDuration: 60,
+  maxDuration: 300,
 };
