@@ -926,8 +926,15 @@ export default function AdminPage() {
                                   <option value="ads_2">Ads Duo (2 Units) — ₹1,999</option>
                                   <option value="ads_3">Ads Trio (3 Units) — ₹2,799</option>
                                 </optgroup>
+                                <optgroup label="📍 Local Maps & Review Booster (GMB)">
+                                  <option value="gmb_1">Local Maps & Review Booster (1 Profile) — ₹999</option>
+                                </optgroup>
+                                <optgroup label="🔗 Cross-Channel Power Bundles">
+                                  <option value="bundle_gads_gmb">Google Omnipresence (Ads + Maps) — ₹1,999</option>
+                                  <option value="bundle_seo_gmb">Complete Search Dominance (SEO + Maps) — ₹1,999</option>
+                                </optgroup>
                                 <optgroup label="🏢 Agency Scale">
-                                  <option value="agency_scale">Agency Scale (15 Sites/8 Brands) — ₹14,999</option>
+                                  <option value="agency_scale">Agency Growth Suite (15 Sites/8 Brands/5 GMB) — ₹9,999</option>
                                 </optgroup>
                                 <optgroup label="Legacy & Trial">
                                   <option value="try">Free Trial / Starter Mode</option>

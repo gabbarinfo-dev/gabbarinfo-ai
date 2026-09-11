@@ -151,6 +151,10 @@ export default async function handler(req, res) {
           used: igCount,
           limit: isOwner ? 999 : plan.limits.maxInstagramAccounts,
         },
+        gmbLocations: {
+          used: 0,
+          limit: isOwner ? 999 : (plan.limits?.maxGmbLocations || 0),
+        },
       },
       features: plan.features,
     };

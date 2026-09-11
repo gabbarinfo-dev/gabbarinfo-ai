@@ -17,6 +17,8 @@ import { SUBSCRIPTION_PLANS } from "../../lib/billing/plans";
 
 const CATEGORIES = [
   { key: "suite", label: "⚡ Growth Suites (All-in-One)" },
+  { key: "gmb", label: "📍 Local Maps (GMB)" },
+  { key: "bundle", label: "🔗 Power Bundles" },
   { key: "seo", label: "📝 SEO Content" },
   { key: "social", label: "📱 Social Autopilot" },
   { key: "ads", label: "🚀 Performance Ads" },
@@ -27,6 +29,9 @@ const MODULAR_PLANS = [
   SUBSCRIPTION_PLANS.suite_1,
   SUBSCRIPTION_PLANS.suite_2,
   SUBSCRIPTION_PLANS.suite_3,
+  SUBSCRIPTION_PLANS.gmb_1,
+  SUBSCRIPTION_PLANS.bundle_gads_gmb,
+  SUBSCRIPTION_PLANS.bundle_seo_gmb,
   SUBSCRIPTION_PLANS.seo_1,
   SUBSCRIPTION_PLANS.seo_2,
   SUBSCRIPTION_PLANS.seo_3,
@@ -262,7 +267,14 @@ export default function SubscriptionModal({
                     normalizedCurrent !== "none" &&
                     normalizedCurrent !== "try" &&
                     normalizedCurrent === p.id;
-                  const isPopular = p.id === "suite_1" || p.id === "seo_1" || p.id === "social_1" || p.id === "ads_1";
+                  const isPopular =
+                    p.id === "suite_1" ||
+                    p.id === "gmb_1" ||
+                    p.id === "bundle_gads_gmb" ||
+                    p.id === "bundle_seo_gmb" ||
+                    p.id === "seo_1" ||
+                    p.id === "social_1" ||
+                    p.id === "ads_1";
 
                   return (
                     <div
@@ -363,6 +375,16 @@ export default function SubscriptionModal({
                             <li style={{ color: "#64748b" }}>🎯 No Ad Engine Access</li>
                           )}
 
+                          {/* Google Business Profile (GMB) Locations */}
+                          {p.limits.maxGmbLocations > 0 ? (
+                            <li style={{ color: "#cbd5e1" }}>
+                              📍 <strong>{p.limits.maxGmbLocations}</strong> {p.limits.maxGmbLocations === 1 ? "GMB Local Maps Profile" : "GMB Local Maps Profiles"}{" "}
+                              <span style={{ color: "#10b981", fontWeight: 600 }}>(AI Review Responder & Insights)</span>
+                            </li>
+                          ) : (
+                            <li style={{ color: "#64748b" }}>📍 No GMB Local Maps</li>
+                          )}
+
                           {/* Businesses */}
                           <li style={{ color: "#cbd5e1" }}>
                             🏢 <strong>{p.limits.maxBusinesses}</strong> {p.limits.maxBusinesses === 1 ? "Isolated Workspace" : "Workspaces"}
@@ -380,6 +402,11 @@ export default function SubscriptionModal({
                           <li style={{ color: p.features.SOCIAL_AUTOPILOT ? "#34d399" : "#64748b" }}>
                             {p.features.SOCIAL_AUTOPILOT ? "✓ Autonomous Social Autopilot" : "✕ Social Autopilot Not Included"}
                           </li>
+                          {p.features.GMB_AUTOPILOT && (
+                            <li style={{ color: "#34d399" }}>
+                              ✓ 5-Min AI Review Responder & Maps Sync
+                            </li>
+                          )}
                           <li style={{ color: "#34d399", fontSize: 11.5 }}>
                             ✓ 1 Free Test Post Included (Zero Slot Lock)
                           </li>
