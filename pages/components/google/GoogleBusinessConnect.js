@@ -16,6 +16,7 @@ export default function GoogleBusinessConnect({ onConnectionChange }) {
   const [linking, setLinking] = useState(false);
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [creating, setCreating] = useState(false);
+  const [quotaInfo, setQuotaInfo] = useState(null);
 
   // Form State for creating a new GMB Profile
   const [formData, setFormData] = useState({
@@ -37,17 +38,21 @@ export default function GoogleBusinessConnect({ onConnectionChange }) {
       const res = await fetch("/api/gmb/accounts");
       const data = await res.json();
 
+      setHasGmbScope(Boolean(data.hasGmbScope));
+      setConnected(Boolean(data.connected));
+      setNeedsReauth(Boolean(data.needsReauth));
+
       if (data.ok) {
-        setConnected(Boolean(data.connected));
-        setHasGmbScope(Boolean(data.hasGmbScope));
-        setNeedsReauth(Boolean(data.needsReauth));
+        setQuotaInfo(null);
         setLocations(data.locations || []);
         setSelectedLocation(data.selectedLocation || null);
         if (onConnectionChange) onConnectionChange(Boolean(data.connected && data.hasGmbScope));
       } else {
-        setConnected(false);
-        setNeedsReauth(Boolean(data.needsReauth));
-        setError(data.message || "Failed to load Google Business Profile.");
+        if (data.quotaRestricted) {
+          setQuotaInfo(data);
+        } else {
+          setError(data.message || "Failed to load Google Business Profile.");
+        }
       }
     } catch (err) {
       setError("Network error loading Google Business Profile: " + err.message);
@@ -261,7 +266,36 @@ export default function GoogleBusinessConnect({ onConnectionChange }) {
         </div>
       )}
 
-      {error && (
+      {quotaInfo && (
+        <div style={{ padding: "16px", borderRadius: "12px", background: "rgba(245, 158, 11, 0.08)", border: "1px solid rgba(245, 158, 11, 0.3)", marginBottom: "16px" }}>
+          <div style={{ display: "flex", alignItems: "center", gap: "8px", color: "#fbbf24", fontWeight: 700, fontSize: "14px", marginBottom: "6px" }}>
+            <span>⚡</span> Google Business Profile API Notice
+          </div>
+          <p style={{ margin: "0 0 12px", fontSize: "13px", color: "#fde68a", lineHeight: 1.5 }}>
+            {quotaInfo.message}
+          </p>
+          <div style={{ display: "flex", gap: "10px", flexWrap: "wrap", alignItems: "center" }}>
+            <a
+              href={quotaInfo.quotaUrl || "https://developers.google.com/my-business/content/prereqs#request-access"}
+              target="_blank"
+              rel="noreferrer"
+              className="btn-gabbar-primary"
+              style={{ padding: "8px 16px", fontSize: "12px", textDecoration: "none" }}
+            >
+              Request Google Business Profile Quota ↗
+            </a>
+            <button
+              onClick={() => setShowCreateModal(true)}
+              className="btn-gabbar-secondary"
+              style={{ padding: "8px 16px", fontSize: "12px", cursor: "pointer" }}
+            >
+              ➕ Create New Profile via AI
+            </button>
+          </div>
+        </div>
+      )}
+
+      {error && !quotaInfo && (
         <div style={{ padding: "10px 14px", background: "rgba(239, 68, 68, 0.12)", border: "1px solid rgba(239, 68, 68, 0.3)", color: "#fca5a5", borderRadius: "10px", fontSize: "13px", marginBottom: "14px" }}>
           ⚠️ {error}
         </div>

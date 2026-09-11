@@ -77,12 +77,20 @@ export default async function handler(req, res) {
       // 3. List Accounts
       const accountsRes = await listGmbAccounts({ accessToken });
       if (!accountsRes.ok) {
-        // If Google returns 403 or insufficient scope
+        const isQuotaZero =
+          accountsRes.status === 429 ||
+          accountsRes.json?.error?.details?.[0]?.reason === "RATE_LIMIT_EXCEEDED";
+
         return res.status(200).json({
           ok: false,
-          hasGmbScope: false,
+          connected: true,
+          hasGmbScope: true,
           needsReauth: accountsRes.status === 403,
-          message: accountsRes.error || "Unable to access Google Business Profile accounts.",
+          quotaRestricted: isQuotaZero,
+          message: isQuotaZero
+            ? "Your Google Business Profile permission is approved! However, Google Cloud sets this API's initial quota to 0 until an access request is submitted for your project."
+            : accountsRes.error || "Unable to access Google Business Profile accounts.",
+          quotaUrl: "https://developers.google.com/my-business/content/prereqs#request-access",
           accounts: [],
           locations: [],
         });
