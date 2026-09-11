@@ -37,3 +37,4 @@ test-gads*.mjs
 test-version.mjs
 scratch/
 supabase/.temp/
+gabbarinfo-theme/

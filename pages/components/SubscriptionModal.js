@@ -75,6 +75,94 @@ export default function SubscriptionModal({
     setErrorMsg(null);
   }
 
+  async function handleRazorpayCheckout() {
+    if (!selectedPlan) return;
+    setSubmitting(true);
+    setErrorMsg(null);
+
+    try {
+      // 1. Ensure Razorpay checkout script is loaded
+      if (!window.Razorpay) {
+        await new Promise((resolve, reject) => {
+          const script = document.createElement("script");
+          script.src = "https://checkout.razorpay.com/v1/checkout.js";
+          script.onload = resolve;
+          script.onerror = () => reject(new Error("Failed to load Razorpay checkout script."));
+          document.body.appendChild(script);
+        });
+      }
+
+      // 2. Call backend to generate authorized Razorpay Order
+      const res = await fetch("/api/billing/razorpay/create-order", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ planId: selectedPlan.id }),
+      });
+
+      const orderData = await res.json();
+      if (!res.ok || !orderData.ok) {
+        throw new Error(orderData.error || "Failed to initialize Razorpay payment order.");
+      }
+
+      // 3. Open Razorpay Checkout Modal
+      const options = {
+        key: orderData.keyId,
+        amount: orderData.amount,
+        currency: orderData.currency || "INR",
+        name: "GabbarInfo AI",
+        description: `${selectedPlan.name} (30-Day Subscription)`,
+        image: "https://www.gabbarinfo.com/wp-content/uploads/logo.png",
+        order_id: orderData.orderId,
+        handler: async function (response) {
+          try {
+            setSubmitting(true);
+            const verifyRes = await fetch("/api/billing/razorpay/verify-payment", {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({
+                razorpay_order_id: response.razorpay_order_id,
+                razorpay_payment_id: response.razorpay_payment_id,
+                razorpay_signature: response.razorpay_signature,
+                planId: selectedPlan.id,
+              }),
+            });
+
+            const verifyData = await verifyRes.json();
+            if (!verifyRes.ok || !verifyData.ok) {
+              throw new Error(verifyData.error || "Payment verification failed.");
+            }
+
+            setOrderResult({ ...verifyData, isInstant: true });
+            setStep("confirmation");
+            if (onSubscriptionUpdated) onSubscriptionUpdated();
+          } catch (vErr) {
+            setErrorMsg(vErr.message);
+          } finally {
+            setSubmitting(false);
+          }
+        },
+        prefill: {
+          name: orderData.customer?.name || "",
+          email: orderData.customer?.email || "",
+        },
+        theme: {
+          color: "#2563eb",
+        },
+        modal: {
+          ondismiss: function () {
+            setSubmitting(false);
+          },
+        },
+      };
+
+      const rzpInstance = new window.Razorpay(options);
+      rzpInstance.open();
+    } catch (err) {
+      setErrorMsg(err.message);
+      setSubmitting(false);
+    }
+  }
+
   async function handleConfirmOrder() {
     if (!selectedPlan) return;
     setSubmitting(true);
@@ -470,13 +558,50 @@ export default function SubscriptionModal({
                 </div>
               </div>
 
+              {/* Razorpay Primary Instant Payment */}
+              <button
+                onClick={handleRazorpayCheckout}
+                disabled={submitting}
+                style={{
+                  width: "100%",
+                  padding: "14px",
+                  borderRadius: 14,
+                  border: "none",
+                  background: "linear-gradient(135deg, #2563eb 0%, #1d4ed8 100%)",
+                  color: "#ffffff",
+                  fontWeight: 800,
+                  fontSize: 15,
+                  cursor: submitting ? "not-allowed" : "pointer",
+                  boxShadow: "0 0 25px rgba(37, 99, 235, 0.45)",
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  gap: 10,
+                  marginBottom: 16,
+                  transition: "all 0.15s ease",
+                }}
+              >
+                <span>⚡</span>
+                <span>
+                  {submitting
+                    ? "Connecting to Razorpay…"
+                    : `Pay ₹${selectedPlan.priceINR.toLocaleString("en-IN")} via Razorpay (UPI / Cards)`}
+                </span>
+              </button>
+
+              <div style={{ textAlign: "center", margin: "16px 0", color: "#64748b", fontSize: 11, display: "flex", alignItems: "center", gap: 10 }}>
+                <div style={{ flex: 1, height: 1, background: "rgba(255,255,255,0.08)" }} />
+                <span>OR MANUAL BANK / UPI REFERENCE</span>
+                <div style={{ flex: 1, height: 1, background: "rgba(255,255,255,0.08)" }} />
+              </div>
+
               <div style={{ marginBottom: 20 }}>
                 <label style={{ display: "block", fontSize: 12, fontWeight: 700, color: "#cbd5e1", marginBottom: 6 }}>
-                  Payment / UPI Reference (Optional)
+                  Offline Reference (Optional)
                 </label>
                 <input
                   type="text"
-                  placeholder="e.g. UPI Ref / Bank Reference"
+                  placeholder="e.g. UTR / UPI Ref if paid externally"
                   value={paymentRef}
                   onChange={(e) => setPaymentRef(e.target.value)}
                   style={{
@@ -510,21 +635,20 @@ export default function SubscriptionModal({
                 </button>
                 <button
                   onClick={handleConfirmOrder}
-                  disabled={submitting}
+                  disabled={submitting || !paymentRef.trim()}
                   style={{
-                    flex: 2,
+                    flex: 1.5,
                     padding: "12px",
                     borderRadius: 12,
                     border: "none",
-                    background: "#2563eb",
-                    color: "#ffffff",
-                    fontWeight: 800,
-                    fontSize: 14,
-                    cursor: submitting ? "not-allowed" : "pointer",
-                    boxShadow: "0 0 20px rgba(37, 99, 235, 0.4)",
+                    background: paymentRef.trim() ? "rgba(255, 255, 255, 0.12)" : "rgba(255, 255, 255, 0.04)",
+                    color: paymentRef.trim() ? "#ffffff" : "#64748b",
+                    fontWeight: 700,
+                    fontSize: 13,
+                    cursor: paymentRef.trim() && !submitting ? "pointer" : "not-allowed",
                   }}
                 >
-                  {submitting ? "Processing Request…" : `Confirm ${selectedPlan.name}`}
+                  Submit Manual Request
                 </button>
               </div>
             </div>
@@ -533,23 +657,34 @@ export default function SubscriptionModal({
           {/* STEP 3: CONFIRMATION */}
           {step === "confirmation" && (
             <div style={{ textAlign: "center", padding: "20px 0" }}>
-              <div style={{ fontSize: 44, marginBottom: 12 }}>🎉</div>
-              <h3 style={{ fontSize: 20, fontWeight: 800, margin: "0 0 8px" }}>Subscription Request Placed!</h3>
-              <p style={{ color: "#94a3b8", fontSize: 13, maxWidth: 400, margin: "0 auto 24px", lineHeight: 1.6 }}>
-                Your request for the <strong>{selectedPlan?.name}</strong> plan (₹{selectedPlan?.priceINR}/month) has been recorded.
-                Our team will verify payment and activate your monthly allowances immediately.
+              <div style={{ fontSize: 48, marginBottom: 12 }}>🎉</div>
+              <h3 style={{ fontSize: 22, fontWeight: 800, margin: "0 0 8px", color: orderResult?.isInstant ? "#34d399" : "#ffffff" }}>
+                {orderResult?.isInstant ? "Subscription Activated Instantly!" : "Subscription Request Placed!"}
+              </h3>
+              <p style={{ color: "#94a3b8", fontSize: 13, maxWidth: 420, margin: "0 auto 24px", lineHeight: 1.6 }}>
+                {orderResult?.isInstant ? (
+                  <>
+                    Payment verified successfully via Razorpay! Your <strong>{selectedPlan?.name}</strong> plan is now active with all 30-day asset slots and monthly quotas unlocked.
+                  </>
+                ) : (
+                  <>
+                    Your request for the <strong>{selectedPlan?.name}</strong> plan (₹{selectedPlan?.priceINR}/month) has been recorded.
+                    Our team will verify payment and activate your monthly allowances immediately.
+                  </>
+                )}
               </p>
               <button
                 onClick={handleClose}
                 style={{
-                  padding: "10px 24px",
+                  padding: "12px 28px",
                   borderRadius: 12,
                   border: "none",
                   background: "#2563eb",
                   color: "#fff",
                   fontWeight: 700,
-                  fontSize: 13,
+                  fontSize: 14,
                   cursor: "pointer",
+                  boxShadow: "0 0 20px rgba(37, 99, 235, 0.4)",
                 }}
               >
                 Return to Dashboard
