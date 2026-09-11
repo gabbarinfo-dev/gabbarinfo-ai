@@ -4,6 +4,7 @@ import { authOptions } from "../auth/[...nextauth]";
 import { createClient } from "@supabase/supabase-js";
 import { verifyEntitlement, FEATURES } from "../../../lib/auth/entitlements";
 import { getBusinessSubscriptionState } from "../../../lib/billing/quota-service";
+import { checkAssetTrialEligibility, registerAssetClaim } from "../../../lib/billing/asset-registry";
 
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL,
@@ -141,6 +142,21 @@ export default async function handler(req, res) {
         });
       }
 
+      const isTrial = plan.category === "trial" || plan.id === "trial_99" || plan.id === "none" || plan.id === "try";
+      const eligibility = await checkAssetTrialEligibility({
+        assetType: "wordpress_domain",
+        identifier: siteUrl,
+        userEmail,
+      });
+
+      if (!eligibility.eligible && isTrial && !subState.isUnlimited) {
+        return res.status(403).json({
+          ok: false,
+          code: eligibility.code || "DUPLICATE_TRIAL_ASSET",
+          error: eligibility.error,
+        });
+      }
+
       const cleanUrl = formatUrl(siteUrl);
 
       // Verify credentials with plugin
@@ -189,6 +205,15 @@ export default async function handler(req, res) {
         },
         { onConflict: "email,memory_type" }
       );
+
+      // Global Anti-Abuse Registry: Lock asset claim
+      await registerAssetClaim({
+        assetType: "wordpress_domain",
+        identifier: siteUrl,
+        userEmail,
+        planId: plan.id,
+        isTrial,
+      });
 
       return res.status(200).json({
         ok: true,

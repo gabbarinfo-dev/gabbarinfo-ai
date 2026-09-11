@@ -7,6 +7,7 @@ export default function FacebookBusinessConnect({ onOpenSocialPlanner }) {
   const [status, setStatus] = useState("idle"); // idle | connected | loading
   const [meta, setMeta] = useState(null);
   const [showBoostModal, setShowBoostModal] = useState(false);
+  const [showConnectWarningModal, setShowConnectWarningModal] = useState(false);
   const isLocked = status === "connected";
   useEffect(() => {
     const interval = setInterval(() => {
@@ -533,17 +534,72 @@ export default function FacebookBusinessConnect({ onOpenSocialPlanner }) {
           )}
         </>
       ) : (
-        <button
-          onClick={handleConnect}
-          className="btn-gabbar-gold"
-          style={{
-            padding: "11px 22px",
-            fontSize: "14px",
-            cursor: "pointer",
-          }}
-        >
-          Connect Facebook Business ↗
-        </button>
+        <>
+          <button
+            onClick={() => setShowConnectWarningModal(true)}
+            className="btn-gabbar-gold"
+            style={{
+              padding: "11px 22px",
+              fontSize: "14px",
+              cursor: "pointer",
+            }}
+          >
+            Connect Facebook Business ↗
+          </button>
+
+          {/* PRE-CONNECTION ASSET SLOT WARNING MODAL */}
+          {showConnectWarningModal && (
+            <div style={modalOverlayStyle}>
+              <div style={{ ...modalContentStyle, maxWidth: "460px" }}>
+                <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 12 }}>
+                  <span style={{ fontSize: 22 }}>⚠️</span>
+                  <h3 style={{ margin: 0, fontSize: 16, fontWeight: 800, color: "#f8fafc" }}>
+                    Confirm Primary Brand Connection
+                  </h3>
+                </div>
+                <p style={{ fontSize: 13, color: "#94a3b8", lineHeight: 1.5, marginBottom: 14 }}>
+                  You are about to link your Facebook Page & Instagram account with GabbarInfo AI.
+                </p>
+                <div
+                  style={{
+                    background: "rgba(245, 158, 11, 0.1)",
+                    border: "1px solid rgba(245, 158, 11, 0.25)",
+                    borderRadius: 12,
+                    padding: "14px",
+                    marginBottom: 18,
+                    fontSize: 12,
+                    lineHeight: 1.6,
+                    color: "#fef08a",
+                  }}
+                >
+                  <div style={{ fontWeight: 700, marginBottom: 4, color: "#fbbf24" }}>
+                    Important Brand Slot Policy:
+                  </div>
+                  • Connecting registers your Facebook Page & Instagram account as your <strong>official 1st Brand Pair</strong>.<br />
+                  • All social autopilot posts, social planner schedules, and Meta Ads will be deployed to this verified pair.<br />
+                  • Single-brand plans lock this asset slot to prevent cycling between multiple client businesses.
+                </div>
+                <div style={{ display: "flex", gap: 10, justifyContent: "flex-end" }}>
+                  <button
+                    onClick={() => setShowConnectWarningModal(false)}
+                    style={cancelBtnStyle}
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    onClick={() => {
+                      setShowConnectWarningModal(false);
+                      handleConnect();
+                    }}
+                    style={confirmBtnStyle}
+                  >
+                    ✓ Proceed to Meta Login ➔
+                  </button>
+                </div>
+              </div>
+            </div>
+          )}
+        </>
       )}
     </div>
   );

@@ -93,6 +93,29 @@ export default async function handler(req, res) {
     }
 
     // -----------------------------
+    // 3.5. Anti-Abuse Asset Shield & Plan Limits
+    // -----------------------------
+    const { getBusinessSubscriptionState } = await import("../../../lib/billing/quota-service");
+    const { checkAssetTrialEligibility, registerAssetClaim } = await import("../../../lib/billing/asset-registry");
+
+    const subState = await getBusinessSubscriptionState(`biz_${email.replace(/[^a-zA-Z0-9]/g, "_")}`, email);
+    const plan = subState?.plan || {};
+    const isTrial = plan.category === "trial" || plan.id === "trial_99" || plan.id === "none" || plan.id === "try";
+
+    if (fb_page_id) {
+      const eligibility = await checkAssetTrialEligibility({
+        assetType: "facebook_page",
+        identifier: fb_page_id,
+        userEmail: email,
+      });
+
+      if (!eligibility.eligible && isTrial && !subState.isUnlimited) {
+        console.warn("DUPLICATE_FB_PAGE_TRIAL", eligibility.error);
+        return res.redirect(`/?error=DUPLICATE_TRIAL_ASSET&message=${encodeURIComponent(eligibility.error)}`);
+      }
+    }
+
+    // -----------------------------
     // 4. UPSERT (FAIL-LOUD)
     // -----------------------------
     const { error: upsertError } = await supabase
@@ -114,6 +137,16 @@ export default async function handler(req, res) {
     if (upsertError) {
       console.error("SUPABASE_UPSERT_ERROR", upsertError);
       return res.status(500).send("Failed to save Meta connection");
+    }
+
+    if (fb_page_id) {
+      await registerAssetClaim({
+        assetType: "facebook_page",
+        identifier: fb_page_id,
+        userEmail: email,
+        planId: plan.id || "none",
+        isTrial,
+      });
     }
 
     // -----------------------------------

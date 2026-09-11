@@ -17,6 +17,7 @@ import { SUBSCRIPTION_PLANS } from "../../lib/billing/plans";
 
 const CATEGORIES = [
   { key: "suite", label: "⚡ Growth Suites (All-in-One)" },
+  { key: "trial", label: "🎁 ₹99 Trial Pack" },
   { key: "gmb", label: "📍 Local Maps (GMB)" },
   { key: "bundle", label: "🔗 Power Bundles" },
   { key: "seo", label: "📝 SEO Content" },
@@ -26,6 +27,7 @@ const CATEGORIES = [
 ];
 
 const MODULAR_PLANS = [
+  SUBSCRIPTION_PLANS.trial_99,
   SUBSCRIPTION_PLANS.suite_1,
   SUBSCRIPTION_PLANS.suite_2,
   SUBSCRIPTION_PLANS.suite_3,
@@ -296,6 +298,83 @@ export default function SubscriptionModal({
           {/* STEP 1: CATEGORY TABS + PLANS GRID */}
           {step === "plans" && (
             <>
+              {/* ₹99 Power Sampler Trial Banner */}
+              <div
+                style={{
+                  background: "linear-gradient(135deg, rgba(245, 158, 11, 0.15) 0%, rgba(234, 88, 12, 0.1) 100%)",
+                  border: "1px solid rgba(245, 158, 11, 0.35)",
+                  borderRadius: 16,
+                  padding: "16px 20px",
+                  marginBottom: 20,
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "space-between",
+                  gap: 16,
+                  flexWrap: "wrap",
+                }}
+              >
+                <div style={{ display: "flex", alignItems: "center", gap: 14 }}>
+                  <div
+                    style={{
+                      width: 44,
+                      height: 44,
+                      borderRadius: 12,
+                      background: "linear-gradient(135deg, #f59e0b 0%, #ea580c 100%)",
+                      display: "flex",
+                      alignItems: "center",
+                      justifyContent: "center",
+                      fontSize: 22,
+                      boxShadow: "0 4px 12px rgba(245, 158, 11, 0.4)",
+                      flexShrink: 0,
+                    }}
+                  >
+                    🎁
+                  </div>
+                  <div>
+                    <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 2 }}>
+                      <h4 style={{ margin: 0, fontSize: 15, fontWeight: 800, color: "#fbbf24" }}>
+                        Power Sampler Trial Pack — Just ₹99
+                      </h4>
+                      <span
+                        style={{
+                          background: "rgba(245, 158, 11, 0.25)",
+                          color: "#fef08a",
+                          padding: "2px 8px",
+                          borderRadius: 999,
+                          fontSize: 10,
+                          fontWeight: 800,
+                          letterSpacing: "0.05em",
+                          textTransform: "uppercase",
+                        }}
+                      >
+                        Zero Risk
+                      </span>
+                    </div>
+                    <p style={{ margin: 0, fontSize: 12, color: "#cbd5e1", lineHeight: 1.4 }}>
+                      Test AI autopilot for 1 business: <strong>2 SEO blogs</strong> (with auto-social syndication), <strong>2 social posts (FB+IG)</strong>, <strong>2 GMB AI review replies</strong>, <strong>2 AI visuals</strong> & <strong>10 marketing queries</strong>.
+                    </p>
+                  </div>
+                </div>
+                <button
+                  onClick={() => handleSelectPlan(SUBSCRIPTION_PLANS.trial_99)}
+                  style={{
+                    background: "linear-gradient(135deg, #f59e0b 0%, #d97706 100%)",
+                    color: "#0f172a",
+                    border: "none",
+                    padding: "10px 20px",
+                    borderRadius: 12,
+                    fontWeight: 800,
+                    fontSize: 13,
+                    cursor: "pointer",
+                    boxShadow: "0 4px 14px rgba(245, 158, 11, 0.35)",
+                    transition: "all 0.15s ease",
+                    whiteSpace: "nowrap",
+                  }}
+                >
+                  ⚡ Try for ₹99 Now
+                </button>
+              </div>
+
               {/* Category Tab Switcher */}
               <div
                 style={{
@@ -426,7 +505,9 @@ export default function SubscriptionModal({
                           <span style={{ fontSize: 28, fontWeight: 800, color: "#ffffff" }}>
                             ₹{p.priceINR.toLocaleString("en-IN")}
                           </span>
-                          <span style={{ fontSize: 12, color: "#94a3b8" }}> / month</span>
+                          <span style={{ fontSize: 12, color: "#94a3b8" }}>
+                            {p.billingCycle === "trial_7d" ? " / 7-day trial" : " / month"}
+                          </span>
                         </div>
 
                         {/* Feature Bullet Allowances */}
@@ -548,10 +629,14 @@ export default function SubscriptionModal({
                 </div>
                 <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 12 }}>
                   <span style={{ color: "#94a3b8", fontSize: 13 }}>Billing Cycle:</span>
-                  <span style={{ fontWeight: 600, color: "#cbd5e1", fontSize: 13 }}>Monthly (30 Days)</span>
+                  <span style={{ fontWeight: 600, color: "#cbd5e1", fontSize: 13 }}>
+                    {selectedPlan.billingCycle === "trial_7d" ? "7-Day Trial (One-Time)" : "Monthly (30 Days)"}
+                  </span>
                 </div>
                 <div style={{ display: "flex", justifyContent: "space-between", borderTop: "1px solid rgba(255,255,255,0.08)", paddingTop: 12 }}>
-                  <span style={{ color: "#ffffff", fontWeight: 700, fontSize: 14 }}>Total Monthly Price:</span>
+                  <span style={{ color: "#ffffff", fontWeight: 700, fontSize: 14 }}>
+                    {selectedPlan.billingCycle === "trial_7d" ? "Total Trial Price:" : "Total Monthly Price:"}
+                  </span>
                   <span style={{ fontWeight: 800, color: "#34d399", fontSize: 18 }}>
                     ₹{selectedPlan.priceINR.toLocaleString("en-IN")}
                   </span>

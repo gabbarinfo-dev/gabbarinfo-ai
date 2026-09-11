@@ -462,6 +462,26 @@ export default function WordPressSiteConnect({ onConnectionChange }) {
                   </div>
                 </div>
 
+                {/* Slot Binding Notice */}
+                <div
+                  style={{
+                    background: "rgba(245, 158, 11, 0.1)",
+                    border: "1px solid rgba(245, 158, 11, 0.3)",
+                    borderRadius: 10,
+                    padding: "12px 14px",
+                    marginTop: 14,
+                    fontSize: 12,
+                    lineHeight: 1.5,
+                    color: "#fef08a",
+                  }}
+                >
+                  <div style={{ display: "flex", alignItems: "center", gap: 6, fontWeight: 700, marginBottom: 4, color: "#fbbf24" }}>
+                    <span>⚠️</span>
+                    <span>Important: Website Slot Binding Policy</span>
+                  </div>
+                  Connecting this website binds it as your licensed site for this billing cycle. Single-site plans lock this asset slot to prevent cycling between multiple client domains. Additional client websites require an Agency Suite.
+                </div>
+
                 {errorMsg && (
                   <div style={{ marginTop: 14, padding: 12, background: "rgba(239, 68, 68, 0.1)", border: "1px solid #ef4444", color: "#f87171", borderRadius: 8, fontSize: 13 }}>
                     ⚠️ {errorMsg}

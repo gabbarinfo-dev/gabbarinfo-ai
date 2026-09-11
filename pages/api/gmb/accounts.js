@@ -156,6 +156,30 @@ export default async function handler(req, res) {
         return res.status(400).json({ ok: false, message: "Missing location data" });
       }
 
+      const { getBusinessSubscriptionState } = await import("../../../lib/billing/quota-service");
+      const { checkAssetTrialEligibility, registerAssetClaim } = await import("../../../lib/billing/asset-registry");
+
+      const subState = await getBusinessSubscriptionState(`biz_${email.replace(/[^a-zA-Z0-9]/g, "_")}`, email);
+      const plan = subState?.plan || {};
+      const isTrial = plan.category === "trial" || plan.id === "trial_99" || plan.id === "none" || plan.id === "try";
+      const locId = location.name || location.storeCode || location.title || "";
+
+      if (locId) {
+        const eligibility = await checkAssetTrialEligibility({
+          assetType: "gmb_location",
+          identifier: locId,
+          userEmail: email,
+        });
+
+        if (!eligibility.eligible && isTrial && !subState.isUnlimited) {
+          return res.status(403).json({
+            ok: false,
+            code: "DUPLICATE_TRIAL_ASSET",
+            message: eligibility.error,
+          });
+        }
+      }
+
       await supabase.from("agent_memory").upsert(
         {
           email,
@@ -165,6 +189,16 @@ export default async function handler(req, res) {
         },
         { onConflict: "email,memory_type" }
       );
+
+      if (locId) {
+        await registerAssetClaim({
+          assetType: "gmb_location",
+          identifier: locId,
+          userEmail: email,
+          planId: plan.id || "none",
+          isTrial,
+        });
+      }
 
       return res.status(200).json({ ok: true, message: "Active location updated" });
     } catch (err) {
