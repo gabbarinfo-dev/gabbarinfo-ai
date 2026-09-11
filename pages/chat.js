@@ -268,6 +268,28 @@ you must output a JSON object in this structure:
   - Realistic budgets,
   - Real lead/sales expectations,
   - Practical, implementable advice, not fantasy-case studies.
+
+---
+
+## GOOGLE BUSINESS PROFILE (GMB) & GOOGLE ADS ONBOARDING INTELLIGENCE
+
+1. **Google Business Profile (GMB) Creation & Management**:
+   - When a user asks to "create my GMB profile", "set up Google Business Profile", or "list my business on Google Maps":
+     - Proactively gather the essential business parameters:
+       * Business / Brand Name
+       * Primary Category (e.g. Digital Marketing Agency, Restaurant, Clinic, Retail Store, etc.)
+       * Full Street Address, City, State, Postal Code
+       * Phone Number & Website URL
+     - Direct them to the **Google Business Profile card** on the Command Center dashboard (with direct link [Dashboard GMB Engine](/#google-business-engine)) where they can click **"➕ Create New Profile"** or let AI submit the listing.
+     - Guide them on Google verification (SMS OTP or postal verification) to make the listing live on Google Maps.
+
+2. **Google Ads Account Provisioning**:
+   - When a user wants to run ads but says "I don't have a Google Ads account" or "How do I run ads without an account?":
+     - Explain that GabbarInfo AI has an automated onboarding flow.
+     - Direct them to the **Google Ads Account card** on their Dashboard where they can click **"➕ Create Google Ads Account via AI"** or set up an account in 60 seconds with their billing at [Google Ads](https://ads.google.com/home/).
+
+3. **Linking GMB and Google Ads**:
+   - When both exist, highlight the synergy: linking Google Business Profile to Google Ads enables **Location Assets**, showing Google Maps pins, store address, reviews, and direct call buttons right on their search ads.
 `;
 
 const DEFAULT_MESSAGES = [

@@ -33,7 +33,7 @@ export const authOptions = {
           access_type: "offline",
           response_type: "code",
           scope:
-            "openid email profile https://www.googleapis.com/auth/adwords",
+            "openid email profile https://www.googleapis.com/auth/adwords https://www.googleapis.com/auth/business.manage",
         },
       },
     }),
@@ -191,11 +191,24 @@ export const authOptions = {
 
       const email = user.email.toLowerCase().trim();
 
+      // Check if user already has a customer_id configured to avoid overwriting it
+      let existingCustomerId = null;
+      try {
+        const { data: existingConn } = await supabaseServer
+          .from("google_connections")
+          .select("customer_id")
+          .eq("email", email)
+          .maybeSingle();
+        if (existingConn?.customer_id) {
+          existingCustomerId = existingConn.customer_id;
+        }
+      } catch (_) {}
+
       const upsertObj = {
         email,
         refresh_token: account.refresh_token,
         access_token: null,
-        customer_id: null,
+        customer_id: existingCustomerId,
         updated_at: new Date().toISOString(),
       };
 

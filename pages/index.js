@@ -5,6 +5,7 @@ import { useSession, signIn, signOut } from "next-auth/react";
 import Head from "next/head";
 import FacebookBusinessConnect from "./components/facebook/FacebookBusinessConnect";
 import GoogleAdsAccountConnect from "./components/google/googleadsaccountconnect";
+import GoogleBusinessConnect from "./components/google/GoogleBusinessConnect";
 import WordPressSiteConnect from "./components/wordpress/WordPressSiteConnect";
 import SubscriptionModal from "./components/SubscriptionModal";
 import SocialMediaPlannerModal from "./components/social/SocialMediaPlannerModal";
@@ -628,6 +629,23 @@ export default function HomePage() {
               >
                 📱 Social Media Planner ↗
               </button>
+              <a
+                href="#google-business-engine"
+                className="btn-gabbar-secondary"
+                style={{
+                  padding: "12px 20px",
+                  fontSize: 14,
+                  textDecoration: "none",
+                  display: "inline-flex",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  gap: 6,
+                  flex: "1 1 auto",
+                  textAlign: "center",
+                }}
+              >
+                📍 Business Profile (GMB) ↓
+              </a>
             </div>
           </div>
 
@@ -932,7 +950,43 @@ export default function HomePage() {
             <GoogleAdsAccountConnect />
           </section>
 
-          {/* 3. FACEBOOK BUSINESS */}
+          {/* 3. GOOGLE BUSINESS PROFILE (GMB) */}
+          <section
+            id="google-business-engine"
+            style={{
+              padding: "clamp(16px, 3.5vw, 26px) clamp(14px, 3.5vw, 28px)",
+              borderRadius: 18,
+              background: "rgba(14, 19, 30, 0.78)",
+              backdropFilter: "blur(20px)",
+              WebkitBackdropFilter: "blur(20px)",
+              border: "1px solid rgba(255, 255, 255, 0.12)",
+              boxShadow: "0 20px 50px rgba(0,0,0,0.5), 0 0 30px rgba(16, 185, 129, 0.05)",
+              width: "100%",
+              boxSizing: "border-box",
+            }}
+          >
+            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 14, flexWrap: "wrap", gap: 10 }}>
+              <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+                <div style={{ width: 38, height: 38, borderRadius: 10, background: "rgba(16, 185, 129, 0.15)", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 18, border: "1px solid rgba(16, 185, 129, 0.3)", flexShrink: 0 }}>
+                  📍
+                </div>
+                <div>
+                  <h2 style={{ margin: 0, fontSize: 18, fontWeight: 700, color: "#ffffff" }}>
+                    Google Business Profile (GMB)
+                  </h2>
+                  <p style={{ margin: "2px 0 0", fontSize: 13, color: "#94a3b8" }}>
+                    Local SEO dominance, customer reviews, business listings, and Google Ads location asset sync.
+                  </p>
+                </div>
+              </div>
+              <span style={{ fontSize: 11, padding: "4px 10px", borderRadius: 999, background: "rgba(16, 185, 129, 0.1)", border: "1px solid rgba(16, 185, 129, 0.3)", color: "#34d399", fontWeight: 700 }}>
+                LOCAL SEO & MAPS
+              </span>
+            </div>
+            <GoogleBusinessConnect />
+          </section>
+
+          {/* 4. FACEBOOK BUSINESS */}
           <section
             style={{
               padding: "clamp(16px, 3.5vw, 26px) clamp(14px, 3.5vw, 28px)",
