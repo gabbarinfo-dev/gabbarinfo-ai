@@ -35,7 +35,7 @@ export default async function handler(req, res) {
       .from("agent_memory")
       .select("content")
       .eq("email", userEmail)
-      .eq("memory_type", "client_character");
+      .ilike("memory_type", "client_character%");
 
     let character = null;
     if (memRows) {

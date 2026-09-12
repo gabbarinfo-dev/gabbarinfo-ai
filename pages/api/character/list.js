@@ -19,9 +19,9 @@ export default async function handler(req, res) {
   try {
     const { data, error } = await supabase
       .from("agent_memory")
-      .select("id, content, updated_at")
+      .select("memory_type, content, updated_at")
       .eq("email", userEmail)
-      .eq("memory_type", "client_character")
+      .ilike("memory_type", "client_character%")
       .order("updated_at", { ascending: false });
 
     if (error) throw error;
@@ -30,7 +30,7 @@ export default async function handler(req, res) {
       try {
         const parsed = typeof row.content === "string" ? JSON.parse(row.content) : row.content;
         return {
-          dbId: row.id,
+          dbMemoryType: row.memory_type,
           ...parsed,
         };
       } catch {

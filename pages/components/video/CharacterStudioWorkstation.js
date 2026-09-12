@@ -131,7 +131,8 @@ export default function CharacterStudioWorkstation() {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          characterId: char.id || char.dbId,
+          characterId: char.id,
+          dbMemoryType: char.dbMemoryType,
           userEmail,
         }),
       });

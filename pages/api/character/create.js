@@ -116,10 +116,11 @@ export default async function handler(req, res) {
       ownerEmail: userEmail,
     };
 
-    // 3. Save into Supabase agent_memory with memory_type = "client_character"
-    const { error: dbError } = await supabase.from("agent_memory").insert({
+    // 3. Save into Supabase agent_memory with unique memory_type per character
+    const memoryType = `client_character_${characterId}`;
+    const { error: dbError } = await supabase.from("agent_memory").upsert({
       email: userEmail,
-      memory_type: "client_character",
+      memory_type: memoryType,
       content: JSON.stringify(characterData),
       updated_at: new Date().toISOString(),
     });
