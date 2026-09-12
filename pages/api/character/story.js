@@ -60,8 +60,8 @@ export default async function handler(req, res) {
     }
 
     const isLongForm = format === "youtube_16_9";
-    const numScenes = isLongForm ? 8 : 4;
-    const targetDuration = isLongForm ? 90 : 20; // 90s preview long-form / 20s reel
+    const numScenes = isLongForm ? 5 : 3;
+    const targetDuration = isLongForm ? 60 : 20; // 60s preview long-form / 20s reel
 
     let langInstruction = "Language: American English (US). Engaging, dynamic American cinematic storytelling style.";
     if (language === "hindi") {
@@ -124,20 +124,65 @@ Return ONLY valid JSON matching this exact structure:
     const voiceBuffer = Buffer.from(await voiceRes.arrayBuffer());
     const voiceoverBase64 = `data:audio/mp3;base64,${voiceBuffer.toString("base64")}`;
 
-    // 4. Build Timed Scenes
+    // 4. Build Timed Scenes with Dedicated gpt-image-2 Visuals
     const sceneDuration = targetDuration / storyResult.scenes.length;
-    const finalScenes = storyResult.scenes.map((s, idx) => ({
-      sceneIndex: idx,
-      chapter: s.chapter || `Scene ${idx + 1}`,
-      text: s.narration,
-      visualDescription: s.visualDescription,
-      startSec: Math.round(idx * sceneDuration * 10) / 10,
-      endSec: Math.round((idx + 1) * sceneDuration * 10) / 10,
-      videoUrl: character.referenceSheetUrl,
-      previewImage: character.referenceSheetUrl,
-      isAvatar: true,
-      characterName: character.name,
-    }));
+    const imageModel = process.env.OPENAI_IMAGE_MODEL || "gpt-image-2";
+    console.log(`[CharacterStory] Synthesizing ${storyResult.scenes.length} scene visuals using ${imageModel}...`);
+
+    const finalScenes = await Promise.all(
+      storyResult.scenes.map(async (s, idx) => {
+        let sceneImgUrl = character.referenceSheetUrl;
+        if (process.env.OPENAI_API_KEY) {
+          try {
+            const scenePrompt = `Cinematic animated movie still frame. Character: ${character.name}, ${character.visualTraits}. Action & setting: ${s.visualDescription}. Style: ${character.archetype || "3D Pixar Disney animation"}, expressive emotion, vibrant cinematic lighting, studio animation still, masterpiece.`;
+            const imgGen = await openai.images.generate({
+              model: imageModel,
+              prompt: scenePrompt,
+              n: 1,
+              size: "1024x1024",
+            });
+
+            const imgData = imgGen.data?.[0];
+            let imgBuf = null;
+            if (imgData?.b64_json) {
+              imgBuf = Buffer.from(imgData.b64_json, "base64");
+            } else if (imgData?.url) {
+              const fetchImg = await fetch(imgData.url);
+              if (fetchImg.ok) imgBuf = Buffer.from(await fetchImg.arrayBuffer());
+            }
+
+            if (imgBuf) {
+              const filename = `scene_${Date.now()}_${idx}_${Math.random().toString(36).slice(2, 6)}.png`;
+              const filePath = `scenes/${filename}`;
+              const { error: upErr } = await supabase.storage
+                .from("instagram-creatives")
+                .upload(filePath, imgBuf, { contentType: "image/png", upsert: true });
+
+              if (!upErr) {
+                const { data: pubData } = supabase.storage
+                  .from("instagram-creatives")
+                  .getPublicUrl(filePath);
+                sceneImgUrl = pubData.publicUrl;
+              }
+            }
+          } catch (sceneErr) {
+            console.warn(`[CharacterStory] Scene ${idx + 1} generation warning:`, sceneErr.message);
+          }
+        }
+
+        return {
+          sceneIndex: idx,
+          chapter: s.chapter || `Scene ${idx + 1}`,
+          text: s.narration,
+          visualDescription: s.visualDescription,
+          startSec: Math.round(idx * sceneDuration * 10) / 10,
+          endSec: Math.round((idx + 1) * sceneDuration * 10) / 10,
+          videoUrl: sceneImgUrl,
+          previewImage: sceneImgUrl,
+          characterName: character.name,
+        };
+      })
+    );
 
     // 5. Generate Word-Level Subtitle Timings
     const words = fullScriptText.split(/\s+/).filter(Boolean);
@@ -171,3 +216,7 @@ Return ONLY valid JSON matching this exact structure:
     return res.status(500).json({ ok: false, error: err.message || "Failed to generate character story." });
   }
 }
+
+export const config = {
+  maxDuration: 60,
+};

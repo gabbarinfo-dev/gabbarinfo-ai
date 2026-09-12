@@ -224,15 +224,23 @@ export default function CharacterStudioWorkstation() {
     voSource.buffer = voBuffer;
     voSource.connect(dest);
 
-    // Preload Character Image
+    // Preload All Story Scene Images + Master Character Image
     const charImg = new Image();
     charImg.crossOrigin = "anonymous";
     charImg.src = generatedStory.character.referenceSheetUrl;
-    await new Promise((resolve) => {
-      charImg.onload = resolve;
-      charImg.onerror = resolve;
-      setTimeout(resolve, 3000);
-    });
+
+    const sceneImages = await Promise.all(
+      (generatedStory.scenes || []).map((s) => {
+        return new Promise((resolve) => {
+          const img = new Image();
+          img.crossOrigin = "anonymous";
+          img.src = s.videoUrl || generatedStory.character.referenceSheetUrl;
+          img.onload = () => resolve(img);
+          img.onerror = () => resolve(charImg);
+          setTimeout(() => resolve(img), 4000);
+        });
+      })
+    );
 
     const canvasStream = canvas.captureStream(30);
     const combinedStream = new MediaStream([
@@ -293,14 +301,16 @@ export default function CharacterStudioWorkstation() {
         ctx.fillStyle = bgGradient;
         ctx.fillRect(0, 0, canvasWidth, canvasHeight);
 
-        // Character Zoom Animation (Ken Burns)
-        if (charImg.complete && charImg.naturalWidth > 0) {
+        // Dynamic Scene Frame Animation (Ken Burns zoom & gentle pan per scene)
+        const currentSceneImg = sceneImages[sceneIndex] || charImg;
+        if (currentSceneImg && currentSceneImg.complete && currentSceneImg.naturalWidth > 0) {
           const zoom = 1.0 + (sceneRatio * 0.08);
+          const panX = (sceneIndex % 2 === 0 ? 1 : -1) * (sceneRatio * 20);
           const w = canvasWidth * zoom;
           const h = canvasHeight * zoom;
-          const x = (canvasWidth - w) / 2;
+          const x = (canvasWidth - w) / 2 + panX;
           const y = (canvasHeight - h) / 2;
-          ctx.drawImage(charImg, x, y, w, h);
+          ctx.drawImage(currentSceneImg, x, y, w, h);
         }
 
         // Cinematic Lower Vignette
@@ -846,26 +856,32 @@ export default function CharacterStudioWorkstation() {
               {generatedStory ? (
                 <div style={{ flex: 1, position: "relative", overflow: "hidden", background: "#090d16" }}>
                   <img
-                    src={generatedStory.character?.referenceSheetUrl || selectedCharacter?.referenceSheetUrl}
-                    alt="Character"
+                    key={activeSceneIndex}
+                    src={
+                      generatedStory.scenes[activeSceneIndex]?.videoUrl ||
+                      generatedStory.character?.referenceSheetUrl ||
+                      selectedCharacter?.referenceSheetUrl
+                    }
+                    alt={generatedStory.scenes[activeSceneIndex]?.chapter || "Scene"}
                     style={{
                       width: "100%",
                       height: "100%",
                       objectFit: "cover",
-                      transform: isPlaying ? "scale(1.05)" : "scale(1)",
-                      transition: "transform 4s ease-out",
+                      transform: isPlaying ? "scale(1.06)" : "scale(1)",
+                      transition: "transform 4s ease-out, opacity 0.3s ease",
                     }}
                   />
 
                   {/* Gradient Overlay */}
                   <div style={{ position: "absolute", inset: 0, background: "linear-gradient(180deg, rgba(0,0,0,0.3) 0%, rgba(0,0,0,0) 40%, rgba(0,0,0,0.85) 100%)", pointerEvents: "none" }} />
 
-                  {/* Widescreen Chapter Badge */}
-                  {videoFormat === "youtube_16_9" && (
-                    <div style={{ position: "absolute", top: 12, left: 14, background: "rgba(0, 0, 0, 0.7)", border: "1px solid #3b82f6", color: "#60a5fa", padding: "4px 10px", borderRadius: 6, fontSize: 11, fontWeight: 800 }}>
-                      {generatedStory.scenes[activeSceneIndex]?.chapter || "CHAPTER 1"}
-                    </div>
-                  )}
+                  {/* Scene Counter & Chapter Badge */}
+                  <div style={{ position: "absolute", top: 12, left: 14, background: "rgba(0, 0, 0, 0.75)", border: "1px solid #ec4899", color: "#f472b6", padding: "4px 10px", borderRadius: 6, fontSize: 11, fontWeight: 800, display: "flex", alignItems: "center", gap: 6 }}>
+                    <span>🎬 Scene {activeSceneIndex + 1} of {generatedStory.scenes.length}</span>
+                    {generatedStory.scenes[activeSceneIndex]?.chapter && (
+                      <span style={{ color: "#e2e8f0" }}>• {generatedStory.scenes[activeSceneIndex].chapter}</span>
+                    )}
+                  </div>
 
                   {/* Subtitle Box */}
                   <div style={{ position: "absolute", bottom: videoFormat === "youtube_16_9" ? 24 : 40, left: 16, right: 16, textAlign: "center" }}>
