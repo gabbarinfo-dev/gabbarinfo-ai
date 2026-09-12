@@ -2,6 +2,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { useRouter } from "next/router";
 import Link from "next/link";
 import { signIn, signOut, useSession } from "next-auth/react";
 import SubscriptionModal from "./components/SubscriptionModal";
@@ -376,6 +377,7 @@ function renderFormattedMessage(text) {
 }
 
 export default function ChatPage() {
+  const router = useRouter();
   const { data: session, status } = useSession();
   const role = session?.user?.role || "client";
 
@@ -1209,7 +1211,7 @@ Now respond as GabbarInfo AI.
 
           <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
             <button
-              onClick={() => signIn("google")}
+              onClick={() => signIn("google", { callbackUrl: router.query.callbackUrl || "/" })}
               className="btn-gabbar-primary"
               style={{
                 width: "100%",
@@ -1244,7 +1246,7 @@ Now respond as GabbarInfo AI.
             </button>
 
             <button
-              onClick={() => signIn("facebook")}
+              onClick={() => signIn("facebook", { callbackUrl: router.query.callbackUrl || "/" })}
               className="btn-gabbar-secondary"
               style={{
                 width: "100%",
@@ -1262,6 +1264,30 @@ Now respond as GabbarInfo AI.
               </svg>
               <span>Continue with Facebook ↗</span>
             </button>
+
+            <Link
+              href="/"
+              style={{
+                width: "100%",
+                padding: "12px 20px",
+                fontSize: 13.5,
+                fontWeight: 600,
+                color: "#60a5fa",
+                background: "rgba(59, 130, 246, 0.08)",
+                border: "1px solid rgba(59, 130, 246, 0.25)",
+                borderRadius: 10,
+                textAlign: "center",
+                textDecoration: "none",
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
+                gap: 8,
+                boxSizing: "border-box",
+                transition: "all 0.15s ease",
+              }}
+            >
+              <span>🚀</span> Go to Command Center Dashboard
+            </Link>
           </div>
 
           <div style={{ marginTop: 26, fontSize: 12, color: "#64748b", display: "flex", alignItems: "center", justifyContent: "center", gap: 6 }}>

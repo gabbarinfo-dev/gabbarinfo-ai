@@ -10,7 +10,7 @@ export default function SignInPage() {
 
   useEffect(() => {
     if (status === "authenticated") {
-      router.replace(router.query.callbackUrl || "/chat");
+      router.replace(router.query.callbackUrl || "/");
     }
   }, [status, router]);
 
@@ -99,7 +99,7 @@ export default function SignInPage() {
         <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
           {/* Primary Google Button with Sliding Gold Animation */}
           <button
-            onClick={() => signIn("google", { callbackUrl: "/chat" })}
+            onClick={() => signIn("google", { callbackUrl: router.query.callbackUrl || "/" })}
             className="btn-gabbar-gold"
             style={{
               width: "100%",
@@ -130,7 +130,7 @@ export default function SignInPage() {
 
           {/* Secondary Facebook Button with Sliding Dark Animation */}
           <button
-            onClick={() => signIn("facebook", { callbackUrl: "/chat" })}
+            onClick={() => signIn("facebook", { callbackUrl: router.query.callbackUrl || "/" })}
             className="btn-gabbar-dark"
             style={{
               width: "100%",
