@@ -9,6 +9,9 @@ export default function ShopifyStoreConnect({ onConnectionChange }) {
   const [connecting, setConnecting] = useState(false);
   const [errorMsg, setErrorMsg] = useState("");
   const [activeSubTab, setActiveSubTab] = useState("products"); // "products" | "blogs"
+  const [connectMode, setConnectMode] = useState("oauth"); // "oauth" | "token"
+  const [customToken, setCustomToken] = useState("");
+  const [tokenConnecting, setTokenConnecting] = useState(false);
 
   // Product Suite State
   const [products, setProducts] = useState([]);
@@ -83,6 +86,47 @@ export default function ShopifyStoreConnect({ onConnectionChange }) {
 
     // Redirect to OAuth initiation endpoint
     window.location.href = `/api/shopify/connect?shop=${encodeURIComponent(normalized)}`;
+  };
+
+  const handleConnectToken = async (e) => {
+    e.preventDefault();
+    if (!shopInput.trim()) {
+      setErrorMsg("Please enter your Shopify store domain (e.g. p0n7tf-yp.myshopify.com).");
+      return;
+    }
+    if (!customToken.trim()) {
+      setErrorMsg("Please enter your Shopify Admin API Access Token (shpat_...).");
+      return;
+    }
+
+    setTokenConnecting(true);
+    setErrorMsg("");
+
+    try {
+      const res = await fetch("/api/shopify/sync", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          action: "connect-token",
+          shop: shopInput.trim(),
+          accessToken: customToken.trim(),
+        }),
+      });
+
+      const data = await res.json();
+      if (data.ok && data.connection) {
+        setConnection(data.connection);
+        if (onConnectionChange) onConnectionChange(true);
+        fetchProducts();
+        fetchBlogs();
+      } else {
+        setErrorMsg(data.error || "Failed to pair store with access token.");
+      }
+    } catch (err) {
+      setErrorMsg("Error pairing store: " + err.message);
+    } finally {
+      setTokenConnecting(false);
+    }
   };
 
   const handleDisconnect = async () => {
@@ -368,63 +412,191 @@ export default function ShopifyStoreConnect({ onConnectionChange }) {
           ))}
         </div>
 
-        {/* Store Domain Input & Connect Button */}
-        <form onSubmit={handleConnect} style={{ maxWidth: 580 }}>
-          <label style={{ display: "block", fontSize: 13, fontWeight: 700, color: "#e2e8f0", marginBottom: 8 }}>
-            Enter your Shopify Store Domain:
-          </label>
-          <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
-            <div style={{ flex: 1, minWidth: 260, position: "relative" }}>
-              <input
-                type="text"
-                placeholder="e.g. bellandiva.myshopify.com or yourstore"
-                value={shopInput}
-                onChange={(e) => setShopInput(e.target.value)}
+        {/* Connection Method Selector */}
+        <div style={{ display: "flex", gap: 8, marginBottom: 18 }}>
+          <button
+            type="button"
+            onClick={() => { setConnectMode("oauth"); setErrorMsg(""); }}
+            style={{
+              padding: "7px 14px",
+              borderRadius: 8,
+              border: connectMode === "oauth" ? "1px solid #95bf47" : "1px solid rgba(255,255,255,0.1)",
+              background: connectMode === "oauth" ? "rgba(149, 191, 71, 0.15)" : "rgba(255,255,255,0.03)",
+              color: connectMode === "oauth" ? "#95bf47" : "#94a3b8",
+              fontWeight: 700,
+              fontSize: 12,
+              cursor: "pointer",
+            }}
+          >
+            ⚡ 1-Click OAuth Pairing
+          </button>
+          <button
+            type="button"
+            onClick={() => { setConnectMode("token"); setErrorMsg(""); }}
+            style={{
+              padding: "7px 14px",
+              borderRadius: 8,
+              border: connectMode === "token" ? "1px solid #95bf47" : "1px solid rgba(255,255,255,0.1)",
+              background: connectMode === "token" ? "rgba(149, 191, 71, 0.15)" : "rgba(255,255,255,0.03)",
+              color: connectMode === "token" ? "#95bf47" : "#94a3b8",
+              fontWeight: 700,
+              fontSize: 12,
+              cursor: "pointer",
+            }}
+          >
+            🔑 Custom App API Token (Zero Redirects)
+          </button>
+        </div>
+
+        {/* MODE 1: 1-CLICK OAUTH */}
+        {connectMode === "oauth" ? (
+          <form onSubmit={handleConnect} style={{ maxWidth: 580 }}>
+            <label style={{ display: "block", fontSize: 13, fontWeight: 700, color: "#e2e8f0", marginBottom: 8 }}>
+              Enter your Shopify Store Domain:
+            </label>
+            <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
+              <div style={{ flex: 1, minWidth: 260, position: "relative" }}>
+                <input
+                  type="text"
+                  placeholder="e.g. p0n7tf-yp.myshopify.com or www.bellandiva.com"
+                  value={shopInput}
+                  onChange={(e) => setShopInput(e.target.value)}
+                  style={{
+                    width: "100%",
+                    boxSizing: "border-box",
+                    padding: "12px 14px",
+                    borderRadius: 10,
+                    background: "rgba(0, 0, 0, 0.4)",
+                    border: "1px solid rgba(255, 255, 255, 0.15)",
+                    color: "#fff",
+                    fontSize: 14,
+                    outline: "none",
+                  }}
+                />
+              </div>
+              <button
+                type="submit"
+                disabled={connecting}
                 style={{
-                  width: "100%",
-                  boxSizing: "border-box",
-                  padding: "12px 14px",
+                  padding: "12px 24px",
                   borderRadius: 10,
-                  background: "rgba(0, 0, 0, 0.4)",
-                  border: "1px solid rgba(255, 255, 255, 0.15)",
-                  color: "#fff",
+                  background: "linear-gradient(135deg, #95bf47 0%, #5e8e3e 100%)",
+                  border: "none",
+                  color: "#0f172a",
+                  fontWeight: 800,
                   fontSize: 14,
-                  outline: "none",
+                  cursor: connecting ? "not-allowed" : "pointer",
+                  boxShadow: "0 4px 15px rgba(149, 191, 71, 0.35)",
+                  display: "flex",
+                  alignItems: "center",
+                  gap: 8,
                 }}
-              />
+              >
+                <span>{connecting ? "Connecting…" : "Connect Shopify Store ↗"}</span>
+              </button>
             </div>
-            <button
-              type="submit"
-              disabled={connecting}
-              style={{
-                padding: "12px 24px",
-                borderRadius: 10,
-                background: "linear-gradient(135deg, #95bf47 0%, #5e8e3e 100%)",
-                border: "none",
-                color: "#0f172a",
-                fontWeight: 800,
-                fontSize: 14,
-                cursor: connecting ? "not-allowed" : "pointer",
-                boxShadow: "0 4px 15px rgba(149, 191, 71, 0.35)",
-                display: "flex",
-                alignItems: "center",
-                gap: 8,
-              }}
-            >
-              <span>{connecting ? "Connecting…" : "Connect Shopify Store ↗"}</span>
-            </button>
-          </div>
 
-          {errorMsg && (
-            <div style={{ marginTop: 12, padding: "8px 12px", borderRadius: 8, background: "rgba(239, 68, 68, 0.15)", border: "1px solid rgba(239, 68, 68, 0.3)", color: "#fca5a5", fontSize: 13 }}>
-              {errorMsg}
+            {errorMsg && (
+              <div style={{ marginTop: 12, padding: "8px 12px", borderRadius: 8, background: "rgba(239, 68, 68, 0.15)", border: "1px solid rgba(239, 68, 68, 0.3)", color: "#fca5a5", fontSize: 13 }}>
+                {errorMsg}
+              </div>
+            )}
+
+            <div style={{ marginTop: 14, fontSize: 11.5, color: "#64748b" }}>
+              🔒 Official Shopify App OAuth · 256-Bit SSL Encrypted · You will approve access on Shopify.
             </div>
-          )}
+          </form>
+        ) : (
+          /* MODE 2: CUSTOM APP ACCESS TOKEN (ZERO REDIRECTS) */
+          <form onSubmit={handleConnectToken} style={{ maxWidth: 580 }}>
+            <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+              <div>
+                <label style={{ display: "block", fontSize: 13, fontWeight: 700, color: "#e2e8f0", marginBottom: 6 }}>
+                  Shopify Store Domain / Handle:
+                </label>
+                <input
+                  type="text"
+                  placeholder="e.g. p0n7tf-yp.myshopify.com"
+                  value={shopInput}
+                  onChange={(e) => setShopInput(e.target.value)}
+                  style={{
+                    width: "100%",
+                    boxSizing: "border-box",
+                    padding: "10px 14px",
+                    borderRadius: 10,
+                    background: "rgba(0, 0, 0, 0.4)",
+                    border: "1px solid rgba(255, 255, 255, 0.15)",
+                    color: "#fff",
+                    fontSize: 14,
+                    outline: "none",
+                  }}
+                />
+              </div>
 
-          <div style={{ marginTop: 14, fontSize: 11.5, color: "#64748b" }}>
-            🔒 Official Shopify App OAuth · 256-Bit SSL Encrypted · You will approve access on Shopify.
-          </div>
-        </form>
+              <div>
+                <label style={{ display: "block", fontSize: 13, fontWeight: 700, color: "#e2e8f0", marginBottom: 6 }}>
+                  Admin API Access Token:
+                </label>
+                <input
+                  type="password"
+                  placeholder="shpat_xxxxxxxxxxxxxxxxxxxxxxxxxxxx"
+                  value={customToken}
+                  onChange={(e) => setCustomToken(e.target.value)}
+                  style={{
+                    width: "100%",
+                    boxSizing: "border-box",
+                    padding: "10px 14px",
+                    borderRadius: 10,
+                    background: "rgba(0, 0, 0, 0.4)",
+                    border: "1px solid rgba(255, 255, 255, 0.15)",
+                    color: "#fff",
+                    fontSize: 14,
+                    outline: "none",
+                  }}
+                />
+              </div>
+
+              <div
+                style={{
+                  padding: "10px 14px",
+                  borderRadius: 8,
+                  background: "rgba(255, 255, 255, 0.03)",
+                  border: "1px solid rgba(255, 255, 255, 0.07)",
+                  fontSize: 12,
+                  color: "#94a3b8",
+                  lineHeight: 1.5,
+                }}
+              >
+                💡 <strong>Where to get this token in 30 seconds:</strong> In your Shopify Admin, go to <strong>Settings ➔ Apps and sales channels ➔ Develop apps ➔ Create an app ➔ Configure scopes</strong> (select <em>read/write products</em> and <em>read/write content</em>) ➔ Click <strong>Install app</strong> and copy the token.
+              </div>
+
+              <button
+                type="submit"
+                disabled={tokenConnecting}
+                style={{
+                  padding: "12px 24px",
+                  borderRadius: 10,
+                  background: "linear-gradient(135deg, #95bf47 0%, #5e8e3e 100%)",
+                  border: "none",
+                  color: "#0f172a",
+                  fontWeight: 800,
+                  fontSize: 14,
+                  cursor: tokenConnecting ? "not-allowed" : "pointer",
+                  boxShadow: "0 4px 15px rgba(149, 191, 71, 0.35)",
+                  alignSelf: "flex-start",
+                }}
+              >
+                {tokenConnecting ? "Verifying & Pairing…" : "Pair Store with Token ➔"}
+              </button>
+            </div>
+
+            {errorMsg && (
+              <div style={{ marginTop: 12, padding: "8px 12px", borderRadius: 8, background: "rgba(239, 68, 68, 0.15)", border: "1px solid rgba(239, 68, 68, 0.3)", color: "#fca5a5", fontSize: 13 }}>
+                {errorMsg}
+              </div>
+            )}
+          </form>
+        )}
       </div>
     );
   }

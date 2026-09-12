@@ -79,6 +79,88 @@ export default async function handler(req, res) {
       return res.status(200).json({ ok: true, message: "Shopify store disconnected successfully." });
     }
 
+    // ---------------------------------------------------------
+    // 2.5 CONNECT VIA DIRECT ACCESS TOKEN (ALTERNATIVE TO OAUTH)
+    // ---------------------------------------------------------
+    if (action === "connect-token") {
+      let rawShop = payload.shop;
+      const rawToken = payload.accessToken;
+
+      if (!rawShop || !rawToken) {
+        return res.status(400).json({ ok: false, error: "Missing Shopify store domain or Access Token." });
+      }
+
+      let shop = String(rawShop).trim().toLowerCase();
+      if (shop.includes("admin.shopify.com/store/")) {
+        const match = shop.match(/admin\.shopify\.com\/store\/([a-zA-Z0-9\-]+)/);
+        if (match && match[1]) shop = `${match[1]}.myshopify.com`;
+      } else {
+        shop = shop.replace(/^https?:\/\//, "").replace(/\/+$/, "").split("/")[0];
+        if (!shop.includes(".")) shop = `${shop}.myshopify.com`;
+      }
+
+      const tokenClean = String(rawToken).trim();
+
+      // Verify token with shopify shop.json
+      let shopDetails = {};
+      try {
+        const testRes = await fetch(`https://${shop}/admin/api/2024-01/shop.json`, {
+          headers: {
+            "X-Shopify-Access-Token": tokenClean,
+            "Content-Type": "application/json",
+          },
+        });
+
+        if (!testRes.ok) {
+          const errBody = await testRes.text();
+          return res.status(400).json({
+            ok: false,
+            error: `Could not verify access token with ${shop}. Please ensure the token is correct and has Admin API permissions.`,
+          });
+        }
+
+        const testData = await testRes.json();
+        shopDetails = testData.shop || {};
+      } catch (netErr) {
+        return res.status(500).json({ ok: false, error: `Network error reaching ${shop}: ${netErr.message}` });
+      }
+
+      const connectionPayload = {
+        shop,
+        myshopify_domain: shopDetails.myshopify_domain || shop,
+        domain: shopDetails.domain || shop,
+        shopName: shopDetails.name || shop.replace(".myshopify.com", ""),
+        shopEmail: shopDetails.email || "",
+        currency: shopDetails.currency || "USD",
+        country: shopDetails.country_name || "",
+        access_token: tokenClean,
+        scope: "read_content,write_content,read_products,write_products",
+        connected_at: new Date().toISOString(),
+        primary_domain: shopDetails.domain || shop,
+        connection_type: "custom_app_token",
+      };
+
+      const { error: dbErr } = await supabase.from("agent_memory").upsert(
+        {
+          email: userEmail,
+          memory_type: "shopify_connection",
+          content: JSON.stringify(connectionPayload),
+          updated_at: new Date().toISOString(),
+        },
+        { onConflict: "email,memory_type" }
+      );
+
+      if (dbErr) {
+        return res.status(500).json({ ok: false, error: "Database error: " + dbErr.message });
+      }
+
+      return res.status(200).json({
+        ok: true,
+        message: "Shopify store paired successfully!",
+        connection: connectionPayload,
+      });
+    }
+
     // Retrieve active connection for authenticated actions below
     const { data: mem } = await supabase
       .from("agent_memory")
