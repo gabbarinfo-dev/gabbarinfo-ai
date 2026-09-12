@@ -83,10 +83,10 @@ export default async function handler(req, res) {
       isTrial,
     });
 
-    if (!assetCheck.allowed) {
+    if (assetCheck && !assetCheck.eligible && isTrial) {
       return res.status(403).json({
         ok: false,
-        error: assetCheck.reason || "This Shopify store is already bound to another account.",
+        error: assetCheck.error || "This Shopify store is already bound to another account.",
       });
     }
   } catch (err) {
