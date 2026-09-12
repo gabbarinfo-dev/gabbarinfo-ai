@@ -136,18 +136,126 @@ export default async function handler(req, res) {
     }
 
     // -------------------------------------------------------------
-    // 3. YOUTUBE SHORTS PUBLISHING
+    // 3. YOUTUBE SHORTS PUBLISHING (Real Google YouTube Data API v3)
     // -------------------------------------------------------------
     if (channel === "youtube") {
-      // Formats short title with #Shorts for automated YouTube Shorts classification
-      const shortsTitle = title.includes("#Shorts") ? title : `${title} #Shorts`;
-      const shortsDescription = `${caption}\n\nProduced with GabbarInfo AI Video Studio.\n#Shorts #YouTubeShorts #Trending`;
+      const { data: ytMem } = await supabase
+        .from("agent_memory")
+        .select("content")
+        .eq("email", userEmail)
+        .eq("memory_type", "youtube_account")
+        .maybeSingle();
+
+      const ytContent = ytMem?.content
+        ? typeof ytMem.content === "string"
+          ? JSON.parse(ytMem.content)
+          : ytMem.content
+        : null;
+
+      if (!ytContent || (!ytContent.refreshToken && !ytContent.accessToken)) {
+        return res.status(400).json({
+          ok: false,
+          error: "No connected YouTube Channel found. Please click 'Connect YouTube' to authorize your channel.",
+        });
+      }
+
+      // Step 1: Refresh Access Token if refresh token is available
+      let activeToken = ytContent.accessToken;
+      if (ytContent.refreshToken) {
+        try {
+          const refreshRes = await fetch("https://oauth2.googleapis.com/token", {
+            method: "POST",
+            headers: { "Content-Type": "application/x-www-form-urlencoded" },
+            body: new URLSearchParams({
+              client_id: process.env.GOOGLE_CLIENT_ID,
+              client_secret: process.env.GOOGLE_CLIENT_SECRET,
+              refresh_token: ytContent.refreshToken,
+              grant_type: "refresh_token",
+            }),
+          });
+          const refreshData = await refreshRes.json();
+          if (refreshData.access_token) {
+            activeToken = refreshData.access_token;
+          }
+        } catch (rfErr) {
+          console.warn("[YouTube Publish] Token refresh warning, using cached token:", rfErr.message);
+        }
+      }
+
+      // Step 2: Download the generated video file into buffer
+      console.log(`[YouTube Publish] Downloading video stream from: ${videoUrl}`);
+      const vidFetchRes = await fetch(videoUrl);
+      if (!vidFetchRes.ok) {
+        throw new Error(`Failed to fetch source video file: ${vidFetchRes.statusText}`);
+      }
+      const vidBuffer = Buffer.from(await vidFetchRes.arrayBuffer());
+
+      // Step 3: Format Shorts Title & Description
+      const shortsTitle = (title || "Amazing Video").includes("#Shorts")
+        ? title
+        : `${(title || "Trending AI Reel").slice(0, 50)} #Shorts`;
+
+      const tags = ["Shorts", "YouTubeShorts", "AI", "Trending"];
+      const shortsDescription = `${caption || title}\n\nProduced with GabbarInfo AI Studio.\n\n#Shorts #YouTubeShorts`;
+
+      // Step 4: Initiate Resumable Upload
+      console.log(`[YouTube Publish] Initiating resumable upload for "${shortsTitle}" (${vidBuffer.length} bytes)...`);
+      const initRes = await fetch(
+        "https://www.googleapis.com/upload/youtube/v3/videos?uploadType=resumable&part=snippet,status",
+        {
+          method: "POST",
+          headers: {
+            Authorization: `Bearer ${activeToken}`,
+            "Content-Type": "application/json; charset=UTF-8",
+            "X-Upload-Content-Length": String(vidBuffer.length),
+            "X-Upload-Content-Type": "video/mp4",
+          },
+          body: JSON.stringify({
+            snippet: {
+              title: shortsTitle,
+              description: shortsDescription,
+              tags,
+              categoryId: "22", // People & Blogs
+            },
+            status: {
+              privacyStatus: "public",
+              selfDeclaredMadeForKids: false,
+            },
+          }),
+        }
+      );
+
+      const uploadLocation = initRes.headers.get("location");
+      if (!initRes.ok || !uploadLocation) {
+        const errJson = await initRes.json().catch(() => ({}));
+        throw new Error(errJson?.error?.message || `YouTube upload initialization failed (${initRes.status})`);
+      }
+
+      // Step 5: Upload Video Binary
+      console.log(`[YouTube Publish] Uploading binary to YouTube endpoint...`);
+      const uploadRes = await fetch(uploadLocation, {
+        method: "PUT",
+        headers: {
+          "Content-Type": "video/mp4",
+          "Content-Length": String(vidBuffer.length),
+        },
+        body: vidBuffer,
+      });
+
+      const ytUploadData = await uploadRes.json();
+      if (!uploadRes.ok || !ytUploadData?.id) {
+        throw new Error(ytUploadData?.error?.message || "YouTube upload transfer failed.");
+      }
+
+      const ytVideoUrl = `https://youtube.com/shorts/${ytUploadData.id}`;
+      console.log(`[YouTube Publish] Successfully uploaded to YouTube Shorts: ${ytVideoUrl}`);
 
       return res.status(200).json({
         ok: true,
         channel: "youtube",
-        message: `YouTube Short "${shortsTitle}" successfully queued for upload to your channel!`,
-        videoTitle: shortsTitle,
+        message: `YouTube Short published live successfully!`,
+        videoId: ytUploadData.id,
+        videoUrl: ytVideoUrl,
       });
     }
 

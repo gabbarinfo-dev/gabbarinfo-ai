@@ -100,40 +100,90 @@ export default async function handler(req, res) {
           }
         }
 
-        // Intelligent Anti-Duplication Topic Generator
-        const keywords = Array.isArray(config.targetKeywords) && config.targetKeywords.length > 0
-          ? config.targetKeywords
-          : ["SEO Optimization", "Google Ads Management", "Digital Marketing"];
+        // 1. Fetch user's business profile for universal domain intelligence (Zero hardcoding)
+        let clientIndustry = config.industry || "";
+        let clientServices = "";
+        let clientMarket = "";
 
-        const templates = [
-          "The Comprehensive Guide to %KW%: Actionable Tactics for Sustainable 2026 Growth",
-          "Mastering %KW%: The Blueprint for Outranking Competitors and Scaling ROI in 2026",
-          "High-Impact %KW% Strategies That Modern Enterprise Leaders Swear By",
-          "The 2026 Playbook for %KW%: From Strategy to Real-World Revenue Acceleration",
-          "Advanced %KW% Optimization: Core Frameworks and Conversion Strategies for 2026",
-          "How Elite Brands Scale Revenue with %KW%: Deep-Dive Analysis & Playbook"
-        ];
+        const { data: clientMem } = await supabase
+          .from("agent_memory")
+          .select("content")
+          .eq("email", item.email)
+          .eq("memory_type", "client")
+          .maybeSingle();
+
+        if (clientMem?.content) {
+          try {
+            const parsedClient = typeof clientMem.content === "string" ? JSON.parse(clientMem.content) : clientMem.content;
+            const bAnswers = parsedClient?.business_answers?.[config.businessName] || parsedClient?.business_answers?.["default_business"] || parsedClient || {};
+            clientIndustry = clientIndustry || bAnswers.industry || bAnswers.business_type || "";
+            clientServices = bAnswers.services || bAnswers.service || bAnswers.products || "";
+            clientMarket = bAnswers.target_market || bAnswers.location || "";
+          } catch (_) {}
+        }
 
         config.publishedTopics = Array.isArray(config.publishedTopics) ? config.publishedTopics : [];
-
-        // Generate a fresh topic that has never been used
         let generatedTopic = "";
-        for (const kw of keywords) {
+
+        // 2. Dynamic AI Topic Synthesis tailored to this specific business
+        const openAiKey = process.env.OPENAI_API_KEY;
+        if (openAiKey) {
+          try {
+            const OpenAI = (await import("openai")).default;
+            const openai = new OpenAI({ apiKey: openAiKey });
+
+            const recentTopics = config.publishedTopics.slice(-15).join(" | ");
+            const prompt = `You are a Principal Content Strategist for "${config.businessName || 'Enterprise'}", operating in the "${clientIndustry || 'Commercial Solutions'}" industry, providing: "${clientServices || 'High-value services and products'}". Target market: "${clientMarket || 'Global B2B/B2C'}".
+Generate a single, compelling, authoritative blog headline/topic for today that addresses a real customer pain point, buying consideration, or technical problem in this domain.
+DO NOT repeat or closely mimic any of these previously published topics: [${recentTopics}].
+Return ONLY the single title, with no quotes or preamble.`;
+
+            const aiResp = await openai.chat.completions.create({
+              model: "gpt-4o-mini",
+              messages: [{ role: "user", content: prompt }],
+              temperature: 0.75,
+              max_tokens: 60,
+            });
+
+            const aiTitle = aiResp.choices?.[0]?.message?.content?.trim().replace(/^["']|["']$/g, "");
+            if (aiTitle && !config.publishedTopics.includes(aiTitle)) {
+              generatedTopic = aiTitle;
+            }
+          } catch (aiErr) {
+            console.warn("[Autopilot Cron] AI topic synthesis fallback:", aiErr.message);
+          }
+        }
+
+        // Fallback: Intelligent Round-Robin keyword topic generator if AI synthesis unavailable
+        if (!generatedTopic) {
+          const keywords = Array.isArray(config.targetKeywords) && config.targetKeywords.length > 0
+            ? config.targetKeywords
+            : (clientServices ? clientServices.split(",").map(s => s.trim()) : ["Business Growth", "Operations", "Market Leadership"]);
+
+          const templates = [
+            "The Comprehensive Guide to %KW%: Actionable Tactics for Sustainable Growth",
+            "Mastering %KW%: Best Practices for Maximizing Quality and ROI",
+            "High-Impact %KW% Strategies That Modern Industry Leaders Swear By",
+            "The Practical Playbook for %KW%: Overcoming Common Pitfalls",
+            "Advanced %KW% Optimization: Core Frameworks and Proven Solutions",
+            "How Leading Enterprises Elevate Results with %KW%: Deep-Dive Analysis"
+          ];
+
+          // True Round-Robin: Pick keyword based on publishedCount modulo keywords length
+          const kwIndex = (config.publishedCount || 0) % keywords.length;
+          const selectedKw = keywords[kwIndex] || keywords[0];
+
           for (const tpl of templates) {
-            const candidate = tpl.replace("%KW%", kw);
+            const candidate = tpl.replace("%KW%", selectedKw);
             if (!config.publishedTopics.includes(candidate)) {
               generatedTopic = candidate;
               break;
             }
           }
-          if (generatedTopic) break;
-        }
 
-        // If all candidates exhausted, pick a fresh variant with timestamp seed
-        if (!generatedTopic) {
-          const kw = keywords[Math.floor(Math.random() * keywords.length)];
-          const tpl = templates[Math.floor(Math.random() * templates.length)];
-          generatedTopic = tpl.replace("%KW%", kw);
+          if (!generatedTopic) {
+            generatedTopic = `${selectedKw}: Critical Industry Insights and Practical Solutions`;
+          }
         }
 
         // Direct In-Process Autonomous Blog Engine Execution (No external HTTP fetch overhead)
@@ -142,10 +192,10 @@ export default async function handler(req, res) {
           userEmail: item.email,
           businessName: config.businessName || "GABBARinfo",
           topic: generatedTopic,
-          targetKeywords: keywords,
+          targetKeywords: [generatedTopic.slice(0, 30)],
           wordCount: Math.max(Number(config.wordCount) || 1500, 1500),
           brandVoice: config.brandVoice || "consultative and results-oriented",
-          industry: config.industry || "Business",
+          industry: clientIndustry || config.industry || "Business",
           publishStatus: "publish",
           isAutopilot: true,
         });
@@ -169,14 +219,15 @@ export default async function handler(req, res) {
 
           console.log(`[Autopilot Cron] Memory state updated for ${item.email}. Published count: ${config.publishedCount}`);
 
-          // In-Process Direct Facebook Syndication (Zero HTTP overhead)
+          // In-Process Direct Facebook Syndication (Clickable Link Card - Screenshot 3 style)
           const socialShares = {};
-          if (config.autoShareFacebook && genData.featured_image) {
+          if (config.autoShareFacebook && (genData.post_url || genData.featured_image)) {
             try {
-              console.log(`[Autopilot Cron] In-process Facebook post for ${config.businessName}...`);
-              const fullCaption = `📢 ${genData.title}\n\n${genData.meta_description}\n\nRead full article here 👇\n${genData.post_url}\n\n#DigitalMarketing #SEO #BusinessGrowth #GABBARinfo`;
+              console.log(`[Autopilot Cron] In-process Facebook Link Card post for ${config.businessName}...`);
+              const fullCaption = `📢 ${genData.title}\n\n${genData.meta_description || ""}\n\nRead full article here 👇\n${genData.post_url}`;
               const fbPromise = executeFacebookPost({
                 userEmail: item.email,
+                link: genData.post_url, // Ensures Clickable Link Card (SS3)
                 imageUrl: genData.featured_image,
                 caption: fullCaption,
                 skipPermalinkFetch: true,

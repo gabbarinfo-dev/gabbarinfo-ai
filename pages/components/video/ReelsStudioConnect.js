@@ -22,6 +22,105 @@ export default function ReelsStudioConnect() {
   // Publishing State
   const [publishingChannel, setPublishingChannel] = useState(null);
   const [publishStatus, setPublishStatus] = useState({});
+  const [batchPublishing, setBatchPublishing] = useState(false);
+
+  // Channel Connection States & Preferences
+  const [youtubeStatus, setYoutubeStatus] = useState({ connected: false, channel: null, loading: true });
+  const [metaStatus, setMetaStatus] = useState({ connected: false, meta: null, loading: true });
+  const [selectedChannels, setSelectedChannels] = useState(["instagram", "facebook", "youtube"]);
+  const [autopilotChannels, setAutopilotChannels] = useState({ instagram: true, facebook: true, youtube: true });
+  const [autopilotCadence, setAutopilotCadence] = useState("daily");
+  const [toastMsg, setToastMsg] = useState("");
+  const [autopilotSaving, setAutopilotSaving] = useState(false);
+
+  const refreshChannelStatuses = async () => {
+    try {
+      const [ytRes, metaRes] = await Promise.all([
+        fetch("/api/youtube/status").then((r) => r.json()).catch(() => ({ connected: false })),
+        fetch("/api/meta/status").then((r) => r.json()).catch(() => ({ connected: false })),
+      ]);
+      setYoutubeStatus({ connected: !!ytRes.connected, channel: ytRes.channel || null, loading: false });
+      setMetaStatus({ connected: !!metaRes.connected, meta: metaRes.meta || null, loading: false });
+    } catch (_) {
+      setYoutubeStatus((prev) => ({ ...prev, loading: false }));
+      setMetaStatus((prev) => ({ ...prev, loading: false }));
+    }
+  };
+
+  useEffect(() => {
+    refreshChannelStatuses();
+    if (typeof window !== "undefined") {
+      const params = new URLSearchParams(window.location.search);
+      if (params.get("youtube_connected")) {
+        setToastMsg(`✅ YouTube Channel "${params.get("channel") || "Authorized"}" connected successfully!`);
+        setTimeout(() => setToastMsg(""), 7000);
+      } else if (params.get("youtube_error")) {
+        setErrorMsg(`YouTube Connection Failed: ${params.get("youtube_error")}`);
+      }
+    }
+  }, []);
+
+  const handleDisconnectYouTube = async () => {
+    if (!confirm("Disconnect your YouTube channel from Reels Studio?")) return;
+    try {
+      await fetch("/api/youtube/disconnect", { method: "POST" });
+      setYoutubeStatus({ connected: false, channel: null, loading: false });
+      setToastMsg("YouTube Channel disconnected.");
+      setTimeout(() => setToastMsg(""), 4000);
+    } catch (e) {
+      alert("Failed to disconnect: " + e.message);
+    }
+  };
+
+  const toggleChannelSelection = (ch) => {
+    setSelectedChannels((prev) =>
+      prev.includes(ch) ? prev.filter((c) => c !== ch) : [...prev, ch]
+    );
+  };
+
+  const handlePublishSelected = async () => {
+    if (!generatedVideo || selectedChannels.length === 0 || batchPublishing) return;
+    setBatchPublishing(true);
+    try {
+      for (const ch of selectedChannels) {
+        await handlePublish(ch);
+      }
+    } finally {
+      setBatchPublishing(false);
+    }
+  };
+
+  const handleSaveAutopilot = async () => {
+    setAutopilotSaving(true);
+    try {
+      const activeChannels = Object.entries(autopilotChannels)
+        .filter(([_, active]) => active)
+        .map(([ch]) => ch);
+
+      const res = await fetch("/api/video/save-autopilot", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          enabled: true,
+          channels: activeChannels,
+          cadence: autopilotCadence,
+          niche,
+        }),
+      });
+
+      const data = await res.json();
+      if (data.ok) {
+        setToastMsg(`⚡ Autopilot configured for: ${activeChannels.join(", ")} (${autopilotCadence})`);
+        setTimeout(() => setToastMsg(""), 6000);
+      } else {
+        alert("Failed to save autopilot: " + (data.error || "Unknown error"));
+      }
+    } catch (err) {
+      alert("Failed to save autopilot: " + err.message);
+    } finally {
+      setAutopilotSaving(false);
+    }
+  };
 
   // Audio References
   const voiceoverRef = useRef(null);
@@ -314,6 +413,33 @@ export default function ReelsStudioConnect() {
             </div>
           </div>
         </div>
+
+        {/* Global Toast Notification */}
+        {toastMsg && (
+          <div
+            style={{
+              marginTop: 16,
+              padding: "10px 16px",
+              borderRadius: 12,
+              background: "rgba(16, 185, 129, 0.15)",
+              border: "1px solid rgba(16, 185, 129, 0.4)",
+              color: "#6ee7b7",
+              fontWeight: 700,
+              fontSize: 13,
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "space-between",
+            }}
+          >
+            <span>{toastMsg}</span>
+            <button
+              onClick={() => setToastMsg("")}
+              style={{ background: "none", border: "none", color: "#6ee7b7", cursor: "pointer", fontSize: 16 }}
+            >
+              ✕
+            </button>
+          </div>
+        )}
 
         {/* 3 VISUAL STYLE SELECTOR CARDS */}
         <div style={{ marginTop: 24 }}>
@@ -807,130 +933,268 @@ export default function ReelsStudioConnect() {
           {/* ALWAYS-VISIBLE MULTI-CHANNEL PUBLISHING & AUTOPILOT HUB */}
           <div
             style={{
-              width: 290,
-              background: "linear-gradient(135deg, rgba(15, 23, 42, 0.85) 0%, rgba(8, 13, 22, 0.98) 100%)",
-              border: "1px solid rgba(255, 255, 255, 0.1)",
+              width: 320,
+              background: "linear-gradient(135deg, rgba(15, 23, 42, 0.9) 0%, rgba(8, 13, 22, 0.98) 100%)",
+              border: "1px solid rgba(255, 255, 255, 0.12)",
               borderRadius: 18,
-              padding: 16,
-              boxShadow: "0 8px 24px rgba(0, 0, 0, 0.4)",
+              padding: 18,
+              boxShadow: "0 12px 30px rgba(0, 0, 0, 0.5)",
             }}
           >
-            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 12 }}>
-              <span style={{ fontSize: 11.5, fontWeight: 800, color: "#f8fafc", textTransform: "uppercase", letterSpacing: "0.5px" }}>
+            {/* Header */}
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 14 }}>
+              <span style={{ fontSize: 12, fontWeight: 800, color: "#f8fafc", textTransform: "uppercase", letterSpacing: "0.5px", display: "flex", alignItems: "center", gap: 6 }}>
                 🚀 Publishing Channels
               </span>
-              <span style={{ fontSize: 10, padding: "2px 7px", borderRadius: 999, background: "rgba(16, 185, 129, 0.15)", color: "#10b981", fontWeight: 700 }}>
-                ● Active
+              <span style={{ fontSize: 10, padding: "2px 8px", borderRadius: 999, background: "rgba(16, 185, 129, 0.15)", color: "#10b981", fontWeight: 700, border: "1px solid rgba(16, 185, 129, 0.3)" }}>
+                ● Multi-Channel Hub
               </span>
             </div>
 
-            {/* Channels List with Status */}
-            <div style={{ display: "flex", flexDirection: "column", gap: 9 }}>
-              {/* Instagram Reels Button */}
-              <div>
-                <button
-                  onClick={() => handlePublish("instagram")}
-                  disabled={!generatedVideo || publishingChannel === "instagram"}
-                  style={{
-                    width: "100%",
-                    padding: "10px 12px",
-                    borderRadius: 9,
-                    background: generatedVideo ? "linear-gradient(135deg, #833ab4 0%, #fd1d1d 50%, #fcb045 100%)" : "rgba(255, 255, 255, 0.04)",
-                    border: generatedVideo ? "none" : "1px solid rgba(255, 255, 255, 0.08)",
-                    color: generatedVideo ? "#fff" : "#64748b",
-                    fontWeight: 700,
-                    fontSize: 12,
-                    cursor: generatedVideo ? (publishingChannel === "instagram" ? "not-allowed" : "pointer") : "default",
-                    display: "flex",
-                    alignItems: "center",
-                    justifyContent: "space-between",
-                    transition: "all 0.2s ease",
-                  }}
-                >
-                  <span style={{ display: "flex", alignItems: "center", gap: 6 }}>
-                    📸 Instagram Reels
-                  </span>
-                  <span style={{ fontSize: 11 }}>
-                    {publishingChannel === "instagram" ? "Posting…" : generatedVideo ? "Post Now ↗" : "Ready"}
-                  </span>
-                </button>
+            {/* Channels List with Checkboxes, Connection Badges, and Single Post Buttons */}
+            <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+              {/* 1. INSTAGRAM REELS */}
+              <div
+                style={{
+                  background: "rgba(255, 255, 255, 0.03)",
+                  border: "1px solid rgba(255, 255, 255, 0.07)",
+                  borderRadius: 11,
+                  padding: "10px 12px",
+                  display: "flex",
+                  flexDirection: "column",
+                  gap: 8,
+                }}
+              >
+                <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+                  <label style={{ display: "flex", alignItems: "center", gap: 8, cursor: "pointer", fontSize: 12, fontWeight: 700 }}>
+                    <input
+                      type="checkbox"
+                      checked={selectedChannels.includes("instagram")}
+                      onChange={() => toggleChannelSelection("instagram")}
+                      style={{ accentColor: "#ec4899", cursor: "pointer", width: 14, height: 14 }}
+                    />
+                    <span>📸 Instagram Reels</span>
+                  </label>
+                  {metaStatus.connected ? (
+                    <span style={{ fontSize: 10, color: "#34d399", fontWeight: 700 }}>● Connected</span>
+                  ) : (
+                    <a
+                      href="/api/facebook/connect"
+                      style={{ fontSize: 10, color: "#38bdf8", textDecoration: "none", fontWeight: 700, padding: "2px 6px", borderRadius: 4, background: "rgba(56, 189, 248, 0.1)" }}
+                    >
+                      🔗 Connect Meta
+                    </a>
+                  )}
+                </div>
+
+                <div style={{ display: "flex", justifyContent: "flex-end" }}>
+                  <button
+                    type="button"
+                    onClick={() => handlePublish("instagram")}
+                    disabled={!generatedVideo || publishingChannel === "instagram"}
+                    style={{
+                      padding: "6px 12px",
+                      borderRadius: 7,
+                      background: generatedVideo ? "linear-gradient(135deg, #833ab4 0%, #fd1d1d 50%, #fcb045 100%)" : "rgba(255, 255, 255, 0.05)",
+                      border: "none",
+                      color: generatedVideo ? "#fff" : "#64748b",
+                      fontWeight: 700,
+                      fontSize: 11,
+                      cursor: generatedVideo ? (publishingChannel === "instagram" ? "not-allowed" : "pointer") : "default",
+                      display: "flex",
+                      alignItems: "center",
+                      gap: 4,
+                    }}
+                  >
+                    {publishingChannel === "instagram" ? "Publishing…" : "Post to Instagram Only ↗"}
+                  </button>
+                </div>
               </div>
 
-              {/* Facebook Reels Button */}
-              <div>
-                <button
-                  onClick={() => handlePublish("facebook")}
-                  disabled={!generatedVideo || publishingChannel === "facebook"}
-                  style={{
-                    width: "100%",
-                    padding: "10px 12px",
-                    borderRadius: 9,
-                    background: generatedVideo ? "#1877f2" : "rgba(255, 255, 255, 0.04)",
-                    border: generatedVideo ? "none" : "1px solid rgba(255, 255, 255, 0.08)",
-                    color: generatedVideo ? "#fff" : "#64748b",
-                    fontWeight: 700,
-                    fontSize: 12,
-                    cursor: generatedVideo ? (publishingChannel === "facebook" ? "not-allowed" : "pointer") : "default",
-                    display: "flex",
-                    alignItems: "center",
-                    justifyContent: "space-between",
-                    transition: "all 0.2s ease",
-                  }}
-                >
-                  <span style={{ display: "flex", alignItems: "center", gap: 6 }}>
-                    📘 Facebook Reels
-                  </span>
-                  <span style={{ fontSize: 11 }}>
-                    {publishingChannel === "facebook" ? "Posting…" : generatedVideo ? "Post Now ↗" : "Ready"}
-                  </span>
-                </button>
+              {/* 2. FACEBOOK REELS */}
+              <div
+                style={{
+                  background: "rgba(255, 255, 255, 0.03)",
+                  border: "1px solid rgba(255, 255, 255, 0.07)",
+                  borderRadius: 11,
+                  padding: "10px 12px",
+                  display: "flex",
+                  flexDirection: "column",
+                  gap: 8,
+                }}
+              >
+                <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+                  <label style={{ display: "flex", alignItems: "center", gap: 8, cursor: "pointer", fontSize: 12, fontWeight: 700 }}>
+                    <input
+                      type="checkbox"
+                      checked={selectedChannels.includes("facebook")}
+                      onChange={() => toggleChannelSelection("facebook")}
+                      style={{ accentColor: "#1877f2", cursor: "pointer", width: 14, height: 14 }}
+                    />
+                    <span>📘 Facebook Reels</span>
+                  </label>
+                  {metaStatus.connected ? (
+                    <span style={{ fontSize: 10, color: "#34d399", fontWeight: 700 }}>● Connected</span>
+                  ) : (
+                    <a
+                      href="/api/facebook/connect"
+                      style={{ fontSize: 10, color: "#38bdf8", textDecoration: "none", fontWeight: 700, padding: "2px 6px", borderRadius: 4, background: "rgba(56, 189, 248, 0.1)" }}
+                    >
+                      🔗 Connect Meta
+                    </a>
+                  )}
+                </div>
+
+                <div style={{ display: "flex", justifyContent: "flex-end" }}>
+                  <button
+                    type="button"
+                    onClick={() => handlePublish("facebook")}
+                    disabled={!generatedVideo || publishingChannel === "facebook"}
+                    style={{
+                      padding: "6px 12px",
+                      borderRadius: 7,
+                      background: generatedVideo ? "#1877f2" : "rgba(255, 255, 255, 0.05)",
+                      border: "none",
+                      color: generatedVideo ? "#fff" : "#64748b",
+                      fontWeight: 700,
+                      fontSize: 11,
+                      cursor: generatedVideo ? (publishingChannel === "facebook" ? "not-allowed" : "pointer") : "default",
+                      display: "flex",
+                      alignItems: "center",
+                      gap: 4,
+                    }}
+                  >
+                    {publishingChannel === "facebook" ? "Publishing…" : "Post to Facebook Only ↗"}
+                  </button>
+                </div>
               </div>
 
-              {/* YouTube Shorts Button */}
-              <div>
-                <button
-                  onClick={() => handlePublish("youtube")}
-                  disabled={!generatedVideo || publishingChannel === "youtube"}
-                  style={{
-                    width: "100%",
-                    padding: "10px 12px",
-                    borderRadius: 9,
-                    background: generatedVideo ? "#ff0000" : "rgba(255, 255, 255, 0.04)",
-                    border: generatedVideo ? "none" : "1px solid rgba(255, 255, 255, 0.08)",
-                    color: generatedVideo ? "#fff" : "#64748b",
-                    fontWeight: 700,
-                    fontSize: 12,
-                    cursor: generatedVideo ? (publishingChannel === "youtube" ? "not-allowed" : "pointer") : "default",
-                    display: "flex",
-                    alignItems: "center",
-                    justifyContent: "space-between",
-                    transition: "all 0.2s ease",
-                  }}
-                >
-                  <span style={{ display: "flex", alignItems: "center", gap: 6 }}>
-                    🔴 YouTube Shorts
-                  </span>
-                  <span style={{ fontSize: 11 }}>
-                    {publishingChannel === "youtube" ? "Posting…" : generatedVideo ? "Post Now ↗" : "Ready"}
-                  </span>
-                </button>
+              {/* 3. YOUTUBE SHORTS (Dedicated Google OAuth Flow) */}
+              <div
+                style={{
+                  background: "rgba(255, 255, 255, 0.03)",
+                  border: youtubeStatus.connected ? "1px solid rgba(239, 68, 68, 0.3)" : "1px solid rgba(255, 255, 255, 0.07)",
+                  borderRadius: 11,
+                  padding: "10px 12px",
+                  display: "flex",
+                  flexDirection: "column",
+                  gap: 8,
+                }}
+              >
+                <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+                  <label style={{ display: "flex", alignItems: "center", gap: 8, cursor: "pointer", fontSize: 12, fontWeight: 700 }}>
+                    <input
+                      type="checkbox"
+                      checked={selectedChannels.includes("youtube")}
+                      onChange={() => toggleChannelSelection("youtube")}
+                      style={{ accentColor: "#ef4444", cursor: "pointer", width: 14, height: 14 }}
+                    />
+                    <span>🔴 YouTube Shorts</span>
+                  </label>
+                  {youtubeStatus.connected ? (
+                    <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                      <span style={{ fontSize: 10, color: "#f87171", fontWeight: 700 }}>
+                        {youtubeStatus.channel?.title?.slice(0, 14) || "Connected"}
+                      </span>
+                      <button
+                        type="button"
+                        onClick={handleDisconnectYouTube}
+                        style={{ background: "none", border: "none", color: "#64748b", fontSize: 9, cursor: "pointer", textDecoration: "underline", padding: 0 }}
+                      >
+                        Disconnect
+                      </button>
+                    </div>
+                  ) : (
+                    <a
+                      href="/api/youtube/connect"
+                      style={{
+                        fontSize: 10,
+                        color: "#ef4444",
+                        textDecoration: "none",
+                        fontWeight: 700,
+                        padding: "3px 8px",
+                        borderRadius: 5,
+                        background: "rgba(239, 68, 68, 0.15)",
+                        border: "1px solid rgba(239, 68, 68, 0.3)",
+                        display: "flex",
+                        alignItems: "center",
+                        gap: 3,
+                      }}
+                    >
+                      🔗 Connect YouTube
+                    </a>
+                  )}
+                </div>
+
+                <div style={{ display: "flex", justifyContent: "flex-end" }}>
+                  <button
+                    type="button"
+                    onClick={() => handlePublish("youtube")}
+                    disabled={!generatedVideo || publishingChannel === "youtube"}
+                    style={{
+                      padding: "6px 12px",
+                      borderRadius: 7,
+                      background: generatedVideo ? "#ef4444" : "rgba(255, 255, 255, 0.05)",
+                      border: "none",
+                      color: generatedVideo ? "#fff" : "#64748b",
+                      fontWeight: 700,
+                      fontSize: 11,
+                      cursor: generatedVideo ? (publishingChannel === "youtube" ? "not-allowed" : "pointer") : "default",
+                      display: "flex",
+                      alignItems: "center",
+                      gap: 4,
+                    }}
+                  >
+                    {publishingChannel === "youtube" ? "Publishing…" : "Post to YouTube Only ↗"}
+                  </button>
+                </div>
               </div>
             </div>
 
-            {/* Helper text when idle */}
+            {/* MASTER 1-CLICK BATCH PUBLISH BUTTON */}
+            <div style={{ marginTop: 12 }}>
+              <button
+                type="button"
+                onClick={handlePublishSelected}
+                disabled={!generatedVideo || selectedChannels.length === 0 || batchPublishing}
+                style={{
+                  width: "100%",
+                  padding: "11px",
+                  borderRadius: 10,
+                  background: generatedVideo && selectedChannels.length > 0
+                    ? "linear-gradient(135deg, #10b981 0%, #059669 100%)"
+                    : "rgba(255, 255, 255, 0.06)",
+                  border: "none",
+                  color: generatedVideo && selectedChannels.length > 0 ? "#fff" : "#64748b",
+                  fontWeight: 800,
+                  fontSize: 12,
+                  cursor: generatedVideo && selectedChannels.length > 0 && !batchPublishing ? "pointer" : "default",
+                  boxShadow: generatedVideo && selectedChannels.length > 0 ? "0 4px 15px rgba(16, 185, 129, 0.4)" : "none",
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  gap: 6,
+                  transition: "all 0.2s ease",
+                }}
+              >
+                {batchPublishing ? "Publishing to Selected Channels…" : `🚀 Publish to Selected Channels (${selectedChannels.length})`}
+              </button>
+            </div>
+
+            {/* Helper text when video not generated yet */}
             {!generatedVideo && (
-              <div style={{ marginTop: 10, fontSize: 11, color: "#64748b", textAlign: "center", lineHeight: 1.4 }}>
-                ℹ️ Once you click <strong>Generate</strong>, these buttons light up to post your reel in 1 click!
+              <div style={{ marginTop: 9, fontSize: 11, color: "#64748b", textAlign: "center", lineHeight: 1.4 }}>
+                Generate your reel first, then click any channel above or publish to all checked channels at once!
               </div>
             )}
 
-            {/* Live Feedback Notification */}
+            {/* Live Feedback Statuses */}
             {Object.entries(publishStatus).map(([ch, status]) => (
               status.message || status.error ? (
                 <div
                   key={ch}
                   style={{
-                    marginTop: 10,
+                    marginTop: 8,
                     padding: "7px 10px",
                     borderRadius: 7,
                     fontSize: 11,
@@ -939,43 +1203,99 @@ export default function ReelsStudioConnect() {
                     border: status.success ? "1px solid rgba(16, 185, 129, 0.3)" : "1px solid rgba(239, 68, 68, 0.3)",
                   }}
                 >
-                  {status.message || status.error}
+                  <strong style={{ textTransform: "capitalize" }}>{ch}:</strong> {status.message || status.error}
                 </div>
               ) : null
             ))}
 
-            {/* REELS AUTOPILOT SECTION */}
+            {/* REELS AUTOPILOT CONFIGURATION SECTION */}
             <div style={{ marginTop: 16, borderTop: "1px solid rgba(255, 255, 255, 0.08)", paddingTop: 14 }}>
               <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 6 }}>
                 <span style={{ fontSize: 12, fontWeight: 800, color: "#ec4899", display: "flex", alignItems: "center", gap: 6 }}>
-                  🤖 Reels Autopilot
+                  🤖 Reels Autopilot Preferences
                 </span>
                 <span style={{ fontSize: 10, padding: "2px 6px", borderRadius: 4, background: "rgba(236, 72, 153, 0.15)", color: "#f472b6", fontWeight: 700 }}>
-                  Add-on
+                  Active
                 </span>
               </div>
               <p style={{ margin: "0 0 10px", fontSize: 11, color: "#94a3b8", lineHeight: 1.4 }}>
-                Automatically generate & publish 1 vertical video reel every day to your linked feeds.
+                Choose where your autonomous daily reels are automatically published:
               </p>
-              <div style={{ display: "flex", gap: 6 }}>
-                <button
-                  type="button"
-                  onClick={() => alert("Reels Autopilot is activated! Your system will autonomously generate and syndicate 1 viral reel daily at 6:00 PM across your linked Instagram, Facebook, and YouTube channels.")}
+
+              {/* Autopilot Channel Checkboxes */}
+              <div style={{ display: "flex", flexDirection: "column", gap: 6, marginBottom: 12 }}>
+                <label style={{ display: "flex", alignItems: "center", gap: 7, fontSize: 11, color: "#cbd5e1", cursor: "pointer" }}>
+                  <input
+                    type="checkbox"
+                    checked={autopilotChannels.instagram}
+                    onChange={(e) => setAutopilotChannels((prev) => ({ ...prev, instagram: e.target.checked }))}
+                    style={{ accentColor: "#ec4899" }}
+                  />
+                  Auto-syndicate to Instagram Reels
+                </label>
+                <label style={{ display: "flex", alignItems: "center", gap: 7, fontSize: 11, color: "#cbd5e1", cursor: "pointer" }}>
+                  <input
+                    type="checkbox"
+                    checked={autopilotChannels.facebook}
+                    onChange={(e) => setAutopilotChannels((prev) => ({ ...prev, facebook: e.target.checked }))}
+                    style={{ accentColor: "#1877f2" }}
+                  />
+                  Auto-syndicate to Facebook Reels
+                </label>
+                <label style={{ display: "flex", alignItems: "center", gap: 7, fontSize: 11, color: "#cbd5e1", cursor: "pointer" }}>
+                  <input
+                    type="checkbox"
+                    checked={autopilotChannels.youtube}
+                    onChange={(e) => setAutopilotChannels((prev) => ({ ...prev, youtube: e.target.checked }))}
+                    style={{ accentColor: "#ef4444" }}
+                  />
+                  Auto-syndicate to YouTube Shorts
+                </label>
+              </div>
+
+              {/* Cadence Selection */}
+              <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 10 }}>
+                <span style={{ fontSize: 11, color: "#94a3b8" }}>Publishing Cadence:</span>
+                <select
+                  value={autopilotCadence}
+                  onChange={(e) => setAutopilotCadence(e.target.value)}
                   style={{
-                    flex: 1,
-                    padding: "7px 10px",
-                    borderRadius: 7,
-                    background: "rgba(236, 72, 153, 0.15)",
-                    border: "1px solid rgba(236, 72, 153, 0.4)",
-                    color: "#f472b6",
-                    fontWeight: 700,
+                    background: "rgba(0, 0, 0, 0.4)",
+                    border: "1px solid rgba(255, 255, 255, 0.15)",
+                    borderRadius: 6,
+                    color: "#fff",
                     fontSize: 11,
-                    cursor: "pointer",
+                    padding: "3px 8px",
                   }}
                 >
-                  ⚡ Activate Daily Autopilot
-                </button>
+                  <option value="daily">Daily (1 Reel/day)</option>
+                  <option value="every_2_days">Every 2 Days</option>
+                  <option value="weekly">Weekly</option>
+                </select>
               </div>
+
+              <button
+                type="button"
+                onClick={handleSaveAutopilot}
+                disabled={autopilotSaving}
+                style={{
+                  width: "100%",
+                  padding: "8px 10px",
+                  borderRadius: 8,
+                  background: "rgba(236, 72, 153, 0.15)",
+                  border: "1px solid rgba(236, 72, 153, 0.4)",
+                  color: "#f472b6",
+                  fontWeight: 700,
+                  fontSize: 11,
+                  cursor: "pointer",
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  gap: 5,
+                }}
+              >
+                {autopilotSaving ? "Saving Preferences…" : "⚡ Save & Activate Autopilot"}
+              </button>
             </div>
           </div>
         </div>
