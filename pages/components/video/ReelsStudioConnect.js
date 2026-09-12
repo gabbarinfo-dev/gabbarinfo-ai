@@ -533,7 +533,12 @@ export default function ReelsStudioConnect() {
       if (data.ok) {
         setPublishStatus((prev) => ({
           ...prev,
-          [channel]: { success: true, message: data.message },
+          [channel]: {
+            success: true,
+            message: data.message,
+            videoUrl: data.videoUrl,
+            videoId: data.videoId,
+          },
         }));
       } else {
         setPublishStatus((prev) => ({
@@ -1492,9 +1497,31 @@ export default function ReelsStudioConnect() {
                     background: status.success ? "rgba(16, 185, 129, 0.15)" : "rgba(239, 68, 68, 0.15)",
                     color: status.success ? "#6ee7b7" : "#fca5a5",
                     border: status.success ? "1px solid rgba(16, 185, 129, 0.3)" : "1px solid rgba(239, 68, 68, 0.3)",
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "space-between",
+                    flexWrap: "wrap",
+                    gap: 6,
                   }}
                 >
-                  <strong style={{ textTransform: "capitalize" }}>{ch}:</strong> {status.message || status.error}
+                  <div>
+                    <strong style={{ textTransform: "capitalize" }}>{ch}:</strong> {status.message || status.error}
+                  </div>
+                  {status.videoUrl && (
+                    <a
+                      href={status.videoUrl}
+                      target="_blank"
+                      rel="noreferrer"
+                      style={{
+                        fontSize: 11,
+                        color: "#38bdf8",
+                        textDecoration: "underline",
+                        fontWeight: 700,
+                      }}
+                    >
+                      View on {ch === "youtube" ? "YouTube" : ch} ↗
+                    </a>
+                  )}
                 </div>
               ) : null
             ))}

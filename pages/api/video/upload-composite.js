@@ -35,8 +35,15 @@ export default async function handler(req, res) {
   }
 
   try {
-    const rawBase64 = videoBase64.replace(/^data:video\/\w+;base64,/, "");
+    const base64Marker = ";base64,";
+    const base64Index = videoBase64.indexOf(base64Marker);
+    const rawBase64 = base64Index !== -1 ? videoBase64.slice(base64Index + base64Marker.length) : videoBase64.replace(/^data:.*?;base64,/, "");
     const buffer = Buffer.from(rawBase64, "base64");
+
+    if (buffer.length < 5000) {
+      console.error(`[VideoCompositor] Corrupted payload: buffer length only ${buffer.length} bytes.`);
+      return res.status(400).json({ ok: false, error: `Corrupted video payload (only ${buffer.length} bytes received).` });
+    }
 
     const safeEmail = userEmail.replace(/[^a-zA-Z0-9]/g, "_");
     const timestamp = Date.now();

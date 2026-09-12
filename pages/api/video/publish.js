@@ -189,6 +189,9 @@ export default async function handler(req, res) {
         throw new Error(`Failed to fetch source video file: ${vidFetchRes.statusText}`);
       }
       const vidBuffer = Buffer.from(await vidFetchRes.arrayBuffer());
+      if (vidBuffer.length < 5000) {
+        throw new Error(`Video file stream is too small or incomplete (${vidBuffer.length} bytes). Please re-bake the composite.`);
+      }
 
       // Step 3: Format Shorts Title & Description
       const shortsTitle = (title || "Amazing Video").includes("#Shorts")
