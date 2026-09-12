@@ -371,10 +371,33 @@ export default function ReelsStudioConnect() {
         bgGain.connect(dest);
       }
 
-      // Step 3: Preload all video scenes into local memory Blobs to guarantee 0% CORS taint
-      setCompositingStep("Preloading HD video clips into memory...");
-      const videoElements = await Promise.all(
+      // Step 3: Preload all video scenes/avatars into memory Blobs to guarantee 0% CORS taint
+      setCompositingStep("Preloading media assets into memory...");
+      const mediaElements = await Promise.all(
         (generatedVideo.scenes || []).map(async (scene) => {
+          const isImage = scene.isAvatar || (scene.videoUrl && scene.videoUrl.match(/\.(jpg|jpeg|png|webp|gif)($|\?)/i));
+          if (isImage) {
+            const img = new Image();
+            img.crossOrigin = "anonymous";
+            try {
+              const fetchRes = await fetch(scene.videoUrl);
+              if (fetchRes.ok) {
+                const blob = await fetchRes.blob();
+                img.src = URL.createObjectURL(blob);
+              } else {
+                img.src = scene.videoUrl;
+              }
+            } catch {
+              img.src = scene.videoUrl;
+            }
+            await new Promise((resolve) => {
+              img.onload = resolve;
+              img.onerror = resolve;
+              setTimeout(resolve, 3000);
+            });
+            return { type: "image", el: img };
+          }
+
           const v = document.createElement("video");
           v.muted = true;
           v.playsInline = true;
@@ -398,7 +421,7 @@ export default function ReelsStudioConnect() {
             v.onerror = resolve;
             setTimeout(resolve, 4000);
           });
-          return v;
+          return { type: "video", el: v };
         })
       );
 
@@ -454,11 +477,22 @@ export default function ReelsStudioConnect() {
             Math.floor((elapsed / totalDuration) * scenes.length),
             scenes.length - 1
           );
-          const currentVid = videoElements[sceneIndex];
+          const currentMedia = mediaElements[sceneIndex];
 
-          if (currentVid && currentVid.readyState >= 2) {
-            if (currentVid.paused) currentVid.play().catch(() => {});
-            ctx.drawImage(currentVid, 0, 0, 720, 1280);
+          if (currentMedia?.type === "video" && currentMedia.el.readyState >= 2) {
+            if (currentMedia.el.paused) currentMedia.el.play().catch(() => {});
+            ctx.drawImage(currentMedia.el, 0, 0, 720, 1280);
+          } else if (currentMedia?.type === "image" && currentMedia.el.complete && currentMedia.el.naturalWidth > 0) {
+            // Subtle cinematic Ken Burns zoom for avatar / static image
+            const sceneDuration = totalDuration / Math.max(scenes.length, 1);
+            const sceneElapsed = elapsed - (sceneIndex * sceneDuration);
+            const sceneRatio = Math.max(0, Math.min(1, sceneElapsed / sceneDuration));
+            const zoom = 1.0 + (sceneRatio * 0.08);
+            const w = 720 * zoom;
+            const h = 1280 * zoom;
+            const x = (720 - w) / 2;
+            const y = (1280 - h) / 2;
+            ctx.drawImage(currentMedia.el, x, y, w, h);
           } else {
             ctx.fillStyle = "#090d16";
             ctx.fillRect(0, 0, 720, 1280);
