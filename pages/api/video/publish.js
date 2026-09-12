@@ -27,11 +27,34 @@ export default async function handler(req, res) {
   }
 
   try {
-    // -------------------------------------------------------------
-    // 1. INSTAGRAM REELS PUBLISHING
-    // -------------------------------------------------------------
-    if (channel === "instagram") {
-      // Find connected Meta account
+    // Helper to get active Meta credentials from meta_connections
+    const getMetaCredentials = async () => {
+      // 1. Check meta_connections first (where user OAuth connections are stored)
+      const { data: metaRow } = await supabase
+        .from("meta_connections")
+        .select("*")
+        .eq("email", userEmail)
+        .maybeSingle();
+
+      if (metaRow && metaRow.fb_user_access_token) {
+        // Fetch page access token from me/accounts
+        const accountsRes = await fetch(
+          `https://graph.facebook.com/v19.0/me/accounts?access_token=${metaRow.fb_user_access_token}`
+        );
+        const accountsData = await accountsRes.json();
+        const pageObj =
+          accountsData?.data?.find((p) => p.id === metaRow.fb_page_id) ||
+          accountsData?.data?.[0];
+
+        return {
+          pageId: pageObj?.id || metaRow.fb_page_id,
+          pageToken: pageObj?.access_token || metaRow.fb_user_access_token,
+          igUserId: metaRow.ig_business_id,
+          pageName: pageObj?.name || "GABBARinfo",
+        };
+      }
+
+      // 2. Fallback to agent_memory
       const { data: metaMem } = await supabase
         .from("agent_memory")
         .select("content")
@@ -39,23 +62,42 @@ export default async function handler(req, res) {
         .like("memory_type", "facebook_%")
         .maybeSingle();
 
-      const metaContent = metaMem?.content ? (typeof metaMem.content === "string" ? JSON.parse(metaMem.content) : metaMem.content) : null;
-      const igUserId = metaContent?.instagram_business_account?.id || metaContent?.ig_id;
-      const pageToken = metaContent?.access_token || process.env.FB_PAGE_ACCESS_TOKEN;
+      const metaContent = metaMem?.content
+        ? typeof metaMem.content === "string"
+          ? JSON.parse(metaMem.content)
+          : metaMem.content
+        : null;
 
-      if (!pageToken) {
+      if (metaContent?.access_token) {
+        return {
+          pageId: metaContent.page_id || process.env.FB_PAGE_ID,
+          pageToken: metaContent.access_token,
+          igUserId: metaContent.instagram_business_account?.id || metaContent.ig_id,
+          pageName: metaContent.page_name,
+        };
+      }
+
+      return null;
+    };
+
+    // -------------------------------------------------------------
+    // 1. INSTAGRAM REELS PUBLISHING
+    // -------------------------------------------------------------
+    if (channel === "instagram") {
+      const meta = await getMetaCredentials();
+      if (!meta || !meta.pageToken || !meta.igUserId) {
         return res.status(400).json({
           ok: false,
-          error: "No connected Meta account found. Please connect your Facebook/Instagram page in the Command Center first.",
+          error: "No connected Instagram Business account found. Please connect your Meta account first.",
         });
       }
 
-      const targetIgId = igUserId || "17841400000000000"; // fallback if mock
       const cleanCaption = `${title}\n\n${caption}\n\n#reels #shorts #viral #ai`;
 
-      // Step 1: Create Container
+      // Step 1: Create Media Container
+      console.log(`[Instagram Publish] Creating Reel container for IG ID ${meta.igUserId}...`);
       const containerRes = await fetch(
-        `https://graph.facebook.com/v19.0/${targetIgId}/media`,
+        `https://graph.facebook.com/v19.0/${meta.igUserId}/media`,
         {
           method: "POST",
           headers: { "Content-Type": "application/json" },
@@ -63,24 +105,74 @@ export default async function handler(req, res) {
             media_type: "REELS",
             video_url: videoUrl,
             caption: cleanCaption,
-            access_token: pageToken,
+            access_token: meta.pageToken,
           }),
         }
       );
 
       const containerData = await containerRes.json();
       if (containerData.error) {
-        return res.status(400).json({
-          ok: false,
-          error: `Instagram API Error: ${containerData.error.message}`,
+        throw new Error(`Instagram API Error: ${containerData.error.message}`);
+      }
+
+      const containerId = containerData.id;
+      console.log(`[Instagram Publish] Container created: ${containerId}. Waiting for video processing...`);
+
+      // Step 2: Poll container status until FINISHED (up to 40 seconds)
+      let isReady = false;
+      for (let i = 0; i < 20; i++) {
+        await new Promise((r) => setTimeout(r, 2000));
+        const statusRes = await fetch(
+          `https://graph.facebook.com/v19.0/${containerId}?fields=status_code,status&access_token=${meta.pageToken}`
+        );
+        const statusData = await statusRes.json();
+        console.log(`[Instagram Publish] Poll ${i + 1}: status_code = ${statusData.status_code}`);
+
+        if (statusData.status_code === "FINISHED") {
+          isReady = true;
+          break;
+        }
+        if (statusData.status_code === "ERROR") {
+          throw new Error("Instagram Reel media transcoding failed.");
+        }
+      }
+
+      if (!isReady) {
+        return res.status(200).json({
+          ok: true,
+          channel: "instagram",
+          message: "Reel uploaded to Instagram! Processing on Instagram servers and will be visible shortly.",
+          creationId: containerId,
         });
       }
+
+      // Step 3: Publish Container
+      console.log(`[Instagram Publish] Container ready. Publishing Reel...`);
+      const pubRes = await fetch(
+        `https://graph.facebook.com/v19.0/${meta.igUserId}/media_publish`,
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            creation_id: containerId,
+            access_token: meta.pageToken,
+          }),
+        }
+      );
+      const pubData = await pubRes.json();
+      if (pubData.error) {
+        throw new Error(`Instagram Publish Error: ${pubData.error.message}`);
+      }
+
+      const igReelUrl = `https://instagram.com/reel/${pubData.id}`;
+      console.log(`[Instagram Publish] Successfully published Reel: ${igReelUrl}`);
 
       return res.status(200).json({
         ok: true,
         channel: "instagram",
-        message: "Reel successfully submitted to Instagram! It is currently processing and will appear on your profile shortly.",
-        creationId: containerData.id,
+        message: "Reel published live to Instagram!",
+        mediaId: pubData.id,
+        videoUrl: igReelUrl,
       });
     }
 
@@ -88,50 +180,96 @@ export default async function handler(req, res) {
     // 2. FACEBOOK REELS PUBLISHING
     // -------------------------------------------------------------
     if (channel === "facebook") {
-      const { data: metaMem } = await supabase
-        .from("agent_memory")
-        .select("content")
-        .eq("email", userEmail)
-        .like("memory_type", "facebook_%")
-        .maybeSingle();
-
-      const metaContent = metaMem?.content ? (typeof metaMem.content === "string" ? JSON.parse(metaMem.content) : metaMem.content) : null;
-      const pageId = metaContent?.page_id || process.env.FB_PAGE_ID;
-      const pageToken = metaContent?.access_token || process.env.FB_PAGE_ACCESS_TOKEN;
-
-      if (!pageId || !pageToken) {
+      const meta = await getMetaCredentials();
+      if (!meta || !meta.pageId || !meta.pageToken) {
         return res.status(400).json({
           ok: false,
-          error: "No connected Facebook Page found. Please connect your page in Command Center.",
+          error: "No connected Facebook Page found. Please connect your Meta account first.",
         });
       }
 
-      // Initialize Facebook Reel upload
+      console.log(`[Facebook Publish] Publishing Reel to Page "${meta.pageName}" (${meta.pageId})...`);
+
+      // Step 1: Download video binary buffer
+      const vidFetchRes = await fetch(videoUrl);
+      if (!vidFetchRes.ok) {
+        throw new Error(`Failed to fetch source video: ${vidFetchRes.statusText}`);
+      }
+      const vidBuffer = Buffer.from(await vidFetchRes.arrayBuffer());
+
+      // Step 2: Initialize Facebook Reel upload (phase: start)
       const initRes = await fetch(
-        `https://graph.facebook.com/v19.0/${pageId}/video_reels`,
+        `https://graph.facebook.com/v19.0/${meta.pageId}/video_reels`,
         {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
             upload_phase: "start",
-            access_token: pageToken,
+            access_token: meta.pageToken,
           }),
         }
       );
 
       const initData = await initRes.json();
       if (initData.error) {
-        return res.status(400).json({
-          ok: false,
-          error: `Facebook Reel API: ${initData.error.message}`,
-        });
+        throw new Error(`Facebook Reel Start Error: ${initData.error.message}`);
       }
+
+      const videoId = initData.video_id;
+      const uploadUrl = initData.upload_url;
+      console.log(`[Facebook Publish] Reel initialized with ID ${videoId}. Uploading binary (${vidBuffer.length} bytes)...`);
+
+      // Step 3: Upload binary video buffer to rupload endpoint
+      const uploadRes = await fetch(uploadUrl, {
+        method: "POST",
+        headers: {
+          Authorization: `OAuth ${meta.pageToken}`,
+          offset: "0",
+          file_size: String(vidBuffer.length),
+          "Content-Type": "application/octet-stream",
+        },
+        body: vidBuffer,
+      });
+
+      const uploadData = await uploadRes.json();
+      if (!uploadData.success && uploadData.error) {
+        throw new Error(`Facebook Reel Upload Error: ${uploadData.error?.message || "Upload transfer failed"}`);
+      }
+
+      // Step 4: Finalize and Publish (phase: finish)
+      console.log(`[Facebook Publish] Finalizing Reel publication...`);
+      const finishRes = await fetch(
+        `https://graph.facebook.com/v19.0/${meta.pageId}/video_reels`,
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            upload_phase: "finish",
+            access_token: meta.pageToken,
+            video_id: videoId,
+            video_state: "PUBLISHED",
+            description: `${title}\n\n${caption}\n\n#reels #viral #ai`,
+            title: title || "Gabbarinfo AI Reel",
+          }),
+        }
+      );
+
+      const finishData = await finishRes.json();
+      if (finishData.error) {
+        throw new Error(`Facebook Reel Finish Error: ${finishData.error.message}`);
+      }
+
+      const fbPostId = finishData.post_id || finishData.id || videoId;
+      const fbReelUrl = `https://facebook.com/${fbPostId}`;
+      console.log(`[Facebook Publish] Successfully published Reel to Facebook Page: ${fbReelUrl}`);
 
       return res.status(200).json({
         ok: true,
         channel: "facebook",
-        message: "Reel successfully queued for publication on your Facebook Page!",
-        reelId: initData.video_id,
+        message: "Reel successfully published live to your Facebook Page!",
+        reelId: videoId,
+        postId: fbPostId,
+        videoUrl: fbReelUrl,
       });
     }
 
