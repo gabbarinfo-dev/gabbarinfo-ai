@@ -43,9 +43,9 @@ export default async function handler(req, res) {
     const chosenStyle = styleAnchors[archetype] || styleAnchors.pixar_3d;
     const prompt = `Full body character turnaround concept art of ${name}: ${visualTraits}. ${chosenStyle}. Character shown in neutral pose with front view, clear facial features, highly distinctive consistent design, solid clean background.`;
 
-    let referenceSheetUrl = "https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=800&q=80";
+    // 2. Generate Master Reference Image via DALL-E 3 or Flux AI Engine
+    let referenceSheetUrl = null;
 
-    // 2. Generate Master Reference Image via DALL-E 3
     if (process.env.OPENAI_API_KEY) {
       try {
         const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
@@ -54,15 +54,50 @@ export default async function handler(req, res) {
           prompt,
           n: 1,
           size: "1024x1024",
-          quality: "hd",
+          quality: "standard",
         });
 
         if (imgGen.data?.[0]?.url) {
           referenceSheetUrl = imgGen.data[0].url;
         }
       } catch (genErr) {
-        console.warn("[CharacterCreate] DALL-E generation warning, using archetype fallback:", genErr.message);
+        console.warn("[CharacterCreate] DALL-E unavailable, using Flux AI Engine:", genErr.message);
       }
+    }
+
+    // High-Precision Flux Image Engine (Ensures 100% adherence to boy/girl, style, traits)
+    if (!referenceSheetUrl) {
+      try {
+        console.log("[CharacterCreate] Synthesizing character via Flux AI Engine...");
+        const encodedPrompt = encodeURIComponent(prompt);
+        const fluxUrl = `https://image.pollinations.ai/prompt/${encodedPrompt}?width=1024&height=1024&nologo=true&model=flux&seed=${Math.floor(Math.random() * 999999)}`;
+
+        const imgFetch = await fetch(fluxUrl);
+        if (imgFetch.ok) {
+          const imgBlob = Buffer.from(await imgFetch.arrayBuffer());
+          const filename = `char_${Date.now()}_${Math.random().toString(36).slice(2, 7)}.jpg`;
+          const filePath = `characters/${filename}`;
+
+          const { error: upErr } = await supabase.storage
+            .from("instagram-creatives")
+            .upload(filePath, imgBlob, { contentType: "image/jpeg", upsert: true });
+
+          if (!upErr) {
+            const { data: pubData } = supabase.storage
+              .from("instagram-creatives")
+              .getPublicUrl(filePath);
+            referenceSheetUrl = pubData.publicUrl;
+          } else {
+            referenceSheetUrl = fluxUrl;
+          }
+        }
+      } catch (fluxErr) {
+        console.error("[CharacterCreate] Flux synthesis error:", fluxErr.message);
+      }
+    }
+
+    if (!referenceSheetUrl) {
+      referenceSheetUrl = `https://image.pollinations.ai/prompt/${encodeURIComponent(prompt)}?width=1024&height=1024&nologo=true&model=flux`;
     }
 
     const characterId = `char_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`;

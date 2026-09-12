@@ -121,6 +121,35 @@ export default function CharacterStudioWorkstation() {
     }
   };
 
+  // Delete Character from Vault
+  const handleDeleteCharacter = async (char, e) => {
+    e.stopPropagation();
+    if (!confirm(`Delete exclusive character "${char.name}" from your vault?`)) return;
+
+    try {
+      const res = await fetch("/api/character/delete", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          characterId: char.id || char.dbId,
+          userEmail,
+        }),
+      });
+
+      const data = await res.json();
+      if (!data.ok) throw new Error(data.error || "Failed to delete character");
+
+      setCharacters((prev) => prev.filter((c) => c.id !== char.id && c.dbId !== char.dbId));
+      if (selectedCharacter?.id === char.id) {
+        setSelectedCharacter(null);
+      }
+      setToastMsg(`🗑️ Character "${char.name}" deleted from your vault.`);
+      setTimeout(() => setToastMsg(""), 5000);
+    } catch (err) {
+      alert("Delete failed: " + err.message);
+    }
+  };
+
   // Generate Story Episode
   const handleGenerateStory = async (e) => {
     e.preventDefault();
@@ -567,14 +596,41 @@ export default function CharacterStudioWorkstation() {
                           cursor: "pointer",
                           transition: "all 0.15s ease",
                           textAlign: "center",
+                          position: "relative",
                         }}
                       >
+                        {/* Delete Button */}
+                        <button
+                          type="button"
+                          onClick={(e) => handleDeleteCharacter(char, e)}
+                          title="Delete this character"
+                          style={{
+                            position: "absolute",
+                            top: 6,
+                            right: 6,
+                            background: "rgba(0, 0, 0, 0.75)",
+                            border: "1px solid rgba(239, 68, 68, 0.6)",
+                            borderRadius: "50%",
+                            width: 24,
+                            height: 24,
+                            color: "#f87171",
+                            fontSize: 11,
+                            cursor: "pointer",
+                            display: "flex",
+                            alignItems: "center",
+                            justifyContent: "center",
+                            zIndex: 10,
+                          }}
+                        >
+                          ✕
+                        </button>
+
                         <img
                           src={char.referenceSheetUrl}
                           alt={char.name}
                           style={{ width: "100%", height: 100, borderRadius: 8, objectFit: "cover", marginBottom: 8 }}
                         />
-                        <div style={{ fontWeight: 800, fontSize: 12, color: isSelected ? "#f472b6" : "#f1f5f9" }}>
+                        <div style={{ fontWeight: 800, fontSize: 12.5, color: isSelected ? "#f472b6" : "#f1f5f9" }}>
                           {char.name}
                         </div>
                         <div style={{ fontSize: 10, color: "#94a3b8" }}>
