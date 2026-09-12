@@ -10,13 +10,14 @@ export default async function handler(req, res) {
   const { code, state, error } = req.query;
 
   let userEmail = "";
-  let returnUrl = "/reels";
+  let returnUrl = "/?tab=reels";
 
   try {
     if (state) {
       const decoded = JSON.parse(Buffer.from(state, "base64").toString("utf-8"));
       userEmail = decoded.email || "";
-      returnUrl = decoded.returnUrl || "/reels";
+      returnUrl = decoded.returnUrl || "/?tab=reels";
+      if (returnUrl === "/reels") returnUrl = "/?tab=reels";
     }
   } catch (e) {
     console.warn("[YouTube Callback] Failed to decode state:", e.message);

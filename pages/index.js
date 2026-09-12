@@ -51,6 +51,8 @@ export default function HomePage() {
         const urlParams = new URLSearchParams(window.location.search);
         if (urlParams.get("tab") === "shopify" || urlParams.get("shopify_connected") === "1") {
           setActiveTab("shopify");
+        } else if (urlParams.get("tab") === "reels" || urlParams.get("youtube_connected") === "true") {
+          setActiveTab("reels");
         }
       }
     } catch (_) {}

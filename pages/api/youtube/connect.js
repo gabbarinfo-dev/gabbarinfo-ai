@@ -34,7 +34,7 @@ export default async function handler(req, res) {
   const state = Buffer.from(
     JSON.stringify({
       email,
-      returnUrl: req.query.returnUrl || "/reels"
+      returnUrl: req.query.returnUrl || "/?tab=reels"
     })
   ).toString("base64");
 
