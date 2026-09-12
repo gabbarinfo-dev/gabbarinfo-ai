@@ -8,6 +8,7 @@ import GoogleAdsAccountConnect from "./components/google/googleadsaccountconnect
 import GoogleBusinessConnect from "./components/google/GoogleBusinessConnect";
 import WordPressSiteConnect from "./components/wordpress/WordPressSiteConnect";
 import ShopifyStoreConnect from "./components/shopify/ShopifyStoreConnect";
+import ReelsStudioConnect from "./components/video/ReelsStudioConnect";
 import SubscriptionModal from "./components/SubscriptionModal";
 import SocialMediaPlannerModal from "./components/social/SocialMediaPlannerModal";
 import CyberMatrixBackground from "./components/CyberMatrixBackground";
@@ -314,6 +315,7 @@ export default function HomePage() {
     { id: "overview", label: "Command Center", icon: "🚀", badge: "Live" },
     { id: "wordpress", label: "WordPress & SEO", icon: "🌐", badge: hasWpConnected ? "Paired" : null },
     { id: "shopify", label: "Shopify Store & SEO", icon: "🛍️", badge: hasShopifyConnected ? "Paired" : "Ecommerce" },
+    { id: "reels", label: "AI Reels & Shorts", icon: "🎬", badge: "New" },
     { id: "social", label: "Social Autopilot", icon: "📱", badge: "FB + IG" },
     { id: "gmb", label: "Local Maps (GMB)", icon: "📍", badge: "Maps" },
     { id: "ads", label: "Performance Ads", icon: "🎯", badge: "PPC" },
@@ -1068,6 +1070,13 @@ export default function HomePage() {
                           🛍️ Shopify Store ➔
                         </button>
                         <button
+                          onClick={() => handleSelectTab("reels")}
+                          className="btn-gabbar-secondary"
+                          style={{ padding: "11px 20px", fontSize: 13, flex: "1 1 auto", border: "1px solid rgba(236, 72, 153, 0.4)", color: "#f472b6" }}
+                        >
+                          🎬 AI Reels & Shorts ➔
+                        </button>
+                        <button
                           onClick={() => handleSelectTab("social")}
                           className="btn-gabbar-secondary"
                           style={{ padding: "11px 20px", fontSize: 13, flex: "1 1 auto" }}
@@ -1400,6 +1409,13 @@ export default function HomePage() {
               {activeTab === "shopify" && (
                 <div>
                   <ShopifyStoreConnect onConnectionChange={(connected) => setHasShopifyConnected(connected)} />
+                </div>
+              )}
+
+              {/* TAB 2C: AI REELS & SHORTS STUDIO */}
+              {activeTab === "reels" && (
+                <div>
+                  <ReelsStudioConnect />
                 </div>
               )}
 
