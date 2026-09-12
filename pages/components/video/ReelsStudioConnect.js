@@ -32,6 +32,8 @@ export default function ReelsStudioConnect() {
   const [autopilotCadence, setAutopilotCadence] = useState("daily");
   const [toastMsg, setToastMsg] = useState("");
   const [autopilotSaving, setAutopilotSaving] = useState(false);
+  const [compositing, setCompositing] = useState(false);
+  const [compositingStep, setCompositingStep] = useState("");
 
   const refreshChannelStatuses = async () => {
     try {
@@ -278,22 +280,250 @@ export default function ReelsStudioConnect() {
     if (videoPlayerRef.current) videoPlayerRef.current.currentTime = 0;
   };
 
+  // Master In-Browser Video & Audio Compositor Engine
+  const compositeAndBakeVideo = async () => {
+    if (!generatedVideo) return null;
+    if (generatedVideo.compositeVideoUrl) return generatedVideo.compositeVideoUrl;
+
+    setCompositing(true);
+    setCompositingStep("Initializing Master Audio & Video Compositor...");
+
+    try {
+      const canvas = document.createElement("canvas");
+      canvas.width = 720;
+      canvas.height = 1280;
+      const ctx = canvas.getContext("2d");
+
+      const AudioCtx = window.AudioContext || window.webkitAudioContext;
+      const audioCtx = new AudioCtx();
+      const dest = audioCtx.createMediaStreamDestination();
+
+      // Voiceover Audio Setup
+      const voAudio = new Audio(generatedVideo.voiceoverUrl);
+      voAudio.crossOrigin = "anonymous";
+      const voSource = audioCtx.createMediaElementSource(voAudio);
+      voSource.connect(dest);
+
+      // Background Music Audio Setup (Ducked to 15%)
+      const bgAudio = new Audio(generatedVideo.backgroundMusicUrl || "/audio/upbeat_lofi.mp3");
+      bgAudio.crossOrigin = "anonymous";
+      bgAudio.loop = true;
+      const bgSource = audioCtx.createMediaElementSource(bgAudio);
+      const bgGain = audioCtx.createGain();
+      bgGain.gain.value = 0.15;
+      bgSource.connect(bgGain);
+      bgGain.connect(dest);
+
+      setCompositingStep("Preloading HD video scenes...");
+      const videoElements = await Promise.all(
+        (generatedVideo.scenes || []).map(async (scene) => {
+          const v = document.createElement("video");
+          v.crossOrigin = "anonymous";
+          v.src = scene.videoUrl;
+          v.muted = true;
+          v.playsInline = true;
+          v.preload = "auto";
+          await new Promise((resolve) => {
+            v.onloadeddata = resolve;
+            v.onerror = resolve;
+            setTimeout(resolve, 3000);
+          });
+          return v;
+        })
+      );
+
+      const canvasStream = canvas.captureStream(30);
+      const combinedStream = new MediaStream([
+        ...canvasStream.getVideoTracks(),
+        ...dest.stream.getAudioTracks(),
+      ]);
+
+      let mimeType = "video/webm";
+      if (typeof MediaRecorder !== "undefined") {
+        if (MediaRecorder.isTypeSupported("video/webm;codecs=vp9,opus")) {
+          mimeType = "video/webm;codecs=vp9,opus";
+        } else if (MediaRecorder.isTypeSupported("video/mp4")) {
+          mimeType = "video/mp4";
+        }
+      }
+
+      const recorder = new MediaRecorder(combinedStream, {
+        mimeType,
+        videoBitsPerSecond: 3000000,
+      });
+
+      const chunks = [];
+      recorder.ondataavailable = (e) => {
+        if (e.data && e.data.size > 0) chunks.push(e.data);
+      };
+
+      const totalDuration = generatedVideo.totalDuration || 15;
+      recorder.start();
+
+      await audioCtx.resume();
+      await voAudio.play().catch(() => {});
+      await bgAudio.play().catch(() => {});
+
+      setCompositingStep("Baking subtitles, voice & music into master video...");
+
+      let animId;
+      const startTime = performance.now();
+
+      await new Promise((resolve) => {
+        const renderFrame = () => {
+          const elapsed = (performance.now() - startTime) / 1000;
+
+          if (elapsed >= totalDuration || voAudio.ended) {
+            cancelAnimationFrame(animId);
+            resolve();
+            return;
+          }
+
+          const scenes = generatedVideo.scenes || [];
+          const sceneIndex = Math.min(
+            Math.floor((elapsed / totalDuration) * scenes.length),
+            scenes.length - 1
+          );
+          const currentVid = videoElements[sceneIndex];
+
+          if (currentVid && currentVid.readyState >= 2) {
+            if (currentVid.paused) currentVid.play().catch(() => {});
+            ctx.drawImage(currentVid, 0, 0, 720, 1280);
+          } else {
+            ctx.fillStyle = "#090d16";
+            ctx.fillRect(0, 0, 720, 1280);
+          }
+
+          // Dark lower third vignette for subtitle contrast
+          const vignette = ctx.createLinearGradient(0, 800, 0, 1280);
+          vignette.addColorStop(0, "rgba(0,0,0,0)");
+          vignette.addColorStop(1, "rgba(0,0,0,0.85)");
+          ctx.fillStyle = vignette;
+          ctx.fillRect(0, 800, 720, 480);
+
+          // Kinetic Subtitles
+          const activeWordObj = (generatedVideo.captions || []).find(
+            (c) => elapsed >= c.startTime && elapsed <= c.endTime
+          );
+          const activeWord = activeWordObj?.original || scenes[sceneIndex]?.text?.slice(0, 26) || "";
+
+          if (activeWord) {
+            ctx.save();
+            ctx.font = "900 36px 'Plus Jakarta Sans', Arial, sans-serif";
+            ctx.textAlign = "center";
+            ctx.textBaseline = "middle";
+
+            const textWidth = ctx.measureText(activeWord.toUpperCase()).width;
+            const boxWidth = Math.max(textWidth + 36, 180);
+            const boxHeight = 60;
+            const boxX = (720 - boxWidth) / 2;
+            const boxY = 1040;
+
+            ctx.fillStyle = "rgba(0, 0, 0, 0.85)";
+            if (ctx.roundRect) {
+              ctx.beginPath();
+              ctx.roundRect(boxX, boxY, boxWidth, boxHeight, 14);
+              ctx.fill();
+            } else {
+              ctx.fillRect(boxX, boxY, boxWidth, boxHeight);
+            }
+
+            ctx.strokeStyle = "rgba(255, 255, 255, 0.2)";
+            ctx.lineWidth = 1.5;
+            ctx.stroke();
+
+            ctx.shadowColor = "rgba(250, 204, 21, 0.85)";
+            ctx.shadowBlur = 14;
+            ctx.fillStyle = "#facc15";
+            ctx.fillText(activeWord.toUpperCase(), 360, boxY + boxHeight / 2);
+            ctx.restore();
+          }
+
+          animId = requestAnimationFrame(renderFrame);
+        };
+
+        animId = requestAnimationFrame(renderFrame);
+      });
+
+      recorder.stop();
+      voAudio.pause();
+      bgAudio.pause();
+      audioCtx.close().catch(() => {});
+      videoElements.forEach((v) => v.pause());
+
+      setCompositingStep("Uploading master video with burned audio & subtitles…");
+
+      const blob = await new Promise((resolve) => {
+        recorder.onstop = () => {
+          const finalBlob = new Blob(chunks, { type: mimeType });
+          resolve(finalBlob);
+        };
+      });
+
+      const reader = new FileReader();
+      const base64Promise = new Promise((resolve) => {
+        reader.onloadend = () => resolve(reader.result);
+        reader.readAsDataURL(blob);
+      });
+      const videoBase64 = await base64Promise;
+
+      const uploadRes = await fetch("/api/video/upload-composite", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          videoBase64,
+          filename: `master_reel_${Date.now()}.${mimeType.includes("mp4") ? "mp4" : "webm"}`,
+          contentType: mimeType,
+        }),
+      });
+
+      const uploadData = await uploadRes.json();
+      if (!uploadRes.ok || !uploadData.ok) {
+        throw new Error(uploadData.error || "Failed to save master composite");
+      }
+
+      console.log("[VideoStudio] Master composite uploaded successfully:", uploadData.videoUrl);
+
+      const blobUrl = URL.createObjectURL(blob);
+      setGeneratedVideo((prev) => ({
+        ...prev,
+        compositeVideoUrl: uploadData.videoUrl,
+        compositeBlobUrl: blobUrl,
+      }));
+
+      return uploadData.videoUrl;
+    } catch (err) {
+      console.error("[VideoStudio] Compositing failed:", err);
+      return generatedVideo.scenes?.[0]?.videoUrl;
+    } finally {
+      setCompositing(false);
+      setCompositingStep("");
+    }
+  };
+
   // 1-Click Multi-Channel Publisher
   const handlePublish = async (channel) => {
     if (!generatedVideo) return;
     setPublishingChannel(channel);
     setPublishStatus((prev) => ({ ...prev, [channel]: { loading: true } }));
 
-    const currentClipUrl =
-      generatedVideo.scenes?.[0]?.videoUrl || "https://ai.gabbarinfo.com/sample-reel.mp4";
-
     try {
+      // Step 1: Ensure real master composite video with burned subtitles & audio is ready
+      let videoUrlToPublish = generatedVideo.compositeVideoUrl;
+      if (!videoUrlToPublish) {
+        videoUrlToPublish = await compositeAndBakeVideo();
+      }
+
+      if (!videoUrlToPublish) {
+        videoUrlToPublish = generatedVideo.scenes?.[0]?.videoUrl || "https://ai.gabbarinfo.com/sample-reel.mp4";
+      }
+
       const res = await fetch("/api/video/publish", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           channel,
-          videoUrl: currentClipUrl,
+          videoUrl: videoUrlToPublish,
           title: generatedVideo.title || topic,
           caption: generatedVideo.caption || topic,
         }),
@@ -318,6 +548,25 @@ export default function ReelsStudioConnect() {
       }));
     } finally {
       setPublishingChannel(null);
+    }
+  };
+
+  const handleDownloadMaster = async () => {
+    try {
+      let downloadUrl = generatedVideo?.compositeBlobUrl || generatedVideo?.compositeVideoUrl;
+      if (!downloadUrl) {
+        downloadUrl = await compositeAndBakeVideo();
+      }
+      if (!downloadUrl) return;
+
+      const a = document.createElement("a");
+      a.href = downloadUrl;
+      a.download = `${(topic || "gabbarinfo-reel").slice(0, 30).replace(/\s+/g, "-")}.webm`;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+    } catch (err) {
+      alert("Export failed: " + err.message);
     }
   };
 
@@ -867,6 +1116,43 @@ export default function ReelsStudioConnect() {
                     }}
                   />
                 </div>
+
+                {/* Compositing / Baking Overlay */}
+                {compositing && (
+                  <div
+                    style={{
+                      position: "absolute",
+                      inset: 0,
+                      background: "rgba(10, 15, 29, 0.88)",
+                      backdropFilter: "blur(8px)",
+                      zIndex: 50,
+                      display: "flex",
+                      flexDirection: "column",
+                      alignItems: "center",
+                      justifyContent: "center",
+                      padding: 20,
+                      textAlign: "center",
+                    }}
+                  >
+                    <div
+                      style={{
+                        width: 44,
+                        height: 44,
+                        borderRadius: "50%",
+                        border: "3px solid rgba(236, 72, 153, 0.25)",
+                        borderTopColor: "#ec4899",
+                        animation: "spin 1s linear infinite",
+                        marginBottom: 16,
+                      }}
+                    />
+                    <div style={{ color: "#fff", fontWeight: 800, fontSize: 14 }}>
+                      Baking Master Video
+                    </div>
+                    <div style={{ color: "#94a3b8", fontSize: 11, marginTop: 6, maxWidth: 220, lineHeight: 1.4 }}>
+                      {compositingStep || "Burning subtitles & mixing audio..."}
+                    </div>
+                  </div>
+                )}
               </div>
             ) : (
               /* Idle Empty State */
@@ -913,11 +1199,9 @@ export default function ReelsStudioConnect() {
                 {isPlaying ? "⏸ Pause" : "▶ Play Reel"}
               </button>
 
-              <a
-                href={currentScene?.videoUrl || "#"}
-                target="_blank"
-                rel="noreferrer"
-                download="gabbarinfo-reel.mp4"
+              <button
+                onClick={handleDownloadMaster}
+                disabled={compositing}
                 style={{
                   padding: "10px 14px",
                   borderRadius: 10,
@@ -926,14 +1210,14 @@ export default function ReelsStudioConnect() {
                   color: "#fff",
                   fontWeight: 700,
                   fontSize: 12,
-                  textDecoration: "none",
+                  cursor: compositing ? "not-allowed" : "pointer",
                   display: "flex",
                   alignItems: "center",
-                  gap: 4,
+                  gap: 6,
                 }}
               >
-                ⬇ MP4
-              </a>
+                {compositing ? "⏳ Baking..." : "⬇ Download Master"}
+              </button>
             </div>
           )}
 

@@ -199,7 +199,10 @@ export default async function handler(req, res) {
       const shortsDescription = `${caption || title}\n\nProduced with GabbarInfo AI Studio.\n\n#Shorts #YouTubeShorts`;
 
       // Step 4: Initiate Resumable Upload
-      console.log(`[YouTube Publish] Initiating resumable upload for "${shortsTitle}" (${vidBuffer.length} bytes)...`);
+      const isWebm = videoUrl.includes(".webm") || (vidBuffer.slice(0, 4).toString("hex") === "1a45dfa3");
+      const uploadMime = isWebm ? "video/webm" : "video/mp4";
+
+      console.log(`[YouTube Publish] Initiating resumable upload for "${shortsTitle}" (${vidBuffer.length} bytes, MIME: ${uploadMime})...`);
       const initRes = await fetch(
         "https://www.googleapis.com/upload/youtube/v3/videos?uploadType=resumable&part=snippet,status",
         {
@@ -208,7 +211,7 @@ export default async function handler(req, res) {
             Authorization: `Bearer ${activeToken}`,
             "Content-Type": "application/json; charset=UTF-8",
             "X-Upload-Content-Length": String(vidBuffer.length),
-            "X-Upload-Content-Type": "video/mp4",
+            "X-Upload-Content-Type": uploadMime,
           },
           body: JSON.stringify({
             snippet: {
@@ -236,7 +239,7 @@ export default async function handler(req, res) {
       const uploadRes = await fetch(uploadLocation, {
         method: "PUT",
         headers: {
-          "Content-Type": "video/mp4",
+          "Content-Type": uploadMime,
           "Content-Length": String(vidBuffer.length),
         },
         body: vidBuffer,
