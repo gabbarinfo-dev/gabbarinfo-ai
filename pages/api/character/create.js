@@ -41,63 +41,87 @@ export default async function handler(req, res) {
     };
 
     const chosenStyle = styleAnchors[archetype] || styleAnchors.pixar_3d;
-    const prompt = `Full body character turnaround concept art of ${name}: ${visualTraits}. ${chosenStyle}. Character shown in neutral pose with front view, clear facial features, highly distinctive consistent design, solid clean background.`;
-
-    // 2. Generate Master Reference Image via DALL-E 3 or Flux AI Engine
-    let referenceSheetUrl = null;
+    // 2. Refine Prompt with GPT-4o for Maximum Visual Precision
+    let finalPrompt = `Full body character turnaround concept art of ${name}: ${visualTraits}. ${chosenStyle}. Character shown in neutral pose with front view and 3/4 view, clear facial features, highly distinctive consistent design, solid clean background.`;
 
     if (process.env.OPENAI_API_KEY) {
       try {
         const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
-        const imgGen = await openai.images.generate({
-          model: "dall-e-3",
-          prompt,
-          n: 1,
-          size: "1024x1024",
-          quality: "standard",
+        const refiner = await openai.chat.completions.create({
+          model: "gpt-4o-mini",
+          temperature: 0.3,
+          messages: [
+            {
+              role: "system",
+              content: "You are an expert prompt engineer for Disney, Pixar, and Hollywood animation character sheets. Expand the user's description into a detailed, visually clear prompt specifying gender, age, clothing (cleanly fixing any typos), facial expressions, hair, and style turnaround. Keep it under 80 words. Return ONLY the prompt text.",
+            },
+            {
+              role: "user",
+              content: `Character Name: ${name}\nArchetype: ${chosenStyle}\nTraits: ${visualTraits}\nBackstory: ${backstory || "None"}`,
+            },
+          ],
         });
-
-        if (imgGen.data?.[0]?.url) {
-          referenceSheetUrl = imgGen.data[0].url;
+        const refined = refiner.choices[0]?.message?.content?.trim();
+        if (refined) {
+          finalPrompt = `${refined}. ${chosenStyle}. Front view turnaround concept art, highly consistent design, solid neutral background.`;
         }
-      } catch (genErr) {
-        console.warn("[CharacterCreate] DALL-E unavailable, using Flux AI Engine:", genErr.message);
+      } catch (e) {
+        console.warn("[CharacterCreate] Prompt refiner warning:", e.message);
       }
     }
 
-    // High-Precision Flux Image Engine (Ensures 100% adherence to boy/girl, style, traits)
-    if (!referenceSheetUrl) {
-      try {
-        console.log("[CharacterCreate] Synthesizing character via Flux AI Engine...");
-        const encodedPrompt = encodeURIComponent(prompt);
-        const fluxUrl = `https://image.pollinations.ai/prompt/${encodedPrompt}?width=1024&height=1024&nologo=true&model=flux&seed=${Math.floor(Math.random() * 999999)}`;
+    // 3. Generate Master Character Reference via gpt-image-2
+    let referenceSheetUrl = null;
+    const imageModel = process.env.OPENAI_IMAGE_MODEL || "gpt-image-2";
 
-        const imgFetch = await fetch(fluxUrl);
-        if (imgFetch.ok) {
-          const imgBlob = Buffer.from(await imgFetch.arrayBuffer());
-          const filename = `char_${Date.now()}_${Math.random().toString(36).slice(2, 7)}.jpg`;
+    if (process.env.OPENAI_API_KEY) {
+      try {
+        console.log(`[CharacterCreate] Generating master character turnaround using ${imageModel}...`);
+        const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
+        const imgGen = await openai.images.generate({
+          model: imageModel,
+          prompt: finalPrompt,
+          n: 1,
+          size: "1024x1024",
+        });
+
+        const imgData = imgGen.data?.[0];
+        let imgBuffer = null;
+
+        if (imgData?.b64_json) {
+          imgBuffer = Buffer.from(imgData.b64_json, "base64");
+        } else if (imgData?.url) {
+          const fetchImg = await fetch(imgData.url);
+          if (fetchImg.ok) {
+            imgBuffer = Buffer.from(await fetchImg.arrayBuffer());
+          } else {
+            referenceSheetUrl = imgData.url;
+          }
+        }
+
+        if (imgBuffer) {
+          const filename = `char_${Date.now()}_${Math.random().toString(36).slice(2, 7)}.png`;
           const filePath = `characters/${filename}`;
 
           const { error: upErr } = await supabase.storage
             .from("instagram-creatives")
-            .upload(filePath, imgBlob, { contentType: "image/jpeg", upsert: true });
+            .upload(filePath, imgBuffer, { contentType: "image/png", upsert: true });
 
           if (!upErr) {
             const { data: pubData } = supabase.storage
               .from("instagram-creatives")
               .getPublicUrl(filePath);
             referenceSheetUrl = pubData.publicUrl;
-          } else {
-            referenceSheetUrl = fluxUrl;
+            console.log(`[CharacterCreate] Successfully uploaded master character to CDN: ${referenceSheetUrl}`);
           }
         }
-      } catch (fluxErr) {
-        console.error("[CharacterCreate] Flux synthesis error:", fluxErr.message);
+      } catch (genErr) {
+        console.error(`[CharacterCreate] ${imageModel} generation failed:`, genErr.message);
       }
     }
 
     if (!referenceSheetUrl) {
-      referenceSheetUrl = `https://image.pollinations.ai/prompt/${encodeURIComponent(prompt)}?width=1024&height=1024&nologo=true&model=flux`;
+      throw new Error("Unable to synthesize character visual. Please check API key credits.");
     }
 
     const characterId = `char_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`;
