@@ -258,8 +258,13 @@ export default function ReelsStudioConnect() {
       setIsPlaying(false);
     } else {
       voiceoverRef.current.play().catch(console.warn);
-      if (bgMusicRef.current) bgMusicRef.current.play().catch(console.warn);
-      if (videoPlayerRef.current) videoPlayerRef.current.play().catch(console.warn);
+      if (bgMusicRef.current) {
+        bgMusicRef.current.volume = 0.15;
+        bgMusicRef.current.play().catch((err) => console.warn("Background music play error:", err));
+      }
+      if (videoPlayerRef.current) {
+        videoPlayerRef.current.play().catch(console.warn);
+      }
       setIsPlaying(true);
     }
   };
@@ -739,10 +744,12 @@ export default function ReelsStudioConnect() {
             {/* Video Viewport */}
             {generatedVideo ? (
               <div style={{ flex: 1, position: "relative", overflow: "hidden", background: "#090d16" }}>
-                {currentScene?.videoUrl?.includes(".mp4") ? (
+                {(!currentScene?.isAvatar && currentScene?.videoUrl && !currentScene?.videoUrl.match(/\.(jpg|jpeg|png|webp|gif)($|\?)/i)) ? (
                   <video
                     ref={videoPlayerRef}
+                    key={currentScene.videoUrl}
                     src={currentScene.videoUrl}
+                    autoPlay
                     playsInline
                     loop
                     muted
