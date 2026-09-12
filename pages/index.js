@@ -9,6 +9,7 @@ import GoogleBusinessConnect from "./components/google/GoogleBusinessConnect";
 import WordPressSiteConnect from "./components/wordpress/WordPressSiteConnect";
 import ShopifyStoreConnect from "./components/shopify/ShopifyStoreConnect";
 import ReelsStudioConnect from "./components/video/ReelsStudioConnect";
+import CharacterStudioWorkstation from "./components/video/CharacterStudioWorkstation";
 import SubscriptionModal from "./components/SubscriptionModal";
 import SocialMediaPlannerModal from "./components/social/SocialMediaPlannerModal";
 import CyberMatrixBackground from "./components/CyberMatrixBackground";
@@ -318,6 +319,7 @@ export default function HomePage() {
     { id: "wordpress", label: "WordPress & SEO", icon: "🌐", badge: hasWpConnected ? "Paired" : null },
     { id: "shopify", label: "Shopify Store & SEO", icon: "🛍️", badge: hasShopifyConnected ? "Paired" : "Ecommerce" },
     { id: "reels", label: "AI Reels & Shorts", icon: "🎬", badge: "New" },
+    { id: "characters", label: "Character IP & Stories", icon: "✨", badge: "Pro IP" },
     { id: "social", label: "Social Autopilot", icon: "📱", badge: "FB + IG" },
     { id: "gmb", label: "Local Maps (GMB)", icon: "📍", badge: "Maps" },
     { id: "ads", label: "Performance Ads", icon: "🎯", badge: "PPC" },
@@ -1418,6 +1420,13 @@ export default function HomePage() {
               {activeTab === "reels" && (
                 <div>
                   <ReelsStudioConnect />
+                </div>
+              )}
+
+              {/* TAB 2D: AI CHARACTER IP & STORIES WORKSTATION */}
+              {activeTab === "characters" && (
+                <div>
+                  <CharacterStudioWorkstation />
                 </div>
               )}
 
