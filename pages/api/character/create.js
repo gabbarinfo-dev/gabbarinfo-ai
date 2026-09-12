@@ -133,7 +133,7 @@ export default async function handler(req, res) {
       visualTraits,
       voice,
       referenceSheetUrl,
-      promptAnchor: prompt,
+      promptAnchor: finalPrompt,
       createdAt: new Date().toISOString(),
       episodesCount: 0,
       isPrivate: true,
