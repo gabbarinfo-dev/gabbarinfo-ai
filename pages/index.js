@@ -351,15 +351,23 @@ export default function HomePage() {
         {/* Sidebar Brand Header */}
         <div
           style={{
-            padding: sidebarCollapsed ? "18px 12px" : "20px 20px 16px",
+            padding: sidebarCollapsed ? "14px 8px 12px" : "20px 20px 16px",
             borderBottom: "1px solid rgba(255, 255, 255, 0.06)",
             display: "flex",
+            flexDirection: sidebarCollapsed ? "column" : "row",
             alignItems: "center",
             justifyContent: sidebarCollapsed ? "center" : "space-between",
+            gap: sidebarCollapsed ? 8 : 0,
           }}
         >
           <div
-            onClick={() => handleSelectTab("overview")}
+            onClick={() => {
+              if (sidebarCollapsed) {
+                setSidebarCollapsed(false);
+              } else {
+                handleSelectTab("overview");
+              }
+            }}
             style={{
               display: "flex",
               alignItems: "center",
@@ -367,6 +375,7 @@ export default function HomePage() {
               cursor: "pointer",
               overflow: "hidden",
             }}
+            title={sidebarCollapsed ? "Click to expand sidebar" : "Command Center Overview"}
           >
             <div
               style={{
@@ -398,24 +407,26 @@ export default function HomePage() {
             )}
           </div>
 
-          {/* Desktop Collapse Toggle */}
+          {/* Desktop Collapse / Expand Toggle */}
           <button
             onClick={() => setSidebarCollapsed(!sidebarCollapsed)}
             style={{
-              background: "rgba(255, 255, 255, 0.04)",
-              border: "1px solid rgba(255, 255, 255, 0.08)",
-              color: "#94a3b8",
-              width: 26,
-              height: 26,
+              background: sidebarCollapsed ? "rgba(59, 130, 246, 0.18)" : "rgba(255, 255, 255, 0.04)",
+              border: sidebarCollapsed ? "1px solid rgba(59, 130, 246, 0.45)" : "1px solid rgba(255, 255, 255, 0.08)",
+              color: sidebarCollapsed ? "#60a5fa" : "#94a3b8",
+              width: sidebarCollapsed ? 36 : 26,
+              height: sidebarCollapsed ? 26 : 26,
               borderRadius: 8,
               cursor: "pointer",
-              display: sidebarCollapsed ? "none" : "flex",
+              display: "flex",
               alignItems: "center",
               justifyContent: "center",
-              fontSize: 12,
-              transition: "all 0.15s",
+              fontSize: sidebarCollapsed ? 15 : 12,
+              fontWeight: 800,
+              transition: "all 0.2s ease",
+              boxShadow: sidebarCollapsed ? "0 0 12px rgba(59, 130, 246, 0.3)" : "none",
             }}
-            title={sidebarCollapsed ? "Expand Sidebar" : "Collapse Sidebar"}
+            title={sidebarCollapsed ? "Expand Sidebar (›)" : "Collapse Sidebar (‹)"}
           >
             {sidebarCollapsed ? "›" : "‹"}
           </button>
@@ -657,14 +668,42 @@ export default function HomePage() {
         {/* Sidebar User Footer */}
         <div
           style={{
-            padding: sidebarCollapsed ? "16px 8px" : "16px 18px",
+            padding: sidebarCollapsed ? "12px 6px" : "16px 18px",
             borderTop: "1px solid rgba(255, 255, 255, 0.08)",
             display: "flex",
+            flexDirection: sidebarCollapsed ? "column" : "row",
             alignItems: "center",
             justifyContent: sidebarCollapsed ? "center" : "space-between",
+            gap: sidebarCollapsed ? 8 : 0,
             background: "rgba(0, 0, 0, 0.2)",
           }}
         >
+          {sidebarCollapsed && (
+            <button
+              onClick={() => setSidebarCollapsed(false)}
+              style={{
+                background: "rgba(59, 130, 246, 0.12)",
+                border: "1px solid rgba(59, 130, 246, 0.3)",
+                borderRadius: 8,
+                color: "#60a5fa",
+                cursor: "pointer",
+                padding: "6px",
+                width: "100%",
+                fontSize: 10.5,
+                fontWeight: 700,
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
+                gap: 3,
+                transition: "all 0.15s",
+              }}
+              title="Expand Sidebar (Reopen)"
+            >
+              <span>››</span>
+              <span>Open</span>
+            </button>
+          )}
+
           {!sidebarCollapsed && (
             <div style={{ minWidth: 0, flex: 1, marginRight: 8 }}>
               <div style={{ fontSize: 12, fontWeight: 700, color: "#f1f5f9", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
@@ -685,6 +724,7 @@ export default function HomePage() {
               color: "#94a3b8",
               cursor: "pointer",
               padding: sidebarCollapsed ? "8px" : "6px 10px",
+              width: sidebarCollapsed ? "100%" : "auto",
               fontSize: 12,
               display: "flex",
               alignItems: "center",
@@ -755,6 +795,32 @@ export default function HomePage() {
             >
               ☰
             </button>
+
+            {/* Desktop Quick Reopen Toggle when Collapsed */}
+            {sidebarCollapsed && (
+              <button
+                onClick={() => setSidebarCollapsed(false)}
+                className="hide-on-mobile"
+                style={{
+                  background: "rgba(59, 130, 246, 0.12)",
+                  border: "1px solid rgba(59, 130, 246, 0.35)",
+                  borderRadius: 8,
+                  color: "#60a5fa",
+                  padding: "6px 12px",
+                  fontSize: 12,
+                  fontWeight: 700,
+                  cursor: "pointer",
+                  display: "flex",
+                  alignItems: "center",
+                  gap: 6,
+                  transition: "all 0.15s ease",
+                }}
+                title="Expand Sidebar (Click to reopen)"
+              >
+                <span style={{ fontSize: 14, fontWeight: 900 }}>›</span>
+                <span>Expand Sidebar</span>
+              </button>
+            )}
 
             {/* Current Active Tab Title */}
             <div style={{ display: "flex", alignItems: "center", gap: 8, minWidth: 0 }}>
