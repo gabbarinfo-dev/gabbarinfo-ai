@@ -24,12 +24,42 @@ export default async function handler(req, res) {
 
   // Normalize shop domain
   let shop = String(rawShop).trim().toLowerCase();
-  shop = shop.replace(/^https?:\/\//, "").replace(/\/+$/, "").split("/")[0];
+  
+  // Handle pasted admin URLs like admin.shopify.com/store/p0n7tf-yp
+  if (shop.includes("admin.shopify.com/store/")) {
+    const adminMatch = shop.match(/admin\.shopify\.com\/store\/([a-zA-Z0-9\-]+)/);
+    if (adminMatch && adminMatch[1]) {
+      shop = `${adminMatch[1]}.myshopify.com`;
+    }
+  } else {
+    shop = shop.replace(/^https?:\/\//, "").replace(/\/+$/, "").split("/")[0];
+  }
   
   if (!shop.includes(".myshopify.com")) {
-    // If user provided a custom domain or store name, normalize to .myshopify.com
+    // If user provided a short handle without dot
     if (!shop.includes(".")) {
       shop = `${shop}.myshopify.com`;
+    } else {
+      // User provided a custom domain like www.bellandiva.com or bellandiva.com
+      // Try to auto-resolve the underlying .myshopify.com handle
+      try {
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), 4000);
+        const probeRes = await fetch(`https://${shop}`, {
+          signal: controller.signal,
+          headers: { "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36" },
+        });
+        clearTimeout(timeoutId);
+        if (probeRes.ok) {
+          const probeHtml = await probeRes.text();
+          const shopMatch = probeHtml.match(/Shopify\.shop\s*=\s*['"]([^'"]+)['"]/);
+          if (shopMatch && shopMatch[1] && shopMatch[1].includes(".myshopify.com")) {
+            shop = shopMatch[1].toLowerCase();
+          }
+        }
+      } catch (probeErr) {
+        // Fallback continues to regex validation
+      }
     }
   }
 
@@ -38,7 +68,7 @@ export default async function handler(req, res) {
   if (!shopRegex.test(shop)) {
     return res.status(400).json({
       ok: false,
-      error: "Invalid Shopify store domain. Please provide a valid myshopify.com domain (e.g., yourstore.myshopify.com).",
+      error: `Could not identify Shopify handle for "${rawShop}". Please enter your myshopify store handle (e.g. yourstore.myshopify.com or the store handle from your admin URL).`,
     });
   }
 

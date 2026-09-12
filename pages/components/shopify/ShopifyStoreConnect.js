@@ -65,12 +65,20 @@ export default function ShopifyStoreConnect({ onConnectionChange }) {
     }
 
     setConnecting(true);
-    setErrorMsg("");
-
     let normalized = shopInput.trim().toLowerCase();
-    normalized = normalized.replace(/^https?:\/\//, "").replace(/\/+$/, "").split("/")[0];
-    if (!normalized.includes(".")) {
-      normalized = `${normalized}.myshopify.com`;
+    if (normalized.includes("admin.shopify.com/store/")) {
+      const match = normalized.match(/admin\.shopify\.com\/store\/([a-zA-Z0-9\-]+)/);
+      if (match && match[1]) {
+        normalized = `${match[1]}.myshopify.com`;
+      }
+    } else {
+      normalized = normalized.replace(/^https?:\/\//, "").replace(/\/+$/, "");
+      if (normalized.includes("/")) {
+        normalized = normalized.split("/")[0];
+      }
+      if (!normalized.includes(".")) {
+        normalized = `${normalized}.myshopify.com`;
+      }
     }
 
     // Redirect to OAuth initiation endpoint
