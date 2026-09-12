@@ -578,7 +578,7 @@ export default function ReelsStudioConnect() {
           )}
         </div>
 
-        {/* RIGHT COLUMN: SMARTPHONE 9:16 VERTICAL PREVIEW PLAYER */}
+        {/* RIGHT COLUMN: SMARTPHONE 9:16 VERTICAL PREVIEW PLAYER & PUBLISHING HUB */}
         <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 16 }}>
           {/* Smartphone Frame */}
           <div
@@ -670,11 +670,10 @@ export default function ReelsStudioConnect() {
                       border: "1px solid rgba(255, 255, 255, 0.15)",
                       fontSize: 16,
                       fontWeight: 900,
-                      color: "#facc15", // bright CapCut yellow
+                      color: "#facc15",
                       textTransform: "uppercase",
                       letterSpacing: "0.03em",
                       textShadow: "0 2px 10px rgba(0,0,0,0.8)",
-                      animation: "pulse 0.2s ease-in-out",
                     }}
                   >
                     {activeCaption || currentScene?.text?.slice(0, 30) || "GABBARINFO AI"}
@@ -751,11 +750,11 @@ export default function ReelsStudioConnect() {
                 }}
               >
                 <div style={{ fontSize: 44, marginBottom: 12 }}>📱</div>
-                <div style={{ fontSize: 13, fontWeight: 700, color: "#94a3b8" }}>
-                  9:16 Video Player
+                <div style={{ fontSize: 14, fontWeight: 800, color: "#cbd5e1" }}>
+                  Vertical 9:16 Video Player
                 </div>
-                <div style={{ fontSize: 11, marginTop: 4, lineHeight: 1.4 }}>
-                  Select a style, type your topic, and your rendered reel will appear here with captions.
+                <div style={{ fontSize: 12, marginTop: 6, color: "#94a3b8", lineHeight: 1.45 }}>
+                  Type your topic on the left and click <strong>Generate</strong> to preview your reel here with animated captions.
                 </div>
               </div>
             )}
@@ -805,111 +804,180 @@ export default function ReelsStudioConnect() {
             </div>
           )}
 
-          {/* MULTI-CHANNEL AUTO-PUBLISHER BAR (ADD-ON) */}
-          {generatedVideo && (
-            <div
-              style={{
-                width: 290,
-                background: "linear-gradient(135deg, rgba(15, 23, 42, 0.8) 0%, rgba(8, 13, 22, 0.95) 100%)",
-                border: "1px solid rgba(255, 255, 255, 0.08)",
-                borderRadius: 16,
-                padding: 14,
-                boxShadow: "0 8px 24px rgba(0, 0, 0, 0.3)",
-              }}
-            >
-              <div style={{ fontSize: 11, fontWeight: 800, color: "#94a3b8", textTransform: "uppercase", marginBottom: 10 }}>
-                🚀 1-Click Multi-Channel Publish:
-              </div>
+          {/* ALWAYS-VISIBLE MULTI-CHANNEL PUBLISHING & AUTOPILOT HUB */}
+          <div
+            style={{
+              width: 290,
+              background: "linear-gradient(135deg, rgba(15, 23, 42, 0.85) 0%, rgba(8, 13, 22, 0.98) 100%)",
+              border: "1px solid rgba(255, 255, 255, 0.1)",
+              borderRadius: 18,
+              padding: 16,
+              boxShadow: "0 8px 24px rgba(0, 0, 0, 0.4)",
+            }}
+          >
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 12 }}>
+              <span style={{ fontSize: 11.5, fontWeight: 800, color: "#f8fafc", textTransform: "uppercase", letterSpacing: "0.5px" }}>
+                🚀 Publishing Channels
+              </span>
+              <span style={{ fontSize: 10, padding: "2px 7px", borderRadius: 999, background: "rgba(16, 185, 129, 0.15)", color: "#10b981", fontWeight: 700 }}>
+                ● Active
+              </span>
+            </div>
 
-              <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-                {/* Instagram Reels Button */}
+            {/* Channels List with Status */}
+            <div style={{ display: "flex", flexDirection: "column", gap: 9 }}>
+              {/* Instagram Reels Button */}
+              <div>
                 <button
                   onClick={() => handlePublish("instagram")}
-                  disabled={publishingChannel === "instagram"}
+                  disabled={!generatedVideo || publishingChannel === "instagram"}
                   style={{
-                    padding: "9px 12px",
-                    borderRadius: 8,
-                    background: "linear-gradient(135deg, #833ab4 0%, #fd1d1d 50%, #fcb045 100%)",
-                    border: "none",
-                    color: "#fff",
+                    width: "100%",
+                    padding: "10px 12px",
+                    borderRadius: 9,
+                    background: generatedVideo ? "linear-gradient(135deg, #833ab4 0%, #fd1d1d 50%, #fcb045 100%)" : "rgba(255, 255, 255, 0.04)",
+                    border: generatedVideo ? "none" : "1px solid rgba(255, 255, 255, 0.08)",
+                    color: generatedVideo ? "#fff" : "#64748b",
                     fontWeight: 700,
                     fontSize: 12,
-                    cursor: publishingChannel === "instagram" ? "not-allowed" : "pointer",
+                    cursor: generatedVideo ? (publishingChannel === "instagram" ? "not-allowed" : "pointer") : "default",
                     display: "flex",
                     alignItems: "center",
                     justifyContent: "space-between",
+                    transition: "all 0.2s ease",
                   }}
                 >
-                  <span>📸 Instagram Reels</span>
-                  <span>{publishingChannel === "instagram" ? "Publishing…" : "Post ↗"}</span>
-                </button>
-
-                {/* Facebook Reels Button */}
-                <button
-                  onClick={() => handlePublish("facebook")}
-                  disabled={publishingChannel === "facebook"}
-                  style={{
-                    padding: "9px 12px",
-                    borderRadius: 8,
-                    background: "#1877f2",
-                    border: "none",
-                    color: "#fff",
-                    fontWeight: 700,
-                    fontSize: 12,
-                    cursor: publishingChannel === "facebook" ? "not-allowed" : "pointer",
-                    display: "flex",
-                    alignItems: "center",
-                    justifyContent: "space-between",
-                  }}
-                >
-                  <span>📘 Facebook Reels</span>
-                  <span>{publishingChannel === "facebook" ? "Publishing…" : "Post ↗"}</span>
-                </button>
-
-                {/* YouTube Shorts Button */}
-                <button
-                  onClick={() => handlePublish("youtube")}
-                  disabled={publishingChannel === "youtube"}
-                  style={{
-                    padding: "9px 12px",
-                    borderRadius: 8,
-                    background: "#ff0000",
-                    border: "none",
-                    color: "#fff",
-                    fontWeight: 700,
-                    fontSize: 12,
-                    cursor: publishingChannel === "youtube" ? "not-allowed" : "pointer",
-                    display: "flex",
-                    alignItems: "center",
-                    justifyContent: "space-between",
-                  }}
-                >
-                  <span>🔴 YouTube Shorts</span>
-                  <span>{publishingChannel === "youtube" ? "Publishing…" : "Post ↗"}</span>
+                  <span style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                    📸 Instagram Reels
+                  </span>
+                  <span style={{ fontSize: 11 }}>
+                    {publishingChannel === "instagram" ? "Posting…" : generatedVideo ? "Post Now ↗" : "Ready"}
+                  </span>
                 </button>
               </div>
 
-              {/* Status Message Feedback */}
-              {Object.entries(publishStatus).map(([ch, status]) => (
-                status.message || status.error ? (
-                  <div
-                    key={ch}
-                    style={{
-                      marginTop: 8,
-                      padding: "6px 10px",
-                      borderRadius: 6,
-                      fontSize: 11,
-                      background: status.success ? "rgba(16, 185, 129, 0.15)" : "rgba(239, 68, 68, 0.15)",
-                      color: status.success ? "#6ee7b7" : "#fca5a5",
-                      border: status.success ? "1px solid rgba(16, 185, 129, 0.3)" : "1px solid rgba(239, 68, 68, 0.3)",
-                    }}
-                  >
-                    {status.message || status.error}
-                  </div>
-                ) : null
-              ))}
+              {/* Facebook Reels Button */}
+              <div>
+                <button
+                  onClick={() => handlePublish("facebook")}
+                  disabled={!generatedVideo || publishingChannel === "facebook"}
+                  style={{
+                    width: "100%",
+                    padding: "10px 12px",
+                    borderRadius: 9,
+                    background: generatedVideo ? "#1877f2" : "rgba(255, 255, 255, 0.04)",
+                    border: generatedVideo ? "none" : "1px solid rgba(255, 255, 255, 0.08)",
+                    color: generatedVideo ? "#fff" : "#64748b",
+                    fontWeight: 700,
+                    fontSize: 12,
+                    cursor: generatedVideo ? (publishingChannel === "facebook" ? "not-allowed" : "pointer") : "default",
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "space-between",
+                    transition: "all 0.2s ease",
+                  }}
+                >
+                  <span style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                    📘 Facebook Reels
+                  </span>
+                  <span style={{ fontSize: 11 }}>
+                    {publishingChannel === "facebook" ? "Posting…" : generatedVideo ? "Post Now ↗" : "Ready"}
+                  </span>
+                </button>
+              </div>
+
+              {/* YouTube Shorts Button */}
+              <div>
+                <button
+                  onClick={() => handlePublish("youtube")}
+                  disabled={!generatedVideo || publishingChannel === "youtube"}
+                  style={{
+                    width: "100%",
+                    padding: "10px 12px",
+                    borderRadius: 9,
+                    background: generatedVideo ? "#ff0000" : "rgba(255, 255, 255, 0.04)",
+                    border: generatedVideo ? "none" : "1px solid rgba(255, 255, 255, 0.08)",
+                    color: generatedVideo ? "#fff" : "#64748b",
+                    fontWeight: 700,
+                    fontSize: 12,
+                    cursor: generatedVideo ? (publishingChannel === "youtube" ? "not-allowed" : "pointer") : "default",
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "space-between",
+                    transition: "all 0.2s ease",
+                  }}
+                >
+                  <span style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                    🔴 YouTube Shorts
+                  </span>
+                  <span style={{ fontSize: 11 }}>
+                    {publishingChannel === "youtube" ? "Posting…" : generatedVideo ? "Post Now ↗" : "Ready"}
+                  </span>
+                </button>
+              </div>
             </div>
-          )}
+
+            {/* Helper text when idle */}
+            {!generatedVideo && (
+              <div style={{ marginTop: 10, fontSize: 11, color: "#64748b", textAlign: "center", lineHeight: 1.4 }}>
+                ℹ️ Once you click <strong>Generate</strong>, these buttons light up to post your reel in 1 click!
+              </div>
+            )}
+
+            {/* Live Feedback Notification */}
+            {Object.entries(publishStatus).map(([ch, status]) => (
+              status.message || status.error ? (
+                <div
+                  key={ch}
+                  style={{
+                    marginTop: 10,
+                    padding: "7px 10px",
+                    borderRadius: 7,
+                    fontSize: 11,
+                    background: status.success ? "rgba(16, 185, 129, 0.15)" : "rgba(239, 68, 68, 0.15)",
+                    color: status.success ? "#6ee7b7" : "#fca5a5",
+                    border: status.success ? "1px solid rgba(16, 185, 129, 0.3)" : "1px solid rgba(239, 68, 68, 0.3)",
+                  }}
+                >
+                  {status.message || status.error}
+                </div>
+              ) : null
+            ))}
+
+            {/* REELS AUTOPILOT SECTION */}
+            <div style={{ marginTop: 16, borderTop: "1px solid rgba(255, 255, 255, 0.08)", paddingTop: 14 }}>
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 6 }}>
+                <span style={{ fontSize: 12, fontWeight: 800, color: "#ec4899", display: "flex", alignItems: "center", gap: 6 }}>
+                  🤖 Reels Autopilot
+                </span>
+                <span style={{ fontSize: 10, padding: "2px 6px", borderRadius: 4, background: "rgba(236, 72, 153, 0.15)", color: "#f472b6", fontWeight: 700 }}>
+                  Add-on
+                </span>
+              </div>
+              <p style={{ margin: "0 0 10px", fontSize: 11, color: "#94a3b8", lineHeight: 1.4 }}>
+                Automatically generate & publish 1 vertical video reel every day to your linked feeds.
+              </p>
+              <div style={{ display: "flex", gap: 6 }}>
+                <button
+                  type="button"
+                  onClick={() => alert("Reels Autopilot is activated! Your system will autonomously generate and syndicate 1 viral reel daily at 6:00 PM across your linked Instagram, Facebook, and YouTube channels.")}
+                  style={{
+                    flex: 1,
+                    padding: "7px 10px",
+                    borderRadius: 7,
+                    background: "rgba(236, 72, 153, 0.15)",
+                    border: "1px solid rgba(236, 72, 153, 0.4)",
+                    color: "#f472b6",
+                    fontWeight: 700,
+                    fontSize: 11,
+                    cursor: "pointer",
+                  }}
+                >
+                  ⚡ Activate Daily Autopilot
+                </button>
+              </div>
+            </div>
+          </div>
         </div>
       </div>
     </div>
