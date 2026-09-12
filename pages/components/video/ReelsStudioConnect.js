@@ -298,35 +298,78 @@ export default function ReelsStudioConnect() {
       const audioCtx = new AudioCtx();
       const dest = audioCtx.createMediaStreamDestination();
 
-      // Voiceover Audio Setup
-      const voAudio = new Audio(generatedVideo.voiceoverUrl);
-      voAudio.crossOrigin = "anonymous";
-      const voSource = audioCtx.createMediaElementSource(voAudio);
+      // Step 1: Decode Voiceover Audio into Memory Buffer
+      setCompositingStep("Decoding studio voiceover...");
+      let voBuffer;
+      if (generatedVideo.voiceoverUrl.startsWith("data:")) {
+        const base64Data = generatedVideo.voiceoverUrl.split(",")[1];
+        const binaryStr = atob(base64Data);
+        const len = binaryStr.length;
+        const bytes = new Uint8Array(len);
+        for (let i = 0; i < len; i++) {
+          bytes[i] = binaryStr.charCodeAt(i);
+        }
+        voBuffer = await audioCtx.decodeAudioData(bytes.buffer);
+      } else {
+        const voRes = await fetch(generatedVideo.voiceoverUrl);
+        const voArrBuf = await voRes.arrayBuffer();
+        voBuffer = await audioCtx.decodeAudioData(voArrBuf);
+      }
+
+      // Step 2: Decode Background Music into Memory Buffer
+      setCompositingStep("Mixing background soundtrack...");
+      let bgBuffer = null;
+      try {
+        const bgRes = await fetch(generatedVideo.backgroundMusicUrl || "/audio/upbeat_lofi.mp3");
+        if (bgRes.ok) {
+          const bgArrBuf = await bgRes.arrayBuffer();
+          bgBuffer = await audioCtx.decodeAudioData(bgArrBuf);
+        }
+      } catch (bgErr) {
+        console.warn("[VideoStudio] Background music load warning:", bgErr);
+      }
+
+      const voSource = audioCtx.createBufferSource();
+      voSource.buffer = voBuffer;
       voSource.connect(dest);
 
-      // Background Music Audio Setup (Ducked to 15%)
-      const bgAudio = new Audio(generatedVideo.backgroundMusicUrl || "/audio/upbeat_lofi.mp3");
-      bgAudio.crossOrigin = "anonymous";
-      bgAudio.loop = true;
-      const bgSource = audioCtx.createMediaElementSource(bgAudio);
-      const bgGain = audioCtx.createGain();
-      bgGain.gain.value = 0.15;
-      bgSource.connect(bgGain);
-      bgGain.connect(dest);
+      let bgSource = null;
+      if (bgBuffer) {
+        bgSource = audioCtx.createBufferSource();
+        bgSource.buffer = bgBuffer;
+        bgSource.loop = true;
+        const bgGain = audioCtx.createGain();
+        bgGain.gain.value = 0.15; // Duck music to 15% so voiceover is loud & clear
+        bgSource.connect(bgGain);
+        bgGain.connect(dest);
+      }
 
-      setCompositingStep("Preloading HD video scenes...");
+      // Step 3: Preload all video scenes into local memory Blobs to guarantee 0% CORS taint
+      setCompositingStep("Preloading HD video clips into memory...");
       const videoElements = await Promise.all(
         (generatedVideo.scenes || []).map(async (scene) => {
           const v = document.createElement("video");
-          v.crossOrigin = "anonymous";
-          v.src = scene.videoUrl;
           v.muted = true;
           v.playsInline = true;
           v.preload = "auto";
+          try {
+            const fetchRes = await fetch(scene.videoUrl);
+            if (fetchRes.ok) {
+              const blob = await fetchRes.blob();
+              v.src = URL.createObjectURL(blob);
+            } else {
+              v.crossOrigin = "anonymous";
+              v.src = scene.videoUrl;
+            }
+          } catch {
+            v.crossOrigin = "anonymous";
+            v.src = scene.videoUrl;
+          }
+
           await new Promise((resolve) => {
             v.onloadeddata = resolve;
             v.onerror = resolve;
-            setTimeout(resolve, 3000);
+            setTimeout(resolve, 4000);
           });
           return v;
         })
@@ -349,7 +392,7 @@ export default function ReelsStudioConnect() {
 
       const recorder = new MediaRecorder(combinedStream, {
         mimeType,
-        videoBitsPerSecond: 3000000,
+        videoBitsPerSecond: 1800000,
       });
 
       const chunks = [];
@@ -357,12 +400,12 @@ export default function ReelsStudioConnect() {
         if (e.data && e.data.size > 0) chunks.push(e.data);
       };
 
-      const totalDuration = generatedVideo.totalDuration || 15;
+      const totalDuration = generatedVideo.totalDuration || voBuffer.duration || 15;
       recorder.start();
 
       await audioCtx.resume();
-      await voAudio.play().catch(() => {});
-      await bgAudio.play().catch(() => {});
+      voSource.start(0);
+      if (bgSource) bgSource.start(0);
 
       setCompositingStep("Baking subtitles, voice & music into master video...");
 
@@ -373,7 +416,7 @@ export default function ReelsStudioConnect() {
         const renderFrame = () => {
           const elapsed = (performance.now() - startTime) / 1000;
 
-          if (elapsed >= totalDuration || voAudio.ended) {
+          if (elapsed >= totalDuration) {
             cancelAnimationFrame(animId);
             resolve();
             return;
@@ -446,10 +489,12 @@ export default function ReelsStudioConnect() {
       });
 
       recorder.stop();
-      voAudio.pause();
-      bgAudio.pause();
+      try { voSource.stop(); } catch {}
+      try { if (bgSource) bgSource.stop(); } catch {}
       audioCtx.close().catch(() => {});
-      videoElements.forEach((v) => v.pause());
+      videoElements.forEach((v) => {
+        try { v.pause(); } catch {}
+      });
 
       setCompositingStep("Uploading master video with burned audio & subtitles…");
 
@@ -460,41 +505,48 @@ export default function ReelsStudioConnect() {
         };
       });
 
-      const reader = new FileReader();
-      const base64Promise = new Promise((resolve) => {
-        reader.onloadend = () => resolve(reader.result);
-        reader.readAsDataURL(blob);
-      });
-      const videoBase64 = await base64Promise;
+      console.log(`[VideoStudio] Composite baked successfully: ${blob.size} bytes (${mimeType})`);
 
-      const uploadRes = await fetch("/api/video/upload-composite", {
+      // Step 4: Get direct signed upload URL (bypasses Vercel 4.5MB limit completely)
+      const signRes = await fetch("/api/video/get-upload-url", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          videoBase64,
           filename: `master_reel_${Date.now()}.${mimeType.includes("mp4") ? "mp4" : "webm"}`,
-          contentType: mimeType,
         }),
       });
-
-      const uploadData = await uploadRes.json();
-      if (!uploadRes.ok || !uploadData.ok) {
-        throw new Error(uploadData.error || "Failed to save master composite");
+      const signData = await signRes.json();
+      if (!signRes.ok || !signData.ok || !signData.signedUrl) {
+        throw new Error(signData.error || "Failed to create storage upload URL.");
       }
 
-      console.log("[VideoStudio] Master composite uploaded successfully:", uploadData.videoUrl);
+      // Step 5: Direct Binary Upload to Supabase Storage
+      const putRes = await fetch(signData.signedUrl, {
+        method: "PUT",
+        headers: {
+          "Content-Type": mimeType,
+        },
+        body: blob,
+      });
+
+      if (!putRes.ok) {
+        throw new Error(`Failed to upload video to cloud storage (${putRes.status})`);
+      }
+
+      console.log("[VideoStudio] Master composite uploaded successfully:", signData.publicUrl);
 
       const blobUrl = URL.createObjectURL(blob);
       setGeneratedVideo((prev) => ({
         ...prev,
-        compositeVideoUrl: uploadData.videoUrl,
+        compositeVideoUrl: signData.publicUrl,
         compositeBlobUrl: blobUrl,
       }));
 
-      return uploadData.videoUrl;
+      return signData.publicUrl;
     } catch (err) {
       console.error("[VideoStudio] Compositing failed:", err);
-      return generatedVideo.scenes?.[0]?.videoUrl;
+      alert("Compositing error: " + err.message);
+      throw err;
     } finally {
       setCompositing(false);
       setCompositingStep("");
@@ -515,7 +567,7 @@ export default function ReelsStudioConnect() {
       }
 
       if (!videoUrlToPublish) {
-        videoUrlToPublish = generatedVideo.scenes?.[0]?.videoUrl || "https://ai.gabbarinfo.com/sample-reel.mp4";
+        throw new Error("Unable to bake master composite video.");
       }
 
       const res = await fetch("/api/video/publish", {
@@ -558,9 +610,10 @@ export default function ReelsStudioConnect() {
 
   const handleDownloadMaster = async () => {
     try {
-      let downloadUrl = generatedVideo?.compositeBlobUrl || generatedVideo?.compositeVideoUrl;
+      let downloadUrl = generatedVideo?.compositeBlobUrl;
       if (!downloadUrl) {
-        downloadUrl = await compositeAndBakeVideo();
+        await compositeAndBakeVideo();
+        downloadUrl = generatedVideo?.compositeBlobUrl;
       }
       if (!downloadUrl) return;
 
@@ -1506,6 +1559,21 @@ export default function ReelsStudioConnect() {
                 >
                   <div>
                     <strong style={{ textTransform: "capitalize" }}>{ch}:</strong> {status.message || status.error}
+                    {(ch === "instagram" || ch === "facebook") && status.error && (status.error.includes("invalidated") || status.error.includes("token")) && (
+                      <div style={{ marginTop: 4 }}>
+                        <a
+                          href="/api/facebook/connect"
+                          style={{
+                            fontSize: 11,
+                            color: "#f59e0b",
+                            textDecoration: "underline",
+                            fontWeight: 700,
+                          }}
+                        >
+                          🔗 Click here to Reconnect Meta
+                        </a>
+                      </div>
+                    )}
                   </div>
                   {status.videoUrl && (
                     <a
