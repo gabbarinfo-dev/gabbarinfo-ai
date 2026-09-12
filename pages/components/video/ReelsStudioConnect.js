@@ -10,6 +10,7 @@ export default function ReelsStudioConnect() {
   const [selectedStyle, setSelectedStyle] = useState("motion_broll"); // "motion_broll" | "talking_avatar" | "generative_cinematic"
   const [topic, setTopic] = useState("");
   const [niche, setNiche] = useState("business");
+  const [language, setLanguage] = useState("hindi"); // "hindi" | "en_us" | "en_uk"
   const [voice, setVoice] = useState("nova");
   const [backgroundBeat, setBackgroundBeat] = useState("upbeat_lofi");
   const [generating, setGenerating] = useState(false);
@@ -236,6 +237,7 @@ export default function ReelsStudioConnect() {
           style: selectedStyle,
           topic: topic.trim(),
           niche,
+          language,
           voice,
           backgroundBeat,
         }),
@@ -932,6 +934,80 @@ export default function ReelsStudioConnect() {
                     💡 {t.slice(0, 32)}…
                   </button>
                 ))}
+              </div>
+            </div>
+
+            {/* 3-Language Selector */}
+            <div style={{ marginBottom: 18 }}>
+              <label style={{ display: "block", fontSize: 12.5, fontWeight: 800, color: "#f8fafc", marginBottom: 8 }}>
+                🗣️ Spoken Language & Voiceover Accent:
+              </label>
+              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 10 }}>
+                <button
+                  type="button"
+                  onClick={() => setLanguage("hindi")}
+                  style={{
+                    padding: "9px 8px",
+                    borderRadius: 10,
+                    background: language === "hindi" ? "rgba(245, 158, 11, 0.22)" : "rgba(255, 255, 255, 0.03)",
+                    border: language === "hindi" ? "2px solid #f59e0b" : "1px solid rgba(255, 255, 255, 0.08)",
+                    color: language === "hindi" ? "#fbbf24" : "#cbd5e1",
+                    fontWeight: 800,
+                    fontSize: 12,
+                    cursor: "pointer",
+                    display: "flex",
+                    flexDirection: "column",
+                    alignItems: "center",
+                    gap: 3,
+                  }}
+                >
+                  <span style={{ fontSize: 16 }}>🇮🇳</span>
+                  <span>Hindi (हिंदी)</span>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => setLanguage("en_us")}
+                  style={{
+                    padding: "9px 8px",
+                    borderRadius: 10,
+                    background: language === "en_us" ? "rgba(59, 130, 246, 0.22)" : "rgba(255, 255, 255, 0.03)",
+                    border: language === "en_us" ? "2px solid #3b82f6" : "1px solid rgba(255, 255, 255, 0.08)",
+                    color: language === "en_us" ? "#60a5fa" : "#cbd5e1",
+                    fontWeight: 800,
+                    fontSize: 12,
+                    cursor: "pointer",
+                    display: "flex",
+                    flexDirection: "column",
+                    alignItems: "center",
+                    gap: 3,
+                  }}
+                >
+                  <span style={{ fontSize: 16 }}>🇺🇸</span>
+                  <span>American (US)</span>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => setLanguage("en_uk")}
+                  style={{
+                    padding: "9px 8px",
+                    borderRadius: 10,
+                    background: language === "en_uk" ? "rgba(236, 72, 153, 0.22)" : "rgba(255, 255, 255, 0.03)",
+                    border: language === "en_uk" ? "2px solid #ec4899" : "1px solid rgba(255, 255, 255, 0.08)",
+                    color: language === "en_uk" ? "#f472b6" : "#cbd5e1",
+                    fontWeight: 800,
+                    fontSize: 12,
+                    cursor: "pointer",
+                    display: "flex",
+                    flexDirection: "column",
+                    alignItems: "center",
+                    gap: 3,
+                  }}
+                >
+                  <span style={{ fontSize: 16 }}>🇬🇧</span>
+                  <span>British (UK)</span>
+                </button>
               </div>
             </div>
 

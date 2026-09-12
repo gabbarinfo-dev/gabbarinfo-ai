@@ -30,6 +30,7 @@ export default async function handler(req, res) {
     style = "motion_broll",
     topic,
     niche = "marketing",
+    language = "en_us",
     voice = "nova",
     backgroundBeat = "upbeat_lofi",
   } = req.body;
@@ -40,12 +41,13 @@ export default async function handler(req, res) {
 
   try {
     // 1. Script Generation
-    console.log(`[VideoStudio] Generating script for "${topic}" in style: ${style}`);
-    const script = await generateReelScript({ topic, niche, style });
+    console.log(`[VideoStudio] Generating script for "${topic}" in style: ${style} (Language: ${language})`);
+    const script = await generateReelScript({ topic, niche, style, language });
 
     // 2. Voiceover Generation
-    console.log(`[VideoStudio] Generating voiceover with voice: ${voice}`);
-    const voiceover = await generateVoiceover({ text: script.fullScript, voice });
+    const chosenVoice = (language === "en_uk" && voice === "nova") ? "fable" : voice;
+    console.log(`[VideoStudio] Generating voiceover with voice: ${chosenVoice} (${language})`);
+    const voiceover = await generateVoiceover({ text: script.fullScript, voice: chosenVoice });
 
     // 3. Visual Scenes Gathering / Generation
     let scenesWithVideo = [];

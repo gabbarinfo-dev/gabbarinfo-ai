@@ -32,6 +32,7 @@ export default async function handler(req, res) {
   try {
     // 1. Build style prompt anchor for consistency
     const styleAnchors = {
+      comic_hero: "Bold modern comic book art style, Spider-Verse / Marvel graphic novel aesthetic, dynamic ink lines, vibrant halftone screen tones, heroic character turnaround, 8k",
       pixar_3d: "3D Pixar Disney animation style, smooth subsurface scattering, expressive large eyes, charming friendly facial proportions, vibrant cinematic studio lighting, octane render, 8k",
       anime_2d: "High-end 2D anime illustration, Makoto Shinkai style, crisp lineart, cel shading, rich emotional depth, vibrant color palette, anime key visual",
       storybook_kids: "Whimsical children's picture book illustration, soft watercolor and gouache textures, adorable character design, gentle warm lighting, nostalgic storybook art",

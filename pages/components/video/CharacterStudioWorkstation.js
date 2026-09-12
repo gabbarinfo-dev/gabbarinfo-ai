@@ -24,6 +24,7 @@ export default function CharacterStudioWorkstation() {
 
   // Story & Episode Generator State
   const [videoFormat, setVideoFormat] = useState("reel_9_16"); // "reel_9_16" | "youtube_16_9"
+  const [language, setLanguage] = useState("hindi"); // "hindi" | "en_us" | "en_uk"
   const [episodeTitle, setEpisodeTitle] = useState("Episode 1: The Secret Discovery");
   const [storyPrompt, setStoryPrompt] = useState("Embarks on a quest through a magical neon city to find an ancient artifact");
   const [generatingStory, setGeneratingStory] = useState(false);
@@ -51,10 +52,11 @@ export default function CharacterStudioWorkstation() {
 
   // Archetype Presets
   const ARCHETYPES = [
+    { id: "comic_hero", label: "Comic Book Hero", emoji: "🦸", desc: "Bold Marvel/Spider-Verse comic art & action" },
     { id: "pixar_3d", label: "3D Pixar Animation", emoji: "✨", desc: "Whimsical, friendly, high-detail 3D CGI" },
     { id: "anime_2d", label: "2D Anime Hero", emoji: "⚡", desc: "Crisp lineart, vibrant anime key visual" },
     { id: "storybook_kids", label: "Children's Storybook", emoji: "🧸", desc: "Watercolor, warm nostalgic picture book" },
-    { id: "cyberpunk", label: "Cyberpunk Sci-Fi", emoji: "🦾", desc: "Neon glows, futuristic gear, cinematic" },
+    { id: "cyberpunk", label: "Cyberpunk Manga", emoji: "🦾", desc: "Neon glows, futuristic gear, cinematic" },
     { id: "photoreal_mascot", label: "Photoreal Mascot", emoji: "🦁", desc: "Ultra-detailed live-action brand character" },
   ];
 
@@ -146,6 +148,7 @@ export default function CharacterStudioWorkstation() {
           format: videoFormat,
           storyPrompt,
           episodeTitle,
+          language,
           userEmail,
         }),
       });
@@ -433,40 +436,9 @@ export default function CharacterStudioWorkstation() {
         <div className={styles.auroraBlob3} />
       </div>
 
-      {/* ── BACKGROUND LAYER: FLOATING ANIMATED CHARACTERS ── */}
-      <div className={styles.charactersLayer}>
-        <div className={`${styles.floatingCharCard} ${styles.char1}`}>
-          <img src="https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=150" alt="Pixar Hero" className={styles.charAvatar} />
-          <div>
-            <div className={styles.charBadge}>LUNA · 3D PIXAR</div>
-            <div className={styles.charSub}>Client IP Vault #812</div>
-          </div>
-        </div>
-
-        <div className={`${styles.floatingCharCard} ${styles.char2}`}>
-          <img src="https://images.unsplash.com/photo-1539571696357-5a69c17a67c6?w=150" alt="Anime Hero" className={styles.charAvatar} />
-          <div>
-            <div className={styles.charBadge}>KENJI · 2D ANIME</div>
-            <div className={styles.charSub}>Client IP Vault #904</div>
-          </div>
-        </div>
-
-        <div className={`${styles.floatingCharCard} ${styles.char3}`}>
-          <img src="https://images.unsplash.com/photo-1517841905240-472988babdf9?w=150" alt="Cyberpunk Scout" className={styles.charAvatar} />
-          <div>
-            <div className={styles.charBadge}>NOVA · CYBERPUNK</div>
-            <div className={styles.charSub}>Client IP Vault #431</div>
-          </div>
-        </div>
-
-        <div className={`${styles.floatingCharCard} ${styles.char4}`}>
-          <img src="https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=150" alt="Story Mascot" className={styles.charAvatar} />
-          <div>
-            <div className={styles.charBadge}>MILO · STORYBOOK</div>
-            <div className={styles.charSub}>Client IP Vault #208</div>
-          </div>
-        </div>
-      </div>
+      {/* ── BACKGROUND LAYER: COMIC HALFTONE DOTS & SPEED RAYS ── */}
+      <div className={styles.comicGridOverlay} />
+      <div className={styles.comicSpeedRays} />
 
       {/* ── FOREGROUND WORKSPACE (GLASSMORPHIC) ── */}
       <div className={styles.foregroundWorkspace}>
@@ -513,6 +485,28 @@ export default function CharacterStudioWorkstation() {
               <span>+ Create Exclusive Character IP</span>
             </button>
           </div>
+        </div>
+
+        {/* Comic & Animation Universes Badge Bar */}
+        <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap", marginBottom: 20, padding: "10px 16px", borderRadius: 12, background: "rgba(255, 255, 255, 0.03)", border: "1px solid rgba(255, 255, 255, 0.08)" }}>
+          <span style={{ fontSize: 11, fontWeight: 800, color: "#cbd5e1", textTransform: "uppercase", letterSpacing: 0.5 }}>
+            🎨 Supported Animation Styles:
+          </span>
+          <span style={{ padding: "4px 10px", borderRadius: 20, background: "rgba(236, 72, 153, 0.15)", border: "1px solid #ec4899", color: "#f472b6", fontSize: 11, fontWeight: 700 }}>
+            🦸 Comic Book Hero
+          </span>
+          <span style={{ padding: "4px 10px", borderRadius: 20, background: "rgba(139, 92, 246, 0.15)", border: "1px solid #8b5cf6", color: "#c084fc", fontSize: 11, fontWeight: 700 }}>
+            ✨ 3D Pixar Animation
+          </span>
+          <span style={{ padding: "4px 10px", borderRadius: 20, background: "rgba(59, 130, 246, 0.15)", border: "1px solid #3b82f6", color: "#60a5fa", fontSize: 11, fontWeight: 700 }}>
+            ⚡ 2D Shonen Anime
+          </span>
+          <span style={{ padding: "4px 10px", borderRadius: 20, background: "rgba(16, 185, 129, 0.15)", border: "1px solid #10b981", color: "#34d399", fontSize: 11, fontWeight: 700 }}>
+            🧸 Children's Storybook
+          </span>
+          <span style={{ padding: "4px 10px", borderRadius: 20, background: "rgba(245, 158, 11, 0.15)", border: "1px solid #f59e0b", color: "#fbbf24", fontSize: 11, fontWeight: 700 }}>
+            🦾 Cyberpunk Manga
+          </span>
         </div>
 
         {/* Notification Toasts */}
@@ -635,6 +629,80 @@ export default function CharacterStudioWorkstation() {
                   <div style={{ fontSize: 11, color: "#94a3b8", marginTop: 4 }}>
                     3–5 min widescreen story episodes with chapters & progression.
                   </div>
+                </div>
+              </div>
+
+              {/* Language Selector (Hindi / US English / UK English) */}
+              <div style={{ marginBottom: 16 }}>
+                <label style={{ display: "block", fontSize: 12, fontWeight: 800, color: "#f8fafc", marginBottom: 8 }}>
+                  🗣️ Spoken Language & Voiceover Accent:
+                </label>
+                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 10 }}>
+                  <button
+                    type="button"
+                    onClick={() => setLanguage("hindi")}
+                    style={{
+                      padding: "10px 8px",
+                      borderRadius: 10,
+                      background: language === "hindi" ? "rgba(245, 158, 11, 0.22)" : "rgba(255, 255, 255, 0.03)",
+                      border: language === "hindi" ? "2px solid #f59e0b" : "1px solid rgba(255, 255, 255, 0.08)",
+                      color: language === "hindi" ? "#fbbf24" : "#cbd5e1",
+                      fontWeight: 800,
+                      fontSize: 12,
+                      cursor: "pointer",
+                      display: "flex",
+                      flexDirection: "column",
+                      alignItems: "center",
+                      gap: 4,
+                    }}
+                  >
+                    <span style={{ fontSize: 18 }}>🇮🇳</span>
+                    <span>Hindi (हिंदी)</span>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => setLanguage("en_us")}
+                    style={{
+                      padding: "10px 8px",
+                      borderRadius: 10,
+                      background: language === "en_us" ? "rgba(59, 130, 246, 0.22)" : "rgba(255, 255, 255, 0.03)",
+                      border: language === "en_us" ? "2px solid #3b82f6" : "1px solid rgba(255, 255, 255, 0.08)",
+                      color: language === "en_us" ? "#60a5fa" : "#cbd5e1",
+                      fontWeight: 800,
+                      fontSize: 12,
+                      cursor: "pointer",
+                      display: "flex",
+                      flexDirection: "column",
+                      alignItems: "center",
+                      gap: 4,
+                    }}
+                  >
+                    <span style={{ fontSize: 18 }}>🇺🇸</span>
+                    <span>American (US)</span>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => setLanguage("en_uk")}
+                    style={{
+                      padding: "10px 8px",
+                      borderRadius: 10,
+                      background: language === "en_uk" ? "rgba(236, 72, 153, 0.22)" : "rgba(255, 255, 255, 0.03)",
+                      border: language === "en_uk" ? "2px solid #ec4899" : "1px solid rgba(255, 255, 255, 0.08)",
+                      color: language === "en_uk" ? "#f472b6" : "#cbd5e1",
+                      fontWeight: 800,
+                      fontSize: 12,
+                      cursor: "pointer",
+                      display: "flex",
+                      flexDirection: "column",
+                      alignItems: "center",
+                      gap: 4,
+                    }}
+                  >
+                    <span style={{ fontSize: 18 }}>🇬🇧</span>
+                    <span>British (UK)</span>
+                  </button>
                 </div>
               </div>
 

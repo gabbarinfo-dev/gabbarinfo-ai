@@ -26,6 +26,7 @@ export default async function handler(req, res) {
     format = "reel_9_16", // "reel_9_16" (15-30s vertical) | "youtube_16_9" (3-5 min horizontal story)
     storyPrompt = "A mysterious discovery in the enchanted neon forest",
     episodeTitle = "Episode 1: The First Clue",
+    language = "en_us", // "hindi" | "en_us" | "en_uk"
   } = req.body;
 
   try {
@@ -62,6 +63,13 @@ export default async function handler(req, res) {
     const numScenes = isLongForm ? 8 : 4;
     const targetDuration = isLongForm ? 90 : 20; // 90s preview long-form / 20s reel
 
+    let langInstruction = "Language: American English (US). Engaging, dynamic American cinematic storytelling style.";
+    if (language === "hindi") {
+      langInstruction = "Language: Hindi (हिंदी). Write all narration lines, titles, and scene dialogues in fluent, captivating, natural conversational Hindi (in Devanagari or clean conversational Hindi).";
+    } else if (language === "en_uk") {
+      langInstruction = "Language: British English (UK). Write narration lines in classic British English storytelling cadence with authentic UK spelling and phrasing.";
+    }
+
     // 2. Generate Story Script using GPT-4o
     const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
     const systemPrompt = `You are an elite Hollywood animated story director and viral social video strategist.
@@ -69,6 +77,7 @@ Character Name: "${character.name}"
 Visual Traits: "${character.visualTraits}"
 Archetype Style: "${character.archetype}"
 Format: ${isLongForm ? "16:9 Cinematic YouTube Long-Form Story" : "9:16 Viral Social Reel"}
+${langInstruction}
 
 Create a captivating, emotionally engaging story episode based on the user's prompt: "${storyPrompt}".
 Maintain 100% visual consistency by referencing the character's exact appearance in every scene description.
@@ -103,9 +112,11 @@ Return ONLY valid JSON matching this exact structure:
 
     // 3. Synthesize Voiceover Audio via OpenAI TTS
     const fullScriptText = storyResult.scenes.map((s) => s.narration).join(" ");
+    const chosenVoice = (language === "en_uk") ? "fable" : (character.voice || "nova");
+
     const voiceRes = await openai.audio.speech.create({
       model: "tts-1",
-      voice: character.voice || "nova",
+      voice: chosenVoice,
       input: fullScriptText,
       response_format: "mp3",
     });
