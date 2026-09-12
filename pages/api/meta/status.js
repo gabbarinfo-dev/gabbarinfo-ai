@@ -4,15 +4,16 @@ import { supabaseServer } from "../../../lib/supabaseServer";
 
 export default async function handler(req, res) {
   const session = await getServerSession(req, res, authOptions);
+  const userEmail = session?.user?.email || req.query?.userEmail;
 
-  if (!session?.user?.email) {
+  if (!userEmail) {
     return res.json({ connected: false });
   }
 
   const { data, error } = await supabaseServer
     .from("meta_connections")
     .select("*")
-    .eq("email", session.user.email)
+    .eq("email", userEmail)
     .maybeSingle(); // 👈 IMPORTANT
 
   if (error) {

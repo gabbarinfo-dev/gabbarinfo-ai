@@ -118,9 +118,11 @@ export default async function handler(req, res) {
 
     console.log(`[YouTube Callback] Successfully connected YouTube channel "${channelInfo.title}" (${channelInfo.channelId}) for ${userEmail}`);
 
-    return res.redirect(`${returnUrl}?youtube_connected=true&channel=${encodeURIComponent(channelInfo.title)}`);
+    const joinQuery = (base, q) => `${base}${base.includes("?") ? "&" : "?"}${q}`;
+    return res.redirect(joinQuery(returnUrl, `youtube_connected=true&channel=${encodeURIComponent(channelInfo.title)}`));
   } catch (err) {
     console.error("[YouTube Callback] Fatal exception:", err);
-    return res.redirect(`${returnUrl}?youtube_error=${encodeURIComponent(err.message)}`);
+    const joinQuery = (base, q) => `${base}${base.includes("?") ? "&" : "?"}${q}`;
+    return res.redirect(joinQuery(returnUrl, `youtube_error=${encodeURIComponent(err.message)}`));
   }
 }

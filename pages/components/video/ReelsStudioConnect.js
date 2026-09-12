@@ -1,8 +1,12 @@
 "use client";
 
 import { useState, useRef, useEffect } from "react";
+import { useSession } from "next-auth/react";
 
 export default function ReelsStudioConnect() {
+  const { data: session } = useSession();
+  const userEmail = session?.user?.email;
+
   const [selectedStyle, setSelectedStyle] = useState("motion_broll"); // "motion_broll" | "talking_avatar" | "generative_cinematic"
   const [topic, setTopic] = useState("");
   const [niche, setNiche] = useState("business");
@@ -34,12 +38,15 @@ export default function ReelsStudioConnect() {
   const [autopilotSaving, setAutopilotSaving] = useState(false);
   const [compositing, setCompositing] = useState(false);
   const [compositingStep, setCompositingStep] = useState("");
+  const masterVideoUrlRef = useRef(null);
 
-  const refreshChannelStatuses = async () => {
+  const refreshChannelStatuses = async (overrideEmail) => {
     try {
+      const activeEmail = overrideEmail || userEmail;
+      const q = activeEmail ? `?userEmail=${encodeURIComponent(activeEmail)}` : "";
       const [ytRes, metaRes] = await Promise.all([
-        fetch("/api/youtube/status").then((r) => r.json()).catch(() => ({ connected: false })),
-        fetch("/api/meta/status").then((r) => r.json()).catch(() => ({ connected: false })),
+        fetch(`/api/youtube/status${q}`).then((r) => r.json()).catch(() => ({ connected: false })),
+        fetch(`/api/meta/status${q}`).then((r) => r.json()).catch(() => ({ connected: false })),
       ]);
       setYoutubeStatus({ connected: !!ytRes.connected, channel: ytRes.channel || null, loading: false });
       setMetaStatus({ connected: !!metaRes.connected, meta: metaRes.meta || null, loading: false });
@@ -48,6 +55,12 @@ export default function ReelsStudioConnect() {
       setMetaStatus((prev) => ({ ...prev, loading: false }));
     }
   };
+
+  useEffect(() => {
+    if (userEmail) {
+      refreshChannelStatuses(userEmail);
+    }
+  }, [userEmail]);
 
   useEffect(() => {
     refreshChannelStatuses();
@@ -84,9 +97,21 @@ export default function ReelsStudioConnect() {
     if (!generatedVideo || selectedChannels.length === 0 || batchPublishing) return;
     setBatchPublishing(true);
     try {
-      for (const ch of selectedChannels) {
-        await handlePublish(ch);
+      // Step 1: Bake master video ONCE for all selected channels
+      let bakedVideoUrl = masterVideoUrlRef.current || generatedVideo.compositeVideoUrl;
+      if (!bakedVideoUrl) {
+        bakedVideoUrl = await compositeAndBakeVideo();
       }
+
+      if (!bakedVideoUrl) {
+        throw new Error("Unable to bake master composite video.");
+      }
+
+      for (const ch of selectedChannels) {
+        await handlePublish(ch, bakedVideoUrl);
+      }
+    } catch (err) {
+      console.error("[BatchPublish] Error:", err);
     } finally {
       setBatchPublishing(false);
     }
@@ -187,6 +212,7 @@ export default function ReelsStudioConnect() {
     setGeneratedVideo(null);
     setIsPlaying(false);
     setCurrentTime(0);
+    masterVideoUrlRef.current = null;
 
     try {
       setGenerationStep("Writing viral hook and 15s script with AI…");
@@ -283,6 +309,7 @@ export default function ReelsStudioConnect() {
   // Master In-Browser Video & Audio Compositor Engine
   const compositeAndBakeVideo = async () => {
     if (!generatedVideo) return null;
+    if (masterVideoUrlRef.current) return masterVideoUrlRef.current;
     if (generatedVideo.compositeVideoUrl) return generatedVideo.compositeVideoUrl;
 
     setCompositing(true);
@@ -505,6 +532,10 @@ export default function ReelsStudioConnect() {
         };
       });
 
+      if (blob.size < 10000) {
+        throw new Error(`Master video recording produced empty stream (${blob.size} bytes). Please ensure browser tab remains active while baking.`);
+      }
+
       console.log(`[VideoStudio] Composite baked successfully: ${blob.size} bytes (${mimeType})`);
 
       // Step 4: Get direct signed upload URL (bypasses Vercel 4.5MB limit completely)
@@ -534,6 +565,7 @@ export default function ReelsStudioConnect() {
       }
 
       console.log("[VideoStudio] Master composite uploaded successfully:", signData.publicUrl);
+      masterVideoUrlRef.current = signData.publicUrl;
 
       const blobUrl = URL.createObjectURL(blob);
       setGeneratedVideo((prev) => ({
@@ -554,14 +586,14 @@ export default function ReelsStudioConnect() {
   };
 
   // 1-Click Multi-Channel Publisher
-  const handlePublish = async (channel) => {
+  const handlePublish = async (channel, overrideVideoUrl) => {
     if (!generatedVideo) return;
     setPublishingChannel(channel);
     setPublishStatus((prev) => ({ ...prev, [channel]: { loading: true } }));
 
     try {
       // Step 1: Ensure real master composite video with burned subtitles & audio is ready
-      let videoUrlToPublish = generatedVideo.compositeVideoUrl;
+      let videoUrlToPublish = overrideVideoUrl || masterVideoUrlRef.current || generatedVideo.compositeVideoUrl;
       if (!videoUrlToPublish) {
         videoUrlToPublish = await compositeAndBakeVideo();
       }
@@ -578,6 +610,7 @@ export default function ReelsStudioConnect() {
           videoUrl: videoUrlToPublish,
           title: generatedVideo.title || topic,
           caption: generatedVideo.caption || topic,
+          userEmail: userEmail || session?.user?.email,
         }),
       });
 
@@ -1455,7 +1488,7 @@ export default function ReelsStudioConnect() {
                     </div>
                   ) : (
                     <a
-                      href="/api/youtube/connect"
+                      href={userEmail ? `/api/youtube/connect?userEmail=${encodeURIComponent(userEmail)}` : "/api/youtube/connect"}
                       style={{
                         fontSize: 10,
                         color: "#ef4444",
