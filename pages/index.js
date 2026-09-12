@@ -7,6 +7,7 @@ import FacebookBusinessConnect from "./components/facebook/FacebookBusinessConne
 import GoogleAdsAccountConnect from "./components/google/googleadsaccountconnect";
 import GoogleBusinessConnect from "./components/google/GoogleBusinessConnect";
 import WordPressSiteConnect from "./components/wordpress/WordPressSiteConnect";
+import ShopifyStoreConnect from "./components/shopify/ShopifyStoreConnect";
 import SubscriptionModal from "./components/SubscriptionModal";
 import SocialMediaPlannerModal from "./components/social/SocialMediaPlannerModal";
 import CyberMatrixBackground from "./components/CyberMatrixBackground";
@@ -21,6 +22,7 @@ export default function HomePage() {
   const [showSubscriptionModal, setShowSubscriptionModal] = useState(false);
   const [showSocialPlanner, setShowSocialPlanner] = useState(false);
   const [hasWpConnected, setHasWpConnected] = useState(false);
+  const [hasShopifyConnected, setHasShopifyConnected] = useState(false);
   const [showWpConnectPrompt, setShowWpConnectPrompt] = useState(false);
 
   // ── Workstation Navigation States ──
@@ -44,6 +46,12 @@ export default function HomePage() {
       if (savedTab) {
         setActiveTab(savedTab);
       }
+      if (typeof window !== "undefined") {
+        const urlParams = new URLSearchParams(window.location.search);
+        if (urlParams.get("tab") === "shopify" || urlParams.get("shopify_connected") === "1") {
+          setActiveTab("shopify");
+        }
+      }
     } catch (_) {}
   }, []);
 
@@ -63,7 +71,7 @@ export default function HomePage() {
   };
 
   /* -------------------------
-     LOAD SUBSCRIPTION & WP STATUS
+     LOAD SUBSCRIPTION & WP / SHOPIFY STATUS
   ------------------------- */
   useEffect(() => {
     if (!session) return;
@@ -98,8 +106,22 @@ export default function HomePage() {
       }
     }
 
+    async function checkShopifyConnection() {
+      try {
+        const res = await fetch("/api/shopify/sync?action=get-connection");
+        if (!res.ok) return;
+        const data = await res.json();
+        if (data.ok) {
+          setHasShopifyConnected(Boolean(data.connected));
+        }
+      } catch (e) {
+        console.warn("Failed to check shopify connection:", e);
+      }
+    }
+
     fetchSubscriptionStatus();
     checkWpConnections();
+    checkShopifyConnection();
   }, [session]);
 
   /* -------------------------
@@ -291,6 +313,7 @@ export default function HomePage() {
   const NAV_ITEMS = [
     { id: "overview", label: "Command Center", icon: "🚀", badge: "Live" },
     { id: "wordpress", label: "WordPress & SEO", icon: "🌐", badge: hasWpConnected ? "Paired" : null },
+    { id: "shopify", label: "Shopify Store & SEO", icon: "🛍️", badge: hasShopifyConnected ? "Paired" : "Ecommerce" },
     { id: "social", label: "Social Autopilot", icon: "📱", badge: "FB + IG" },
     { id: "gmb", label: "Local Maps (GMB)", icon: "📍", badge: "Maps" },
     { id: "ads", label: "Performance Ads", icon: "🎯", badge: "PPC" },
@@ -1038,6 +1061,13 @@ export default function HomePage() {
                           🌐 WordPress & SEO ➔
                         </button>
                         <button
+                          onClick={() => handleSelectTab("shopify")}
+                          className="btn-gabbar-secondary"
+                          style={{ padding: "11px 20px", fontSize: 13, flex: "1 1 auto" }}
+                        >
+                          🛍️ Shopify Store ➔
+                        </button>
+                        <button
                           onClick={() => handleSelectTab("social")}
                           className="btn-gabbar-secondary"
                           style={{ padding: "11px 20px", fontSize: 13, flex: "1 1 auto" }}
@@ -1363,6 +1393,13 @@ export default function HomePage() {
                       🚀 Open Full SEO Suite ↗
                     </a>
                   </div>
+                </div>
+              )}
+
+              {/* TAB 2B: SHOPIFY STORE & SEO WORKSTATION */}
+              {activeTab === "shopify" && (
+                <div>
+                  <ShopifyStoreConnect onConnectionChange={(connected) => setHasShopifyConnected(connected)} />
                 </div>
               )}
 
@@ -1697,6 +1734,22 @@ export default function HomePage() {
                   🌐 WordPress Website & SEO Engine
                 </h2>
                 <WordPressSiteConnect onConnectionChange={(connected) => setHasWpConnected(connected)} />
+              </section>
+
+              {/* 1B. Shopify Store & SEO Engine */}
+              <section
+                id="shopify-engine"
+                style={{
+                  padding: "clamp(16px, 3.5vw, 26px)",
+                  borderRadius: 18,
+                  background: "rgba(14, 19, 30, 0.78)",
+                  border: "1px solid rgba(255, 255, 255, 0.12)",
+                }}
+              >
+                <h2 style={{ margin: "0 0 14px 0", fontSize: 18, fontWeight: 700, color: "#ffffff" }}>
+                  🛍️ Shopify Store &amp; SEO Suite
+                </h2>
+                <ShopifyStoreConnect onConnectionChange={(connected) => setHasShopifyConnected(connected)} />
               </section>
 
               {/* 2. Google Ads */}
