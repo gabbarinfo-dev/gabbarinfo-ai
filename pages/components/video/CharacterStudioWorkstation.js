@@ -537,20 +537,27 @@ export default function CharacterStudioWorkstation() {
         }
       }
 
-      // EPHEMERAL PURGE TRIGGER: Self-destruct temporary storage file
+      // EPHEMERAL PURGE TRIGGER: Self-destruct temporary storage file + client-uploaded videos
       setPublishStep("Executing ephemeral auto-purge (0 MB net storage)...");
+      const additionalPaths = (generatedStory.scenes || [])
+        .map((s) => s.videoUrl)
+        .filter(Boolean);
+
       await fetch("/api/video/cleanup-storage", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           videoUrl,
           filePath: masterFilePathRef.current,
+          clientMedia,
+          additionalPaths,
           userEmail,
         }),
       });
 
+      setClientMedia([]);
       setStoragePurged(true);
-      setToastMsg("🚀 All channels published live & staging file auto-purged (0 MB storage footprint)!");
+      setToastMsg("🚀 Published live to all selected channels! Client uploaded videos & staging files auto-destructed (0 MB storage).");
       setTimeout(() => setToastMsg(""), 8000);
     } catch (err) {
       console.error("[PublishAll] Error:", err);

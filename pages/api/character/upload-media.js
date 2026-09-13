@@ -64,6 +64,7 @@ export default async function handler(req, res) {
       url: publicData.publicUrl,
       type: isVideo ? "video" : "image",
       name: filename,
+      filePath,
     });
   } catch (err) {
     console.error("[UploadMedia] Error:", err);

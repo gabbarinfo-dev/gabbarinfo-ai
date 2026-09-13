@@ -20,35 +20,58 @@ export default async function handler(req, res) {
     return res.status(401).json({ ok: false, error: "Unauthorized" });
   }
 
-  const { videoUrl, filePath } = req.body;
+  const { videoUrl, filePath, clientMedia = [], additionalPaths = [] } = req.body;
 
   try {
-    let pathToRemove = filePath;
+    const pathsToRemove = new Set();
 
-    if (!pathToRemove && videoUrl) {
-      // Extract relative path from Supabase storage public URL
-      const match = videoUrl.match(/instagram-creatives\/(.+)$/);
-      if (match) {
-        pathToRemove = decodeURIComponent(match[1]);
+    const extractPath = (val) => {
+      if (!val || typeof val !== "string") return;
+      if (val.startsWith("http://") || val.startsWith("https://")) {
+        const match = val.match(/instagram-creatives\/(.+)$/);
+        if (match) pathsToRemove.add(decodeURIComponent(match[1]));
+      } else {
+        pathsToRemove.add(val.replace(/^\/+/, ""));
       }
+    };
+
+    extractPath(filePath);
+    extractPath(videoUrl);
+
+    // Purge any raw client-uploaded videos & photos
+    if (Array.isArray(clientMedia)) {
+      clientMedia.forEach((m) => {
+        if (typeof m === "string") extractPath(m);
+        else if (m && typeof m === "object") {
+          extractPath(m.filePath);
+          extractPath(m.url);
+        }
+      });
     }
 
-    if (!pathToRemove) {
-      return res.status(400).json({ ok: false, error: "No storage path resolved for deletion." });
+    // Purge any temporary scene frames or voiceover audio
+    if (Array.isArray(additionalPaths)) {
+      additionalPaths.forEach((p) => extractPath(p));
     }
 
-    console.log(`[StorageCleanup] Purging temporary video stream: ${pathToRemove}`);
+    const pathList = Array.from(pathsToRemove).filter(Boolean);
+
+    if (pathList.length === 0) {
+      return res.status(200).json({ ok: true, message: "No storage paths required deletion." });
+    }
+
+    console.log(`[StorageCleanup] Purging ${pathList.length} temporary storage items (client videos & master streams):`, pathList);
     const { data, error } = await supabase.storage
       .from("instagram-creatives")
-      .remove([pathToRemove]);
+      .remove(pathList);
 
     if (error) {
       console.warn("[StorageCleanup] Warning during storage remove:", error.message);
       return res.status(200).json({ ok: false, warning: error.message });
     }
 
-    console.log(`[StorageCleanup] Successfully purged ${pathToRemove}. Net residual storage: 0 MB.`);
-    return res.status(200).json({ ok: true, purged: pathToRemove, data });
+    console.log(`[StorageCleanup] Successfully purged ${pathList.length} files. Net residual storage: 0 MB.`);
+    return res.status(200).json({ ok: true, purgedCount: pathList.length, purged: pathList, data });
   } catch (err) {
     console.error("[StorageCleanup] Error:", err);
     return res.status(500).json({ ok: false, error: err.message });

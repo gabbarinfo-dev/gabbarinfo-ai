@@ -661,6 +661,18 @@ export default function ReelsStudioConnect() {
             videoId: data.videoId,
           },
         }));
+
+        // Ephemeral auto-purge: self-destruct master video from staging after publishing
+        try {
+          await fetch("/api/video/cleanup-storage", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              videoUrl: videoUrlToPublish,
+              userEmail: userEmail || session?.user?.email,
+            }),
+          });
+        } catch (_) {}
       } else {
         setPublishStatus((prev) => ({
           ...prev,
