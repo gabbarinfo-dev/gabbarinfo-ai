@@ -24,6 +24,7 @@ export default function CharacterStudioWorkstation() {
 
   // Story & Episode Generator State
   const [creationMode, setCreationMode] = useState("ai_prompt"); // "ai_prompt" | "custom_script" | "business_media"
+  const [animationStyle, setAnimationStyle] = useState("cinematic_scenes"); // "cinematic_scenes" | "live_talking_head"
   const [narrativeType, setNarrativeType] = useState("standalone"); // "standalone" | "episodic"
   const [customScript, setCustomScript] = useState("");
   const [vocalEmotion, setVocalEmotion] = useState("poetic_shayar"); // "poetic_shayar" | "dramatic_story" | "warm_storybook" | "commercial_pitch"
@@ -224,7 +225,9 @@ export default function CharacterStudioWorkstation() {
 
     try {
       setStoryStep(
-        creationMode === "custom_script"
+        animationStyle === "live_talking_head"
+          ? "Synthesizing voiceover & computing GPU facial lip-sync with SadTalker..."
+          : creationMode === "custom_script"
           ? "Synthesizing exact poetry dialogue & emotional voice delivery..."
           : creationMode === "business_media"
           ? "Analyzing factory media & structuring marketing commercial..."
@@ -240,6 +243,7 @@ export default function CharacterStudioWorkstation() {
           format: videoFormat,
           narrativeType,
           scriptMode: creationMode,
+          animationStyle,
           customScript,
           vocalEmotion,
           storyPrompt,
@@ -254,8 +258,16 @@ export default function CharacterStudioWorkstation() {
       if (!data.ok) throw new Error(data.error || "Failed to generate story episode");
 
       setGeneratedStory(data);
-      setToastMsg("🎬 Video ready! Preview & syndicate across platforms.");
-      setTimeout(() => setToastMsg(""), 5000);
+      if (data.warning) {
+        setToastMsg(`⚠️ ${data.warning}`);
+        setTimeout(() => setToastMsg(""), 9000);
+      } else if (data.isTalkingAvatarVideo) {
+        setToastMsg("🗣️ True AI Talking Avatar synthesized with active lip-sync & facial motion!");
+        setTimeout(() => setToastMsg(""), 6000);
+      } else {
+        setToastMsg("🎬 Video ready! Preview & syndicate across platforms.");
+        setTimeout(() => setToastMsg(""), 5000);
+      }
     } catch (err) {
       setErrorMsg(err.message);
     } finally {
@@ -890,6 +902,53 @@ export default function CharacterStudioWorkstation() {
                     </div>
                     <div style={{ fontSize: 10, color: "#94a3b8", marginTop: 2 }}>
                       Continuous serialized episodes with chapter lore.
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              {/* Animation Engine Style: Multi-Scene vs Live Talking Head */}
+              <div style={{ marginBottom: 16 }}>
+                <label style={{ display: "block", fontSize: 11.5, fontWeight: 800, color: "#cbd5e1", marginBottom: 6 }}>
+                  ⚡ Video Animation Engine:
+                </label>
+                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
+                  <div
+                    onClick={() => setAnimationStyle("cinematic_scenes")}
+                    style={{
+                      padding: "10px 12px",
+                      borderRadius: 10,
+                      background: animationStyle === "cinematic_scenes" ? "rgba(56, 189, 248, 0.2)" : "rgba(255, 255, 255, 0.03)",
+                      border: animationStyle === "cinematic_scenes" ? "2px solid #38bdf8" : "1px solid rgba(255, 255, 255, 0.08)",
+                      cursor: "pointer",
+                      transition: "all 0.15s ease",
+                    }}
+                  >
+                    <div style={{ display: "flex", alignItems: "center", gap: 6, fontWeight: 800, fontSize: 12, color: animationStyle === "cinematic_scenes" ? "#38bdf8" : "#cbd5e1" }}>
+                      <span>🎬 Multi-Scene Cinematic</span>
+                    </div>
+                    <div style={{ fontSize: 10, color: "#94a3b8", marginTop: 3, lineHeight: 1.4 }}>
+                      Multiple AI scene images with 2.5D camera zoom, pan &amp; lighting cuts.
+                    </div>
+                  </div>
+
+                  <div
+                    onClick={() => setAnimationStyle("live_talking_head")}
+                    style={{
+                      padding: "10px 12px",
+                      borderRadius: 10,
+                      background: animationStyle === "live_talking_head" ? "rgba(236, 72, 153, 0.2)" : "rgba(255, 255, 255, 0.03)",
+                      border: animationStyle === "live_talking_head" ? "2px solid #ec4899" : "1px solid rgba(255, 255, 255, 0.08)",
+                      cursor: "pointer",
+                      transition: "all 0.15s ease",
+                    }}
+                  >
+                    <div style={{ display: "flex", alignItems: "center", gap: 6, fontWeight: 800, fontSize: 12, color: animationStyle === "live_talking_head" ? "#f472b6" : "#cbd5e1" }}>
+                      <span>🗣️ Live Talking Lip-Sync</span>
+                      <span style={{ fontSize: 9, fontWeight: 900, padding: "1px 5px", borderRadius: 4, background: "#ec4899", color: "#fff" }}>GPU</span>
+                    </div>
+                    <div style={{ fontSize: 10, color: "#94a3b8", marginTop: 3, lineHeight: 1.4 }}>
+                      Physical mouth, lip, eye &amp; head motion synced to speech (SadTalker).
                     </div>
                   </div>
                 </div>

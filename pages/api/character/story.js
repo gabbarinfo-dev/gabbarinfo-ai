@@ -3,6 +3,7 @@ import { getServerSession } from "next-auth/next";
 import { authOptions } from "../auth/[...nextauth]";
 import { createClient } from "@supabase/supabase-js";
 import OpenAI from "openai";
+import { generateTalkingAvatar } from "../../lib/video/replicate-service";
 
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL,
@@ -27,6 +28,7 @@ export default async function handler(req, res) {
     format = "reel_9_16", // "reel_9_16" | "youtube_16_9"
     narrativeType = "standalone", // "standalone" (complete self-contained story/punchline) | "episodic" (Ep 1, 2...)
     scriptMode = "ai_prompt", // "ai_prompt" | "custom_script" | "business_media"
+    animationStyle = "cinematic_scenes", // "cinematic_scenes" | "live_talking_head"
     customScript = "",
     vocalEmotion = "poetic_shayar", // "poetic_shayar" | "dramatic_story" | "warm_storybook" | "commercial_pitch"
     storyPrompt = "A journey of wonder and wisdom",
@@ -209,14 +211,72 @@ Return ONLY valid JSON matching this exact structure:
     const voiceBuffer = Buffer.from(await voiceRes.arrayBuffer());
     const voiceoverBase64 = `data:audio/mp3;base64,${voiceBuffer.toString("base64")}`;
 
-    // 4. Build Timed Scenes (Client Media or gpt-image-2 Scene Generation)
+    // 3b. Upload Voiceover to Public Supabase Storage (Required for GPU Lip-Sync)
+    let publicAudioUrl = null;
+    try {
+      const audioFileName = `speech_${Date.now()}_${Math.random().toString(36).slice(2, 6)}.mp3`;
+      const audioFilePath = `audio/${audioFileName}`;
+      const { error: upAudioErr } = await supabase.storage
+        .from("instagram-creatives")
+        .upload(audioFilePath, voiceBuffer, { contentType: "audio/mpeg", upsert: true });
+
+      if (!upAudioErr) {
+        const { data: pubAudioData } = supabase.storage
+          .from("instagram-creatives")
+          .getPublicUrl(audioFilePath);
+        publicAudioUrl = pubAudioData?.publicUrl || null;
+      }
+    } catch (e) {
+      console.warn("[CharacterStory] Audio storage upload warning:", e.message);
+    }
+
+    // 3c. Optional: Live Talking Avatar via Replicate SadTalker
+    let liveTalkingVideoUrl = null;
+    let talkingAvatarNotice = null;
+
+    if (animationStyle === "live_talking_head" && publicAudioUrl && character.referenceSheetUrl) {
+      console.log(`[CharacterStory] Triggering SadTalker lip-sync on Replicate for "${character.name}"...`);
+      try {
+        liveTalkingVideoUrl = await generateTalkingAvatar({
+          imageUrl: character.referenceSheetUrl,
+          audioUrl: publicAudioUrl,
+        });
+        console.log("[CharacterStory] SadTalker lip-sync completed:", liveTalkingVideoUrl);
+      } catch (lipErr) {
+        console.warn("[CharacterStory] Lip-sync generation notice:", lipErr.message);
+        if (lipErr.message.includes("REPLICATE_BILLING_REQUIRED")) {
+          talkingAvatarNotice = "Replicate billing setup required: Please activate billing at replicate.com/account/billing. Video generated with multi-scene visuals.";
+        } else {
+          talkingAvatarNotice = `Lip-sync notice: ${lipErr.message}. Generated with multi-scene visuals.`;
+        }
+      }
+    }
+
+    // 4. Build Timed Scenes (Client Media, Talking Video, or gpt-image-2 Scene Generation)
     const sceneDuration = targetDuration / storyResult.scenes.length;
     const imageModel = process.env.OPENAI_IMAGE_MODEL || "gpt-image-2";
 
-    console.log(`[CharacterStory] Building ${storyResult.scenes.length} scenes (mode: ${scriptMode})...`);
+    console.log(`[CharacterStory] Building ${storyResult.scenes.length} scenes (mode: ${scriptMode}, anim: ${animationStyle})...`);
 
     const finalScenes = await Promise.all(
       storyResult.scenes.map(async (s, idx) => {
+        // If Live Talking Avatar was successfully generated, use the speaking video file
+        if (liveTalkingVideoUrl) {
+          return {
+            sceneIndex: idx,
+            chapter: s.chapter || `Part ${idx + 1}`,
+            text: s.narration,
+            visualDescription: s.visualDescription,
+            startSec: Math.round(idx * sceneDuration * 10) / 10,
+            endSec: Math.round((idx + 1) * sceneDuration * 10) / 10,
+            videoUrl: liveTalkingVideoUrl,
+            previewImage: character.referenceSheetUrl,
+            isClientVideo: true,
+            isTalkingAvatarVideo: true,
+            characterName: character.name,
+          };
+        }
+
         let sceneVisualUrl = character.referenceSheetUrl;
         let isClientVideo = false;
 
@@ -298,6 +358,9 @@ Return ONLY valid JSON matching this exact structure:
       format,
       narrativeType,
       scriptMode,
+      animationStyle,
+      isTalkingAvatarVideo: !!liveTalkingVideoUrl,
+      warning: talkingAvatarNotice,
       vocalEmotion,
       aspectRatio: isLongForm ? "16:9" : "9:16",
       title: storyResult.title || episodeTitle,
