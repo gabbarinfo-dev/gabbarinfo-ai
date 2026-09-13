@@ -143,11 +143,57 @@ export default async function handler(req, res) {
         }
 
         if (serviceRoster.length <= 1) {
-          const defaults = ["Google Ads Management", "Meta Social Ads", "Social Media Marketing", "Content Writing & Creation", "Website Design & Development", "SEO Optimization"];
-          for (const d of defaults) {
-            if (!seenServices.has(d.toLowerCase())) {
-              seenServices.add(d.toLowerCase());
-              serviceRoster.push(d);
+          // Universal Multi-Tenant Service Expansion: Dynamically synthesize distinct service offerings
+          // tailored specifically to THIS user's actual business, industry, and niche (e.g. laundry, real estate, legal, medical, etc.)
+          try {
+            if (process.env.OPENAI_API_KEY) {
+              const OpenAI = (await import("openai")).default;
+              const expAi = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
+              const expRes = await expAi.chat.completions.create({
+                model: "gpt-4o-mini",
+                messages: [
+                  {
+                    role: "system",
+                    content: "You are an enterprise business analyst. Return ONLY a valid JSON array of 5 to 6 distinct commercial service, product, or solution offerings that this specific business provides to its paying clients. No markdown, no code blocks, no preamble, just a pure JSON array of strings: [\"Service 1\", \"Service 2\", ...]."
+                  },
+                  {
+                    role: "user",
+                    content: `Business Name: "${config.businessName || 'Enterprise'}"\nIndustry / Category: "${clientIndustry || 'Commercial Services'}"\nExisting services: "${serviceRoster.join(', ') || 'None'}"\nSynthesize 5 to 6 distinct core offerings for this business.`
+                  }
+                ],
+                temperature: 0.3,
+                max_tokens: 150
+              });
+              const rawExp = expRes.choices?.[0]?.message?.content?.trim() || "";
+              const parsedExp = JSON.parse(rawExp.replace(/^```json|^```|```$/g, "").trim());
+              if (Array.isArray(parsedExp) && parsedExp.length > 0) {
+                for (const item of parsedExp) {
+                  const clean = String(item).trim();
+                  if (clean.length > 2 && !seenServices.has(clean.toLowerCase())) {
+                    seenServices.add(clean.toLowerCase());
+                    serviceRoster.push(clean);
+                  }
+                }
+              }
+            }
+          } catch (expErr) {
+            console.warn("[Autopilot Cron] Dynamic service expansion failed, using business-aligned fallback:", expErr.message);
+          }
+
+          // Fallback if AI offline: Universal business-aligned operational pillars (NEVER hardcoded marketing agency services)
+          if (serviceRoster.length <= 1) {
+            const genericPillars = [
+              `${config.businessName || 'Core'} Primary Offerings`,
+              `${clientIndustry || 'Professional'} Client Solutions`,
+              "Specialized Services & Packages",
+              "Consultation & Implementation",
+              "Client Support & Service Delivery"
+            ];
+            for (const gp of genericPillars) {
+              if (!seenServices.has(gp.toLowerCase())) {
+                seenServices.add(gp.toLowerCase());
+                serviceRoster.push(gp);
+              }
             }
           }
         }

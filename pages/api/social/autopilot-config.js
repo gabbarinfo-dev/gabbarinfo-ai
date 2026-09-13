@@ -118,7 +118,7 @@ const CONTENT_PILLARS = [
 ];
 
 function buildFallbackQueue(services = [], businessName = "Our Business", count = 30) {
-  const cleanServices = services.length > 0 ? services : ["Digital Growth", "Online Visibility", "Client Acquisition", "Brand Authority"];
+  const cleanServices = services.length > 0 ? services : ["Core Services", "Client Solutions", "Premium Offerings", "Customer Care"];
   const queue = [];
 
   const baseTemplates = [
@@ -182,23 +182,45 @@ export default async function handler(req, res) {
       // Check Instagram connection (ig_business_id or instagram_actor_id present)
       const hasInstagram = Boolean(meta?.ig_business_id || meta?.instagram_actor_id);
 
-      // 2. Fetch Autopilot Config from agent_memory
-      const { data: mem } = await supabase
-        .from("agent_memory")
-        .select("content")
-        .eq("email", normalizedEmail)
-        .eq("memory_type", autoMemoryKey)
-        .maybeSingle();
+      // 2. Fetch Autopilot Config and Client Profile Memory from agent_memory
+      const [{ data: mem }, { data: clientMem }] = await Promise.all([
+        supabase
+          .from("agent_memory")
+          .select("content")
+          .eq("email", normalizedEmail)
+          .eq("memory_type", autoMemoryKey)
+          .maybeSingle(),
+        supabase
+          .from("agent_memory")
+          .select("content")
+          .eq("email", normalizedEmail)
+          .eq("memory_type", "client")
+          .maybeSingle(),
+      ]);
+
+      let parsedClient = null;
+      let bAnswers = {};
+      if (clientMem?.content) {
+        try {
+          parsedClient = typeof clientMem.content === "string" ? JSON.parse(clientMem.content) : clientMem.content;
+          const bKeys = Object.keys(parsedClient?.business_answers || {});
+          bAnswers = (bKeys.length > 0 && parsedClient.business_answers[bKeys[0]]) || parsedClient?.business_answers?.["default_business"] || parsedClient || {};
+        } catch (_) {}
+      }
+
+      const clientServicesList = (bAnswers.services || bAnswers.service || bAnswers.products || "")
+        ? String(bAnswers.services || bAnswers.service || bAnswers.products).split(/[,;\n|]/).map(s => s.trim()).filter(Boolean)
+        : [];
 
       let config = {
         enabled: false,
         destination: hasFacebook && !hasInstagram ? "FACEBOOK_ONLY" : "BOTH", // sensible default based on connection
         cadence: "daily", // "daily" | "weekly_4" | "alternate" | "weekly"
-        businessName: meta?.business_name || "GabbarInfo",
-        industry: meta?.business_category || "Digital Marketing & Business Growth",
-        services: ["SEO Optimization", "Google Ads Management", "Meta Social Ads", "Website Design"],
-        brandVoice: "Bold, authoritative, and consultative",
-        targetAudience: "Business owners, entrepreneurs, and eCommerce brands",
+        businessName: bAnswers.business_name || meta?.business_name || "My Business",
+        industry: bAnswers.industry || bAnswers.business_type || meta?.business_category || "Professional Services & Solutions",
+        services: clientServicesList.length > 0 ? clientServicesList : ["Core Offerings", "Client Solutions", "Customer Support"],
+        brandVoice: bAnswers.brand_voice || "Bold, authoritative, and consultative",
+        targetAudience: bAnswers.target_market || "Clients, customers, and industry partners",
         queue: [],
         publishedCount: 0,
         testPostsUsed: 0,
@@ -590,46 +612,67 @@ Respond ONLY in JSON: { "hook": "short catchy hook (4-7 words)", "topic": "speci
           }
         }
 
-        // Check Meta Connection
-        const { data: meta } = await supabase
-          .from("meta_connections")
-          .select("*")
-          .ilike("email", normalizedEmail)
-          .order("updated_at", { ascending: false })
-          .limit(1)
-          .maybeSingle();
+        // Check Meta Connection & Client Memory
+        const [{ data: meta }, { data: clientMem }] = await Promise.all([
+          supabase
+            .from("meta_connections")
+            .select("*")
+            .ilike("email", normalizedEmail)
+            .order("updated_at", { ascending: false })
+            .limit(1)
+            .maybeSingle(),
+          supabase
+            .from("agent_memory")
+            .select("content")
+            .eq("email", normalizedEmail)
+            .eq("memory_type", "client")
+            .maybeSingle(),
+        ]);
+
+        let bAnswers = {};
+        if (clientMem?.content) {
+          try {
+            const parsedClient = typeof clientMem.content === "string" ? JSON.parse(clientMem.content) : clientMem.content;
+            const bKeys = Object.keys(parsedClient?.business_answers || {});
+            bAnswers = (bKeys.length > 0 && parsedClient.business_answers[bKeys[0]]) || parsedClient?.business_answers?.["default_business"] || parsedClient || {};
+          } catch (_) {}
+        }
 
         const hasFacebook = Boolean(meta?.fb_page_id || meta?.fb_business_id || process.env.FB_PAGE_ID);
         const hasInstagram = Boolean(meta?.ig_business_id || meta?.instagram_actor_id);
 
+        const businessName = current.businessName || bAnswers.business_name || meta?.business_name || "My Business";
+        const businessCategory = current.industry || bAnswers.industry || bAnswers.business_type || meta?.business_category || "Commercial Solutions";
+        const clientWebsite = meta?.business_website || bAnswers.website || "";
+        const clientPhone = meta?.business_phone || bAnswers.phone || "";
+
         // Ensure queue exists
         let queue = Array.isArray(current.queue) && current.queue.length > 0
           ? current.queue
-          : buildFallbackQueue(current.services || ["Business Growth"], current.businessName || meta?.business_name || "GabbarInfo", 30);
+          : buildFallbackQueue(current.services || ["Core Services"], businessName, 30);
 
         // Pick next pending item or first item
         let nextIndex = queue.findIndex(q => q.status === "pending");
         if (nextIndex === -1) nextIndex = 0;
         const targetItem = { ...queue[nextIndex] };
 
-        const businessName = current.businessName || meta?.business_name || "GabbarInfo";
-        const service = targetItem.service || (current.services && current.services[0]) || "Business Growth";
-        const topic = targetItem.topic || "Practical tips for business growth";
-        const hook = targetItem.hook || "Growth Insights";
+        const service = targetItem.service || (current.services && current.services[0]) || "Core Services";
+        const topic = targetItem.topic || `Practical insights for ${service}`;
+        const hook = targetItem.hook || `Excellence in ${service}`;
 
         // Build Agent State for Agency-Grade Creative Generation (Matches Dropdown Facebook/Instagram Quality)
         const agentState = {
           businessName,
-          businessCategory: current.industry || meta?.business_category || "Digital Marketing & Business Growth",
+          businessCategory,
           context: {
             service,
             serviceLocked: true,
             offer: targetItem.hook || "Special Offer",
           },
           assets: {
-            contactMethod: "dm",
-            websiteUrl: meta?.business_website || "gabbarinfo.com",
-            phone: meta?.business_phone || "+91 97239 27645",
+            contactMethod: clientWebsite ? "website" : (clientPhone ? "phone" : "dm"),
+            websiteUrl: clientWebsite,
+            phone: clientPhone,
           },
         };
 

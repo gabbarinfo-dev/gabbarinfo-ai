@@ -237,14 +237,9 @@ CRITICAL LENGTH & DEPTH MANDATES:
    - <h2>10. Strategic Conclusion and Actionable Roadmap for 2026</h2> (At least 140 words summary with a clear commercial call to action for ${effectiveBusiness})
 
 3. MANDATORY INTERNAL & EXTERNAL HYPERLINKING:
-   - Internal Links: Embed at least 4 working HTML anchor tags (<a href="URL" style="color: #f59e0b; font-weight: 700; text-decoration: underline;">anchor text</a>) naturally within body copy using:
-     - https://www.gabbarinfo.com/seo-content-writing/ (SEO & Content Writing Services)
-     - https://www.gabbarinfo.com/digitalmarketing/ (High-ROI Digital Marketing)
-     - https://www.gabbarinfo.com/website-design/ (Website Design & Development)
-     - https://www.gabbarinfo.com/packages/ (Tailored SEO & Growth Packages)
-   - External Authority: Embed at least 2 external links to trusted industry authorities:
-     - <a href="https://developers.google.com/search/docs" target="_blank" rel="noopener" style="color: #f59e0b; font-weight: 700; text-decoration: underline;">Industry Technical Documentation</a>
-     - <a href="https://www.statista.com" target="_blank" rel="noopener" style="color: #f59e0b; font-weight: 700; text-decoration: underline;">Statista Industry Benchmarks</a>
+   - Internal Links: Embed working HTML anchor tags (<a href="URL" style="color: #f59e0b; font-weight: 700; text-decoration: underline;">anchor text</a>) naturally within body copy using the client's own website links:
+${(existingContent || []).slice(0, 4).map(i => `     - ${i.url} (${i.title})`).join('\n') || `     - ${siteUrl || '#'} (${effectiveBusiness} Services & Solutions)\n     - ${(siteUrl || '').replace(/\/+$/, '') + '/contact/'} (Contact ${effectiveBusiness})`}
+   - External Authority: Embed at least 2 external links to trusted, authoritative industry resources, research benchmarks, or professional standards directly relevant to "${topic}".
 
 4. TARGET KEYWORD VISIBILITY:
    - Feature and bold (<strong>keyword</strong>) the primary target keyword in the very first paragraph.
@@ -465,48 +460,56 @@ MANDATORY MINIMUM WORD COUNT: Strictly 1600+ Words across all 10 detailed sectio
       }
     }
 
-    // Contextual Internal Linking Guarantee
+    // Contextual Internal Linking Guarantee (Uses ONLY the client's actual connected website pages)
     const hasLiveInternalLinks = (existingContent || []).some((item) => finalContent.includes(item.url));
     if (!hasLiveInternalLinks && existingContent.length > 0) {
-      console.log("[SEO Engine] Contextual internal link check: injecting live links...");
-      const linkTargets = [
-        { find: /SEO Optimization &amp; Digital Marketing|digital marketing/i, url: "https://www.gabbarinfo.com/digitalmarketing/", text: "high-ROI digital marketing services" },
-        { find: /content creation|content strategy|content writing/i, url: "https://www.gabbarinfo.com/seo-content-writing/", text: "SEO content writing services" },
-        { find: /Core Web Vitals|web development/i, url: "https://www.gabbarinfo.com/website-design/", text: "website design & development" },
-        { find: /graphic design|visual assets/i, url: "https://www.gabbarinfo.com/graphic-designing/", text: "graphic designing and brand assets" },
-        { find: /conversion rate optimization|growth packages/i, url: "https://www.gabbarinfo.com/packages/", text: "tailored SEO & growth packages" },
-        { find: /SEO tools|digital solutions/i, url: "https://www.gabbarinfo.com/services/", text: "comprehensive digital solutions" },
-      ];
-
-      for (const target of linkTargets) {
-        if (!finalContent.includes(target.url) && target.find.test(finalContent)) {
-          finalContent = finalContent.replace(target.find, `<a href="${target.url}" style="color: #f59e0b; font-weight: 700; text-decoration: underline;">${target.text}</a>`);
+      console.log("[SEO Engine] Contextual internal link check: injecting client website links...");
+      for (const item of existingContent.slice(0, 5)) {
+        if (item.url && item.title && !finalContent.includes(item.url)) {
+          const words = item.title.split(/\s+/).filter(w => w.length > 3).slice(0, 3).join(" ");
+          if (words) {
+            const regex = new RegExp(`\\b(${words})\\b`, "i");
+            if (regex.test(finalContent)) {
+              finalContent = finalContent.replace(regex, `<a href="${item.url}" style="color: #f59e0b; font-weight: 700; text-decoration: underline;">$1</a>`);
+            }
+          }
         }
       }
     }
 
-    // Dedicated Strategic Resources Hub (Dark Theme with Amber Accents)
-    if (!finalContent.includes("gabbarinfo-internal-resources-hub")) {
-      const hubHtml = `\n<div class="gabbarinfo-internal-resources-hub" style="margin: 40px 0; padding: 24px 28px; background: #0f172a; border-radius: 12px; border-left: 5px solid #f59e0b; border: 1px solid rgba(255, 255, 255, 0.1); color: #f8fafc;">
-  <h3 style="color: #f59e0b; margin-top: 0; font-size: 20px; font-weight: 700;">🚀 Recommended Strategic Growth Resources</h3>
-  <p style="color: #cbd5e1; font-size: 15px; margin-bottom: 16px;">Explore our specialized frameworks, execution packages, and client case studies:</p>
+    // Dedicated Strategic Resources Hub (Tailored specifically to the active client business)
+    if (!finalContent.includes("client-internal-resources-hub")) {
+      const baseUrl = (siteUrl || "").replace(/\/+$/, "");
+      const clientLinks = (existingContent || []).slice(0, 4).map(item => {
+        return `<li style="background: rgba(255,255,255,0.05); border: 1px solid rgba(255,255,255,0.08); padding: 12px 16px; border-radius: 8px;"><a href="${item.url}" style="color: #fbbf24; font-weight: 600; text-decoration: none;">📌 ${item.title}</a></li>`;
+      });
+
+      if (clientLinks.length === 0 && baseUrl) {
+        clientLinks.push(
+          `<li style="background: rgba(255,255,255,0.05); border: 1px solid rgba(255,255,255,0.08); padding: 12px 16px; border-radius: 8px;"><a href="${baseUrl}" style="color: #fbbf24; font-weight: 600; text-decoration: none;">💼 ${effectiveBusiness} Services & Solutions</a></li>`,
+          `<li style="background: rgba(255,255,255,0.05); border: 1px solid rgba(255,255,255,0.08); padding: 12px 16px; border-radius: 8px;"><a href="${baseUrl}/contact" style="color: #fbbf24; font-weight: 600; text-decoration: none;">📞 Contact & Client Support</a></li>`
+        );
+      }
+
+      if (clientLinks.length > 0) {
+        const hubHtml = `\n<div class="client-internal-resources-hub" style="margin: 40px 0; padding: 24px 28px; background: #0f172a; border-radius: 12px; border-left: 5px solid #f59e0b; border: 1px solid rgba(255, 255, 255, 0.1); color: #f8fafc;">
+  <h3 style="color: #f59e0b; margin-top: 0; font-size: 20px; font-weight: 700;">🚀 Recommended ${effectiveBusiness} Resources & Services</h3>
+  <p style="color: #cbd5e1; font-size: 15px; margin-bottom: 16px;">Explore our specialized offerings, expert insights, and client solutions:</p>
   <ul style="list-style-type: none; padding: 0; margin: 0; display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 12px;">
-    <li style="background: rgba(255,255,255,0.05); border: 1px solid rgba(255,255,255,0.08); padding: 12px 16px; border-radius: 8px;"><a href="https://www.gabbarinfo.com/seo-content-writing/" style="color: #fbbf24; font-weight: 600; text-decoration: none;">📌 SEO & Content Writing Services</a></li>
-    <li style="background: rgba(255,255,255,0.05); border: 1px solid rgba(255,255,255,0.08); padding: 12px 16px; border-radius: 8px;"><a href="https://www.gabbarinfo.com/digitalmarketing/" style="color: #fbbf24; font-weight: 600; text-decoration: none;">📈 High-ROI Digital Marketing</a></li>
-    <li style="background: rgba(255,255,255,0.05); border: 1px solid rgba(255,255,255,0.08); padding: 12px 16px; border-radius: 8px;"><a href="https://www.gabbarinfo.com/website-design/" style="color: #fbbf24; font-weight: 600; text-decoration: none;">💻 Website Design & Development</a></li>
-    <li style="background: rgba(255,255,255,0.05); border: 1px solid rgba(255,255,255,0.08); padding: 12px 16px; border-radius: 8px;"><a href="https://www.gabbarinfo.com/packages/" style="color: #fbbf24; font-weight: 600; text-decoration: none;">📦 Tailored SEO & Growth Packages</a></li>
+    ${clientLinks.join("\n    ")}
   </ul>
 </div>\n`;
-      if (finalContent.includes("FAQ") || finalContent.includes("Frequently Asked Questions")) {
-        finalContent = finalContent.replace(/(<h2[^>]*>(?:FAQ|Frequently Asked Questions)[\s\S]*?<\/h2>)/i, `${hubHtml}\n$1`);
-      } else {
-        finalContent += hubHtml;
+        if (finalContent.includes("FAQ") || finalContent.includes("Frequently Asked Questions")) {
+          finalContent = finalContent.replace(/(<h2[^>]*>(?:FAQ|Frequently Asked Questions)[\s\S]*?<\/h2>)/i, `${hubHtml}\n$1`);
+        } else {
+          finalContent += hubHtml;
+        }
       }
     }
 
-    // External Authority Citations Guarantee
-    if (!finalContent.includes("developers.google.com") && !finalContent.includes("statista.com")) {
-      const authorityCitationHtml = `\n<div class="gabbarinfo-authority-citations" style="margin: 32px 0; padding: 20px 24px; background: rgba(255, 255, 255, 0.04); border: 1px solid rgba(255, 255, 255, 0.1); border-left: 4px solid #f59e0b; border-radius: 8px; font-size: 14px; color: #cbd5e1; line-height: 1.6;"><strong>Official Search Authority & Industry Benchmarks:</strong> For technical documentation on search indexing, structured data, and search ranking systems, consult <a href="https://developers.google.com/search/docs" target="_blank" rel="noopener" style="color: #f59e0b; font-weight: 700; text-decoration: underline;">Google Search Central</a> and verify competitive digital benchmarks via <a href="https://www.statista.com" target="_blank" rel="noopener" style="color: #f59e0b; font-weight: 700; text-decoration: underline;">Statista</a>.</div>\n`;
+    // External Authority Citations Guarantee (Universal industry relevance)
+    if (!finalContent.includes("official-industry-citations")) {
+      const authorityCitationHtml = `\n<div class="official-industry-citations" style="margin: 32px 0; padding: 20px 24px; background: rgba(255, 255, 255, 0.04); border: 1px solid rgba(255, 255, 255, 0.1); border-left: 4px solid #f59e0b; border-radius: 8px; font-size: 14px; color: #cbd5e1; line-height: 1.6;"><strong>Industry Standards & Research Authority:</strong> For best practices, operational benchmarks, and professional standards in ${topic}, consult verified industry publications, certified trade associations, and authoritative research bodies.</div>\n`;
       const closingH2Index = finalContent.lastIndexOf("<h2>");
       if (closingH2Index > 0) {
         finalContent = finalContent.slice(0, closingH2Index) + authorityCitationHtml + finalContent.slice(closingH2Index);
