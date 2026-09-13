@@ -23,6 +23,14 @@ export default function CharacterStudioWorkstation() {
   const [creatingCharacter, setCreatingCharacter] = useState(false);
 
   // Story & Episode Generator State
+  const [creationMode, setCreationMode] = useState("ai_prompt"); // "ai_prompt" | "custom_script" | "business_media"
+  const [narrativeType, setNarrativeType] = useState("standalone"); // "standalone" | "episodic"
+  const [customScript, setCustomScript] = useState("");
+  const [vocalEmotion, setVocalEmotion] = useState("poetic_shayar"); // "poetic_shayar" | "dramatic_story" | "warm_storybook" | "commercial_pitch"
+  const [selectedCompanion, setSelectedCompanion] = useState(null);
+  const [clientMedia, setClientMedia] = useState([]);
+  const [uploadingMedia, setUploadingMedia] = useState(false);
+
   const [videoFormat, setVideoFormat] = useState("reel_9_16"); // "reel_9_16" | "youtube_16_9"
   const [language, setLanguage] = useState("hindi"); // "hindi" | "en_us" | "en_uk"
   const [episodeTitle, setEpisodeTitle] = useState("Episode 1: The Secret Discovery");
@@ -49,11 +57,14 @@ export default function CharacterStudioWorkstation() {
   const audioRef = useRef(null);
   const masterVideoUrlRef = useRef(null);
   const masterFilePathRef = useRef(null);
+  const fileInputRef = useRef(null);
 
   // Archetype Presets
   const ARCHETYPES = [
     { id: "comic_hero", label: "Comic Book Hero", emoji: "🦸", desc: "Bold Marvel/Spider-Verse comic art & action" },
     { id: "pixar_3d", label: "3D Pixar Animation", emoji: "✨", desc: "Whimsical, friendly, high-detail 3D CGI" },
+    { id: "pet_companion", label: "3D Animal / Pet", emoji: "🐶", desc: "Adorable Pixar dog, cat, or animal companion" },
+    { id: "corporate_spokesperson", label: "Corporate Spokesperson", emoji: "💼", desc: "Professional business attire & studio lighting" },
     { id: "anime_2d", label: "2D Anime Hero", emoji: "⚡", desc: "Crisp lineart, vibrant anime key visual" },
     { id: "storybook_kids", label: "Children's Storybook", emoji: "🧸", desc: "Watercolor, warm nostalgic picture book" },
     { id: "cyberpunk", label: "Cyberpunk Manga", emoji: "🦾", desc: "Neon glows, futuristic gear, cinematic" },
@@ -151,11 +162,54 @@ export default function CharacterStudioWorkstation() {
     }
   };
 
+  // Handle Client Media Upload
+  const handleMediaUpload = async (e) => {
+    const files = Array.from(e.target.files || []);
+    if (files.length === 0) return;
+    setUploadingMedia(true);
+    setToastMsg(`Uploading ${files.length} file(s)...`);
+
+    for (const file of files) {
+      try {
+        const reader = new FileReader();
+        const base64Promise = new Promise((resolve) => {
+          reader.onload = () => resolve(reader.result);
+          reader.readAsDataURL(file);
+        });
+        const fileBase64 = await base64Promise;
+
+        const res = await fetch("/api/character/upload-media", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            fileBase64,
+            filename: file.name,
+            contentType: file.type || (file.name.endsWith(".mp4") ? "video/mp4" : "image/jpeg"),
+            userEmail,
+          }),
+        });
+        const data = await res.json();
+        if (data.ok && data.url) {
+          setClientMedia((prev) => [...prev, { url: data.url, type: data.type, name: data.name }]);
+        }
+      } catch (uploadErr) {
+        console.error("Failed to upload file:", uploadErr);
+      }
+    }
+    setUploadingMedia(false);
+    setToastMsg("Media uploaded successfully!");
+    setTimeout(() => setToastMsg(""), 4000);
+  };
+
   // Generate Story Episode
   const handleGenerateStory = async (e) => {
     e.preventDefault();
-    if (!selectedCharacter && characters.length === 0) {
+    if (creationMode !== "business_media" && !selectedCharacter && characters.length === 0) {
       setErrorMsg("Please create or select an exclusive character first.");
+      return;
+    }
+    if (creationMode === "custom_script" && !customScript.trim()) {
+      setErrorMsg("Please enter your custom script or shayari lines.");
       return;
     }
 
@@ -169,16 +223,29 @@ export default function CharacterStudioWorkstation() {
     masterFilePathRef.current = null;
 
     try {
-      setStoryStep("Writing episodic script and locking character traits...");
+      setStoryStep(
+        creationMode === "custom_script"
+          ? "Synthesizing exact poetry dialogue & emotional voice delivery..."
+          : creationMode === "business_media"
+          ? "Analyzing factory media & structuring marketing commercial..."
+          : "Writing episodic script and generating 3D Pixar scene visuals..."
+      );
+
       const res = await fetch("/api/character/story", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           characterId: selectedCharacter?.id,
+          companionId: selectedCompanion?.id,
           format: videoFormat,
+          narrativeType,
+          scriptMode: creationMode,
+          customScript,
+          vocalEmotion,
           storyPrompt,
           episodeTitle,
           language,
+          clientMedia,
           userEmail,
         }),
       });
@@ -187,7 +254,7 @@ export default function CharacterStudioWorkstation() {
       if (!data.ok) throw new Error(data.error || "Failed to generate story episode");
 
       setGeneratedStory(data);
-      setToastMsg("🎬 Episode generated! Ready to preview & syndicate.");
+      setToastMsg("🎬 Video ready! Preview & syndicate across platforms.");
       setTimeout(() => setToastMsg(""), 5000);
     } catch (err) {
       setErrorMsg(err.message);
@@ -224,20 +291,32 @@ export default function CharacterStudioWorkstation() {
     voSource.buffer = voBuffer;
     voSource.connect(dest);
 
-    // Preload All Story Scene Images + Master Character Image
+    // Preload All Story Scene Images / Videos + Master Character Image
     const charImg = new Image();
     charImg.crossOrigin = "anonymous";
-    charImg.src = generatedStory.character.referenceSheetUrl;
+    charImg.src = generatedStory.character?.referenceSheetUrl || "https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=800&q=80";
 
-    const sceneImages = await Promise.all(
+    const sceneMedia = await Promise.all(
       (generatedStory.scenes || []).map((s) => {
         return new Promise((resolve) => {
-          const img = new Image();
-          img.crossOrigin = "anonymous";
-          img.src = s.videoUrl || generatedStory.character.referenceSheetUrl;
-          img.onload = () => resolve(img);
-          img.onerror = () => resolve(charImg);
-          setTimeout(() => resolve(img), 4000);
+          if (s.isClientVideo || s.videoUrl?.endsWith(".mp4") || s.videoUrl?.endsWith(".webm")) {
+            const vid = document.createElement("video");
+            vid.crossOrigin = "anonymous";
+            vid.src = s.videoUrl;
+            vid.muted = true;
+            vid.playsInline = true;
+            vid.onloadeddata = () => resolve({ type: "video", element: vid });
+            vid.onerror = () => resolve({ type: "image", element: charImg });
+            vid.load();
+            setTimeout(() => resolve({ type: "video", element: vid }), 5000);
+          } else {
+            const img = new Image();
+            img.crossOrigin = "anonymous";
+            img.src = s.videoUrl || generatedStory.character?.referenceSheetUrl || charImg.src;
+            img.onload = () => resolve({ type: "image", element: img });
+            img.onerror = () => resolve({ type: "image", element: charImg });
+            setTimeout(() => resolve({ type: "image", element: img }), 4000);
+          }
         });
       })
     );
@@ -301,16 +380,19 @@ export default function CharacterStudioWorkstation() {
         ctx.fillStyle = bgGradient;
         ctx.fillRect(0, 0, canvasWidth, canvasHeight);
 
-        // Dynamic Scene Frame Animation (Ken Burns zoom & gentle pan per scene)
-        const currentSceneImg = sceneImages[sceneIndex] || charImg;
-        if (currentSceneImg && currentSceneImg.complete && currentSceneImg.naturalWidth > 0) {
+        // Dynamic Scene Frame Animation (Video playback or Ken Burns zoom)
+        const curMedia = sceneMedia[sceneIndex] || { type: "image", element: charImg };
+        if (curMedia.type === "video" && curMedia.element) {
+          if (curMedia.element.paused) curMedia.element.play().catch(() => {});
+          ctx.drawImage(curMedia.element, 0, 0, canvasWidth, canvasHeight);
+        } else if (curMedia.element && curMedia.element.naturalWidth > 0) {
           const zoom = 1.0 + (sceneRatio * 0.08);
           const panX = (sceneIndex % 2 === 0 ? 1 : -1) * (sceneRatio * 20);
           const w = canvasWidth * zoom;
           const h = canvasHeight * zoom;
           const x = (canvasWidth - w) / 2 + panX;
           const y = (canvasHeight - h) / 2;
-          ctx.drawImage(currentSceneImg, x, y, w, h);
+          ctx.drawImage(curMedia.element, x, y, w, h);
         }
 
         // Cinematic Lower Vignette
@@ -656,74 +738,251 @@ export default function CharacterStudioWorkstation() {
 
             {/* Step 2: Format & Story Concept */}
             <form onSubmit={handleGenerateStory} style={{ background: "rgba(15, 23, 42, 0.65)", backdropFilter: "blur(14px)", border: "1px solid rgba(255, 255, 255, 0.1)", borderRadius: 18, padding: 20 }}>
-              <div style={{ fontSize: 13, fontWeight: 800, color: "#cbd5e1", marginBottom: 14 }}>
-                2. CHOOSE VIDEO FORMAT & EPISODIC CONCEPT
+              <div style={{ fontSize: 13, fontWeight: 800, color: "#cbd5e1", marginBottom: 14, display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                <span>2. CHOOSE CREATION MODE & STORY FORMAT</span>
+                <span style={{ fontSize: 11, color: "#a855f7", fontWeight: 700 }}>Pro Studio Engine</span>
               </div>
 
-              {/* Format Switcher */}
+              {/* 3 CREATION MODES TABS */}
+              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 8, marginBottom: 18 }}>
+                <button
+                  type="button"
+                  onClick={() => setCreationMode("ai_prompt")}
+                  style={{
+                    padding: "10px 6px",
+                    borderRadius: 10,
+                    background: creationMode === "ai_prompt" ? "rgba(139, 92, 246, 0.25)" : "rgba(255, 255, 255, 0.03)",
+                    border: creationMode === "ai_prompt" ? "2px solid #a855f7" : "1px solid rgba(255, 255, 255, 0.08)",
+                    color: creationMode === "ai_prompt" ? "#c084fc" : "#94a3b8",
+                    fontWeight: 800,
+                    fontSize: 11.5,
+                    cursor: "pointer",
+                    display: "flex",
+                    flexDirection: "column",
+                    alignItems: "center",
+                    gap: 3,
+                  }}
+                >
+                  <span style={{ fontSize: 16 }}>🎭</span>
+                  <span>AI Character Story</span>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => setCreationMode("custom_script")}
+                  style={{
+                    padding: "10px 6px",
+                    borderRadius: 10,
+                    background: creationMode === "custom_script" ? "rgba(236, 72, 153, 0.25)" : "rgba(255, 255, 255, 0.03)",
+                    border: creationMode === "custom_script" ? "2px solid #ec4899" : "1px solid rgba(255, 255, 255, 0.08)",
+                    color: creationMode === "custom_script" ? "#f472b6" : "#94a3b8",
+                    fontWeight: 800,
+                    fontSize: 11.5,
+                    cursor: "pointer",
+                    display: "flex",
+                    flexDirection: "column",
+                    alignItems: "center",
+                    gap: 3,
+                  }}
+                >
+                  <span style={{ fontSize: 16 }}>📜</span>
+                  <span>Custom Shayari / Script</span>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => setCreationMode("business_media")}
+                  style={{
+                    padding: "10px 6px",
+                    borderRadius: 10,
+                    background: creationMode === "business_media" ? "rgba(59, 130, 246, 0.25)" : "rgba(255, 255, 255, 0.03)",
+                    border: creationMode === "business_media" ? "2px solid #3b82f6" : "1px solid rgba(255, 255, 255, 0.08)",
+                    color: creationMode === "business_media" ? "#60a5fa" : "#94a3b8",
+                    fontWeight: 800,
+                    fontSize: 11.5,
+                    cursor: "pointer",
+                    display: "flex",
+                    flexDirection: "column",
+                    alignItems: "center",
+                    gap: 3,
+                  }}
+                >
+                  <span style={{ fontSize: 16 }}>🏭</span>
+                  <span>My Factory / Media</span>
+                </button>
+              </div>
+
+              {/* Format Switcher (9:16 Reel vs 16:9 YouTube) */}
               <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12, marginBottom: 16 }}>
                 <div
                   onClick={() => setVideoFormat("reel_9_16")}
                   style={{
-                    padding: "12px",
+                    padding: "10px 12px",
                     borderRadius: 12,
                     background: videoFormat === "reel_9_16" ? "rgba(236, 72, 153, 0.18)" : "rgba(255, 255, 255, 0.03)",
                     border: videoFormat === "reel_9_16" ? "2px solid #ec4899" : "1px solid rgba(255, 255, 255, 0.08)",
                     cursor: "pointer",
                   }}
                 >
-                  <div style={{ display: "flex", alignItems: "center", gap: 8, fontWeight: 800, fontSize: 13, color: videoFormat === "reel_9_16" ? "#f472b6" : "#f8fafc" }}>
+                  <div style={{ display: "flex", alignItems: "center", gap: 8, fontWeight: 800, fontSize: 12.5, color: videoFormat === "reel_9_16" ? "#f472b6" : "#f8fafc" }}>
                     <span>📱 9:16 Social Reel</span>
                   </div>
-                  <div style={{ fontSize: 11, color: "#94a3b8", marginTop: 4 }}>
-                    15–30s fast viral hook for Instagram, FB Reels & YT Shorts.
+                  <div style={{ fontSize: 10.5, color: "#94a3b8", marginTop: 3 }}>
+                    15–30s fast viral hook for Instagram, FB & YT Shorts.
                   </div>
                 </div>
 
                 <div
                   onClick={() => setVideoFormat("youtube_16_9")}
                   style={{
-                    padding: "12px",
+                    padding: "10px 12px",
                     borderRadius: 12,
                     background: videoFormat === "youtube_16_9" ? "rgba(59, 130, 246, 0.18)" : "rgba(255, 255, 255, 0.03)",
                     border: videoFormat === "youtube_16_9" ? "2px solid #3b82f6" : "1px solid rgba(255, 255, 255, 0.08)",
                     cursor: "pointer",
                   }}
                 >
-                  <div style={{ display: "flex", alignItems: "center", gap: 8, fontWeight: 800, fontSize: 13, color: videoFormat === "youtube_16_9" ? "#60a5fa" : "#f8fafc" }}>
+                  <div style={{ display: "flex", alignItems: "center", gap: 8, fontWeight: 800, fontSize: 12.5, color: videoFormat === "youtube_16_9" ? "#60a5fa" : "#f8fafc" }}>
                     <span>🖥️ 16:9 YouTube Story</span>
                   </div>
-                  <div style={{ fontSize: 11, color: "#94a3b8", marginTop: 4 }}>
-                    3–5 min widescreen story episodes with chapters & progression.
+                  <div style={{ fontSize: 10.5, color: "#94a3b8", marginTop: 3 }}>
+                    3–5 min widescreen story episodes or business features.
                   </div>
                 </div>
               </div>
 
+              {/* Narrative Scope Switcher (Standalone vs Episodic) */}
+              <div style={{ marginBottom: 16 }}>
+                <label style={{ display: "block", fontSize: 11.5, fontWeight: 800, color: "#cbd5e1", marginBottom: 6 }}>
+                  📖 Story Progression / Scope:
+                </label>
+                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
+                  <div
+                    onClick={() => setNarrativeType("standalone")}
+                    style={{
+                      padding: "8px 12px",
+                      borderRadius: 10,
+                      background: narrativeType === "standalone" ? "rgba(16, 185, 129, 0.2)" : "rgba(255, 255, 255, 0.03)",
+                      border: narrativeType === "standalone" ? "2px solid #10b981" : "1px solid rgba(255, 255, 255, 0.08)",
+                      cursor: "pointer",
+                    }}
+                  >
+                    <div style={{ fontWeight: 800, fontSize: 12, color: narrativeType === "standalone" ? "#34d399" : "#cbd5e1" }}>
+                      🌟 Standalone Story
+                    </div>
+                    <div style={{ fontSize: 10, color: "#94a3b8", marginTop: 2 }}>
+                      Complete 1-off story with punchline & conclusion.
+                    </div>
+                  </div>
+
+                  <div
+                    onClick={() => setNarrativeType("episodic")}
+                    style={{
+                      padding: "8px 12px",
+                      borderRadius: 10,
+                      background: narrativeType === "episodic" ? "rgba(139, 92, 246, 0.2)" : "rgba(255, 255, 255, 0.03)",
+                      border: narrativeType === "episodic" ? "2px solid #8b5cf6" : "1px solid rgba(255, 255, 255, 0.08)",
+                      cursor: "pointer",
+                    }}
+                  >
+                    <div style={{ fontWeight: 800, fontSize: 12, color: narrativeType === "episodic" ? "#a78bfa" : "#cbd5e1" }}>
+                      📚 Episodic Series
+                    </div>
+                    <div style={{ fontSize: 10, color: "#94a3b8", marginTop: 2 }}>
+                      Continuous serialized episodes with chapter lore.
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              {/* Vocal Emotion & Delivery Tone */}
+              <div style={{ marginBottom: 16 }}>
+                <label style={{ display: "block", fontSize: 11.5, fontWeight: 800, color: "#cbd5e1", marginBottom: 6 }}>
+                  🎙️ Vocal Emotion & Delivery Cadence:
+                </label>
+                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
+                  {[
+                    { id: "poetic_shayar", label: "Poetic Shayar", desc: "Soulful pauses & Urdu/Hindi cadence", emoji: "🪕" },
+                    { id: "dramatic_story", label: "Dramatic Story", desc: "Cinematic, deep suspense & intensity", emoji: "🎭" },
+                    { id: "warm_storybook", label: "Warm Storybook", desc: "Gentle, friendly fairytale narrator", emoji: "🧸" },
+                    { id: "commercial_pitch", label: "Commercial Pitch", desc: "Crisp, authoritative B2B energy", emoji: "⚡" },
+                  ].map((emo) => {
+                    const isSelected = vocalEmotion === emo.id;
+                    return (
+                      <div
+                        key={emo.id}
+                        onClick={() => setVocalEmotion(emo.id)}
+                        style={{
+                          padding: "8px 10px",
+                          borderRadius: 8,
+                          background: isSelected ? "rgba(245, 158, 11, 0.2)" : "rgba(255, 255, 255, 0.03)",
+                          border: isSelected ? "2px solid #f59e0b" : "1px solid rgba(255, 255, 255, 0.08)",
+                          cursor: "pointer",
+                        }}
+                      >
+                        <div style={{ fontWeight: 800, fontSize: 11.5, color: isSelected ? "#fbbf24" : "#cbd5e1" }}>
+                          {emo.emoji} {emo.label}
+                        </div>
+                        <div style={{ fontSize: 9.5, color: "#94a3b8", marginTop: 2 }}>
+                          {emo.desc}
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+
+              {/* Companion / Animal Pet Selector (if > 1 character in vault) */}
+              {characters.length > 1 && creationMode !== "business_media" && (
+                <div style={{ marginBottom: 16 }}>
+                  <label style={{ display: "block", fontSize: 11.5, fontWeight: 800, color: "#cbd5e1", marginBottom: 6 }}>
+                    🐾 Optional Companion / Co-Star (Duo Mode):
+                  </label>
+                  <select
+                    value={selectedCompanion?.id || ""}
+                    onChange={(e) => {
+                      const found = characters.find((c) => c.id === e.target.value);
+                      setSelectedCompanion(found || null);
+                    }}
+                    style={{ width: "100%", padding: "9px 12px", borderRadius: 8, background: "rgba(0, 0, 0, 0.4)", border: "1px solid rgba(255, 255, 255, 0.1)", color: "#fff", fontSize: 12.5 }}
+                  >
+                    <option value="">None (Solo Performance)</option>
+                    {characters
+                      .filter((c) => c.id !== selectedCharacter?.id)
+                      .map((c) => (
+                        <option key={c.id} value={c.id}>
+                          {c.name} ({c.archetype?.replace("_", " ")})
+                        </option>
+                      ))}
+                  </select>
+                </div>
+              )}
+
               {/* Language Selector (Hindi / US English / UK English) */}
               <div style={{ marginBottom: 16 }}>
-                <label style={{ display: "block", fontSize: 12, fontWeight: 800, color: "#f8fafc", marginBottom: 8 }}>
-                  🗣️ Spoken Language & Voiceover Accent:
+                <label style={{ display: "block", fontSize: 11.5, fontWeight: 800, color: "#f8fafc", marginBottom: 6 }}>
+                  🗣️ Spoken Language:
                 </label>
                 <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 10 }}>
                   <button
                     type="button"
                     onClick={() => setLanguage("hindi")}
                     style={{
-                      padding: "10px 8px",
+                      padding: "8px",
                       borderRadius: 10,
                       background: language === "hindi" ? "rgba(245, 158, 11, 0.22)" : "rgba(255, 255, 255, 0.03)",
                       border: language === "hindi" ? "2px solid #f59e0b" : "1px solid rgba(255, 255, 255, 0.08)",
                       color: language === "hindi" ? "#fbbf24" : "#cbd5e1",
                       fontWeight: 800,
-                      fontSize: 12,
+                      fontSize: 11.5,
                       cursor: "pointer",
                       display: "flex",
                       flexDirection: "column",
                       alignItems: "center",
-                      gap: 4,
+                      gap: 2,
                     }}
                   >
-                    <span style={{ fontSize: 18 }}>🇮🇳</span>
+                    <span style={{ fontSize: 16 }}>🇮🇳</span>
                     <span>Hindi (हिंदी)</span>
                   </button>
 
@@ -731,21 +990,21 @@ export default function CharacterStudioWorkstation() {
                     type="button"
                     onClick={() => setLanguage("en_us")}
                     style={{
-                      padding: "10px 8px",
+                      padding: "8px",
                       borderRadius: 10,
                       background: language === "en_us" ? "rgba(59, 130, 246, 0.22)" : "rgba(255, 255, 255, 0.03)",
                       border: language === "en_us" ? "2px solid #3b82f6" : "1px solid rgba(255, 255, 255, 0.08)",
                       color: language === "en_us" ? "#60a5fa" : "#cbd5e1",
                       fontWeight: 800,
-                      fontSize: 12,
+                      fontSize: 11.5,
                       cursor: "pointer",
                       display: "flex",
                       flexDirection: "column",
                       alignItems: "center",
-                      gap: 4,
+                      gap: 2,
                     }}
                   >
-                    <span style={{ fontSize: 18 }}>🇺🇸</span>
+                    <span style={{ fontSize: 16 }}>🇺🇸</span>
                     <span>American (US)</span>
                   </button>
 
@@ -753,54 +1012,139 @@ export default function CharacterStudioWorkstation() {
                     type="button"
                     onClick={() => setLanguage("en_uk")}
                     style={{
-                      padding: "10px 8px",
+                      padding: "8px",
                       borderRadius: 10,
                       background: language === "en_uk" ? "rgba(236, 72, 153, 0.22)" : "rgba(255, 255, 255, 0.03)",
                       border: language === "en_uk" ? "2px solid #ec4899" : "1px solid rgba(255, 255, 255, 0.08)",
                       color: language === "en_uk" ? "#f472b6" : "#cbd5e1",
                       fontWeight: 800,
-                      fontSize: 12,
+                      fontSize: 11.5,
                       cursor: "pointer",
                       display: "flex",
                       flexDirection: "column",
                       alignItems: "center",
-                      gap: 4,
+                      gap: 2,
                     }}
                   >
-                    <span style={{ fontSize: 18 }}>🇬🇧</span>
+                    <span style={{ fontSize: 16 }}>🇬🇧</span>
                     <span>British (UK)</span>
                   </button>
                 </div>
               </div>
 
-              {/* Episode Title */}
-              <div style={{ marginBottom: 14 }}>
-                <label style={{ display: "block", fontSize: 12, fontWeight: 700, color: "#94a3b8", marginBottom: 6 }}>
-                  Episode Title:
-                </label>
-                <input
-                  type="text"
-                  value={episodeTitle}
-                  onChange={(e) => setEpisodeTitle(e.target.value)}
-                  style={{ width: "100%", padding: "10px 12px", borderRadius: 8, background: "rgba(0, 0, 0, 0.4)", border: "1px solid rgba(255, 255, 255, 0.1)", color: "#fff", fontSize: 13 }}
-                  required
-                />
-              </div>
+              {/* DYNAMIC MODE INPUTS */}
+              {creationMode === "custom_script" ? (
+                /* MODE B: CUSTOM SCRIPT / SHAYARI INPUT */
+                <div style={{ marginBottom: 18 }}>
+                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 6 }}>
+                    <label style={{ fontSize: 12, fontWeight: 700, color: "#f472b6" }}>
+                      ✍️ Paste Your Exact Dialogue, Poem, or Shayari:
+                    </label>
+                    <span style={{ fontSize: 10, color: "#94a3b8" }}>100% Verbatim Delivery</span>
+                  </div>
+                  <textarea
+                    rows={4}
+                    value={customScript}
+                    onChange={(e) => setCustomScript(e.target.value)}
+                    placeholder="उदा.&#10;इश्क की राह में जब-जब कोई क़दम उठा है,&#10;अँधेरों में भी कोई चिराग सा जला है...&#10;(लिखें अपनी पूरी शायरी या स्क्रिप्ट यहाँ)"
+                    style={{ width: "100%", padding: "10px 12px", borderRadius: 8, background: "rgba(0, 0, 0, 0.4)", border: "1px solid rgba(236, 72, 153, 0.4)", color: "#fff", fontSize: 13, resize: "vertical", lineHeight: 1.6 }}
+                    required
+                  />
+                  <div style={{ fontSize: 11, color: "#94a3b8", marginTop: 4 }}>
+                    💡 The AI will speak your exact lines with soulful poetic pauses and emotional rhythm without altering a single word.
+                  </div>
+                </div>
+              ) : creationMode === "business_media" ? (
+                /* MODE C: BUSINESS / MANUFACTURER MEDIA */
+                <div style={{ marginBottom: 18 }}>
+                  <label style={{ display: "block", fontSize: 12, fontWeight: 700, color: "#60a5fa", marginBottom: 6 }}>
+                    🏭 Business / Factory Topic & Commercial Goal:
+                  </label>
+                  <input
+                    type="text"
+                    value={storyPrompt}
+                    onChange={(e) => setStoryPrompt(e.target.value)}
+                    placeholder="e.g. Apex Precision CNC & Lathe Machine Plant in Pune - Export Quality Standards"
+                    style={{ width: "100%", padding: "10px 12px", borderRadius: 8, background: "rgba(0, 0, 0, 0.4)", border: "1px solid rgba(59, 130, 246, 0.4)", color: "#fff", fontSize: 13, marginBottom: 12 }}
+                    required
+                  />
 
-              {/* Story Prompt */}
-              <div style={{ marginBottom: 18 }}>
-                <label style={{ display: "block", fontSize: 12, fontWeight: 700, color: "#94a3b8", marginBottom: 6 }}>
-                  Story Plot / Mission:
-                </label>
-                <textarea
-                  rows={3}
-                  value={storyPrompt}
-                  onChange={(e) => setStoryPrompt(e.target.value)}
-                  placeholder="Describe the adventure, conflict, or lesson in this episode..."
-                  style={{ width: "100%", padding: "10px 12px", borderRadius: 8, background: "rgba(0, 0, 0, 0.4)", border: "1px solid rgba(255, 255, 255, 0.1)", color: "#fff", fontSize: 13, resize: "vertical" }}
-                  required
-                />
-              </div>
+                  {/* Media Uploader */}
+                  <div style={{ padding: "14px", borderRadius: 10, border: "2px dashed rgba(59, 130, 246, 0.4)", background: "rgba(59, 130, 246, 0.05)", textAlign: "center", marginBottom: 10 }}>
+                    <input
+                      type="file"
+                      ref={fileInputRef}
+                      multiple
+                      accept="video/mp4,video/quicktime,image/*"
+                      onChange={handleMediaUpload}
+                      style={{ display: "none" }}
+                    />
+                    <div style={{ fontSize: 24, marginBottom: 4 }}>📹</div>
+                    <div style={{ fontWeight: 800, fontSize: 12.5, color: "#93c5fd" }}>
+                      Upload Factory Videos (.mp4) or Photos
+                    </div>
+                    <div style={{ fontSize: 11, color: "#64748b", margin: "4px 0 10px" }}>
+                      Lathe machines, production line clips, worker footage, or product photos.
+                    </div>
+                    <button
+                      type="button"
+                      disabled={uploadingMedia}
+                      onClick={() => fileInputRef.current?.click()}
+                      style={{ padding: "7px 16px", borderRadius: 8, background: "#2563eb", border: "none", color: "#fff", fontWeight: 700, fontSize: 12, cursor: "pointer" }}
+                    >
+                      {uploadingMedia ? "⏳ Uploading..." : "📁 Browse Device Files"}
+                    </button>
+                  </div>
+
+                  {/* Uploaded Media Chips */}
+                  {clientMedia.length > 0 && (
+                    <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
+                      {clientMedia.map((m, idx) => (
+                        <div key={idx} style={{ display: "flex", alignItems: "center", gap: 6, background: "rgba(0, 0, 0, 0.6)", border: "1px solid rgba(255, 255, 255, 0.15)", borderRadius: 6, padding: "4px 8px", fontSize: 11, color: "#cbd5e1" }}>
+                          <span>{m.type === "video" ? "🎬" : "🖼️"}</span>
+                          <span style={{ maxWidth: 120, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{m.name || `Clip ${idx + 1}`}</span>
+                          <span
+                            onClick={() => setClientMedia((prev) => prev.filter((_, i) => i !== idx))}
+                            style={{ cursor: "pointer", color: "#f87171", fontWeight: 900, marginLeft: 4 }}
+                          >
+                            ✕
+                          </span>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              ) : (
+                /* MODE A: AI CHARACTER STORY WRITER */
+                <>
+                  <div style={{ marginBottom: 14 }}>
+                    <label style={{ display: "block", fontSize: 12, fontWeight: 700, color: "#94a3b8", marginBottom: 6 }}>
+                      Episode Title:
+                    </label>
+                    <input
+                      type="text"
+                      value={episodeTitle}
+                      onChange={(e) => setEpisodeTitle(e.target.value)}
+                      style={{ width: "100%", padding: "10px 12px", borderRadius: 8, background: "rgba(0, 0, 0, 0.4)", border: "1px solid rgba(255, 255, 255, 0.1)", color: "#fff", fontSize: 13 }}
+                      required
+                    />
+                  </div>
+
+                  <div style={{ marginBottom: 18 }}>
+                    <label style={{ display: "block", fontSize: 12, fontWeight: 700, color: "#94a3b8", marginBottom: 6 }}>
+                      Story Plot / Mission Concept:
+                    </label>
+                    <textarea
+                      rows={3}
+                      value={storyPrompt}
+                      onChange={(e) => setStoryPrompt(e.target.value)}
+                      placeholder="Describe the adventure, conflict, or lesson in this episode..."
+                      style={{ width: "100%", padding: "10px 12px", borderRadius: 8, background: "rgba(0, 0, 0, 0.4)", border: "1px solid rgba(255, 255, 255, 0.1)", color: "#fff", fontSize: 13, resize: "vertical" }}
+                      required
+                    />
+                  </div>
+                </>
+              )}
 
               <button
                 type="submit"
@@ -809,7 +1153,14 @@ export default function CharacterStudioWorkstation() {
                   width: "100%",
                   padding: "13px",
                   borderRadius: 10,
-                  background: videoFormat === "youtube_16_9" ? "linear-gradient(135deg, #3b82f6 0%, #8b5cf6 100%)" : "linear-gradient(135deg, #ec4899 0%, #8b5cf6 100%)",
+                  background:
+                    creationMode === "custom_script"
+                      ? "linear-gradient(135deg, #ec4899 0%, #a855f7 100%)"
+                      : creationMode === "business_media"
+                      ? "linear-gradient(135deg, #2563eb 0%, #06b6d4 100%)"
+                      : videoFormat === "youtube_16_9"
+                      ? "linear-gradient(135deg, #3b82f6 0%, #8b5cf6 100%)"
+                      : "linear-gradient(135deg, #ec4899 0%, #8b5cf6 100%)",
                   border: "none",
                   color: "#fff",
                   fontWeight: 800,
@@ -822,7 +1173,15 @@ export default function CharacterStudioWorkstation() {
                   gap: 8,
                 }}
               >
-                <span>{generatingStory ? "✨ Writing & Synthesizing Episode…" : "🎬 Generate Episode Script & Narration"}</span>
+                <span>
+                  {generatingStory
+                    ? "✨ Synthesizing Episode & Scene Visuals…"
+                    : creationMode === "custom_script"
+                    ? "🪕 Synthesize Shayari & Video"
+                    : creationMode === "business_media"
+                    ? "🏭 Generate Business Showcase Video"
+                    : "🎬 Generate Episode Script & Narration"}
+                </span>
               </button>
 
               {generatingStory && (
@@ -855,22 +1214,34 @@ export default function CharacterStudioWorkstation() {
             >
               {generatedStory ? (
                 <div style={{ flex: 1, position: "relative", overflow: "hidden", background: "#090d16" }}>
-                  <img
-                    key={activeSceneIndex}
-                    src={
-                      generatedStory.scenes[activeSceneIndex]?.videoUrl ||
-                      generatedStory.character?.referenceSheetUrl ||
-                      selectedCharacter?.referenceSheetUrl
-                    }
-                    alt={generatedStory.scenes[activeSceneIndex]?.chapter || "Scene"}
-                    style={{
-                      width: "100%",
-                      height: "100%",
-                      objectFit: "cover",
-                      transform: isPlaying ? "scale(1.06)" : "scale(1)",
-                      transition: "transform 4s ease-out, opacity 0.3s ease",
-                    }}
-                  />
+                  {generatedStory.scenes[activeSceneIndex]?.isClientVideo ? (
+                    <video
+                      key={activeSceneIndex}
+                      src={generatedStory.scenes[activeSceneIndex]?.videoUrl}
+                      autoPlay
+                      muted
+                      loop
+                      playsInline
+                      style={{ width: "100%", height: "100%", objectFit: "cover" }}
+                    />
+                  ) : (
+                    <img
+                      key={activeSceneIndex}
+                      src={
+                        generatedStory.scenes[activeSceneIndex]?.videoUrl ||
+                        generatedStory.character?.referenceSheetUrl ||
+                        selectedCharacter?.referenceSheetUrl
+                      }
+                      alt={generatedStory.scenes[activeSceneIndex]?.chapter || "Scene"}
+                      style={{
+                        width: "100%",
+                        height: "100%",
+                        objectFit: "cover",
+                        transform: isPlaying ? "scale(1.06)" : "scale(1)",
+                        transition: "transform 4s ease-out, opacity 0.3s ease",
+                      }}
+                    />
+                  )}
 
                   {/* Gradient Overlay */}
                   <div style={{ position: "absolute", inset: 0, background: "linear-gradient(180deg, rgba(0,0,0,0.3) 0%, rgba(0,0,0,0) 40%, rgba(0,0,0,0.85) 100%)", pointerEvents: "none" }} />

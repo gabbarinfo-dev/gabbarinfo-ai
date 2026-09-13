@@ -38,6 +38,8 @@ export default async function handler(req, res) {
       storybook_kids: "Whimsical children's picture book illustration, soft watercolor and gouache textures, adorable character design, gentle warm lighting, nostalgic storybook art",
       cyberpunk: "Futuristic cyberpunk character, neon reflections, sleek cybernetic accents, high tech apparel, moody cinematic atmospheric lighting, unreal engine 5 render",
       photoreal_mascot: "Photorealistic live-action brand mascot, ultra-detailed fur/skin texture, friendly charismatic presence, studio commercial portrait, 85mm lens f/1.4",
+      pet_companion: "3D Pixar Disney animated animal companion pet, adorable expressive large eyes, charming friendly fluffy fur, Disney Pixar character design, cinematic studio lighting, octane render, 8k",
+      corporate_spokesperson: "Polished professional corporate brand spokesperson, confident friendly demeanor, elegant business attire, modern sleek office studio lighting, hyper-realistic 8k commercial portrait",
     };
 
     const chosenStyle = styleAnchors[archetype] || styleAnchors.pixar_3d;

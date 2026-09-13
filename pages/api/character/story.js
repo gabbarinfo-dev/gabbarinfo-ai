@@ -18,19 +18,25 @@ export default async function handler(req, res) {
   const userEmail = session?.user?.email || req.body?.userEmail;
 
   if (!userEmail) {
-    return res.status(401).json({ ok: false, error: "Please log in to create character stories." });
+    return res.status(401).json({ ok: false, error: "Please log in to create videos." });
   }
 
   const {
     characterId,
-    format = "reel_9_16", // "reel_9_16" (15-30s vertical) | "youtube_16_9" (3-5 min horizontal story)
-    storyPrompt = "A mysterious discovery in the enchanted neon forest",
-    episodeTitle = "Episode 1: The First Clue",
-    language = "en_us", // "hindi" | "en_us" | "en_uk"
+    companionId,
+    format = "reel_9_16", // "reel_9_16" | "youtube_16_9"
+    narrativeType = "standalone", // "standalone" (complete self-contained story/punchline) | "episodic" (Ep 1, 2...)
+    scriptMode = "ai_prompt", // "ai_prompt" | "custom_script" | "business_media"
+    customScript = "",
+    vocalEmotion = "poetic_shayar", // "poetic_shayar" | "dramatic_story" | "warm_storybook" | "commercial_pitch"
+    storyPrompt = "A journey of wonder and wisdom",
+    episodeTitle = "The Grand Tale",
+    language = "hindi", // "hindi" | "en_us" | "en_uk"
+    clientMedia = [], // array of { url, type: "video" | "image" }
   } = req.body;
 
   try {
-    // 1. Fetch Character Data
+    // 1. Fetch Primary Character & Companion from Supabase
     const { data: memRows } = await supabase
       .from("agent_memory")
       .select("content")
@@ -38,22 +44,21 @@ export default async function handler(req, res) {
       .ilike("memory_type", "client_character%");
 
     let character = null;
+    let companion = null;
+
     if (memRows) {
       for (const row of memRows) {
         const c = typeof row.content === "string" ? JSON.parse(row.content) : row.content;
-        if (c.id === characterId) {
-          character = c;
-          break;
-        }
+        if (c.id === characterId) character = c;
+        if (companionId && c.id === companionId) companion = c;
       }
     }
 
     if (!character) {
-      // Default fallback character if none selected
       character = {
-        name: "Alex",
+        name: scriptMode === "business_media" ? "Host" : "Hero",
         archetype: "pixar_3d",
-        visualTraits: "charming blue jacket, expressive eyes, messy brown hair",
+        visualTraits: "expressive eyes, friendly warm smile",
         referenceSheetUrl: "https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=800&q=80",
         voice: "nova",
       };
@@ -61,26 +66,91 @@ export default async function handler(req, res) {
 
     const isLongForm = format === "youtube_16_9";
     const numScenes = isLongForm ? 5 : 3;
-    const targetDuration = isLongForm ? 60 : 20; // 60s preview long-form / 20s reel
+    const targetDuration = isLongForm ? 60 : 20;
 
-    let langInstruction = "Language: American English (US). Engaging, dynamic American cinematic storytelling style.";
+    let langInstruction = "Language: American English (US). Engaging, dynamic American cinematic style.";
     if (language === "hindi") {
-      langInstruction = "Language: Hindi (हिंदी). Write all narration lines, titles, and scene dialogues in fluent, captivating, natural conversational Hindi (in Devanagari or clean conversational Hindi).";
+      langInstruction = "Language: Hindi (हिंदी). Write all narration lines, dialogue, or poetry in fluent, captivating, natural conversational Hindi (Devanagari script).";
     } else if (language === "en_uk") {
-      langInstruction = "Language: British English (UK). Write narration lines in classic British English storytelling cadence with authentic UK spelling and phrasing.";
+      langInstruction = "Language: British English (UK). Write narration lines in classic British English cadence with authentic UK spelling and phrasing.";
     }
 
     // 2. Generate Story Script using GPT-4o
     const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
-    const systemPrompt = `You are an elite Hollywood animated story director and viral social video strategist.
-Character Name: "${character.name}"
-Visual Traits: "${character.visualTraits}"
+    let systemPrompt = "";
+    let userPrompt = "";
+
+    const companionText = companion ? `Companion Co-Star: "${companion.name}" (${companion.visualTraits})` : "";
+    const standaloneText = narrativeType === "standalone"
+      ? "NARRATIVE SCOPE: Standalone complete story / video. Must have a clear opening, captivating middle, and satisfying resolution or emotional punchline. Do NOT end on a cliffhanger."
+      : "NARRATIVE SCOPE: Serialized Episodic Story. Part of an ongoing adventure with continuous lore.";
+
+    if (scriptMode === "custom_script") {
+      // User provided their own exact words / shayari
+      systemPrompt = `You are an elite video director. The user has provided an EXACT custom script / shayari.
+Character: "${character.name}" (${character.visualTraits})
+${companionText}
+Format: ${isLongForm ? "16:9 Widescreen Story" : "9:16 Viral Social Reel"}
+${langInstruction}
+Delivery Emotion: ${vocalEmotion}
+
+CRITICAL RULES:
+1. Divide the user's EXACT words into ${numScenes} sequential scene beats. DO NOT alter, rewrite, or drop their poetry/lines. Preserve their exact words.
+2. For each scene, create an evocative visual description showing ${character.name} ${companion ? `and ${companion.name}` : ""} acting out this moment with matching emotional facial expression.
+3. Return ONLY valid JSON matching this exact structure:
+{
+  "title": "${episodeTitle || "Custom Performance"}",
+  "youtubeTitle": "Catchy YouTube Title",
+  "description": "Engaging description with tags",
+  "scenes": [
+    {
+      "sceneNumber": 1,
+      "chapter": "Part 1 / Couplet 1",
+      "narration": "Exact text chunk from user",
+      "visualDescription": "Visual description of character acting out this line"
+    }
+  ]
+}`;
+      userPrompt = `User's Exact Script/Shayari to perform:\n"""\n${customScript || storyPrompt}\n"""`;
+
+    } else if (scriptMode === "business_media") {
+      // Manufacturer / Business mode with client media
+      const totalMediaCount = Math.max(clientMedia.length, numScenes);
+      systemPrompt = `You are a high-impact B2B & industrial video marketing strategist.
+Business / Facility Topic: "${storyPrompt}"
+Format: ${isLongForm ? "16:9 Industrial / Commercial Showcase" : "9:16 High-Energy Business Reel"}
+${langInstruction}
+Delivery Tone: Professional, persuasive, inspiring industrial commercial spotlighting manufacturing precision, technological expertise, and reliable quality.
+
+Create a high-converting promotional script with exactly ${totalMediaCount} scene beats.
+Return ONLY valid JSON matching this exact structure:
+{
+  "title": "${episodeTitle || "Factory & Business Showcase"}",
+  "youtubeTitle": "Official Business & Facility Showcase",
+  "description": "Commercial overview with contact CTA",
+  "scenes": [
+    {
+      "sceneNumber": 1,
+      "chapter": "Facility Overview",
+      "narration": "Punchy professional voiceover line (10-15 words)",
+      "visualDescription": "Manufacturing/facility focus"
+    }
+  ]
+}`;
+      userPrompt = `Create a promotional script for our business/factory based on: "${storyPrompt}". Needs exactly ${totalMediaCount} scenes.`;
+
+    } else {
+      // Standard AI Character Story Mode
+      systemPrompt = `You are an elite Hollywood animated story director and viral social video strategist.
+Main Character: "${character.name}" (${character.visualTraits})
 Archetype Style: "${character.archetype}"
+${companionText}
 Format: ${isLongForm ? "16:9 Cinematic YouTube Long-Form Story" : "9:16 Viral Social Reel"}
+${standaloneText}
 ${langInstruction}
 
 Create a captivating, emotionally engaging story episode based on the user's prompt: "${storyPrompt}".
-Maintain 100% visual consistency by referencing the character's exact appearance in every scene description.
+Maintain 100% visual consistency by referencing the character's exact appearance ${companion ? `and ${companion.name}` : ""} in every scene description.
 
 Return ONLY valid JSON matching this exact structure:
 {
@@ -92,11 +162,13 @@ Return ONLY valid JSON matching this exact structure:
       "sceneNumber": 1,
       "chapter": "The Awakening",
       "narration": "Voiceover line spoken for this scene (around 10-15 words)",
-      "visualDescription": "Detailed visual of ${character.name} with ${character.visualTraits} doing a specific action in the environment",
-      "searchKeyword": "1-2 keywords for cinematic ambient visuals"
+      "visualDescription": "Detailed visual of ${character.name} ${companion ? `and ${companion.name}` : ""} in the environment",
+      "searchKeyword": "1-2 keywords for ambient visuals"
     }
   ]
 }`;
+      userPrompt = `Generate a ${narrativeType} story titled "${episodeTitle}". Needs exactly ${numScenes} scenes.`;
+    }
 
     const completion = await openai.chat.completions.create({
       model: "gpt-4o-mini",
@@ -104,15 +176,28 @@ Return ONLY valid JSON matching this exact structure:
       response_format: { type: "json_object" },
       messages: [
         { role: "system", content: systemPrompt },
-        { role: "user", content: `Generate an episode titled "${episodeTitle}". Needs exactly ${numScenes} scenes.` }
+        { role: "user", content: userPrompt },
       ],
     });
 
     const storyResult = JSON.parse(completion.choices[0].message.content);
 
-    // 3. Synthesize Voiceover Audio via OpenAI TTS
-    const fullScriptText = storyResult.scenes.map((s) => s.narration).join(" ");
-    const chosenVoice = (language === "en_uk") ? "fable" : (character.voice || "nova");
+    // 3. Synthesize Voiceover Audio via OpenAI TTS with Emotional Voice Mapping
+    let chosenVoice = character.voice || "nova";
+    if (vocalEmotion === "poetic_shayar") {
+      chosenVoice = "onyx"; // Deep, resonant baritone voice perfect for Urdu/Hindi poetry & shayar
+    } else if (vocalEmotion === "dramatic_story") {
+      chosenVoice = "echo";
+    } else if (vocalEmotion === "commercial_pitch") {
+      chosenVoice = "alloy";
+    } else if (vocalEmotion === "warm_storybook") {
+      chosenVoice = "shimmer";
+    } else if (language === "en_uk") {
+      chosenVoice = "fable";
+    }
+
+    const fullScriptText = storyResult.scenes.map((s) => s.narration).join(" ... ");
+    console.log(`[CharacterStory] Synthesizing voiceover with voice: ${chosenVoice} (${vocalEmotion})`);
 
     const voiceRes = await openai.audio.speech.create({
       model: "tts-1",
@@ -124,17 +209,28 @@ Return ONLY valid JSON matching this exact structure:
     const voiceBuffer = Buffer.from(await voiceRes.arrayBuffer());
     const voiceoverBase64 = `data:audio/mp3;base64,${voiceBuffer.toString("base64")}`;
 
-    // 4. Build Timed Scenes with Dedicated gpt-image-2 Visuals
+    // 4. Build Timed Scenes (Client Media or gpt-image-2 Scene Generation)
     const sceneDuration = targetDuration / storyResult.scenes.length;
     const imageModel = process.env.OPENAI_IMAGE_MODEL || "gpt-image-2";
-    console.log(`[CharacterStory] Synthesizing ${storyResult.scenes.length} scene visuals using ${imageModel}...`);
+
+    console.log(`[CharacterStory] Building ${storyResult.scenes.length} scenes (mode: ${scriptMode})...`);
 
     const finalScenes = await Promise.all(
       storyResult.scenes.map(async (s, idx) => {
-        let sceneImgUrl = character.referenceSheetUrl;
-        if (process.env.OPENAI_API_KEY) {
+        let sceneVisualUrl = character.referenceSheetUrl;
+        let isClientVideo = false;
+
+        if (scriptMode === "business_media" && clientMedia.length > 0) {
+          // Use user's own uploaded factory / product media
+          const mediaItem = clientMedia[idx % clientMedia.length];
+          sceneVisualUrl = mediaItem.url;
+          isClientVideo = mediaItem.type === "video";
+        } else if (process.env.OPENAI_API_KEY) {
+          // Generate dedicated AI scene visual with gpt-image-2
           try {
-            const scenePrompt = `Cinematic animated movie still frame. Character: ${character.name}, ${character.visualTraits}. Action & setting: ${s.visualDescription}. Style: ${character.archetype || "3D Pixar Disney animation"}, expressive emotion, vibrant cinematic lighting, studio animation still, masterpiece.`;
+            const companionPrompt = companion ? `Companion: ${companion.name} (${companion.visualTraits}).` : "";
+            const scenePrompt = `Cinematic animated movie still frame. Main Character: ${character.name} (${character.visualTraits}). ${companionPrompt} Action & setting: ${s.visualDescription}. Style: ${character.archetype || "3D Pixar Disney animation"}, expressive emotion, vibrant cinematic lighting, studio animation still, masterpiece.`;
+            
             const imgGen = await openai.images.generate({
               model: imageModel,
               prompt: scenePrompt,
@@ -162,23 +258,24 @@ Return ONLY valid JSON matching this exact structure:
                 const { data: pubData } = supabase.storage
                   .from("instagram-creatives")
                   .getPublicUrl(filePath);
-                sceneImgUrl = pubData.publicUrl;
+                sceneVisualUrl = pubData.publicUrl;
               }
             }
           } catch (sceneErr) {
-            console.warn(`[CharacterStory] Scene ${idx + 1} generation warning:`, sceneErr.message);
+            console.warn(`[CharacterStory] Scene ${idx + 1} image synthesis warning:`, sceneErr.message);
           }
         }
 
         return {
           sceneIndex: idx,
-          chapter: s.chapter || `Scene ${idx + 1}`,
+          chapter: s.chapter || `Part ${idx + 1}`,
           text: s.narration,
           visualDescription: s.visualDescription,
           startSec: Math.round(idx * sceneDuration * 10) / 10,
           endSec: Math.round((idx + 1) * sceneDuration * 10) / 10,
-          videoUrl: sceneImgUrl,
-          previewImage: sceneImgUrl,
+          videoUrl: sceneVisualUrl,
+          previewImage: sceneVisualUrl,
+          isClientVideo,
           characterName: character.name,
         };
       })
@@ -197,7 +294,11 @@ Return ONLY valid JSON matching this exact structure:
     const responsePayload = {
       ok: true,
       character,
+      companion,
       format,
+      narrativeType,
+      scriptMode,
+      vocalEmotion,
       aspectRatio: isLongForm ? "16:9" : "9:16",
       title: storyResult.title || episodeTitle,
       youtubeTitle: storyResult.youtubeTitle || storyResult.title,
@@ -206,10 +307,10 @@ Return ONLY valid JSON matching this exact structure:
       scenes: finalScenes,
       captions,
       voiceoverAudio: voiceoverBase64,
-      backgroundMusicUrl: "/audio/upbeat_lofi.mp3",
+      backgroundMusicUrl: vocalEmotion === "poetic_shayar" ? "/audio/meditation_flute.mp3" : "/audio/upbeat_lofi.mp3",
     };
 
-    console.log(`[CharacterStory] Generated "${storyResult.title}" (${format}) with ${finalScenes.length} scenes for ${character.name}`);
+    console.log(`[CharacterStory] Generated "${storyResult.title}" (${format}, ${scriptMode}) with ${finalScenes.length} scenes for ${character.name}`);
     return res.status(200).json(responsePayload);
   } catch (err) {
     console.error("[CharacterStory] Error:", err);
