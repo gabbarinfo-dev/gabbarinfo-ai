@@ -54,6 +54,8 @@ export default function HomePage() {
           setActiveTab("shopify");
         } else if (urlParams.get("tab") === "reels" || urlParams.get("youtube_connected") === "true") {
           setActiveTab("reels");
+        } else if (urlParams.get("tab") === "characters") {
+          setActiveTab("characters");
         }
       }
     } catch (_) {}
@@ -1079,6 +1081,13 @@ export default function HomePage() {
                           style={{ padding: "11px 20px", fontSize: 13, flex: "1 1 auto", border: "1px solid rgba(236, 72, 153, 0.4)", color: "#f472b6" }}
                         >
                           🎬 AI Reels & Shorts ➔
+                        </button>
+                        <button
+                          onClick={() => handleSelectTab("characters")}
+                          className="btn-gabbar-secondary"
+                          style={{ padding: "11px 20px", fontSize: 13, flex: "1 1 auto", border: "1px solid rgba(168, 85, 247, 0.4)", color: "#c084fc" }}
+                        >
+                          ✨ Character IP & Stories ➔
                         </button>
                         <button
                           onClick={() => handleSelectTab("social")}

@@ -822,6 +822,54 @@ export default function ReelsStudioConnect() {
           </div>
         )}
 
+        {/* CHARACTER STUDIO CROSS-PROMO BANNER */}
+        <div
+          style={{
+            marginTop: 20,
+            padding: "14px 18px",
+            borderRadius: 14,
+            background: "linear-gradient(135deg, rgba(236, 72, 153, 0.12) 0%, rgba(139, 92, 246, 0.15) 100%)",
+            border: "1px solid rgba(236, 72, 153, 0.35)",
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "space-between",
+            flexWrap: "wrap",
+            gap: 12,
+          }}
+        >
+          <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+            <span style={{ fontSize: 24 }}>✨</span>
+            <div>
+              <div style={{ fontSize: 13, fontWeight: 800, color: "#fff" }}>
+                Need 3D Animated Characters, Verbatim Custom Shayari, or Factory Media Videos?
+              </div>
+              <div style={{ fontSize: 12, color: "#cbd5e1" }}>
+                Switch to the Character Studio &amp; Universal Video Engine for custom scripts, pet co-stars, and B2B industrial promos.
+              </div>
+            </div>
+          </div>
+          <button
+            onClick={() => {
+              if (typeof window !== "undefined") {
+                window.location.href = "/?tab=characters";
+              }
+            }}
+            style={{
+              padding: "8px 16px",
+              borderRadius: 8,
+              background: "linear-gradient(135deg, #ec4899 0%, #8b5cf6 100%)",
+              border: "none",
+              color: "#fff",
+              fontWeight: 800,
+              fontSize: 12,
+              cursor: "pointer",
+              boxShadow: "0 4px 14px rgba(236, 72, 153, 0.4)",
+            }}
+          >
+            Open Character Studio ➔
+          </button>
+        </div>
+
         {/* 3 VISUAL STYLE SELECTOR CARDS */}
         <div style={{ marginTop: 24 }}>
           <div style={{ fontSize: 12, fontWeight: 800, color: "#94a3b8", textTransform: "uppercase", letterSpacing: "0.05em", marginBottom: 12 }}>
