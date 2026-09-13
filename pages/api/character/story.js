@@ -3,8 +3,8 @@ import { getServerSession } from "next-auth/next";
 import { authOptions } from "../auth/[...nextauth]";
 import { createClient } from "@supabase/supabase-js";
 import OpenAI from "openai";
-import { generateTalkingAvatar } from "../../lib/video/replicate-service";
-import { uploadToMediaBridge } from "../../lib/wordpress/media-bridge";
+import { generateTalkingAvatar } from "../../../lib/video/replicate-service.js";
+import { uploadToMediaBridge } from "../../../lib/wordpress/media-bridge.js";
 
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL,
