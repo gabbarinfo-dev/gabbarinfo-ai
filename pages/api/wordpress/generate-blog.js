@@ -297,6 +297,28 @@ MANDATORY MINIMUM WORD COUNT: Strictly 1600+ Words across all 10 detailed sectio
       } catch (imgErr) {
         console.warn(`[SEO Engine] Central image service failed for ${label}:`, imgErr.message);
       }
+
+      // High-resolution commercial stock photography fallback (Pexels) - authentic, zero watermarks
+      if (process.env.PEXELS_API_KEY) {
+        try {
+          const searchQuery = encodeURIComponent(`${topic || focusKeyword || "commercial business"}`.slice(0, 40));
+          const pexRes = await fetch(`https://api.pexels.com/v1/search?query=${searchQuery}&per_page=5&orientation=${imageSize === "1792x1024" ? "landscape" : "square"}`, {
+            headers: { Authorization: process.env.PEXELS_API_KEY }
+          });
+          if (pexRes.ok) {
+            const pexData = await pexRes.json();
+            const photo = pexData.photos?.[label === "featured" ? 0 : 1] || pexData.photos?.[0];
+            if (photo?.src?.large2x || photo?.src?.large) {
+              const photoUrl = photo.src.large2x || photo.src.large;
+              console.log(`[SEO Engine] Pexels visual fallback acquired for ${label}: ${photoUrl}`);
+              return photoUrl;
+            }
+          }
+        } catch (pexErr) {
+          console.warn("[SEO Engine] Pexels fallback warning:", pexErr.message);
+        }
+      }
+
       return null;
     };
 
@@ -308,22 +330,102 @@ MANDATORY MINIMUM WORD COUNT: Strictly 1600+ Words across all 10 detailed sectio
 
     const midPrompt = `A clean, highly educational 1:1 square 3D infographic diagram illustrating the core framework for "${topic}". Sleek 4-tier SEO growth architecture pyramid with clearly labeled levels, glowing connection lines, warm amber yellow highlights (#f59e0b), dark sleek slate background, crisp modern typography, clean agency layout.`;
 
-    console.log(`[SEO Engine] Initiating concurrent parallel execution: ${blogModel} 1600+ word text + dual gpt-image-2 visuals simultaneously...`);
+    console.log(`[SEO Engine] Initiating concurrent parallel execution: ${blogModel} 1600+ word text + dual visuals simultaneously...`);
 
     // In autopilot mode, use 1024x1024 for high velocity (~16s generation) to ensure completion in <40s
     const heroSize = isAutopilot ? "1024x1024" : "1024x1024";
 
-    const [completion, [featuredImageUrl, midImageUrl]] = await Promise.all([
-      openai.chat.completions.create({
-        model: blogModel,
-        messages: [
-          { role: "system", content: systemPrompt },
-          { role: "user", content: userPrompt },
-        ],
-        response_format: { type: "json_object" },
-        max_tokens: isAutopilot ? 4000 : 5000,
-        temperature: 0.7,
-      }),
+    const generateArticleText = async () => {
+      // 1. Try OpenAI if configured
+      if (apiKey) {
+        try {
+          const comp = await openai.chat.completions.create({
+            model: blogModel,
+            messages: [
+              { role: "system", content: systemPrompt },
+              { role: "user", content: userPrompt },
+            ],
+            response_format: { type: "json_object" },
+            max_tokens: isAutopilot ? 4000 : 5000,
+            temperature: 0.7,
+          });
+          const raw = comp?.choices?.[0]?.message?.content;
+          if (raw) {
+            return JSON.parse(raw);
+          }
+        } catch (openaiErr) {
+          console.warn(`[SEO Engine] OpenAI generation failed (${openaiErr.message}), activating Google Gemini fallback...`);
+        }
+      }
+
+      // 2. Google Gemini Fallback (Zero Downtime, Always Available)
+      const geminiKey = process.env.GEMINI_API_KEY;
+      if (geminiKey) {
+        const { GoogleGenerativeAI } = await import("@google/generative-ai");
+        const genAI = new GoogleGenerativeAI(geminiKey);
+        const geminiModel = genAI.getGenerativeModel({
+          model: "gemini-2.5-flash",
+          generationConfig: {
+            responseMimeType: "application/json",
+            temperature: 0.7,
+            maxOutputTokens: 16384,
+          },
+        });
+
+        const combinedPrompt = `${systemPrompt}\n\nUSER SPECIFICATIONS:\n${userPrompt}\n\nSTRICT INSTRUCTION: Respond strictly with valid JSON. Ensure all double quotes inside html_content are properly escaped with backslashes.`;
+        const gemRes = await geminiModel.generateContent(combinedPrompt);
+        let rawText = gemRes.response.text().trim();
+        if (rawText.startsWith("```json")) {
+          rawText = rawText.replace(/^```json\s*/, "").replace(/\s*```$/, "");
+        } else if (rawText.startsWith("```")) {
+          rawText = rawText.replace(/^```\s*/, "").replace(/\s*```$/, "");
+        }
+
+        try {
+          return JSON.parse(rawText);
+        } catch (parseErr) {
+          console.warn("[SEO Engine] Direct JSON parse failed, attempting safe repair:", parseErr.message);
+          // Safe extraction fallback if JSON was slightly malformed
+          const titleMatch = rawText.match(/"title"\s*:\s*"([^"]+)"/);
+          const slugMatch = rawText.match(/"slug"\s*:\s*"([^"]+)"/);
+          const metaTitleMatch = rawText.match(/"meta_title"\s*:\s*"([^"]+)"/);
+          const metaDescMatch = rawText.match(/"meta_description"\s*:\s*"([^"]+)"/);
+          const focusKwMatch = rawText.match(/"focus_keyword"\s*:\s*"([^"]+)"/);
+          
+          let extractedHtml = "";
+          const htmlStart = rawText.indexOf('"html_content"');
+          if (htmlStart !== -1) {
+            const afterKey = rawText.slice(htmlStart + 14);
+            const firstQuote = afterKey.indexOf('"');
+            if (firstQuote !== -1) {
+              const htmlBody = afterKey.slice(firstQuote + 1);
+              const lastQuote = htmlBody.lastIndexOf('"');
+              if (lastQuote !== -1) {
+                extractedHtml = htmlBody.slice(0, lastQuote).replace(/\\"/g, '"').replace(/\\n/g, "\n");
+              }
+            }
+          }
+
+          if (titleMatch && extractedHtml) {
+            return {
+              title: titleMatch[1],
+              slug: slugMatch ? slugMatch[1] : topic.toLowerCase().replace(/[^a-z0-9]+/g, "-"),
+              meta_title: metaTitleMatch ? metaTitleMatch[1] : titleMatch[1],
+              meta_description: metaDescMatch ? metaDescMatch[1] : "",
+              focus_keyword: focusKwMatch ? focusKwMatch[1] : (focusKeyword || topic),
+              tags: [focusKeyword || "Digital Solutions", "Business Growth"],
+              html_content: extractedHtml,
+            };
+          }
+          throw parseErr;
+        }
+      }
+
+      throw new Error("Both OpenAI and Google Gemini text generation providers are unavailable or depleted.");
+    };
+
+    const [parsedArticle, [featuredImageUrl, midImageUrl]] = await Promise.all([
+      generateArticleText(),
       Promise.all([
         generateAiVisual(featuredPrompt, "featured", heroSize).catch((e) => {
           console.warn("Featured image generation error:", e.message);
@@ -337,8 +439,6 @@ MANDATORY MINIMUM WORD COUNT: Strictly 1600+ Words across all 10 detailed sectio
           }),
       ]),
     ]);
-
-    const parsedArticle = JSON.parse(completion.choices[0].message.content);
 
     // 7. Ensure In-Content Mid Visual is Injected and Verify Word Count
     let finalContent = parsedArticle.html_content || "";

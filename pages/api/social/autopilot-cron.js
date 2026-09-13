@@ -73,10 +73,50 @@ async function generateSocialVisual(prompt, label = "social") {
     }
   }
 
+  // Pexels commercial stock photography fallback (authentic high-res commercial imagery with zero watermarks)
+  if (process.env.PEXELS_API_KEY) {
+    try {
+      const query = encodeURIComponent((label || "business commercial marketing").trim());
+      const pexRes = await fetch(`https://api.pexels.com/v1/search?query=${query}&per_page=5&orientation=square`, {
+        headers: { Authorization: process.env.PEXELS_API_KEY }
+      });
+      if (pexRes.ok) {
+        const pexData = await pexRes.json();
+        const photo = pexData.photos?.[0] || pexData.photos?.[1];
+        if (photo?.src?.large2x || photo?.src?.large) {
+          const photoUrl = photo.src.large2x || photo.src.large;
+          const photoFetch = await fetch(photoUrl);
+          if (photoFetch.ok) {
+            const buf = Buffer.from(await photoFetch.arrayBuffer());
+            try {
+              const mb = await uploadToMediaBridge({
+                filename: `social_pex_${Date.now()}.png`,
+                buffer: buf,
+              });
+              return mb.url;
+            } catch (mbErr) {
+              const fileName = `social_pex_${Date.now()}_${Math.random().toString(36).substring(7)}.png`;
+              const { data: uploadData, error: uploadErr } = await supabase.storage
+                .from("instagram-creatives")
+                .upload(fileName, buf, { contentType: "image/png", upsert: true });
+              if (!uploadErr && uploadData) {
+                const { data: pubUrl } = supabase.storage.from("instagram-creatives").getPublicUrl(fileName);
+                return pubUrl.publicUrl;
+              }
+              return photoUrl;
+            }
+          }
+        }
+      }
+    } catch (pexErr) {
+      console.warn("[Social Cron] Pexels visual fallback warning:", pexErr.message);
+    }
+  }
+
   // Pollinations high-speed fallback
   try {
-    const encoded = encodeURIComponent(prompt);
-    const pollinationsUrl = `https://image.pollinations.ai/prompt/${encoded}?width=1024&height=1024&nologo=true&seed=${Math.floor(Math.random() * 1000000)}`;
+    const cleanPrompt = encodeURIComponent(`Award-winning commercial advertising poster for ${label}. Sleek modern commercial studio lighting, 8k render, high contrast, masterpiece.`);
+    const pollinationsUrl = `https://image.pollinations.ai/prompt/${cleanPrompt}?width=1024&height=1024&nologo=true&seed=${Math.floor(Math.random() * 1000000)}`;
     const pollRes = await fetch(pollinationsUrl);
     if (pollRes.ok) {
       const pollBuf = Buffer.from(await pollRes.arrayBuffer());
@@ -182,38 +222,89 @@ export default async function handler(req, res) {
           }
         }
 
-        // Pick next topic from queue
+        // Fetch user's business profile for universal domain intelligence (Zero hardcoding)
+        let clientIndustry = config.industry || "";
+        let clientServices = "";
+        let clientWebsite = "";
+        let clientPhone = "";
+        let clientContactMethod = "dm";
+
+        const { data: clientMem } = await supabase
+          .from("agent_memory")
+          .select("content")
+          .eq("email", item.email)
+          .eq("memory_type", "client")
+          .maybeSingle();
+
+        if (clientMem?.content) {
+          try {
+            const parsedClient = typeof clientMem.content === "string" ? JSON.parse(clientMem.content) : clientMem.content;
+            const bAnswers = parsedClient?.business_answers?.[config.businessName] || parsedClient?.business_answers?.["default_business"] || parsedClient || {};
+            clientIndustry = clientIndustry || bAnswers.industry || bAnswers.business_type || "";
+            clientServices = bAnswers.services || bAnswers.service || bAnswers.products || "";
+            clientWebsite = bAnswers.website || bAnswers.websiteUrl || parsedClient?.business_website || "";
+            clientPhone = bAnswers.phone || bAnswers.business_phone || parsedClient?.business_phone || "";
+            clientContactMethod = bAnswers.contact_method || (clientWebsite ? "website" : (clientPhone ? "phone" : "dm"));
+          } catch (_) {}
+        }
+
+        // Universal Service Roster: Assemble every distinct service/offering for ANY user business
+        const rawServices = [];
+        if (Array.isArray(config.services)) rawServices.push(...config.services);
+        if (Array.isArray(config.targetKeywords)) rawServices.push(...config.targetKeywords);
+        if (typeof clientServices === "string" && clientServices.trim()) {
+          rawServices.push(...clientServices.split(/[,;\n|]/).map(s => s.trim()));
+        }
+
+        const seenServices = new Set();
+        const serviceRoster = [];
+        for (const s of rawServices) {
+          const clean = s.trim().replace(/^[-•*]\s*/, "");
+          if (clean.length > 2 && !seenServices.has(clean.toLowerCase())) {
+            seenServices.add(clean.toLowerCase());
+            serviceRoster.push(clean);
+          }
+        }
+
+        if (serviceRoster.length === 0) {
+          serviceRoster.push("Business Growth & Operations", "Professional Client Services");
+        }
+
+        // Deterministic Universal Round-Robin: Advances to the next distinct service on each publication
+        const serviceIndex = (config.publishedCount || 0) % serviceRoster.length;
+        const activeService = serviceRoster[serviceIndex] || serviceRoster[0];
+
+        // Pick next topic from queue or synthesize tailored topic
         let nextItem = (config.queue || []).find((q) => q.status === "pending");
         if (!nextItem) {
-          const s = (config.services && config.services[0]) || "Business Growth";
           nextItem = {
             day: (config.publishedCount || 0) + 1,
             pillar: "educational_tips",
-            service: s,
-            hook: "Essential Strategies for Fast Growth",
-            topic: `How to scale your ${s} with modern marketing strategies in 2026`,
+            service: activeService,
+            hook: `Mastering ${activeService}`,
+            topic: `Essential Strategies and High-Impact Tactics for ${activeService} in ${new Date().getFullYear()}`,
             status: "pending",
           };
         }
 
-        const businessName = config.businessName || "GabbarInfo";
-        const service = nextItem.service || "Services";
-        const topic = nextItem.topic || "Practical tips for business growth";
-        const hook = nextItem.hook || "Growth Insights";
+        const businessName = config.businessName || "Enterprise";
+        const service = nextItem.service || activeService;
+        const topic = nextItem.topic || `Practical insights for ${service}`;
+        const hook = nextItem.hook || `Excellence in ${service}`;
 
         // Build Agent State for Agency-Grade Creative Generation (Matches Dropdown Facebook/Instagram Quality)
         const agentState = {
           businessName,
-          businessCategory: config.industry || "Digital Marketing & Business Growth",
+          businessCategory: clientIndustry || config.industry || "Professional Business Solutions",
           context: {
             service,
             serviceLocked: true,
-            offer: hook || "Special Offer",
+            offer: hook || "Special Consultation",
           },
           assets: {
-            contactMethod: "dm",
-            websiteUrl: "gabbarinfo.com",
-            phone: "+91 97239 27645",
+            contactMethod: clientContactMethod,
+            websiteUrl: clientWebsite,
+            phone: clientPhone,
           },
         };
 

@@ -3,6 +3,7 @@ import { verifyEntitlementByEmail } from "../../../lib/auth/entitlements.js";
 import { checkActionEntitlement } from "../../../lib/billing/quota-service.js";
 import { executeBlogGeneration } from "./generate-blog.js";
 import { executeFacebookPost } from "../../../lib/execute-facebook-post.js";
+import { executeInstagramPost } from "../../../lib/execute-instagram-post.js";
 
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL,
@@ -122,25 +123,62 @@ export default async function handler(req, res) {
           } catch (_) {}
         }
 
+        // Universal Service Roster: Extract distinct business services for ANY user business
+        const rawServices = [];
+        if (Array.isArray(config.targetKeywords)) rawServices.push(...config.targetKeywords);
+        if (Array.isArray(config.services)) rawServices.push(...config.services);
+        if (typeof clientServices === "string" && clientServices.trim()) {
+          rawServices.push(...clientServices.split(/[,;\n|]/).map(s => s.trim()));
+        }
+
+        // Deduplicate and sanitize
+        const seenServices = new Set();
+        const serviceRoster = [];
+        for (const s of rawServices) {
+          const clean = s.trim().replace(/^[-•*]\s*/, "");
+          if (clean.length > 2 && !seenServices.has(clean.toLowerCase())) {
+            seenServices.add(clean.toLowerCase());
+            serviceRoster.push(clean);
+          }
+        }
+
+        if (serviceRoster.length === 0) {
+          serviceRoster.push(
+            "Core Business Operations",
+            "Customer Acquisition & Growth",
+            "Quality Management & Delivery"
+          );
+        }
+
+        // Deterministic Universal Service Round-Robin: Advances to the next distinct service on each publication
+        const serviceIndex = (config.publishedCount || 0) % serviceRoster.length;
+        const activeService = serviceRoster[serviceIndex] || serviceRoster[0];
+
         config.publishedTopics = Array.isArray(config.publishedTopics) ? config.publishedTopics : [];
         let generatedTopic = "";
 
-        // 2. Dynamic AI Topic Synthesis tailored to this specific business
+        // 2. Dynamic Multi-Model AI Topic Synthesis (OpenAI -> Google Gemini Failover)
+        const recentTopics = config.publishedTopics.slice(-15).join(" | ");
+        const topicPrompt = `You are a Principal Content Strategist for "${config.businessName || 'Enterprise'}", operating in the "${clientIndustry || 'Commercial Solutions'}" industry.
+Today's designated core service / product focus is: "${activeService}".
+Target market / audience: "${clientMarket || 'Global B2B/B2C'}".
+Complete service roster: "${serviceRoster.join(', ')}".
+
+Generate a single, high-impact, authoritative blog headline for today that focuses specifically on "${activeService}". Address a real customer pain point, strategic decision, or practical high-value solution in this domain.
+DO NOT write about general topics unless framed around "${activeService}".
+DO NOT repeat or closely mimic any of these previously published topics: [${recentTopics}].
+Return ONLY the single title, with no quotes or preamble.`;
+
+        // Attempt 1: OpenAI (gpt-4o-mini)
         const openAiKey = process.env.OPENAI_API_KEY;
         if (openAiKey) {
           try {
             const OpenAI = (await import("openai")).default;
             const openai = new OpenAI({ apiKey: openAiKey });
 
-            const recentTopics = config.publishedTopics.slice(-15).join(" | ");
-            const prompt = `You are a Principal Content Strategist for "${config.businessName || 'Enterprise'}", operating in the "${clientIndustry || 'Commercial Solutions'}" industry, providing: "${clientServices || 'High-value services and products'}". Target market: "${clientMarket || 'Global B2B/B2C'}".
-Generate a single, compelling, authoritative blog headline/topic for today that addresses a real customer pain point, buying consideration, or technical problem in this domain.
-DO NOT repeat or closely mimic any of these previously published topics: [${recentTopics}].
-Return ONLY the single title, with no quotes or preamble.`;
-
             const aiResp = await openai.chat.completions.create({
               model: "gpt-4o-mini",
-              messages: [{ role: "user", content: prompt }],
+              messages: [{ role: "user", content: topicPrompt }],
               temperature: 0.75,
               max_tokens: 60,
             });
@@ -148,51 +186,68 @@ Return ONLY the single title, with no quotes or preamble.`;
             const aiTitle = aiResp.choices?.[0]?.message?.content?.trim().replace(/^["']|["']$/g, "");
             if (aiTitle && !config.publishedTopics.includes(aiTitle)) {
               generatedTopic = aiTitle;
+              console.log(`[Autopilot Cron] OpenAI topic synthesized: "${generatedTopic}" for service "${activeService}"`);
             }
           } catch (aiErr) {
-            console.warn("[Autopilot Cron] AI topic synthesis fallback:", aiErr.message);
+            console.warn("[Autopilot Cron] OpenAI topic synthesis error (falling back to Gemini):", aiErr.message);
           }
         }
 
-        // Fallback: Intelligent Round-Robin keyword topic generator if AI synthesis unavailable
-        if (!generatedTopic) {
-          const keywords = Array.isArray(config.targetKeywords) && config.targetKeywords.length > 0
-            ? config.targetKeywords
-            : (clientServices ? clientServices.split(",").map(s => s.trim()) : ["Business Growth", "Operations", "Market Leadership"]);
+        // Attempt 2: Google Gemini Fallback (gemini-2.5-flash) if OpenAI quota exhausted or failed
+        if (!generatedTopic && process.env.GEMINI_API_KEY) {
+          try {
+            const geminiUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${process.env.GEMINI_API_KEY}`;
+            const geminiResp = await fetch(geminiUrl, {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({
+                contents: [{ role: "user", parts: [{ text: topicPrompt }] }],
+                generationConfig: { temperature: 0.7, maxOutputTokens: 100 },
+              }),
+            });
+            if (geminiResp.ok) {
+              const geminiData = await geminiResp.json();
+              const geminiTitle = geminiData.candidates?.[0]?.content?.parts?.[0]?.text?.trim().replace(/^["']|["']$/g, "");
+              if (geminiTitle && !config.publishedTopics.includes(geminiTitle)) {
+                generatedTopic = geminiTitle;
+                console.log(`[Autopilot Cron] Gemini topic synthesized: "${generatedTopic}" for service "${activeService}"`);
+              }
+            }
+          } catch (geminiErr) {
+            console.warn("[Autopilot Cron] Gemini topic synthesis fallback warning:", geminiErr.message);
+          }
+        }
 
+        // Attempt 3: Template-Based Diversifier using activeService
+        if (!generatedTopic) {
           const templates = [
-            "The Comprehensive Guide to %KW%: Actionable Tactics for Sustainable Growth",
-            "Mastering %KW%: Best Practices for Maximizing Quality and ROI",
-            "High-Impact %KW% Strategies That Modern Industry Leaders Swear By",
-            "The Practical Playbook for %KW%: Overcoming Common Pitfalls",
-            "Advanced %KW% Optimization: Core Frameworks and Proven Solutions",
-            "How Leading Enterprises Elevate Results with %KW%: Deep-Dive Analysis"
+            `The Comprehensive Guide to ${activeService}: Actionable Tactics for Sustainable Growth`,
+            `Mastering ${activeService}: Best Practices for Maximizing Quality and ROI`,
+            `High-Impact ${activeService} Strategies That Modern Industry Leaders Swear By`,
+            `The Practical Playbook for ${activeService}: Overcoming Common Pitfalls`,
+            `Advanced ${activeService} Optimization: Core Frameworks and Proven Solutions`,
+            `How Leading Enterprises Elevate Results with ${activeService}: Deep-Dive Analysis`
           ];
 
-          // True Round-Robin: Pick keyword based on publishedCount modulo keywords length
-          const kwIndex = (config.publishedCount || 0) % keywords.length;
-          const selectedKw = keywords[kwIndex] || keywords[0];
-
           for (const tpl of templates) {
-            const candidate = tpl.replace("%KW%", selectedKw);
-            if (!config.publishedTopics.includes(candidate)) {
-              generatedTopic = candidate;
+            if (!config.publishedTopics.includes(tpl)) {
+              generatedTopic = tpl;
               break;
             }
           }
 
           if (!generatedTopic) {
-            generatedTopic = `${selectedKw}: Critical Industry Insights and Practical Solutions`;
+            generatedTopic = `${activeService}: Critical Industry Insights and Practical Solutions for ${new Date().getFullYear()}`;
           }
         }
 
         // Direct In-Process Autonomous Blog Engine Execution (No external HTTP fetch overhead)
-        console.log(`[Autopilot Cron] Invoking in-process blog generation for ${config.businessName}... Topic: "${generatedTopic}"`);
+        console.log(`[Autopilot Cron] Invoking in-process blog generation for ${config.businessName}... Active Service: "${activeService}" | Topic: "${generatedTopic}"`);
         const genData = await executeBlogGeneration({
           userEmail: item.email,
           businessName: config.businessName || "GABBARinfo",
           topic: generatedTopic,
-          targetKeywords: [generatedTopic.slice(0, 30)],
+          targetKeywords: [activeService, generatedTopic.slice(0, 30)],
           wordCount: Math.max(Number(config.wordCount) || 1500, 1500),
           brandVoice: config.brandVoice || "consultative and results-oriented",
           industry: clientIndustry || config.industry || "Business",
@@ -219,8 +274,10 @@ Return ONLY the single title, with no quotes or preamble.`;
 
           console.log(`[Autopilot Cron] Memory state updated for ${item.email}. Published count: ${config.publishedCount}`);
 
-          // In-Process Direct Facebook Syndication (Clickable Link Card - Screenshot 3 style)
+          // In-Process Direct Social Media Syndication (Strictly obeys user preferences)
           const socialShares = {};
+
+          // 1. Facebook Page Publish (Clickable Link Card - Screenshot 3 style)
           if (config.autoShareFacebook && (genData.post_url || genData.featured_image)) {
             try {
               console.log(`[Autopilot Cron] In-process Facebook Link Card post for ${config.businessName}...`);
@@ -243,6 +300,30 @@ Return ONLY the single title, with no quotes or preamble.`;
             } catch (fbErr) {
               console.warn("[Autopilot Cron] In-process Facebook share warning:", fbErr.message);
               socialShares.facebook = { ok: false, error: fbErr.message };
+            }
+          }
+
+          // 2. Instagram Profile Publish (if user preferred Instagram)
+          if (config.autoShareInstagram && genData.featured_image) {
+            try {
+              console.log(`[Autopilot Cron] In-process Instagram post for ${config.businessName}...`);
+              const igCaption = `📢 ${genData.title}\n\n${genData.meta_description || ""}\n\n🔗 Link in bio to read full breakdown!\n\n#${activeService.replace(/[^a-zA-Z0-9]/g, "")} #BusinessGrowth #${(config.businessName || "Gabbarinfo").replace(/[^a-zA-Z0-9]/g, "")}`;
+              const igPromise = executeInstagramPost({
+                userEmail: item.email,
+                imageUrl: genData.featured_image,
+                caption: igCaption,
+              });
+
+              const timeoutPromise = new Promise((_, reject) =>
+                setTimeout(() => reject(new Error("Instagram syndication timed out after 25s")), 25000)
+              );
+
+              const igRes = await Promise.race([igPromise, timeoutPromise]);
+              socialShares.instagram = { ok: true, id: igRes?.postId || igRes?.id };
+              console.log(`[Autopilot Cron] Instagram syndication successful: ${igRes?.postId || igRes?.id}`);
+            } catch (igErr) {
+              console.warn("[Autopilot Cron] In-process Instagram share warning:", igErr.message);
+              socialShares.instagram = { ok: false, error: igErr.message };
             }
           }
 
