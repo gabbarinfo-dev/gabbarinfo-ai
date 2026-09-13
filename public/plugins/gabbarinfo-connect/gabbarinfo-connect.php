@@ -3,7 +3,7 @@
  * Plugin Name: GabbarInfo AI Connect
  * Plugin URI: https://gabbarinfo.ai/
  * Description: Connects your WordPress & WooCommerce site to GabbarInfo AI for automated Google Ads conversion tracking (gtag.js), Meta Pixel, dynamic purchase tracking, and autonomous SEO & blogging.
- * Version: 1.0.0
+ * Version: 1.1.0
  * Author: GabbarInfo AI
  * Author URI: https://gabbarinfo.ai/
  * License: GPL v2 or later
@@ -16,7 +16,7 @@ if ( ! defined( 'ABSPATH' ) ) {
 
 class GabbarInfo_Connect {
 
-    const VERSION = '1.0.0';
+    const VERSION = '1.1.0';
     const OPTION_GROUP = 'gabbarinfo_settings_group';
 
     public function __construct() {
@@ -31,8 +31,14 @@ class GabbarInfo_Connect {
         // WooCommerce Conversion Tracking
         add_action( 'woocommerce_thankyou', array( $this, 'inject_woocommerce_purchase_tracking' ), 20 );
 
-        // REST API Endpoints for Autonomous Agent Control
+        // REST API Endpoints for Autonomous Agent Control & Universal Media Bridge
         add_action( 'rest_api_init', array( $this, 'register_rest_routes' ) );
+
+        // Hourly Media Bridge Ephemeral Cleanup Cron (Purge draft/abandoned files older than 60 minutes)
+        add_action( 'gabbarinfo_media_bridge_cleanup_cron', array( $this, 'run_media_bridge_cleanup' ) );
+        if ( ! wp_next_scheduled( 'gabbarinfo_media_bridge_cleanup_cron' ) ) {
+            wp_schedule_event( time(), 'hourly', 'gabbarinfo_media_bridge_cleanup_cron' );
+        }
     }
 
     /**
@@ -110,6 +116,20 @@ class GabbarInfo_Connect {
                         <input type="hidden" name="gabbarinfo_action" value="regenerate_key">
                         <button type="submit" class="button" onclick="return confirm('Regenerate pairing key? Any existing connection in GabbarInfo AI will need this new key.');">🔄 Regenerate Key</button>
                     </form>
+                </div>
+            </div>
+
+            <div style="background: #fff; border: 1px solid #e2e8f0; border-radius: 12px; padding: 24px; margin-bottom: 24px; box-shadow: 0 1px 3px rgba(0,0,0,0.05);">
+                <div style="display: flex; align-items: center; justify-content: space-between;">
+                    <div>
+                        <h2 style="font-size: 18px; margin: 0 0 6px; color: #0f172a;">⚡ Ephemeral Media Bridge</h2>
+                        <p style="color: #64748b; font-size: 14px; margin: 0;">High-speed hosting media staging for Instagram, Facebook, and YouTube video/image rendering.</p>
+                    </div>
+                    <span style="background: #10b981; color: #fff; padding: 4px 12px; border-radius: 16px; font-size: 12px; font-weight: 600;">ACTIVE (60-MIN AUTO PURGE)</span>
+                </div>
+                <div style="margin-top: 14px; padding: 12px 16px; background: #f8fafc; border-radius: 8px; border: 1px solid #e2e8f0; font-size: 13px; color: #334155; line-height: 1.6;">
+                    <div><strong>Staging Directory:</strong> <code>/wp-content/uploads/media_bridge/</code></div>
+                    <div><strong>Auto-Destruction:</strong> Files are unlinked immediately after social publishing. Abandoned drafts older than 60 minutes are purged automatically every hour.</div>
                 </div>
             </div>
 
@@ -361,26 +381,269 @@ document.addEventListener('DOMContentLoaded', function() {
             'callback' => array( $this, 'rest_regenerate_key' ),
             'permission_callback' => array( $this, 'authenticate_agent_request' ),
         ) );
+
+        // Universal Ephemeral Media Bridge (Temporary Staging on User Hosting)
+        register_rest_route( 'gabbarinfo/v1', '/media-bridge/upload', array(
+            'methods'             => 'POST',
+            'callback'            => array( $this, 'rest_media_bridge_upload' ),
+            'permission_callback' => array( $this, 'authenticate_agent_request' ),
+        ) );
+
+        register_rest_route( 'gabbarinfo/v1', '/media-bridge/purge', array(
+            'methods'             => 'POST',
+            'callback'            => array( $this, 'rest_media_bridge_purge' ),
+            'permission_callback' => array( $this, 'authenticate_agent_request' ),
+        ) );
+
+        register_rest_route( 'gabbarinfo/v1', '/media-bridge/cleanup', array(
+            'methods'             => array( 'GET', 'POST' ),
+            'callback'            => array( $this, 'rest_media_bridge_cleanup' ),
+            'permission_callback' => array( $this, 'authenticate_agent_request' ),
+        ) );
     }
 
     /**
-     * Validate Bearer Token against stored Pairing Key
+     * Validate Bearer Token or api_key parameter against stored Pairing Key
      */
     public function authenticate_agent_request( $request ) {
         $stored_key = get_option( 'gabbarinfo_api_key', '' );
         if ( empty( $stored_key ) ) return false;
 
-        $auth_header = $request->get_header( 'authorization' );
-        if ( empty( $auth_header ) ) {
-            $param_key = $request->get_param( 'api_key' );
-            return ( $param_key === $stored_key );
+        // 1. Query parameter or JSON body api_key
+        $param_key = $request->get_param( 'api_key' );
+        if ( ! empty( $param_key ) && hash_equals( (string)$stored_key, (string)$param_key ) ) {
+            return true;
         }
 
-        if ( preg_match( '/Bearer\s+(.*)$/i', $auth_header, $matches ) ) {
-            return ( trim( $matches[1] ) === $stored_key );
+        // 2. Authorization Header (Bearer token)
+        $auth_header = $request->get_header( 'authorization' );
+        if ( ! empty( $auth_header ) && preg_match( '/Bearer\s+(.*)$/i', $auth_header, $matches ) ) {
+            if ( hash_equals( (string)$stored_key, trim( $matches[1] ) ) ) {
+                return true;
+            }
+        }
+
+        // 3. Custom X-API-Key header
+        $x_api_key = $request->get_header( 'x_api_key' );
+        if ( ! empty( $x_api_key ) && hash_equals( (string)$stored_key, trim( $x_api_key ) ) ) {
+            return true;
         }
 
         return false;
+    }
+
+    /**
+     * Get or create directory for Ephemeral Media Bridge
+     */
+    public function get_media_bridge_dir() {
+        $upload_dir = wp_upload_dir();
+        $dir = trailingslashit( $upload_dir['basedir'] ) . 'media_bridge';
+        if ( ! file_exists( $dir ) ) {
+            wp_mkdir_p( $dir );
+            if ( ! file_exists( $dir . '/index.php' ) ) {
+                file_put_contents( $dir . '/index.php', '<?php // Silence is golden' );
+            }
+        }
+        return $dir;
+    }
+
+    /**
+     * Get public URL for Ephemeral Media Bridge
+     */
+    public function get_media_bridge_url() {
+        $upload_dir = wp_upload_dir();
+        return trailingslashit( $upload_dir['baseurl'] ) . 'media_bridge';
+    }
+
+    /**
+     * POST /wp-json/gabbarinfo/v1/media-bridge/upload
+     * Accepts:
+     * - Multipart file in $_FILES['file']
+     * - JSON payload with base64 data: { "filename": "...", "content_base64": "..." }
+     * - JSON payload with source_url to download: { "source_url": "https://..." }
+     */
+    public function rest_media_bridge_upload( $request ) {
+        $dir = $this->get_media_bridge_dir();
+        $final_filename = '';
+
+        // Case 1: Standard multipart file upload
+        $files = $request->get_file_params();
+        if ( ! empty( $files['file'] ) && ! empty( $files['file']['tmp_name'] ) ) {
+            $uploaded = $files['file'];
+            if ( $uploaded['error'] !== UPLOAD_ERR_OK ) {
+                return new WP_Error( 'upload_error', 'File upload failed with error code: ' . $uploaded['error'], array( 'status' => 400 ) );
+            }
+            $clean_name = sanitize_file_name( $uploaded['name'] );
+            $final_filename = 'mb_' . time() . '_' . wp_generate_password( 8, false, false ) . '_' . $clean_name;
+            $dest_path = $dir . '/' . $final_filename;
+
+            if ( ! move_uploaded_file( $uploaded['tmp_name'], $dest_path ) ) {
+                if ( ! copy( $uploaded['tmp_name'], $dest_path ) ) {
+                    return new WP_Error( 'save_failed', 'Failed to save uploaded file to media bridge.', array( 'status' => 500 ) );
+                }
+            }
+        } else {
+            // Case 2: JSON payload
+            $params = $request->get_json_params();
+            if ( empty( $params ) ) {
+                $params = $request->get_params();
+            }
+
+            if ( ! empty( $params['content_base64'] ) ) {
+                $raw_name = ! empty( $params['filename'] ) ? $params['filename'] : 'asset_' . time() . '.bin';
+                $clean_name = sanitize_file_name( $raw_name );
+                $final_filename = 'mb_' . time() . '_' . wp_generate_password( 8, false, false ) . '_' . $clean_name;
+                $dest_path = $dir . '/' . $final_filename;
+
+                $data = $params['content_base64'];
+                if ( preg_match( '/^data:.*?;base64,/', $data ) ) {
+                    $data = preg_replace( '/^data:.*?;base64,/', '', $data );
+                }
+                $decoded = base64_decode( $data );
+                if ( $decoded === false ) {
+                    return new WP_Error( 'invalid_base64', 'Unable to decode base64 file content.', array( 'status' => 400 ) );
+                }
+                file_put_contents( $dest_path, $decoded );
+            } elseif ( ! empty( $params['source_url'] ) ) {
+                $source_url = esc_url_raw( $params['source_url'] );
+                $path_info = pathinfo( parse_url( $source_url, PHP_URL_PATH ) );
+                $ext = ! empty( $path_info['extension'] ) ? '.' . $path_info['extension'] : '.bin';
+                $raw_name = ! empty( $params['filename'] ) ? $params['filename'] : ( ! empty( $path_info['basename'] ) ? $path_info['basename'] : 'remote' . $ext );
+                $clean_name = sanitize_file_name( $raw_name );
+                $final_filename = 'mb_' . time() . '_' . wp_generate_password( 8, false, false ) . '_' . $clean_name;
+                $dest_path = $dir . '/' . $final_filename;
+
+                $response = wp_remote_get( $source_url, array( 'timeout' => 60, 'stream' => true, 'filename' => $dest_path ) );
+                if ( is_wp_error( $response ) ) {
+                    return new WP_Error( 'download_failed', 'Failed to fetch source URL: ' . $response->get_error_message(), array( 'status' => 502 ) );
+                }
+            } else {
+                return new WP_Error( 'missing_media', 'No file, content_base64, or source_url provided.', array( 'status' => 400 ) );
+            }
+        }
+
+        $dest_path = $dir . '/' . $final_filename;
+        if ( ! file_exists( $dest_path ) || filesize( $dest_path ) === 0 ) {
+            return new WP_Error( 'write_error', 'File was not written to media bridge storage.', array( 'status' => 500 ) );
+        }
+
+        $url = $this->get_media_bridge_url() . '/' . $final_filename;
+
+        return rest_ensure_response( array(
+            'ok'         => true,
+            'file_name'  => $final_filename,
+            'url'        => $url,
+            'size'       => filesize( $dest_path ),
+            'created_at' => time(),
+        ) );
+    }
+
+    /**
+     * POST /wp-json/gabbarinfo/v1/media-bridge/purge
+     * Immediately destroys temporary files upon publishing
+     */
+    public function rest_media_bridge_purge( $request ) {
+        $params = $request->get_json_params();
+        if ( empty( $params ) ) {
+            $params = $request->get_params();
+        }
+
+        $raw_files = array();
+        if ( ! empty( $params['files'] ) && is_array( $params['files'] ) ) {
+            $raw_files = $params['files'];
+        } elseif ( ! empty( $params['file'] ) ) {
+            $raw_files = array( $params['file'] );
+        } elseif ( ! empty( $params['urls'] ) && is_array( $params['urls'] ) ) {
+            $raw_files = $params['urls'];
+        } elseif ( ! empty( $params['url'] ) ) {
+            $raw_files = array( $params['url'] );
+        }
+
+        $dir = $this->get_media_bridge_dir();
+        $purged = array();
+        $failed = array();
+
+        foreach ( $raw_files as $item ) {
+            if ( empty( $item ) || ! is_string( $item ) ) continue;
+            $clean_base = basename( parse_url( $item, PHP_URL_PATH ) );
+            if ( empty( $clean_base ) || $clean_base === 'index.php' ) continue;
+
+            $file_path = $dir . '/' . $clean_base;
+            if ( file_exists( $file_path ) && is_file( $file_path ) ) {
+                if ( unlink( $file_path ) ) {
+                    $purged[] = $clean_base;
+                } else {
+                    $failed[] = $clean_base;
+                }
+            } else {
+                $purged[] = $clean_base . ' (already unlinked)';
+            }
+        }
+
+        return rest_ensure_response( array(
+            'ok'     => true,
+            'purged' => $purged,
+            'failed' => $failed,
+            'count'  => count( $purged ),
+        ) );
+    }
+
+    /**
+     * GET/POST /wp-json/gabbarinfo/v1/media-bridge/cleanup
+     * Triggers safety scan: deletes all files older than 60 minutes
+     */
+    public function rest_media_bridge_cleanup( $request ) {
+        $result = $this->run_media_bridge_cleanup();
+        return rest_ensure_response( array(
+            'ok'              => true,
+            'message'         => 'Ephemeral media bridge cleanup completed.',
+            'deleted_count'   => isset( $result['deleted_count'] ) ? $result['deleted_count'] : 0,
+            'freed_bytes'     => isset( $result['freed_bytes'] ) ? $result['freed_bytes'] : 0,
+            'timestamp'       => current_time( 'mysql' ),
+        ) );
+    }
+
+    /**
+     * Background Cron Worker: Deletes all media_bridge files older than 60 minutes
+     */
+    public function run_media_bridge_cleanup() {
+        $dir = $this->get_media_bridge_dir();
+        if ( ! is_dir( $dir ) ) {
+            return array( 'deleted_count' => 0, 'freed_bytes' => 0 );
+        }
+
+        $now = time();
+        $deleted_count = 0;
+        $freed_bytes = 0;
+
+        $items = scandir( $dir );
+        if ( $items === false ) {
+            return array( 'deleted_count' => 0, 'freed_bytes' => 0 );
+        }
+
+        foreach ( $items as $item ) {
+            if ( $item === '.' || $item === '..' || $item === 'index.php' || strpos( $item, '.' ) === 0 ) {
+                continue;
+            }
+
+            $filepath = $dir . '/' . $item;
+            if ( is_file( $filepath ) ) {
+                $mtime = filemtime( $filepath );
+                // 3600 seconds = 60 minutes
+                if ( ( $now - $mtime ) > 3600 ) {
+                    $size = filesize( $filepath );
+                    if ( @unlink( $filepath ) ) {
+                        $deleted_count++;
+                        $freed_bytes += $size;
+                    }
+                }
+            }
+        }
+
+        return array(
+            'deleted_count' => $deleted_count,
+            'freed_bytes'   => $freed_bytes,
+        );
     }
 
     /**
