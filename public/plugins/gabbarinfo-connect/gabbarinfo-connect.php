@@ -830,9 +830,36 @@ document.addEventListener('DOMContentLoaded', function() {
             $update_data['post_status'] = $params['status'];
         }
 
+        if ( isset( $params['slug'] ) ) {
+            $update_data['post_name'] = sanitize_title( $params['slug'] );
+        }
+
         $res = wp_update_post( $update_data, true );
         if ( is_wp_error( $res ) ) {
             return new WP_Error( 'update_failed', $res->get_error_message(), array( 'status' => 500 ) );
+        }
+
+        // Attach Featured Image if supplied
+        if ( ! empty( $params['featured_image_url'] ) ) {
+            $alt_text = ! empty( $params['featured_image_alt'] ) ? $params['featured_image_alt'] : ( ! empty( $params['title'] ) ? $params['title'] : get_the_title( $post_id ) );
+            $featured_attach_id = $this->attach_image_from_url( $params['featured_image_url'], $post_id, $alt_text, $alt_text );
+            if ( $featured_attach_id ) {
+                set_post_thumbnail( $post_id, $featured_attach_id );
+            }
+        }
+
+        // Sideload In-Content Mid Image into WordPress Media Library
+        if ( ! empty( $params['mid_image_url'] ) ) {
+            $mid_alt = ! empty( $params['mid_image_alt'] ) ? $params['mid_image_alt'] : get_the_title( $post_id );
+            $mid_attach_id = $this->attach_image_from_url( $params['mid_image_url'], $post_id, $mid_alt, $mid_alt );
+            if ( $mid_attach_id ) {
+                $local_mid_url = wp_get_attachment_image_url( $mid_attach_id, 'full' );
+                $curr_content = get_post_field( 'post_content', $post_id );
+                if ( $local_mid_url && strpos( $curr_content, $params['mid_image_url'] ) !== false ) {
+                    $curr_content = str_replace( $params['mid_image_url'], $local_mid_url, $curr_content );
+                    wp_update_post( array( 'ID' => $post_id, 'post_content' => $curr_content ) );
+                }
+            }
         }
 
         // Meta SEO Integration
@@ -919,6 +946,19 @@ document.addEventListener('DOMContentLoaded', function() {
             $featured_attach_id = $this->attach_image_from_url( $params['featured_image_url'], $post_id, $alt_text, $title );
             if ( $featured_attach_id ) {
                 set_post_thumbnail( $post_id, $featured_attach_id );
+            }
+        }
+
+        // Sideload In-Content Mid Image into WordPress Media Library
+        if ( ! empty( $params['mid_image_url'] ) ) {
+            $mid_alt = ! empty( $params['mid_image_alt'] ) ? $params['mid_image_alt'] : $title;
+            $mid_attach_id = $this->attach_image_from_url( $params['mid_image_url'], $post_id, $mid_alt, $title );
+            if ( $mid_attach_id ) {
+                $local_mid_url = wp_get_attachment_image_url( $mid_attach_id, 'full' );
+                if ( $local_mid_url && strpos( $content, $params['mid_image_url'] ) !== false ) {
+                    $content = str_replace( $params['mid_image_url'], $local_mid_url, $content );
+                    wp_update_post( array( 'ID' => $post_id, 'post_content' => $content ) );
+                }
             }
         }
 

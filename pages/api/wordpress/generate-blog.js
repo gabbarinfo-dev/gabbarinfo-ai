@@ -214,22 +214,27 @@ export async function executeBlogGeneration({
     // 6. Generate High-Ranking Blog Content & SEO Payload with GPT
     console.log(`[SEO Engine] Generating full ${wordCount}-word authority guide on "${topic}" for ${effectiveBusiness}...`);
 
-    const systemPrompt = `You are a world-class SEO master content strategist and elite enterprise copywriter.
-Generate an exhaustive, high-ranking, 100% human-grade pillar guide optimized for Google search dominance, high reader dwell-time, and commercial conversion.
+    const isTopicSeo = /seo|search engine/i.test(topic);
+    const systemPrompt = `You are a world-class commercial strategist and elite enterprise copywriter specializing in ${topic}.
+Generate an exhaustive, authoritative, 100% human-grade pillar guide focused specifically on "${topic}" for ${effectiveBusiness}, optimized for maximum reader dwell-time, deep operational insight, and commercial conversion.
+
+CRITICAL TOPIC FIDELITY MANDATE:
+- Focus 100% strictly and specifically on the nuances, mechanics, and strategies of "${topic}".
+${!isTopicSeo ? `- DO NOT divert into generic SEO, search engine indexing, or Core Web Vitals. Address the actual domain of "${topic}" directly.` : ""}
 
 CRITICAL LENGTH & DEPTH MANDATES:
 1. STRICT WORD COUNT: Body content MUST exceed 1600 words (target: 1650 to 2000 words). Writing less than 1500 words is strictly unacceptable.
 2. MANDATORY EXHAUSTIVE SECTIONS (You MUST include ALL 10 of these exact <h2> sections with 2 to 3 detailed <h3> subsections each):
    - <h2>1. The Strategic Evolution of ${topic} in 2026</h2> (At least 160 words across 2 detailed paragraphs exploring the modern landscape)
-   - <h2>2. Core Foundations and Search Entity Optimization</h2> (At least 180 words detailing algorithmic shifts, search intent, and topical authority)
-   - <h2>3. High-Converting Content Architecture & Pillar Page Mechanics</h2> (At least 180 words with actionable structural frameworks and readability formulas)
-   - <h2>4. Technical SEO Infrastructure, Performance & Core Web Vitals Mastery</h2> (At least 160 words detailing speed, mobile optimization, and schema)
-   - <h2>5. Omnichannel Growth Funnels & Audience Monetization</h2> (At least 180 words on multi-platform integration, CAC reduction, and ROI optimization)
-   - <h2>6. In-Depth Real-World Case Study: 0 to 450% Revenue Acceleration</h2> (At least 220 words detailing baseline metrics, implementation timeline, and exact financial/traffic gains)
+   - <h2>2. Core Foundations, Strategic Principles & Key Frameworks</h2> (At least 180 words detailing key methodologies, audience targeting, and fundamental mechanics)
+   - <h2>3. High-Converting Campaign Architecture & Execution Systems</h2> (At least 180 words with actionable structural frameworks and optimization formulas)
+   - <h2>4. Technology Infrastructure, Analytics & Conversion Mastery</h2> (At least 160 words detailing measurement, conversion tracking, modern tooling, and data accuracy)
+   - <h2>5. Omnichannel Growth Funnels & Audience Monetization</h2> (At least 180 words on cross-platform synergy, CAC reduction, and ROI scaling)
+   - <h2>6. In-Depth Real-World Case Study: 0 to 450% Revenue Acceleration</h2> (At least 220 words detailing baseline metrics, implementation timeline, and exact financial/performance gains)
    - <h2>7. Step-by-Step 90-Day Execution Playbook</h2> (At least 200 words with Month 1, Month 2, Month 3 actionable milestones)
-   - <h2>8. 5 Critical SEO Pitfalls & Costly Strategic Mistakes to Avoid</h2> (At least 180 words detailing common misconceptions and operational fixes)
-   - <h2>9. Frequently Asked Questions (FAQ)</h2> (Provide 5 high-impact questions, each answered with comprehensive multi-paragraph explanations of 100+ words, totaling 500+ words for this section)
-   - <h2>10. Strategic Conclusion and Actionable Roadmap for 2026</h2> (At least 140 words summary with a clear commercial call to action)
+   - <h2>8. 5 Critical Pitfalls & Costly Strategic Mistakes to Avoid</h2> (At least 180 words detailing common misconceptions and operational fixes in ${topic})
+   - <h2>9. Frequently Asked Questions (FAQ)</h2> (Provide 5 high-impact questions specifically about ${topic}, each answered with comprehensive multi-paragraph explanations of 100+ words, totaling 500+ words for this section)
+   - <h2>10. Strategic Conclusion and Actionable Roadmap for 2026</h2> (At least 140 words summary with a clear commercial call to action for ${effectiveBusiness})
 
 3. MANDATORY INTERNAL & EXTERNAL HYPERLINKING:
    - Internal Links: Embed at least 4 working HTML anchor tags (<a href="URL" style="color: #f59e0b; font-weight: 700; text-decoration: underline;">anchor text</a>) naturally within body copy using:
@@ -238,7 +243,7 @@ CRITICAL LENGTH & DEPTH MANDATES:
      - https://www.gabbarinfo.com/website-design/ (Website Design & Development)
      - https://www.gabbarinfo.com/packages/ (Tailored SEO & Growth Packages)
    - External Authority: Embed at least 2 external links to trusted industry authorities:
-     - <a href="https://developers.google.com/search/docs" target="_blank" rel="noopener" style="color: #f59e0b; font-weight: 700; text-decoration: underline;">Google Search Central Documentation</a>
+     - <a href="https://developers.google.com/search/docs" target="_blank" rel="noopener" style="color: #f59e0b; font-weight: 700; text-decoration: underline;">Industry Technical Documentation</a>
      - <a href="https://www.statista.com" target="_blank" rel="noopener" style="color: #f59e0b; font-weight: 700; text-decoration: underline;">Statista Industry Benchmarks</a>
 
 4. TARGET KEYWORD VISIBILITY:
@@ -326,10 +331,10 @@ MANDATORY MINIMUM WORD COUNT: Strictly 1600+ Words across all 10 detailed sectio
     // For autonomous autopilot cycles, prioritize high-velocity model (gpt-4o-mini) to stay well within 60s Vercel limit
     const blogModel = model || (isAutopilot ? "gpt-4o-mini" : (process.env.AI_BLOG_MODEL || "gpt-4o-mini"));
 
-    // Topic-tailored bespoke visual prompts constructed immediately
-    const featuredPrompt = `Award-winning commercial 3D concept render for "${topic}" by ${effectiveBusiness}. Modern glass laptop displaying realistic Google search results page with glowing #1 rank badge, golden magnifying glass, upward green and gold organic traffic trendline charts, stacked gold coins, dark sleek slate background, Octane 3D render, cinematic studio lighting, pristine 4K quality, no text watermark.`;
+    // Topic-tailored bespoke visual prompts constructed dynamically
+    const featuredPrompt = `Award-winning commercial 3D concept render for "${topic}" by ${effectiveBusiness}. Modern obsidian pedestal, glowing holographic analytics dashboard and commercial performance UI displaying soaring 450% ROI curve, floating conversion particles, golden #1 achievement trophy badge, sleek purple, cyan, and amber volumetric studio lighting, hyperrealistic 8K Octane render, luxury dark mode marketing agency aesthetic, pristine 4K quality, no text watermark.`;
 
-    const midPrompt = `A clean, highly educational 1:1 square 3D infographic diagram illustrating the core framework for "${topic}". Sleek 4-tier SEO growth architecture pyramid with clearly labeled levels, glowing connection lines, warm amber yellow highlights (#f59e0b), dark sleek slate background, crisp modern typography, clean agency layout.`;
+    const midPrompt = `A clean, highly educational 1:1 square 3D infographic diagram illustrating the core framework for "${topic}". Sleek 4-tier growth architecture pyramid with clearly labeled levels, glowing connection lines, warm amber yellow highlights (#f59e0b), dark sleek slate background, crisp modern typography, clean agency layout.`;
 
     console.log(`[SEO Engine] Initiating concurrent parallel execution: ${blogModel} 1600+ word text + dual visuals simultaneously...`);
 
@@ -444,17 +449,19 @@ MANDATORY MINIMUM WORD COUNT: Strictly 1600+ Words across all 10 detailed sectio
     // 7. Ensure In-Content Mid Visual is Injected and Verify Word Count
     let finalContent = parsedArticle.html_content || "";
     
-    // Inject Mid-Article Visual Figure into HTML
+    // Inject Mid-Article Visual Figure into HTML cleanly after Section 3 (optimal ~35-40% visual break)
     if (midImageUrl && !finalContent.includes(midImageUrl)) {
       const midAlt = `${parsedArticle.title} - Strategic Framework`;
-      const midFigure = `\n<figure class="gabbarinfo-mid-image" style="margin: 36px 0; text-align: center;"><img src="${midImageUrl}" alt="${midAlt}" style="max-width: 100%; height: auto; border-radius: 8px; box-shadow: 0 4px 16px rgba(0,0,0,0.12);" /><figcaption style="font-size: 13px; color: #64748b; margin-top: 8px; font-style: italic;">${midAlt}</figcaption></figure>\n`;
-      const pSplits = finalContent.split("</p>");
-      if (pSplits.length > 3) {
-        const half = Math.floor(pSplits.length / 2);
-        pSplits[half] += midFigure;
-        finalContent = pSplits.join("</p>");
+      const midFigure = `\n<figure class="gabbarinfo-mid-image" style="margin: 36px 0; text-align: center;"><img src="${midImageUrl}" alt="${midAlt}" style="max-width: 100%; height: auto; border-radius: 12px; box-shadow: 0 8px 28px rgba(0,0,0,0.35);" /><figcaption style="font-size: 14px; color: #94a3b8; margin-top: 10px; font-style: italic;">Figure 1: ${parsedArticle.title} Strategic Framework</figcaption></figure>\n`;
+      
+      const sec4Match = finalContent.search(/<h2[^>]*>\s*(?:4\.|Section 4)/i);
+      if (sec4Match > 0) {
+        finalContent = finalContent.slice(0, sec4Match) + midFigure + '\n' + finalContent.slice(sec4Match);
       } else {
-        finalContent += midFigure;
+        const pSplits = finalContent.split("</p>");
+        const oneThird = Math.max(1, Math.floor(pSplits.length * 0.35));
+        pSplits[oneThird] += midFigure;
+        finalContent = pSplits.join("</p>");
       }
     }
 

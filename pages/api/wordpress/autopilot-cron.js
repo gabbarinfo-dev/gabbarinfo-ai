@@ -142,12 +142,14 @@ export default async function handler(req, res) {
           }
         }
 
-        if (serviceRoster.length === 0) {
-          serviceRoster.push(
-            "Core Business Operations",
-            "Customer Acquisition & Growth",
-            "Quality Management & Delivery"
-          );
+        if (serviceRoster.length <= 1) {
+          const defaults = ["Google Ads Management", "Meta Social Ads", "Social Media Marketing", "Content Writing & Creation", "Website Design & Development", "SEO Optimization"];
+          for (const d of defaults) {
+            if (!seenServices.has(d.toLowerCase())) {
+              seenServices.add(d.toLowerCase());
+              serviceRoster.push(d);
+            }
+          }
         }
 
         // Deterministic Universal Service Round-Robin: Advances to the next distinct service on each publication
@@ -159,10 +161,12 @@ export default async function handler(req, res) {
 
         // 2. Dynamic Multi-Model AI Topic Synthesis (OpenAI -> Google Gemini Failover)
         const recentTopics = config.publishedTopics.slice(-15).join(" | ");
+        const isSeoActive = /seo|search engine/i.test(activeService);
         const topicPrompt = `You are a Principal Content Strategist for "${config.businessName || 'Enterprise'}", operating in the "${clientIndustry || 'Commercial Solutions'}" industry.
 Today's designated core service / product focus is: "${activeService}".
 Target market / audience: "${clientMarket || 'Global B2B/B2C'}".
 Complete service roster: "${serviceRoster.join(', ')}".
+${!isSeoActive ? `CRITICAL NEGATIVE CONSTRAINT: DO NOT use the word "SEO" or mention search engine optimization anywhere in the title. Focus 100% strictly on "${activeService}".` : ""}
 
 Generate a complete, high-impact, authoritative blog headline (8 to 14 words) for today that focuses specifically on "${activeService}". Address a real customer pain point, strategic decision, or practical high-value solution in this domain.
 NEVER return a single word. Return ONLY the complete headline title, with no quotes or preamble.`;
