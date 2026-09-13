@@ -4,6 +4,7 @@ import { authOptions } from "../auth/[...nextauth]";
 import { createClient } from "@supabase/supabase-js";
 import OpenAI from "openai";
 import { generateTalkingAvatar } from "../../lib/video/replicate-service";
+import { uploadToMediaBridge } from "../../lib/wordpress/media-bridge";
 
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL,
@@ -211,20 +212,31 @@ Return ONLY valid JSON matching this exact structure:
     const voiceBuffer = Buffer.from(await voiceRes.arrayBuffer());
     const voiceoverBase64 = `data:audio/mp3;base64,${voiceBuffer.toString("base64")}`;
 
-    // 3b. Upload Voiceover to Public Supabase Storage (Required for GPU Lip-Sync)
+    // 3b. Upload Voiceover to Ephemeral Media Bridge on User Hosting (Required for GPU Lip-Sync)
     let publicAudioUrl = null;
     try {
       const audioFileName = `speech_${Date.now()}_${Math.random().toString(36).slice(2, 6)}.mp3`;
-      const audioFilePath = `audio/${audioFileName}`;
-      const { error: upAudioErr } = await supabase.storage
-        .from("instagram-creatives")
-        .upload(audioFilePath, voiceBuffer, { contentType: "audio/mpeg", upsert: true });
-
-      if (!upAudioErr) {
-        const { data: pubAudioData } = supabase.storage
+      try {
+        const mb = await uploadToMediaBridge({
+          filename: audioFileName,
+          buffer: voiceBuffer,
+          userEmail,
+        });
+        publicAudioUrl = mb.url;
+        console.log("[CharacterStory] Staged voiceover audio on Hosting Media Bridge:", publicAudioUrl);
+      } catch (mbErr) {
+        console.warn("[CharacterStory] Media Bridge audio fallback to Supabase:", mbErr.message);
+        const audioFilePath = `audio/${audioFileName}`;
+        const { error: upAudioErr } = await supabase.storage
           .from("instagram-creatives")
-          .getPublicUrl(audioFilePath);
-        publicAudioUrl = pubAudioData?.publicUrl || null;
+          .upload(audioFilePath, voiceBuffer, { contentType: "audio/mpeg", upsert: true });
+
+        if (!upAudioErr) {
+          const { data: pubAudioData } = supabase.storage
+            .from("instagram-creatives")
+            .getPublicUrl(audioFilePath);
+          publicAudioUrl = pubAudioData?.publicUrl || null;
+        }
       }
     } catch (e) {
       console.warn("[CharacterStory] Audio storage upload warning:", e.message);
@@ -309,16 +321,26 @@ Return ONLY valid JSON matching this exact structure:
 
             if (imgBuf) {
               const filename = `scene_${Date.now()}_${idx}_${Math.random().toString(36).slice(2, 6)}.png`;
-              const filePath = `scenes/${filename}`;
-              const { error: upErr } = await supabase.storage
-                .from("instagram-creatives")
-                .upload(filePath, imgBuf, { contentType: "image/png", upsert: true });
-
-              if (!upErr) {
-                const { data: pubData } = supabase.storage
+              try {
+                const mb = await uploadToMediaBridge({
+                  filename,
+                  buffer: imgBuf,
+                  userEmail,
+                });
+                sceneVisualUrl = mb.url;
+              } catch (mbErr) {
+                console.warn(`[CharacterStory] Scene ${idx + 1} Media Bridge fallback:`, mbErr.message);
+                const filePath = `scenes/${filename}`;
+                const { error: upErr } = await supabase.storage
                   .from("instagram-creatives")
-                  .getPublicUrl(filePath);
-                sceneVisualUrl = pubData.publicUrl;
+                  .upload(filePath, imgBuf, { contentType: "image/png", upsert: true });
+
+                if (!upErr) {
+                  const { data: pubData } = supabase.storage
+                    .from("instagram-creatives")
+                    .getPublicUrl(filePath);
+                  sceneVisualUrl = pubData.publicUrl;
+                }
               }
             }
           } catch (sceneErr) {

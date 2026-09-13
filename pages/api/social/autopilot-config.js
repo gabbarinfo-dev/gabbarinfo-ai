@@ -11,6 +11,7 @@ import { reserveCredits, releaseCredits } from "../../../lib/billing/credit-mete
 import { reserveQuota, commitQuota, releaseQuota, checkActionEntitlement, getBusinessSubscriptionState } from "../../../lib/billing/quota-service.js";
 import { getPlanConfig } from "../../../lib/billing/plans.js";
 import OpenAI from "openai";
+import { uploadToMediaBridge, purgeFromMediaBridge } from "../../../lib/wordpress/media-bridge.js";
 
 const supabase = supabaseServer;
 
@@ -48,14 +49,23 @@ async function generateSocialVisual(prompt, label = "social") {
       }
 
       if (imgBuffer) {
-        const fileName = `social_ai_${Date.now()}_${Math.random().toString(36).substring(7)}.png`;
-        const { data: uploadData, error: uploadErr } = await supabase.storage
-          .from("instagram-creatives")
-          .upload(fileName, imgBuffer, { contentType: "image/png", upsert: true });
+        try {
+          const mb = await uploadToMediaBridge({
+            filename: `social_ai_${Date.now()}.png`,
+            buffer: imgBuffer,
+          });
+          return mb.url;
+        } catch (mbErr) {
+          console.warn("[Social Autopilot] Media bridge upload fallback:", mbErr.message);
+          const fileName = `social_ai_${Date.now()}_${Math.random().toString(36).substring(7)}.png`;
+          const { data: uploadData, error: uploadErr } = await supabase.storage
+            .from("instagram-creatives")
+            .upload(fileName, imgBuffer, { contentType: "image/png", upsert: true });
 
-        if (!uploadErr && uploadData) {
-          const { data: pubUrl } = supabase.storage.from("instagram-creatives").getPublicUrl(fileName);
-          return pubUrl.publicUrl;
+          if (!uploadErr && uploadData) {
+            const { data: pubUrl } = supabase.storage.from("instagram-creatives").getPublicUrl(fileName);
+            return pubUrl.publicUrl;
+          }
         }
       }
     } catch (e) {
@@ -70,16 +80,25 @@ async function generateSocialVisual(prompt, label = "social") {
     const pollRes = await fetch(pollinationsUrl);
     if (pollRes.ok) {
       const pollBuf = Buffer.from(await pollRes.arrayBuffer());
-      const fileName = `social_poll_${Date.now()}_${Math.random().toString(36).substring(7)}.png`;
-      const { data: uploadData, error: uploadErr } = await supabase.storage
-        .from("instagram-creatives")
-        .upload(fileName, pollBuf, { contentType: "image/png", upsert: true });
+      try {
+        const mb = await uploadToMediaBridge({
+          filename: `social_poll_${Date.now()}.png`,
+          buffer: pollBuf,
+        });
+        return mb.url;
+      } catch (mbErr) {
+        console.warn("[Social Autopilot] Media bridge fallback for poll image:", mbErr.message);
+        const fileName = `social_poll_${Date.now()}_${Math.random().toString(36).substring(7)}.png`;
+        const { data: uploadData, error: uploadErr } = await supabase.storage
+          .from("instagram-creatives")
+          .upload(fileName, pollBuf, { contentType: "image/png", upsert: true });
 
-      if (!uploadErr && uploadData) {
-        const { data: pubUrl } = supabase.storage.from("instagram-creatives").getPublicUrl(fileName);
-        return pubUrl.publicUrl;
+        if (!uploadErr && uploadData) {
+          const { data: pubUrl } = supabase.storage.from("instagram-creatives").getPublicUrl(fileName);
+          return pubUrl.publicUrl;
+        }
+        return pollinationsUrl;
       }
-      return pollinationsUrl;
     }
     return pollinationsUrl;
   } catch (pollErr) {
@@ -741,8 +760,15 @@ Respond ONLY in JSON: { "hook": "short catchy hook (4-7 words)", "topic": "speci
           userEmail: normalizedEmail,
         });
 
-        // ── AUTOMATIC STORAGE CLEANUP ──
-        // Once successfully published to Meta CDN, delete temporary image from Supabase storage
+        // ── AUTOMATIC STORAGE CLEANUP (Hosting Media Bridge & Supabase) ──
+        if (targetItem?.image_url && targetItem.image_url.includes("media_bridge/")) {
+          try {
+            await purgeFromMediaBridge({ url: targetItem.image_url, userEmail: normalizedEmail });
+            console.log(`[Social Autopilot] Automatically purged hosting Media Bridge image: ${targetItem.image_url}`);
+          } catch (mbCleanErr) {
+            console.warn("[Social Autopilot] Media Bridge cleanup warning:", mbCleanErr.message);
+          }
+        }
         if (storageFileName) {
           try {
             await supabase.storage.from("instagram-creatives").remove([storageFileName]);

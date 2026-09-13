@@ -47,33 +47,48 @@ export default async function handler(req, res) {
 
     const safeEmail = userEmail.replace(/[^a-zA-Z0-9]/g, "_");
     const timestamp = Date.now();
-    const filePath = `reels/${safeEmail}_${timestamp}_${filename}`;
+    const finalFilename = `${safeEmail}_${timestamp}_${filename}`;
 
-    console.log(`[VideoCompositor] Uploading composite video (${buffer.length} bytes) to Supabase Storage: ${filePath}`);
-
-    const { data: uploadData, error: uploadError } = await supabase.storage
-      .from("instagram-creatives")
-      .upload(filePath, buffer, {
-        contentType,
-        upsert: true,
+    try {
+      const { uploadToMediaBridge } = await import("../../../lib/wordpress/media-bridge.js");
+      const mbResult = await uploadToMediaBridge({
+        filename: finalFilename,
+        buffer,
+        userEmail,
       });
+      console.log(`[VideoCompositor] Successfully stored composite video on Hosting Media Bridge at: ${mbResult.url}`);
+      return res.status(200).json({
+        ok: true,
+        videoUrl: mbResult.url,
+        sizeBytes: buffer.length,
+      });
+    } catch (mbErr) {
+      console.warn("[VideoCompositor] Hosting Media Bridge fallback to Supabase:", mbErr.message);
+      const filePath = `reels/${finalFilename}`;
+      const { data: uploadData, error: uploadError } = await supabase.storage
+        .from("instagram-creatives")
+        .upload(filePath, buffer, {
+          contentType,
+          upsert: true,
+        });
 
-    if (uploadError) {
-      throw uploadError;
+      if (uploadError) {
+        throw uploadError;
+      }
+
+      const { data: publicData } = supabase.storage
+        .from("instagram-creatives")
+        .getPublicUrl(filePath);
+
+      const publicUrl = publicData.publicUrl;
+      console.log(`[VideoCompositor] Successfully stored composite video at: ${publicUrl}`);
+
+      return res.status(200).json({
+        ok: true,
+        videoUrl: publicUrl,
+        sizeBytes: buffer.length,
+      });
     }
-
-    const { data: publicData } = supabase.storage
-      .from("instagram-creatives")
-      .getPublicUrl(filePath);
-
-    const publicUrl = publicData.publicUrl;
-    console.log(`[VideoCompositor] Successfully stored composite video at: ${publicUrl}`);
-
-    return res.status(200).json({
-      ok: true,
-      videoUrl: publicUrl,
-      sizeBytes: buffer.length,
-    });
   } catch (err) {
     console.error("[VideoCompositor] Storage upload error:", err);
     return res.status(500).json({ ok: false, error: err.message || "Failed to save video composite." });

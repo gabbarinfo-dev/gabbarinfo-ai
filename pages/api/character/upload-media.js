@@ -43,29 +43,48 @@ export default async function handler(req, res) {
     const safeEmail = userEmail.replace(/[^a-zA-Z0-9]/g, "_");
     const timestamp = Date.now();
     const cleanFilename = filename.replace(/[^a-zA-Z0-9._-]/g, "");
-    const filePath = `client_media/${safeEmail}_${timestamp}_${cleanFilename}`;
-
-    const { error: uploadError } = await supabase.storage
-      .from("instagram-creatives")
-      .upload(filePath, buffer, {
-        contentType,
-        upsert: true,
-      });
-
-    if (uploadError) throw uploadError;
-
-    const { data: publicData } = supabase.storage
-      .from("instagram-creatives")
-      .getPublicUrl(filePath);
-
+    const finalFilename = `${safeEmail}_${timestamp}_${cleanFilename}`;
     const isVideo = contentType.startsWith("video/");
-    return res.status(200).json({
-      ok: true,
-      url: publicData.publicUrl,
-      type: isVideo ? "video" : "image",
-      name: filename,
-      filePath,
-    });
+
+    try {
+      const { uploadToMediaBridge } = await import("../../../lib/wordpress/media-bridge.js");
+      const mbResult = await uploadToMediaBridge({
+        filename: finalFilename,
+        buffer,
+        userEmail,
+      });
+      console.log(`[UploadMedia] Successfully stored raw client media on Hosting Media Bridge: ${mbResult.url}`);
+      return res.status(200).json({
+        ok: true,
+        url: mbResult.url,
+        type: isVideo ? "video" : "image",
+        name: filename,
+        filePath: mbResult.fileName,
+      });
+    } catch (mbErr) {
+      console.warn("[UploadMedia] Media Bridge fallback to Supabase:", mbErr.message);
+      const filePath = `client_media/${finalFilename}`;
+      const { error: uploadError } = await supabase.storage
+        .from("instagram-creatives")
+        .upload(filePath, buffer, {
+          contentType,
+          upsert: true,
+        });
+
+      if (uploadError) throw uploadError;
+
+      const { data: publicData } = supabase.storage
+        .from("instagram-creatives")
+        .getPublicUrl(filePath);
+
+      return res.status(200).json({
+        ok: true,
+        url: publicData.publicUrl,
+        type: isVideo ? "video" : "image",
+        name: filename,
+        filePath,
+      });
+    }
   } catch (err) {
     console.error("[UploadMedia] Error:", err);
     return res.status(500).json({ ok: false, error: err.message || "Failed to upload media." });
