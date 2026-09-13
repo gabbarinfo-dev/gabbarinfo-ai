@@ -39,6 +39,27 @@ class GabbarInfo_Connect {
         if ( ! wp_next_scheduled( 'gabbarinfo_media_bridge_cleanup_cron' ) ) {
             wp_schedule_event( time(), 'hourly', 'gabbarinfo_media_bridge_cleanup_cron' );
         }
+
+        // Auto-cleanup legacy stuck folder from previous Windows backslash upload
+        $this->cleanup_legacy_stuck_folder();
+    }
+
+    /**
+     * Delete legacy stuck folder (/wp-content/plugins/gabbarinfo-connect) if left behind by backslash bug
+     */
+    private function cleanup_legacy_stuck_folder() {
+        $legacy_dir = WP_PLUGIN_DIR . '/gabbarinfo-connect';
+        if ( is_dir( $legacy_dir ) ) {
+            $files = @scandir( $legacy_dir );
+            if ( is_array( $files ) ) {
+                foreach ( $files as $f ) {
+                    if ( $f !== '.' && $f !== '..' ) {
+                        @unlink( $legacy_dir . '/' . $f );
+                    }
+                }
+            }
+            @rmdir( $legacy_dir );
+        }
     }
 
     /**
