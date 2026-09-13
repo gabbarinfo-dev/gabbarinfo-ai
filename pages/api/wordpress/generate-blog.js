@@ -301,7 +301,8 @@ MANDATORY MINIMUM WORD COUNT: Strictly 1600+ Words across all 10 detailed sectio
       // High-resolution commercial stock photography fallback (Pexels) - authentic, zero watermarks
       if (process.env.PEXELS_API_KEY) {
         try {
-          const searchQuery = encodeURIComponent(`${topic || focusKeyword || "commercial business"}`.slice(0, 40));
+          const serviceTerm = focusKeyword || (targetKeywords && targetKeywords[0]) || "digital marketing analytics";
+          const searchQuery = encodeURIComponent(`${serviceTerm} office analytics`.slice(0, 45));
           const pexRes = await fetch(`https://api.pexels.com/v1/search?query=${searchQuery}&per_page=5&orientation=${imageSize === "1792x1024" ? "landscape" : "square"}`, {
             headers: { Authorization: process.env.PEXELS_API_KEY }
           });
@@ -526,7 +527,8 @@ MANDATORY MINIMUM WORD COUNT: Strictly 1600+ Words across all 10 detailed sectio
       post_type: "post",
       featured_image_url: featuredImageUrl,
       featured_image_alt: parsedArticle.title,
-      mid_image_url: midImageUrl,
+      // mid image is already embedded into finalContent above; set to null to avoid double injection
+      mid_image_url: null,
       mid_image_alt: parsedArticle.title,
       meta_title: parsedArticle.meta_title,
       meta_description: parsedArticle.meta_description,

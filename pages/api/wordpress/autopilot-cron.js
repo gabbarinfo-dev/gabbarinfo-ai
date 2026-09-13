@@ -164,10 +164,8 @@ Today's designated core service / product focus is: "${activeService}".
 Target market / audience: "${clientMarket || 'Global B2B/B2C'}".
 Complete service roster: "${serviceRoster.join(', ')}".
 
-Generate a single, high-impact, authoritative blog headline for today that focuses specifically on "${activeService}". Address a real customer pain point, strategic decision, or practical high-value solution in this domain.
-DO NOT write about general topics unless framed around "${activeService}".
-DO NOT repeat or closely mimic any of these previously published topics: [${recentTopics}].
-Return ONLY the single title, with no quotes or preamble.`;
+Generate a complete, high-impact, authoritative blog headline (8 to 14 words) for today that focuses specifically on "${activeService}". Address a real customer pain point, strategic decision, or practical high-value solution in this domain.
+NEVER return a single word. Return ONLY the complete headline title, with no quotes or preamble.`;
 
         // Attempt 1: OpenAI (gpt-4o-mini)
         const openAiKey = process.env.OPENAI_API_KEY;
@@ -184,7 +182,7 @@ Return ONLY the single title, with no quotes or preamble.`;
             });
 
             const aiTitle = aiResp.choices?.[0]?.message?.content?.trim().replace(/^["']|["']$/g, "");
-            if (aiTitle && !config.publishedTopics.includes(aiTitle)) {
+            if (aiTitle && aiTitle.length > 15 && !config.publishedTopics.includes(aiTitle)) {
               generatedTopic = aiTitle;
               console.log(`[Autopilot Cron] OpenAI topic synthesized: "${generatedTopic}" for service "${activeService}"`);
             }
@@ -208,7 +206,7 @@ Return ONLY the single title, with no quotes or preamble.`;
             if (geminiResp.ok) {
               const geminiData = await geminiResp.json();
               const geminiTitle = geminiData.candidates?.[0]?.content?.parts?.[0]?.text?.trim().replace(/^["']|["']$/g, "");
-              if (geminiTitle && !config.publishedTopics.includes(geminiTitle)) {
+              if (geminiTitle && geminiTitle.length > 15 && !config.publishedTopics.includes(geminiTitle)) {
                 generatedTopic = geminiTitle;
                 console.log(`[Autopilot Cron] Gemini topic synthesized: "${generatedTopic}" for service "${activeService}"`);
               }
