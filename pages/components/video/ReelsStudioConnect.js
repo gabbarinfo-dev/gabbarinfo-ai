@@ -555,9 +555,13 @@ export default function ReelsStudioConnect() {
       try { voSource.stop(); } catch {}
       try { if (bgSource) bgSource.stop(); } catch {}
       audioCtx.close().catch(() => {});
-      videoElements.forEach((v) => {
-        try { v.pause(); } catch {}
-      });
+      if (Array.isArray(mediaElements)) {
+        mediaElements.forEach((item) => {
+          try {
+            if (item?.type === "video" && item.el) item.el.pause();
+          } catch {}
+        });
+      }
 
       setCompositingStep("Uploading master video with burned audio & subtitles…");
 

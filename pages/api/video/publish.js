@@ -362,7 +362,7 @@ export default async function handler(req, res) {
               categoryId: "22", // People & Blogs
             },
             status: {
-              privacyStatus: "public",
+              privacyStatus: req.body.privacyStatus || "public",
               selfDeclaredMadeForKids: false,
             },
           }),
