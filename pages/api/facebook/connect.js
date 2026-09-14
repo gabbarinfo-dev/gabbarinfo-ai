@@ -35,7 +35,8 @@ export default async function handler(req, res) {
       "pages_manage_posts",
       "instagram_basic",
       "instagram_content_publish",
-      "pages_manage_ads"
+      "pages_manage_ads",
+      "catalog_management"
     ].join(","),
     state: Buffer.from(
       JSON.stringify({

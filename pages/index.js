@@ -318,13 +318,14 @@ export default function HomePage() {
 
   const NAV_ITEMS = [
     { id: "overview", label: "Command Center", icon: "🚀", badge: "Live" },
+    { id: "social", label: "Social Pilot/Meta Ads", icon: "📱", badge: "FB + IG" },
+    { id: "ads", label: "Google Ads Campaigns", icon: "🎯", badge: "PPC" },
+    { id: "chat", label: "AI Agent Chat", icon: "💬", badge: "Agent", href: "/chat" },
     { id: "wordpress", label: "WordPress & SEO", icon: "🌐", badge: hasWpConnected ? "Paired" : null },
     { id: "shopify", label: "Shopify Store & SEO", icon: "🛍️", badge: hasShopifyConnected ? "Paired" : "Ecommerce" },
     { id: "reels", label: "AI Reels & Shorts", icon: "🎬", badge: "New" },
     { id: "characters", label: "Character IP & Stories", icon: "✨", badge: "Pro IP" },
-    { id: "social", label: "Social Autopilot", icon: "📱", badge: "FB + IG" },
     { id: "gmb", label: "Local Maps (GMB)", icon: "📍", badge: "Maps" },
-    { id: "ads", label: "Performance Ads", icon: "🎯", badge: "PPC" },
   ];
 
   return (
@@ -526,6 +527,59 @@ export default function HomePage() {
         <div style={{ flex: 1, overflowY: "auto", padding: sidebarCollapsed ? "12px 8px" : "10px 12px", display: "flex", flexDirection: "column", gap: 4 }}>
           {NAV_ITEMS.map((item) => {
             const isActive = activeTab === item.id;
+            if (item.href) {
+              return (
+                <a
+                  key={item.id}
+                  href={item.href}
+                  style={{
+                    width: "100%",
+                    boxSizing: "border-box",
+                    padding: sidebarCollapsed ? "12px 0" : "10px 14px",
+                    borderRadius: 12,
+                    border: "1px solid transparent",
+                    background: "transparent",
+                    color: "#94a3b8",
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: sidebarCollapsed ? "center" : "space-between",
+                    textDecoration: "none",
+                    fontWeight: 500,
+                    fontSize: 13,
+                    transition: "all 0.15s ease",
+                  }}
+                  onMouseEnter={(e) => {
+                    e.currentTarget.style.background = "rgba(255, 255, 255, 0.04)";
+                    e.currentTarget.style.color = "#f1f5f9";
+                  }}
+                  onMouseLeave={(e) => {
+                    e.currentTarget.style.background = "transparent";
+                    e.currentTarget.style.color = "#94a3b8";
+                  }}
+                  title={sidebarCollapsed ? item.label : ""}
+                >
+                  <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+                    <span style={{ fontSize: 18 }}>{item.icon}</span>
+                    {!sidebarCollapsed && <span>{item.label}</span>}
+                  </div>
+                  {!sidebarCollapsed && item.badge && (
+                    <span
+                      style={{
+                        fontSize: 9.5,
+                        fontWeight: 800,
+                        padding: "2px 6px",
+                        borderRadius: 999,
+                        background: "rgba(56, 189, 248, 0.15)",
+                        color: "#38bdf8",
+                        border: "1px solid rgba(56, 189, 248, 0.3)",
+                      }}
+                    >
+                      {item.badge}
+                    </span>
+                  )}
+                </a>
+              );
+            }
             return (
               <button
                 key={item.id}
@@ -588,111 +642,32 @@ export default function HomePage() {
             );
           })}
 
-          <div style={{ height: 1, background: "rgba(255, 255, 255, 0.06)", margin: "8px 4px" }} />
-
-          {/* Quick Direct Launchers */}
-          <a
-            href="/chat"
-            style={{
-              padding: sidebarCollapsed ? "12px 0" : "10px 14px",
-              borderRadius: 12,
-              color: "#cbd5e1",
-              display: "flex",
-              alignItems: "center",
-              justifyContent: sidebarCollapsed ? "center" : "flex-start",
-              gap: 12,
-              textDecoration: "none",
-              fontSize: 13,
-              fontWeight: 600,
-              transition: "all 0.15s",
-            }}
-            onMouseEnter={(e) => (e.currentTarget.style.background = "rgba(255, 255, 255, 0.04)")}
-            onMouseLeave={(e) => (e.currentTarget.style.background = "transparent")}
-            title="Chat Agent"
-          >
-            <span style={{ fontSize: 18 }}>💬</span>
-            {!sidebarCollapsed && <span>AI Strategy Chat ↗</span>}
-          </a>
-
-          <a
-            href="/seo"
-            onClick={(e) => {
-              if (!hasWpConnected) {
-                e.preventDefault();
-                setShowWpConnectPrompt(true);
-              }
-            }}
-            style={{
-              padding: sidebarCollapsed ? "12px 0" : "10px 14px",
-              borderRadius: 12,
-              color: "#cbd5e1",
-              display: "flex",
-              alignItems: "center",
-              justifyContent: sidebarCollapsed ? "center" : "flex-start",
-              gap: 12,
-              textDecoration: "none",
-              fontSize: 13,
-              fontWeight: 600,
-              transition: "all 0.15s",
-            }}
-            onMouseEnter={(e) => (e.currentTarget.style.background = "rgba(255, 255, 255, 0.04)")}
-            onMouseLeave={(e) => (e.currentTarget.style.background = "transparent")}
-            title="Full SEO Suite"
-          >
-            <span style={{ fontSize: 18 }}>🔍</span>
-            {!sidebarCollapsed && <span>Autonomous SEO Suite ↗</span>}
-          </a>
-
-          <button
-            onClick={() => setShowSocialPlanner(true)}
-            style={{
-              width: "100%",
-              padding: sidebarCollapsed ? "12px 0" : "10px 14px",
-              borderRadius: 12,
-              background: "transparent",
-              border: "none",
-              color: "#cbd5e1",
-              display: "flex",
-              alignItems: "center",
-              justifyContent: sidebarCollapsed ? "center" : "flex-start",
-              gap: 12,
-              fontSize: 13,
-              fontWeight: 600,
-              cursor: "pointer",
-              transition: "all 0.15s",
-              textAlign: "left",
-            }}
-            onMouseEnter={(e) => (e.currentTarget.style.background = "rgba(255, 255, 255, 0.04)")}
-            onMouseLeave={(e) => (e.currentTarget.style.background = "transparent")}
-            title="Social Media Planner"
-          >
-            <span style={{ fontSize: 18 }}>📅</span>
-            {!sidebarCollapsed && <span>Social Media Planner ↗</span>}
-          </button>
-
-          {role === "owner" && (
-            <a
-              href="/admin"
-              style={{
-                padding: sidebarCollapsed ? "12px 0" : "10px 14px",
-                borderRadius: 12,
-                color: "#f59e0b",
-                display: "flex",
-                alignItems: "center",
-                justifyContent: sidebarCollapsed ? "center" : "flex-start",
-                gap: 12,
-                textDecoration: "none",
-                fontSize: 13,
-                fontWeight: 600,
-                transition: "all 0.15s",
-              }}
-              onMouseEnter={(e) => (e.currentTarget.style.background = "rgba(245, 158, 11, 0.08)")}
-              onMouseLeave={(e) => (e.currentTarget.style.background = "transparent")}
-              title="Admin Portal"
-            >
-              <span style={{ fontSize: 18 }}>⚙️</span>
-              {!sidebarCollapsed && <span>Admin Console</span>}
-            </a>
+          {(role === "owner" || session?.user?.email?.toLowerCase() === "ndantare@gmail.com") && (
+            <>
+              <div style={{ height: 1, background: "rgba(255, 255, 255, 0.06)", margin: "8px 4px" }} />
+              <a
+                href="/admin"
+                style={{
+                  padding: sidebarCollapsed ? "12px 0" : "10px 14px",
+                  borderRadius: 12,
+                  color: "#f59e0b",
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: sidebarCollapsed ? "center" : "flex-start",
+                  gap: 12,
+                  textDecoration: "none",
+                  fontSize: 13,
+                  fontWeight: 600,
+                  transition: "all 0.15s",
+                }}
+                onMouseEnter={(e) => (e.currentTarget.style.background = "rgba(245, 158, 11, 0.08)")}
+                onMouseLeave={(e) => (e.currentTarget.style.background = "transparent")}
+                title="Admin Portal"
+              >
+                <span style={{ fontSize: 18 }}>⚙️</span>
+                {!sidebarCollapsed && <span>Admin Console</span>}
+              </a>
+            </>
           )}
         </div>
 
@@ -1061,9 +1036,30 @@ export default function HomePage() {
 
                       {/* Action Launchers */}
                       <div style={{ display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap", width: "100%", maxWidth: "100%" }}>
+                        <a
+                          href="/chat"
+                          className="btn-gabbar-primary"
+                          style={{ padding: "11px 20px", fontSize: 13, flex: "1 1 auto", textDecoration: "none", display: "inline-flex", alignItems: "center", justifyContent: "center" }}
+                        >
+                          💬 AI Agent Chat ➔
+                        </a>
+                        <button
+                          onClick={() => handleSelectTab("social")}
+                          className="btn-gabbar-secondary"
+                          style={{ padding: "11px 20px", fontSize: 13, flex: "1 1 auto" }}
+                        >
+                          📱 Social Pilot/Meta Ads ➔
+                        </button>
+                        <button
+                          onClick={() => handleSelectTab("ads")}
+                          className="btn-gabbar-secondary"
+                          style={{ padding: "11px 20px", fontSize: 13, flex: "1 1 auto" }}
+                        >
+                          🎯 Google Ads Campaigns ➔
+                        </button>
                         <button
                           onClick={() => handleSelectTab("wordpress")}
-                          className="btn-gabbar-primary"
+                          className="btn-gabbar-secondary"
                           style={{ padding: "11px 20px", fontSize: 13, flex: "1 1 auto" }}
                         >
                           🌐 WordPress & SEO ➔
@@ -1090,25 +1086,11 @@ export default function HomePage() {
                           ✨ Character IP & Stories ➔
                         </button>
                         <button
-                          onClick={() => handleSelectTab("social")}
-                          className="btn-gabbar-secondary"
-                          style={{ padding: "11px 20px", fontSize: 13, flex: "1 1 auto" }}
-                        >
-                          📱 Social Autopilot ➔
-                        </button>
-                        <button
                           onClick={() => handleSelectTab("gmb")}
                           className="btn-gabbar-secondary"
                           style={{ padding: "11px 20px", fontSize: 13, flex: "1 1 auto" }}
                         >
                           📍 Local Maps & Reviews ➔
-                        </button>
-                        <button
-                          onClick={() => handleSelectTab("ads")}
-                          className="btn-gabbar-secondary"
-                          style={{ padding: "11px 20px", fontSize: 13, flex: "1 1 auto" }}
-                        >
-                          🎯 Google & Meta Ads ➔
                         </button>
                       </div>
                     </div>
@@ -1522,18 +1504,35 @@ export default function HomePage() {
                       </div>
                     </div>
 
-                    <button
-                      onClick={() => setShowSocialPlanner(true)}
-                      className="btn-gabbar-primary"
-                      style={{
-                        width: "100%",
-                        padding: "12px",
-                        fontSize: 13,
-                        justifyContent: "center",
-                      }}
-                    >
-                      📅 Open Social Media Planner Modal ↗
-                    </button>
+                    <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+                      <a
+                        href="/chat"
+                        className="btn-gabbar-primary"
+                        style={{
+                          width: "100%",
+                          padding: "12px",
+                          fontSize: 13,
+                          textDecoration: "none",
+                          justifyContent: "center",
+                          display: "inline-flex",
+                          alignItems: "center",
+                        }}
+                      >
+                        💬 Draft Meta Ads Campaign With Agent ↗
+                      </a>
+                      <button
+                        onClick={() => setShowSocialPlanner(true)}
+                        className="btn-gabbar-secondary"
+                        style={{
+                          width: "100%",
+                          padding: "12px",
+                          fontSize: 13,
+                          justifyContent: "center",
+                        }}
+                      >
+                        📅 Open Social Media Planner Modal ↗
+                      </button>
+                    </div>
                   </div>
                 </div>
               )}
@@ -1718,9 +1717,17 @@ export default function HomePage() {
                     <a
                       href="/chat"
                       className="btn-gabbar-primary"
-                      style={{ width: "100%", padding: "12px", fontSize: 13, textDecoration: "none", justifyContent: "center" }}
+                      style={{
+                        width: "100%",
+                        padding: "12px",
+                        fontSize: 13,
+                        textDecoration: "none",
+                        justifyContent: "center",
+                        display: "inline-flex",
+                        alignItems: "center",
+                      }}
                     >
-                      💬 Draft Ad Campaigns in Chat ↗
+                      💬 Draft Google Ads Campaign With Agent ↗
                     </a>
                   </div>
                 </div>
