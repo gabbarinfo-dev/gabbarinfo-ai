@@ -1,6 +1,7 @@
 import Head from "next/head";
 import { SessionProvider } from "next-auth/react";
 import FluidCursor from "./components/FluidCursor";
+import PolicyFooter from "./components/PolicyFooter";
 
 export default function MyApp({ Component, pageProps }) {
   const { session, ...rest } = pageProps || {};
@@ -28,6 +29,9 @@ export default function MyApp({ Component, pageProps }) {
 
       {/* Render page */}
       <Component {...rest} />
+
+      {/* Legal footer — required for Razorpay & DPDP compliance */}
+      <PolicyFooter />
 
       {/* Global Luxury Dark Styles & WhizWiser / Linear Design System */}
       <style jsx global>{`

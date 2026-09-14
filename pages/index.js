@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import { useSession, signIn, signOut } from "next-auth/react";
 import Head from "next/head";
+import { useRouter } from "next/router";
 import FacebookBusinessConnect from "./components/facebook/FacebookBusinessConnect";
 import GoogleAdsAccountConnect from "./components/google/googleadsaccountconnect";
 import GoogleBusinessConnect from "./components/google/GoogleBusinessConnect";
@@ -16,6 +17,7 @@ import CyberMatrixBackground from "./components/CyberMatrixBackground";
 
 export default function HomePage() {
   const { data: session, status } = useSession();
+  const router = useRouter();
 
   const [subData, setSubData] = useState(null);
   const [loadingSub, setLoadingSub] = useState(true);
@@ -502,7 +504,7 @@ export default function HomePage() {
               {loadingSub ? "Loading…" : isTrial99 ? "🎁 Power Sampler" : isTrialOrNone ? "Free Explorer" : subData?.subscription?.planName}
             </div>
             <button
-              onClick={() => setShowSubscriptionModal(true)}
+              onClick={() => router.push("/plans")}
               style={{
                 width: "100%",
                 padding: "6px 10px",
@@ -903,7 +905,7 @@ export default function HomePage() {
             {/* Quick Upgrade CTA */}
             {(isTrialOrNone || isTrial99) && (
               <button
-                onClick={() => setShowSubscriptionModal(true)}
+                onClick={() => router.push("/plans")}
                 style={{
                   padding: "6px 14px",
                   borderRadius: 999,
@@ -1124,7 +1126,7 @@ export default function HomePage() {
                             </div>
                           </div>
                           <button
-                            onClick={() => setShowSubscriptionModal(true)}
+                            onClick={() => router.push("/plans")}
                             style={{
                               padding: "6px 14px",
                               borderRadius: 8,
@@ -1621,7 +1623,7 @@ export default function HomePage() {
                     </div>
 
                     <button
-                      onClick={() => setShowSubscriptionModal(true)}
+                      onClick={() => router.push("/plans")}
                       className="btn-gabbar-secondary"
                       style={{ width: "100%", padding: "12px", fontSize: 13, justifyContent: "center" }}
                     >
