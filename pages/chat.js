@@ -314,8 +314,14 @@ function createEmptyChat() {
   };
 }
 
+function decodeUnicodeEscapes(str) {
+  if (!str || typeof str !== "string") return str;
+  return str.replace(/\\u([0-9a-fA-F]{4})/g, (_, hex) => String.fromCharCode(parseInt(hex, 16)));
+}
+
 function renderFormattedMessage(text) {
   if (!text || typeof text !== "string") return text;
+  const decodedText = decodeUnicodeEscapes(text);
 
   // Regex to match markdown links [label](url) OR standalone URLs http(s)://...
   const linkRegex = /\[([^\]]+)\]\((https?:\/\/[^\s)]+)\)|(https?:\/\/[^\s<]+[^<.,:;"')\]\s])/g;
@@ -324,9 +330,9 @@ function renderFormattedMessage(text) {
   let lastIndex = 0;
   let match;
 
-  while ((match = linkRegex.exec(text)) !== null) {
+  while ((match = linkRegex.exec(decodedText)) !== null) {
     if (match.index > lastIndex) {
-      parts.push(text.substring(lastIndex, match.index));
+      parts.push(decodedText.substring(lastIndex, match.index));
     }
     if (match[1] && match[2]) {
       // Markdown link: [label](url)
@@ -369,11 +375,11 @@ function renderFormattedMessage(text) {
     lastIndex = linkRegex.lastIndex;
   }
 
-  if (lastIndex < text.length) {
-    parts.push(text.substring(lastIndex));
+  if (lastIndex < decodedText.length) {
+    parts.push(decodedText.substring(lastIndex));
   }
 
-  return parts.length > 0 ? parts : text;
+  return parts.length > 0 ? parts : decodedText;
 }
 
 export default function ChatPage() {
@@ -416,6 +422,18 @@ export default function ChatPage() {
     if (isAgentPanelOpen) {
       if (agentMode === "generic") {
         setAgentInstruction("Create A Meta Ads Campaign");
+      } else if (agentMode === "meta_ads_call") {
+        setAgentInstruction("Create a Meta Call Ads campaign to get phone calls for my business");
+      } else if (agentMode === "meta_ads_shopping") {
+        setAgentInstruction("Create an Advantage+ Dynamic Shopping Catalog campaign");
+      } else if (agentMode === "meta_ads_whatsapp") {
+        setAgentInstruction("Create a Meta WhatsApp campaign to receive customer orders");
+      } else if (agentMode === "meta_ads_traffic") {
+        setAgentInstruction("Create a Meta Traffic campaign to drive website visits");
+      } else if (agentMode === "meta_ads_profile") {
+        setAgentInstruction("Create a Meta campaign to get Instagram profile visits and followers");
+      } else if (agentMode === "meta_ads_leads") {
+        setAgentInstruction("Create a Meta Lead Generation campaign to collect customer inquiries");
       } else if (agentMode === "google_ads_search") {
         setAgentInstruction("Create a Google Search Ads campaign");
       } else if (agentMode === "google_ads_pmax") {
@@ -870,7 +888,13 @@ Now respond as GabbarInfo AI.
 
     const modeLabels = {
       generic: "Meta Ads – Campaign Creator",
-      meta_ads_plan: "Meta Ads – Creative & Copy Planner",
+      meta_ads_plan: "Meta Ads – Smart Campaign Planner",
+      meta_ads_call: "Meta Ads – Direct Phone Calls",
+      meta_ads_shopping: "Meta Ads – Dynamic Shopping Ads",
+      meta_ads_whatsapp: "Meta Ads – WhatsApp Direct",
+      meta_ads_traffic: "Meta Ads – Website Traffic",
+      meta_ads_profile: "Meta Ads – Instagram Profile Visits",
+      meta_ads_leads: "Meta Ads – Lead Generation",
       google_ads_search: "Google Ads – Search Campaign",
       google_ads_pmax: "Google Ads – Performance Max",
       google_ads_pmax_shopping: "Google Ads – PMax Retail Shopping",
@@ -995,7 +1019,7 @@ Now respond as GabbarInfo AI.
       }
 
       const data = await res.json();
-      const rawText = data.text || data.response || JSON.stringify(data, null, 2);
+      const rawText = decodeUnicodeEscapes(data.text || data.response || JSON.stringify(data, null, 2));
       const assistantText = `GabbarInfo Agent:\n\n${rawText}`;
       setAgentResponse(rawText); // Save for the panel integrated view
 
@@ -2018,6 +2042,7 @@ Now respond as GabbarInfo AI.
                     <optgroup label="Meta Ads Suite">
                       <option value="meta_ads_shopping">Meta Ads – Dynamic Shopping & Advantage+ Catalog Ads</option>
                       <option value="meta_ads_whatsapp">Meta Ads – WhatsApp Direct Messages & Orders</option>
+                      <option value="meta_ads_call">Meta Ads – Direct Phone Calls & Inbound Inquiries</option>
                       <option value="meta_ads_traffic">Meta Ads – Website Traffic & Landing Page Visits</option>
                       <option value="meta_ads_profile">Meta Ads – Instagram Profile Visits & Growth</option>
                       <option value="meta_ads_leads">Meta Ads – Lead Generation & Enquiries</option>

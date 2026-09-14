@@ -363,6 +363,7 @@ export default async function handler(req, res) {
         lowerInstruction.includes("run ads for my business") ||
         lowerInstruction.includes("ad run") ||
         lowerInstruction.includes("start ads campaign") ||
+        originalMetaMode === "meta_ads_call" ||
         originalMetaMode === "meta_ads_shopping" ||
         originalMetaMode === "meta_ads_whatsapp" ||
         originalMetaMode === "meta_ads_traffic" ||
@@ -424,6 +425,13 @@ export default async function handler(req, res) {
         resetState.objective = "OUTCOME_TRAFFIC";
         resetState.destination = "instagram_profile";
         resetState.performance_goal = "VISIT_INSTAGRAM_PROFILE";
+        resetState.stage = "goal_selected";
+      } else if (originalMetaMode === "meta_ads_call") {
+        resetState.objective = "OUTCOME_TRAFFIC";
+        resetState.destination = "call";
+        resetState.performance_goal = "MAXIMIZE_CALLS";
+        resetState.phone = metaRow?.business_phone || null;
+        resetState.phone_confirmed = !!metaRow?.business_phone;
         resetState.stage = "goal_selected";
       } else if (originalMetaMode === "meta_ads_leads") {
         resetState.objective = "OUTCOME_LEADS";
@@ -1574,16 +1582,36 @@ You are in GENERIC DIGITAL MARKETING AGENT MODE.
           selectedMetaObjective = "OUTCOME_LEADS";
           selectedDestination = "instant_form";
           selectedPerformanceGoal = "MAXIMIZE_LEADS";
+        } else if (input === "6" || input.includes("call") || input.includes("phone")) {
+          selectedMetaObjective = "OUTCOME_TRAFFIC";
+          selectedDestination = "call";
+          selectedPerformanceGoal = "MAXIMIZE_CALLS";
         }
       } else {
-        if (input === "1" || input.includes("traffic")) {
+        if (input === "1" || input.includes("traffic") || input.includes("website")) {
           selectedMetaObjective = "OUTCOME_TRAFFIC";
-        } else if (input === "2" || input.includes("lead")) {
-          selectedMetaObjective = "OUTCOME_LEADS";
-        } else if (input === "3" || input.includes("sale") || input.includes("conversion")) {
-          selectedMetaObjective = "OUTCOME_SALES";
-        } else if (input === "4" || input.includes("engagement") || input.includes("engage")) {
+          selectedDestination = "website";
+          selectedPerformanceGoal = "MAXIMIZE_LINK_CLICKS";
+        } else if (input === "2" || input.includes("whatsapp")) {
           selectedMetaObjective = "OUTCOME_ENGAGEMENT";
+          selectedDestination = "whatsapp";
+          selectedPerformanceGoal = "MAXIMIZE_CONVERSIONS";
+        } else if (input === "3" || input.includes("call") || input.includes("phone")) {
+          selectedMetaObjective = "OUTCOME_TRAFFIC";
+          selectedDestination = "call";
+          selectedPerformanceGoal = "MAXIMIZE_CALLS";
+        } else if (input === "4" || input.includes("instagram") || input.includes("profile")) {
+          selectedMetaObjective = "OUTCOME_TRAFFIC";
+          selectedDestination = "instagram_profile";
+          selectedPerformanceGoal = "VISIT_INSTAGRAM_PROFILE";
+        } else if (input === "5" || input.includes("lead")) {
+          selectedMetaObjective = "OUTCOME_LEADS";
+          selectedDestination = "instant_form";
+          selectedPerformanceGoal = "MAXIMIZE_LEADS";
+        } else if (input === "6" || input.includes("sale") || input.includes("conversion")) {
+          selectedMetaObjective = "OUTCOME_SALES";
+          selectedDestination = "website";
+          selectedPerformanceGoal = "MAXIMIZE_CONVERSIONS";
         }
       }
 
@@ -1595,6 +1623,8 @@ You are in GENERIC DIGITAL MARKETING AGENT MODE.
           performance_goal: selectedPerformanceGoal || lockedCampaignState?.performance_goal || null,
           message_channel: selectedDestination === "whatsapp" ? "whatsapp" : (lockedCampaignState?.message_channel || null),
           catalog_id: selectedDestination === "catalogue" ? (metaRow?.fb_catalog_id || null) : (lockedCampaignState?.catalog_id || null),
+          phone: selectedDestination === "call" ? (metaRow?.business_phone || lockedCampaignState?.phone || null) : (lockedCampaignState?.phone || null),
+          phone_confirmed: selectedDestination === "call" ? (!!metaRow?.business_phone || !!lockedCampaignState?.phone_confirmed) : (lockedCampaignState?.phone_confirmed || false),
           stage: selectedDestination === "catalogue" ? "catalog_product_selection" : (selectedDestination ? "goal_selected" : "objective_selected")
         };
         currentState = lockedCampaignState;
@@ -1617,6 +1647,31 @@ You are in GENERIC DIGITAL MARKETING AGENT MODE.
               `4. **On-Sale Items** – Showcase only discounted items\n` +
               `5. **Specific Products** – Paste links of 3-5 specific products`,
           });
+        }
+
+        if (selectedDestination === "call") {
+          const detectedPhone = metaRow?.business_phone || lockedCampaignState?.phone || null;
+          if (detectedPhone) {
+            return res.status(200).json({
+              ok: true,
+              mode,
+              gated: true,
+              text:
+                `📞 **Direct Phone Calls Configured**\n*(Connected Business Phone: **${detectedPhone}**)*\n\n` +
+                `When customers tap your ad, Meta will display a **Call Now** button connecting directly to your business phone.\n\n` +
+                `Now, what is the specific **Service** or **Product** you want to promote with this campaign?`,
+            });
+          } else {
+            return res.status(200).json({
+              ok: true,
+              mode,
+              gated: true,
+              text:
+                `📞 **Direct Phone Calls Configured**\n\n` +
+                `When customers tap your ad, Meta will display a **Call Now** button that dials your business phone.\n\n` +
+                `Please reply with your **Business Phone Number** (with country code, e.g. +44 7123 456789 or +91 98765 43210):`,
+            });
+          }
         }
 
         if (selectedDestination && selectedPerformanceGoal) {
@@ -1686,7 +1741,8 @@ You are in GENERIC DIGITAL MARKETING AGENT MODE.
               "2. 💬 **WhatsApp Direct** – Chat & take orders on WhatsApp\n" +
               "3. 🌐 **Website Traffic / Sales** – Drive visitors to your online store or landing page\n" +
               "4. 📸 **Instagram Profile Visits** – Grow your Instagram followers and profile visits\n" +
-              "5. 📋 **Leads & Enquiries** – Collect enquiries via WhatsApp or instant forms",
+              "5. 📋 **Leads & Enquiries** – Collect enquiries via WhatsApp or instant forms\n" +
+              "6. 📞 **Direct Phone Calls** – Get direct phone calls to your business with a 'Call Now' button",
           });
         }
 
@@ -1697,10 +1753,12 @@ You are in GENERIC DIGITAL MARKETING AGENT MODE.
           text:
             "What is the primary objective of this campaign?\n\n" +
             "Please choose ONE option:\n\n" +
-            "1. Traffic – Get more people to visit your website, WhatsApp, or profile\n" +
-            "2. Leads – Get more enquiries via WhatsApp, calls, or forms\n" +
-            "3. Sales – Drive purchases or conversions on your website\n" +
-            "4. Engagement – Get more messages, profile visits, or interactions",
+            "1. 🌐 **Website Traffic** – Get more people to visit your website or landing page\n" +
+            "2. 💬 **WhatsApp Direct** – Chat & take customer orders on WhatsApp\n" +
+            "3. 📞 **Direct Phone Calls** – Inbound phone calls to your business with 'Call Now' button\n" +
+            "4. 📸 **Instagram Profile Visits** – Grow your Instagram followers and profile views\n" +
+            "5. 📋 **Leads & Enquiries** – Collect leads via instant forms or messages\n" +
+            "6. 🛒 **Sales & Conversions** – Drive online purchases on your store",
         });
       }
     }
