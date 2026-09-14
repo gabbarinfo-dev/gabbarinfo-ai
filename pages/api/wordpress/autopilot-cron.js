@@ -4,6 +4,12 @@ import { checkActionEntitlement } from "../../../lib/billing/quota-service.js";
 import { executeBlogGeneration } from "./generate-blog.js";
 import { executeFacebookPost } from "../../../lib/execute-facebook-post.js";
 import { executeInstagramPost } from "../../../lib/execute-instagram-post.js";
+import {
+  buildServiceRoster,
+  pickNextService,
+  generateUniqueTopic,
+  fetchUserSiteUrl,
+} from "../../../lib/autopilot/service-intelligence.js";
 
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL,
@@ -45,7 +51,9 @@ export default async function handler(req, res) {
     for (const item of configs || []) {
       try {
         const config = JSON.parse(item.content);
-        if (!config.enabled && !req.query?.force) continue;
+        // Fix #7: treat missing `enabled` field as enabled=true for configs created before the field was standardized
+        const isEnabled = config.enabled === undefined ? true : config.enabled;
+        if (!isEnabled && !req.query?.force) continue;
 
         console.log(`[Autopilot Cron] Processing cycle for ${item.email} (${config.businessName || "GABBARinfo"})...`);
 
@@ -101,7 +109,7 @@ export default async function handler(req, res) {
           }
         }
 
-        // 1. Fetch user's business profile for universal domain intelligence (Zero hardcoding)
+        // ── 1. Business Profile: Read client memory for industry, services, market ──
         let clientIndustry = config.industry || "";
         let clientServices = "";
         let clientMarket = "";
@@ -123,171 +131,40 @@ export default async function handler(req, res) {
           } catch (_) {}
         }
 
-        // Universal Service Roster: Extract distinct business services for ANY user business
-        const rawServices = [];
-        if (Array.isArray(config.targetKeywords)) rawServices.push(...config.targetKeywords);
-        if (Array.isArray(config.services)) rawServices.push(...config.services);
-        if (typeof clientServices === "string" && clientServices.trim()) {
-          rawServices.push(...clientServices.split(/[,;\n|]/).map(s => s.trim()));
-        }
+        // ── 2. Site URL: read from WP connection record so we can crawl it ───────
+        const siteUrl = await fetchUserSiteUrl(item.email, config.businessName);
 
-        // Deduplicate and sanitize
-        const seenServices = new Set();
-        const serviceRoster = [];
-        for (const s of rawServices) {
-          const clean = s.trim().replace(/^[-•*]\s*/, "");
-          if (clean.length > 2 && !seenServices.has(clean.toLowerCase())) {
-            seenServices.add(clean.toLowerCase());
-            serviceRoster.push(clean);
-          }
-        }
+        // ── 3. Service Roster: crawl site → AI synthesis → fallback ─────────────
+        // buildServiceRoster caches result in config.discoveredServices for 7 days
+        const serviceRoster = await buildServiceRoster({
+          config,
+          userEmail: item.email,
+          businessName: config.businessName,
+          industry: clientIndustry,
+          clientServices,
+          siteUrl,
+        });
+        // Persist the freshly built (or refreshed) roster back into config
+        config.discoveredServices = serviceRoster;
+        config.discoveredServicesAt = config.discoveredServicesAt || new Date().toISOString();
 
-        if (serviceRoster.length <= 1) {
-          // Universal Multi-Tenant Service Expansion: Dynamically synthesize distinct service offerings
-          // tailored specifically to THIS user's actual business, industry, and niche (e.g. laundry, real estate, legal, medical, etc.)
-          try {
-            if (process.env.OPENAI_API_KEY) {
-              const OpenAI = (await import("openai")).default;
-              const expAi = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
-              const expRes = await expAi.chat.completions.create({
-                model: "gpt-4o-mini",
-                messages: [
-                  {
-                    role: "system",
-                    content: "You are an enterprise business analyst. Return ONLY a valid JSON array of 5 to 6 distinct commercial service, product, or solution offerings that this specific business provides to its paying clients. No markdown, no code blocks, no preamble, just a pure JSON array of strings: [\"Service 1\", \"Service 2\", ...]."
-                  },
-                  {
-                    role: "user",
-                    content: `Business Name: "${config.businessName || 'Enterprise'}"\nIndustry / Category: "${clientIndustry || 'Commercial Services'}"\nExisting services: "${serviceRoster.join(', ') || 'None'}"\nSynthesize 5 to 6 distinct core offerings for this business.`
-                  }
-                ],
-                temperature: 0.3,
-                max_tokens: 150
-              });
-              const rawExp = expRes.choices?.[0]?.message?.content?.trim() || "";
-              const parsedExp = JSON.parse(rawExp.replace(/^```json|^```|```$/g, "").trim());
-              if (Array.isArray(parsedExp) && parsedExp.length > 0) {
-                for (const item of parsedExp) {
-                  const clean = String(item).trim();
-                  if (clean.length > 2 && !seenServices.has(clean.toLowerCase())) {
-                    seenServices.add(clean.toLowerCase());
-                    serviceRoster.push(clean);
-                  }
-                }
-              }
-            }
-          } catch (expErr) {
-            console.warn("[Autopilot Cron] Dynamic service expansion failed, using business-aligned fallback:", expErr.message);
-          }
+        // ── 4. Round-Robin Service Selection (lastServiceIndex, NOT publishedCount) ─
+        // This guarantees every service is posted about before ANY repeats.
+        const { activeService, nextServiceIndex } = pickNextService(config, serviceRoster);
 
-          // Fallback if AI offline: Universal business-aligned operational pillars (NEVER hardcoded marketing agency services)
-          if (serviceRoster.length <= 1) {
-            const genericPillars = [
-              `${config.businessName || 'Core'} Primary Offerings`,
-              `${clientIndustry || 'Professional'} Client Solutions`,
-              "Specialized Services & Packages",
-              "Consultation & Implementation",
-              "Client Support & Service Delivery"
-            ];
-            for (const gp of genericPillars) {
-              if (!seenServices.has(gp.toLowerCase())) {
-                seenServices.add(gp.toLowerCase());
-                serviceRoster.push(gp);
-              }
-            }
-          }
-        }
-
-        // Deterministic Universal Service Round-Robin: Advances to the next distinct service on each publication
-        const serviceIndex = (config.publishedCount || 0) % serviceRoster.length;
-        const activeService = serviceRoster[serviceIndex] || serviceRoster[0];
-
+        // ── 5. Unique Topic Generation (angle-aware, fuzzy dedup last 30) ────────
         config.publishedTopics = Array.isArray(config.publishedTopics) ? config.publishedTopics : [];
-        let generatedTopic = "";
+        const generatedTopic = await generateUniqueTopic({
+          config,
+          activeService,
+          serviceRoster,
+          businessName: config.businessName,
+          industry: clientIndustry,
+          targetMarket: clientMarket,
+          contentType: "blog",
+        });
 
-        // 2. Dynamic Multi-Model AI Topic Synthesis (OpenAI -> Google Gemini Failover)
-        const recentTopics = config.publishedTopics.slice(-15).join(" | ");
-        const isSeoActive = /seo|search engine/i.test(activeService);
-        const topicPrompt = `You are a Principal Content Strategist for "${config.businessName || 'Enterprise'}", operating in the "${clientIndustry || 'Commercial Solutions'}" industry.
-Today's designated core service / product focus is: "${activeService}".
-Target market / audience: "${clientMarket || 'Global B2B/B2C'}".
-Complete service roster: "${serviceRoster.join(', ')}".
-${!isSeoActive ? `CRITICAL NEGATIVE CONSTRAINT: DO NOT use the word "SEO" or mention search engine optimization anywhere in the title. Focus 100% strictly on "${activeService}".` : ""}
-
-Generate a complete, high-impact, authoritative blog headline (8 to 14 words) for today that focuses specifically on "${activeService}". Address a real customer pain point, strategic decision, or practical high-value solution in this domain.
-NEVER return a single word. Return ONLY the complete headline title, with no quotes or preamble.`;
-
-        // Attempt 1: OpenAI (gpt-4o-mini)
-        const openAiKey = process.env.OPENAI_API_KEY;
-        if (openAiKey) {
-          try {
-            const OpenAI = (await import("openai")).default;
-            const openai = new OpenAI({ apiKey: openAiKey });
-
-            const aiResp = await openai.chat.completions.create({
-              model: "gpt-4o-mini",
-              messages: [{ role: "user", content: topicPrompt }],
-              temperature: 0.75,
-              max_tokens: 60,
-            });
-
-            const aiTitle = aiResp.choices?.[0]?.message?.content?.trim().replace(/^["']|["']$/g, "");
-            if (aiTitle && aiTitle.length > 15 && !config.publishedTopics.includes(aiTitle)) {
-              generatedTopic = aiTitle;
-              console.log(`[Autopilot Cron] OpenAI topic synthesized: "${generatedTopic}" for service "${activeService}"`);
-            }
-          } catch (aiErr) {
-            console.warn("[Autopilot Cron] OpenAI topic synthesis error (falling back to Gemini):", aiErr.message);
-          }
-        }
-
-        // Attempt 2: Google Gemini Fallback (gemini-2.5-flash) if OpenAI quota exhausted or failed
-        if (!generatedTopic && process.env.GEMINI_API_KEY) {
-          try {
-            const geminiUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${process.env.GEMINI_API_KEY}`;
-            const geminiResp = await fetch(geminiUrl, {
-              method: "POST",
-              headers: { "Content-Type": "application/json" },
-              body: JSON.stringify({
-                contents: [{ role: "user", parts: [{ text: topicPrompt }] }],
-                generationConfig: { temperature: 0.7, maxOutputTokens: 100 },
-              }),
-            });
-            if (geminiResp.ok) {
-              const geminiData = await geminiResp.json();
-              const geminiTitle = geminiData.candidates?.[0]?.content?.parts?.[0]?.text?.trim().replace(/^["']|["']$/g, "");
-              if (geminiTitle && geminiTitle.length > 15 && !config.publishedTopics.includes(geminiTitle)) {
-                generatedTopic = geminiTitle;
-                console.log(`[Autopilot Cron] Gemini topic synthesized: "${generatedTopic}" for service "${activeService}"`);
-              }
-            }
-          } catch (geminiErr) {
-            console.warn("[Autopilot Cron] Gemini topic synthesis fallback warning:", geminiErr.message);
-          }
-        }
-
-        // Attempt 3: Template-Based Diversifier using activeService
-        if (!generatedTopic) {
-          const templates = [
-            `The Comprehensive Guide to ${activeService}: Actionable Tactics for Sustainable Growth`,
-            `Mastering ${activeService}: Best Practices for Maximizing Quality and ROI`,
-            `High-Impact ${activeService} Strategies That Modern Industry Leaders Swear By`,
-            `The Practical Playbook for ${activeService}: Overcoming Common Pitfalls`,
-            `Advanced ${activeService} Optimization: Core Frameworks and Proven Solutions`,
-            `How Leading Enterprises Elevate Results with ${activeService}: Deep-Dive Analysis`
-          ];
-
-          for (const tpl of templates) {
-            if (!config.publishedTopics.includes(tpl)) {
-              generatedTopic = tpl;
-              break;
-            }
-          }
-
-          if (!generatedTopic) {
-            generatedTopic = `${activeService}: Critical Industry Insights and Practical Solutions for ${new Date().getFullYear()}`;
-          }
-        }
+        console.log(`[Autopilot Cron] Service [${nextServiceIndex + 1}/${serviceRoster.length}]: "${activeService}" | Topic: "${generatedTopic}"`);
 
         // Direct In-Process Autonomous Blog Engine Execution (No external HTTP fetch overhead)
         console.log(`[Autopilot Cron] Invoking in-process blog generation for ${config.businessName}... Active Service: "${activeService}" | Topic: "${generatedTopic}"`);
@@ -304,13 +181,17 @@ NEVER return a single word. Return ONLY the complete headline title, with no quo
         });
 
         if (genData?.ok) {
-          // Immediately update lastPublishedAt, publishedCount & publishedTopics in Supabase
+          // Update state: topics history, service index, counts
           config.publishedTopics = config.publishedTopics || [];
           if (!config.publishedTopics.includes(generatedTopic)) {
             config.publishedTopics.push(generatedTopic);
+            // Keep only last 50 topics to prevent unbounded growth
+            if (config.publishedTopics.length > 50) config.publishedTopics = config.publishedTopics.slice(-50);
           }
           config.lastPublishedAt = new Date().toISOString();
           config.publishedCount = (config.publishedCount || 0) + 1;
+          // Persist the next service index so round-robin survives restarts
+          config.lastServiceIndex = nextServiceIndex;
           await supabase
             .from("agent_memory")
             .update({
@@ -323,10 +204,41 @@ NEVER return a single word. Return ONLY the complete headline title, with no quo
           console.log(`[Autopilot Cron] Memory state updated for ${item.email}. Published count: ${config.publishedCount}`);
 
           // In-Process Direct Social Media Syndication (Strictly obeys user preferences)
+          // Fix #4: auto-detect active Facebook/Instagram connections from meta_connections table
+          // rather than relying solely on autoShareFacebook/autoShareInstagram flags which
+          // are only written when user explicitly clicks 'Apply Routine & Cross-Post Settings'.
           const socialShares = {};
 
+          // Resolve live connection status from Supabase
+          let hasActiveFacebookConnection = false;
+          let hasActiveInstagramConnection = false;
+          try {
+            const { data: metaConn } = await supabase
+              .from("meta_connections")
+              .select("fb_page_id, fb_page_access_token, instagram_id")
+              .ilike("email", item.email)
+              .order("updated_at", { ascending: false })
+              .limit(1)
+              .maybeSingle();
+
+            if (metaConn?.fb_page_id && (metaConn?.fb_page_access_token || process.env.META_SYSTEM_USER_TOKEN)) {
+              hasActiveFacebookConnection = true;
+            }
+            if (metaConn?.instagram_id) {
+              hasActiveInstagramConnection = true;
+            }
+          } catch (connCheckErr) {
+            console.warn("[Autopilot Cron] Connection check warning:", connCheckErr.message);
+          }
+
+          // Determine syndication intent:
+          // - If user explicitly set the flag, honour it
+          // - If user never set it (undefined) and a live connection exists, auto-enable syndication
+          const shouldShareFacebook = config.autoShareFacebook !== false && hasActiveFacebookConnection;
+          const shouldShareInstagram = config.autoShareInstagram !== false && hasActiveInstagramConnection;
+
           // 1. Facebook Page Publish (Clickable Link Card - Screenshot 3 style)
-          if (config.autoShareFacebook && (genData.post_url || genData.featured_image)) {
+          if (shouldShareFacebook && (genData.post_url || genData.featured_image)) {
             try {
               console.log(`[Autopilot Cron] In-process Facebook Link Card post for ${config.businessName}...`);
               const fullCaption = `📢 ${genData.title}\n\n${genData.meta_description || ""}\n\nRead full article here 👇\n${genData.post_url}`;
@@ -351,11 +263,23 @@ NEVER return a single word. Return ONLY the complete headline title, with no quo
             }
           }
 
-          // 2. Instagram Profile Publish (if user preferred Instagram)
-          if (config.autoShareInstagram && genData.featured_image) {
+          // 2. Instagram Profile Publish (featured image + rich caption with blog link + hashtags)
+          if (shouldShareInstagram && genData.featured_image) {
             try {
               console.log(`[Autopilot Cron] In-process Instagram post for ${config.businessName}...`);
-              const igCaption = `📢 ${genData.title}\n\n${genData.meta_description || ""}\n\n🔗 Link in bio to read full breakdown!\n\n#${activeService.replace(/[^a-zA-Z0-9]/g, "")} #BusinessGrowth #${(config.businessName || "Gabbarinfo").replace(/[^a-zA-Z0-9]/g, "")}`;
+              // Instagram: image only in post, link + full context in caption
+              const igServiceTag = `#${activeService.replace(/[^a-zA-Z0-9]/g, "")}`.toLowerCase();
+              const igBizTag = `#${(config.businessName || "Business").replace(/[^a-zA-Z0-9]/g, "")}`.toLowerCase();
+              const igIndustryTag = clientIndustry ? `#${clientIndustry.replace(/[^a-zA-Z0-9]/g, "")}`.toLowerCase() : "";
+              const igCaption = [
+                `📢 ${genData.title}`,
+                "",
+                genData.meta_description || "",
+                "",
+                `🔗 Full article: ${genData.post_url || "Link in bio"}`,
+                "",
+                `${igServiceTag} ${igBizTag} ${igIndustryTag} #BusinessGrowth #ContentMarketing #DigitalStrategy`.trim(),
+              ].join("\n");
               const igPromise = executeInstagramPost({
                 userEmail: item.email,
                 imageUrl: genData.featured_image,

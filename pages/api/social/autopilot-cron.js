@@ -8,6 +8,12 @@ import { generateCaption } from "../../../lib/instagram/generate-caption.js";
 import { verifyEntitlementByEmail, FEATURES } from "../../../lib/auth/entitlements.js";
 import { checkActionEntitlement, reserveQuota, commitQuota, releaseQuota } from "../../../lib/billing/quota-service.js";
 import { uploadToMediaBridge, purgeFromMediaBridge } from "../../../lib/wordpress/media-bridge.js";
+import {
+  buildServiceRoster,
+  pickNextService,
+  generateUniqueTopic,
+  fetchUserSiteUrl,
+} from "../../../lib/autopilot/service-intelligence.js";
 
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL,
@@ -145,7 +151,7 @@ async function generateSocialVisual(prompt, label = "social") {
     console.warn("[Social Cron] Pollinations fallback error:", pollErr.message);
   }
 
-  return "https://images.unsplash.com/photo-1460925895917-afdab827c52f?w=1024&q=80";
+  return null; // No image available — let caller decide whether to skip
 }
 
 export default async function handler(req, res) {
@@ -188,6 +194,28 @@ export default async function handler(req, res) {
           continue;
         }
 
+        // ⏱️ Cadence Frequency Gate (mirrors WP autopilot logic)
+        // Prevents burning credits by re-posting before the configured interval has elapsed
+        const lastPublished = config.lastPublishedAt ? new Date(config.lastPublishedAt) : null;
+        const cadence = config.cadence || config.frequency || "daily";
+        const publishedPerMonth = config.postsPerMonth || 30;
+
+        let minIntervalMs;
+        if (cadence === "daily" || publishedPerMonth >= 28) {
+          minIntervalMs = 12 * 60 * 60 * 1000;       // 12h — safe window for daily cron
+        } else if (cadence === "weekly" || publishedPerMonth <= 5) {
+          minIntervalMs = 5 * 24 * 60 * 60 * 1000;   // 5 days
+        } else if (cadence === "biweekly" || publishedPerMonth <= 14) {
+          minIntervalMs = Math.floor((7 / (publishedPerMonth / 4)) * 24 * 60 * 60 * 1000 * 0.7);
+        } else {
+          // Fallback: calculate from postsPerMonth
+          minIntervalMs = Math.floor((30 / publishedPerMonth) * 24 * 60 * 60 * 1000 * 0.75);
+        }
+
+        if (lastPublished && now - lastPublished < minIntervalMs && !req.query?.force) {
+          console.log(`[Social Autopilot Cron] Cadence threshold not reached for ${item.email} (cadence: ${cadence}, last: ${config.lastPublishedAt}). Skipping.`);
+          continue;
+        }
         // 🔒 Server-Side Pre-Flight Check: Verify Entitlements, Autopilot Inclusion & Monthly Quota
         const isSuperAdmin = item.email?.toLowerCase() === "ndantare@gmail.com";
         if (!isSuperAdmin) {
@@ -248,49 +276,48 @@ export default async function handler(req, res) {
           } catch (_) {}
         }
 
-        // Universal Service Roster: Assemble every distinct service/offering for ANY user business
-        const rawServices = [];
-        if (Array.isArray(config.services)) rawServices.push(...config.services);
-        if (Array.isArray(config.targetKeywords)) rawServices.push(...config.targetKeywords);
-        if (typeof clientServices === "string" && clientServices.trim()) {
-          rawServices.push(...clientServices.split(/[,;\n|]/).map(s => s.trim()));
-        }
+        // ── Service Roster: crawl actual WP site → AI synthesis → fallback ─────
+        // Social planner has its OWN service roster, independent from SEO cron.
+        // We look up the user's connected WP site URL to crawl for real services.
+        const siteUrl = await fetchUserSiteUrl(item.email, config.businessName);
+        const serviceRoster = await buildServiceRoster({
+          config,
+          userEmail: item.email,
+          businessName: config.businessName || "Enterprise",
+          industry: clientIndustry,
+          clientServices,
+          siteUrl,
+        });
+        // Cache roster into config (saved on publish)
+        config.discoveredServices = serviceRoster;
+        config.discoveredServicesAt = config.discoveredServicesAt || new Date().toISOString();
 
-        const seenServices = new Set();
-        const serviceRoster = [];
-        for (const s of rawServices) {
-          const clean = s.trim().replace(/^[-•*]\s*/, "");
-          if (clean.length > 2 && !seenServices.has(clean.toLowerCase())) {
-            seenServices.add(clean.toLowerCase());
-            serviceRoster.push(clean);
-          }
-        }
+        // ── Strict Round-Robin (lastServiceIndex, NOT publishedCount) ───────────
+        const { activeService, nextServiceIndex } = pickNextService(config, serviceRoster);
 
-        if (serviceRoster.length === 0) {
-          serviceRoster.push("Business Growth & Operations", "Professional Client Services");
-        }
-
-        // Deterministic Universal Round-Robin: Advances to the next distinct service on each publication
-        const serviceIndex = (config.publishedCount || 0) % serviceRoster.length;
-        const activeService = serviceRoster[serviceIndex] || serviceRoster[0];
-
-        // Pick next topic from queue or synthesize tailored topic
+        // ── Pick next queued item OR generate a fresh unique topic ──────────────
         let nextItem = (config.queue || []).find((q) => q.status === "pending");
-        if (!nextItem) {
-          nextItem = {
-            day: (config.publishedCount || 0) + 1,
-            pillar: "educational_tips",
-            service: activeService,
-            hook: `Mastering ${activeService}`,
-            topic: `Essential Strategies and High-Impact Tactics for ${activeService} in ${new Date().getFullYear()}`,
-            status: "pending",
-          };
+        let topic, hook;
+        if (nextItem) {
+          topic = nextItem.topic || `Practical insights for ${activeService}`;
+          hook = nextItem.hook || `Excellence in ${activeService}`;
+        } else {
+          // Generate a truly unique, angle-aware social topic
+          config.publishedTopics = Array.isArray(config.publishedTopics) ? config.publishedTopics : [];
+          topic = await generateUniqueTopic({
+            config,
+            activeService,
+            serviceRoster,
+            businessName: config.businessName || "Enterprise",
+            industry: clientIndustry,
+            targetMarket: clientWebsite || "",
+            contentType: "social",
+          });
+          hook = topic.length > 60 ? topic.slice(0, 57) + "..." : topic;
         }
 
         const businessName = config.businessName || "Enterprise";
-        const service = nextItem.service || activeService;
-        const topic = nextItem.topic || `Practical insights for ${service}`;
-        const hook = nextItem.hook || `Excellence in ${service}`;
+        const service = activeService;
 
         // Build Agent State for Agency-Grade Creative Generation (Matches Dropdown Facebook/Instagram Quality)
         const agentState = {
@@ -333,7 +360,15 @@ export default async function handler(req, res) {
         } catch (imgErr) {
           console.warn("[Social Cron] generateImage failed, fallback to visual generator:", imgErr.message);
           const imagePrompt = `Award-winning commercial graphic design poster for social media advertising. Subject: "${service}" for brand "${businessName}". Theme: "${hook}: ${topic}". Sleek modern commercial studio lighting, vibrant colors, 3D geometric accents, high contrast, clean agency composition, pristine 4K quality, no text watermark.`;
-          imageUrl = await generateSocialVisual(imagePrompt);
+          imageUrl = await generateSocialVisual(imagePrompt, service);
+        }
+
+        // 🛡️ Safety gate: if no image could be obtained from any source, skip publishing
+        // (avoids false-positive history writes where post appears "published" but was never live)
+        if (!imageUrl) {
+          console.warn(`[Social Cron] All image sources exhausted for ${item.email}. Skipping this cycle to avoid silent failure.`);
+          results.push({ email: item.email, business: businessName, status: "skipped", reason: "no_image" });
+          continue;
         }
 
         // Execute Publishing based on destination: "BOTH" | "FACEBOOK_ONLY" | "INSTAGRAM_ONLY"
@@ -412,14 +447,24 @@ export default async function handler(req, res) {
           }
         }
 
-        // Update queue item status & state in memory
-        nextItem.status = "published";
-        nextItem.publishedAt = now.toISOString();
-        nextItem.publishedImageUrl = imageUrl;
-        nextItem.publishedTo = publishedTo;
+        // Update queue item status if this run came from the queue
+        if (nextItem) {
+          nextItem.status = "published";
+          nextItem.publishedAt = now.toISOString();
+          nextItem.publishedImageUrl = imageUrl;
+          nextItem.publishedTo = publishedTo;
+        }
 
         config.lastPublishedAt = now.toISOString();
         config.publishedCount = (config.publishedCount || 0) + 1;
+        // Persist round-robin pointer so next run continues from next service
+        config.lastServiceIndex = nextServiceIndex;
+        // Track published topics for deduplication
+        if (!Array.isArray(config.publishedTopics)) config.publishedTopics = [];
+        if (!config.publishedTopics.includes(topic)) {
+          config.publishedTopics.push(topic);
+          if (config.publishedTopics.length > 50) config.publishedTopics = config.publishedTopics.slice(-50);
+        }
 
         if (!Array.isArray(config.history)) config.history = [];
         config.history.unshift({
@@ -469,8 +514,8 @@ export default async function handler(req, res) {
   }
 }
 
-export const maxDuration = 60;
+export const maxDuration = 300;
 
 export const config = {
-  maxDuration: 60,
+  maxDuration: 300,
 };
