@@ -1844,36 +1844,6 @@ export default function HomePage() {
             </div>
           )}
         </main>
-
-        {/* FOOTER */}
-        <footer
-          style={{
-            marginTop: 40,
-            padding: "20px clamp(16px, 3.5vw, 28px)",
-            borderTop: "1px solid rgba(255, 255, 255, 0.08)",
-            display: "flex",
-            justifyContent: "space-between",
-            alignItems: "center",
-            flexWrap: "wrap",
-            gap: 12,
-            fontSize: 12,
-            color: "#64748b",
-          }}
-        >
-          <div>
-            © {new Date().getFullYear()} GabbarInfo AI. All rights reserved.
-          </div>
-          <div style={{ display: "flex", gap: 16 }}>
-            <a
-              href="https://www.gabbarinfo.com/privacy-policy/"
-              target="_blank"
-              rel="noopener noreferrer"
-              style={{ color: "#94a3b8", textDecoration: "underline" }}
-            >
-              Privacy Policy
-            </a>
-          </div>
-        </footer>
       </div>
 
       {/* Subscription Plans Modal */}
