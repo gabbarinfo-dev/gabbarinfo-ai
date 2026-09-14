@@ -206,6 +206,8 @@ export default async function handler(req, res) {
       fb_business_id: businessId,
       fb_page_id: page.id,
       fb_ad_account_id: adAccountId,
+      fb_catalog_id: catalogId,
+      fb_pixel_id: pixelId,
     });
 
   } catch (err) {

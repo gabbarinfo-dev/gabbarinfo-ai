@@ -73,6 +73,8 @@ export default function FacebookBusinessConnect({ onOpenSocialPlanner }) {
       fb_business_id: data.fb_business_id,
       fb_page_id: data.fb_page_id,
       fb_ad_account_id: data.fb_ad_account_id,
+      fb_catalog_id: data.fb_catalog_id,
+      fb_pixel_id: data.fb_pixel_id,
       business_info_synced: true,
     }));
 
@@ -240,9 +242,21 @@ export default function FacebookBusinessConnect({ onOpenSocialPlanner }) {
                 </li>
               )}
               {meta?.fb_ad_account_id && (
-                <li>
+                <li style={{ marginBottom: 6 }}>
                   <span style={{ fontWeight: 600, color: "#cbd5e1" }}>Ad Account ID:</span>{" "}
                   <code style={{ background: "rgba(255, 255, 255, 0.06)", padding: "3px 6px", borderRadius: 6, color: "#60a5fa" }}>{meta.fb_ad_account_id}</code>
+                </li>
+              )}
+              {meta?.fb_catalog_id && (
+                <li style={{ marginBottom: 6 }}>
+                  <span style={{ fontWeight: 600, color: "#cbd5e1" }}>Catalog ID:</span>{" "}
+                  <code style={{ background: "rgba(255, 255, 255, 0.06)", padding: "3px 6px", borderRadius: 6, color: "#38bdf8" }}>{meta.fb_catalog_id}</code>
+                </li>
+              )}
+              {meta?.fb_pixel_id && (
+                <li style={{ marginBottom: 6 }}>
+                  <span style={{ fontWeight: 600, color: "#cbd5e1" }}>Pixel ID:</span>{" "}
+                  <code style={{ background: "rgba(255, 255, 255, 0.06)", padding: "3px 6px", borderRadius: 6, color: "#34d399" }}>{meta.fb_pixel_id}</code>
                 </li>
               )}
             </ul>
