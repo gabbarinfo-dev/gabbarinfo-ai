@@ -2016,8 +2016,13 @@ Now respond as GabbarInfo AI.
                       <option value="google_ads_plan">Google Ads – Smart Campaign Planner (Auto-Detect Format)</option>
                     </optgroup>
                     <optgroup label="Meta Ads Suite">
-                      <option value="generic">Meta Ads – Campaign Creator (Full Strategy)</option>
-                      <option value="meta_ads_plan">Meta Ads – Creative & Copy Planner</option>
+                      <option value="meta_ads_shopping">Meta Ads – Dynamic Shopping & Advantage+ Catalog Ads</option>
+                      <option value="meta_ads_whatsapp">Meta Ads – WhatsApp Direct Messages & Orders</option>
+                      <option value="meta_ads_traffic">Meta Ads – Website Traffic & Landing Page Visits</option>
+                      <option value="meta_ads_profile">Meta Ads – Instagram Profile Visits & Growth</option>
+                      <option value="meta_ads_leads">Meta Ads – Lead Generation & Enquiries</option>
+                      <option value="meta_ads_plan">Meta Ads – Smart Campaign Planner (Auto-Detect Format)</option>
+                      <option value="generic">Meta Ads – General Campaign Creator</option>
                     </optgroup>
                     <optgroup label="Social & Organic Marketing">
                       <option value="social_plan">Social Media Content Calendar</option>

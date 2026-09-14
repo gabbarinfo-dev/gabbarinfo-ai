@@ -130,7 +130,7 @@ export default async function handler(req, res) {
 
   const { data: meta, error } = await supabase
     .from("meta_connections")
-    .select("fb_ad_account_id, fb_page_id, ig_business_id, instagram_actor_id, business_website, business_phone, fb_user_access_token, fb_pixel_id, fb_business_id")
+    .select("fb_ad_account_id, fb_page_id, ig_business_id, instagram_actor_id, business_website, business_phone, fb_user_access_token, fb_pixel_id, fb_business_id, fb_catalog_id")
     .eq("email", clientEmail)
     .single();
 
@@ -456,8 +456,8 @@ Error: ${lastError?.message}`);
         API_VERSION,
         meta.fb_business_id,
         PAGE_ID,
-        firstAdSet.catalogId,
-        firstAdSet.productSetId
+        firstAdSet.catalogId || firstAdSet._catalogInfo?.catalogId || meta.fb_catalog_id,
+        firstAdSet.productSetId || firstAdSet._catalogInfo?.productSetId
       );
 
       // FALLBACK: If Deep Scan found nothing, check Supabase table
@@ -506,7 +506,11 @@ Error: ${lastError?.message}`);
       adSet.conversion_location = payload.conversion_location;
       adSet.message_channel = payload.message_channel;
       adSet.phone_number = payload.phone_number || meta.business_phone;
-      if (catalogInfo) adSet._catalogInfo = catalogInfo; // Honor discovery but don't overwrite if present
+      if (catalogInfo && !adSet._catalogInfo?.productSetId) {
+        adSet._catalogInfo = catalogInfo;
+      } else if (catalogInfo && adSet._catalogInfo) {
+        adSet._catalogInfo.catalogId = adSet._catalogInfo.catalogId || catalogInfo.catalogId;
+      }
 
       const p = await buildAdSetPayload(finalObjective, adSet, campaignId, ACCESS_TOKEN, placements, PAGE_ID, activePixelId, payload, validatedInstagramActorId);
 
@@ -735,7 +739,7 @@ dsets`, {
           creative.conversion_location = payload.conversion_location;
           creative.message_channel = payload.message_channel;
           creative.phone_number = payload.phone_number || meta.business_phone;
-          if (catalogInfo) creative._catalogInfo = catalogInfo;
+          if (adSet._catalogInfo || catalogInfo) creative._catalogInfo = adSet._catalogInfo || catalogInfo;
           const crParams = buildCreativePayload(
             creative,
             PAGE_ID,
@@ -1109,21 +1113,42 @@ async function buildAdSetPayload(objective, adSet, campaignId, accessToken, plac
       const catInfo = adSet._catalogInfo;
       const isCatalogueMode = conversionLocation === "CATALOGUE" || (catInfo && catInfo.productSetId);
 
-      if (isCatalogueMode && catInfo && catInfo.productSetId && catInfo.productSetId !== "default") {
-        // Surgical Fix: Force billing/optimization and promoted_object
-        optimization_goal = "OFFSITE_CONVERSIONS";
-        billing_event = "IMPRESSIONS";
-        destination_type = undefined; // Let Meta determine from catalogue
-        promoted_object = {
-          product_set_id: catInfo.productSetId,
-          custom_event_type: "PURCHASE"
-        };
-        console.log(`🛍️ [AdSet] Catalogue mode: product_set_id=${catInfo.productSetId}`);
-      } else if (isCatalogueMode) {
-        // Validation Fallback: Clear error if catalogue discovery failed or returned "default"
-        // Use the passed adAccountId or extract from payload
-        const displayAccountId = adSet.ad_account_id || campaignId.split('_')[0] || "your account";
-        throw new Error(`I found your London account and GBP currency, but I cannot see your Product Catalogue. Please ensure your Catalogue is connected to Ad Account ${displayAccountId}. If you have a specific Catalogue ID, please provide it.`);
+      if (isCatalogueMode && catInfo) {
+        let productSetId = catInfo.productSetId;
+        const catalogId = catInfo.catalogId || meta.fb_catalog_id;
+
+        if ((!productSetId || productSetId === "default") && catalogId) {
+          try {
+            const psRes = await fetch(
+              `https://graph.facebook.com/${API_VERSION}/${catalogId}/product_sets?fields=id,name,product_count&access_token=${ACCESS_TOKEN}`
+            );
+            const psJson = await psRes.json();
+            if (psJson?.data?.length) {
+              const bestPS =
+                psJson.data.find((ps) => ps.name?.toLowerCase().includes("all product")) ||
+                psJson.data[0];
+              productSetId = bestPS.id;
+              catInfo.productSetId = productSetId;
+              console.log(`✅ [AdSet] Resolved default product_set_id from catalog ${catalogId}: "${bestPS.name}" (ID: ${productSetId})`);
+            }
+          } catch (e) {
+            console.warn("⚠️ Failed resolving default product set in buildAdSetPayload:", e.message);
+          }
+        }
+
+        if (productSetId && productSetId !== "default") {
+          optimization_goal = "OFFSITE_CONVERSIONS";
+          billing_event = "IMPRESSIONS";
+          destination_type = undefined; // Let Meta determine from catalogue
+          promoted_object = {
+            product_set_id: productSetId,
+            custom_event_type: "PURCHASE"
+          };
+          console.log(`🛍️ [AdSet] Catalogue mode: product_set_id=${productSetId}`);
+        } else {
+          const displayAccountId = adSet.ad_account_id || campaignId.split('_')[0] || "your account";
+          throw new Error(`I found your connected Meta account and currency, but could not resolve a Product Set in Catalogue ${catalogId || 'active'}. Please ensure your Catalogue is active with products synced.`);
+        }
       } else if (pixelId) {
         // Standard pixel-based sales with website
         destination_type = "WEBSITE";
@@ -1564,7 +1589,21 @@ async function getProductCatalogAndSet(adAccountId, accessToken, apiVersion, bus
     // Strategy 0: Manual ID override
     if (manualCatalogId && manualCatalogId !== "default") {
       console.log(`🛍️ [Catalogue Discovery] Using manual Catalog ID: ${manualCatalogId}`);
-      return { catalogId: manualCatalogId, catalogName: "Manual Catalogue", productSetId: manualProductSetId || null };
+      let resolvedPS = (manualProductSetId && manualProductSetId !== "default") ? manualProductSetId : null;
+      if (!resolvedPS) {
+        try {
+          const psRes = await fetch(`https://graph.facebook.com/${apiVersion}/${manualCatalogId}/product_sets?fields=id,name,product_count&access_token=${accessToken}`);
+          const psJson = await psRes.json();
+          if (psJson?.data?.length) {
+            const bestPS = psJson.data.find(ps => ps.name?.toLowerCase().includes("all product")) || psJson.data[0];
+            resolvedPS = bestPS.id;
+            console.log(`✅ [Catalogue Discovery] Auto-resolved Product Set from Catalog ${manualCatalogId}: "${bestPS.name}" (ID: ${resolvedPS})`);
+          }
+        } catch (e) {
+          console.warn("⚠️ [Catalogue Discovery] Product set fetch failed:", e.message);
+        }
+      }
+      return { catalogId: manualCatalogId, catalogName: "Manual/Synced Catalogue", productSetId: resolvedPS };
     }
 
     console.log(`🔎 [Deep Discovery] Starting exhaustive search for act_${adAccountId}...`);

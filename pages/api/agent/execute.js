@@ -21,6 +21,7 @@ import { normalizeImageUrl } from "../../../lib/normalize-image-url";
 import { creativeEntry } from "../../../lib/instagram/creative-entry";
 import { clearCreativeState } from "../../../lib/instagram/creative-memory";
 import { processMetaAdImage } from "../../../lib/meta/process-meta-image";
+import { createOrResolveProductSet } from "../../../lib/meta/product-sets";
 import {
   cleanCustomerId,
   getAccountHierarchy,
@@ -300,7 +301,9 @@ export default async function handler(req, res) {
     }
 
     // 🔒 MODE AUTHORITY & ENTITLEMENT GATE — META ADS ISOLATION
-    if (mode === "meta_ads_plan") {
+    const isMetaMode = mode === "meta_ads_plan" || (typeof mode === "string" && mode.startsWith("meta_ads"));
+    const originalMetaMode = mode;
+    if (isMetaMode) {
       const ent = await verifyEntitlement(session, body.businessId, FEATURES.META_ADS);
       if (!ent.allowed) {
         return res.status(200).json({
@@ -309,6 +312,7 @@ export default async function handler(req, res) {
           mode,
         });
       }
+      mode = "meta_ads_plan";
     }
 
     // ============================================================
@@ -358,7 +362,12 @@ export default async function handler(req, res) {
         lowerInstruction.includes("run an ad") ||
         lowerInstruction.includes("run ads for my business") ||
         lowerInstruction.includes("ad run") ||
-        lowerInstruction.includes("start ads campaign")
+        lowerInstruction.includes("start ads campaign") ||
+        originalMetaMode === "meta_ads_shopping" ||
+        originalMetaMode === "meta_ads_whatsapp" ||
+        originalMetaMode === "meta_ads_traffic" ||
+        originalMetaMode === "meta_ads_profile" ||
+        originalMetaMode === "meta_ads_leads"
       );
 
     let lockedCampaignState = null;
@@ -386,10 +395,42 @@ export default async function handler(req, res) {
         whatsapp_confirmed: false,
         message_channel: null,
         location_question_asked: false,
+        catalog_id: metaRow?.fb_catalog_id || null,
+        product_set_id: null,
+        product_set_name: null,
         plan: null,
         stage: null,
         locked_at: new Date().toISOString(),
       };
+
+      if (originalMetaMode === "meta_ads_shopping") {
+        resetState.objective = "OUTCOME_SALES";
+        resetState.destination = "catalogue";
+        resetState.performance_goal = "MAXIMIZE_CONVERSIONS";
+        resetState.catalog_id = metaRow?.fb_catalog_id || null;
+        resetState.stage = "catalog_product_selection";
+      } else if (originalMetaMode === "meta_ads_whatsapp") {
+        resetState.objective = "OUTCOME_ENGAGEMENT";
+        resetState.destination = "whatsapp";
+        resetState.performance_goal = "MAXIMIZE_CONVERSIONS";
+        resetState.message_channel = "whatsapp";
+        resetState.stage = "goal_selected";
+      } else if (originalMetaMode === "meta_ads_traffic") {
+        resetState.objective = "OUTCOME_TRAFFIC";
+        resetState.destination = "website";
+        resetState.performance_goal = "MAXIMIZE_LINK_CLICKS";
+        resetState.stage = "goal_selected";
+      } else if (originalMetaMode === "meta_ads_profile") {
+        resetState.objective = "OUTCOME_TRAFFIC";
+        resetState.destination = "instagram_profile";
+        resetState.performance_goal = "VISIT_INSTAGRAM_PROFILE";
+        resetState.stage = "goal_selected";
+      } else if (originalMetaMode === "meta_ads_leads") {
+        resetState.objective = "OUTCOME_LEADS";
+        resetState.destination = "instant_form";
+        resetState.performance_goal = "MAXIMIZE_LEADS";
+        resetState.stage = "goal_selected";
+      }
 
       // 🔒 RESET IS PERSISTED TO MEMORY (Mandatory Fix 1)
       lockedCampaignState = resetState;
@@ -1106,8 +1147,8 @@ You MUST ALWAYS output BOTH a human-readable summary AND the JSON using this exa
         "tagline": "Punchy hook for the ad image (max 8 words)",
         "destination_url": "https://client-website.com"
       },
-      "catalogId": null,
-      "productSetId": null
+      "catalogId": ${lockedCampaignState?.catalog_id ? `"${lockedCampaignState.catalog_id}"` : (metaRow?.fb_catalog_id ? `"${metaRow.fb_catalog_id}"` : "null")},
+      "productSetId": ${lockedCampaignState?.product_set_id ? `"${lockedCampaignState.product_set_id}"` : "null"}
     }
   ]
 }
@@ -1116,9 +1157,9 @@ You MUST ALWAYS output BOTH a human-readable summary AND the JSON using this exa
 - For WhatsApp, use CTA: WHATSAPP_MESSAGE, conversion_location: WHATSAPP, destination_type: WHATSAPP.
 - For Instagram Profile Visits, use CTA: VIEW_INSTAGRAM_PROFILE and Performance Goal: VISIT_INSTAGRAM_PROFILE.
 - For Facebook Page visits, use CTA: VISIT_PROFILE or LEARN_MORE.
-- optimization_goal must match the performance goal (e.g., LINK_CLICKS, CONVERSATIONS, LANDING_PAGE_VIEWS).
-- destination_type should match the conversion location (e.g., WEBSITE, WHATSAPP, MESSAGING_APPS, INSTAGRAM_PROFILE).
-- **CATALOGUE RULE**: If the user selects 'Catalogue Sales', set 'destination_type': 'CATALOGUE', remove 'imagePrompt' and 'destination_url', and add '_isCatalogue': true.
+- optimization_goal must match the performance goal (e.g., LINK_CLICKS, CONVERSATIONS, LANDING_PAGE_VIEWS, CONVERSIONS).
+- destination_type should match the conversion location (e.g., WEBSITE, WHATSAPP, MESSAGING_APPS, INSTAGRAM_PROFILE, CATALOGUE).
+- **CATALOGUE RULE**: If destination is 'catalogue' or 'Catalogue Sales' (Advantage+ Dynamic Shopping Ads), set 'destination_type': 'CATALOGUE', 'conversion_location': 'CATALOGUE', 'optimization_goal': 'CONVERSIONS', remove 'imagePrompt' and 'destination_url', and add '_isCatalogue': true. Catalog ID is "${lockedCampaignState?.catalog_id || metaRow?.fb_catalog_id || ''}" and Product Set ID is "${lockedCampaignState?.product_set_id || ''}". Dynamic carousel pulls images live from the catalog and links shoppers directly to their Shopify product pages.
 - When you output JSON, wrap it in a proper JSON code block. Do NOT add extra text inside the JSON block.
 - ALWAYS propose a plan if you have enough info (objective, location, service, budget).
 - **LOCATION RULE**: Use exactly "${currentLocation}" in universal_locations. DO NOT default to India.
@@ -1510,23 +1551,82 @@ You are in GENERIC DIGITAL MARKETING AGENT MODE.
     // Step 1: Objective
     if (!isPlanProposed && mode === "meta_ads_plan" && !selectedMetaObjective) {
       const input = lowerInstruction.trim();
+      const hasCatalog = !!metaRow?.fb_catalog_id;
 
-      if (input === "1" || input.includes("traffic")) {
-        selectedMetaObjective = "OUTCOME_TRAFFIC";
-      } else if (input === "2" || input.includes("lead")) {
-        selectedMetaObjective = "OUTCOME_LEADS";
-      } else if (input === "3" || input.includes("sale") || input.includes("conversion")) {
-        selectedMetaObjective = "OUTCOME_SALES";
-      } else if (input === "4" || input.includes("engagement") || input.includes("engage")) {
-        selectedMetaObjective = "OUTCOME_ENGAGEMENT";
+      if (hasCatalog) {
+        if (input === "1" || input.includes("shopping") || input.includes("catalog") || input.includes("catalogue") || input.includes("advantage")) {
+          selectedMetaObjective = "OUTCOME_SALES";
+          selectedDestination = "catalogue";
+          selectedPerformanceGoal = "MAXIMIZE_CONVERSIONS";
+        } else if (input === "2" || input.includes("whatsapp")) {
+          selectedMetaObjective = "OUTCOME_ENGAGEMENT";
+          selectedDestination = "whatsapp";
+          selectedPerformanceGoal = "MAXIMIZE_CONVERSIONS";
+        } else if (input === "3" || input.includes("website") || input.includes("traffic")) {
+          selectedMetaObjective = "OUTCOME_TRAFFIC";
+          selectedDestination = "website";
+          selectedPerformanceGoal = "MAXIMIZE_LINK_CLICKS";
+        } else if (input === "4" || input.includes("instagram") || input.includes("profile")) {
+          selectedMetaObjective = "OUTCOME_TRAFFIC";
+          selectedDestination = "instagram_profile";
+          selectedPerformanceGoal = "VISIT_INSTAGRAM_PROFILE";
+        } else if (input === "5" || input.includes("lead")) {
+          selectedMetaObjective = "OUTCOME_LEADS";
+          selectedDestination = "instant_form";
+          selectedPerformanceGoal = "MAXIMIZE_LEADS";
+        }
+      } else {
+        if (input === "1" || input.includes("traffic")) {
+          selectedMetaObjective = "OUTCOME_TRAFFIC";
+        } else if (input === "2" || input.includes("lead")) {
+          selectedMetaObjective = "OUTCOME_LEADS";
+        } else if (input === "3" || input.includes("sale") || input.includes("conversion")) {
+          selectedMetaObjective = "OUTCOME_SALES";
+        } else if (input === "4" || input.includes("engagement") || input.includes("engage")) {
+          selectedMetaObjective = "OUTCOME_ENGAGEMENT";
+        }
       }
 
       if (!isPlanProposed && selectedMetaObjective) {
-        lockedCampaignState = { ...lockedCampaignState, objective: selectedMetaObjective, stage: "objective_selected" };
+        lockedCampaignState = {
+          ...lockedCampaignState,
+          objective: selectedMetaObjective,
+          destination: selectedDestination || lockedCampaignState?.destination || null,
+          performance_goal: selectedPerformanceGoal || lockedCampaignState?.performance_goal || null,
+          message_channel: selectedDestination === "whatsapp" ? "whatsapp" : (lockedCampaignState?.message_channel || null),
+          catalog_id: selectedDestination === "catalogue" ? (metaRow?.fb_catalog_id || null) : (lockedCampaignState?.catalog_id || null),
+          stage: selectedDestination === "catalogue" ? "catalog_product_selection" : (selectedDestination ? "goal_selected" : "objective_selected")
+        };
         currentState = lockedCampaignState;
         await saveAnswerMemory(process.env.NEXT_PUBLIC_BASE_URL, effectiveBusinessId, { campaign_state: lockedCampaignState }, session.user.email.toLowerCase());
         console.log("TRACE: ENTER META INTAKE FLOW");
         console.log("TRACE: RETURNING RESPONSE — STAGE =", currentState?.stage);
+
+        if (selectedDestination === "catalogue") {
+          return res.status(200).json({
+            ok: true,
+            mode,
+            gated: true,
+            text:
+              `🛍️ **Advantage+ Dynamic Shopping Ads Configured**\n*(Connected Meta Catalog: **${metaRow.business_name || "Store"}** — ID: \`${metaRow.fb_catalog_id}\`)*\n\n` +
+              `Product cards will automatically feature dynamic items straight from your catalog and link directly to each product's Shopify page.\n\n` +
+              `**Which products would you like to feature in this campaign?**\n\n` +
+              `1. **All Products** – Showcase your entire catalog in dynamic carousels\n` +
+              `2. **Category / Collection** – (e.g., 'Kundan Jewellery', 'Handbags', 'Earrings')\n` +
+              `3. **Price Filter** – (e.g., 'Under £40' or 'Under ₹500')\n` +
+              `4. **On-Sale Items** – Showcase only discounted items\n` +
+              `5. **Specific Products** – Paste links of 3-5 specific products`,
+          });
+        }
+
+        if (selectedDestination && selectedPerformanceGoal) {
+          return res.status(200).json({
+            ok: true,
+            mode,
+            gated: true,
+            text: `Campaign destination and goal locked.\n\nNow, what is the specific **Service** or **Product** you want to promote with this campaign?`,
+          });
+        }
 
         let nextQuestion = "";
         if (selectedMetaObjective === "OUTCOME_TRAFFIC") {
@@ -1573,6 +1673,23 @@ You are in GENERIC DIGITAL MARKETING AGENT MODE.
       } else {
         console.log("TRACE: ENTER META INTAKE FLOW");
         console.log("TRACE: RETURNING RESPONSE — STAGE =", currentState?.stage);
+
+        if (hasCatalog) {
+          return res.status(200).json({
+            ok: true,
+            mode,
+            gated: true,
+            text:
+              `What is the primary objective of this campaign?\n*(Connected Meta Catalog detected: **${metaRow.business_name || "Store"}** — ID: \`${metaRow.fb_catalog_id}\`)*\n\n` +
+              "Please choose ONE option:\n\n" +
+              "1. 🛍️ **Dynamic Shopping Ads (Advantage+ Catalog)** – Showcase dynamic product carousels directly from your catalog with automatic Shopify product linking\n" +
+              "2. 💬 **WhatsApp Direct** – Chat & take orders on WhatsApp\n" +
+              "3. 🌐 **Website Traffic / Sales** – Drive visitors to your online store or landing page\n" +
+              "4. 📸 **Instagram Profile Visits** – Grow your Instagram followers and profile visits\n" +
+              "5. 📋 **Leads & Enquiries** – Collect enquiries via WhatsApp or instant forms",
+          });
+        }
+
         return res.status(200).json({
           ok: true,
           mode,
@@ -1641,6 +1758,33 @@ You are in GENERIC DIGITAL MARKETING AGENT MODE.
 
 
       if (!isPlanProposed && selectedDestination) {
+        if (selectedDestination === "catalogue") {
+          lockedCampaignState = {
+            ...lockedCampaignState,
+            destination: "catalogue",
+            performance_goal: "MAXIMIZE_CONVERSIONS",
+            catalog_id: metaRow?.fb_catalog_id || lockedCampaignState?.catalog_id || null,
+            stage: "catalog_product_selection"
+          };
+          currentState = lockedCampaignState;
+          await saveAnswerMemory(process.env.NEXT_PUBLIC_BASE_URL, effectiveBusinessId, { campaign_state: lockedCampaignState }, session.user.email.toLowerCase());
+
+          return res.status(200).json({
+            ok: true,
+            mode,
+            gated: true,
+            text:
+              `🛍️ **Advantage+ Dynamic Shopping Ads Configured**\n*(Connected Meta Catalog: **${metaRow?.business_name || "Store"}** — ID: \`${metaRow?.fb_catalog_id || "Active"}\`)*\n\n` +
+              `Product cards will automatically feature dynamic items straight from your catalog and link directly to each product's Shopify page.\n\n` +
+              `**Which products would you like to feature in this campaign?**\n\n` +
+              `1. **All Products** – Showcase your entire catalog in dynamic carousels\n` +
+              `2. **Category / Collection** – (e.g., 'Kundan Jewellery', 'Handbags', 'Earrings')\n` +
+              `3. **Price Filter** – (e.g., 'Under £40' or 'Under ₹500')\n` +
+              `4. **On-Sale Items** – Showcase only discounted items\n` +
+              `5. **Specific Products** – Paste links of 3-5 specific products`,
+          });
+        }
+
         lockedCampaignState = { ...lockedCampaignState, destination: selectedDestination, stage: "destination_selected" };
         currentState = lockedCampaignState;
         await saveAnswerMemory(process.env.NEXT_PUBLIC_BASE_URL, effectiveBusinessId, { campaign_state: lockedCampaignState }, session.user.email.toLowerCase());
@@ -1749,8 +1893,137 @@ You are in GENERIC DIGITAL MARKETING AGENT MODE.
       }
     }
 
-    // Step 4: Service Confirmation
+    // Step 4: Service Confirmation (or Catalog Product Set Selection)
     if (!isPlanProposed && mode === "meta_ads_plan" && selectedPerformanceGoal && !lockedCampaignState?.service) {
+      const isCatalogue = selectedDestination === "catalogue" || lockedCampaignState?.destination === "catalogue";
+
+      if (isCatalogue) {
+        const rawInput = instruction.trim();
+        const lower = rawInput.toLowerCase();
+
+        const isProductSelectionAnswer =
+          lockedCampaignState?.stage === "catalog_product_selection" ||
+          lower.includes("all") ||
+          lower.includes("sale") ||
+          lower.includes("under") ||
+          lower.includes("less") ||
+          lower.includes("http") ||
+          rawInput.length >= 2;
+
+        if (isProductSelectionAnswer) {
+          let filter_type = "all";
+          let filter_keyword = null;
+          let filter_max_price = null;
+          let filter_urls = [];
+          let setName = "All Products";
+
+          // Detect URLs
+          const urlRegex = /(https?:\/\/[^\s]+)/gi;
+          const matchedUrls = rawInput.match(urlRegex);
+          if (matchedUrls && matchedUrls.length > 0) {
+            filter_type = "urls";
+            filter_urls = matchedUrls;
+            setName = `Featured Selection (${matchedUrls.length} items)`;
+          } else if (lower === "1" || lower.includes("all product") || lower === "all" || lower.includes("entire catalog")) {
+            filter_type = "all";
+            setName = "All Products";
+          } else if (lower === "4" || lower.includes("sale") || lower.includes("clearance") || lower.includes("discount")) {
+            filter_type = "sale";
+            setName = "On-Sale & Discounted Items";
+          } else if (lower.match(/(?:under|below|less than|<)\s*([£$€₹]?\s*\d+)/i) || (lower.startsWith("3") && lower.match(/\d+/))) {
+            const numMatch = lower.match(/\d+/);
+            filter_type = "price_max";
+            filter_max_price = numMatch ? numMatch[0] : "50";
+            setName = `Under ${activeCurrency} ${filter_max_price}`;
+          } else {
+            // Category / keyword
+            let cleaned = rawInput.replace(/^(?:2\.?|category:?|collection:?)\s*/i, "").trim();
+            if (!cleaned || /^\d+$/.test(cleaned)) cleaned = "Jewellery & Accessories";
+            filter_type = "category";
+            filter_keyword = cleaned;
+            setName = `${cleaned} Collection`;
+          }
+
+          let resolvedSet = null;
+          const catalogId = metaRow?.fb_catalog_id || lockedCampaignState?.catalog_id;
+          const accessToken = metaRow?.fb_user_access_token || metaRow?.system_user_token;
+
+          if (catalogId && accessToken) {
+            try {
+              resolvedSet = await createOrResolveProductSet({
+                catalogId,
+                accessToken,
+                activeCurrency,
+                name: setName,
+                filter_type,
+                keyword: filter_keyword,
+                max_price: filter_max_price,
+                product_urls: filter_urls,
+              });
+            } catch (e) {
+              console.warn("⚠️ createOrResolveProductSet failed in agent intake:", e.message);
+            }
+          }
+
+          const finalProductSetId = resolvedSet?.product_set_id || "default";
+          const finalSetName = resolvedSet?.product_set_name || setName;
+
+          lockedCampaignState = {
+            ...lockedCampaignState,
+            service: finalSetName,
+            service_confirmed: true,
+            catalog_id: catalogId,
+            product_set_id: finalProductSetId,
+            product_set_name: finalSetName,
+            stage: "service_selected"
+          };
+          currentState = lockedCampaignState;
+
+          await saveAnswerMemory(
+            process.env.NEXT_PUBLIC_BASE_URL,
+            effectiveBusinessId,
+            { campaign_state: lockedCampaignState },
+            session.user.email.toLowerCase()
+          );
+
+          return res.status(200).json({
+            ok: true,
+            mode,
+            gated: true,
+            text: `✅ **Product Set Configured**: **${finalSetName}** (Catalog ID: \`${catalogId}\`, Product Set ID: \`${finalProductSetId}\`)\n\n` +
+              `Shoppers clicking any item in the dynamic product carousel will be redirected automatically to that exact Shopify product URL.\n\n` +
+              `Next, what is the **Target Location** (City, State, or Country) for these ads?`
+          });
+        } else {
+          lockedCampaignState = {
+            ...lockedCampaignState,
+            stage: "catalog_product_selection"
+          };
+          currentState = lockedCampaignState;
+
+          await saveAnswerMemory(
+            process.env.NEXT_PUBLIC_BASE_URL,
+            effectiveBusinessId,
+            { campaign_state: lockedCampaignState },
+            session.user.email.toLowerCase()
+          );
+
+          return res.status(200).json({
+            ok: true,
+            mode,
+            gated: true,
+            text: `🛍️ **Advantage+ Dynamic Shopping Ads (Catalog: \`${metaRow?.fb_catalog_id || "Active"}\`)**\n\n` +
+              `Which products from your catalog should be featured in this campaign?\n\n` +
+              `1. **All Products** – Showcase your entire product catalog in dynamic carousels\n` +
+              `2. **Category / Collection** – (e.g., 'Kundan Jewellery', 'Handbags', 'Earrings')\n` +
+              `3. **Price Filter** – (e.g., 'Under £40' or 'Under ₹500')\n` +
+              `4. **On-Sale Items** – Showcase only discounted items with sale badges\n` +
+              `5. **Specific Products** – Paste links of 3-5 specific products to display`
+          });
+        }
+      }
+
+      // Standard non-catalog flow
       const input = instruction.trim();
 
       // Check if input is a reasonable length and not just a single digit left over from previous step
@@ -3720,10 +3993,22 @@ Otherwise, respond with a full, clear explanation, and include example JSON only
             }
 
             // 🛡️ WATERFALL BYPASS: Force Catalogue Settings for Sales
-            if (lockedCampaignState?.destination === "Catalogue Sales" || lockedCampaignState?.destination === "catalogue" || lockedCampaignState?.objective === "OUTCOME_SALES") {
+            const isCatCampaign = lockedCampaignState?.destination === "Catalogue Sales" || 
+              lockedCampaignState?.destination === "catalogue" || 
+              (lockedCampaignState?.objective === "OUTCOME_SALES" && (lockedCampaignState?.product_set_id || metaRow?.fb_catalog_id));
+
+            if (isCatCampaign) {
               console.log("🚀 [Bypass] Forcing Catalogue Payload for Sales Advantage+...");
               if (finalPayload.ad_sets && finalPayload.ad_sets[0]) {
-                finalPayload.ad_sets[0]._catalogInfo = { productSetId: "default" };
+                const targetCatalogId = lockedCampaignState?.catalog_id || metaRow?.fb_catalog_id || null;
+                const targetProductSetId = lockedCampaignState?.product_set_id || "default";
+                finalPayload.ad_sets[0]._catalogInfo = { 
+                  catalogId: targetCatalogId,
+                  productSetId: targetProductSetId 
+                };
+                finalPayload.ad_sets[0].catalogId = targetCatalogId;
+                finalPayload.ad_sets[0].productSetId = targetProductSetId;
+                finalPayload.ad_sets[0].conversion_location = "CATALOGUE";
                 finalPayload.budget.currency = activeCurrency;
                 // Force delete the image hash to prevent single-image fallback
                 if (finalPayload.ad_sets[0].ad_creative) {
@@ -4547,14 +4832,16 @@ Reply **YES** to confirm this plan and proceed.
                     delete adCreative.image_hash;
                   }
 
-                  const finalCatalogId = adset.catalogId || capturedCatalogId || null;
+                  const finalCatalogId = adset.catalogId || currentState.catalog_id || capturedCatalogId || metaRow?.fb_catalog_id || null;
+                  const finalProductSetId = adset.productSetId || currentState.product_set_id || "default";
                   return {
                     ...adset,
                     _catalogInfo: isCatalogueMode ? {
-                      productSetId: adset.productSetId || "default",
+                      productSetId: finalProductSetId,
                       catalogId: finalCatalogId
                     } : (adset._catalogInfo || null),
                     catalogId: finalCatalogId,
+                    productSetId: finalProductSetId,
                     conversion_location: isCatalogueMode ? "CATALOGUE" : (currentState.conversion_location || plan.conversion_location || currentState.destination || null),
                     message_channel: currentState.message_channel || null,
                     ad_creative: adCreative
