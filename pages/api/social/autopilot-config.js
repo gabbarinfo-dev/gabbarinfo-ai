@@ -21,7 +21,7 @@ async function generateSocialVisual(prompt, label = "social") {
   if (apiKey) {
     try {
       const openai = new OpenAI({ apiKey });
-      const modelToUse = process.env.OPENAI_IMAGE_MODEL || "dall-e-3";
+      const modelToUse = process.env.OPENAI_IMAGE_MODEL || "gpt-image-2";
       console.log(`[Social Autopilot] Generating visual with OpenAI (${modelToUse})...`);
 
       let response;
@@ -32,9 +32,9 @@ async function generateSocialVisual(prompt, label = "social") {
           size: "1024x1024",
         });
       } catch (err) {
-        console.warn(`[Social Autopilot] Primary model failed, trying dall-e-2:`, err.message);
+        console.warn(`[Social Autopilot] Primary model ${modelToUse} failed, trying gpt-image-1.5:`, err.message);
         response = await openai.images.generate({
-          model: "dall-e-2",
+          model: "gpt-image-1.5",
           prompt,
           size: "1024x1024",
         });
