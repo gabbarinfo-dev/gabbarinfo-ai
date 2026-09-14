@@ -1,7 +1,10 @@
 // pages/api/google/list-campaigns.js
+// NOTE: This endpoint is not yet implemented.
+// Google Ads campaign listing is handled via the Google Ads API directly
+// in the main ads workstation components.
 import { getServerSession } from "next-auth";
 import { authOptions } from "../auth/[...nextauth]";
-import { getGoogleAdsCustomerForEmail } from "../../../lib/googleAdsClient";
+import { getAccessToken } from "../../../lib/googleAdsClient";
 
 export default async function handler(req, res) {
   const session = await getServerSession(req, res, authOptions);
@@ -11,21 +14,17 @@ export default async function handler(req, res) {
   }
 
   try {
-    const customer = await getGoogleAdsCustomerForEmail(session.user.email);
+    // Get access token for Google Ads API
+    const accessToken = await getAccessToken();
+    if (!accessToken) {
+      return res.status(500).json({ ok: false, error: "Failed to obtain Google Ads access token." });
+    }
 
-    // Simple example: list up to 10 campaigns
-    const campaigns = await customer.campaigns.list({
-      limit: 10,
-      // you can add where/fields if you want
-    });
-
-    return res.status(200).json({
-      ok: true,
-      campaigns: campaigns.map((c) => ({
-        id: c.id,
-        name: c.name,
-        status: c.status,
-      })),
+    // Campaign listing is handled via the Google Ads workstation UI.
+    // This endpoint is reserved for future direct API integration.
+    return res.status(501).json({
+      ok: false,
+      error: "Campaign listing via this endpoint is not yet implemented. Use the Google Ads workstation.",
     });
   } catch (err) {
     console.error("Error in list-campaigns:", err);
