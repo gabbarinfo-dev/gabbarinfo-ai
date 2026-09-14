@@ -503,6 +503,48 @@ export default function HomePage() {
             <div style={{ fontSize: 12.5, fontWeight: 800, color: "#fff", marginBottom: 8, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
               {loadingSub ? "Loading…" : isTrial99 ? "🎁 Power Sampler" : isTrialOrNone ? "Free Explorer" : subData?.subscription?.planName}
             </div>
+
+            {/* ── Credits / Quota Remaining Summary ── */}
+            {!loadingSub && subData?.quotas && (
+              <div style={{
+                display: "grid", gridTemplateColumns: "1fr 1fr",
+                gap: "5px 8px", marginBottom: 10,
+                background: "rgba(0,0,0,0.2)", borderRadius: 8,
+                padding: "8px 10px",
+              }}>
+                {[
+                  { label: "Blogs", key: "seoArticles", icon: "📝" },
+                  { label: "Posts", key: "socialPosts", icon: "📱" },
+                  { label: "Images", key: "images", icon: "🖼️" },
+                  { label: "Queries", key: "aiQueries", icon: "💬" },
+                ].map(({ label, key, icon }) => {
+                  const q = subData.quotas[key];
+                  const remaining = q?.remaining ?? 0;
+                  const limit = q?.limit ?? 0;
+                  const isUnlimited = limit === "Unlimited" || limit === 9999;
+                  const isLocked = !q?.included;
+                  return (
+                    <div key={key} style={{ display: "flex", flexDirection: "column", gap: 1 }}>
+                      <span style={{ fontSize: 9, color: "rgba(255,255,255,0.38)", fontWeight: 600, letterSpacing: "0.03em", textTransform: "uppercase" }}>
+                        {icon} {label}
+                      </span>
+                      <span style={{
+                        fontSize: 13, fontWeight: 800,
+                        color: isLocked ? "#475569" : remaining === 0 ? "#ef4444" : remaining <= 2 ? "#f59e0b" : "#34d399",
+                      }}>
+                        {isLocked ? "—" : isUnlimited ? "∞" : remaining}
+                        {!isLocked && !isUnlimited && (
+                          <span style={{ fontSize: 9, fontWeight: 500, color: "rgba(255,255,255,0.3)", marginLeft: 2 }}>
+                            /{typeof limit === "number" ? limit : limit}
+                          </span>
+                        )}
+                      </span>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+
             <button
               onClick={() => router.push("/plans")}
               style={{
