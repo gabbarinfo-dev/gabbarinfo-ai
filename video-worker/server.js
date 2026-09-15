@@ -7,6 +7,9 @@ const os = require("os");
 const { spawn } = require("child_process");
 const { createClient } = require("@supabase/supabase-js");
 const OpenAI = require("openai");
+const cron = require("node-cron");
+const { runSocialAutopilotCycle } = require("./lib/social-autopilot");
+const { runSeoAutopilotCycle } = require("./lib/seo-autopilot");
 
 const app = express();
 app.use(cors());
@@ -608,6 +611,66 @@ async function uploadMasterVideo(filePath, filename, userEmail) {
 
   throw new Error("Failed to upload master video to both WordPress and Supabase storage.");
 }
+
+// -------------------------------------------------------------
+// Autopilot Trigger Endpoints (Protected by WORKER_SECRET_KEY)
+// -------------------------------------------------------------
+app.post("/autopilot/social/trigger", requireAuth, async (req, res) => {
+  try {
+    const force = Boolean(req.body?.force || req.query?.force);
+    log("AUTOPILOT", `Manual trigger: Social Media Planner Autopilot (force: ${force})`);
+    const results = await runSocialAutopilotCycle({ supabase, openai, force, logger: (msg) => log("SOCIAL_AP", msg) });
+    res.json({ ok: true, count: results.length, results });
+  } catch (err) {
+    log("AUTOPILOT", `Social Autopilot Error: ${err.message}`);
+    res.status(500).json({ ok: false, error: err.message });
+  }
+});
+
+app.post("/autopilot/seo/trigger", requireAuth, async (req, res) => {
+  try {
+    const force = Boolean(req.body?.force || req.query?.force);
+    log("AUTOPILOT", `Manual trigger: SEO Suite Autopilot (force: ${force})`);
+    const results = await runSeoAutopilotCycle({ supabase, openai, force, logger: (msg) => log("SEO_AP", msg) });
+    res.json({ ok: true, count: results.length, results });
+  } catch (err) {
+    log("AUTOPILOT", `SEO Autopilot Error: ${err.message}`);
+    res.status(500).json({ ok: false, error: err.message });
+  }
+});
+
+app.get("/autopilot/status", requireAuth, (req, res) => {
+  res.json({
+    ok: true,
+    social_cron: "0 3 * * * (08:30 AM IST Daily)",
+    seo_cron: "0 2 * * * (07:30 AM IST Daily)",
+    hasSupabase: Boolean(supabase),
+    hasOpenAI: Boolean(openai),
+  });
+});
+
+// -------------------------------------------------------------
+// Scheduled Native Cron Jobs (Reliable Background Execution)
+// -------------------------------------------------------------
+// 1. Daily SEO Suite Autopilot (Runs 07:30 AM IST / 02:00 UTC)
+cron.schedule("0 2 * * *", async () => {
+  log("CRON_SEO", "Executing scheduled SEO Suite Autopilot cycle...");
+  try {
+    await runSeoAutopilotCycle({ supabase, openai, force: false, logger: (msg) => log("CRON_SEO", msg) });
+  } catch (e) {
+    log("CRON_SEO", `Scheduled SEO cycle error: ${e.message}`);
+  }
+});
+
+// 2. Daily Social Media Planner Autopilot (Runs 08:30 AM IST / 03:00 UTC)
+cron.schedule("0 3 * * *", async () => {
+  log("CRON_SOCIAL", "Executing scheduled Social Media Planner Autopilot cycle...");
+  try {
+    await runSocialAutopilotCycle({ supabase, openai, force: false, logger: (msg) => log("CRON_SOCIAL", msg) });
+  } catch (e) {
+    log("CRON_SOCIAL", `Scheduled Social cycle error: ${e.message}`);
+  }
+});
 
 // Start Server
 app.listen(PORT, () => {
