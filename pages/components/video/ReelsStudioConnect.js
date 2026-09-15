@@ -222,39 +222,69 @@ export default function ReelsStudioConnect() {
       setGenerationStep("Generating neural voiceover and word-level subtitle timings…");
       await new Promise((r) => setTimeout(r, 800));
 
-      setGenerationStep(
-        selectedStyle === "motion_broll"
-          ? "Gathering 9:16 vertical 4K B-roll clips from Pexels API…"
-          : selectedStyle === "talking_avatar"
-          ? "Generating character avatar and facial lip-sync…"
-          : "Synthesizing text-to-video scenes on GPU…"
-      );
+      setGenerationStep("Dispatching reel render to Railway persistent worker...");
 
-      const res = await fetch("/api/video/generate", {
+      const res = await fetch("/api/video/dispatch", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          style: selectedStyle,
-          topic: topic.trim(),
-          niche,
-          language,
-          voice,
-          backgroundBeat,
+          videoType: "reel",
+          payload: {
+            topic: topic.trim(),
+            niche,
+            language,
+            voice,
+            backgroundBeat,
+            selectedStyle,
+          },
+          userEmail,
         }),
       });
 
       const data = await res.json();
-      if (!res.ok || !data.ok) {
-        throw new Error(data.error || "Failed to generate video.");
+      if (!res.ok || !data.ok || !data.jobId) {
+        throw new Error(data.error || "Failed to start reel generation on worker.");
       }
 
-      setGeneratedVideo(data.video);
-      setGenerationStep("");
+      const jobId = data.jobId;
+      setGenerationStep("Reel queued on Railway worker. Generating AI scenes...");
+
+      await new Promise((resolve, reject) => {
+        const interval = setInterval(async () => {
+          try {
+            const pollRes = await fetch(`/api/video/job-status?jobId=${encodeURIComponent(jobId)}&userEmail=${encodeURIComponent(userEmail)}`);
+            const jobData = await pollRes.json();
+            if (jobData.ok) {
+              setGenerationStep(`${jobData.stage} (${jobData.progress}%)`);
+
+              if (jobData.status === "completed" && jobData.videoUrl) {
+                clearInterval(interval);
+                masterVideoUrlRef.current = jobData.videoUrl;
+                setGeneratedVideo({
+                  compositeVideoUrl: jobData.videoUrl,
+                  title: jobData.metadata?.title || topic,
+                  scenes: [],
+                  captions: [],
+                });
+                setToastMsg("🎬 Master reel rendered by Railway background worker!");
+                setTimeout(() => setToastMsg(""), 6000);
+                resolve();
+              } else if (jobData.status === "failed") {
+                clearInterval(interval);
+                reject(new Error(jobData.error || "Reel rendering failed on background worker."));
+              }
+            }
+          } catch (pollErr) {
+            console.warn("[ReelPoll] Error:", pollErr.message);
+          }
+        }, 3000);
+      });
     } catch (err) {
       console.error("Video Generation Error:", err);
       setErrorMsg(err.message || "Failed to generate video reel.");
     } finally {
       setGenerating(false);
+      setGenerationStep("");
     }
   };
 
@@ -695,16 +725,16 @@ export default function ReelsStudioConnect() {
 
   const handleDownloadMaster = async () => {
     try {
-      let downloadUrl = generatedVideo?.compositeBlobUrl;
+      let downloadUrl = generatedVideo?.compositeVideoUrl || generatedVideo?.compositeBlobUrl;
       if (!downloadUrl) {
-        await compositeAndBakeVideo();
-        downloadUrl = generatedVideo?.compositeBlobUrl;
+        downloadUrl = await compositeAndBakeVideo();
       }
       if (!downloadUrl) return;
 
       const a = document.createElement("a");
       a.href = downloadUrl;
-      a.download = `${(topic || "gabbarinfo-reel").slice(0, 30).replace(/\s+/g, "-")}.webm`;
+      a.target = "_blank";
+      a.download = `${(topic || "gabbarinfo-reel").slice(0, 30).replace(/\s+/g, "-")}.mp4`;
       document.body.appendChild(a);
       a.click();
       document.body.removeChild(a);
@@ -1258,7 +1288,20 @@ export default function ReelsStudioConnect() {
             {/* Video Viewport */}
             {generatedVideo ? (
               <div style={{ flex: 1, position: "relative", overflow: "hidden", background: "#090d16" }}>
-                {(!currentScene?.isAvatar && currentScene?.videoUrl && !currentScene?.videoUrl.match(/\.(jpg|jpeg|png|webp|gif)($|\?)/i)) ? (
+                {generatedVideo.compositeVideoUrl ? (
+                  <video
+                    src={generatedVideo.compositeVideoUrl}
+                    controls
+                    autoPlay
+                    loop
+                    playsInline
+                    style={{
+                      width: "100%",
+                      height: "100%",
+                      objectFit: "cover",
+                    }}
+                  />
+                ) : (!currentScene?.isAvatar && currentScene?.videoUrl && !currentScene?.videoUrl.match(/\.(jpg|jpeg|png|webp|gif)($|\?)/i)) ? (
                   <video
                     ref={videoPlayerRef}
                     key={currentScene.videoUrl}
