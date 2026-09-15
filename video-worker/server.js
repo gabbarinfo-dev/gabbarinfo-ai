@@ -18,7 +18,9 @@ const WORKER_SECRET_KEY = process.env.WORKER_SECRET_KEY || "gabbar_worker_secret
 // Initialize Supabase Client
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || process.env.SUPABASE_URL;
 const supabaseKey = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
-const supabase = (supabaseUrl && supabaseKey) ? createClient(supabaseUrl, supabaseKey) : null;
+const supabase = (supabaseUrl && supabaseKey) ? createClient(supabaseUrl, supabaseKey, {
+  auth: { persistSession: false },
+}) : null;
 
 // Initialize OpenAI
 const openai = process.env.OPENAI_API_KEY ? new OpenAI({ apiKey: process.env.OPENAI_API_KEY }) : null;
