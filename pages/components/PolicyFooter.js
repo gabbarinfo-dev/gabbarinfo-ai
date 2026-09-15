@@ -44,7 +44,7 @@ export default function PolicyFooter() {
             { label: "Terms & Conditions", href: "/terms" },
             { label: "Privacy Policy", href: "/privacy-policy" },
             { label: "Refund & Cancellation", href: "/refund-policy" },
-            { label: "Contact Us", href: "mailto:contactus@gabbarinfo.com" },
+            { label: "Contact Us", href: "/contact" },
           ].map((link) => (
             <a
               key={link.href}
