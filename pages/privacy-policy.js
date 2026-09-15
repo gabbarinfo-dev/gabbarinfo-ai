@@ -34,7 +34,7 @@ export default function PrivacyPolicy() {
 
             {/* HEADER */}
             <div style={styles.header}>
-              <div style={styles.badge}>GDPR · DPDP Act 2023 · Razorpay Compliant</div>
+              <div style={styles.badge}>GDPR · DPDP Act 2023</div>
               <h1 style={styles.h1}>Privacy Policy</h1>
               <p style={styles.meta}>Last Updated: {LAST_UPDATED} &nbsp;·&nbsp; Effective: {LAST_UPDATED}</p>
               <p style={styles.metaSub}>
