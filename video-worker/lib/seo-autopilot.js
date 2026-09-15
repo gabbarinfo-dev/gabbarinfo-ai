@@ -78,13 +78,13 @@ async function runSeoAutopilotCycle({ supabase, openai, force = false, logger = 
         .from("agent_memory")
         .select("content")
         .eq("email", item.email)
-        .like("memory_type", "wp_connection_%");
+        .or("memory_type.like.wp_conn_%,memory_type.like.wp_connection_%");
 
       let wpConn = null;
       for (const m of wpMemList || []) {
         try {
           const parsed = JSON.parse(m.content);
-          if (parsed.siteUrl && parsed.apiKey) {
+          if (parsed.siteUrl && (parsed.apiKey || parsed.applicationPassword)) {
             wpConn = parsed;
             break;
           }
@@ -101,8 +101,10 @@ async function runSeoAutopilotCycle({ supabase, openai, force = false, logger = 
       const wpApiKey = wpConn.apiKey;
 
       // 4. Select Legitimate Service Topic
-      let candidateServices = Array.isArray(config.discoveredServices) ? config.discoveredServices : [];
-      candidateServices = candidateServices.filter(isLegitimateService);
+      let candidateServices = [];
+      if (Array.isArray(config.discoveredServices)) candidateServices.push(...config.discoveredServices);
+      if (Array.isArray(config.targetKeywords)) candidateServices.push(...config.targetKeywords);
+      candidateServices = [...new Set(candidateServices)].filter(isLegitimateService);
 
       if (candidateServices.length === 0) {
         candidateServices = [

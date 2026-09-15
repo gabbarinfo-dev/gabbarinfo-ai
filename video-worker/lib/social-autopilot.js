@@ -136,8 +136,15 @@ async function runSocialAutopilotCycle({ supabase, openai, force = false, logger
       }
 
       // 2. Discover / Filter legitimate services
-      let candidateServices = Array.isArray(config.discoveredServices) ? config.discoveredServices : [];
-      candidateServices = candidateServices.filter(isLegitimateService);
+      let candidateServices = [];
+      if (Array.isArray(config.services)) candidateServices.push(...config.services);
+      if (Array.isArray(config.discoveredServices)) candidateServices.push(...config.discoveredServices);
+      if (Array.isArray(config.queue)) {
+        config.queue.forEach(q => {
+          if (q?.service) candidateServices.push(q.service);
+        });
+      }
+      candidateServices = [...new Set(candidateServices)].filter(isLegitimateService);
 
       if (candidateServices.length === 0) {
         candidateServices = [
@@ -150,10 +157,22 @@ async function runSocialAutopilotCycle({ supabase, openai, force = false, logger
         ];
       }
 
-      // Strict round-robin rotation
+      // Check if queue has a pending item for today
+      let activeService = null;
+      let activeQueueItem = null;
+      if (Array.isArray(config.queue)) {
+        activeQueueItem = config.queue.find(q => q.status === "pending" && isLegitimateService(q.service));
+        if (activeQueueItem) {
+          activeService = activeQueueItem.service;
+        }
+      }
+
+      // If no pending queue item or no queue, use round-robin rotation
       let nextIndex = (Number(config.lastServiceIndex) || 0) + 1;
       if (nextIndex >= candidateServices.length) nextIndex = 0;
-      const activeService = candidateServices[nextIndex] || "Website Design & Development";
+      if (!activeService) {
+        activeService = candidateServices[nextIndex] || "Website Design & Development";
+      }
 
       // 3. Generate Caption & Topic Hook via OpenAI / LLM
       const topicHooks = [
@@ -355,7 +374,10 @@ async function runSocialAutopilotCycle({ supabase, openai, force = false, logger
       config.lastServiceIndex = nextIndex;
       config.publishedCount = (Number(config.publishedCount) || 0) + 1;
       config.publishedTopics = config.publishedTopics || [];
-      config.publishedTopics.push(topicTitle);
+      if (activeQueueItem) {
+        activeQueueItem.status = "published";
+        activeQueueItem.publishedAt = now.toISOString();
+      }
       if (config.publishedTopics.length > 30) config.publishedTopics.shift();
 
       await supabase
