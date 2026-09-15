@@ -43,7 +43,7 @@ export default function RefundPolicy() {
             <div style={styles.alertCard}>
               <div style={styles.alertTitle}>🛡️ Product Classification — SaaS Subscription Software</div>
               <p style={styles.alertText}>
-                <strong>GabbarInfo AI is a self-serve, subscription-based Software-as-a-Service (SaaS) platform.</strong> All payments made on this platform are exclusively for <strong>software subscription plans and AI credit packs</strong>. GabbarInfo does not provide lead generation, PPC management, or any advertising agency services. This refund policy governs purchases of subscription plans and AI credit packs only.
+                <strong>GabbarInfo AI is a self-serve, subscription-based Software-as-a-Service (SaaS) platform.</strong> All payments made on this platform are exclusively for <strong>software subscription plans and AI credit packs</strong>. This refund policy governs purchases of subscription plans and AI credit packs only.
               </p>
             </div>
 

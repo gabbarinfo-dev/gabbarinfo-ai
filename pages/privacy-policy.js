@@ -46,10 +46,10 @@ export default function PrivacyPolicy() {
             <div style={styles.alertCard}>
               <div style={styles.alertTitle}>🛡️ Product Classification — Software-as-a-Service (SaaS)</div>
               <p style={styles.alertText}>
-                <strong>GabbarInfo AI is a self-serve, subscription-based Software-as-a-Service (SaaS) platform.</strong> It is not a lead generation service, PPC management agency, or performance advertising agency. Users independently sign up, purchase a subscription or AI credit pack, and use AI tools themselves — entirely on their own accounts and under their own control.
+                <strong>GabbarInfo AI is a self-serve, subscription-based Software-as-a-Service (SaaS) platform.</strong> Users independently sign up, purchase a subscription or AI credit pack, and use AI tools themselves — entirely on their own accounts and under their own control.
               </p>
               <p style={styles.alertText}>
-                GabbarInfo AI does not manage, create, or publish any advertising campaign on behalf of any user without that user&apos;s explicit in-platform confirmation. All payments collected are exclusively for <strong>software subscription access and AI credit packs</strong> — not for agency services, lead generation, or ad spend management.
+                All actions on connected advertising accounts require the user&apos;s explicit in-platform confirmation before anything is published. All payments collected are exclusively for <strong>software subscription access and AI credit packs</strong>.
               </p>
             </div>
 

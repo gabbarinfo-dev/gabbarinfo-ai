@@ -43,10 +43,10 @@ export default function Terms() {
             <div style={styles.alertCard}>
               <div style={styles.alertTitle}>🛡️ Nature of Service — Software-as-a-Service (SaaS)</div>
               <p style={styles.alertText}>
-                <strong>GabbarInfo AI is a self-serve, subscription-based Software-as-a-Service (SaaS) platform.</strong> It is not a lead generation service, PPC management agency, or performance advertising agency. Users sign up, choose a plan, and use AI-powered tools independently on their own Google Ads and Meta accounts.
+                <strong>GabbarInfo AI is a self-serve, subscription-based Software-as-a-Service (SaaS) platform.</strong> Users sign up, choose a subscription plan, and operate AI-powered tools independently on their own connected accounts.
               </p>
               <p style={{ ...styles.alertText, marginBottom: 0 }}>
-                All payments on this platform are for <strong>software subscription access and AI credit packs</strong> only. GabbarInfo does not accept payment for managing campaigns, generating leads, or performing any advertising service on behalf of users.
+                All payments on this platform are for <strong>software subscription access and AI credit packs</strong> only. Users retain full control over every action taken on their accounts — nothing is published or submitted without explicit in-platform approval.
               </p>
             </div>
 
@@ -93,11 +93,11 @@ export default function Terms() {
                   <p style={{ ...styles.p, color: "#f87171", fontWeight: 700, marginBottom: 8 }}>GabbarInfo AI does NOT:</p>
                   <ul style={styles.ul}>
                     {[
-                      "Manage, optimise, or operate advertising campaigns on your behalf",
+                      "Take any action on your connected accounts without your explicit in-platform approval",
                       "Access your ad accounts without your explicit OAuth consent",
-                      "Publish any content or campaign without your in-platform confirmation",
-                      "Guarantee specific advertising results, ROAS, leads, or conversions",
-                      "Provide human campaign management, media buying, or agency services",
+                      "Publish any content without your in-platform confirmation",
+                      "Guarantee specific advertising results, ROAS, or conversions",
+                      "Provide human-operated managed marketing services of any kind",
                     ].map((item, i) => <li key={i} style={styles.li}><span style={{ color: "#f87171" }}>✗</span> {item}</li>)}
                   </ul>
                 </div>
