@@ -52,6 +52,7 @@ export default function SubscriptionModal({
   currentPlanId = "try",
   subscriptionStatus = null,
   onSubscriptionUpdated,
+  onRequireAuth,
 }) {
   const [selectedPlan, setSelectedPlan] = useState(null);
   const [selectedCategory, setSelectedCategory] = useState("suite");
@@ -79,6 +80,9 @@ export default function SubscriptionModal({
 
   async function handleRazorpayCheckout() {
     if (!selectedPlan) return;
+    if (typeof onRequireAuth === "function" && onRequireAuth()) {
+      return;
+    }
     setSubmitting(true);
     setErrorMsg(null);
 
@@ -167,6 +171,9 @@ export default function SubscriptionModal({
 
   async function handleConfirmOrder() {
     if (!selectedPlan) return;
+    if (typeof onRequireAuth === "function" && onRequireAuth()) {
+      return;
+    }
     setSubmitting(true);
     setErrorMsg(null);
 

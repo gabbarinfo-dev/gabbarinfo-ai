@@ -14,6 +14,7 @@ import CharacterStudioWorkstation from "./components/video/CharacterStudioWorkst
 import SubscriptionModal from "./components/SubscriptionModal";
 import SocialMediaPlannerModal from "./components/social/SocialMediaPlannerModal";
 import CyberMatrixBackground from "./components/CyberMatrixBackground";
+import AuthGateModal from "./components/auth/AuthGateModal";
 
 export default function HomePage() {
   const { data: session, status } = useSession();
@@ -28,6 +29,25 @@ export default function HomePage() {
   const [hasWpConnected, setHasWpConnected] = useState(false);
   const [hasShopifyConnected, setHasShopifyConnected] = useState(false);
   const [showWpConnectPrompt, setShowWpConnectPrompt] = useState(false);
+
+  // ── Razorpay Inspection / Guest Preview Mode ──
+  // Set to true so payment reviewers can view the complete structure & pricing without a login block.
+  // Set to false after successful Razorpay approval to restore the landing page login gate.
+  const GUEST_PREVIEW_MODE_ENABLED = true;
+  const isGuest = !session;
+  const [authModalConfig, setAuthModalConfig] = useState({ isOpen: false, title: "", subtitle: "" });
+
+  const requireAuth = (title, subtitle) => {
+    if (!session) {
+      setAuthModalConfig({
+        isOpen: true,
+        title: title || "Sign In Required",
+        subtitle: subtitle || "Please sign in with Google or Facebook to activate autonomous marketing agents, connect platforms, or purchase a subscription plan.",
+      });
+      return true;
+    }
+    return false;
+  };
 
   // ── Workstation Navigation States ──
   // activeTab: "overview" | "wordpress" | "social" | "gmb" | "ads" | "billing"
@@ -159,8 +179,10 @@ export default function HomePage() {
 
   /* -------------------------
      NOT LOGGED IN (HIGH-TECH CYBER MATRIX LANDING)
+     When GUEST_PREVIEW_MODE_ENABLED is true, this landing screen is bypassed so Razorpay reviewers
+     can inspect the entire platform layout, modules, and pricing.
   ------------------------- */
-  if (!session) {
+  if (!session && !GUEST_PREVIEW_MODE_ENABLED) {
     return (
       <div
         style={{
@@ -315,8 +337,8 @@ export default function HomePage() {
      LOGGED IN VIEW (EXECUTIVE AI SIDEBAR WORKSTATION)
   ------------------------- */
   const planId = (subData?.subscription?.planId || "none").toLowerCase();
-  const isTrialOrNone = planId === "none" || planId === "try";
-  const isTrial99 = planId === "trial_99" || planId === "trial-99";
+  const isTrialOrNone = isGuest || planId === "none" || planId === "try";
+  const isTrial99 = !isGuest && (planId === "trial_99" || planId === "trial-99");
 
   const NAV_ITEMS = [
     { id: "overview", label: "Command Center", icon: "🚀", badge: "Live" },
@@ -501,7 +523,7 @@ export default function HomePage() {
               </span>
             </div>
             <div style={{ fontSize: 12.5, fontWeight: 800, color: "#fff", marginBottom: 8, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
-              {loadingSub ? "Loading…" : isTrial99 ? "🎁 Power Sampler" : isTrialOrNone ? "Free Explorer" : subData?.subscription?.planName}
+              {isGuest ? "Preview Mode (Inspection)" : loadingSub ? "Loading…" : isTrial99 ? "🎁 Power Sampler" : isTrialOrNone ? "Free Explorer" : subData?.subscription?.planName}
             </div>
 
             {/* ── Credits / Quota Remaining Summary ── */}
@@ -546,23 +568,25 @@ export default function HomePage() {
             )}
 
             <button
-              onClick={() => router.push("/plans")}
+              onClick={() => setShowSubscriptionModal(true)}
               style={{
                 width: "100%",
                 padding: "6px 10px",
                 borderRadius: 8,
                 border: "none",
-                background: isTrial99 || isTrialOrNone
+                background: isGuest
+                  ? "linear-gradient(135deg, #2563eb 0%, #1d4ed8 100%)"
+                  : isTrial99 || isTrialOrNone
                   ? "linear-gradient(135deg, #f59e0b 0%, #d97706 100%)"
                   : "linear-gradient(135deg, #2563eb 0%, #1d4ed8 100%)",
-                color: isTrial99 || isTrialOrNone ? "#0f172a" : "#ffffff",
+                color: isGuest ? "#ffffff" : isTrial99 || isTrialOrNone ? "#0f172a" : "#ffffff",
                 fontWeight: 800,
                 fontSize: 11,
                 cursor: "pointer",
                 boxShadow: "0 2px 10px rgba(0, 0, 0, 0.3)",
               }}
             >
-              {isTrial99 || isTrialOrNone ? "⚡ Upgrade Plan ↗" : "Manage Subscription"}
+              {isGuest ? "💎 View All Plans (INR)" : isTrial99 || isTrialOrNone ? "⚡ Upgrade Plan ↗" : "Manage Subscription"}
             </button>
           </div>
         )}
@@ -757,36 +781,63 @@ export default function HomePage() {
           {!sidebarCollapsed && (
             <div style={{ minWidth: 0, flex: 1, marginRight: 8 }}>
               <div style={{ fontSize: 12, fontWeight: 700, color: "#f1f5f9", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
-                {session.user.name || session.user.email?.split("@")[0] || "User"}
+                {session?.user?.name || session?.user?.email?.split("@")[0] || (isGuest ? "Guest Reviewer" : "User")}
               </div>
-              <div style={{ fontSize: 11, color: "#64748b", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
-                {session.user.email}
+              <div style={{ fontSize: 11, color: isGuest ? "#38bdf8" : "#64748b", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
+                {session?.user?.email || "Inspection Mode"}
               </div>
             </div>
           )}
 
-          <button
-            onClick={() => signOut()}
-            style={{
-              background: "rgba(255, 255, 255, 0.05)",
-              border: "1px solid rgba(255, 255, 255, 0.1)",
-              borderRadius: 8,
-              color: "#94a3b8",
-              cursor: "pointer",
-              padding: sidebarCollapsed ? "8px" : "6px 10px",
-              width: sidebarCollapsed ? "100%" : "auto",
-              fontSize: 12,
-              display: "flex",
-              alignItems: "center",
-              justifyContent: "center",
-              gap: 4,
-              transition: "all 0.15s",
-            }}
-            title="Sign Out"
-          >
-            <span>🚪</span>
-            {!sidebarCollapsed && <span>Exit</span>}
-          </button>
+          {isGuest ? (
+            <button
+              onClick={() => requireAuth("Sign In to GabbarInfo AI", "Sign in with Google or Facebook to activate your workspace.")}
+              style={{
+                background: "linear-gradient(135deg, #2563eb 0%, #1d4ed8 100%)",
+                border: "none",
+                borderRadius: 8,
+                color: "#ffffff",
+                cursor: "pointer",
+                padding: sidebarCollapsed ? "8px" : "6px 12px",
+                width: sidebarCollapsed ? "100%" : "auto",
+                fontSize: 12,
+                fontWeight: 700,
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
+                gap: 4,
+                boxShadow: "0 0 12px rgba(37, 99, 235, 0.4)",
+                transition: "all 0.15s",
+              }}
+              title="Sign In"
+            >
+              <span>🔑</span>
+              {!sidebarCollapsed && <span>Sign In</span>}
+            </button>
+          ) : (
+            <button
+              onClick={() => signOut()}
+              style={{
+                background: "rgba(255, 255, 255, 0.05)",
+                border: "1px solid rgba(255, 255, 255, 0.1)",
+                borderRadius: 8,
+                color: "#94a3b8",
+                cursor: "pointer",
+                padding: sidebarCollapsed ? "8px" : "6px 10px",
+                width: sidebarCollapsed ? "100%" : "auto",
+                fontSize: 12,
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
+                gap: 4,
+                transition: "all 0.15s",
+              }}
+              title="Sign Out"
+            >
+              <span>🚪</span>
+              {!sidebarCollapsed && <span>Exit</span>}
+            </button>
+          )}
         </div>
       </aside>
 
@@ -944,31 +995,110 @@ export default function HomePage() {
               </button>
             </div>
 
-            {/* Quick Upgrade CTA */}
-            {(isTrialOrNone || isTrial99) && (
+            {/* Plans & Pricing Modal Trigger / Quick Upgrade CTA */}
+            <button
+              onClick={() => setShowSubscriptionModal(true)}
+              style={{
+                padding: "6px 14px",
+                borderRadius: 999,
+                border: "none",
+                background: isGuest
+                  ? "linear-gradient(135deg, #2563eb 0%, #1d4ed8 100%)"
+                  : "linear-gradient(135deg, #f59e0b 0%, #d97706 100%)",
+                color: "#ffffff",
+                fontSize: 11.5,
+                fontWeight: 800,
+                cursor: "pointer",
+                boxShadow: isGuest ? "0 0 15px rgba(37, 99, 235, 0.45)" : "0 0 15px rgba(245, 158, 11, 0.35)",
+                display: "flex",
+                alignItems: "center",
+                gap: 6,
+              }}
+            >
+              <span>💎</span>
+              <span className="hide-on-mobile">{isGuest ? "Plans & Pricing (INR)" : isTrial99 ? "₹99 Active · Upgrade" : "Unlock Growth Suite"}</span>
+            </button>
+
+            {isGuest && (
               <button
-                onClick={() => router.push("/plans")}
+                onClick={() => requireAuth("Sign In to GabbarInfo AI", "Sign in with Google or Facebook to activate your workspace.")}
                 style={{
                   padding: "6px 14px",
                   borderRadius: 999,
-                  border: "none",
-                  background: "linear-gradient(135deg, #f59e0b 0%, #d97706 100%)",
-                  color: "#0f172a",
+                  border: "1px solid rgba(255, 255, 255, 0.2)",
+                  background: "rgba(255, 255, 255, 0.08)",
+                  color: "#ffffff",
                   fontSize: 11.5,
-                  fontWeight: 800,
+                  fontWeight: 700,
                   cursor: "pointer",
-                  boxShadow: "0 0 15px rgba(245, 158, 11, 0.35)",
                   display: "flex",
                   alignItems: "center",
                   gap: 6,
                 }}
               >
-                <span>⚡</span>
-                <span className="hide-on-mobile">{isTrial99 ? "₹99 Active · Upgrade" : "Unlock Growth Suite"}</span>
+                <span>🔑</span>
+                <span>Sign In</span>
               </button>
             )}
           </div>
         </header>
+
+        {/* Top Inspection Mode Banner for Razorpay Compliance */}
+        {isGuest && (
+          <div
+            style={{
+              margin: "14px clamp(16px, 3.5vw, 28px) 0",
+              padding: "12px 18px",
+              borderRadius: 14,
+              background: "linear-gradient(90deg, rgba(37, 99, 235, 0.18) 0%, rgba(15, 23, 42, 0.75) 100%)",
+              border: "1px solid rgba(59, 130, 246, 0.38)",
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "space-between",
+              gap: 14,
+              flexWrap: "wrap",
+            }}
+          >
+            <div style={{ display: "flex", alignItems: "center", gap: 10, fontSize: 13, color: "#cbd5e1" }}>
+              <span style={{ fontSize: 18 }}>🔍</span>
+              <span>
+                <strong style={{ color: "#fff" }}>Platform Preview & Inspection Mode:</strong> You are exploring the complete GabbarInfo AI workstation structure and tools. To connect assets or purchase a subscription, please sign in.
+              </span>
+            </div>
+            <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+              <button
+                onClick={() => setShowSubscriptionModal(true)}
+                style={{
+                  background: "rgba(255, 255, 255, 0.08)",
+                  border: "1px solid rgba(255, 255, 255, 0.2)",
+                  color: "#fff",
+                  padding: "6px 12px",
+                  borderRadius: 8,
+                  fontSize: 12,
+                  fontWeight: 700,
+                  cursor: "pointer",
+                }}
+              >
+                💎 View Pricing (INR)
+              </button>
+              <button
+                onClick={() => requireAuth("Sign In to GabbarInfo AI")}
+                style={{
+                  background: "#2563eb",
+                  border: "none",
+                  color: "#fff",
+                  padding: "6px 14px",
+                  borderRadius: 8,
+                  fontSize: 12,
+                  fontWeight: 700,
+                  cursor: "pointer",
+                }}
+              >
+                Sign In ↗
+              </button>
+            </div>
+          </div>
+        )}
 
         {/* MOBILE HORIZONTAL PILL TABS STRIP (FOR QUICK 1-THUMB NAVIGATION) */}
         {viewMode === "modular" && (
@@ -1894,11 +2024,20 @@ export default function HomePage() {
         onClose={() => setShowSubscriptionModal(false)}
         currentPlanId={subData?.subscription?.planId || "try"}
         subscriptionStatus={subData?.subscription}
+        onRequireAuth={(t, s) => requireAuth(t, s)}
         onSubscriptionUpdated={() => {
           fetch("/api/subscriptions/status")
             .then((r) => r.json())
             .then((d) => d.ok && setSubData(d));
         }}
+      />
+
+      {/* Action Gate Auth Modal for Unauthenticated Guests */}
+      <AuthGateModal
+        isOpen={authModalConfig.isOpen}
+        onClose={() => setAuthModalConfig({ isOpen: false, title: "", subtitle: "" })}
+        title={authModalConfig.title}
+        subtitle={authModalConfig.subtitle}
       />
 
       {/* Autonomous Social Media Planner Modal */}
