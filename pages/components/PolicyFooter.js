@@ -41,16 +41,14 @@ export default function PolicyFooter() {
           alignItems: "center",
         }}>
           {[
-            { label: "Terms & Conditions", href: "https://www.gabbarinfo.com/terms-and-conditions/" },
-            { label: "Privacy Policy", href: "https://www.gabbarinfo.com/privacy-policy/" },
-            { label: "Refund & Cancellation", href: "https://www.gabbarinfo.com/cancellation-refund-policy/" },
-            { label: "Contact Us", href: "https://www.gabbarinfo.com/contact-us/" },
+            { label: "Terms & Conditions", href: "/terms" },
+            { label: "Privacy Policy", href: "/privacy-policy" },
+            { label: "Refund & Cancellation", href: "/refund-policy" },
+            { label: "Contact Us", href: "mailto:contactus@gabbarinfo.com" },
           ].map((link) => (
             <a
               key={link.href}
               href={link.href}
-              target="_blank"
-              rel="noopener noreferrer"
               style={{
                 fontFamily: "'Plus Jakarta Sans', sans-serif",
                 fontSize: "11.5px",
