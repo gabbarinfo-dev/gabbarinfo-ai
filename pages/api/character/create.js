@@ -32,6 +32,10 @@ export default async function handler(req, res) {
   try {
     // 1. Build style prompt anchor for consistency
     const styleAnchors = {
+      photoreal_human: "Hyper-realistic living human portrait, award-winning cinematic photography, authentic human skin pore texture, natural eye reflections, Hasselblad 85mm lens f/1.4, lifelike hair strands, 8k resolution, dramatic studio portrait lighting, zero cartoon or plastic CGI artifacts, real cinema still",
+      hollywood_cinema: "Cinematic Hollywood 35mm film still, Arri Alexa Mini LF, anamorphic lens flare, shallow depth of field, dramatic cinematic lighting, hyper-realistic human actors, lifelike skin tone and natural expressions, 8k master",
+      indian_cinema: "Bollywood / Indian cinematic realism, expressive realistic Indian human features, authentic cultural clothing with intricate embroidery, dramatic high-contrast cinematic film lighting, 8k photographic master",
+      documentary_realism: "National Geographic style documentary realism photograph, natural daylight, authentic raw human facial details and texture, authentic human emotion, 85mm portrait, hyper-realistic true life 8k",
       comic_hero: "Bold modern comic book art style, Spider-Verse / Marvel graphic novel aesthetic, dynamic ink lines, vibrant halftone screen tones, heroic character turnaround, 8k",
       pixar_3d: "3D Pixar Disney animation style, smooth subsurface scattering, expressive large eyes, charming friendly facial proportions, vibrant cinematic studio lighting, octane render, 8k",
       anime_2d: "High-end 2D anime illustration, Makoto Shinkai style, crisp lineart, cel shading, rich emotional depth, vibrant color palette, anime key visual",

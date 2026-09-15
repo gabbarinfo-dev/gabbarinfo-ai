@@ -186,36 +186,58 @@ async function processLongFormYouTube(job, jobDir) {
   const {
     topic = "The Mystery of the Neon Horizon",
     storyPrompt,
+    videoTitle,
+    episodeTitle,
     characters = [],
     language = "hindi",
-    targetMinutes = 4.5, // 4 to 6 mins
+    targetMinutes = 2,
+    durationMinutes,
+    audience = "family",
     vocalEmotion = "dramatic_story",
   } = payload;
 
+  const durationMins = Number(durationMinutes || targetMinutes) || 2;
+
   job.progress = 15;
-  job.stage = "Scriptwriting 4–6 min multi-character storyline with GPT-4o...";
-  log(job.id, `Generating long-form script (~${targetMinutes} min) for "${topic}"`);
+  job.stage = `Scriptwriting ~${durationMins} min multi-character storyline with GPT-4o...`;
+  log(job.id, `Generating long-form script (~${durationMins} min) for "${videoTitle || episodeTitle || topic}" (Audience: ${audience})`);
 
   // Default characters if not provided
   const activeCharacters = characters.length >= 2 ? characters : [
-    { name: "Kabir", role: "Protagonist / Visionary", voice: "onyx", traits: "bold, confident, determined" },
-    { name: "Tara", role: "Companion / Strategist", voice: "shimmer", traits: "analytical, wise, caring" },
-    { name: "Dev", role: "Mentor / Veteran", voice: "echo", traits: "deep voice, calm authority, observant" },
+    { name: "Kabir", role: "Protagonist / Visionary", voice: "onyx", traits: "bold, confident, determined", archetype: "photoreal_human" },
+    { name: "Tara", role: "Companion / Strategist", voice: "shimmer", traits: "analytical, wise, caring", archetype: "photoreal_human" },
+    { name: "Dev", role: "Mentor / Veteran", voice: "echo", traits: "deep voice, calm authority, observant", archetype: "photoreal_human" },
   ];
 
   const charListPrompt = activeCharacters.map(c => `- ${c.name} (${c.role}): voice profile "${c.voice}", traits: ${c.traits}`).join("\n");
 
-  const numScenes = Math.max(12, Math.min(24, Math.round(targetMinutes * 3.5))); // ~14-20 scenes for 4-5 mins
-  log(job.id, `Creating ${numScenes} sequenced scenes for target duration ${targetMinutes} mins.`);
+  let numScenes = 4;
+  if (durationMins >= 5) numScenes = 20;
+  else if (durationMins >= 4) numScenes = 16;
+  else if (durationMins >= 3) numScenes = 12;
+  else if (durationMins >= 2) numScenes = 8;
+  else numScenes = 4;
+
+  log(job.id, `Creating ${numScenes} sequenced scenes for target duration ${durationMins} mins.`);
 
   let langInstruction = "Language: Hindi (fluent, natural, expressive dialogue in Devanagari script).";
   if (language === "en_us") langInstruction = "Language: American English (natural cinematic conversational dialogue).";
   if (language === "en_uk") langInstruction = "Language: British English (eloquent cadence and phrasing).";
 
+  let audiencePrompt = "TARGET AUDIENCE: Family & All Ages (heartfelt, inspiring, universally compelling).";
+  if (audience === "kids") {
+    audiencePrompt = "TARGET AUDIENCE: Children & Kids (Ages 3-10). Tone: Whimsical, innocent, gentle, educational moral lesson, playful vocabulary, zero scary or violent elements.";
+  } else if (audience === "teens") {
+    audiencePrompt = "TARGET AUDIENCE: Teens & Young Adults. Tone: High-energy, fantasy adventure, mystery, snappy witty dialogues.";
+  } else if (audience === "adult") {
+    audiencePrompt = "TARGET AUDIENCE: Adults & Mature Viewers. Tone: Deep cinematic narrative, intense emotional drama, sophisticated dialogues.";
+  }
+
   const systemPrompt = `You are a world-class YouTube cinematic screenplay director.
-You are writing a COMPLETE, start-to-end self-contained 4 to 6 minute dramatic story (NOT an episode, fully concludes with emotional punchline/moral).
+You are writing a COMPLETE, start-to-end self-contained ${durationMins} minute dramatic story (NOT an episode, fully concludes with emotional punchline/moral).
 FORMAT: 16:9 Widescreen YouTube Cinematic Masterpiece.
 ${langInstruction}
+${audiencePrompt}
 CHARACTERS:
 ${charListPrompt}
 
@@ -224,7 +246,7 @@ REQUIREMENTS:
 2. Each scene must feature dialogue from one of the characters or narrator, with intense emotional progression (Hook -> Conflict -> Revelation -> Climax -> Resolution).
 3. Return ONLY valid JSON:
 {
-  "title": "Compelling Title",
+  "title": "${videoTitle || episodeTitle || "Compelling Title"}",
   "youtubeTitle": "High CTR YouTube Title",
   "description": "Engaging description with timestamps",
   "scenes": [
@@ -245,7 +267,7 @@ REQUIREMENTS:
     response_format: { type: "json_object" },
     messages: [
       { role: "system", content: systemPrompt },
-      { role: "user", content: `Write a complete 4-6 minute concluded story on topic: "${storyPrompt || topic}". Must have ${numScenes} scenes.` }
+      { role: "user", content: `Write a complete ${durationMins} minute concluded story on topic: "${storyPrompt || videoTitle || topic}". Must have ${numScenes} scenes.` }
     ],
   });
 
@@ -292,21 +314,43 @@ REQUIREMENTS:
 
     const imgPath = path.join(jobDir, `scene_${i}_visual.png`);
     try {
-      const prompt = `Cinematic 16:9 movie still frame. ${scene.visualDescription}. Hyper-detailed, 8k resolution, dramatic cinematic lighting, photorealistic color grading.`;
-      const imgGen = await openai.images.generate({
-        model: "dall-e-3",
-        prompt: prompt.slice(0, 950),
-        n: 1,
-        size: "1792x1024",
-      });
+      const isPhotoreal = activeCharacters.some(c => ["photoreal_human", "hollywood_cinema", "indian_cinema", "documentary_realism"].includes(c.archetype)) || payload.visualStyle === "photoreal_human";
 
-      if (imgGen.data?.[0]?.url) {
+      let prompt = "";
+      if (isPhotoreal) {
+        prompt = `Cinematic 16:9 35mm Hollywood film still photograph. ${scene.visualDescription}. Hyper-realistic living human characters, authentic skin pores, lifelike natural eyes with reflections, Arri Alexa Mini LF, 8k resolution, dramatic cinematic studio lighting, shallow depth of field. Zero cartoon or CGI plastic artifacts.`;
+      } else {
+        prompt = `Cinematic 16:9 movie still frame. ${scene.visualDescription}. Hyper-detailed, 8k resolution, dramatic cinematic lighting, rich colors, masterpiece.`;
+      }
+
+      let imgGen;
+      try {
+        imgGen = await openai.images.generate({
+          model: "gpt-image-2",
+          prompt: prompt.slice(0, 950),
+          n: 1,
+          size: "1024x1024",
+        });
+      } catch (e1) {
+        imgGen = await openai.images.generate({
+          model: "dall-e-3",
+          prompt: prompt.slice(0, 950),
+          n: 1,
+          size: "1792x1024",
+        });
+      }
+
+      if (imgGen.data?.[0]?.b64_json) {
+        const imgBuf = Buffer.from(imgGen.data[0].b64_json, "base64");
+        fs.writeFileSync(imgPath, imgBuf);
+        sceneVisuals.push({ type: "image", path: imgPath });
+      } else if (imgGen.data?.[0]?.url) {
         const fetchRes = await fetch(imgGen.data[0].url);
         const imgBuf = Buffer.from(await fetchRes.arrayBuffer());
         fs.writeFileSync(imgPath, imgBuf);
         sceneVisuals.push({ type: "image", path: imgPath });
       } else {
-        throw new Error("No image data");
+        throw new Error("No image data returned");
       }
     } catch (imgErr) {
       log(job.id, `Image gen fallback for scene ${i}: ${imgErr.message}`);

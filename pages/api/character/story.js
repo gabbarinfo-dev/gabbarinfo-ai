@@ -27,13 +27,18 @@ export default async function handler(req, res) {
     characterId,
     companionId,
     format = "reel_9_16", // "reel_9_16" | "youtube_16_9"
-    narrativeType = "standalone", // "standalone" (complete self-contained story/punchline) | "episodic" (Ep 1, 2...)
+    narrativeType = "standalone", // "standalone" (complete self-contained story) | "episodic" (Ep 1, 2...)
     scriptMode = "ai_prompt", // "ai_prompt" | "custom_script" | "business_media"
     animationStyle = "cinematic_scenes", // "cinematic_scenes" | "live_talking_head"
     customScript = "",
     vocalEmotion = "poetic_shayar", // "poetic_shayar" | "dramatic_story" | "warm_storybook" | "commercial_pitch"
     storyPrompt = "A journey of wonder and wisdom",
     episodeTitle = "The Grand Tale",
+    videoTitle = "",
+    episodeNumber = 1,
+    seasonNumber = 1,
+    audience = "family", // "kids" | "teens" | "family" | "adult"
+    durationMinutes, // 1, 2, 3, 4, 5
     language = "hindi", // "hindi" | "en_us" | "en_uk"
     clientMedia = [], // array of { url, type: "video" | "image" }
   } = req.body;
@@ -60,16 +65,38 @@ export default async function handler(req, res) {
     if (!character) {
       character = {
         name: scriptMode === "business_media" ? "Host" : "Hero",
-        archetype: "pixar_3d",
+        archetype: "photoreal_human",
         visualTraits: "expressive eyes, friendly warm smile",
         referenceSheetUrl: "https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=800&q=80",
         voice: "nova",
       };
     }
 
-    const isLongForm = format === "youtube_16_9";
-    const numScenes = isLongForm ? 5 : 3;
-    const targetDuration = isLongForm ? 60 : 20;
+    // Dynamic duration and scene count
+    const durationMins = Number(durationMinutes) || (format === "youtube_16_9" ? 3 : 1);
+    let numScenes = 4;
+    if (durationMins >= 5) numScenes = 20;
+    else if (durationMins >= 4) numScenes = 16;
+    else if (durationMins >= 3) numScenes = 12;
+    else if (durationMins >= 2) numScenes = 8;
+    else numScenes = 4;
+
+    const targetDuration = durationMins * 60;
+    const isLongForm = format === "youtube_16_9" || durationMins >= 2;
+
+    const displayTitle = narrativeType === "episodic"
+      ? `Episode ${episodeNumber}: ${episodeTitle || "The Grand Tale"}`
+      : (videoTitle || episodeTitle || "The Grand Tale");
+
+    // Audience guidance
+    let audienceInstruction = "TARGET AUDIENCE: General / Family — Inspiring, emotional, universally engaging.";
+    if (audience === "kids") {
+      audienceInstruction = "TARGET AUDIENCE: Children & Kids (Ages 3-10) — Whimsical, educational, playful moral story, gentle pacing, innocent wonder, zero scary elements.";
+    } else if (audience === "teens") {
+      audienceInstruction = "TARGET AUDIENCE: Teens & Young Adults — High energy, fantasy adventure, mystery, snappy witty dialogues.";
+    } else if (audience === "adult") {
+      audienceInstruction = "TARGET AUDIENCE: Adults & Mature Viewers — Deep cinematic narrative, intense emotional drama, sophisticated dialogues.";
+    }
 
     let langInstruction = "Language: American English (US). Engaging, dynamic American cinematic style.";
     if (language === "hindi") {
@@ -83,10 +110,10 @@ export default async function handler(req, res) {
     let systemPrompt = "";
     let userPrompt = "";
 
-    const companionText = companion ? `Companion Co-Star: "${companion.name}" (${companion.visualTraits})` : "";
+    const companionText = companion ? `Co-Star / Companion: "${companion.name}" (${companion.visualTraits || "ally"}) with voice "${companion.voice || "onyx"}"` : "";
     const standaloneText = narrativeType === "standalone"
       ? "NARRATIVE SCOPE: Standalone complete story / video. Must have a clear opening, captivating middle, and satisfying resolution or emotional punchline. Do NOT end on a cliffhanger."
-      : "NARRATIVE SCOPE: Serialized Episodic Story. Part of an ongoing adventure with continuous lore.";
+      : `NARRATIVE SCOPE: Serialized Episodic Story (Season ${seasonNumber}, Episode ${episodeNumber}). Continuous chapter lore.`;
 
     if (scriptMode === "custom_script") {
       // User provided their own exact words / shayari
@@ -144,33 +171,38 @@ Return ONLY valid JSON matching this exact structure:
 
     } else {
       // Standard AI Character Story Mode
-      systemPrompt = `You are an elite Hollywood animated story director and viral social video strategist.
-Main Character: "${character.name}" (${character.visualTraits})
+      systemPrompt = `You are an elite cinematic video director and viral YouTube screenwriter.
+Main Character: "${character.name}" (${character.visualTraits}) [Voice: ${character.voice || "nova"}]
 Archetype Style: "${character.archetype}"
 ${companionText}
 Format: ${isLongForm ? "16:9 Cinematic YouTube Long-Form Story" : "9:16 Viral Social Reel"}
 ${standaloneText}
+${audienceInstruction}
 ${langInstruction}
 
-Create a captivating, emotionally engaging story episode based on the user's prompt: "${storyPrompt}".
+Create a captivating, emotionally engaging narrative story based on the user's prompt: "${storyPrompt}".
 Maintain 100% visual consistency by referencing the character's exact appearance ${companion ? `and ${companion.name}` : ""} in every scene description.
+
+IMPORTANT MULTI-CHARACTER RULE:
+If a companion is present, alternate dialogues between "${character.name}", "${companion.name}", and occasional "Narrator" to create authentic cinematic multi-character chemistry and dialogue!
 
 Return ONLY valid JSON matching this exact structure:
 {
-  "title": "Short Catchy Episode Title",
+  "title": "${displayTitle}",
   "youtubeTitle": "YouTube Optimized Title with Emotional Hook & Keywords",
   "description": "Engaging description with chapter timestamps and hashtags",
   "scenes": [
     {
       "sceneNumber": 1,
+      "speaker": "${character.name}",
       "chapter": "The Awakening",
-      "narration": "Voiceover line spoken for this scene (around 10-15 words)",
+      "narration": "Dialogue line spoken for this scene (around 12-20 words)",
       "visualDescription": "Detailed visual of ${character.name} ${companion ? `and ${companion.name}` : ""} in the environment",
       "searchKeyword": "1-2 keywords for ambient visuals"
     }
   ]
 }`;
-      userPrompt = `Generate a ${narrativeType} story titled "${episodeTitle}". Needs exactly ${numScenes} scenes.`;
+      userPrompt = `Generate a ${narrativeType} story titled "${displayTitle}". Needs exactly ${numScenes} sequenced scenes for ${durationMins}-minute runtime.`;
     }
 
     const completion = await openai.chat.completions.create({
@@ -185,31 +217,42 @@ Return ONLY valid JSON matching this exact structure:
 
     const storyResult = JSON.parse(completion.choices[0].message.content);
 
-    // 3. Synthesize Voiceover Audio via OpenAI TTS with Emotional Voice Mapping
-    let chosenVoice = character.voice || "nova";
-    if (vocalEmotion === "poetic_shayar") {
-      chosenVoice = "onyx"; // Deep, resonant baritone voice perfect for Urdu/Hindi poetry & shayar
-    } else if (vocalEmotion === "dramatic_story") {
-      chosenVoice = "echo";
-    } else if (vocalEmotion === "commercial_pitch") {
-      chosenVoice = "alloy";
-    } else if (vocalEmotion === "warm_storybook") {
-      chosenVoice = "shimmer";
-    } else if (language === "en_uk") {
-      chosenVoice = "fable";
+    // 3. Multi-Character Voiceover Synthesis via OpenAI TTS
+    let defaultVoice = character.voice || "nova";
+    if (vocalEmotion === "poetic_shayar") defaultVoice = "onyx";
+    else if (vocalEmotion === "dramatic_story") defaultVoice = "echo";
+    else if (vocalEmotion === "commercial_pitch") defaultVoice = "alloy";
+    else if (vocalEmotion === "warm_storybook") defaultVoice = "shimmer";
+
+    console.log(`[CharacterStory] Synthesizing multi-character dialogue for ${storyResult.scenes.length} scenes...`);
+
+    const audioSegments = [];
+    for (let sIdx = 0; sIdx < storyResult.scenes.length; sIdx++) {
+      const sc = storyResult.scenes[sIdx];
+      let sceneVoice = defaultVoice;
+
+      if (companion && sc.speaker && sc.speaker.toLowerCase().includes(companion.name.toLowerCase())) {
+        sceneVoice = companion.voice || "shimmer";
+      } else if (sc.speaker && sc.speaker.toLowerCase().includes(character.name.toLowerCase())) {
+        sceneVoice = character.voice || defaultVoice;
+      } else if (sc.speaker && sc.speaker.toLowerCase() === "narrator") {
+        sceneVoice = language === "hindi" ? "onyx" : "fable";
+      }
+
+      try {
+        const vRes = await openai.audio.speech.create({
+          model: "tts-1",
+          voice: sceneVoice,
+          input: sc.narration || "...",
+          response_format: "mp3",
+        });
+        audioSegments.push(Buffer.from(await vRes.arrayBuffer()));
+      } catch (voiceErr) {
+        console.warn(`[CharacterStory] Scene ${sIdx + 1} voice synthesis fallback:`, voiceErr.message);
+      }
     }
 
-    const fullScriptText = storyResult.scenes.map((s) => s.narration).join(" ... ");
-    console.log(`[CharacterStory] Synthesizing voiceover with voice: ${chosenVoice} (${vocalEmotion})`);
-
-    const voiceRes = await openai.audio.speech.create({
-      model: "tts-1",
-      voice: chosenVoice,
-      input: fullScriptText,
-      response_format: "mp3",
-    });
-
-    const voiceBuffer = Buffer.from(await voiceRes.arrayBuffer());
+    const voiceBuffer = audioSegments.length > 0 ? Buffer.concat(audioSegments) : Buffer.from("");
     const voiceoverBase64 = `data:audio/mp3;base64,${voiceBuffer.toString("base64")}`;
 
     // 3b. Upload Voiceover to Ephemeral Media Bridge on User Hosting (Required for GPU Lip-Sync)
@@ -300,8 +343,18 @@ Return ONLY valid JSON matching this exact structure:
         } else if (process.env.OPENAI_API_KEY) {
           // Generate dedicated AI scene visual with gpt-image-2
           try {
-            const companionPrompt = companion ? `Companion: ${companion.name} (${companion.visualTraits}).` : "";
-            const scenePrompt = `Cinematic animated movie still frame. Main Character: ${character.name} (${character.visualTraits}). ${companionPrompt} Action & setting: ${s.visualDescription}. Style: ${character.archetype || "3D Pixar Disney animation"}, expressive emotion, vibrant cinematic lighting, studio animation still, masterpiece.`;
+            const companionPrompt = companion ? `Companion: ${companion.name} (${companion.visualTraits || "ally"}).` : "";
+            const isPhotoreal = ["photoreal_human", "hollywood_cinema", "indian_cinema", "documentary_realism"].includes(character.archetype);
+
+            const stylePromptPrefix = isPhotoreal
+              ? "Award-winning cinematic 35mm Hollywood film still photograph."
+              : "Cinematic animated movie still frame.";
+
+            const styleDetails = isPhotoreal
+              ? "Hyper-realistic living human characters, authentic skin pores, lifelike natural eyes with reflections, 35mm Arri Alexa cinema still, 8k resolution, dramatic cinematic studio lighting, shallow depth of field, zero cartoon or plastic CGI artifacts."
+              : `Style: ${character.archetype || "3D Pixar Disney animation"}, expressive emotion, vibrant cinematic lighting, studio animation still, masterpiece.`;
+
+            const scenePrompt = `${stylePromptPrefix} Main Character: ${character.name} (${character.visualTraits}). ${companionPrompt} Action & setting: ${s.visualDescription}. ${styleDetails}`;
             
             const imgGen = await openai.images.generate({
               model: imageModel,

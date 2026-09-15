@@ -34,7 +34,14 @@ export default function CharacterStudioWorkstation() {
 
   const [videoFormat, setVideoFormat] = useState("reel_9_16"); // "reel_9_16" | "youtube_16_9"
   const [language, setLanguage] = useState("hindi"); // "hindi" | "en_us" | "en_uk"
-  const [episodeTitle, setEpisodeTitle] = useState("Episode 1: The Secret Discovery");
+  const [durationMinutes, setDurationMinutes] = useState(2); // 1 | 2 | 3 | 4 | 5
+  const [audience, setAudience] = useState("family"); // "kids" | "teens" | "family" | "adult"
+  const [videoTitle, setVideoTitle] = useState("The Secret Discovery");
+  const [episodeTitle, setEpisodeTitle] = useState("The Secret Discovery");
+  const [episodeNumber, setEpisodeNumber] = useState(1);
+  const [seasonNumber, setSeasonNumber] = useState(1);
+  const [suggestedIdeas, setSuggestedIdeas] = useState([]);
+  const [generatingIdeas, setGeneratingIdeas] = useState(false);
   const [storyPrompt, setStoryPrompt] = useState("Embarks on a quest through a magical neon city to find an ancient artifact");
   const [generatingStory, setGeneratingStory] = useState(false);
   const [storyStep, setStoryStep] = useState("");
@@ -60,16 +67,19 @@ export default function CharacterStudioWorkstation() {
   const masterFilePathRef = useRef(null);
   const fileInputRef = useRef(null);
 
-  // Archetype Presets
+  // Archetype Presets (including Ultra-Realistic Living Humans)
   const ARCHETYPES = [
-    { id: "comic_hero", label: "Comic Book Hero", emoji: "🦸", desc: "Bold Marvel/Spider-Verse comic art & action" },
+    { id: "photoreal_human", label: "Ultra-Realistic Human", emoji: "👤", desc: "8K cinema still, authentic skin pores & natural eyes" },
+    { id: "hollywood_cinema", label: "Hollywood Live-Action", emoji: "🎥", desc: "35mm Arri Alexa film still, moody cinematic lighting" },
+    { id: "indian_cinema", label: "Bollywood Realism", emoji: "🇮🇳", desc: "Expressive Indian realism, cultural elegance & lighting" },
+    { id: "documentary_realism", label: "Documentary Realism", emoji: "🎙️", desc: "Authentic true-life photojournalism portrait" },
     { id: "pixar_3d", label: "3D Pixar Animation", emoji: "✨", desc: "Whimsical, friendly, high-detail 3D CGI" },
+    { id: "storybook_kids", label: "Children's Storybook", emoji: "🧸", desc: "Watercolor, warm nostalgic picture book" },
+    { id: "anime_2d", label: "2D Anime Hero", emoji: "⚡", desc: "Crisp lineart, vibrant anime key visual" },
+    { id: "comic_hero", label: "Comic Book Hero", emoji: "🦸", desc: "Bold Marvel/Spider-Verse comic art & action" },
+    { id: "cyberpunk", label: "Cyberpunk Manga", emoji: "🦾", desc: "Neon glows, futuristic gear, cinematic" },
     { id: "pet_companion", label: "3D Animal / Pet", emoji: "🐶", desc: "Adorable Pixar dog, cat, or animal companion" },
     { id: "corporate_spokesperson", label: "Corporate Spokesperson", emoji: "💼", desc: "Professional business attire & studio lighting" },
-    { id: "anime_2d", label: "2D Anime Hero", emoji: "⚡", desc: "Crisp lineart, vibrant anime key visual" },
-    { id: "storybook_kids", label: "Children's Storybook", emoji: "🧸", desc: "Watercolor, warm nostalgic picture book" },
-    { id: "cyberpunk", label: "Cyberpunk Manga", emoji: "🦾", desc: "Neon glows, futuristic gear, cinematic" },
-    { id: "photoreal_mascot", label: "Photoreal Mascot", emoji: "🦁", desc: "Ultra-detailed live-action brand character" },
   ];
 
   // Fetch Client's Private Characters
@@ -202,6 +212,41 @@ export default function CharacterStudioWorkstation() {
     setTimeout(() => setToastMsg(""), 4000);
   };
 
+  // AI Story Ideator: Generate 4 creative story pitches
+  const handleGenerateIdeas = async () => {
+    try {
+      setGeneratingIdeas(true);
+      setErrorMsg("");
+      const res = await fetch("/api/character/generate-ideas", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          characterName: selectedCharacter?.name || "Hero",
+          characterArchetype: selectedCharacter?.archetype || "photoreal_human",
+          characterTraits: selectedCharacter?.visualTraits || "charismatic, expressive",
+          companionName: selectedCompanion?.name,
+          companionTraits: selectedCompanion?.visualTraits,
+          audience,
+          duration: durationMinutes,
+          language,
+        }),
+      });
+      const data = await res.json();
+      if (data.ok && Array.isArray(data.ideas)) {
+        setSuggestedIdeas(data.ideas);
+        setToastMsg("Generated 4 trending story concepts!");
+        setTimeout(() => setToastMsg(""), 3500);
+      } else {
+        throw new Error(data.error || "Failed to generate story ideas");
+      }
+    } catch (err) {
+      console.warn("Failed to generate ideas:", err);
+      setErrorMsg(err.message);
+    } finally {
+      setGeneratingIdeas(false);
+    }
+  };
+
   // Generate Story Episode
   const handleGenerateStory = async (e) => {
     e.preventDefault();
@@ -227,15 +272,31 @@ export default function CharacterStudioWorkstation() {
       setStoryStep("Dispatching video render task to Railway persistent worker...");
 
       const activeChars = [
-        selectedCharacter ? { name: selectedCharacter.name, role: "Lead Character", voice: selectedCharacter.voice || "onyx", traits: selectedCharacter.visualTraits } : null,
-        selectedCompanion ? { name: selectedCompanion.name, role: "Companion", voice: "shimmer", traits: selectedCompanion.visualTraits } : null,
+        selectedCharacter ? {
+          name: selectedCharacter.name,
+          role: "Lead Character",
+          voice: selectedCharacter.voice || "nova",
+          traits: selectedCharacter.visualTraits,
+          archetype: selectedCharacter.archetype || "photoreal_human"
+        } : null,
+        selectedCompanion ? {
+          name: selectedCompanion.name,
+          role: "Co-Star",
+          voice: selectedCompanion.voice || "onyx",
+          traits: selectedCompanion.visualTraits,
+          archetype: selectedCompanion.archetype || "photoreal_human"
+        } : null,
       ].filter(Boolean);
+
+      const effectiveTitle = narrativeType === "episodic"
+        ? `Episode ${episodeNumber}: ${episodeTitle || "The Grand Tale"}`
+        : (videoTitle || episodeTitle || "The Grand Tale");
 
       const res = await fetch("/api/video/dispatch", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          videoType: videoFormat === "youtube_16_9" ? "long_form_youtube" : "character_story",
+          videoType: videoFormat === "youtube_16_9" || durationMinutes >= 2 ? "long_form_youtube" : "character_story",
           payload: {
             characterId: selectedCharacter?.id,
             companionId: selectedCompanion?.id,
@@ -248,9 +309,14 @@ export default function CharacterStudioWorkstation() {
             vocalEmotion,
             storyPrompt,
             episodeTitle,
+            videoTitle: effectiveTitle,
+            episodeNumber,
+            seasonNumber,
+            audience,
+            durationMinutes,
             language,
             clientMedia,
-            targetMinutes: videoFormat === "youtube_16_9" ? 4.5 : 0.5,
+            targetMinutes: durationMinutes,
           },
           userEmail,
         }),
@@ -899,6 +965,77 @@ export default function CharacterStudioWorkstation() {
                 </div>
               </div>
 
+              {/* Target Video Duration Selector */}
+              <div style={{ marginBottom: 16 }}>
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 6 }}>
+                  <label style={{ fontSize: 11.5, fontWeight: 800, color: "#38bdf8" }}>
+                    ⏱️ Target Video Duration:
+                  </label>
+                  <span style={{ fontSize: 10.5, color: "#94a3b8" }}>
+                    {durationMinutes === 1 ? "4–5 Scene Beats" : durationMinutes === 2 ? "8–10 Scene Beats" : durationMinutes === 3 ? "12–14 Scene Beats" : durationMinutes === 4 ? "16–18 Scene Beats" : "20–24 Master Scenes"}
+                  </span>
+                </div>
+                <div style={{ display: "grid", gridTemplateColumns: "repeat(5, 1fr)", gap: 6 }}>
+                  {[
+                    { mins: 1, label: "1 Min", sub: "~60s" },
+                    { mins: 2, label: "2 Mins", sub: "~120s" },
+                    { mins: 3, label: "3 Mins", sub: "~180s" },
+                    { mins: 4, label: "4 Mins", sub: "~240s" },
+                    { mins: 5, label: "5+ Mins", sub: "300s+" },
+                  ].map((d) => (
+                    <div
+                      key={d.mins}
+                      onClick={() => setDurationMinutes(d.mins)}
+                      style={{
+                        padding: "8px 4px",
+                        borderRadius: 8,
+                        textAlign: "center",
+                        background: durationMinutes === d.mins ? "rgba(56, 189, 248, 0.2)" : "rgba(255, 255, 255, 0.03)",
+                        border: durationMinutes === d.mins ? "2px solid #38bdf8" : "1px solid rgba(255, 255, 255, 0.08)",
+                        cursor: "pointer",
+                      }}
+                    >
+                      <div style={{ fontSize: 11.5, fontWeight: 800, color: durationMinutes === d.mins ? "#38bdf8" : "#cbd5e1" }}>
+                        {d.label}
+                      </div>
+                      <div style={{ fontSize: 9.5, color: "#64748b", marginTop: 2 }}>{d.sub}</div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+
+              {/* Target Audience & Genre Demographics */}
+              <div style={{ marginBottom: 16 }}>
+                <label style={{ display: "block", fontSize: 11.5, fontWeight: 800, color: "#cbd5e1", marginBottom: 6 }}>
+                  🎯 Target Audience & Story Tone:
+                </label>
+                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
+                  {[
+                    { id: "kids", label: "🧸 Children & Kids (3-10)", desc: "Playful, whimsical, educational moral" },
+                    { id: "teens", label: "⚡ Teens & YA (11-18)", desc: "High-energy fantasy, mystery & action" },
+                    { id: "family", label: "🌟 Family & All Ages", desc: "Inspiring, emotional & heartfelt" },
+                    { id: "adult", label: "🎬 Adult & Cinema Drama", desc: "Deep narrative, suspense & true stories" },
+                  ].map((a) => (
+                    <div
+                      key={a.id}
+                      onClick={() => setAudience(a.id)}
+                      style={{
+                        padding: "8px 10px",
+                        borderRadius: 8,
+                        background: audience === a.id ? "rgba(168, 85, 247, 0.2)" : "rgba(255, 255, 255, 0.03)",
+                        border: audience === a.id ? "2px solid #a855f7" : "1px solid rgba(255, 255, 255, 0.08)",
+                        cursor: "pointer",
+                      }}
+                    >
+                      <div style={{ fontSize: 11, fontWeight: 800, color: audience === a.id ? "#c084fc" : "#e2e8f0" }}>
+                        {a.label}
+                      </div>
+                      <div style={{ fontSize: 9.5, color: "#94a3b8", marginTop: 2 }}>{a.desc}</div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+
               {/* Narrative Scope Switcher (Standalone vs Episodic) */}
               <div style={{ marginBottom: 16 }}>
                 <label style={{ display: "block", fontSize: 11.5, fontWeight: 800, color: "#cbd5e1", marginBottom: 6 }}>
@@ -1212,18 +1349,134 @@ export default function CharacterStudioWorkstation() {
               ) : (
                 /* MODE A: AI CHARACTER STORY WRITER */
                 <>
+                  {/* AI Story Ideator Section */}
+                  <div style={{ marginBottom: 16, padding: "12px 14px", borderRadius: 10, background: "rgba(139, 92, 246, 0.08)", border: "1px solid rgba(139, 92, 246, 0.25)" }}>
+                    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 8 }}>
+                      <div>
+                        <div style={{ fontSize: 12.5, fontWeight: 800, color: "#c084fc" }}>
+                          ✨ AI Story Ideator
+                        </div>
+                        <div style={{ fontSize: 10.5, color: "#94a3b8" }}>
+                          Auto-generate 4 viral pitches tailored to {selectedCharacter?.name || "your character"} & {audience} audience.
+                        </div>
+                      </div>
+                      <button
+                        type="button"
+                        disabled={generatingIdeas}
+                        onClick={handleGenerateIdeas}
+                        style={{
+                          padding: "6px 14px",
+                          borderRadius: 8,
+                          background: generatingIdeas ? "rgba(255, 255, 255, 0.1)" : "linear-gradient(135deg, #a855f7 0%, #6366f1 100%)",
+                          border: "none",
+                          color: "#fff",
+                          fontSize: 11.5,
+                          fontWeight: 800,
+                          cursor: generatingIdeas ? "not-allowed" : "pointer",
+                        }}
+                      >
+                        {generatingIdeas ? "⏳ Brainstorming..." : "💡 Suggest 4 Pitches"}
+                      </button>
+                    </div>
+
+                    {/* Suggested Ideas Grid */}
+                    {suggestedIdeas.length > 0 && (
+                      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8, marginTop: 10 }}>
+                        {suggestedIdeas.map((idea) => (
+                          <div
+                            key={idea.id}
+                            onClick={() => {
+                              setVideoTitle(idea.title);
+                              setEpisodeTitle(idea.title);
+                              setStoryPrompt(`${idea.hook} — ${idea.premise}`);
+                              setToastMsg(`Applied story pitch: "${idea.title}"`);
+                              setTimeout(() => setToastMsg(""), 3000);
+                            }}
+                            style={{
+                              padding: "10px",
+                              borderRadius: 8,
+                              background: "rgba(0, 0, 0, 0.4)",
+                              border: "1px solid rgba(192, 132, 252, 0.2)",
+                              cursor: "pointer",
+                              transition: "all 0.15s ease",
+                            }}
+                          >
+                            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 4 }}>
+                              <span style={{ fontSize: 9.5, padding: "2px 6px", borderRadius: 4, background: "rgba(168, 85, 247, 0.25)", color: "#d8b4fe", fontWeight: 700 }}>
+                                {idea.genre || "Story"}
+                              </span>
+                              <span style={{ fontSize: 10, color: "#38bdf8", fontWeight: 700 }}>Click to use ↵</span>
+                            </div>
+                            <div style={{ fontSize: 11.5, fontWeight: 800, color: "#f8fafc", marginBottom: 3 }}>
+                              {idea.title}
+                            </div>
+                            <div style={{ fontSize: 10, color: "#cbd5e1", lineHeight: 1.35, display: "-webkit-box", WebkitLineClamp: 2, WebkitBoxOrient: "vertical", overflow: "hidden" }}>
+                              {idea.premise}
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Title & Conditional Episode Sequencing */}
                   <div style={{ marginBottom: 14 }}>
                     <label style={{ display: "block", fontSize: 12, fontWeight: 700, color: "#94a3b8", marginBottom: 6 }}>
-                      Episode Title:
+                      {narrativeType === "episodic" ? "Episode Title:" : "Story / Video Title:"}
                     </label>
                     <input
                       type="text"
-                      value={episodeTitle}
-                      onChange={(e) => setEpisodeTitle(e.target.value)}
+                      value={narrativeType === "episodic" ? episodeTitle : videoTitle}
+                      onChange={(e) => {
+                        if (narrativeType === "episodic") {
+                          setEpisodeTitle(e.target.value);
+                        } else {
+                          setVideoTitle(e.target.value);
+                          setEpisodeTitle(e.target.value);
+                        }
+                      }}
+                      placeholder={narrativeType === "episodic" ? "e.g. The Secret Discovery" : "e.g. The Hidden Truth Behind The Miracle"}
                       style={{ width: "100%", padding: "10px 12px", borderRadius: 8, background: "rgba(0, 0, 0, 0.4)", border: "1px solid rgba(255, 255, 255, 0.1)", color: "#fff", fontSize: 13 }}
                       required
                     />
                   </div>
+
+                  {/* Conditional Episode Controls (Active only when episodic series is selected) */}
+                  {narrativeType === "episodic" ? (
+                    <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10, marginBottom: 14 }}>
+                      <div>
+                        <label style={{ display: "block", fontSize: 11, fontWeight: 700, color: "#a78bfa", marginBottom: 4 }}>
+                          📚 Season #:
+                        </label>
+                        <input
+                          type="number"
+                          min="1"
+                          value={seasonNumber}
+                          onChange={(e) => setSeasonNumber(Math.max(1, parseInt(e.target.value) || 1))}
+                          style={{ width: "100%", padding: "8px 10px", borderRadius: 6, background: "rgba(0, 0, 0, 0.4)", border: "1px solid rgba(139, 92, 246, 0.3)", color: "#fff", fontSize: 12 }}
+                        />
+                      </div>
+                      <div>
+                        <label style={{ display: "block", fontSize: 11, fontWeight: 700, color: "#a78bfa", marginBottom: 4 }}>
+                          🎬 Episode #:
+                        </label>
+                        <input
+                          type="number"
+                          min="1"
+                          value={episodeNumber}
+                          onChange={(e) => setEpisodeNumber(Math.max(1, parseInt(e.target.value) || 1))}
+                          style={{ width: "100%", padding: "8px 10px", borderRadius: 6, background: "rgba(0, 0, 0, 0.4)", border: "1px solid rgba(139, 92, 246, 0.3)", color: "#fff", fontSize: 12 }}
+                        />
+                      </div>
+                    </div>
+                  ) : (
+                    <div style={{ display: "flex", alignItems: "center", gap: 8, padding: "7px 10px", borderRadius: 6, background: "rgba(255, 255, 255, 0.02)", border: "1px dashed rgba(255, 255, 255, 0.08)", marginBottom: 14 }}>
+                      <span style={{ fontSize: 12, opacity: 0.5 }}>🔒</span>
+                      <span style={{ fontSize: 11, color: "#64748b" }}>
+                        Episode numbering is greyed out. (Switch to <strong>Episodic Series</strong> above to enable chapter lore & episode numbers).
+                      </span>
+                    </div>
+                  )}
 
                   <div style={{ marginBottom: 18 }}>
                     <label style={{ display: "block", fontSize: 12, fontWeight: 700, color: "#94a3b8", marginBottom: 6 }}>
@@ -1233,7 +1486,7 @@ export default function CharacterStudioWorkstation() {
                       rows={3}
                       value={storyPrompt}
                       onChange={(e) => setStoryPrompt(e.target.value)}
-                      placeholder="Describe the adventure, conflict, or lesson in this episode..."
+                      placeholder="Describe the adventure, conflict, or lesson in this video..."
                       style={{ width: "100%", padding: "10px 12px", borderRadius: 8, background: "rgba(0, 0, 0, 0.4)", border: "1px solid rgba(255, 255, 255, 0.1)", color: "#fff", fontSize: 13, resize: "vertical" }}
                       required
                     />
