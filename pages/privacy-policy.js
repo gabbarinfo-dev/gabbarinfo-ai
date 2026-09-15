@@ -59,7 +59,7 @@ export default function PrivacyPolicy() {
               <section style={styles.section}>
                 <h2 style={styles.h2}>1. Who We Are</h2>
                 <div style={styles.infoCard}>
-                  <p style={styles.p}><strong style={styles.white}>Operator:</strong> Aniket Dobariya, trading as <strong style={styles.white}>Gabbarinfo Digital Solutions</strong> (Individual / Sole Proprietor)</p>
+                  <p style={styles.p}><strong style={styles.white}>Operator:</strong> Nishant Dantare, trading as <strong style={styles.white}>Gabbarinfo Digital Solutions</strong> (Individual / Sole Proprietor)</p>
                   <p style={styles.p}><strong style={styles.white}>Platform:</strong> GabbarInfo AI — <a href="https://ai.gabbarinfo.com" style={styles.link}>ai.gabbarinfo.com</a></p>
                   <p style={styles.p}><strong style={styles.white}>Email:</strong> <a href="mailto:contactus@gabbarinfo.com" style={styles.link}>contactus@gabbarinfo.com</a></p>
                   <p style={styles.p}><strong style={styles.white}>Phone:</strong> +91 97239 27645</p>
@@ -267,7 +267,7 @@ export default function PrivacyPolicy() {
               <section style={styles.section}>
                 <h2 style={styles.h2}>11. Data Deletion</h2>
                 <p style={styles.p}>
-                  To delete your GabbarInfo AI account and all associated personal data, email <a href="mailto:contactus@gabbarinfo.com" style={styles.link}>contactus@gabbarinfo.com</a> with the subject <em>&ldquo;Data Deletion Request&rdquo;</em> and your registered email address. We process verified requests within <strong style={styles.white}>48 hours</strong> where technically feasible.
+                  To delete your GabbarInfo AI account and all associated personal data, email <a href="mailto:contactus@gabbarinfo.com" style={styles.link}>contactus@gabbarinfo.com</a> with the subject <em>&ldquo;Data Deletion Request&rdquo;</em> and your registered email address.  We process verified requests within <strong style={styles.white}>7 working days</strong> where technically feasible.
                 </p>
                 <p style={styles.p}>
                   Payment transaction records may be retained for up to 7 years as required by law. For Meta-linked data, you may also use Facebook&apos;s <a href="https://www.facebook.com/help/contact/1433400596897244" target="_blank" rel="noopener noreferrer" style={styles.link}>Data Deletion Tool</a> (App IDs: 1478698813661517 and 741627915051634).
@@ -309,7 +309,7 @@ export default function PrivacyPolicy() {
                 <h2 style={styles.h2}>17. Grievance Officer &amp; Contact</h2>
                 <div style={styles.alertCard}>
                   <div style={styles.alertTitle}>📋 Grievance / Privacy Officer</div>
-                  <p style={styles.alertText}><strong style={styles.white}>Aniket Dobariya</strong> · Gabbarinfo Digital Solutions</p>
+                  <p style={styles.alertText}><strong style={styles.white}>Nishant Dantare</strong> · Gabbarinfo Digital Solutions</p>
                   <p style={styles.alertText}>📧 <a href="mailto:contactus@gabbarinfo.com" style={styles.link}>contactus@gabbarinfo.com</a></p>
                   <p style={styles.alertText}>📞 +91 97239 27645</p>
                   <p style={{ ...styles.alertText, marginBottom: 0 }}>📍 New SG Road, Jagatpur, Ahmedabad, Gujarat 382470, India</p>

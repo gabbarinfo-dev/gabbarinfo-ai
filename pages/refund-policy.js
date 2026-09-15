@@ -159,13 +159,13 @@ export default function RefundPolicy() {
                 </ul>
                 <div style={styles.alertCard}>
                   <div style={styles.alertTitle}>📧 Contact for Refund Requests</div>
-                  <p style={styles.alertText}><strong style={styles.white}>Aniket Dobariya</strong> · Gabbarinfo Digital Solutions</p>
+                  <p style={styles.alertText}><strong style={styles.white}>Nishant Dantare</strong> · Gabbarinfo Digital Solutions</p>
                   <p style={styles.alertText}>📧 <a href="mailto:contactus@gabbarinfo.com" style={styles.link}>contactus@gabbarinfo.com</a></p>
                   <p style={styles.alertText}>Subject Line: <em>&ldquo;Refund Request — GabbarInfo AI&rdquo;</em></p>
                   <p style={styles.alertText}>📞 +91 97239 27645</p>
                   <p style={{ ...styles.alertText, marginBottom: 0 }}>📍 New SG Road, Jagatpur, Ahmedabad, Gujarat 382470, India</p>
                 </div>
-                <p style={styles.p}>We will respond to all refund requests within <strong style={styles.white}>2 business days</strong> of receipt.</p>
+                <p style={styles.p}>We will respond to all refund requests within <strong style={styles.white}>7 working days</strong> of receipt.</p>
               </section>
 
               {/* 6. CHANGES */}

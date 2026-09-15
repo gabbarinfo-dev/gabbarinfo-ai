@@ -59,7 +59,7 @@ export default function Terms() {
                   By accessing or using GabbarInfo AI at <a href="https://ai.gabbarinfo.com" style={styles.link}>ai.gabbarinfo.com</a>, you agree to be bound by these Terms &amp; Conditions and our <Link href="/privacy-policy" style={styles.link}>Privacy Policy</Link>. If you do not agree, do not use this platform.
                 </p>
                 <p style={styles.p}>
-                  These Terms constitute a binding agreement between you and <strong style={styles.white}>Gabbarinfo Digital Solutions</strong> (operated by Aniket Dobariya, sole proprietor), registered address: New SG Road, Jagatpur, Ahmedabad, Gujarat 382470, India.
+                  These Terms constitute a binding agreement between you and <strong style={styles.white}>Gabbarinfo Digital Solutions</strong> (operated by Nishant Dantare, sole proprietor), registered address: New SG Road, Jagatpur, Ahmedabad, Gujarat 382470, India.
                 </p>
               </section>
 
@@ -265,7 +265,7 @@ export default function Terms() {
                 <h2 style={styles.h2}>17. Contact Us</h2>
                 <div style={styles.alertCard}>
                   <div style={styles.alertTitle}>📋 Contact &amp; Support</div>
-                  <p style={styles.alertText}><strong style={styles.white}>Aniket Dobariya</strong> · Gabbarinfo Digital Solutions</p>
+                  <p style={styles.alertText}><strong style={styles.white}>Nishant Dantare</strong> · Gabbarinfo Digital Solutions</p>
                   <p style={styles.alertText}>📧 <a href="mailto:contactus@gabbarinfo.com" style={styles.link}>contactus@gabbarinfo.com</a></p>
                   <p style={styles.alertText}>📞 +91 97239 27645</p>
                   <p style={{ ...styles.alertText, marginBottom: 0 }}>📍 New SG Road, Jagatpur, Ahmedabad, Gujarat 382470, India</p>

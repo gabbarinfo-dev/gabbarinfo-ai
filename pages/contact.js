@@ -14,9 +14,9 @@ export default function Contact() {
 
   const handleSubmit = (e) => {
     e.preventDefault();
-    const mailto = `mailto:contactus@gabbarinfo.com?subject=${encodeURIComponent(form.subject || "GabbarInfo AI Support")}&body=${encodeURIComponent(`Name: ${form.name}\nEmail: ${form.email}\n\n${form.message}`)}`;
-    window.location.href = mailto;
-    setSent(true);
+    const text = `Hi GabbarInfo AI Support!%0A%0AName: ${encodeURIComponent(form.name)}%0AEmail: ${encodeURIComponent(form.email)}%0ASubject: ${encodeURIComponent(form.subject)}%0A%0A${encodeURIComponent(form.message)}`;
+    window.open(`https://wa.me/919723927645?text=${text}`, "_blank");
+    setForm({ name: "", email: "", subject: "", message: "" });
   };
 
   return (
@@ -61,7 +61,7 @@ export default function Contact() {
                   <div style={styles.infoBlockTitle}>🏢 Business Details</div>
                   <div style={styles.infoRow}>
                     <span style={styles.infoLabel}>Operator</span>
-                    <span style={styles.infoValue}>Aniket Dobariya</span>
+                    <span style={styles.infoValue}>Nishant Dantare</span>
                   </div>
                   <div style={styles.infoRow}>
                     <span style={styles.infoLabel}>Trading As</span>
@@ -153,8 +153,8 @@ export default function Contact() {
                   {sent ? (
                     <div style={styles.successBox}>
                       <div style={{ fontSize: 36, marginBottom: 12 }}>✅</div>
-                      <div style={{ fontWeight: 800, color: "#34d399", fontSize: 18, marginBottom: 8 }}>Message Ready!</div>
-                      <p style={{ color: "#94a3b8", fontSize: 14 }}>Your email client has opened with the pre-filled message. Send it to complete your query.</p>
+                      <div style={{ fontWeight: 800, color: "#34d399", fontSize: 18, marginBottom: 8 }}>Message Sent to WhatsApp!</div>
+                      <p style={{ color: "#94a3b8", fontSize: 14 }}>WhatsApp has opened with your pre-filled message. Send it to complete your query.</p>
                       <button onClick={() => setSent(false)} style={styles.resetBtn}>Send Another</button>
                     </div>
                   ) : (
@@ -209,11 +209,11 @@ export default function Contact() {
                       </div>
 
                       <button type="submit" style={styles.submitBtn}>
-                        Send Message →
+                        💬 Send via WhatsApp →
                       </button>
 
                       <p style={{ fontSize: 12, color: "#475569", marginTop: 12, textAlign: "center" }}>
-                        Clicking &ldquo;Send Message&rdquo; opens your email client with the pre-filled message.
+                        Clicking &ldquo;Send via WhatsApp&rdquo; opens WhatsApp with your message pre-filled.
                       </p>
                     </form>
                   )}
@@ -240,7 +240,7 @@ export default function Contact() {
         </main>
 
         <footer style={styles.footer}>
-          <p style={styles.footerText}>© {new Date().getFullYear()} Gabbarinfo Digital Solutions · Aniket Dobariya · All rights reserved.</p>
+          <p style={styles.footerText}>© {new Date().getFullYear()} Gabbarinfo Digital Solutions · Nishant Dantare · All rights reserved.</p>
           <div style={styles.footerLinks}>
             <Link href="/privacy-policy" style={styles.footerLink}>Privacy Policy</Link>
             <Link href="/terms" style={styles.footerLink}>Terms &amp; Conditions</Link>
