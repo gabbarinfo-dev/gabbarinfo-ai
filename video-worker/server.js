@@ -587,18 +587,18 @@ async function assembleFFmpegVideo({ jobDir, scenes, audioFiles, visuals, output
         const segListPath = path.join(jobDir, "seglist.txt");
         fs.writeFileSync(segListPath, segmentFiles.map(f => `file '${f.replace(/\\/g, "/")}'`).join("\n"));
 
-        // Combine video segments and merge audio track
+        // Combine pre-encoded video segments and merge audio track directly (zero memory, instant bitstream copy)
         const finalArgs = [
           "-y",
           "-f", "concat",
           "-safe", "0",
           "-i", segListPath,
           "-i", combinedAudioPath,
-          "-c:v", "libx264",
-          "-preset", "veryfast",
+          "-map", "0:v:0",
+          "-map", "1:a:0",
+          "-c:v", "copy",
           "-c:a", "aac",
           "-b:a", "192k",
-          "-pix_fmt", "yuv420p",
           "-movflags", "+faststart",
           "-shortest",
           "-loglevel", "error",
