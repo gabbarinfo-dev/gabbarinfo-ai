@@ -559,13 +559,13 @@ async function assembleFFmpegVideo({ jobDir, scenes, audioFiles, visuals, output
           const panExpr = isEven
             ? `(in_w-out_w)*(t/${durationPerScene})`
             : `(in_w-out_w)*(1-t/${durationPerScene})`;
-          vf = `scale=2080:1170:force_original_aspect_ratio=increase,crop=2080:1170,crop=1920:1080:x='${panExpr}':y='(in_h-out_h)/2'`;
+          vf = `scale=2080:1170:force_original_aspect_ratio=increase,crop=2080:1170,crop=1920:1080:${panExpr}:(in_h-out_h)/2`;
         } else {
           // Vertical 9:16: Scale to 108% then smoothly tilt vertically
           const tiltExpr = isEven
             ? `(in_h-out_h)*(t/${durationPerScene})`
             : `(in_h-out_h)*(1-t/${durationPerScene})`;
-          vf = `scale=1170:2080:force_original_aspect_ratio=increase,crop=1170:2080,crop=1080:1920:x='(in_w-out_w)/2':y='${tiltExpr}'`;
+          vf = `scale=1170:2080:force_original_aspect_ratio=increase,crop=1170:2080,crop=1080:1920:(in_w-out_w)/2:${tiltExpr}`;
         }
 
         const args = [
@@ -591,6 +591,7 @@ async function assembleFFmpegVideo({ jobDir, scenes, audioFiles, visuals, output
 
         segProc.on("close", (code, signal) => {
           if (code !== 0) {
+            console.error(`[Segment ${currentIdx} Error] code=${code} signal=${signal} err=${segErr}`);
             return reject(new Error(`Segment ${currentIdx} failed with code ${code || signal}: ${segErr.slice(-300)}`));
           }
           currentIdx++;
