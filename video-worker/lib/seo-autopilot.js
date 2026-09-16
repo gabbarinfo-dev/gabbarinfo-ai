@@ -19,15 +19,28 @@ const BLACKLISTED_TERMS = [
   "register",
   "cart",
   "checkout",
-  "cookie"
+  "cookie",
+  "test",
+  "discreet",
+  "horoscope"
 ];
+
+function decodeHtmlEntities(str) {
+  if (!str || typeof str !== "string") return "";
+  return str
+    .replace(/&#038;/g, "&")
+    .replace(/&amp;/g, "&")
+    .replace(/&#8211;/g, "-")
+    .replace(/&#8217;/g, "'")
+    .replace(/&quot;/g, '"');
+}
 
 function isLegitimateService(serviceName) {
   if (!serviceName || typeof serviceName !== "string") return false;
-  const s = serviceName.toLowerCase().trim();
-  if (s.length < 3) return false;
+  const decoded = decodeHtmlEntities(serviceName).toLowerCase().trim();
+  if (decoded.length < 3) return false;
   for (const term of BLACKLISTED_TERMS) {
-    if (s.includes(term)) return false;
+    if (decoded.includes(term)) return false;
   }
   return true;
 }
@@ -102,52 +115,80 @@ async function runSeoAutopilotCycle({ supabase, openai, force = false, logger = 
 
       // 4. Select Legitimate Service Topic
       let candidateServices = [];
-      if (Array.isArray(config.discoveredServices)) candidateServices.push(...config.discoveredServices);
-      if (Array.isArray(config.targetKeywords)) candidateServices.push(...config.targetKeywords);
+      if (Array.isArray(config.discoveredServices)) candidateServices.push(...config.discoveredServices.map(decodeHtmlEntities));
+      if (Array.isArray(config.targetKeywords)) candidateServices.push(...config.targetKeywords.map(decodeHtmlEntities));
       candidateServices = [...new Set(candidateServices)].filter(isLegitimateService);
 
       if (candidateServices.length === 0) {
         candidateServices = [
-          "Website Design & High-Performance UI",
-          "Search Engine Optimization (SEO) & Ranking",
-          "Meta Ads & Instagram Performance Campaigns",
-          "Google Ads Management & Search ROI",
-          "Google Business Profile & Local Map Pack Dominance",
+          "Search Engine Optimization (SEO) & Topical Authority",
+          "High-ROI Google Ads Management & Search PPC",
+          "High-Performance Meta & Instagram Ads Scaling",
+          "Custom Website Design & High-Converting UI/UX",
+          "Google Business Profile & Local 3-Pack Dominance",
           "Full-Funnel Digital Marketing Strategy"
         ];
       }
 
       let nextIndex = (Number(config.lastServiceIndex) || 0) + 1;
       if (nextIndex >= candidateServices.length) nextIndex = 0;
-      const activeService = candidateServices[nextIndex] || "Website Design & High-Performance UI";
+      const activeService = candidateServices[nextIndex] || "Full-Funnel Digital Marketing Strategy";
 
-      // 5. Generate Full SEO Article (1,500+ words) via OpenAI
-      logger(`[SEO Autopilot] Generating 1,500+ word SEO blog for "${activeService}"...`);
-      const articleCompletion = await openai.chat.completions.create({
-        model: "gpt-4o",
-        messages: [
-          {
-            role: "system",
-            content: `You are an elite SEO strategist and tech journalist writing for ${businessName}.
-Generate a comprehensive, actionable 1500+ word deep-dive SEO article about ${activeService}.
-Format the output as a valid JSON object matching this schema:
+      // 5. Generate Full SEO Article (STRICT 1,600+ words, 10 structured sections) via GPT-4o
+      logger(`[SEO Autopilot] Generating exhaustive 1,600+ word SEO guide for "${activeService}"...`);
+      const systemPrompt = `You are an elite commercial SEO director, tech journalist, and enterprise growth strategist writing for ${businessName} (https://www.gabbarinfo.com).
+Write an exhaustive, authoritative, 100% human-grade master guide focused specifically on "${activeService}".
+
+CRITICAL LENGTH & DEPTH MANDATES:
+1. STRICT WORD COUNT: Body content MUST BE AT LEAST 1,650 WORDS (target: 1,700 to 2,200 words). Any shallow summaries under 1,500 words are strictly unacceptable.
+2. MANDATORY 10 SECTIONS (You MUST include ALL 10 of these exact <h2> sections with 2 to 3 detailed <h3> subsections each):
+   - <h2>1. The Strategic Evolution of ${activeService} in 2026</h2> (At least 170 words across 2 detailed paragraphs explaining the modern landscape, AI discovery, and market shifts)
+   - <h2>2. Core Foundations, Strategic Principles & Attribution Frameworks</h2> (At least 180 words detailing key methodologies, first-party data capture, and operational mechanics)
+   - <h2>3. High-Converting Campaign Architecture & Execution Systems</h2> (At least 200 words with actionable structural frameworks, audience modeling, and formulas)
+   - <h2>4. Technology Infrastructure, Analytics & Conversion Mastery</h2> (At least 180 words detailing measurement, CAPI/tracking, modern tooling, and data accuracy)
+   - <h2>5. Omnichannel Growth Funnels & Audience Monetization</h2> (At least 180 words on cross-platform synergy, CAC reduction, and ROI scaling)
+   - <h2>6. In-Depth Real-World Case Study: 0 to 480% Revenue Acceleration</h2> (At least 220 words detailing baseline metrics, strategic interventions, and verified commercial gains)
+   - <h2>7. Step-by-Step 90-Day Execution Playbook for Hyper-Growth</h2> (At least 220 words with Month 1, Month 2, Month 3 actionable sprints)
+   - <h2>8. 5 Critical Pitfalls & Costly Strategic Mistakes to Avoid</h2> (At least 200 words detailing common misconceptions, vanity metrics, and operational fixes)
+   - <h2>9. Frequently Asked Questions (FAQ)</h2> (Provide 5 detailed, high-impact questions specifically about ${activeService}, each answered with comprehensive multi-paragraph explanations of 100+ words, totaling 500+ words for this FAQ section)
+   - <h2>10. Strategic Conclusion and Actionable Roadmap for 2026</h2> (At least 150 words summary with a clear commercial call to action to partner with ${businessName})
+
+3. MANDATORY EMBEDDED HYPERLINKS:
+   - Internal Links (Styled with theme amber #f59e0b, bold, underline):
+     - <a href="https://www.gabbarinfo.com/services/" style="color: #f59e0b; font-weight: 700; text-decoration: underline;">GABBARinfo Digital Marketing & Development Services</a>
+     - <a href="https://www.gabbarinfo.com/contact-us/" style="color: #f59e0b; font-weight: 700; text-decoration: underline;">Schedule a Growth Strategy Session with GABBARinfo</a>
+     - <a href="https://www.gabbarinfo.com/packages/" style="color: #f59e0b; font-weight: 700; text-decoration: underline;">Explore Enterprise Digital Growth Packages</a>
+   - External Authority Links:
+     - <a href="https://developers.google.com/search/docs" target="_blank" rel="noopener noreferrer" style="color: #f59e0b; font-weight: 700; text-decoration: underline;">Google Search Central Guidelines</a>
+     - <a href="https://www.statista.com" target="_blank" rel="noopener noreferrer" style="color: #f59e0b; font-weight: 700; text-decoration: underline;">Statista Global Market Benchmarks</a>
+
+4. FORMATTING & THEME:
+   - Semantic HTML: <h2>, <h3>, <p>, <ul>, <li>, <strong>, <em>.
+   - DO NOT include <h1>, <html>, or <body> tags.
+   - DO NOT generate a Table of Contents (the WordPress ez-toc plugin handles it).
+   - Use dark mode callout boxes:
+     <div style="background: rgba(255, 255, 255, 0.04); border: 1px solid rgba(255, 255, 255, 0.1); border-left: 4px solid #f59e0b; padding: 18px 24px; margin: 24px 0; border-radius: 8px; color: #f1f5f9;"><strong>Key Insight:</strong> [Detailed tactical recommendation]</div>
+
+Format output as valid JSON:
 {
   "title": "Clear High-CTR Title with Focus Keyword",
   "meta_title": "SEO Title (under 60 chars)",
   "meta_description": "Compelling meta description with call to action (under 160 chars)",
   "focus_keyword": "Primary keyword",
   "slug": "url-friendly-slug",
-  "tags": ["Tag1", "Tag2", "Tag3"],
-  "content_html": "Full 1500+ word article formatted in semantic HTML with <h2>, <h3>, <p>, <ul>, <li>, and <strong> elements."
-}`
-          },
-          {
-            role: "user",
-            content: `Write the complete SEO article focused on "${activeService}" tailored to business owners and enterprise clients in 2026.`
-          }
+  "tags": ["SEO Optimization", "Digital Marketing", "Business Growth"],
+  "content_html": "Full 1650+ word article formatted in semantic HTML with all 10 sections"
+}`;
+
+      const articleCompletion = await openai.chat.completions.create({
+        model: "gpt-4o",
+        messages: [
+          { role: "system", content: systemPrompt },
+          { role: "user", content: `Write the complete 1,650+ word deep-dive guide focused specifically on "${activeService}" for ${businessName} in 2026.` }
         ],
         response_format: { type: "json_object" },
         temperature: 0.7,
+        max_tokens: 4096,
       });
 
       const parsedArticle = JSON.parse(articleCompletion.choices[0]?.message?.content || "{}");
@@ -155,46 +196,99 @@ Format the output as a valid JSON object matching this schema:
         throw new Error("Failed to generate complete SEO article content.");
       }
 
-      // 6. Generate Bespoke Featured Image via gpt-image-2 (ZERO STOCK PHOTOS)
-      logger(`[SEO Autopilot] Generating featured blog image via gpt-image-2 for "${parsedArticle.title}"...`);
+      // 6. Generate Bespoke Dual Images via gpt-image-2 (Hero + Mid-Content Diagram)
+      logger(`[SEO Autopilot] Generating dual bespoke visuals via gpt-image-2 for "${parsedArticle.title}"...`);
       let featuredImageUrl = null;
+      let midImageUrl = null;
+
+      // Image 1: Hero Featured Image
       try {
-        const imgPrompt = `Award-winning commercial editorial hero illustration for blog article. Title: "${parsedArticle.title}". Subject: "${activeService}". Sleek modern studio lighting, 3D holographic digital accents, dark luxury slate aesthetics, high contrast, clean agency composition, pristine 4K quality, no text watermark.`;
-        const imgRes = await openai.images.generate({
+        const heroPrompt = `Award-winning commercial editorial hero illustration for blog article. Title: "${parsedArticle.title}". Subject: "${activeService}". Sleek modern studio lighting, 3D holographic digital accents, dark luxury slate aesthetics, high contrast, clean agency composition, pristine 4K quality, no text watermark.`;
+        const heroRes = await openai.images.generate({
           model: "gpt-image-2",
-          prompt: imgPrompt,
+          prompt: heroPrompt,
           size: "1024x1024",
         });
 
-        let imgBuffer = null;
-        if (imgRes.data?.[0]?.b64_json) {
-          imgBuffer = Buffer.from(imgRes.data[0].b64_json, "base64");
-        } else if (imgRes.data?.[0]?.url) {
-          const fetchRes = await fetch(imgRes.data[0].url);
-          imgBuffer = Buffer.from(await fetchRes.arrayBuffer());
+        let heroBuffer = null;
+        if (heroRes.data?.[0]?.b64_json) {
+          heroBuffer = Buffer.from(heroRes.data[0].b64_json, "base64");
+        } else if (heroRes.data?.[0]?.url) {
+          const fetchRes = await fetch(heroRes.data[0].url);
+          heroBuffer = Buffer.from(await fetchRes.arrayBuffer());
         }
 
-        if (imgBuffer) {
+        if (heroBuffer) {
           const fileName = `wp_feat_${Date.now()}_${Math.random().toString(36).substring(7)}.png`;
           const { data: uploadData, error: uploadErr } = await supabase.storage
             .from("instagram-creatives")
-            .upload(fileName, imgBuffer, { contentType: "image/png", upsert: true });
+            .upload(fileName, heroBuffer, { contentType: "image/png", upsert: true });
 
           if (!uploadErr && uploadData) {
             const { data: pubUrlData } = supabase.storage.from("instagram-creatives").getPublicUrl(fileName);
             featuredImageUrl = pubUrlData.publicUrl;
-            logger(`[SEO Autopilot] Featured image hosted: ${featuredImageUrl}`);
+            logger(`[SEO Autopilot] Featured hero image hosted: ${featuredImageUrl}`);
           }
         }
       } catch (imgErr) {
-        logger("[SEO Autopilot] Featured image generation notice:", imgErr.message);
+        logger("[SEO Autopilot] Hero image generation notice:", imgErr.message);
+      }
+
+      // Image 2: Secondary Mid-Article Architecture Diagram / Infographic
+      try {
+        const midPrompt = `Award-winning commercial editorial diagram graphic showing modern technical architecture, workflow flowcharts, and multi-channel attribution model for "${activeService}". Sleek dark luxury slate aesthetic, glowing cyan and warm amber accent lighting, clean geometric flow lines, 3D holographic analytics panels, high contrast, clean agency composition, pristine 4K quality, no text gibberish.`;
+        const midRes = await openai.images.generate({
+          model: "gpt-image-2",
+          prompt: midPrompt,
+          size: "1024x1024",
+        });
+
+        let midBuffer = null;
+        if (midRes.data?.[0]?.b64_json) {
+          midBuffer = Buffer.from(midRes.data[0].b64_json, "base64");
+        } else if (midRes.data?.[0]?.url) {
+          const fetchRes = await fetch(midRes.data[0].url);
+          midBuffer = Buffer.from(await fetchRes.arrayBuffer());
+        }
+
+        if (midBuffer) {
+          const midFileName = `wp_mid_${Date.now()}_${Math.random().toString(36).substring(7)}.png`;
+          const { data: uploadData, error: uploadErr } = await supabase.storage
+            .from("instagram-creatives")
+            .upload(midFileName, midBuffer, { contentType: "image/png", upsert: true });
+
+          if (!uploadErr && uploadData) {
+            const { data: pubUrlData } = supabase.storage.from("instagram-creatives").getPublicUrl(midFileName);
+            midImageUrl = pubUrlData.publicUrl;
+            logger(`[SEO Autopilot] Secondary mid-article diagram hosted: ${midImageUrl}`);
+          }
+        }
+      } catch (midErr) {
+        logger("[SEO Autopilot] Mid-article diagram notice:", midErr.message);
+      }
+
+      // Inject Secondary Mid-Article Diagram Image into HTML content after section 2
+      let finalContentHtml = parsedArticle.content_html;
+      if (midImageUrl) {
+        const midFigureHtml = `\n<figure class="gabbarinfo-mid-image" style="margin: 36px 0; text-align: center;">\n  <img src="${midImageUrl}" alt="${activeService} Strategy and Architecture Blueprint 2026" style="max-width: 100%; height: auto; border-radius: 12px; border: 1px solid rgba(255,255,255,0.1); box-shadow: 0 8px 32px rgba(0,0,0,0.4);" />\n  <figcaption style="font-size: 13px; color: #94a3b8; margin-top: 10px; font-style: italic;">Figure 1: Strategic Architecture & Execution Blueprint for ${activeService}</figcaption>\n</figure>\n`;
+        if (finalContentHtml.includes("</h2>")) {
+          const parts = finalContentHtml.split("</h2>");
+          if (parts.length > 2) {
+            parts[2] = parts[2] + midFigureHtml;
+            finalContentHtml = parts.join("</h2>");
+          } else {
+            finalContentHtml = parts[0] + "</h2>" + midFigureHtml + parts.slice(1).join("</h2>");
+          }
+        } else {
+          finalContentHtml = midFigureHtml + finalContentHtml;
+        }
       }
 
       // 7. Publish Post to WordPress via Official Plugin Endpoint
       logger(`[SEO Autopilot] Publishing live post to ${siteUrl}/wp-json/gabbarinfo/v1/create-post...`);
       const wpPayload = {
         title: parsedArticle.title,
-        content: parsedArticle.content_html,
+        content: finalContentHtml,
         slug: parsedArticle.slug,
         status: "publish",
         post_type: "post",
@@ -224,7 +318,7 @@ Format the output as a valid JSON object matching this schema:
       const publishedPostUrl = wpResult.post_url || `${siteUrl}/${parsedArticle.slug}/`;
       logger(`[SEO Autopilot] Post published successfully to WordPress! ID: ${publishedPostId}, URL: ${publishedPostUrl}`);
 
-      // 8. In-Process Social Media Syndication (Obeys user preferences)
+      // 8. In-Process Social Media Syndication (Guaranteed Facebook & Instagram Posting)
       const socialShares = {};
       const { data: metaConn } = await supabase
         .from("meta_connections")
@@ -244,12 +338,19 @@ Format the output as a valid JSON object matching this schema:
           try {
             const tokenResp = await fetch(`https://graph.facebook.com/v21.0/${pageId}?fields=access_token&access_token=${encodeURIComponent(userToken)}`);
             const tokenJson = await tokenResp.json();
-            if (tokenJson?.access_token) pageToken = tokenJson.access_token;
+            if (tokenJson?.access_token) {
+              pageToken = tokenJson.access_token;
+              // Persist valid page access token
+              await supabase
+                .from("meta_connections")
+                .update({ fb_page_access_token: pageToken, updated_at: new Date().toISOString() })
+                .eq("email", item.email.trim());
+            }
           } catch (_) {}
         }
         const effectiveToken = pageToken || userToken;
 
-        // FACEBOOK: Interactive Clickable Link Card (takes reader to blog page when clicked)
+        // FACEBOOK: Interactive Clickable Link Card with Photo Fallback
         const shouldShareFacebook = config.autoShareFacebook !== false && pageId && effectiveToken;
         if (shouldShareFacebook) {
           try {
@@ -269,9 +370,10 @@ Format the output as a valid JSON object matching this schema:
               logger(`[SEO Autopilot] Facebook Link Card published: ${fbData.id}`);
             } else {
               // Fallback to photo post if link feed failed
-              if (featuredImageUrl) {
+              const shareImg = featuredImageUrl || midImageUrl;
+              if (shareImg) {
                 const photoParams = new URLSearchParams();
-                photoParams.append("url", featuredImageUrl);
+                photoParams.append("url", shareImg);
                 photoParams.append("caption", `📢 ${parsedArticle.title}\n\n${parsedArticle.meta_description || ""}\n\nRead full article here 👇\n${publishedPostUrl}`);
                 photoParams.append("access_token", effectiveToken);
                 const fbPhotoRes = await fetch(`https://graph.facebook.com/v21.0/${pageId}/photos`, { method: "POST", body: photoParams });

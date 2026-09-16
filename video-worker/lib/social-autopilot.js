@@ -19,15 +19,28 @@ const BLACKLISTED_TERMS = [
   "register",
   "cart",
   "checkout",
-  "cookie"
+  "cookie",
+  "test",
+  "discreet",
+  "horoscope"
 ];
+
+function decodeHtmlEntities(str) {
+  if (!str || typeof str !== "string") return "";
+  return str
+    .replace(/&#038;/g, "&")
+    .replace(/&amp;/g, "&")
+    .replace(/&#8211;/g, "-")
+    .replace(/&#8217;/g, "'")
+    .replace(/&quot;/g, '"');
+}
 
 function isLegitimateService(serviceName) {
   if (!serviceName || typeof serviceName !== "string") return false;
-  const s = serviceName.toLowerCase().trim();
-  if (s.length < 3) return false;
+  const decoded = decodeHtmlEntities(serviceName).toLowerCase().trim();
+  if (decoded.length < 3) return false;
   for (const term of BLACKLISTED_TERMS) {
-    if (s.includes(term)) return false;
+    if (decoded.includes(term)) return false;
   }
   return true;
 }
@@ -137,18 +150,18 @@ async function runSocialAutopilotCycle({ supabase, openai, force = false, logger
 
       // 2. Discover / Filter legitimate services
       let candidateServices = [];
-      if (Array.isArray(config.services)) candidateServices.push(...config.services);
-      if (Array.isArray(config.discoveredServices)) candidateServices.push(...config.discoveredServices);
+      if (Array.isArray(config.services)) candidateServices.push(...config.services.map(decodeHtmlEntities));
+      if (Array.isArray(config.discoveredServices)) candidateServices.push(...config.discoveredServices.map(decodeHtmlEntities));
       if (Array.isArray(config.queue)) {
         config.queue.forEach(q => {
-          if (q?.service) candidateServices.push(q.service);
+          if (q?.service) candidateServices.push(decodeHtmlEntities(q.service));
         });
       }
       candidateServices = [...new Set(candidateServices)].filter(isLegitimateService);
 
       if (candidateServices.length === 0) {
         candidateServices = [
-          "Website Design & Development",
+          "Website Design & High-Performance UI",
           "Search Engine Optimization (SEO)",
           "Meta Social Media Ads",
           "Google Ads & PPC Campaigns",
@@ -163,7 +176,7 @@ async function runSocialAutopilotCycle({ supabase, openai, force = false, logger
       if (Array.isArray(config.queue)) {
         activeQueueItem = config.queue.find(q => q.status === "pending" && isLegitimateService(q.service));
         if (activeQueueItem) {
-          activeService = activeQueueItem.service;
+          activeService = decodeHtmlEntities(activeQueueItem.service);
         }
       }
 
@@ -171,7 +184,7 @@ async function runSocialAutopilotCycle({ supabase, openai, force = false, logger
       let nextIndex = (Number(config.lastServiceIndex) || 0) + 1;
       if (nextIndex >= candidateServices.length) nextIndex = 0;
       if (!activeService) {
-        activeService = candidateServices[nextIndex] || "Website Design & Development";
+        activeService = candidateServices[nextIndex] || "Website Design & High-Performance UI";
       }
 
       // 3. Generate Caption & Topic Hook via OpenAI / LLM
@@ -228,19 +241,7 @@ async function runSocialAutopilotCycle({ supabase, openai, force = false, logger
         }
         logger(`[Social Autopilot] Successfully generated image with gpt-image-2 (Buffer size: ${imageBuffer?.length} bytes)`);
       } catch (imgErr) {
-        logger("[Social Autopilot] Primary gpt-image-2 failed, retrying with gpt-image-1.5:", imgErr.message);
-        try {
-          const retryRes = await openai.images.generate({
-            model: "gpt-image-1.5",
-            prompt: graphicPrompt,
-            size: "1024x1024",
-          });
-          if (retryRes.data?.[0]?.b64_json) {
-            imageBuffer = Buffer.from(retryRes.data[0].b64_json, "base64");
-          }
-        } catch (retryErr) {
-          logger("[Social Autopilot] All OpenAI image generation attempts failed:", retryErr.message);
-        }
+        logger("[Social Autopilot] Primary gpt-image-2 image generation error:", imgErr.message);
       }
 
       if (!imageBuffer) {
@@ -289,6 +290,11 @@ async function runSocialAutopilotCycle({ supabase, openai, force = false, logger
             const tokenJson = await tokenResp.json();
             if (tokenJson?.access_token) {
               pageToken = tokenJson.access_token;
+              // Persist valid page access token
+              await supabase
+                .from("meta_connections")
+                .update({ fb_page_access_token: pageToken, updated_at: new Date().toISOString() })
+                .eq("email", item.email.trim());
             }
           } catch (tokErr) {
             logger("[Social Autopilot] Failed to fetch Page token from userToken:", tokErr.message);
@@ -369,33 +375,50 @@ async function runSocialAutopilotCycle({ supabase, openai, force = false, logger
         }
       }
 
-      // 7. Persist updated state to Supabase agent_memory
-      config.lastPublishedAt = now.toISOString();
-      config.lastServiceIndex = nextIndex;
-      config.publishedCount = (Number(config.publishedCount) || 0) + 1;
-      config.publishedTopics = config.publishedTopics || [];
-      if (activeQueueItem) {
-        activeQueueItem.status = "published";
-        activeQueueItem.publishedAt = now.toISOString();
+      // 7. Persist updated state to Supabase agent_memory ONLY IF POST SUCCEEDED
+      const didPublishSuccessfully = Boolean(published.facebook?.ok || published.instagram?.ok);
+
+      if (didPublishSuccessfully) {
+        config.lastPublishedAt = now.toISOString();
+        config.lastServiceIndex = nextIndex;
+        config.publishedCount = (Number(config.publishedCount) || 0) + 1;
+        config.publishedTopics = config.publishedTopics || [];
+        config.history = config.history || [];
+
+        config.history.unshift({
+          date: now.toISOString(),
+          service: activeService,
+          hook: selectedHook,
+          imageUrl: publicImageUrl,
+          publishedTo: published,
+        });
+        if (config.history.length > 30) config.history = config.history.slice(0, 30);
+
+        if (activeQueueItem) {
+          activeQueueItem.status = "published";
+          activeQueueItem.publishedAt = now.toISOString();
+        }
+        if (config.publishedTopics.length > 30) config.publishedTopics.shift();
+
+        await supabase
+          .from("agent_memory")
+          .update({
+            content: JSON.stringify(config),
+            updated_at: now.toISOString(),
+          })
+          .eq("email", item.email)
+          .eq("memory_type", item.memory_type);
+
+        logger(`[Social Autopilot] Successfully published and updated memory for ${item.email}. Published count: ${config.publishedCount}`);
+      } else {
+        logger(`[Social Autopilot] Post could not be confirmed published for ${item.email}. NOT locking cadence.`);
       }
-      if (config.publishedTopics.length > 30) config.publishedTopics.shift();
-
-      await supabase
-        .from("agent_memory")
-        .update({
-          content: JSON.stringify(config),
-          updated_at: now.toISOString(),
-        })
-        .eq("email", item.email)
-        .eq("memory_type", item.memory_type);
-
-      logger(`[Social Autopilot] Updated memory for ${item.email}. Published count: ${config.publishedCount}`);
 
       results.push({
         email: item.email,
         business: businessName,
         service: activeService,
-        status: "published",
+        status: didPublishSuccessfully ? "published" : "failed",
         imageUrl: publicImageUrl,
         socialShares: published,
       });
