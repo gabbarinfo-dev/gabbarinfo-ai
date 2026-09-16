@@ -14,6 +14,14 @@ export default async function handler(req, res) {
     return res.status(401).json({ ok: false, error: "Please log in to generate videos." });
   }
 
+  const ADMIN_EMAIL = "ndantare@gmail.com";
+  if (userEmail.toLowerCase() !== ADMIN_EMAIL.toLowerCase()) {
+    return res.status(403).json({
+      ok: false,
+      error: "AI Video Studio & Reels are currently in private studio testing. Public access is coming soon!",
+    });
+  }
+
   const { videoType = "reel", payload = {} } = req.body;
 
   // Railway Worker Configuration

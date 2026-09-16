@@ -113,6 +113,9 @@ export default function VideoPlansPage() {
   const { data: session } = useSession();
   const router = useRouter();
 
+  const ADMIN_EMAIL = "ndantare@gmail.com";
+  const isAdmin = session?.user?.email?.toLowerCase() === ADMIN_EMAIL.toLowerCase();
+
   // Interactive matrix state
   const [selectedDuration, setSelectedDuration] = useState("2m"); // "1m", "2m", "3m", "5m"
   const [selectedCharacters, setSelectedCharacters] = useState("2"); // "1", "2", "3", "ensemble"
@@ -131,6 +134,79 @@ export default function VideoPlansPage() {
   };
 
   const recommendedPlanId = getRecommendedPlanId();
+
+  if (!isAdmin) {
+    return (
+      <div
+        style={{
+          minHeight: "100vh",
+          background: "#070a13",
+          color: "#f8fafc",
+          fontFamily: "'Plus Jakarta Sans', sans-serif",
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "center",
+          padding: "24px",
+        }}
+      >
+        <Head>
+          <title>Cinematic Video Plans — Coming Soon | GabbarInfo AI</title>
+        </Head>
+        <div
+          style={{
+            maxWidth: 580,
+            width: "100%",
+            textAlign: "center",
+            padding: "48px 32px",
+            borderRadius: 24,
+            background: "rgba(15, 23, 42, 0.8)",
+            border: "1px solid rgba(168, 85, 247, 0.3)",
+            boxShadow: "0 25px 60px rgba(0,0,0,0.6)",
+          }}
+        >
+          <div style={{ fontSize: 52, marginBottom: 16 }}>🎬</div>
+          <span
+            style={{
+              display: "inline-block",
+              padding: "4px 12px",
+              borderRadius: 99,
+              background: "rgba(168, 85, 247, 0.15)",
+              border: "1px solid rgba(168, 85, 247, 0.3)",
+              color: "#c084fc",
+              fontWeight: 800,
+              fontSize: 12,
+              marginBottom: 16,
+            }}
+          >
+            🔒 Private Studio Calibration
+          </span>
+          <h1 style={{ fontSize: 28, fontWeight: 800, marginBottom: 12, color: "#fff" }}>
+            Cinematic Long-Form Video Plans — Coming Soon
+          </h1>
+          <p style={{ color: "#94a3b8", fontSize: 15, lineHeight: 1.6, marginBottom: 32 }}>
+            We are currently fine-tuning our neural cinematic rendering, multi-character dialogue engine, and lip-sync synchronization in private studio calibration. Standalone packages will be released publicly soon.
+          </p>
+          <Link
+            href="/"
+            style={{
+              display: "inline-flex",
+              alignItems: "center",
+              gap: 8,
+              padding: "12px 28px",
+              borderRadius: 12,
+              background: "linear-gradient(135deg, #2563eb 0%, #1d4ed8 100%)",
+              color: "#fff",
+              textDecoration: "none",
+              fontWeight: 700,
+              fontSize: 14,
+            }}
+          >
+            ← Return to Command Center
+          </Link>
+        </div>
+      </div>
+    );
+  }
 
   // ─── Razorpay Checkout Handler ──────────────────────────────────────────────
   async function handleCheckout(plan) {

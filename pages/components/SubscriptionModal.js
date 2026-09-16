@@ -14,6 +14,7 @@
 
 import { useState } from "react";
 import { useRouter } from "next/router";
+import { useSession } from "next-auth/react";
 import { SUBSCRIPTION_PLANS } from "../../lib/billing/plans";
 
 const CATEGORIES = [
@@ -56,6 +57,10 @@ export default function SubscriptionModal({
   onRequireAuth,
 }) {
   const router = useRouter();
+  const { data: session } = useSession();
+  const ADMIN_EMAIL = "ndantare@gmail.com";
+  const isAdmin = session?.user?.email?.toLowerCase() === ADMIN_EMAIL.toLowerCase();
+
   const [selectedPlan, setSelectedPlan] = useState(null);
   const [selectedCategory, setSelectedCategory] = useState("suite");
   const [step, setStep] = useState("plans"); // "plans" | "checkout" | "confirmation"
@@ -442,28 +447,51 @@ export default function SubscriptionModal({
                   </div>
                 </div>
 
-                <button
-                  type="button"
-                  onClick={() => {
-                    onClose();
-                    router.push("/video-plans");
-                  }}
-                  style={{
-                    padding: "9px 18px",
-                    borderRadius: 10,
-                    background: "linear-gradient(135deg, #a855f7 0%, #38bdf8 100%)",
-                    color: "#ffffff",
-                    border: "none",
-                    fontWeight: 800,
-                    fontSize: 12,
-                    cursor: "pointer",
-                    boxShadow: "0 4px 14px rgba(168, 85, 247, 0.35)",
-                    transition: "all 0.15s ease",
-                    whiteSpace: "nowrap",
-                  }}
-                >
-                  🎬 Explore Video Plans →
-                </button>
+                {isAdmin ? (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      onClose();
+                      router.push("/video-plans");
+                    }}
+                    style={{
+                      padding: "9px 18px",
+                      borderRadius: 10,
+                      background: "linear-gradient(135deg, #a855f7 0%, #38bdf8 100%)",
+                      color: "#ffffff",
+                      border: "none",
+                      fontWeight: 800,
+                      fontSize: 12,
+                      cursor: "pointer",
+                      boxShadow: "0 4px 14px rgba(168, 85, 247, 0.35)",
+                      transition: "all 0.15s ease",
+                      whiteSpace: "nowrap",
+                    }}
+                  >
+                    🎬 Explore Video Plans →
+                  </button>
+                ) : (
+                  <div
+                    style={{
+                      padding: "9px 16px",
+                      borderRadius: 10,
+                      background: "rgba(255, 255, 255, 0.05)",
+                      color: "#94a3b8",
+                      border: "1px solid rgba(255, 255, 255, 0.1)",
+                      fontWeight: 700,
+                      fontSize: 12,
+                      cursor: "not-allowed",
+                      whiteSpace: "nowrap",
+                      opacity: 0.65,
+                      display: "flex",
+                      alignItems: "center",
+                      gap: 6,
+                    }}
+                    title="Video Studio is currently in private testing"
+                  >
+                    <span>🔒</span> Coming Soon
+                  </div>
+                )}
               </div>
 
               {/* Category Tab Switcher */}

@@ -75,6 +75,9 @@ export default function PlansPage() {
   const { data: session, status } = useSession();
   const router = useRouter();
 
+  const ADMIN_EMAIL = "ndantare@gmail.com";
+  const isAdmin = session?.user?.email?.toLowerCase() === ADMIN_EMAIL.toLowerCase();
+
   const [activeCategory, setActiveCategory] = useState("suite");
   const [selectedPlan, setSelectedPlan] = useState(null);
   const [step, setStep] = useState("browse"); // "browse" | "checkout" | "success"
@@ -82,7 +85,15 @@ export default function PlansPage() {
   const [errorMsg, setErrorMsg] = useState(null);
   const [paymentRef, setPaymentRef] = useState("");
 
-  const filteredPlans = ALL_PLANS.filter((p) => p.category === activeCategory);
+  const visibleCategories = CATEGORIES.filter(cat => {
+    if (cat.key === "video") return isAdmin;
+    return true;
+  });
+
+  const filteredPlans = ALL_PLANS.filter((p) => {
+    if (p.category === "video" && !isAdmin) return false;
+    return p.category === activeCategory;
+  });
 
   // ─── Close → back to dashboard ──────────────────────────────────────────────
   function handleClose() {
@@ -352,31 +363,52 @@ export default function PlansPage() {
                   </div>
                 </div>
 
-                <Link
-                  href="/video-plans"
-                  style={{
-                    padding: "10px 20px",
-                    borderRadius: 10,
-                    background: "linear-gradient(135deg, #a855f7 0%, #38bdf8 100%)",
-                    color: "#ffffff",
-                    textDecoration: "none",
-                    fontWeight: 800,
-                    fontSize: 13,
-                    display: "inline-flex",
-                    alignItems: "center",
-                    gap: 6,
-                    boxShadow: "0 4px 14px rgba(168, 85, 247, 0.4)",
-                  }}
-                >
-                  View Runway-Style Video Plans →
-                </Link>
+                {isAdmin ? (
+                  <Link
+                    href="/video-plans"
+                    style={{
+                      padding: "10px 20px",
+                      borderRadius: 10,
+                      background: "linear-gradient(135deg, #a855f7 0%, #38bdf8 100%)",
+                      color: "#ffffff",
+                      textDecoration: "none",
+                      fontWeight: 800,
+                      fontSize: 13,
+                      display: "inline-flex",
+                      alignItems: "center",
+                      gap: 6,
+                      boxShadow: "0 4px 14px rgba(168, 85, 247, 0.4)",
+                    }}
+                  >
+                    View Runway-Style Video Plans →
+                  </Link>
+                ) : (
+                  <div
+                    style={{
+                      padding: "10px 18px",
+                      borderRadius: 10,
+                      background: "rgba(255, 255, 255, 0.06)",
+                      color: "#94a3b8",
+                      fontWeight: 700,
+                      fontSize: 13,
+                      border: "1px solid rgba(255, 255, 255, 0.12)",
+                      cursor: "not-allowed",
+                      display: "inline-flex",
+                      alignItems: "center",
+                      gap: 6,
+                      opacity: 0.65,
+                    }}
+                  >
+                    <span>🔒</span> Video Studio — Coming Soon
+                  </div>
+                )}
               </div>
 
               {/* Category Tabs */}
               <div style={{
                 display: "flex", flexWrap: "wrap", gap: 8, justifyContent: "center", marginBottom: 36,
               }}>
-                {CATEGORIES.map((cat) => {
+                {visibleCategories.map((cat) => {
                   const isActive = activeCategory === cat.key;
                   const hasPlans = ALL_PLANS.some((p) => p.category === cat.key);
                   if (!hasPlans) return null;

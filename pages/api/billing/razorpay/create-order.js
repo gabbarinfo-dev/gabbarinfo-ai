@@ -36,6 +36,13 @@ export default async function handler(req, res) {
       return res.status(400).json({ error: `Invalid plan specified: ${planId}` });
     }
 
+    // Video plans are temporarily private to admin during quality polishing
+    if ((plan.category === "video" || plan.category === "video_pack") && userEmail !== "ndantare@gmail.com") {
+      return res.status(403).json({
+        error: "Cinematic Video plans are currently in private studio calibration. Public access coming soon!",
+      });
+    }
+
     // Resolve business context
     let businessId = null;
     try {

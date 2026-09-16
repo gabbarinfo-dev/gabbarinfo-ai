@@ -24,6 +24,9 @@ export default function HomePage() {
   const [loadingSub, setLoadingSub] = useState(true);
 
   const role = session?.user?.role || "client";
+  const ADMIN_EMAIL = "ndantare@gmail.com";
+  const isAdmin = session?.user?.email?.toLowerCase() === ADMIN_EMAIL.toLowerCase();
+
   const [showSubscriptionModal, setShowSubscriptionModal] = useState(false);
   const [showSocialPlanner, setShowSocialPlanner] = useState(false);
   const [hasWpConnected, setHasWpConnected] = useState(false);
@@ -68,20 +71,32 @@ export default function HomePage() {
       }
       const savedTab = localStorage.getItem("gabbarinfo_active_tab");
       if (savedTab) {
-        setActiveTab(savedTab);
+        if ((savedTab === "reels" || savedTab === "characters") && !isAdmin) {
+          setActiveTab("overview");
+        } else {
+          setActiveTab(savedTab);
+        }
       }
       if (typeof window !== "undefined") {
         const urlParams = new URLSearchParams(window.location.search);
         if (urlParams.get("tab") === "shopify" || urlParams.get("shopify_connected") === "1") {
           setActiveTab("shopify");
         } else if (urlParams.get("tab") === "reels" || urlParams.get("youtube_connected") === "true") {
-          setActiveTab("reels");
+          if (session?.user?.email?.toLowerCase() === ADMIN_EMAIL.toLowerCase()) {
+            setActiveTab("reels");
+          } else {
+            setActiveTab("overview");
+          }
         } else if (urlParams.get("tab") === "characters") {
-          setActiveTab("characters");
+          if (session?.user?.email?.toLowerCase() === ADMIN_EMAIL.toLowerCase()) {
+            setActiveTab("characters");
+          } else {
+            setActiveTab("overview");
+          }
         }
       }
     } catch (_) {}
-  }, []);
+  }, [session, isAdmin]);
 
   const handleSetViewMode = (mode) => {
     setViewMode(mode);
@@ -91,6 +106,10 @@ export default function HomePage() {
   };
 
   const handleSelectTab = (tab) => {
+    if ((tab === "reels" || tab === "characters") && !isAdmin) {
+      alert("🔒 AI Reels & Character Stories are currently in private testing. Public access is coming soon!");
+      return;
+    }
     setActiveTab(tab);
     setMobileMenuOpen(false);
     try {
@@ -347,8 +366,20 @@ export default function HomePage() {
     { id: "chat", label: "AI Agent Chat", icon: "💬", badge: "Agent", href: "/chat" },
     { id: "wordpress", label: "WordPress & SEO", icon: "🌐", badge: hasWpConnected ? "Paired" : null },
     { id: "shopify", label: "Shopify Store & SEO", icon: "🛍️", badge: hasShopifyConnected ? "Paired" : "Ecommerce" },
-    { id: "reels", label: "AI Reels & Shorts", icon: "🎬", badge: "New" },
-    { id: "characters", label: "Character IP & Stories", icon: "✨", badge: "Pro IP" },
+    {
+      id: "reels",
+      label: "AI Reels & Shorts",
+      icon: "🎬",
+      badge: isAdmin ? "Admin Preview" : "Coming Soon",
+      isLocked: !isAdmin,
+    },
+    {
+      id: "characters",
+      label: "Character IP & Stories",
+      icon: "✨",
+      badge: isAdmin ? "Admin Preview" : "Coming Soon",
+      isLocked: !isAdmin,
+    },
     { id: "gmb", label: "Local Maps (GMB)", icon: "📍", badge: "Maps" },
   ];
 
@@ -648,6 +679,7 @@ export default function HomePage() {
                 </a>
               );
             }
+            const isLocked = item.isLocked;
             return (
               <button
                 key={item.id}
@@ -656,33 +688,41 @@ export default function HomePage() {
                   width: "100%",
                   padding: sidebarCollapsed ? "12px 0" : "10px 14px",
                   borderRadius: 12,
-                  border: isActive ? "1px solid rgba(59, 130, 246, 0.4)" : "1px solid transparent",
+                  border: isActive
+                    ? "1px solid rgba(59, 130, 246, 0.4)"
+                    : isLocked
+                    ? "1px solid rgba(148, 163, 184, 0.1)"
+                    : "1px solid transparent",
                   background: isActive
                     ? "linear-gradient(90deg, rgba(37, 99, 235, 0.22) 0%, rgba(15, 23, 42, 0.4) 100%)"
+                    : isLocked
+                    ? "rgba(255, 255, 255, 0.01)"
                     : "transparent",
-                  color: isActive ? "#ffffff" : "#94a3b8",
+                  color: isActive ? "#ffffff" : isLocked ? "#64748b" : "#94a3b8",
                   display: "flex",
                   alignItems: "center",
                   justifyContent: sidebarCollapsed ? "center" : "space-between",
-                  cursor: "pointer",
+                  cursor: isLocked ? "not-allowed" : "pointer",
+                  opacity: isLocked ? 0.45 : 1,
+                  filter: isLocked ? "grayscale(0.6)" : "none",
                   fontWeight: isActive ? 700 : 500,
                   fontSize: 13,
                   transition: "all 0.15s ease",
                   textAlign: "left",
                 }}
                 onMouseEnter={(e) => {
-                  if (!isActive) {
+                  if (!isActive && !isLocked) {
                     e.currentTarget.style.background = "rgba(255, 255, 255, 0.04)";
                     e.currentTarget.style.color = "#f1f5f9";
                   }
                 }}
                 onMouseLeave={(e) => {
-                  if (!isActive) {
+                  if (!isActive && !isLocked) {
                     e.currentTarget.style.background = "transparent";
                     e.currentTarget.style.color = "#94a3b8";
                   }
                 }}
-                title={sidebarCollapsed ? item.label : ""}
+                title={sidebarCollapsed ? (isLocked ? `${item.label} (Coming Soon)` : item.label) : ""}
               >
                 <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
                   <span style={{ fontSize: 18, filter: isActive ? "drop-shadow(0 0 8px rgba(59, 130, 246, 0.6))" : "none" }}>
@@ -698,9 +738,21 @@ export default function HomePage() {
                       fontWeight: 800,
                       padding: "2px 6px",
                       borderRadius: 999,
-                      background: item.badge === "Live" || item.badge === "Paired" ? "rgba(16, 185, 129, 0.15)" : "rgba(255, 255, 255, 0.08)",
-                      color: item.badge === "Live" || item.badge === "Paired" ? "#34d399" : "#94a3b8",
-                      border: item.badge === "Live" || item.badge === "Paired" ? "1px solid rgba(16, 185, 129, 0.3)" : "none",
+                      background: isLocked
+                        ? "rgba(100, 116, 139, 0.18)"
+                        : item.badge === "Live" || item.badge === "Paired"
+                        ? "rgba(16, 185, 129, 0.15)"
+                        : "rgba(255, 255, 255, 0.08)",
+                      color: isLocked
+                        ? "#94a3b8"
+                        : item.badge === "Live" || item.badge === "Paired"
+                        ? "#34d399"
+                        : "#94a3b8",
+                      border: isLocked
+                        ? "1px solid rgba(100, 116, 139, 0.3)"
+                        : item.badge === "Live" || item.badge === "Paired"
+                        ? "1px solid rgba(16, 185, 129, 0.3)"
+                        : "none",
                     }}
                   >
                     {item.badge}
@@ -1248,16 +1300,32 @@ export default function HomePage() {
                         <button
                           onClick={() => handleSelectTab("reels")}
                           className="btn-gabbar-secondary"
-                          style={{ padding: "11px 20px", fontSize: 13, flex: "1 1 auto", border: "1px solid rgba(236, 72, 153, 0.4)", color: "#f472b6" }}
+                          style={{
+                            padding: "11px 20px",
+                            fontSize: 13,
+                            flex: "1 1 auto",
+                            border: isAdmin ? "1px solid rgba(236, 72, 153, 0.4)" : "1px solid rgba(100, 116, 139, 0.2)",
+                            color: isAdmin ? "#f472b6" : "#64748b",
+                            opacity: isAdmin ? 1 : 0.45,
+                            cursor: isAdmin ? "pointer" : "not-allowed",
+                          }}
                         >
-                          🎬 AI Reels & Shorts ➔
+                          🎬 AI Reels & Shorts {isAdmin ? "➔" : "(Coming Soon)"}
                         </button>
                         <button
                           onClick={() => handleSelectTab("characters")}
                           className="btn-gabbar-secondary"
-                          style={{ padding: "11px 20px", fontSize: 13, flex: "1 1 auto", border: "1px solid rgba(168, 85, 247, 0.4)", color: "#c084fc" }}
+                          style={{
+                            padding: "11px 20px",
+                            fontSize: 13,
+                            flex: "1 1 auto",
+                            border: isAdmin ? "1px solid rgba(168, 85, 247, 0.4)" : "1px solid rgba(100, 116, 139, 0.2)",
+                            color: isAdmin ? "#c084fc" : "#64748b",
+                            opacity: isAdmin ? 1 : 0.45,
+                            cursor: isAdmin ? "pointer" : "not-allowed",
+                          }}
                         >
-                          ✨ Character IP & Stories ➔
+                          ✨ Character IP & Stories {isAdmin ? "➔" : "(Coming Soon)"}
                         </button>
                         <button
                           onClick={() => handleSelectTab("gmb")}
@@ -1583,16 +1651,76 @@ export default function HomePage() {
 
               {/* TAB 2C: AI REELS & SHORTS STUDIO */}
               {activeTab === "reels" && (
-                <div>
-                  <ReelsStudioConnect />
-                </div>
+                isAdmin ? (
+                  <div>
+                    <ReelsStudioConnect />
+                  </div>
+                ) : (
+                  <div
+                    style={{
+                      padding: "clamp(40px, 6vw, 80px) 24px",
+                      borderRadius: 24,
+                      background: "rgba(15, 23, 42, 0.8)",
+                      border: "1px solid rgba(236, 72, 153, 0.2)",
+                      textAlign: "center",
+                      maxWidth: 620,
+                      margin: "60px auto",
+                      boxShadow: "0 25px 60px rgba(0,0,0,0.5)",
+                    }}
+                  >
+                    <div style={{ fontSize: 48, marginBottom: 16 }}>🎬</div>
+                    <h2 style={{ fontSize: 24, fontWeight: 800, color: "#fff", marginBottom: 12 }}>
+                      AI Reels & Shorts — Coming Soon
+                    </h2>
+                    <p style={{ color: "#94a3b8", fontSize: 14.5, lineHeight: 1.6, marginBottom: 28 }}>
+                      We are currently fine-tuning our neural cinematic rendering, multi-character dialogue engine, and lip-sync synchronization in private studio calibration. Public access will be unlocked shortly.
+                    </p>
+                    <button
+                      onClick={() => setActiveTab("overview")}
+                      className="btn-gabbar-secondary"
+                      style={{ padding: "11px 28px", fontSize: 13 }}
+                    >
+                      ← Back to Command Center
+                    </button>
+                  </div>
+                )
               )}
 
               {/* TAB 2D: AI CHARACTER IP & STORIES WORKSTATION */}
               {activeTab === "characters" && (
-                <div>
-                  <CharacterStudioWorkstation />
-                </div>
+                isAdmin ? (
+                  <div>
+                    <CharacterStudioWorkstation />
+                  </div>
+                ) : (
+                  <div
+                    style={{
+                      padding: "clamp(40px, 6vw, 80px) 24px",
+                      borderRadius: 24,
+                      background: "rgba(15, 23, 42, 0.8)",
+                      border: "1px solid rgba(168, 85, 247, 0.2)",
+                      textAlign: "center",
+                      maxWidth: 620,
+                      margin: "60px auto",
+                      boxShadow: "0 25px 60px rgba(0,0,0,0.5)",
+                    }}
+                  >
+                    <div style={{ fontSize: 48, marginBottom: 16 }}>✨</div>
+                    <h2 style={{ fontSize: 24, fontWeight: 800, color: "#fff", marginBottom: 12 }}>
+                      Character IP & Stories — Coming Soon
+                    </h2>
+                    <p style={{ color: "#94a3b8", fontSize: 14.5, lineHeight: 1.6, marginBottom: 28 }}>
+                      Autonomous multi-character video stories and brand IPs are currently in private studio testing. Public access will be available soon.
+                    </p>
+                    <button
+                      onClick={() => setActiveTab("overview")}
+                      className="btn-gabbar-secondary"
+                      style={{ padding: "11px 28px", fontSize: 13 }}
+                    >
+                      ← Back to Command Center
+                    </button>
+                  </div>
+                )
               )}
 
               {/* TAB 3: SOCIAL AUTOPILOT WORKSTATION */}

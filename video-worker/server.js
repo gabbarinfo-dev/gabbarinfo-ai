@@ -1027,6 +1027,16 @@ async function processReelVideo(job, jobDir) {
   log(job.id, `Starting dedicated fast Reel pipeline (${targetSecs}s) [Style: ${selectedStyle}, Lang: ${language}, Mode: ${scriptMode}]`);
 
   const hasCustomScript = !!(customScript && customScript.trim());
+  function sanitizeDialogue(str) {
+    if (!str) return "";
+    return str
+      .replace(/^Scene\s*\d+\s*[:\-–—]?\s*/i, "")
+      .replace(/^(Customer|Client|Consumer|User)\s*[:\-–—]\s*/i, "")
+      .replace(/^(Owner|Founder|Agency|Director|Host|Speaker\s*\d*)\s*[:\-–—]\s*/i, "")
+      .replace(/^["'“”‘’]|["'“”‘’]$/g, "")
+      .trim();
+  }
+
   let reelScript = null;
 
   if (hasCustomScript) {
@@ -1038,13 +1048,17 @@ async function processReelVideo(job, jobDir) {
     reelScript = {
       title: topic || (brandName ? `${brandName} Promo` : "Custom Reel Masterpiece"),
       fullScript: customScript,
-      scenes: lines.slice(0, 3).map((line, idx) => ({
-        sceneNumber: idx + 1,
-        text: line,
-        spokenAudio: line,
-        visualPrompt: `Vertical 9:16 cinematic portrait or action shot. Dynamic visual representing: ${line.slice(0, 100)}. Cinematic lighting, photorealistic 8k, masterpiece`,
-        duration: secPerScene,
-      }))
+      scenes: lines.slice(0, 3).map((line, idx) => {
+        const clean = sanitizeDialogue(line) || line;
+        return {
+          sceneNumber: idx + 1,
+          rawLine: line,
+          text: clean,
+          spokenAudio: clean,
+          visualPrompt: `Vertical 9:16 cinematic portrait or action shot. Dynamic visual representing: ${clean.slice(0, 100)}. Cinematic lighting, photorealistic 8k, masterpiece`,
+          duration: secPerScene,
+        };
+      })
     };
   } else if (scriptMode === "product_promo") {
     log(job.id, `Generating Commercial Promotional Reel for Brand: "${brandName}", Service: "${serviceToPromote}", Offer: "${specialOffer}", Angle: "${promoAngle}"`);
@@ -1179,11 +1193,14 @@ Requirements:
       messages: [{ role: "system", content: scriptPrompt }],
     });
     reelScript = JSON.parse(completion.choices[0].message.content);
+    if (reelScript.scenes) {
+      reelScript.scenes = reelScript.scenes.map(s => ({
+        ...s,
+        text: sanitizeDialogue(s.text),
+        spokenAudio: sanitizeDialogue(s.spokenAudio || s.text),
+      }));
+    }
   }
-
-  job.progress = 25;
-  job.stage = "Synthesizing studio voiceover audio with tts-1-hd...";
-  log(job.id, `Synthesizing audio with voice: ${voice} (Lang: ${language})`);
 
   let ttsVoice = voice || (language === "en_uk" ? "fable" : "alloy");
   if (language === "en_uk" && ttsVoice.toLowerCase() === "alloy") {
@@ -1192,7 +1209,12 @@ Requirements:
     ttsVoice = "alloy";
   }
 
-  const fullSpokenText = reelScript.scenes.map(s => s.spokenAudio || s.text).join(" ");
+  job.progress = 25;
+  job.stage = "Synthesizing studio voiceover audio with tts-1-hd...";
+  log(job.id, `Synthesizing audio with base voice: ${ttsVoice} (Lang: ${language})`);
+
+  // Baseline combined voiceover (used for B-roll / fallback)
+  const fullSpokenText = reelScript.scenes.map(s => sanitizeDialogue(s.spokenAudio || s.text)).join(" ");
   const mp3Response = await openai.audio.speech.create({
     model: "tts-1-hd",
     voice: ttsVoice,
@@ -1213,57 +1235,130 @@ Requirements:
     job.stage = "Rendering photorealistic character portrait & GPU lip-sync...";
     log(job.id, `Generating talking avatar lip-sync with SadTalker...`);
 
-    const charImgPath = path.join(jobDir, "avatar_character.png");
-    const charVidPath = path.join(jobDir, "avatar_talking.mp4");
+    // Helper to generate a SadTalker scene video with native embedded audio
+    async function renderTalkingActorScene({ characterImgPrompt, spokenText, voiceToUse, filenamePrefix }) {
+      const imgPath = path.join(jobDir, `${filenamePrefix}_char.png`);
+      const audioPath = path.join(jobDir, `${filenamePrefix}_audio.mp3`);
+      const vidPath = path.join(jobDir, `${filenamePrefix}_talking.mp4`);
 
-    const avatarPrompt = `Cinematic 35mm photograph. Medium close-up portrait of an authentic, charismatic ${niche} spokesperson looking directly into camera with expressive sharp eyes, clear defined pupils and irises, natural friendly smile, high-end studio lighting, natural human skin texture with subtle pores, 85mm portrait lens f/1.8, shallow depth of field, 8k resolution, masterpiece.`;
-
-    let imgGen;
-    try {
-      imgGen = await openai.images.generate({
-        model: "gpt-image-2",
-        prompt: avatarPrompt.slice(0, 950),
-        n: 1,
-        size: "1024x1024",
+      // 1. Synthesize Scene Audio
+      const cleanLine = sanitizeDialogue(spokenText);
+      const mp3 = await openai.audio.speech.create({
+        model: "tts-1-hd",
+        voice: voiceToUse,
+        input: cleanLine.replace(/^["']|["']$/g, ""),
+        response_format: "mp3",
       });
-    } catch {
-      imgGen = await openai.images.generate({
-        model: "dall-e-3",
-        prompt: avatarPrompt.slice(0, 950),
-        n: 1,
-        size: "1024x1792",
-      });
-    }
+      fs.writeFileSync(audioPath, Buffer.from(await mp3.arrayBuffer()));
 
-    if (imgGen.data?.[0]?.b64_json) {
-      fs.writeFileSync(charImgPath, Buffer.from(imgGen.data[0].b64_json, "base64"));
-    } else if (imgGen.data?.[0]?.url) {
-      const fetchRes = await fetch(imgGen.data[0].url);
-      fs.writeFileSync(charImgPath, Buffer.from(await fetchRes.arrayBuffer()));
-    }
-
-    // Run SadTalker GPU Lip-Sync with GFPGAN
-    try {
-      job.stage = "Generating AI lip-sync on Replicate GPU (SadTalker + GFPGAN)...";
-      const audioPubUrl = await uploadPublicFile(reelAudioPath, `audio_${job.id}.mp3`, "audio/mpeg");
-      const imgPubUrl = await uploadPublicFile(charImgPath, `avatar_${job.id}.png`, "image/png");
-
-      const talkingVidUrl = await generateSadTalkerLipSync({
-        imageUrl: imgPubUrl,
-        audioUrl: audioPubUrl,
-        jobId: job.id,
-      });
-
-      const fetchVid = await fetch(talkingVidUrl);
-      if (fetchVid.ok) {
-        fs.writeFileSync(charVidPath, Buffer.from(await fetchVid.arrayBuffer()));
-        sceneVisuals.push({ type: "video", path: charVidPath });
-      } else {
-        sceneVisuals.push({ type: "image", path: charImgPath });
+      // 2. Generate Character Image
+      let imgGen;
+      try {
+        imgGen = await openai.images.generate({
+          model: "gpt-image-2",
+          prompt: characterImgPrompt.slice(0, 950),
+          n: 1,
+          size: "1024x1024",
+        });
+      } catch {
+        imgGen = await openai.images.generate({
+          model: "dall-e-3",
+          prompt: characterImgPrompt.slice(0, 950),
+          n: 1,
+          size: "1024x1792",
+        });
       }
-    } catch (sTalkErr) {
-      log(job.id, `SadTalker fallback: ${sTalkErr.message}`);
-      sceneVisuals.push({ type: "image", path: charImgPath });
+
+      if (imgGen.data?.[0]?.b64_json) {
+        fs.writeFileSync(imgPath, Buffer.from(imgGen.data[0].b64_json, "base64"));
+      } else if (imgGen.data?.[0]?.url) {
+        const fetchRes = await fetch(imgGen.data[0].url);
+        fs.writeFileSync(imgPath, Buffer.from(await fetchRes.arrayBuffer()));
+      }
+
+      // 3. SadTalker GPU Lip-Sync
+      try {
+        job.stage = `Generating GPU lip-sync for ${filenamePrefix}...`;
+        const audioPubUrl = await uploadPublicFile(audioPath, `${filenamePrefix}_${job.id}.mp3`, "audio/mpeg");
+        const imgPubUrl = await uploadPublicFile(imgPath, `${filenamePrefix}_${job.id}.png`, "image/png");
+
+        const talkingVidUrl = await generateSadTalkerLipSync({
+          imageUrl: imgPubUrl,
+          audioUrl: audioPubUrl,
+          jobId: job.id,
+        });
+
+        const fetchVid = await fetch(talkingVidUrl);
+        if (fetchVid.ok) {
+          fs.writeFileSync(vidPath, Buffer.from(await fetchVid.arrayBuffer()));
+          log(job.id, `SadTalker generated native lip-synced video for ${filenamePrefix}`);
+          return { type: "video", path: vidPath, hasEmbeddedAudio: true, audioPath };
+        }
+      } catch (sTalkErr) {
+        log(job.id, `SadTalker (${filenamePrefix}) fallback: ${sTalkErr.message}`);
+      }
+
+      return { type: "image", path: imgPath, hasEmbeddedAudio: false, audioPath };
+    }
+
+    const isSkit = promoAngle === "customer_owner_skit" || (
+      reelScript.scenes.length >= 2 &&
+      (/frustrated|outdated|struggling|broken|customer|client/i.test(reelScript.scenes[0].text || reelScript.scenes[0].rawLine || ""))
+    );
+
+    if (isSkit && reelScript.scenes.length >= 2) {
+      // 2-CHARACTER COMMERCIAL SKIT: Customer Problem (Scene 1) -> Agency Owner Solution & CTA (Scenes 2 & 3)
+      log(job.id, "Rendering 2-Character Skit: Customer Actor + Agency Owner Actor");
+
+      // Character 1: Customer
+      let customerVoice = "shimmer";
+      if (["nova", "shimmer"].includes(ttsVoice.toLowerCase())) {
+        customerVoice = language === "en_uk" ? "fable" : "onyx";
+      } else {
+        customerVoice = "nova";
+      }
+
+      const customerText = sanitizeDialogue(reelScript.scenes[0].spokenAudio || reelScript.scenes[0].text);
+      const customerPrompt = `Cinematic 9:16 vertical smartphone portrait. Stressed client looking frustrated at an outdated broken website on a laptop screen in a modern office, expressive disappointed eyes, natural human skin texture, cinematic rim lighting, 8k photorealistic.`;
+
+      job.stage = "Rendering Customer actor & GPU lip-sync (Scene 1)...";
+      const customerSeg = await renderTalkingActorScene({
+        characterImgPrompt: customerPrompt,
+        spokenText: customerText,
+        voiceToUse: customerVoice,
+        filenamePrefix: "skit_customer",
+      });
+      sceneVisuals.push(customerSeg);
+
+      // Character 2: Business Owner / Agency Director (Scene 2 & Scene 3)
+      const ownerScenes = reelScript.scenes.slice(1);
+      const ownerText = ownerScenes.map(s => sanitizeDialogue(s.spokenAudio || s.text)).join(" ");
+      const ownerPrompt = `Cinematic 9:16 vertical smartphone portrait. Confident creative director and agency founder for "${brandName || 'Digital Solutions'}" in a high-tech modern studio with multiple glowing dual monitors displaying sleek modern website UI/UX designs and code, smiling into camera, expressive sharp eyes, photorealistic 8k, Arri cinema lighting.`;
+
+      job.stage = "Rendering Business Owner actor & GPU lip-sync (Scenes 2 & 3)...";
+      const ownerSeg = await renderTalkingActorScene({
+        characterImgPrompt: ownerPrompt,
+        spokenText: ownerText,
+        voiceToUse: ttsVoice,
+        filenamePrefix: "skit_owner",
+      });
+      sceneVisuals.push(ownerSeg);
+
+    } else {
+      // SINGLE SPOKESPERSON: Deeply tailored to topic, brand, and niche
+      const presenterContext = serviceToPromote || topic || niche;
+      const presenterPrompt = scriptMode === "product_promo"
+        ? `Cinematic 9:16 vertical smartphone portrait. Charismatic founder and expert spokesperson for "${brandName || 'our brand'}" specializing in "${presenterContext}", looking directly into camera with confident friendly expression, modern high-tech studio with dual monitors displaying modern digital designs in background, professional studio lighting, 8k resolution, photorealistic.`
+        : `Cinematic 9:16 vertical smartphone portrait. Charismatic, authentic ${niche} expert looking directly into camera with expressive sharp eyes, clear defined pupils and irises, natural friendly smile, modern ambient studio with subtle background relevant to ${topic}, professional lighting, 8k resolution, photorealistic.`;
+
+      job.stage = "Rendering spokesperson actor & GPU lip-sync...";
+      const presenterSeg = await renderTalkingActorScene({
+        characterImgPrompt: presenterPrompt,
+        spokenText: fullSpokenText,
+        voiceToUse: ttsVoice,
+        filenamePrefix: "spokesperson",
+      });
+      sceneVisuals.push(presenterSeg);
     }
 
   } else if (selectedStyle === "generative_cinematic") {
@@ -1462,12 +1557,9 @@ async function assembleFFmpegVideo({ jobDir, scenes, audioFiles, visuals, output
         let segProc;
         if (vis.type === "video") {
           // Normalize existing video clip to exact format, frame rate, and dimensions
-          // CRITICAL: Loop clip with -stream_loop -1 -t so it fills durationPerScene!
           const scaleCropVf = `scale=${width}:${height}:force_original_aspect_ratio=increase,crop=${width}:${height}`;
           const args = [
             "-y",
-            "-stream_loop", "-1",
-            "-t", `${durationPerScene}`,
             "-i", vis.path,
             "-vf", scaleCropVf,
             "-c:v", "libx264",
@@ -1475,10 +1567,16 @@ async function assembleFFmpegVideo({ jobDir, scenes, audioFiles, visuals, output
             "-preset", "ultrafast",
             "-pix_fmt", "yuv420p",
             "-r", "25",
-            "-an",
-            "-loglevel", "error",
-            segPath
           ];
+
+          if (vis.hasEmbeddedAudio) {
+            // CRITICAL: Preserve SadTalker's native frame-perfect lip-synced audio without stripping or looping!
+            args.push("-c:a", "aac", "-b:a", "192k", "-ar", "44100", "-ac", "2");
+          } else {
+            args.push("-stream_loop", "-1", "-t", `${durationPerScene}`, "-an");
+          }
+
+          args.push("-loglevel", "error", segPath);
           segProc = spawn("ffmpeg", args);
         } else {
           // Smooth cinematic camera pan/tilt using pure YUV scale + crop
@@ -1535,28 +1633,46 @@ async function assembleFFmpegVideo({ jobDir, scenes, audioFiles, visuals, output
         const segListPath = path.join(jobDir, "seglist.txt");
         fs.writeFileSync(segListPath, segmentFiles.map(f => `file '${f.replace(/\\/g, "/")}'`).join("\n"));
 
-        // Exact runtime guarantee:
-        const totalVideoRuntime = Math.max(targetDurationSecs, Math.round(visuals.length * durationPerScene));
+        const allHaveAudio = visuals.length > 0 && visuals.every(v => v.hasEmbeddedAudio);
 
-        // Combine video segments and loop/pad audio track to match full video length
-        const finalArgs = [
-          "-y",
-          "-f", "concat",
-          "-safe", "0",
-          "-i", segListPath,
-          "-stream_loop", "-1",
-          "-i", combinedAudioPath,
-          "-map", "0:v:0",
-          "-map", "1:a:0",
-          "-c:v", "copy",
-          "-c:a", "aac",
-          "-b:a", "192k",
-          "-threads", "2",
-          "-t", `${totalVideoRuntime}`,
-          "-movflags", "+faststart",
-          "-loglevel", "error",
-          outputPath
-        ];
+        let finalArgs;
+        if (allHaveAudio) {
+          // Both/all segments have native synchronized audio from SadTalker GPU!
+          // Concatenate segments directly preserving frame-perfect lip-sync:
+          finalArgs = [
+            "-y",
+            "-f", "concat",
+            "-safe", "0",
+            "-i", segListPath,
+            "-c:v", "copy",
+            "-c:a", "aac",
+            "-b:a", "192k",
+            "-movflags", "+faststart",
+            "-loglevel", "error",
+            outputPath
+          ];
+        } else {
+          // Combined voiceover overlay (for motion B-roll, generative diffusion, or static images)
+          const totalVideoRuntime = Math.max(targetDurationSecs, Math.round(visuals.length * durationPerScene));
+          finalArgs = [
+            "-y",
+            "-f", "concat",
+            "-safe", "0",
+            "-i", segListPath,
+            "-stream_loop", "-1",
+            "-i", combinedAudioPath,
+            "-map", "0:v:0",
+            "-map", "1:a:0",
+            "-c:v", "copy",
+            "-c:a", "aac",
+            "-b:a", "192k",
+            "-threads", "2",
+            "-t", `${totalVideoRuntime}`,
+            "-movflags", "+faststart",
+            "-loglevel", "error",
+            outputPath
+          ];
+        }
 
         const finalProc = spawn("ffmpeg", finalArgs);
         let finalErr = "";
