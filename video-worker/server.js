@@ -90,6 +90,23 @@ app.get("/jobs/status/:jobId", requireAuth, (req, res) => {
 });
 
 // -------------------------------------------------------------
+// Debug Command Execution Endpoint (Protected)
+// -------------------------------------------------------------
+app.post("/debug/ffmpeg", requireAuth, async (req, res) => {
+  const { command = "ffmpeg", args = ["-version"] } = req.body;
+  const p = spawn(command, args);
+  let stdout = "", stderr = "";
+  p.stdout?.on("data", (d) => { stdout += d.toString(); });
+  p.stderr?.on("data", (d) => { stderr += d.toString(); });
+  p.on("close", (code, signal) => {
+    res.json({ ok: true, code, signal, stdout: stdout.slice(-2000), stderr: stderr.slice(-2000) });
+  });
+  p.on("error", (err) => {
+    res.json({ ok: false, error: err.message });
+  });
+});
+
+// -------------------------------------------------------------
 // Create Video Job Endpoint
 // -------------------------------------------------------------
 app.post("/jobs/create", requireAuth, async (req, res) => {
