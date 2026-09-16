@@ -26,6 +26,7 @@ export default function CharacterStudioWorkstation() {
   // Story & Episode Generator State
   const [creationMode, setCreationMode] = useState("ai_prompt"); // "ai_prompt" | "custom_script" | "business_media"
   const [animationStyle, setAnimationStyle] = useState("generative_video"); // "generative_video" | "hybrid_lip_sync" | "cinematic_scenes"
+  const [storyStyle, setStoryStyle] = useState("movie_dialogue"); // "movie_dialogue" | "storybook_narrated" | "documentary_voiceover"
   const [narrativeType, setNarrativeType] = useState("standalone"); // "standalone" | "episodic"
   const [customScript, setCustomScript] = useState("");
   const [vocalEmotion, setVocalEmotion] = useState("dramatic_story"); // "dramatic_story" | "poetic_shayar" | "warm_storybook" | "commercial_pitch"
@@ -253,10 +254,6 @@ export default function CharacterStudioWorkstation() {
   // Generate Story Episode
   const handleGenerateStory = async (e) => {
     e.preventDefault();
-    if (creationMode !== "business_media" && !selectedCharacter && characters.length === 0) {
-      setErrorMsg("Please create or select an exclusive character first.");
-      return;
-    }
     if (creationMode === "custom_script" && !customScript.trim()) {
       setErrorMsg("Please enter your custom script or shayari lines.");
       return;
@@ -314,6 +311,7 @@ export default function CharacterStudioWorkstation() {
             characterId: selectedCharacter?.id,
             companionId: selectedCompanion?.id,
             characters: activeChars,
+            storyStyle,
             format: videoFormat,
             narrativeType,
             scriptMode: creationMode,
@@ -791,17 +789,75 @@ export default function CharacterStudioWorkstation() {
                   Loading your private character vault…
                 </div>
               ) : characters.length === 0 ? (
-                <div style={{ padding: 24, textAlign: "center", background: "rgba(255, 255, 255, 0.02)", borderRadius: 12, border: "1px dashed rgba(255, 255, 255, 0.12)" }}>
-                  <p style={{ margin: "0 0 12px", color: "#94a3b8", fontSize: 13 }}>You have no characters created yet.</p>
-                  <button
-                    onClick={() => setShowCreateModal(true)}
-                    style={{ padding: "8px 16px", borderRadius: 8, background: "#8b5cf6", border: "none", color: "#fff", fontWeight: 700, fontSize: 12, cursor: "pointer" }}
+                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
+                  <div
+                    onClick={() => setSelectedCharacter(null)}
+                    style={{
+                      padding: 16,
+                      borderRadius: 12,
+                      background: "rgba(139, 92, 246, 0.2)",
+                      border: "2px solid #8b5cf6",
+                      cursor: "pointer",
+                      textAlign: "center",
+                    }}
                   >
-                    + Create Your First Character IP
-                  </button>
+                    <div style={{ fontSize: 24, marginBottom: 4 }}>✨</div>
+                    <div style={{ fontWeight: 800, fontSize: 13, color: "#c084fc" }}>Auto-Cast from Story Prompt</div>
+                    <div style={{ fontSize: 10, color: "#94a3b8", marginTop: 4 }}>
+                      AI automatically detects or invents characters from your story with custom names, genders &amp; voices.
+                    </div>
+                  </div>
+                  <div
+                    onClick={() => setShowCreateModal(true)}
+                    style={{
+                      padding: 16,
+                      borderRadius: 12,
+                      background: "rgba(255, 255, 255, 0.02)",
+                      border: "1px dashed rgba(255, 255, 255, 0.15)",
+                      cursor: "pointer",
+                      textAlign: "center",
+                      display: "flex",
+                      flexDirection: "column",
+                      alignItems: "center",
+                      justifyContent: "center",
+                    }}
+                  >
+                    <div style={{ fontSize: 24, marginBottom: 4 }}>👤➕</div>
+                    <div style={{ fontWeight: 800, fontSize: 13, color: "#cbd5e1" }}>Create Custom Character</div>
+                    <div style={{ fontSize: 10, color: "#94a3b8", marginTop: 4 }}>
+                      Design your own custom character with custom name, look, gender &amp; voice.
+                    </div>
+                  </div>
                 </div>
               ) : (
                 <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(135px, 1fr))", gap: 12 }}>
+                  {/* Auto-Cast from Story Prompt Option */}
+                  <div
+                    onClick={() => setSelectedCharacter(null)}
+                    style={{
+                      borderRadius: 12,
+                      padding: 10,
+                      background: !selectedCharacter ? "rgba(139, 92, 246, 0.25)" : "rgba(255, 255, 255, 0.03)",
+                      border: !selectedCharacter ? "2px solid #8b5cf6" : "1px solid rgba(255, 255, 255, 0.08)",
+                      cursor: "pointer",
+                      transition: "all 0.15s ease",
+                      textAlign: "center",
+                      display: "flex",
+                      flexDirection: "column",
+                      alignItems: "center",
+                      justifyContent: "center",
+                      minHeight: 140,
+                    }}
+                  >
+                    <span style={{ fontSize: 28, marginBottom: 6 }}>✨</span>
+                    <div style={{ fontWeight: 800, fontSize: 12, color: !selectedCharacter ? "#c084fc" : "#f1f5f9" }}>
+                      Auto-Cast
+                    </div>
+                    <div style={{ fontSize: 9.5, color: "#94a3b8", marginTop: 4, lineHeight: 1.2 }}>
+                      AI casts custom characters from prompt
+                    </div>
+                  </div>
+
                   {characters.map((char) => {
                     const isSelected = selectedCharacter?.id === char.id;
                     return (
@@ -1046,6 +1102,74 @@ export default function CharacterStudioWorkstation() {
                       <div style={{ fontSize: 9.5, color: "#94a3b8", marginTop: 2 }}>{a.desc}</div>
                     </div>
                   ))}
+                </div>
+              </div>
+
+              {/* Script & Acting Style (Movie Dialogue vs Narrated Storybook vs Solo Voiceover) */}
+              <div style={{ marginBottom: 16 }}>
+                <label style={{ display: "block", fontSize: 11.5, fontWeight: 800, color: "#cbd5e1", marginBottom: 6 }}>
+                  🎬 Script &amp; Acting Format:
+                </label>
+                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 8 }}>
+                  <div
+                    onClick={() => setStoryStyle("movie_dialogue")}
+                    style={{
+                      padding: "10px 10px",
+                      borderRadius: 10,
+                      background: storyStyle === "movie_dialogue" ? "rgba(16, 185, 129, 0.2)" : "rgba(255, 255, 255, 0.03)",
+                      border: storyStyle === "movie_dialogue" ? "2px solid #10b981" : "1px solid rgba(255, 255, 255, 0.08)",
+                      cursor: "pointer",
+                      transition: "all 0.15s ease",
+                    }}
+                  >
+                    <div style={{ display: "flex", alignItems: "center", gap: 5, fontWeight: 800, fontSize: 11, color: storyStyle === "movie_dialogue" ? "#34d399" : "#cbd5e1" }}>
+                      <span>🎭 Movie / Skit</span>
+                      <span style={{ fontSize: 8, fontWeight: 900, padding: "1px 4px", borderRadius: 4, background: "#10b981", color: "#000" }}>NO NARRATOR</span>
+                    </div>
+                    <div style={{ fontSize: 9.5, color: "#94a3b8", marginTop: 3, lineHeight: 1.3 }}>
+                      Characters talk directly to each other in natural dialogue with their own distinct voices &amp; acting.
+                    </div>
+                  </div>
+
+                  <div
+                    onClick={() => setStoryStyle("storybook_narrated")}
+                    style={{
+                      padding: "10px 10px",
+                      borderRadius: 10,
+                      background: storyStyle === "storybook_narrated" ? "rgba(245, 158, 11, 0.2)" : "rgba(255, 255, 255, 0.03)",
+                      border: storyStyle === "storybook_narrated" ? "2px solid #f59e0b" : "1px solid rgba(255, 255, 255, 0.08)",
+                      cursor: "pointer",
+                      transition: "all 0.15s ease",
+                    }}
+                  >
+                    <div style={{ display: "flex", alignItems: "center", gap: 5, fontWeight: 800, fontSize: 11, color: storyStyle === "storybook_narrated" ? "#fbbf24" : "#cbd5e1" }}>
+                      <span>📖 Storybook</span>
+                      <span style={{ fontSize: 8, fontWeight: 900, padding: "1px 4px", borderRadius: 4, background: "#f59e0b", color: "#000" }}>HYBRID</span>
+                    </div>
+                    <div style={{ fontSize: 9.5, color: "#94a3b8", marginTop: 3, lineHeight: 1.3 }}>
+                      Storyteller narrator introduces the scene + characters speak key dramatic lines.
+                    </div>
+                  </div>
+
+                  <div
+                    onClick={() => setStoryStyle("documentary_voiceover")}
+                    style={{
+                      padding: "10px 10px",
+                      borderRadius: 10,
+                      background: storyStyle === "documentary_voiceover" ? "rgba(59, 130, 246, 0.2)" : "rgba(255, 255, 255, 0.03)",
+                      border: storyStyle === "documentary_voiceover" ? "2px solid #3b82f6" : "1px solid rgba(255, 255, 255, 0.08)",
+                      cursor: "pointer",
+                      transition: "all 0.15s ease",
+                    }}
+                  >
+                    <div style={{ display: "flex", alignItems: "center", gap: 5, fontWeight: 800, fontSize: 11, color: storyStyle === "documentary_voiceover" ? "#60a5fa" : "#cbd5e1" }}>
+                      <span>🎙️ Voiceover</span>
+                      <span style={{ fontSize: 8, fontWeight: 900, padding: "1px 4px", borderRadius: 4, background: "#3b82f6", color: "#fff" }}>SOLO</span>
+                    </div>
+                    <div style={{ fontSize: 9.5, color: "#94a3b8", marginTop: 3, lineHeight: 1.3 }}>
+                      Solo cinematic narrator voiceover across the video with world footage.
+                    </div>
+                  </div>
                 </div>
               </div>
 

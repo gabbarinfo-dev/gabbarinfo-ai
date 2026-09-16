@@ -491,7 +491,8 @@ async function processLongFormYouTube(job, jobDir) {
     durationMinutes,
     audience = "family",
     vocalEmotion = "dramatic_story",
-    animationStyle = "live_talking_head",
+    animationStyle = "generative_video",
+    storyStyle = "movie_dialogue", // "movie_dialogue" | "storybook_narrated" | "documentary_voiceover"
   } = payload;
 
   const durationMins = Number(durationMinutes || targetMinutes) || 2;
@@ -500,18 +501,20 @@ async function processLongFormYouTube(job, jobDir) {
 
   job.progress = 15;
   job.stage = `Scriptwriting ~${durationMins} min screenplay with GPT-4o...`;
-  log(job.id, `Generating cinematic screenplay (~${durationMins} min, ${targetTotalSecs}s) for "${videoTitle || episodeTitle || topic}" [Animation: ${animationStyle}]`);
+  log(job.id, `Generating cinematic screenplay (~${durationMins} min, ${targetTotalSecs}s) for "${videoTitle || episodeTitle || topic}" [Style: ${storyStyle}, Animation: ${animationStyle}]`);
 
-  // Default characters if not provided
-  const activeCharacters = (characters && characters.length > 0) ? characters : [
-    { name: "Kabir", role: "Protagonist / Visionary", voice: "onyx", traits: "rugged Indian male explorer in adventure jacket", archetype: "photoreal_human", gender: "male" },
-    { name: "Tara", role: "Companion / Strategist", voice: "shimmer", traits: "sharp intelligent Indian female archaeologist", archetype: "photoreal_human", gender: "female" },
-  ];
-
-  const charDescriptions = activeCharacters.map((c, idx) => {
-    const v = resolveVoice(c);
-    return `Character ${idx + 1}: Name="${c.name}", Role="${c.role || "Character"}", Voice="${v}", Traits="${c.traits || c.visualTraits || "expressive"}"`;
-  }).join("\n");
+  // Character casting:
+  // If user provided characters, use them.
+  // If user did NOT provide characters, instruct GPT-4o to dynamically extract or invent characters from the prompt.
+  const hasUserCharacters = characters && Array.isArray(characters) && characters.length > 0;
+  let activeCharacters = hasUserCharacters ? characters.map(c => ({
+    name: c.name,
+    role: c.role || "Character",
+    voice: resolveVoice(c),
+    gender: c.gender || "male",
+    traits: c.traits || c.visualTraits || "expressive photorealistic person",
+    archetype: c.archetype || "photoreal_human",
+  })) : [];
 
   let numScenes = 4;
   if (durationMins >= 5) numScenes = 20;
@@ -536,53 +539,84 @@ async function processLongFormYouTube(job, jobDir) {
     audiencePrompt = "TARGET AUDIENCE: Adults & Mature Viewers. Tone: Deep cinematic narrative, intense emotional drama, sophisticated dialogues.";
   }
 
-  const systemPrompt = `You are a world-class Hollywood screenplay director and visual storyteller.
-You are writing a COMPLETE, start-to-end dramatic ${durationMins}-minute cinematic script.
-FORMAT: ${isWidescreen ? "16:9 Widescreen YouTube Cinematic Masterpiece" : "9:16 Vertical Smartphone Story / Social Reel"}.
+  // Build System Prompt based on selected storyStyle
+  let scriptFormatRules = "";
+  if (storyStyle === "movie_dialogue") {
+    scriptFormatRules = `
+CRITICAL MOVIE / SKIT ACTING RULES (PURE CHARACTER CONVERSATION — ABSOLUTELY NO NARRATOR):
+1. This is a real MOVIE / COMEDY SKIT / DRAMA. Like real films and YouTube skits, there is ZERO NARRATION. There is NO Narrator!
+2. Characters speak directly to each other! Every single scene MUST feature one of the characters speaking direct spoken dialogue in quotation marks (e.g. "सुन भाई, गाड़ी रोक! वो देख सामने क्या हो रहा है!").
+3. If 2 or more characters are present, they MUST converse back-and-forth:
+   - Scene 1: Character A initiates conversation or action.
+   - Scene 2: Character B replies, argues, reacts, or cracks a joke.
+   - Scene 3: Character A responds with emotion or urgency.
+   - Scene 4: Climax, resolution, punchline, or realization.
+4. For every scene:
+   - "type": "dialogue"
+   - "speaker": EXACT name of the speaking character. NEVER "Narrator".
+   - "spokenAudio": The direct spoken dialogue in quotation marks (30 to 50 words, natural cadence, rich emotion).
+   - "visualDescription": Cinematic movie scene still. Describe the setting (moving cars, room, bustling street, lab, cafe), what the characters are doing, their expressions, gestures, and the cinematic camera shot (e.g. wide two-shot, over-the-shoulder, tracking shot).
+   - "characterInVisual": Names of characters present in the frame.`;
+  } else if (storyStyle === "storybook_narrated") {
+    scriptFormatRules = `
+CRITICAL STORYBOOK / FABLE RULES:
+1. Alternate between "b_roll" (speaker: "Narrator", descriptive scene setting) and "dialogue" (speaker: character name, lines in quotes).
+2. For B-roll: "spokenAudio" is the narrator's rich descriptive voiceover.
+3. For Dialogue: "spokenAudio" is direct character dialogue in quotes.`;
+  } else {
+    // documentary_voiceover
+    scriptFormatRules = `
+CRITICAL DOCUMENTARY / VOICEOVER RULES:
+1. Every scene is "b_roll" with speaker "Narrator".
+2. "spokenAudio" is authoritative, eloquent voiceover narration over wide cinematic visuals.`;
+  }
+
+  const charContext = hasUserCharacters ? `
+FIXED USER CHARACTERS TO CAST:
+${activeCharacters.map((c, i) => `Character ${i + 1}: Name="${c.name}", Role="${c.role}", Gender="${c.gender}", Voice="${c.voice}", Traits="${c.traits}"`).join("\n")}
+` : `
+DYNAMIC CHARACTER CREATION:
+The user has NOT specified fixed characters. You MUST analyze the story prompt: "${storyPrompt || videoTitle || topic}".
+Extract or invent 1 to 3 distinct characters fitting the genre, culture, and setting of this story.
+Include a "characters" array in your JSON output defining them:
+- "name": authentic name fitting the story (NEVER hardcode generic names)
+- "role": role in the scene
+- "gender": "male" or "female"
+- "traits": visual description (clothing, look, mood)
+- "voice": choose "onyx" or "echo" or "ash" for male; "shimmer" or "nova" or "coral" for female
+`;
+
+  const systemPrompt = `You are a world-class Hollywood film director and screenwriter.
+You are writing a COMPLETE, captivating ${durationMins}-minute cinematic script.
+FORMAT: ${isWidescreen ? "16:9 Widescreen YouTube Cinematic Film" : "9:16 Vertical Smartphone Story / Social Reel"}.
 ${langInstruction}
 ${audiencePrompt}
 
-CHARACTERS IN STORY:
-${charDescriptions}
-- Narrator: Third-person cinematic narrator voiceover
+${charContext}
 
-CRITICAL CINEMATIC STORYTELLING RULES (MANDATORY TO AVOID WEBCAM TALKING HEADS):
-1. Divide into exactly ${numScenes} sequential scenes.
-2. DUAL SCENE TYPES (MANDATORY):
-   - "b_roll" (World Environment, Moving Action, Establishing Shots):
-     * Speaker MUST be "Narrator".
-     * Visual must describe the wide cinematic world in motion: e.g. moving cars on city streets, traffic, pedestrians, neon cityscapes, weather, flying vehicles, entering rooms, cinematic camera tracking.
-     * Character facial lip-sync is NOT used here. The narrator's voiceover plays over cinematic world B-roll!
-   - "dialogue" (Character Speaking Direct Spoken Lines):
-     * Speaker MUST be one of the active characters: ${activeCharacters.map(c => `"${c.name}"`).join(", ")}.
-     * Spoken audio MUST be in quotation marks as direct first-person dialogue spoken by that character (e.g. "तारा, वो देखो! पुराना दरवाज़ा खुला हुआ है!").
-     * Visual must describe that specific character in the scene, their facial expression, and their emotion.
-3. Every scene's narration / dialogue must be 35 to 50 words in length, rich with dramatic emotion, lasting ~${sceneTargetSecs} seconds to fill the complete ${durationMins}-minute story.
-4. Alternate rhythmically between "b_roll" (establishing the setting and action) and "dialogue" (characters talking to each other). If 2 or 3 characters are present, they must converse back and forth with distinct lines!
+${scriptFormatRules}
+
+Divide the story into exactly ${numScenes} sequential scenes.
+Each scene's spoken dialogue/audio must be 30 to 50 words in length, rich with drama, emotion, and character personality.
 
 Return ONLY valid JSON in this exact structure:
 {
-  "title": "${videoTitle || episodeTitle || "Compelling Title"}",
-  "youtubeTitle": "High CTR Title",
+  "title": "${videoTitle || episodeTitle || "Cinematic Masterpiece"}",
+  "youtubeTitle": "High CTR Compelling Title",
   "description": "Engaging description with timestamps",
+  ${!hasUserCharacters ? `"characters": [
+    { "name": "Name1", "role": "Role", "gender": "male", "traits": "traits", "voice": "onyx" },
+    { "name": "Name2", "role": "Role", "gender": "female", "traits": "traits", "voice": "shimmer" }
+  ],` : ""}
   "scenes": [
     {
       "sceneNumber": 1,
-      "type": "b_roll",
-      "speaker": "Narrator",
-      "chapter": "Chapter Title",
-      "spokenAudio": "35 to 50 words of descriptive world narration by the narrator",
-      "visualDescription": "Detailed cinematic scene description of the world with motion (e.g. moving cars, city traffic, glowing cave, tracking camera, atmospheric lighting)",
-      "characterInVisual": "none"
-    },
-    {
-      "sceneNumber": 2,
       "type": "dialogue",
-      "speaker": "${activeCharacters[0].name}",
+      "speaker": "SpeakingCharacterName",
       "chapter": "Chapter Title",
-      "spokenAudio": "\"Direct first-person dialogue in quotes spoken by this character (35 to 50 words)\"",
-      "visualDescription": "Detailed cinematic shot of ${activeCharacters[0].name} in the environment speaking with intense emotion",
-      "characterInVisual": "${activeCharacters[0].name}"
+      "spokenAudio": "\"Direct first-person spoken dialogue in quotation marks (30 to 50 words)\"",
+      "visualDescription": "Detailed cinematic movie shot of characters in the rich environment with moving elements, lighting, camera angle, and expressions",
+      "characterInVisual": "Characters in frame"
     }
   ]
 }`;
@@ -593,12 +627,31 @@ Return ONLY valid JSON in this exact structure:
     response_format: { type: "json_object" },
     messages: [
       { role: "system", content: systemPrompt },
-      { role: "user", content: `Write a complete ${durationMins} minute concluded screenplay on topic: "${storyPrompt || videoTitle || topic}". Must have ${numScenes} scenes alternating between world b_roll and character dialogue.` }
+      { role: "user", content: `Write a complete ${durationMins} minute screenplay on topic: "${storyPrompt || videoTitle || topic}". Must have ${numScenes} scenes.` }
     ],
   });
 
   const script = JSON.parse(completion.choices[0].message.content);
   job.metadata = { title: script.title, youtubeTitle: script.youtubeTitle };
+
+  // If characters were dynamically generated by GPT-4o, register them now!
+  if (!hasUserCharacters && script.characters && Array.isArray(script.characters) && script.characters.length > 0) {
+    activeCharacters = script.characters.map(c => ({
+      name: c.name,
+      role: c.role || "Character",
+      gender: c.gender || "male",
+      voice: resolveVoice(c),
+      traits: c.traits || "expressive cinematic character",
+      archetype: "photoreal_human",
+    }));
+    log(job.id, `Dynamically casted ${activeCharacters.length} custom characters: ${activeCharacters.map(c => `${c.name} (${c.gender}, voice: ${c.voice})`).join(", ")}`);
+  } else if (activeCharacters.length === 0) {
+    // Fallback if model omitted characters array
+    activeCharacters = [
+      { name: "Character 1", role: "Protagonist", gender: "male", voice: "onyx", traits: "cinematic actor" },
+      { name: "Character 2", role: "Companion", gender: "female", voice: "shimmer", traits: "cinematic actress" },
+    ];
+  }
 
   // Step 2: Multi-Character Voiceover Synthesis
   job.progress = 30;
@@ -661,7 +714,8 @@ Return ONLY valid JSON in this exact structure:
         prompt = `Cinematic ${aspectDesc} 35mm Hollywood film still photograph. ${scene.visualDescription}. Atmospheric wide angle cinematic shot, environmental lighting, fluid depth of field, Arri Alexa Mini LF, 8k resolution, masterpiece.`;
       } else {
         const speakingChar = activeCharacters.find(c => c.name.toLowerCase() === (scene.speaker || "").toLowerCase()) || activeCharacters[0];
-        prompt = `Cinematic ${aspectDesc} movie still frame. ${scene.visualDescription}. Character: ${speakingChar.name}, ${speakingChar.traits || speakingChar.visualTraits || "detailed face"}. Hyper-realistic skin pores, expressive eyes, dramatic cinematic studio lighting, 8k resolution, shallow depth of field.`;
+        const allChars = activeCharacters.map(c => `${c.name} (${c.traits || "detailed character"})`).join(" and ");
+        prompt = `Cinematic ${aspectDesc} movie scene photograph. ${scene.visualDescription}. Characters present: ${allChars}. Active speaking character: ${speakingChar.name}. 35mm cinema camera, Arri Alexa film still, natural skin textures, authentic expressions, dynamic movie lighting, photorealistic 8k, masterpiece.`;
       }
 
       let imgGen;
