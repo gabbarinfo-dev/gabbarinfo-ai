@@ -196,12 +196,166 @@ async function processJob(jobId) {
 }
 
 // -------------------------------------------------------------
-// Long-Form YouTube Pipeline (4-6 mins, 3-4 characters)
+// Public File Uploader for GPU AI Pipelines
+// -------------------------------------------------------------
+async function uploadPublicFile(filePath, filename, contentType = "application/octet-stream") {
+  const fileBuffer = fs.readFileSync(filePath);
+
+  // 1. Try WordPress Ephemeral Media Bridge
+  try {
+    const wpApiKey = process.env.WORDPRESS_API_KEY || "gb_6XvSNZPT9h4aV2s2P0x1uUuP";
+    const wpSite = "https://www.gabbarinfo.com";
+    const endpoint = `${wpSite}/wp-json/gabbarinfo/v1/media-bridge/upload?api_key=${encodeURIComponent(wpApiKey)}`;
+
+    const res = await fetch(endpoint, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        filename,
+        content_base64: fileBuffer.toString("base64"),
+      }),
+    });
+
+    const data = await res.json();
+    if (data.ok && data.url) {
+      return data.url;
+    }
+  } catch (wpErr) {
+    // fallback to Supabase
+  }
+
+  // 2. Supabase Storage fallback
+  if (supabase) {
+    const storagePath = `temp_uploads/${filename}`;
+    const { error: upErr } = await supabase.storage
+      .from("instagram-creatives")
+      .upload(storagePath, fileBuffer, { contentType, upsert: true });
+
+    if (!upErr) {
+      const { data: pubData } = supabase.storage
+        .from("instagram-creatives")
+        .getPublicUrl(storagePath);
+      return pubData.publicUrl;
+    }
+  }
+
+  throw new Error(`Failed to upload public file ${filename}`);
+}
+
+// -------------------------------------------------------------
+// Replicate GPU Video & Lip-Sync Engines
+// -------------------------------------------------------------
+async function generateSadTalkerLipSync({ imageUrl, audioUrl, jobId }) {
+  const token = process.env.REPLICATE_API_TOKEN;
+  if (!token) throw new Error("Missing REPLICATE_API_TOKEN in environment variables");
+
+  log(jobId, `Dispatching SadTalker GPU lip-sync prediction to Replicate...`);
+  const createRes = await fetch("https://api.replicate.com/v1/predictions", {
+    method: "POST",
+    headers: {
+      Authorization: `Token ${token}`,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({
+      version: "a519cc0cfebaaeade068b23899165a11ec76aaa1d2b313d40d214f204ec957a3",
+      input: {
+        source_image: imageUrl,
+        driven_audio: audioUrl,
+        still: false,
+        use_enhancer: false,
+        expression_scale: 1.1,
+      },
+    }),
+  });
+
+  if (!createRes.ok) {
+    const errText = await createRes.text();
+    throw new Error(`SadTalker start error: ${errText}`);
+  }
+
+  const prediction = await createRes.json();
+  const pollUrl = prediction.urls?.get;
+
+  const startTime = Date.now();
+  while ((Date.now() - startTime) < 240000) {
+    await new Promise((r) => setTimeout(r, 4000));
+    const statusRes = await fetch(pollUrl, {
+      headers: { Authorization: `Token ${token}` },
+    });
+    if (!statusRes.ok) continue;
+    const statusData = await statusRes.json();
+    if (statusData.status === "succeeded") {
+      const out = Array.isArray(statusData.output) ? statusData.output[0] : statusData.output;
+      log(jobId, `SadTalker GPU lip-sync succeeded: ${out}`);
+      return out;
+    }
+    if (statusData.status === "failed" || statusData.status === "canceled") {
+      throw new Error(`SadTalker failed: ${statusData.error || "Unknown error"}`);
+    }
+  }
+  throw new Error("SadTalker prediction timed out after 240s");
+}
+
+async function generateGenerativeClip({ prompt, isWidescreen, jobId }) {
+  const token = process.env.REPLICATE_API_TOKEN;
+  if (!token) throw new Error("Missing REPLICATE_API_TOKEN in environment variables");
+
+  log(jobId, `Dispatching Generative AI Video prediction to Replicate (AnimateDiff)...`);
+  const aspectDesc = isWidescreen ? "16:9 widescreen cinematic landscape" : "9:16 vertical smartphone format";
+  const cleanPrompt = `${prompt}, ${aspectDesc}, cinematic lighting, photorealistic 8k, physical character motion, fluid movement, masterpiece`;
+
+  const createRes = await fetch("https://api.replicate.com/v1/predictions", {
+    method: "POST",
+    headers: {
+      Authorization: `Token ${token}`,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({
+      version: "beecf59c4aee8d81bf04f0381033dfa10dc16e845b4ae00d281e2fa377e48a9f",
+      input: {
+        prompt: cleanPrompt,
+        n_prompt: "bad quality, blurry, distorted, static, low resolution",
+        steps: 25,
+        guidance_scale: 7.5,
+      },
+    }),
+  });
+
+  if (!createRes.ok) {
+    const errText = await createRes.text();
+    throw new Error(`Generative Video start error: ${errText}`);
+  }
+
+  const prediction = await createRes.json();
+  const pollUrl = prediction.urls?.get;
+
+  const startTime = Date.now();
+  while ((Date.now() - startTime) < 240000) {
+    await new Promise((r) => setTimeout(r, 4000));
+    const statusRes = await fetch(pollUrl, {
+      headers: { Authorization: `Token ${token}` },
+    });
+    if (!statusRes.ok) continue;
+    const statusData = await statusRes.json();
+    if (statusData.status === "succeeded") {
+      const out = Array.isArray(statusData.output) ? statusData.output[0] : statusData.output;
+      log(jobId, `Generative AI Video succeeded: ${out}`);
+      return out;
+    }
+    if (statusData.status === "failed" || statusData.status === "canceled") {
+      throw new Error(`Generative Video failed: ${statusData.error || "Unknown error"}`);
+    }
+  }
+  throw new Error("Generative Video prediction timed out after 240s");
+}
+
+// -------------------------------------------------------------
+// Long-Form / Character Story Pipeline (1-5+ mins, GPU Video & Lip-Sync)
 // -------------------------------------------------------------
 async function processLongFormYouTube(job, jobDir) {
   const { payload } = job;
   const {
-    topic = "The Mystery of the Neon Horizon",
+    topic = "The Secret Quest",
     storyPrompt,
     videoTitle,
     episodeTitle,
@@ -211,22 +365,24 @@ async function processLongFormYouTube(job, jobDir) {
     durationMinutes,
     audience = "family",
     vocalEmotion = "dramatic_story",
+    animationStyle = "live_talking_head",
   } = payload;
 
   const durationMins = Number(durationMinutes || targetMinutes) || 2;
+  const targetTotalSecs = durationMins * 60;
+  const isWidescreen = payload.format === "youtube_16_9";
 
   job.progress = 15;
-  job.stage = `Scriptwriting ~${durationMins} min multi-character storyline with GPT-4o...`;
-  log(job.id, `Generating long-form script (~${durationMins} min) for "${videoTitle || episodeTitle || topic}" (Audience: ${audience})`);
+  job.stage = `Scriptwriting ~${durationMins} min storyline with GPT-4o...`;
+  log(job.id, `Generating story script (~${durationMins} min, ${targetTotalSecs}s) for "${videoTitle || episodeTitle || topic}" [Animation: ${animationStyle}]`);
 
   // Default characters if not provided
-  const activeCharacters = characters.length >= 2 ? characters : [
+  const activeCharacters = characters.length >= 2 ? characters : (characters.length === 1 ? characters : [
     { name: "Kabir", role: "Protagonist / Visionary", voice: "onyx", traits: "bold, confident, determined", archetype: "photoreal_human" },
     { name: "Tara", role: "Companion / Strategist", voice: "shimmer", traits: "analytical, wise, caring", archetype: "photoreal_human" },
-    { name: "Dev", role: "Mentor / Veteran", voice: "echo", traits: "deep voice, calm authority, observant", archetype: "photoreal_human" },
-  ];
+  ]);
 
-  const charListPrompt = activeCharacters.map(c => `- ${c.name} (${c.role}): voice profile "${c.voice}", traits: ${c.traits}`).join("\n");
+  const charListPrompt = activeCharacters.map(c => `- ${c.name} (${c.role || "Character"}): voice "${c.voice || "nova"}", traits: ${c.traits || c.visualTraits || "expressive"}`).join("\n");
 
   let numScenes = 4;
   if (durationMins >= 5) numScenes = 20;
@@ -235,7 +391,8 @@ async function processLongFormYouTube(job, jobDir) {
   else if (durationMins >= 2) numScenes = 8;
   else numScenes = 4;
 
-  log(job.id, `Creating ${numScenes} sequenced scenes for target duration ${durationMins} mins.`);
+  const sceneTargetSecs = Math.max(12, Math.round(targetTotalSecs / numScenes));
+  log(job.id, `Creating ${numScenes} scenes (~${sceneTargetSecs}s per scene) for target ${durationMins} mins.`);
 
   let langInstruction = "Language: Hindi (fluent, natural, expressive dialogue in Devanagari script).";
   if (language === "en_us") langInstruction = "Language: American English (natural cinematic conversational dialogue).";
@@ -243,37 +400,37 @@ async function processLongFormYouTube(job, jobDir) {
 
   let audiencePrompt = "TARGET AUDIENCE: Family & All Ages (heartfelt, inspiring, universally compelling).";
   if (audience === "kids") {
-    audiencePrompt = "TARGET AUDIENCE: Children & Kids (Ages 3-10). Tone: Whimsical, innocent, gentle, educational moral lesson, playful vocabulary, zero scary or violent elements.";
+    audiencePrompt = "TARGET AUDIENCE: Children & Kids (Ages 3-10). Tone: Whimsical, innocent, gentle, educational moral lesson, playful vocabulary, zero scary elements.";
   } else if (audience === "teens") {
     audiencePrompt = "TARGET AUDIENCE: Teens & Young Adults. Tone: High-energy, fantasy adventure, mystery, snappy witty dialogues.";
   } else if (audience === "adult") {
     audiencePrompt = "TARGET AUDIENCE: Adults & Mature Viewers. Tone: Deep cinematic narrative, intense emotional drama, sophisticated dialogues.";
   }
 
-  const systemPrompt = `You are a world-class YouTube cinematic screenplay director.
-You are writing a COMPLETE, start-to-end self-contained ${durationMins} minute dramatic story (NOT an episode, fully concludes with emotional punchline/moral).
-FORMAT: 16:9 Widescreen YouTube Cinematic Masterpiece.
+  const systemPrompt = `You are a world-class cinematic screenplay director.
+You are writing a COMPLETE, start-to-end self-contained ${durationMins} minute dramatic story.
+FORMAT: ${isWidescreen ? "16:9 Widescreen YouTube Cinematic Masterpiece" : "9:16 Vertical Smartphone Story / Social Reel"}.
 ${langInstruction}
 ${audiencePrompt}
 CHARACTERS:
 ${charListPrompt}
 
-REQUIREMENTS:
-1. Divide into exactly ${numScenes} scenes.
-2. Each scene must feature dialogue from one of the characters or narrator, with intense emotional progression (Hook -> Conflict -> Revelation -> Climax -> Resolution).
+CRITICAL DURATION & DIALOGUE REQUIREMENTS:
+1. Divide into exactly ${numScenes} sequential scenes.
+2. Each scene must feature dialogue/narration between 35 and 50 words in length, rich with dramatic emotion and vivid storytelling, so that each spoken line comfortably lasts ~${sceneTargetSecs} seconds to fill the complete ${durationMins}-minute story.
 3. Return ONLY valid JSON:
 {
   "title": "${videoTitle || episodeTitle || "Compelling Title"}",
-  "youtubeTitle": "High CTR YouTube Title",
+  "youtubeTitle": "High CTR Title",
   "description": "Engaging description with timestamps",
   "scenes": [
     {
       "sceneNumber": 1,
       "speaker": "${activeCharacters[0].name}",
       "chapter": "Chapter Title",
-      "narration": "Dialogue line spoken (15-25 words)",
+      "narration": "Rich expressive spoken dialogue (35 to 50 words)",
       "visualDescription": "High-detail cinematic visual description of characters in setting",
-      "searchKeyword": "1-2 keywords for ambient B-roll"
+      "searchKeyword": "ambient setting keyword"
     }
   ]
 }`;
@@ -284,7 +441,7 @@ REQUIREMENTS:
     response_format: { type: "json_object" },
     messages: [
       { role: "system", content: systemPrompt },
-      { role: "user", content: `Write a complete ${durationMins} minute concluded story on topic: "${storyPrompt || videoTitle || topic}". Must have ${numScenes} scenes.` }
+      { role: "user", content: `Write a complete ${durationMins} minute concluded story on topic: "${storyPrompt || videoTitle || topic}". Must have ${numScenes} scenes with 35-50 words per scene.` }
     ],
   });
 
@@ -318,21 +475,22 @@ REQUIREMENTS:
     audioFiles.push(audioPath);
   }
 
-  // Step 3: Visual Generation (DALL-E 3 / gpt-image-2 for key scenes, stock clips for transitions)
+  // Step 3: Visual & GPU Video Generation
   job.progress = 55;
-  job.stage = "Generating cinematic visual scenes...";
-  log(job.id, `Rendering visuals for ${script.scenes.length} scenes...`);
+  job.stage = `Generating visual scenes [Mode: ${animationStyle}]...`;
+  log(job.id, `Rendering visuals for ${script.scenes.length} scenes (engine: ${animationStyle})...`);
 
   const sceneVisuals = [];
   for (let i = 0; i < script.scenes.length; i++) {
     const scene = script.scenes[i];
-    job.stage = `Rendering visual frame ${i + 1}/${script.scenes.length}...`;
+    job.stage = `Rendering scene ${i + 1}/${script.scenes.length}...`;
     job.progress = 55 + Math.round((i / script.scenes.length) * 20); // 55% to 75%
 
     const imgPath = path.join(jobDir, `scene_${i}_visual.png`);
+    const vidPath = path.join(jobDir, `scene_${i}_video.mp4`);
+
     try {
       const isPhotoreal = activeCharacters.some(c => ["photoreal_human", "hollywood_cinema", "indian_cinema", "documentary_realism"].includes(c.archetype)) || payload.visualStyle === "photoreal_human";
-      const isWidescreen = payload.format !== "reel_9_16";
       const aspectDesc = isWidescreen ? "16:9 widescreen YouTube format" : "vertical 9:16 smartphone format";
 
       let prompt = "";
@@ -362,19 +520,64 @@ REQUIREMENTS:
       if (imgGen.data?.[0]?.b64_json) {
         const imgBuf = Buffer.from(imgGen.data[0].b64_json, "base64");
         fs.writeFileSync(imgPath, imgBuf);
-        sceneVisuals.push({ type: "image", path: imgPath });
       } else if (imgGen.data?.[0]?.url) {
         const fetchRes = await fetch(imgGen.data[0].url);
         const imgBuf = Buffer.from(await fetchRes.arrayBuffer());
         fs.writeFileSync(imgPath, imgBuf);
-        sceneVisuals.push({ type: "image", path: imgPath });
       } else {
         throw new Error("No image data returned");
       }
+
+      // If Live Talking Lip-Sync requested, invoke SadTalker GPU
+      if (animationStyle === "live_talking_head") {
+        job.stage = `Generating AI talking lip-sync (${i + 1}/${script.scenes.length})...`;
+        try {
+          const audioPublicUrl = await uploadPublicFile(audioFiles[i], `speech_${job.id}_${i}.mp3`, "audio/mpeg");
+          const imgPublicUrl = await uploadPublicFile(imgPath, `char_${job.id}_${i}.png`, "image/png");
+
+          const talkingVideoUrl = await generateSadTalkerLipSync({
+            imageUrl: imgPublicUrl,
+            audioUrl: audioPublicUrl,
+            jobId: job.id,
+          });
+
+          const fetchVid = await fetch(talkingVideoUrl);
+          if (fetchVid.ok) {
+            fs.writeFileSync(vidPath, Buffer.from(await fetchVid.arrayBuffer()));
+            sceneVisuals.push({ type: "video", path: vidPath });
+            continue;
+          }
+        } catch (lipErr) {
+          log(job.id, `Lip-sync fallback for scene ${i}: ${lipErr.message}`);
+        }
+      }
+
+      // If Generative AI Video requested, invoke AnimateDiff GPU
+      if (animationStyle === "generative_video") {
+        job.stage = `Rendering generative AI video (${i + 1}/${script.scenes.length})...`;
+        try {
+          const genVideoUrl = await generateGenerativeClip({
+            prompt: scene.visualDescription,
+            isWidescreen,
+            jobId: job.id,
+          });
+
+          const fetchVid = await fetch(genVideoUrl);
+          if (fetchVid.ok) {
+            fs.writeFileSync(vidPath, Buffer.from(await fetchVid.arrayBuffer()));
+            sceneVisuals.push({ type: "video", path: vidPath });
+            continue;
+          }
+        } catch (genErr) {
+          log(job.id, `Generative video fallback for scene ${i}: ${genErr.message}`);
+        }
+      }
+
+      // Fallback or Multi-Scene Motion style: use high-res image frame
+      sceneVisuals.push({ type: "image", path: imgPath });
+
     } catch (imgErr) {
-      log(job.id, `Image gen fallback for scene ${i}: ${imgErr.message}`);
-      // Fallback solid gradient / placeholder if image gen limits hit
-      const isWidescreen = payload.format !== "reel_9_16";
+      log(job.id, `Visual gen fallback for scene ${i}: ${imgErr.message}`);
       await createFallbackImage(imgPath, isWidescreen ? 1920 : 1080, isWidescreen ? 1080 : 1920, scene.speaker || "Scene");
       sceneVisuals.push({ type: "image", path: imgPath });
     }
@@ -385,7 +588,6 @@ REQUIREMENTS:
   job.stage = "FFmpeg server-side master video compilation...";
   log(job.id, "Assembling master video via FFmpeg...");
 
-  const isWidescreen = payload.format !== "reel_9_16";
   const masterVideoPath = path.join(jobDir, "master_output.mp4");
   await assembleFFmpegVideo({
     jobDir,
@@ -394,6 +596,7 @@ REQUIREMENTS:
     visuals: sceneVisuals,
     outputPath: masterVideoPath,
     isWidescreen,
+    targetDurationSecs: targetTotalSecs,
     onProgress: (p) => {
       job.progress = 75 + Math.round(p * 0.15); // 75% to 90%
     },
@@ -408,105 +611,23 @@ REQUIREMENTS:
 }
 
 // -------------------------------------------------------------
-// Reels / Shorts Video Pipeline (9:16 vertical)
+// Reels / Shorts Video Pipeline (9:16 vertical fast reel)
 // -------------------------------------------------------------
 async function processReelVideo(job, jobDir) {
-  const { payload } = job;
-  const {
-    topic = "Viral Social Reel",
-    niche = "business",
-    language = "hindi",
-    voice = "nova",
-  } = payload;
-
-  job.progress = 20;
-  job.stage = "Generating viral reel script...";
-
-  const scriptRes = await openai.chat.completions.create({
-    model: "gpt-4o-mini",
-    temperature: 0.7,
-    response_format: { type: "json_object" },
-    messages: [
-      { role: "system", content: "You are an elite short-form video creator. Return JSON with title and 4 scenes (narration, visualPrompt, searchQuery)." },
-      { role: "user", content: `Create a 30s viral vertical reel on topic: "${topic}" in ${language}.` }
-    ],
-  });
-
-  const script = JSON.parse(scriptRes.choices[0].message.content);
-
-  // Synthesize single continuous voiceover
-  job.progress = 40;
-  job.stage = "Synthesizing voiceover audio...";
-  const fullText = script.scenes.map(s => s.narration).join(" ... ");
-  const voRes = await openai.audio.speech.create({
-    model: "tts-1",
-    voice,
-    input: fullText,
-    response_format: "mp3",
-  });
-  const voBuf = Buffer.from(await voRes.arrayBuffer());
-  const voPath = path.join(jobDir, "voiceover.mp3");
-  fs.writeFileSync(voPath, voBuf);
-
-  // Generate visuals
-  job.progress = 60;
-  job.stage = "Generating vertical scenes...";
-  const visuals = [];
-  for (let i = 0; i < script.scenes.length; i++) {
-    const scene = script.scenes[i];
-    const imgPath = path.join(jobDir, `reel_scene_${i}.png`);
-    try {
-      const imgGen = await openai.images.generate({
-        model: "dall-e-3",
-        prompt: `${scene.visualPrompt}, vertical 9:16 smartphone wallpaper format, photorealistic 4k`,
-        n: 1,
-        size: "1024x1792",
-      });
-      const fetchRes = await fetch(imgGen.data[0].url);
-      fs.writeFileSync(imgPath, Buffer.from(await fetchRes.arrayBuffer()));
-      visuals.push({ type: "image", path: imgPath });
-    } catch (e) {
-      await createFallbackImage(imgPath, 1080, 1920, "Reel Scene");
-      visuals.push({ type: "image", path: imgPath });
-    }
-  }
-
-  // Assemble FFmpeg 9:16
-  job.progress = 80;
-  job.stage = "Encoding 9:16 vertical master video...";
-  const masterPath = path.join(jobDir, "master_reel.mp4");
-  await assembleFFmpegVideo({
-    jobDir,
-    scenes: script.scenes,
-    audioFiles: [voPath],
-    visuals,
-    outputPath: masterPath,
-    isWidescreen: false,
-    onProgress: (p) => { job.progress = 80 + Math.round(p * 0.1); }
-  });
-
-  job.progress = 92;
-  job.stage = "Uploading reel master...";
-  job.videoUrl = await uploadMasterVideo(masterPath, `reel_${Date.now()}.mp4`, job.userEmail);
+  return processLongFormYouTube(job, jobDir);
 }
 
 // -------------------------------------------------------------
 // Character Story Pipeline
 // -------------------------------------------------------------
 async function processCharacterStory(job, jobDir) {
-  // Routes to long-form or reel depending on format
-  const isWidescreen = job.payload?.format === "youtube_16_9";
-  if (isWidescreen) {
-    return processLongFormYouTube(job, jobDir);
-  } else {
-    return processReelVideo(job, jobDir);
-  }
+  return processLongFormYouTube(job, jobDir);
 }
 
 // -------------------------------------------------------------
-// FFmpeg Video Assembly Engine
+// FFmpeg Video Assembly Engine (Normalizes Videos & Images)
 // -------------------------------------------------------------
-async function assembleFFmpegVideo({ jobDir, scenes, audioFiles, visuals, outputPath, isWidescreen = true, onProgress }) {
+async function assembleFFmpegVideo({ jobDir, scenes, audioFiles, visuals, outputPath, isWidescreen = true, targetDurationSecs = 120, onProgress }) {
   return new Promise((resolve, reject) => {
     const width = isWidescreen ? 1920 : 1080;
     const height = isWidescreen ? 1080 : 1920;
@@ -532,12 +653,13 @@ async function assembleFFmpegVideo({ jobDir, scenes, audioFiles, visuals, output
     }
 
     function proceedWithVideo() {
-      // Calculate duration from audio using ffprobe or file size estimation
+      // Calculate duration to match user requested runtime
       const stats = fs.statSync(combinedAudioPath);
-      const approxDurationSecs = Math.max(10, Math.round(stats.size / 16000));
-      const durationPerScene = Math.max(3, Math.round((approxDurationSecs / visuals.length) * 10) / 10);
+      const audioDurationSecs = Math.max(10, Math.round(stats.size / 16000));
+      const effectiveTotalSecs = Math.max(audioDurationSecs, targetDurationSecs);
+      const durationPerScene = Math.max(4, Math.round((effectiveTotalSecs / visuals.length) * 10) / 10);
 
-      // Create video segments for each visual
+      // Create video segments for each visual (either normalizing video clip or animating image)
       const segmentFiles = [];
       let currentIdx = 0;
 
@@ -551,39 +673,57 @@ async function assembleFFmpegVideo({ jobDir, scenes, audioFiles, visuals, output
         const segPath = path.join(jobDir, `seg_${currentIdx}.mp4`);
         segmentFiles.push(segPath);
 
-        // Smooth cinematic camera pan/tilt using pure YUV scale + crop (Zero memory overhead, never OOMs)
-        const isEven = currentIdx % 2 === 0;
-        let vf;
-        if (isWidescreen) {
-          // Scale to 108% then smoothly pan horizontally
-          const panExpr = isEven
-            ? `(in_w-out_w)*(t/${durationPerScene})`
-            : `(in_w-out_w)*(1-t/${durationPerScene})`;
-          vf = `scale=2080:1170:force_original_aspect_ratio=increase,crop=2080:1170,crop=1920:1080:${panExpr}:(in_h-out_h)/2`;
+        let segProc;
+        if (vis.type === "video") {
+          // Normalize existing video clip to exact format, frame rate, and dimensions
+          const scaleCropVf = `scale=${width}:${height}:force_original_aspect_ratio=increase,crop=${width}:${height}`;
+          const args = [
+            "-y",
+            "-i", vis.path,
+            "-vf", scaleCropVf,
+            "-c:v", "libx264",
+            "-threads", "2",
+            "-preset", "ultrafast",
+            "-pix_fmt", "yuv420p",
+            "-r", "25",
+            "-an",
+            "-loglevel", "error",
+            segPath
+          ];
+          segProc = spawn("ffmpeg", args);
         } else {
-          // Vertical 9:16: Scale to 108% then smoothly tilt vertically
-          const tiltExpr = isEven
-            ? `(in_h-out_h)*(t/${durationPerScene})`
-            : `(in_h-out_h)*(1-t/${durationPerScene})`;
-          vf = `scale=1170:2080:force_original_aspect_ratio=increase,crop=1170:2080,crop=1080:1920:(in_w-out_w)/2:${tiltExpr}`;
+          // Smooth cinematic camera pan/tilt using pure YUV scale + crop
+          const isEven = currentIdx % 2 === 0;
+          let vf;
+          if (isWidescreen) {
+            const panExpr = isEven
+              ? `(in_w-out_w)*(t/${durationPerScene})`
+              : `(in_w-out_w)*(1-t/${durationPerScene})`;
+            vf = `scale=2080:1170:force_original_aspect_ratio=increase,crop=2080:1170,crop=1920:1080:${panExpr}:(in_h-out_h)/2`;
+          } else {
+            const tiltExpr = isEven
+              ? `(in_h-out_h)*(t/${durationPerScene})`
+              : `(in_h-out_h)*(1-t/${durationPerScene})`;
+            vf = `scale=1170:2080:force_original_aspect_ratio=increase,crop=1170:2080,crop=1080:1920:(in_w-out_w)/2:${tiltExpr}`;
+          }
+
+          const args = [
+            "-y",
+            "-loop", "1",
+            "-t", `${durationPerScene}`,
+            "-i", vis.path,
+            "-vf", vf,
+            "-c:v", "libx264",
+            "-threads", "2",
+            "-preset", "ultrafast",
+            "-pix_fmt", "yuv420p",
+            "-r", "25",
+            "-loglevel", "error",
+            segPath
+          ];
+          segProc = spawn("ffmpeg", args);
         }
 
-        const args = [
-          "-y",
-          "-loop", "1",
-          "-t", `${durationPerScene}`,
-          "-i", vis.path,
-          "-vf", vf,
-          "-c:v", "libx264",
-          "-threads", "2",
-          "-preset", "ultrafast",
-          "-pix_fmt", "yuv420p",
-          "-r", "25",
-          "-loglevel", "error",
-          segPath
-        ];
-
-        const segProc = spawn("ffmpeg", args);
         let segErr = "";
         segProc.stderr?.on("data", (chunk) => {
           segErr += chunk.toString();
@@ -606,12 +746,13 @@ async function assembleFFmpegVideo({ jobDir, scenes, audioFiles, visuals, output
         const segListPath = path.join(jobDir, "seglist.txt");
         fs.writeFileSync(segListPath, segmentFiles.map(f => `file '${f.replace(/\\/g, "/")}'`).join("\n"));
 
-        // Combine pre-encoded video segments and merge audio track directly (zero memory, instant bitstream copy)
+        // Combine video segments and loop/pad audio track to match full video length
         const finalArgs = [
           "-y",
           "-f", "concat",
           "-safe", "0",
           "-i", segListPath,
+          "-stream_loop", "-1",
           "-i", combinedAudioPath,
           "-map", "0:v:0",
           "-map", "1:a:0",
@@ -619,8 +760,8 @@ async function assembleFFmpegVideo({ jobDir, scenes, audioFiles, visuals, output
           "-c:a", "aac",
           "-b:a", "192k",
           "-threads", "2",
-          "-movflags", "+faststart",
           "-shortest",
+          "-movflags", "+faststart",
           "-loglevel", "error",
           outputPath
         ];
