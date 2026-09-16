@@ -8,17 +8,26 @@ export default function ReelsStudioConnect() {
   const userEmail = session?.user?.email;
 
   const [selectedStyle, setSelectedStyle] = useState("talking_avatar"); // "talking_avatar" | "generative_cinematic" | "motion_broll"
-  const [scriptMode, setScriptMode] = useState("ai_prompt"); // "ai_prompt" | "custom_script"
+  const [scriptMode, setScriptMode] = useState("ai_prompt"); // "ai_prompt" | "product_promo" | "custom_script"
   const [customScript, setCustomScript] = useState("");
   const [durationSeconds, setDurationSeconds] = useState(15); // 15 | 30 | 60
   const [topic, setTopic] = useState("");
   const [niche, setNiche] = useState("business");
   const [language, setLanguage] = useState("hindi"); // "hindi" | "en_us" | "en_uk"
-  const [voice, setVoice] = useState("alloy"); // alloy is crisp, natural for Hindi & English
+  const [voice, setVoice] = useState("alloy"); // dynamically updated on lang change
   const [backgroundBeat, setBackgroundBeat] = useState("upbeat_lofi");
   const [generating, setGenerating] = useState(false);
   const [generationStep, setGenerationStep] = useState("");
   const [errorMsg, setErrorMsg] = useState("");
+
+  // Product / Service Promotional Creator States
+  const [brandName, setBrandName] = useState("");
+  const [serviceToPromote, setServiceToPromote] = useState("");
+  const [specialOffer, setSpecialOffer] = useState("");
+  const [promoAngle, setPromoAngle] = useState("founder_pitch"); // "founder_pitch" | "customer_owner_skit" | "direct_response"
+  const [promoCTA, setPromoCTA] = useState("Click the link in bio to book your free slot");
+  const [websiteUrl, setWebsiteUrl] = useState("");
+  const [generatingPromoScript, setGeneratingPromoScript] = useState(false);
 
   // Generated Video Data
   const [generatedVideo, setGeneratedVideo] = useState(null);
@@ -197,12 +206,103 @@ export default function ReelsStudioConnect() {
     },
   ];
 
-  const QUICK_TOPICS = [
-    "3 Secret Hacks to Scale Your Online Store in 2026",
-    "Why 90% of Startups Fail in Their First 6 Months",
-    "Stop Making This Costly Mistake With Your Advertising",
-    "5 High-Income Skills You Can Learn in 30 Days",
-  ];
+  const CUSTOM_SCRIPT_PLACEHOLDERS = {
+    en_uk: `Paste your exact British script or lines here.\nExample:\nScene 1: Still struggling to turn website visitors into high-paying clients?\nScene 2: Our bespoke digital strategy helps UK businesses scale revenue 10x faster.\nScene 3: Tap the link below to claim your complimentary growth consultation today.`,
+    en_us: `Paste your exact script or lines here.\nExample:\nScene 1: Are you still losing qualified leads every single day?\nScene 2: Our AI-driven marketing engine scales your sales pipelines 10x faster!\nScene 3: Click the link below and get your free growth audit today.`,
+    hindi: `Paste your exact script or lines here.\nExample:\nScene 1: क्या आप भी अपने बिज़नेस में वही पुरानी गलतियाँ कर रहे हैं?\nScene 2: Google Ads और SEO का सही बैलेंस आपके सेल्स को 10x कर सकता है!\nScene 3: लिंक पर क्लिक करें और आज ही अपना फ्री ऑडिट बुक करें।`,
+  };
+
+  const QUICK_TOPICS = {
+    en_uk: [
+      "3 Secrets to Scale Your E-Commerce Store in the UK",
+      "Why 90% of Tech Startups Struggle in Year One",
+      "Stop Wasting Your Marketing Budget on Ineffective Ads",
+      "How to Secure High-Paying Clients in 30 Days",
+    ],
+    en_us: [
+      "3 Secret Hacks to Scale Your Online Store in 2026",
+      "Why 90% of Startups Fail in Their First 6 Months",
+      "Stop Making This Costly Mistake With Your Advertising",
+      "5 High-Income Skills You Can Learn in 30 Days",
+    ],
+    hindi: [
+      "2026 में अपने ऑनलाइन स्टोर की सेल्स 10x कैसे बढ़ाएं?",
+      "90% नए बिज़नेस पहले 6 महीनों में क्यों फेल हो जाते हैं?",
+      "Google Ads और मेटा विज्ञापनों में यह बड़ी गलती कभी मत करना",
+      "3 स्किल्स जो आपको महीने के लाखों कमा कर दे सकती हैं",
+    ],
+  };
+
+  const VOICES_BY_LANG = {
+    en_uk: [
+      { id: "fable", name: "Fable (Refined British Accent - Gentleman)" },
+      { id: "alloy", name: "Alloy (Crisp International / Modern UK)" },
+      { id: "nova", name: "Nova (Articulate British/International Female)" },
+      { id: "onyx", name: "Onyx (Deep Authoritative Baritone)" },
+      { id: "shimmer", name: "Shimmer (Warm Expressive Female)" },
+    ],
+    en_us: [
+      { id: "alloy", name: "Alloy (Crisp American / Modern Tech)" },
+      { id: "nova", name: "Nova (High-Energy American Female)" },
+      { id: "onyx", name: "Onyx (Deep Authoritative American Male)" },
+      { id: "shimmer", name: "Shimmer (Warm Engaging American Female)" },
+      { id: "echo", name: "Echo (Dynamic Storyteller Male)" },
+    ],
+    hindi: [
+      { id: "alloy", name: "Alloy (Natural Hindi & Bilingual - Crisp)" },
+      { id: "nova", name: "Nova (Energetic Hindi Female)" },
+      { id: "onyx", name: "Onyx (Deep Authoritative Hindi Male)" },
+      { id: "shimmer", name: "Shimmer (Warm Expressive Hindi Female)" },
+    ],
+  };
+
+  const handleLanguageChange = (newLang) => {
+    setLanguage(newLang);
+    if (newLang === "en_uk") {
+      setVoice("fable");
+    } else if (newLang === "en_us") {
+      setVoice("alloy");
+    } else {
+      setVoice("alloy");
+    }
+  };
+
+  const handleGeneratePromoScript = async () => {
+    if (!serviceToPromote.trim() && !brandName.trim() && !websiteUrl.trim()) {
+      setErrorMsg("Please provide your Brand Name, Service to promote, or Website URL.");
+      return;
+    }
+    setGeneratingPromoScript(true);
+    setErrorMsg("");
+    try {
+      const res = await fetch("/api/video/generate-promo-script", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          websiteUrl: websiteUrl.trim(),
+          brandName: brandName.trim(),
+          serviceToPromote: serviceToPromote.trim(),
+          specialOffer: specialOffer.trim(),
+          promoAngle,
+          promoCTA: promoCTA.trim(),
+          language,
+          durationSeconds,
+          userEmail,
+        }),
+      });
+      const data = await res.json();
+      if (!res.ok || !data.ok) {
+        throw new Error(data.error || "Failed to craft promotional screenplay.");
+      }
+      setCustomScript(data.formattedScript);
+      setToastMsg("✅ Commercial ad script crafted! Review or edit below before generating.");
+      setTimeout(() => setToastMsg(""), 6000);
+    } catch (err) {
+      setErrorMsg(err.message || "Failed to generate promotional script.");
+    } finally {
+      setGeneratingPromoScript(false);
+    }
+  };
 
   const handleGenerate = async (e) => {
     if (e) e.preventDefault();
@@ -214,6 +314,10 @@ export default function ReelsStudioConnect() {
       setErrorMsg("Please enter a video topic or hook idea.");
       return;
     }
+    if (scriptMode === "product_promo" && !customScript.trim() && !serviceToPromote.trim() && !brandName.trim()) {
+      setErrorMsg("Please enter your Brand Name and Service to promote, or click 'Craft Commercial Script'.");
+      return;
+    }
 
     setGenerating(true);
     setErrorMsg("");
@@ -223,7 +327,13 @@ export default function ReelsStudioConnect() {
     masterVideoUrlRef.current = null;
 
     try {
-      setGenerationStep(scriptMode === "custom_script" ? "Parsing custom screenplay into scenes…" : `Writing viral hook & ${durationSeconds}s script with AI…`);
+      setGenerationStep(
+        scriptMode === "custom_script"
+          ? "Parsing custom screenplay into scenes…"
+          : scriptMode === "product_promo"
+          ? `Directing ${durationSeconds}s commercial ad for ${brandName || "your brand"}…`
+          : `Writing viral hook & ${durationSeconds}s script with AI…`
+      );
       await new Promise((r) => setTimeout(r, 600));
 
       setGenerationStep("Generating neural voiceover & lip-sync timeline…");
@@ -231,15 +341,23 @@ export default function ReelsStudioConnect() {
 
       setGenerationStep("Dispatching reel render to Railway GPU worker...");
 
+      const effectiveTopic = topic.trim() || (brandName ? `${brandName} ${serviceToPromote}` : customScript.slice(0, 50));
+
       const res = await fetch("/api/video/dispatch", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           videoType: "reel",
           payload: {
-            topic: topic.trim() || customScript.slice(0, 50),
+            topic: effectiveTopic,
             customScript: customScript.trim(),
             scriptMode,
+            brandName: brandName.trim(),
+            serviceToPromote: serviceToPromote.trim(),
+            specialOffer: specialOffer.trim(),
+            promoAngle,
+            promoCTA: promoCTA.trim(),
+            websiteUrl: websiteUrl.trim(),
             durationSeconds,
             niche,
             language,
@@ -995,49 +1113,72 @@ export default function ReelsStudioConnect() {
           }}
         >
           <form onSubmit={handleGenerate}>
-            {/* SCRIPT CREATION MODE TOGGLE */}
+            {/* SCRIPT CREATION MODE TOGGLE (3 MODES) */}
             <div style={{ marginBottom: 18 }}>
               <label style={{ display: "block", fontSize: 12.5, fontWeight: 800, color: "#f8fafc", marginBottom: 8 }}>
-                ✍️ Reel Script Creation Method:
+                🎬 Reel Creation Method:
               </label>
-              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
+              <div style={{ display: "grid", gridTemplateColumns: "1fr 1.2fr 1fr", gap: 8 }}>
                 <button
                   type="button"
                   onClick={() => setScriptMode("ai_prompt")}
                   style={{
-                    padding: "10px 14px",
+                    padding: "10px 8px",
                     borderRadius: 10,
                     background: scriptMode === "ai_prompt" ? "rgba(99, 102, 241, 0.25)" : "rgba(255, 255, 255, 0.03)",
                     border: scriptMode === "ai_prompt" ? "2px solid #6366f1" : "1px solid rgba(255, 255, 255, 0.08)",
                     color: scriptMode === "ai_prompt" ? "#a5b4fc" : "#cbd5e1",
                     fontWeight: 800,
-                    fontSize: 12.5,
+                    fontSize: 12,
                     cursor: "pointer",
                     display: "flex",
                     alignItems: "center",
                     justifyContent: "center",
-                    gap: 8,
+                    gap: 5,
                     transition: "all 0.2s ease",
                   }}
                 >
-                  <span>✨ AI Script Generator</span>
+                  <span>✨ Viral Hook</span>
                 </button>
+
+                <button
+                  type="button"
+                  onClick={() => setScriptMode("product_promo")}
+                  style={{
+                    padding: "10px 8px",
+                    borderRadius: 10,
+                    background: scriptMode === "product_promo" ? "rgba(245, 158, 11, 0.25)" : "rgba(255, 255, 255, 0.03)",
+                    border: scriptMode === "product_promo" ? "2px solid #f59e0b" : "1px solid rgba(255, 255, 255, 0.08)",
+                    color: scriptMode === "product_promo" ? "#fbbf24" : "#cbd5e1",
+                    fontWeight: 800,
+                    fontSize: 12,
+                    cursor: "pointer",
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "center",
+                    gap: 5,
+                    transition: "all 0.2s ease",
+                  }}
+                >
+                  <span>🚀 Promote Product/Service</span>
+                </button>
+
                 <button
                   type="button"
                   onClick={() => setScriptMode("custom_script")}
                   style={{
-                    padding: "10px 14px",
+                    padding: "10px 8px",
                     borderRadius: 10,
                     background: scriptMode === "custom_script" ? "rgba(236, 72, 153, 0.25)" : "rgba(255, 255, 255, 0.03)",
                     border: scriptMode === "custom_script" ? "2px solid #ec4899" : "1px solid rgba(255, 255, 255, 0.08)",
                     color: scriptMode === "custom_script" ? "#f472b6" : "#cbd5e1",
                     fontWeight: 800,
-                    fontSize: 12.5,
+                    fontSize: 12,
                     cursor: "pointer",
                     display: "flex",
                     alignItems: "center",
                     justifyContent: "center",
-                    gap: 8,
+                    gap: 5,
                     transition: "all 0.2s ease",
                   }}
                 >
@@ -1046,8 +1187,262 @@ export default function ReelsStudioConnect() {
               </div>
             </div>
 
-            {/* SCRIPT OR TOPIC INPUT */}
-            {scriptMode === "custom_script" ? (
+            {/* SCRIPT / COMMERCIAL AD BUILDER CONTENT */}
+            {scriptMode === "product_promo" ? (
+              <div
+                style={{
+                  background: "rgba(245, 158, 11, 0.05)",
+                  border: "1px solid rgba(245, 158, 11, 0.25)",
+                  borderRadius: 14,
+                  padding: 16,
+                  marginBottom: 18,
+                }}
+              >
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 12 }}>
+                  <div style={{ fontWeight: 800, fontSize: 13.5, color: "#fbbf24", display: "flex", alignItems: "center", gap: 6 }}>
+                    <span>📢 Commercial Promo & Business Ad Configurator</span>
+                  </div>
+                  <span style={{ fontSize: 10.5, fontWeight: 700, padding: "2px 8px", borderRadius: 6, background: "rgba(245, 158, 11, 0.2)", color: "#fef08a" }}>
+                    ⭐ Business Ads
+                  </span>
+                </div>
+
+                {/* Website URL (Optional Auto-Scanner) */}
+                <div style={{ marginBottom: 12 }}>
+                  <label style={{ display: "block", fontSize: 11.5, fontWeight: 700, color: "#cbd5e1", marginBottom: 4 }}>
+                    🌐 Website / Landing Page (Optional):
+                  </label>
+                  <input
+                    type="url"
+                    placeholder="https://yourbusiness.com"
+                    value={websiteUrl}
+                    onChange={(e) => setWebsiteUrl(e.target.value)}
+                    style={{
+                      width: "100%",
+                      boxSizing: "border-box",
+                      padding: "8px 12px",
+                      borderRadius: 8,
+                      background: "rgba(0, 0, 0, 0.4)",
+                      border: "1px solid rgba(255, 255, 255, 0.12)",
+                      color: "#fff",
+                      fontSize: 12.5,
+                      outline: "none",
+                    }}
+                  />
+                </div>
+
+                {/* Brand Name & Product/Service Grid */}
+                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10, marginBottom: 12 }}>
+                  <div>
+                    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 4 }}>
+                      <label style={{ fontSize: 11.5, fontWeight: 700, color: "#cbd5e1" }}>
+                        🏢 Brand Name to Speak Out:
+                      </label>
+                    </div>
+                    <input
+                      type="text"
+                      placeholder="e.g. Apex Digital, Sharma Clinic"
+                      value={brandName}
+                      onChange={(e) => setBrandName(e.target.value)}
+                      style={{
+                        width: "100%",
+                        boxSizing: "border-box",
+                        padding: "8px 12px",
+                        borderRadius: 8,
+                        background: "rgba(0, 0, 0, 0.4)",
+                        border: "1px solid rgba(255, 255, 255, 0.12)",
+                        color: "#fff",
+                        fontSize: 12.5,
+                        outline: "none",
+                      }}
+                    />
+                    <div style={{ fontSize: 10, color: "#94a3b8", marginTop: 3 }}>
+                      🗣️ Characters speak this name out loud!
+                    </div>
+                  </div>
+
+                  <div>
+                    <label style={{ display: "block", fontSize: 11.5, fontWeight: 700, color: "#cbd5e1", marginBottom: 4 }}>
+                      🎯 Product or Service to Promote:
+                    </label>
+                    <input
+                      type="text"
+                      placeholder="e.g. Google Ads & SEO, Teeth Whitening"
+                      value={serviceToPromote}
+                      onChange={(e) => setServiceToPromote(e.target.value)}
+                      style={{
+                        width: "100%",
+                        boxSizing: "border-box",
+                        padding: "8px 12px",
+                        borderRadius: 8,
+                        background: "rgba(0, 0, 0, 0.4)",
+                        border: "1px solid rgba(255, 255, 255, 0.12)",
+                        color: "#fff",
+                        fontSize: 12.5,
+                        outline: "none",
+                      }}
+                    />
+                  </div>
+                </div>
+
+                {/* Special Offer & CTA */}
+                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10, marginBottom: 14 }}>
+                  <div>
+                    <label style={{ display: "block", fontSize: 11.5, fontWeight: 700, color: "#cbd5e1", marginBottom: 4 }}>
+                      🎁 Special Deal / Limited Offer:
+                    </label>
+                    <input
+                      type="text"
+                      placeholder="e.g. Flat 40% Off this week, Free Audit"
+                      value={specialOffer}
+                      onChange={(e) => setSpecialOffer(e.target.value)}
+                      style={{
+                        width: "100%",
+                        boxSizing: "border-box",
+                        padding: "8px 12px",
+                        borderRadius: 8,
+                        background: "rgba(0, 0, 0, 0.4)",
+                        border: "1px solid rgba(255, 255, 255, 0.12)",
+                        color: "#fff",
+                        fontSize: 12.5,
+                        outline: "none",
+                      }}
+                    />
+                  </div>
+
+                  <div>
+                    <label style={{ display: "block", fontSize: 11.5, fontWeight: 700, color: "#cbd5e1", marginBottom: 4 }}>
+                      ⚡ Call To Action (CTA):
+                    </label>
+                    <input
+                      type="text"
+                      placeholder="e.g. Click link in bio to book"
+                      value={promoCTA}
+                      onChange={(e) => setPromoCTA(e.target.value)}
+                      style={{
+                        width: "100%",
+                        boxSizing: "border-box",
+                        padding: "8px 12px",
+                        borderRadius: 8,
+                        background: "rgba(0, 0, 0, 0.4)",
+                        border: "1px solid rgba(255, 255, 255, 0.12)",
+                        color: "#fff",
+                        fontSize: 12.5,
+                        outline: "none",
+                      }}
+                    />
+                  </div>
+                </div>
+
+                {/* Promotional Angle Selector (3 Cards) */}
+                <div style={{ marginBottom: 14 }}>
+                  <label style={{ display: "block", fontSize: 11.5, fontWeight: 700, color: "#cbd5e1", marginBottom: 6 }}>
+                    🎭 Promotional Angle & Dialogue Style:
+                  </label>
+                  <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 8 }}>
+                    {[
+                      {
+                        id: "founder_pitch",
+                        icon: "⚡",
+                        title: "Owner / Founder Pitch",
+                        desc: "Excited founder presents USPs, transformation, and deal directly into camera.",
+                      },
+                      {
+                        id: "customer_owner_skit",
+                        icon: "🗣️",
+                        title: "Customer & Owner Skit",
+                        desc: "Customer shares real problem -> Owner introduces brand solution & special offer.",
+                      },
+                      {
+                        id: "direct_response",
+                        icon: "🎯",
+                        title: "Persuasive Direct Ad",
+                        desc: "High-converting urgency hook, benefits, proof, and immediate call to action.",
+                      },
+                    ].map((ang) => (
+                      <button
+                        key={ang.id}
+                        type="button"
+                        onClick={() => setPromoAngle(ang.id)}
+                        style={{
+                          padding: "8px 10px",
+                          borderRadius: 8,
+                          background: promoAngle === ang.id ? "rgba(245, 158, 11, 0.25)" : "rgba(0, 0, 0, 0.3)",
+                          border: promoAngle === ang.id ? "2px solid #f59e0b" : "1px solid rgba(255, 255, 255, 0.08)",
+                          color: promoAngle === ang.id ? "#fbbf24" : "#cbd5e1",
+                          textAlign: "left",
+                          cursor: "pointer",
+                          transition: "all 0.2s ease",
+                        }}
+                      >
+                        <div style={{ fontWeight: 800, fontSize: 11.5, marginBottom: 3 }}>
+                          {ang.icon} {ang.title}
+                        </div>
+                        <div style={{ fontSize: 9.5, color: "#94a3b8", lineHeight: 1.3 }}>
+                          {ang.desc}
+                        </div>
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                {/* Instant Craft Screenplay Button */}
+                <div style={{ display: "flex", gap: 8, marginBottom: 12 }}>
+                  <button
+                    type="button"
+                    disabled={generatingPromoScript}
+                    onClick={handleGeneratePromoScript}
+                    style={{
+                      flex: 1,
+                      padding: "9px 14px",
+                      borderRadius: 8,
+                      background: "linear-gradient(135deg, #f59e0b 0%, #d97706 100%)",
+                      border: "none",
+                      color: "#000",
+                      fontWeight: 800,
+                      fontSize: 12,
+                      cursor: generatingPromoScript ? "not-allowed" : "pointer",
+                      display: "flex",
+                      alignItems: "center",
+                      justifyContent: "center",
+                      gap: 6,
+                    }}
+                  >
+                    <span>{generatingPromoScript ? "⏳ Crafting Commercial Script..." : "✨ Craft Promotional Script with AI"}</span>
+                  </button>
+                </div>
+
+                {/* Screenplay Preview / Edit Box */}
+                {customScript && (
+                  <div>
+                    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 6 }}>
+                      <label style={{ fontSize: 11.5, fontWeight: 700, color: "#10b981" }}>
+                        ✓ Screenplay Preview (Editable):
+                      </label>
+                      <span style={{ fontSize: 10, color: "#94a3b8" }}>Characters speak this verbatim</span>
+                    </div>
+                    <textarea
+                      rows={4}
+                      value={customScript}
+                      onChange={(e) => setCustomScript(e.target.value)}
+                      style={{
+                        width: "100%",
+                        boxSizing: "border-box",
+                        padding: "10px 12px",
+                        borderRadius: 8,
+                        background: "rgba(0, 0, 0, 0.6)",
+                        border: "1px solid rgba(16, 185, 129, 0.4)",
+                        color: "#fff",
+                        fontSize: 12.5,
+                        outline: "none",
+                        resize: "vertical",
+                        lineHeight: 1.45,
+                      }}
+                    />
+                  </div>
+                )}
+              </div>
+            ) : scriptMode === "custom_script" ? (
               <div style={{ marginBottom: 18 }}>
                 <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 8 }}>
                   <label style={{ fontSize: 13, fontWeight: 700, color: "#f472b6" }}>
@@ -1057,7 +1452,7 @@ export default function ReelsStudioConnect() {
                 </div>
                 <textarea
                   rows={5}
-                  placeholder={`Paste your exact script or lines here.\nExample:\nScene 1: क्या आप भी अपने बिज़नेस में वही पुरानी गलतियाँ कर रहे हैं?\nScene 2: Google Ads और SEO का सही बैलेंस आपके सेल्स को 10x कर सकता है!\nScene 3: लिंक पर क्लिक करें और आज ही अपना फ्री ऑडिट बुक करें।`}
+                  placeholder={CUSTOM_SCRIPT_PLACEHOLDERS[language] || CUSTOM_SCRIPT_PLACEHOLDERS.en_uk}
                   value={customScript}
                   onChange={(e) => setCustomScript(e.target.value)}
                   style={{
@@ -1085,7 +1480,13 @@ export default function ReelsStudioConnect() {
                 </label>
                 <textarea
                   rows={3}
-                  placeholder="e.g. 3 Proven secrets to 10x your Shopify sales this month..."
+                  placeholder={
+                    language === "en_uk"
+                      ? "e.g. 3 Secrets to scale your bespoke e-commerce store in the UK..."
+                      : language === "hindi"
+                      ? "e.g. 2026 में अपने ऑनलाइन स्टोर की सेल्स 10x कैसे बढ़ाएं..."
+                      : "e.g. 3 Proven secrets to 10x your Shopify sales this month..."
+                  }
                   value={topic}
                   onChange={(e) => setTopic(e.target.value)}
                   style={{
@@ -1101,9 +1502,9 @@ export default function ReelsStudioConnect() {
                     resize: "vertical",
                   }}
                 />
-                {/* Quick Inspiration Pills */}
+                {/* Quick Inspiration Pills (Language-Aware) */}
                 <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginTop: 8 }}>
-                  {QUICK_TOPICS.map((t, idx) => (
+                  {(QUICK_TOPICS[language] || QUICK_TOPICS.en_uk).map((t, idx) => (
                     <button
                       type="button"
                       key={idx}
@@ -1118,7 +1519,7 @@ export default function ReelsStudioConnect() {
                         cursor: "pointer",
                       }}
                     >
-                      💡 {t.slice(0, 32)}…
+                      💡 {t.slice(0, 34)}…
                     </button>
                   ))}
                 </div>
@@ -1154,7 +1555,7 @@ export default function ReelsStudioConnect() {
               </div>
             </div>
 
-            {/* 3-Language Selector */}
+            {/* 3-Language Selector (Syncs Voices and Placeholders) */}
             <div style={{ marginBottom: 18 }}>
               <label style={{ display: "block", fontSize: 12.5, fontWeight: 800, color: "#f8fafc", marginBottom: 8 }}>
                 🗣️ Spoken Language & Voiceover Accent:
@@ -1162,7 +1563,7 @@ export default function ReelsStudioConnect() {
               <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 10 }}>
                 <button
                   type="button"
-                  onClick={() => setLanguage("hindi")}
+                  onClick={() => handleLanguageChange("hindi")}
                   style={{
                     padding: "9px 8px",
                     borderRadius: 10,
@@ -1184,7 +1585,7 @@ export default function ReelsStudioConnect() {
 
                 <button
                   type="button"
-                  onClick={() => setLanguage("en_us")}
+                  onClick={() => handleLanguageChange("en_us")}
                   style={{
                     padding: "9px 8px",
                     borderRadius: 10,
@@ -1206,7 +1607,7 @@ export default function ReelsStudioConnect() {
 
                 <button
                   type="button"
-                  onClick={() => setLanguage("en_uk")}
+                  onClick={() => handleLanguageChange("en_uk")}
                   style={{
                     padding: "9px 8px",
                     borderRadius: 10,
@@ -1228,7 +1629,7 @@ export default function ReelsStudioConnect() {
               </div>
             </div>
 
-            {/* Customization Grid: Niche, Voice, Music */}
+            {/* Customization Grid: Niche, Language-Aware Voice, Music */}
             <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(140px, 1fr))", gap: 12, marginBottom: 20 }}>
               <div>
                 <label style={{ display: "block", fontSize: 12, fontWeight: 700, color: "#cbd5e1", marginBottom: 6 }}>
@@ -1257,7 +1658,7 @@ export default function ReelsStudioConnect() {
 
               <div>
                 <label style={{ display: "block", fontSize: 12, fontWeight: 700, color: "#cbd5e1", marginBottom: 6 }}>
-                  AI Voice:
+                  AI Voice ({language === "en_uk" ? "British UK" : language === "en_us" ? "American US" : "Indian Hindi"}):
                 </label>
                 <select
                   value={voice}
@@ -1272,11 +1673,11 @@ export default function ReelsStudioConnect() {
                     fontSize: 12.5,
                   }}
                 >
-                  <option value="alloy">Alloy (Natural Hindi & Bilingual - Crisp)</option>
-                  <option value="nova">Nova (Energetic Female)</option>
-                  <option value="onyx">Onyx (Deep Authoritative Male)</option>
-                  <option value="shimmer">Shimmer (Expressive Warm Female)</option>
-                  <option value="fable">Fable (British Narrator)</option>
+                  {(VOICES_BY_LANG[language] || VOICES_BY_LANG.en_uk).map((v) => (
+                    <option key={v.id} value={v.id}>
+                      {v.name}
+                    </option>
+                  ))}
                 </select>
               </div>
 

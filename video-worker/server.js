@@ -1004,7 +1004,13 @@ async function processReelVideo(job, jobDir) {
   const {
     topic = "Viral Social Reel",
     customScript = "",
-    scriptMode = "ai_prompt",
+    scriptMode = "ai_prompt", // "ai_prompt" | "product_promo" | "custom_script"
+    brandName = "",
+    serviceToPromote = "",
+    specialOffer = "",
+    promoAngle = "founder_pitch", // "founder_pitch" | "customer_owner_skit" | "direct_response"
+    promoCTA = "Click the link in bio",
+    websiteUrl = "",
     selectedStyle = "talking_avatar", // "talking_avatar" | "generative_cinematic" | "motion_broll"
     language = "hindi",
     voice = "alloy",
@@ -1018,7 +1024,7 @@ async function processReelVideo(job, jobDir) {
 
   job.progress = 10;
   job.stage = `Generating ~${targetSecs}s viral reel script...`;
-  log(job.id, `Starting dedicated fast Reel pipeline (${targetSecs}s) [Style: ${selectedStyle}, Lang: ${language}]`);
+  log(job.id, `Starting dedicated fast Reel pipeline (${targetSecs}s) [Style: ${selectedStyle}, Lang: ${language}, Mode: ${scriptMode}]`);
 
   const hasCustomScript = !!(customScript && customScript.trim());
   let reelScript = null;
@@ -1030,7 +1036,7 @@ async function processReelVideo(job, jobDir) {
     const secPerScene = Math.round((targetSecs / numScenes) * 10) / 10;
 
     reelScript = {
-      title: topic || "Custom Reel Masterpiece",
+      title: topic || (brandName ? `${brandName} Promo` : "Custom Reel Masterpiece"),
       fullScript: customScript,
       scenes: lines.slice(0, 3).map((line, idx) => ({
         sceneNumber: idx + 1,
@@ -1040,12 +1046,90 @@ async function processReelVideo(job, jobDir) {
         duration: secPerScene,
       }))
     };
+  } else if (scriptMode === "product_promo") {
+    log(job.id, `Generating Commercial Promotional Reel for Brand: "${brandName}", Service: "${serviceToPromote}", Offer: "${specialOffer}", Angle: "${promoAngle}"`);
+    let langRule = "Language: American English. Dynamic, high-converting commercial direct response tone.";
+    if (language === "hindi") {
+      langRule = "Language: Hindi. CRITICAL: Spoken text in 'spokenAudio' MUST be written in natural, conversational Devanagari script (हिंदी) with authentic colloquial vocabulary so OpenAI TTS speaks with natural Indian pronunciation without American accent!";
+    } else if (language === "en_uk") {
+      langRule = "Language: British English. Refined, eloquent British cadence and vocabulary (e.g., bespoke, whilst, enquire, complimentary). Absolutely NO American slang.";
+    }
+
+    let angleRule = "";
+    if (promoAngle === "customer_owner_skit") {
+      angleRule = `PROMOTIONAL ANGLE: Customer & Owner Conversation (2-Character Skit)
+- Scene 1 (Customer Problem): The customer complains about a real frustration or problem.
+- Scene 2 (Owner Solution): The business owner introduces "${brandName || "our brand"}" and how "${serviceToPromote || "our signature service"}" solves it effortlessly.
+- Scene 3 (Urgency Offer & CTA): The owner announces the special deal: "${specialOffer || "exclusive promotion"}" and CTA: "${promoCTA}".`;
+    } else if (promoAngle === "founder_pitch") {
+      angleRule = `PROMOTIONAL ANGLE: Excited Founder / Owner Direct Pitch
+- The charismatic business owner speaks directly to camera with high passion.
+- Scene 1: Hook calling out the customer's costly mistake or problem.
+- Scene 2: The breakthrough: Introduces "${brandName || "our company"}" and how "${serviceToPromote || "our service"}" transforms results.
+- Scene 3: Unbeatable offer: "${specialOffer || "limited-time offer"}" + Urgency CTA: "${promoCTA}".`;
+    } else {
+      angleRule = `PROMOTIONAL ANGLE: High-Converting Direct Response Commercial Ad
+- Scene 1: Pattern interrupt hook targeting the prospect's immediate pain.
+- Scene 2: Clear value: Why "${brandName || "our team"}" delivers 10x better results with "${serviceToPromote || "our solution"}".
+- Scene 3: Scarcity deal: "${specialOffer || "special deal"}" + Action CTA: "${promoCTA}".`;
+    }
+
+    const promoPrompt = `You are an elite commercial video director creating a high-converting ${targetSecs}-second vertical promo ad for Instagram Reels, TikTok, and YouTube Shorts.
+Brand Name: "${brandName || "Our Brand"}"
+Product / Service: "${serviceToPromote || "Premium Services"}"
+Special Offer: "${specialOffer || "Exclusive Limited-Time Deal"}"
+Call to Action: "${promoCTA}"
+${langRule}
+${angleRule}
+
+Requirements:
+- Exactly 3 sequential scenes totaling ~${targetSecs} seconds:
+  1. Scene 1 (Hook / Problem, 0-5s)
+  2. Scene 2 (Solution & Brand Name, 5-10s) - MUST speak brand name "${brandName || "Our Brand"}"
+  3. Scene 3 (Offer & CTA, 10-15s) - MUST announce offer "${specialOffer}" and CTA "${promoCTA}"
+- Total spoken words: between 30 and 45 words total (natural speaking pace).
+- Return ONLY valid JSON:
+{
+  "title": "${brandName || "Special"} Promo Reel",
+  "fullScript": "Complete voiceover text",
+  "scenes": [
+    {
+      "sceneNumber": 1,
+      "text": "Spoken line for scene 1",
+      "spokenAudio": "Exact spoken line in Devanagari Hindi if Hindi",
+      "visualPrompt": "Vertical 9:16 cinematic portrait of speaker looking into camera, professional studio lighting",
+      "searchQuery": "business product advertisement"
+    },
+    {
+      "sceneNumber": 2,
+      "text": "Spoken line for scene 2",
+      "spokenAudio": "Exact spoken line in Devanagari Hindi if Hindi",
+      "visualPrompt": "Vertical 9:16 cinematic close-up of speaker confidently explaining solution",
+      "searchQuery": "entrepreneur presentation"
+    },
+    {
+      "sceneNumber": 3,
+      "text": "Spoken line for scene 3",
+      "spokenAudio": "Exact spoken line in Devanagari Hindi if Hindi",
+      "visualPrompt": "Vertical 9:16 cinematic portrait of speaker smiling with compelling gesture",
+      "searchQuery": "special offer announcement"
+    }
+  ]
+}`;
+
+    const completion = await openai.chat.completions.create({
+      model: "gpt-4o",
+      temperature: 0.7,
+      response_format: { type: "json_object" },
+      messages: [{ role: "system", content: promoPrompt }],
+    });
+    reelScript = JSON.parse(completion.choices[0].message.content);
   } else {
     let langRule = "Language: American English. Dynamic, viral short-form social media tone.";
     if (language === "hindi") {
       langRule = "Language: Hindi. CRITICAL: Spoken text in 'spokenAudio' MUST be written in natural, conversational Devanagari script (हिंदी) with authentic colloquial vocabulary so OpenAI TTS speaks with natural Indian pronunciation without American accent!";
     } else if (language === "en_uk") {
-      langRule = "Language: British English. Eloquent, crisp tone.";
+      langRule = "Language: British English. Refined, eloquent British cadence and vocabulary (e.g. bespoke, whilst, enquire, complimentary). Absolutely NO American slang.";
     }
 
     const scriptPrompt = `You are a viral social media director creating a ${targetSecs}-second vertical video reel for Instagram Reels, YouTube Shorts, and TikTok.
@@ -1101,8 +1185,10 @@ Requirements:
   job.stage = "Synthesizing studio voiceover audio with tts-1-hd...";
   log(job.id, `Synthesizing audio with voice: ${voice} (Lang: ${language})`);
 
-  let ttsVoice = voice || "alloy";
-  if (language === "hindi" && !["alloy", "nova", "onyx", "shimmer"].includes(ttsVoice.toLowerCase())) {
+  let ttsVoice = voice || (language === "en_uk" ? "fable" : "alloy");
+  if (language === "en_uk" && ttsVoice.toLowerCase() === "alloy") {
+    ttsVoice = "fable";
+  } else if (language === "hindi" && !["alloy", "nova", "onyx", "shimmer"].includes(ttsVoice.toLowerCase())) {
     ttsVoice = "alloy";
   }
 
