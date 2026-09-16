@@ -685,9 +685,8 @@ Return ONLY valid JSON in this exact structure:
       gender: c.gender || "male",
       voice: resolveVoice(c),
       traits: c.traits || "expressive cinematic character",
-      archetype: "photoreal_human",
+      archetype: visualEngine || "photoreal_human",
     }));
-    log(job.id, `Dynamically casted ${activeCharacters.length} custom characters: ${activeCharacters.map(c => `${c.name} (${c.gender}, voice: ${c.voice})`).join(", ")}`);
   } else if (activeCharacters.length === 0) {
     // Fallback if model omitted characters array
     activeCharacters = [
@@ -696,29 +695,69 @@ Return ONLY valid JSON in this exact structure:
     ];
   }
 
+  // CRITICAL MULTI-CHARACTER RULE:
+  // Guarantee that Character 1 and Character 2 have completely different, contrasting voices!
+  const maleVoiceList = ["onyx", "echo", "ash", "alloy"];
+  const femaleVoiceList = ["shimmer", "nova", "coral"];
+  let mVoiceIdx = 0, fVoiceIdx = 0;
+
+  activeCharacters.forEach((c, idx) => {
+    const isFemale = c.gender === "female" || /\b(woman|girl|lady|female|queen|mother|sister|she|her)\b/i.test(`${c.name} ${c.traits}`);
+    c.gender = isFemale ? "female" : "male";
+    if (isFemale) {
+      c.voice = femaleVoiceList[fVoiceIdx % femaleVoiceList.length];
+      fVoiceIdx++;
+    } else {
+      c.voice = maleVoiceList[mVoiceIdx % maleVoiceList.length];
+      mVoiceIdx++;
+    }
+    log(job.id, `Cast Character [${idx + 1}]: "${c.name}" (${c.gender}) -> Voice: "${c.voice}"`);
+  });
+
+  // CRITICAL SCRIPT NORMALIZATION:
+  // In Movie / Skit Dialogue mode, NEVER allow "Narrator" or "b_roll" to take over the audio!
+  // Force alternating dialogue between the cast characters!
+  if (storyStyle === "movie_dialogue") {
+    script.scenes.forEach((sc, idx) => {
+      sc.type = "dialogue";
+      const isBadSpeaker = !sc.speaker || sc.speaker.toLowerCase().includes("narrator") || sc.speaker.toLowerCase().includes("voiceover");
+      if (isBadSpeaker) {
+        const assignedChar = activeCharacters[idx % activeCharacters.length];
+        sc.speaker = assignedChar.name;
+      }
+    });
+  }
+
   // Step 2: Multi-Character Voiceover Synthesis
   job.progress = 30;
   job.stage = "Synthesizing multi-character voice acting via OpenAI TTS...";
-  log(job.id, `Synthesizing ${script.scenes.length} audio tracks with distinct voices...`);
+  log(job.id, `Synthesizing ${script.scenes.length} audio tracks with distinct character voices...`);
 
   const audioFiles = [];
   for (let i = 0; i < script.scenes.length; i++) {
     const scene = script.scenes[i];
-    let voice = "fable"; // Default narrator voice
-    const isNarrator = !scene.speaker || scene.speaker.toLowerCase() === "narrator" || scene.type === "b_roll";
+    let voice = "onyx";
+    let isNarrator = false;
 
-    if (!isNarrator) {
-      const charObj = activeCharacters.find(c => c.name.toLowerCase() === (scene.speaker || "").toLowerCase());
-      if (charObj) {
-        voice = resolveVoice(charObj);
-      } else {
-        voice = resolveVoice(activeCharacters[i % activeCharacters.length]);
-      }
+    if (storyStyle !== "movie_dialogue" && (!scene.speaker || scene.speaker.toLowerCase() === "narrator" || scene.type === "b_roll")) {
+      isNarrator = true;
+      voice = language === "hindi" ? "alloy" : "fable";
+    } else {
+      // Find exact character
+      const speakerClean = (scene.speaker || "").toLowerCase().trim();
+      const charObj = activeCharacters.find(c => c.name.toLowerCase().trim() === speakerClean)
+        || activeCharacters.find(c => speakerClean.includes(c.name.toLowerCase().trim()))
+        || activeCharacters[i % activeCharacters.length];
+
+      voice = charObj.voice || (charObj.gender === "female" ? "shimmer" : "onyx");
+      scene.speaker = charObj.name;
     }
 
     const spokenText = scene.spokenAudio || scene.narration || scene.text || "Dramatic cinematic unfolding";
-    job.stage = `Recording ${isNarrator ? "Narrator" : scene.speaker} (${i + 1}/${script.scenes.length})...`;
-    job.progress = 30 + Math.round((i / script.scenes.length) * 25); // 30% to 55%
+    job.stage = `Recording ${isNarrator ? "Narrator" : scene.speaker} (${i + 1}/${script.scenes.length}) [Voice: ${voice}]...`;
+    job.progress = 30 + Math.round((i / script.scenes.length) * 25);
+
+    log(job.id, `Recording Scene ${i + 1}: Speaker="${isNarrator ? "Narrator" : scene.speaker}" | Voice="${voice}" | Text="${spokenText.slice(0, 40)}..."`);
 
     const mp3Response = await openai.audio.speech.create({
       model: "tts-1-hd",
@@ -805,7 +844,7 @@ Return ONLY valid JSON in this exact structure:
       }
 
       // Check Scene Type & Animation Mode
-      const isDialogueScene = (scene.type === "dialogue") && !isNarrator;
+      const isDialogueScene = (storyStyle === "movie_dialogue") || ((scene.type === "dialogue") && !isNarrator);
 
       // 1. DIALOGUE LIP-SYNC: Whenever a character speaks dialogue, run GPU Lip-Sync with GFPGAN enhancer!
       // This ensures characters visibly speak, move lips and eyes in sync with voiceover!
