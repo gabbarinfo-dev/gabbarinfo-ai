@@ -349,6 +349,132 @@ async function generateGenerativeClip({ prompt, isWidescreen, jobId }) {
   throw new Error("Generative Video prediction timed out after 240s");
 }
 
+async function generateMinimaxVideo({ prompt, firstFrameUrl, isWidescreen, jobId }) {
+  const token = process.env.REPLICATE_API_TOKEN;
+  if (!token) throw new Error("Missing REPLICATE_API_TOKEN in environment variables");
+
+  log(jobId, `Dispatching Minimax Video-01 (Higgsfield/Hailuo class) to Replicate...`);
+  const aspectDesc = isWidescreen ? "16:9 cinematic widescreen landscape" : "9:16 vertical cinema reel";
+  const cleanPrompt = `${prompt}, ${aspectDesc}, cinematic lighting, photorealistic 8k, fluid physical motion, moving elements, masterpiece`;
+
+  const inputPayload = {
+    prompt: cleanPrompt,
+    prompt_optimizer: true,
+  };
+  if (firstFrameUrl) {
+    inputPayload.first_frame_image = firstFrameUrl;
+  }
+
+  const createRes = await fetch("https://api.replicate.com/v1/models/minimax/video-01/predictions", {
+    method: "POST",
+    headers: {
+      Authorization: `Token ${token}`,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({ input: inputPayload }),
+  });
+
+  if (!createRes.ok) {
+    const errText = await createRes.text();
+    throw new Error(`Minimax Video start error: ${errText}`);
+  }
+
+  const prediction = await createRes.json();
+  const pollUrl = prediction.urls?.get;
+
+  const startTime = Date.now();
+  while ((Date.now() - startTime) < 300000) {
+    await new Promise((r) => setTimeout(r, 6000));
+    const statusRes = await fetch(pollUrl, {
+      headers: { Authorization: `Token ${token}` },
+    });
+    if (!statusRes.ok) continue;
+    const statusData = await statusRes.json();
+    if (statusData.status === "succeeded") {
+      const out = Array.isArray(statusData.output) ? statusData.output[0] : statusData.output;
+      log(jobId, `Minimax Video-01 succeeded: ${out}`);
+      return out;
+    }
+    if (statusData.status === "failed" || statusData.status === "canceled") {
+      throw new Error(`Minimax Video failed: ${statusData.error || "Unknown error"}`);
+    }
+  }
+  throw new Error("Minimax Video prediction timed out after 300s");
+}
+
+async function generateWanVideo({ prompt, isWidescreen, jobId }) {
+  const token = process.env.REPLICATE_API_TOKEN;
+  if (!token) throw new Error("Missing REPLICATE_API_TOKEN in environment variables");
+
+  log(jobId, `Dispatching Wan 2.1 Video prediction to Replicate...`);
+  const aspectDesc = isWidescreen ? "16:9" : "9:16";
+
+  const createRes = await fetch("https://api.replicate.com/v1/models/wan-video/wan-2.1-1.3b/predictions", {
+    method: "POST",
+    headers: {
+      Authorization: `Token ${token}`,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({
+      input: {
+        prompt: `${prompt}, cinematic lighting, photorealistic 8k, fluid motion, atmospheric depth`,
+        aspect_ratio: aspectDesc,
+      },
+    }),
+  });
+
+  if (!createRes.ok) {
+    const errText = await createRes.text();
+    throw new Error(`Wan Video start error: ${errText}`);
+  }
+
+  const prediction = await createRes.json();
+  const pollUrl = prediction.urls?.get;
+
+  const startTime = Date.now();
+  while ((Date.now() - startTime) < 240000) {
+    await new Promise((r) => setTimeout(r, 4000));
+    const statusRes = await fetch(pollUrl, {
+      headers: { Authorization: `Token ${token}` },
+    });
+    if (!statusRes.ok) continue;
+    const statusData = await statusRes.json();
+    if (statusData.status === "succeeded") {
+      const out = Array.isArray(statusData.output) ? statusData.output[0] : statusData.output;
+      log(jobId, `Wan 2.1 Video succeeded: ${out}`);
+      return out;
+    }
+    if (statusData.status === "failed" || statusData.status === "canceled") {
+      throw new Error(`Wan Video failed: ${statusData.error || "Unknown error"}`);
+    }
+  }
+  throw new Error("Wan Video prediction timed out after 240s");
+}
+
+function resolveVoice(char) {
+  if (!char) return "onyx";
+  const voice = (char.voice || "").toLowerCase();
+  const nameAndTraits = `${char.name || ''} ${char.role || ''} ${char.traits || ''} ${char.visualTraits || ''} ${char.gender || ''}`.toLowerCase();
+  const isMale = (char.gender === "male") || /\b(man|boy|guy|male|explorer|father|brother|king|warrior|he|him)\b/i.test(nameAndTraits);
+  const isFemale = (char.gender === "female") || /\b(woman|girl|lady|female|queen|mother|sister|she|her)\b/i.test(nameAndTraits);
+
+  if (isMale) {
+    if (["nova", "shimmer", "coral", "alloy"].includes(voice)) {
+      return "onyx"; // Default authoritative male
+    }
+    return voice || "onyx";
+  }
+
+  if (isFemale) {
+    if (["onyx", "echo", "ash", "fable"].includes(voice)) {
+      return "shimmer"; // Default expressive female
+    }
+    return voice || "shimmer";
+  }
+
+  return voice || "onyx";
+}
+
 // -------------------------------------------------------------
 // Long-Form / Character Story Pipeline (1-5+ mins, GPU Video & Lip-Sync)
 // -------------------------------------------------------------
@@ -373,16 +499,19 @@ async function processLongFormYouTube(job, jobDir) {
   const isWidescreen = payload.format === "youtube_16_9";
 
   job.progress = 15;
-  job.stage = `Scriptwriting ~${durationMins} min storyline with GPT-4o...`;
-  log(job.id, `Generating story script (~${durationMins} min, ${targetTotalSecs}s) for "${videoTitle || episodeTitle || topic}" [Animation: ${animationStyle}]`);
+  job.stage = `Scriptwriting ~${durationMins} min screenplay with GPT-4o...`;
+  log(job.id, `Generating cinematic screenplay (~${durationMins} min, ${targetTotalSecs}s) for "${videoTitle || episodeTitle || topic}" [Animation: ${animationStyle}]`);
 
   // Default characters if not provided
-  const activeCharacters = characters.length >= 2 ? characters : (characters.length === 1 ? characters : [
-    { name: "Kabir", role: "Protagonist / Visionary", voice: "onyx", traits: "bold, confident, determined", archetype: "photoreal_human" },
-    { name: "Tara", role: "Companion / Strategist", voice: "shimmer", traits: "analytical, wise, caring", archetype: "photoreal_human" },
-  ]);
+  const activeCharacters = (characters && characters.length > 0) ? characters : [
+    { name: "Kabir", role: "Protagonist / Visionary", voice: "onyx", traits: "rugged Indian male explorer in adventure jacket", archetype: "photoreal_human", gender: "male" },
+    { name: "Tara", role: "Companion / Strategist", voice: "shimmer", traits: "sharp intelligent Indian female archaeologist", archetype: "photoreal_human", gender: "female" },
+  ];
 
-  const charListPrompt = activeCharacters.map(c => `- ${c.name} (${c.role || "Character"}): voice "${c.voice || "nova"}", traits: ${c.traits || c.visualTraits || "expressive"}`).join("\n");
+  const charDescriptions = activeCharacters.map((c, idx) => {
+    const v = resolveVoice(c);
+    return `Character ${idx + 1}: Name="${c.name}", Role="${c.role || "Character"}", Voice="${v}", Traits="${c.traits || c.visualTraits || "expressive"}"`;
+  }).join("\n");
 
   let numScenes = 4;
   if (durationMins >= 5) numScenes = 20;
@@ -407,18 +536,31 @@ async function processLongFormYouTube(job, jobDir) {
     audiencePrompt = "TARGET AUDIENCE: Adults & Mature Viewers. Tone: Deep cinematic narrative, intense emotional drama, sophisticated dialogues.";
   }
 
-  const systemPrompt = `You are a world-class cinematic screenplay director.
-You are writing a COMPLETE, start-to-end self-contained ${durationMins} minute dramatic story.
+  const systemPrompt = `You are a world-class Hollywood screenplay director and visual storyteller.
+You are writing a COMPLETE, start-to-end dramatic ${durationMins}-minute cinematic script.
 FORMAT: ${isWidescreen ? "16:9 Widescreen YouTube Cinematic Masterpiece" : "9:16 Vertical Smartphone Story / Social Reel"}.
 ${langInstruction}
 ${audiencePrompt}
-CHARACTERS:
-${charListPrompt}
 
-CRITICAL DURATION & DIALOGUE REQUIREMENTS:
+CHARACTERS IN STORY:
+${charDescriptions}
+- Narrator: Third-person cinematic narrator voiceover
+
+CRITICAL CINEMATIC STORYTELLING RULES (MANDATORY TO AVOID WEBCAM TALKING HEADS):
 1. Divide into exactly ${numScenes} sequential scenes.
-2. Each scene must feature dialogue/narration between 35 and 50 words in length, rich with dramatic emotion and vivid storytelling, so that each spoken line comfortably lasts ~${sceneTargetSecs} seconds to fill the complete ${durationMins}-minute story.
-3. Return ONLY valid JSON:
+2. DUAL SCENE TYPES (MANDATORY):
+   - "b_roll" (World Environment, Moving Action, Establishing Shots):
+     * Speaker MUST be "Narrator".
+     * Visual must describe the wide cinematic world in motion: e.g. moving cars on city streets, traffic, pedestrians, neon cityscapes, weather, flying vehicles, entering rooms, cinematic camera tracking.
+     * Character facial lip-sync is NOT used here. The narrator's voiceover plays over cinematic world B-roll!
+   - "dialogue" (Character Speaking Direct Spoken Lines):
+     * Speaker MUST be one of the active characters: ${activeCharacters.map(c => `"${c.name}"`).join(", ")}.
+     * Spoken audio MUST be in quotation marks as direct first-person dialogue spoken by that character (e.g. "तारा, वो देखो! पुराना दरवाज़ा खुला हुआ है!").
+     * Visual must describe that specific character in the scene, their facial expression, and their emotion.
+3. Every scene's narration / dialogue must be 35 to 50 words in length, rich with dramatic emotion, lasting ~${sceneTargetSecs} seconds to fill the complete ${durationMins}-minute story.
+4. Alternate rhythmically between "b_roll" (establishing the setting and action) and "dialogue" (characters talking to each other). If 2 or 3 characters are present, they must converse back and forth with distinct lines!
+
+Return ONLY valid JSON in this exact structure:
 {
   "title": "${videoTitle || episodeTitle || "Compelling Title"}",
   "youtubeTitle": "High CTR Title",
@@ -426,11 +568,21 @@ CRITICAL DURATION & DIALOGUE REQUIREMENTS:
   "scenes": [
     {
       "sceneNumber": 1,
+      "type": "b_roll",
+      "speaker": "Narrator",
+      "chapter": "Chapter Title",
+      "spokenAudio": "35 to 50 words of descriptive world narration by the narrator",
+      "visualDescription": "Detailed cinematic scene description of the world with motion (e.g. moving cars, city traffic, glowing cave, tracking camera, atmospheric lighting)",
+      "characterInVisual": "none"
+    },
+    {
+      "sceneNumber": 2,
+      "type": "dialogue",
       "speaker": "${activeCharacters[0].name}",
       "chapter": "Chapter Title",
-      "narration": "Rich expressive spoken dialogue (35 to 50 words)",
-      "visualDescription": "High-detail cinematic visual description of characters in setting",
-      "searchKeyword": "ambient setting keyword"
+      "spokenAudio": "\"Direct first-person dialogue in quotes spoken by this character (35 to 50 words)\"",
+      "visualDescription": "Detailed cinematic shot of ${activeCharacters[0].name} in the environment speaking with intense emotion",
+      "characterInVisual": "${activeCharacters[0].name}"
     }
   ]
 }`;
@@ -441,7 +593,7 @@ CRITICAL DURATION & DIALOGUE REQUIREMENTS:
     response_format: { type: "json_object" },
     messages: [
       { role: "system", content: systemPrompt },
-      { role: "user", content: `Write a complete ${durationMins} minute concluded story on topic: "${storyPrompt || videoTitle || topic}". Must have ${numScenes} scenes with 35-50 words per scene.` }
+      { role: "user", content: `Write a complete ${durationMins} minute concluded screenplay on topic: "${storyPrompt || videoTitle || topic}". Must have ${numScenes} scenes alternating between world b_roll and character dialogue.` }
     ],
   });
 
@@ -451,21 +603,31 @@ CRITICAL DURATION & DIALOGUE REQUIREMENTS:
   // Step 2: Multi-Character Voiceover Synthesis
   job.progress = 30;
   job.stage = "Synthesizing multi-character voice acting via OpenAI TTS...";
-  log(job.id, `Synthesizing ${script.scenes.length} dialogue tracks with distinct character voices...`);
+  log(job.id, `Synthesizing ${script.scenes.length} audio tracks with distinct voices...`);
 
   const audioFiles = [];
   for (let i = 0; i < script.scenes.length; i++) {
     const scene = script.scenes[i];
-    const charObj = activeCharacters.find(c => c.name.toLowerCase() === (scene.speaker || "").toLowerCase()) || activeCharacters[i % activeCharacters.length];
-    const voice = charObj.voice || "nova";
+    let voice = "fable"; // Default narrator voice
+    const isNarrator = !scene.speaker || scene.speaker.toLowerCase() === "narrator" || scene.type === "b_roll";
 
-    job.stage = `Recording dialogue: ${scene.speaker || "Character"} (${i + 1}/${script.scenes.length})...`;
+    if (!isNarrator) {
+      const charObj = activeCharacters.find(c => c.name.toLowerCase() === (scene.speaker || "").toLowerCase());
+      if (charObj) {
+        voice = resolveVoice(charObj);
+      } else {
+        voice = resolveVoice(activeCharacters[i % activeCharacters.length]);
+      }
+    }
+
+    const spokenText = scene.spokenAudio || scene.narration || scene.text || "Dramatic cinematic unfolding";
+    job.stage = `Recording ${isNarrator ? "Narrator" : scene.speaker} (${i + 1}/${script.scenes.length})...`;
     job.progress = 30 + Math.round((i / script.scenes.length) * 25); // 30% to 55%
 
     const mp3Response = await openai.audio.speech.create({
       model: "tts-1",
       voice,
-      input: scene.narration,
+      input: spokenText.replace(/^["']|["']$/g, ""),
       response_format: "mp3",
     });
 
@@ -483,7 +645,8 @@ CRITICAL DURATION & DIALOGUE REQUIREMENTS:
   const sceneVisuals = [];
   for (let i = 0; i < script.scenes.length; i++) {
     const scene = script.scenes[i];
-    job.stage = `Rendering scene ${i + 1}/${script.scenes.length}...`;
+    const isNarrator = !scene.speaker || scene.speaker.toLowerCase() === "narrator" || scene.type === "b_roll";
+    job.stage = `Rendering scene ${i + 1}/${script.scenes.length} [${isNarrator ? "World B-Roll" : `Character: ${scene.speaker}`}]...`;
     job.progress = 55 + Math.round((i / script.scenes.length) * 20); // 55% to 75%
 
     const imgPath = path.join(jobDir, `scene_${i}_visual.png`);
@@ -494,10 +657,11 @@ CRITICAL DURATION & DIALOGUE REQUIREMENTS:
       const aspectDesc = isWidescreen ? "16:9 widescreen YouTube format" : "vertical 9:16 smartphone format";
 
       let prompt = "";
-      if (isPhotoreal) {
-        prompt = `Cinematic ${aspectDesc} 35mm Hollywood film still photograph. ${scene.visualDescription}. Hyper-realistic living human characters, authentic skin pores, lifelike natural eyes with reflections, Arri Alexa Mini LF, 8k resolution, dramatic cinematic studio lighting, shallow depth of field. Zero cartoon or CGI plastic artifacts.`;
+      if (isNarrator) {
+        prompt = `Cinematic ${aspectDesc} 35mm Hollywood film still photograph. ${scene.visualDescription}. Atmospheric wide angle cinematic shot, environmental lighting, fluid depth of field, Arri Alexa Mini LF, 8k resolution, masterpiece.`;
       } else {
-        prompt = `Cinematic ${aspectDesc} movie still frame. ${scene.visualDescription}. Hyper-detailed, 8k resolution, dramatic cinematic lighting, rich colors, masterpiece.`;
+        const speakingChar = activeCharacters.find(c => c.name.toLowerCase() === (scene.speaker || "").toLowerCase()) || activeCharacters[0];
+        prompt = `Cinematic ${aspectDesc} movie still frame. ${scene.visualDescription}. Character: ${speakingChar.name}, ${speakingChar.traits || speakingChar.visualTraits || "detailed face"}. Hyper-realistic skin pores, expressive eyes, dramatic cinematic studio lighting, 8k resolution, shallow depth of field.`;
       }
 
       let imgGen;
@@ -528,45 +692,117 @@ CRITICAL DURATION & DIALOGUE REQUIREMENTS:
         throw new Error("No image data returned");
       }
 
-      // If Live Talking Lip-Sync requested, invoke SadTalker GPU
-      if (animationStyle === "live_talking_head") {
-        job.stage = `Generating AI talking lip-sync (${i + 1}/${script.scenes.length})...`;
-        try {
-          const audioPublicUrl = await uploadPublicFile(audioFiles[i], `speech_${job.id}_${i}.mp3`, "audio/mpeg");
-          const imgPublicUrl = await uploadPublicFile(imgPath, `char_${job.id}_${i}.png`, "image/png");
+      // Check Scene Type & Animation Mode
+      const isDialogueScene = (scene.type === "dialogue") && !isNarrator;
 
-          const talkingVideoUrl = await generateSadTalkerLipSync({
-            imageUrl: imgPublicUrl,
-            audioUrl: audioPublicUrl,
-            jobId: job.id,
-          });
+      // 1. Live Talking Head / Hybrid Lip-Sync:
+      // - Dialogue Scene: SadTalker lip-sync on the character delivering the dialogue line
+      // - B-Roll Scene: Cinematic World Video (moving cars, city, nature) with Narrator voiceover!
+      if (animationStyle === "live_talking_head" || animationStyle === "hybrid_lip_sync") {
+        if (isDialogueScene) {
+          job.stage = `Lip-syncing character dialogue for ${scene.speaker} (${i + 1}/${script.scenes.length})...`;
+          try {
+            const audioPublicUrl = await uploadPublicFile(audioFiles[i], `speech_${job.id}_${i}.mp3`, "audio/mpeg");
+            const imgPublicUrl = await uploadPublicFile(imgPath, `char_${job.id}_${i}.png`, "image/png");
 
-          const fetchVid = await fetch(talkingVideoUrl);
-          if (fetchVid.ok) {
-            fs.writeFileSync(vidPath, Buffer.from(await fetchVid.arrayBuffer()));
-            sceneVisuals.push({ type: "video", path: vidPath });
-            continue;
+            const talkingVideoUrl = await generateSadTalkerLipSync({
+              imageUrl: imgPublicUrl,
+              audioUrl: audioPublicUrl,
+              jobId: job.id,
+            });
+
+            const fetchVid = await fetch(talkingVideoUrl);
+            if (fetchVid.ok) {
+              fs.writeFileSync(vidPath, Buffer.from(await fetchVid.arrayBuffer()));
+              sceneVisuals.push({ type: "video", path: vidPath });
+              continue;
+            }
+          } catch (lipErr) {
+            log(job.id, `Lip-sync fallback for dialogue scene ${i}: ${lipErr.message}`);
           }
-        } catch (lipErr) {
-          log(job.id, `Lip-sync fallback for scene ${i}: ${lipErr.message}`);
+        } else {
+          // B-Roll Narrator Scene: Generate cinematic world video with moving cars, city, nature
+          job.stage = `Generating cinematic B-roll video (${i + 1}/${script.scenes.length})...`;
+          try {
+            let brollVideoUrl;
+            try {
+              const imgPublicUrl = await uploadPublicFile(imgPath, `frame_${job.id}_${i}.png`, "image/png");
+              brollVideoUrl = await generateMinimaxVideo({
+                prompt: scene.visualDescription,
+                firstFrameUrl: imgPublicUrl,
+                isWidescreen,
+                jobId: job.id,
+              });
+            } catch (mmErr) {
+              log(job.id, `Minimax fallback to Wan 2.1: ${mmErr.message}`);
+              try {
+                brollVideoUrl = await generateWanVideo({
+                  prompt: scene.visualDescription,
+                  isWidescreen,
+                  jobId: job.id,
+                });
+              } catch (wanErr) {
+                log(job.id, `Wan fallback to AnimateDiff: ${wanErr.message}`);
+                brollVideoUrl = await generateGenerativeClip({
+                  prompt: scene.visualDescription,
+                  isWidescreen,
+                  jobId: job.id,
+                });
+              }
+            }
+
+            if (brollVideoUrl) {
+              const fetchVid = await fetch(brollVideoUrl);
+              if (fetchVid.ok) {
+                fs.writeFileSync(vidPath, Buffer.from(await fetchVid.arrayBuffer()));
+                sceneVisuals.push({ type: "video", path: vidPath });
+                continue;
+              }
+            }
+          } catch (brollErr) {
+            log(job.id, `B-roll video fallback for scene ${i}: ${brollErr.message}`);
+          }
         }
       }
 
-      // If Generative AI Video requested, invoke AnimateDiff GPU
-      if (animationStyle === "generative_video") {
-        job.stage = `Rendering generative AI video (${i + 1}/${script.scenes.length})...`;
+      // 2. Generative AI Video (Higgsfield / Minimax / Runway style):
+      if (animationStyle === "generative_video" || animationStyle === "cinematic_world_video") {
+        job.stage = `Generating cinematic AI video (${i + 1}/${script.scenes.length})...`;
         try {
-          const genVideoUrl = await generateGenerativeClip({
-            prompt: scene.visualDescription,
-            isWidescreen,
-            jobId: job.id,
-          });
+          let genVideoUrl;
+          try {
+            const imgPublicUrl = await uploadPublicFile(imgPath, `frame_${job.id}_${i}.png`, "image/png");
+            genVideoUrl = await generateMinimaxVideo({
+              prompt: scene.visualDescription,
+              firstFrameUrl: imgPublicUrl,
+              isWidescreen,
+              jobId: job.id,
+            });
+          } catch (mmErr) {
+            log(job.id, `Minimax fallback to Wan 2.1: ${mmErr.message}`);
+            try {
+              genVideoUrl = await generateWanVideo({
+                prompt: scene.visualDescription,
+                isWidescreen,
+                jobId: job.id,
+              });
+            } catch (wanErr) {
+              log(job.id, `Wan fallback to AnimateDiff: ${wanErr.message}`);
+              genVideoUrl = await generateGenerativeClip({
+                prompt: scene.visualDescription,
+                isWidescreen,
+                jobId: job.id,
+              });
+            }
+          }
 
-          const fetchVid = await fetch(genVideoUrl);
-          if (fetchVid.ok) {
-            fs.writeFileSync(vidPath, Buffer.from(await fetchVid.arrayBuffer()));
-            sceneVisuals.push({ type: "video", path: vidPath });
-            continue;
+          if (genVideoUrl) {
+            const fetchVid = await fetch(genVideoUrl);
+            if (fetchVid.ok) {
+              fs.writeFileSync(vidPath, Buffer.from(await fetchVid.arrayBuffer()));
+              sceneVisuals.push({ type: "video", path: vidPath });
+              continue;
+            }
           }
         } catch (genErr) {
           log(job.id, `Generative video fallback for scene ${i}: ${genErr.message}`);

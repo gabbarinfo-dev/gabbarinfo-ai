@@ -16,19 +16,21 @@ export default function CharacterStudioWorkstation() {
 
   // New Character Form State
   const [newCharName, setNewCharName] = useState("");
-  const [newCharArchetype, setNewCharArchetype] = useState("pixar_3d");
-  const [newCharTraits, setNewCharTraits] = useState("bright blue jacket, expressive curious eyes, messy dark hair");
+  const [newCharArchetype, setNewCharArchetype] = useState("photoreal_human");
+  const [newCharTraits, setNewCharTraits] = useState("rugged brown leather jacket, short dark hair, intense expressive eyes");
   const [newCharBackstory, setNewCharBackstory] = useState("");
-  const [newCharVoice, setNewCharVoice] = useState("nova");
+  const [newCharGender, setNewCharGender] = useState("male");
+  const [newCharVoice, setNewCharVoice] = useState("onyx");
   const [creatingCharacter, setCreatingCharacter] = useState(false);
 
   // Story & Episode Generator State
   const [creationMode, setCreationMode] = useState("ai_prompt"); // "ai_prompt" | "custom_script" | "business_media"
-  const [animationStyle, setAnimationStyle] = useState("live_talking_head"); // "live_talking_head" | "generative_video" | "cinematic_scenes"
+  const [animationStyle, setAnimationStyle] = useState("generative_video"); // "generative_video" | "hybrid_lip_sync" | "cinematic_scenes"
   const [narrativeType, setNarrativeType] = useState("standalone"); // "standalone" | "episodic"
   const [customScript, setCustomScript] = useState("");
-  const [vocalEmotion, setVocalEmotion] = useState("poetic_shayar"); // "poetic_shayar" | "dramatic_story" | "warm_storybook" | "commercial_pitch"
+  const [vocalEmotion, setVocalEmotion] = useState("dramatic_story"); // "dramatic_story" | "poetic_shayar" | "warm_storybook" | "commercial_pitch"
   const [selectedCompanion, setSelectedCompanion] = useState(null);
+  const [selectedCompanion2, setSelectedCompanion2] = useState(null);
   const [clientMedia, setClientMedia] = useState([]);
   const [uploadingMedia, setUploadingMedia] = useState(false);
 
@@ -122,6 +124,7 @@ export default function CharacterStudioWorkstation() {
           archetype: newCharArchetype,
           visualTraits: newCharTraits,
           backstory: newCharBackstory,
+          gender: newCharGender,
           voice: newCharVoice,
           userEmail,
         }),
@@ -275,16 +278,26 @@ export default function CharacterStudioWorkstation() {
         selectedCharacter ? {
           name: selectedCharacter.name,
           role: "Lead Character",
-          voice: selectedCharacter.voice || "nova",
+          voice: selectedCharacter.voice || (selectedCharacter.gender === "female" ? "shimmer" : "onyx"),
           traits: selectedCharacter.visualTraits,
-          archetype: selectedCharacter.archetype || "photoreal_human"
+          archetype: selectedCharacter.archetype || "photoreal_human",
+          gender: selectedCharacter.gender || (selectedCharacter.voice === "shimmer" || selectedCharacter.voice === "nova" ? "female" : "male")
         } : null,
         selectedCompanion ? {
           name: selectedCompanion.name,
-          role: "Co-Star",
-          voice: selectedCompanion.voice || "onyx",
+          role: "Co-Star 1",
+          voice: selectedCompanion.voice || (selectedCompanion.gender === "female" ? "shimmer" : "onyx"),
           traits: selectedCompanion.visualTraits,
-          archetype: selectedCompanion.archetype || "photoreal_human"
+          archetype: selectedCompanion.archetype || "photoreal_human",
+          gender: selectedCompanion.gender || (selectedCompanion.voice === "shimmer" || selectedCompanion.voice === "nova" ? "female" : "male")
+        } : null,
+        selectedCompanion2 ? {
+          name: selectedCompanion2.name,
+          role: "Co-Star 2",
+          voice: selectedCompanion2.voice || (selectedCompanion2.gender === "female" ? "coral" : "echo"),
+          traits: selectedCompanion2.visualTraits,
+          archetype: selectedCompanion2.archetype || "photoreal_human",
+          gender: selectedCompanion2.gender || (selectedCompanion2.voice === "shimmer" || selectedCompanion2.voice === "nova" ? "female" : "male")
         } : null,
       ].filter(Boolean);
 
@@ -1080,32 +1093,12 @@ export default function CharacterStudioWorkstation() {
                 </div>
               </div>
 
-              {/* Animation Engine Style: Live Talking Head vs Generative Video vs Multi-Scene */}
+              {/* Animation Engine Style: Cinematic World Video vs Hybrid Dialogue Lip-Sync vs Multi-Scene */}
               <div style={{ marginBottom: 16 }}>
                 <label style={{ display: "block", fontSize: 11.5, fontWeight: 800, color: "#cbd5e1", marginBottom: 6 }}>
                   ⚡ Video Animation Engine:
                 </label>
                 <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 8 }}>
-                  <div
-                    onClick={() => setAnimationStyle("live_talking_head")}
-                    style={{
-                      padding: "10px 10px",
-                      borderRadius: 10,
-                      background: animationStyle === "live_talking_head" ? "rgba(236, 72, 153, 0.2)" : "rgba(255, 255, 255, 0.03)",
-                      border: animationStyle === "live_talking_head" ? "2px solid #ec4899" : "1px solid rgba(255, 255, 255, 0.08)",
-                      cursor: "pointer",
-                      transition: "all 0.15s ease",
-                    }}
-                  >
-                    <div style={{ display: "flex", alignItems: "center", gap: 5, fontWeight: 800, fontSize: 11.5, color: animationStyle === "live_talking_head" ? "#f472b6" : "#cbd5e1" }}>
-                      <span>🗣️ AI Talking Lip-Sync</span>
-                      <span style={{ fontSize: 8.5, fontWeight: 900, padding: "1px 4px", borderRadius: 4, background: "#ec4899", color: "#fff" }}>GPU</span>
-                    </div>
-                    <div style={{ fontSize: 9.5, color: "#94a3b8", marginTop: 3, lineHeight: 1.3 }}>
-                      Physical mouth, lip, eye &amp; head motion synced to speech (SadTalker).
-                    </div>
-                  </div>
-
                   <div
                     onClick={() => setAnimationStyle("generative_video")}
                     style={{
@@ -1118,11 +1111,31 @@ export default function CharacterStudioWorkstation() {
                     }}
                   >
                     <div style={{ display: "flex", alignItems: "center", gap: 5, fontWeight: 800, fontSize: 11.5, color: animationStyle === "generative_video" ? "#c084fc" : "#cbd5e1" }}>
-                      <span>🎥 Generative AI Video</span>
-                      <span style={{ fontSize: 8.5, fontWeight: 900, padding: "1px 4px", borderRadius: 4, background: "#a855f7", color: "#fff" }}>GPU</span>
+                      <span>🎥 Cinematic AI Video</span>
+                      <span style={{ fontSize: 8.5, fontWeight: 900, padding: "1px 4px", borderRadius: 4, background: "#a855f7", color: "#fff" }}>Higgsfield GPU</span>
                     </div>
                     <div style={{ fontSize: 9.5, color: "#94a3b8", marginTop: 3, lineHeight: 1.3 }}>
-                      Text-to-video AI synthesis rendering custom photorealistic movie scenes.
+                      Minimax / Runway world video with moving cars, cityscapes, fluid environment physics &amp; camera motion.
+                    </div>
+                  </div>
+
+                  <div
+                    onClick={() => setAnimationStyle("live_talking_head")}
+                    style={{
+                      padding: "10px 10px",
+                      borderRadius: 10,
+                      background: animationStyle === "live_talking_head" ? "rgba(236, 72, 153, 0.2)" : "rgba(255, 255, 255, 0.03)",
+                      border: animationStyle === "live_talking_head" ? "2px solid #ec4899" : "1px solid rgba(255, 255, 255, 0.08)",
+                      cursor: "pointer",
+                      transition: "all 0.15s ease",
+                    }}
+                  >
+                    <div style={{ display: "flex", alignItems: "center", gap: 5, fontWeight: 800, fontSize: 11.5, color: animationStyle === "live_talking_head" ? "#f472b6" : "#cbd5e1" }}>
+                      <span>🗣️ B-Roll + Lip-Sync</span>
+                      <span style={{ fontSize: 8.5, fontWeight: 900, padding: "1px 4px", borderRadius: 4, background: "#ec4899", color: "#fff" }}>Hybrid</span>
+                    </div>
+                    <div style={{ fontSize: 9.5, color: "#94a3b8", marginTop: 3, lineHeight: 1.3 }}>
+                      Wide cinematic world B-roll for narration + physical character face lip-sync strictly on spoken dialogue.
                     </div>
                   </div>
 
@@ -1184,29 +1197,58 @@ export default function CharacterStudioWorkstation() {
                 </div>
               </div>
 
-              {/* Companion / Animal Pet Selector (if > 1 character in vault) */}
+              {/* Multi-Character Casting: Co-Star 1 & Co-Star 2 */}
               {characters.length > 1 && creationMode !== "business_media" && (
                 <div style={{ marginBottom: 16 }}>
-                  <label style={{ display: "block", fontSize: 11.5, fontWeight: 800, color: "#cbd5e1", marginBottom: 6 }}>
-                    🐾 Optional Companion / Co-Star (Duo Mode):
-                  </label>
-                  <select
-                    value={selectedCompanion?.id || ""}
-                    onChange={(e) => {
-                      const found = characters.find((c) => c.id === e.target.value);
-                      setSelectedCompanion(found || null);
-                    }}
-                    style={{ width: "100%", padding: "9px 12px", borderRadius: 8, background: "rgba(0, 0, 0, 0.4)", border: "1px solid rgba(255, 255, 255, 0.1)", color: "#fff", fontSize: 12.5 }}
-                  >
-                    <option value="">None (Solo Performance)</option>
-                    {characters
-                      .filter((c) => c.id !== selectedCharacter?.id)
-                      .map((c) => (
-                        <option key={c.id} value={c.id}>
-                          {c.name} ({c.archetype?.replace("_", " ")})
-                        </option>
-                      ))}
-                  </select>
+                  <div style={{ display: "grid", gridTemplateColumns: characters.length > 2 ? "1fr 1fr" : "1fr", gap: 10 }}>
+                    <div>
+                      <label style={{ display: "block", fontSize: 11.5, fontWeight: 800, color: "#cbd5e1", marginBottom: 6 }}>
+                        👥 Co-Star 1 (Duo Mode):
+                      </label>
+                      <select
+                        value={selectedCompanion?.id || ""}
+                        onChange={(e) => {
+                          const found = characters.find((c) => c.id === e.target.value);
+                          setSelectedCompanion(found || null);
+                        }}
+                        style={{ width: "100%", padding: "9px 12px", borderRadius: 8, background: "rgba(0, 0, 0, 0.4)", border: "1px solid rgba(255, 255, 255, 0.1)", color: "#fff", fontSize: 12.5 }}
+                      >
+                        <option value="">None (Solo Performance)</option>
+                        {characters
+                          .filter((c) => c.id !== selectedCharacter?.id && c.id !== selectedCompanion2?.id)
+                          .map((c) => (
+                            <option key={c.id} value={c.id}>
+                              {c.name} ({c.archetype?.replace("_", " ")})
+                            </option>
+                          ))}
+                      </select>
+                    </div>
+
+                    {characters.length > 2 && (
+                      <div>
+                        <label style={{ display: "block", fontSize: 11.5, fontWeight: 800, color: "#cbd5e1", marginBottom: 6 }}>
+                          👥 Co-Star 2 (Trio / Ensemble):
+                        </label>
+                        <select
+                          value={selectedCompanion2?.id || ""}
+                          onChange={(e) => {
+                            const found = characters.find((c) => c.id === e.target.value);
+                            setSelectedCompanion2(found || null);
+                          }}
+                          style={{ width: "100%", padding: "9px 12px", borderRadius: 8, background: "rgba(0, 0, 0, 0.4)", border: "1px solid rgba(255, 255, 255, 0.1)", color: "#fff", fontSize: 12.5 }}
+                        >
+                          <option value="">None</option>
+                          {characters
+                            .filter((c) => c.id !== selectedCharacter?.id && c.id !== selectedCompanion?.id)
+                            .map((c) => (
+                              <option key={c.id} value={c.id}>
+                                {c.name} ({c.archetype?.replace("_", " ")})
+                              </option>
+                            ))}
+                        </select>
+                      </div>
+                    )}
+                  </div>
                 </div>
               )}
 
@@ -1839,19 +1881,82 @@ export default function CharacterStudioWorkstation() {
                 />
               </div>
 
+              {/* Character Gender Selector */}
+              <div style={{ marginBottom: 12 }}>
+                <label style={{ display: "block", fontSize: 11.5, fontWeight: 700, color: "#94a3b8", marginBottom: 4 }}>Character Gender:</label>
+                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 8 }}>
+                  <button
+                    type="button"
+                    onClick={() => { setNewCharGender("male"); setNewCharVoice("onyx"); }}
+                    style={{
+                      padding: "8px",
+                      borderRadius: 8,
+                      background: newCharGender === "male" ? "rgba(59, 130, 246, 0.25)" : "rgba(255, 255, 255, 0.03)",
+                      border: newCharGender === "male" ? "2px solid #3b82f6" : "1px solid rgba(255, 255, 255, 0.08)",
+                      color: "#fff",
+                      fontWeight: 700,
+                      fontSize: 12,
+                      cursor: "pointer"
+                    }}
+                  >
+                    ♂️ Male
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => { setNewCharGender("female"); setNewCharVoice("shimmer"); }}
+                    style={{
+                      padding: "8px",
+                      borderRadius: 8,
+                      background: newCharGender === "female" ? "rgba(236, 72, 153, 0.25)" : "rgba(255, 255, 255, 0.03)",
+                      border: newCharGender === "female" ? "2px solid #ec4899" : "1px solid rgba(255, 255, 255, 0.08)",
+                      color: "#fff",
+                      fontWeight: 700,
+                      fontSize: 12,
+                      cursor: "pointer"
+                    }}
+                  >
+                    ♀️ Female
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => { setNewCharGender("other"); setNewCharVoice("alloy"); }}
+                    style={{
+                      padding: "8px",
+                      borderRadius: 8,
+                      background: newCharGender === "other" ? "rgba(168, 85, 247, 0.25)" : "rgba(255, 255, 255, 0.03)",
+                      border: newCharGender === "other" ? "2px solid #a855f7" : "1px solid rgba(255, 255, 255, 0.08)",
+                      color: "#fff",
+                      fontWeight: 700,
+                      fontSize: 12,
+                      cursor: "pointer"
+                    }}
+                  >
+                    🤖 Creature/Robot
+                  </button>
+                </div>
+              </div>
+
               <div style={{ marginBottom: 16 }}>
-                <label style={{ display: "block", fontSize: 11.5, fontWeight: 700, color: "#94a3b8", marginBottom: 4 }}>Voice Personality:</label>
+                <label style={{ display: "block", fontSize: 11.5, fontWeight: 700, color: "#94a3b8", marginBottom: 4 }}>Voice Personality & Gender:</label>
                 <select
                   value={newCharVoice}
                   onChange={(e) => setNewCharVoice(e.target.value)}
                   style={{ width: "100%", padding: "8px 12px", borderRadius: 8, background: "#030712", border: "1px solid rgba(255, 255, 255, 0.1)", color: "#fff", fontSize: 13 }}
                 >
-                  <option value="nova">Nova (Warm & Expressive)</option>
-                  <option value="shimmer">Shimmer (Charming & Bright)</option>
-                  <option value="alloy">Alloy (Dynamic & Friendly)</option>
-                  <option value="fable">Fable (British Storyteller)</option>
-                  <option value="echo">Echo (Heroic & Energetic)</option>
-                  <option value="onyx">Onyx (Deep & Authoritative)</option>
+                  <optgroup label="♂️ Male Voices">
+                    <option value="onyx">Onyx (Deep & Authoritative)</option>
+                    <option value="echo">Echo (Heroic & Energetic)</option>
+                    <option value="ash">Ash (Crisp & Focused)</option>
+                  </optgroup>
+                  <optgroup label="♀️ Female Voices">
+                    <option value="shimmer">Shimmer (Warm & Expressive)</option>
+                    <option value="nova">Nova (Charming & Bright)</option>
+                    <option value="coral">Coral (Elegant & Gentle)</option>
+                  </optgroup>
+                  <optgroup label="🎙️ Narrator & Gender-Neutral">
+                    <option value="fable">Fable (British Storyteller)</option>
+                    <option value="alloy">Alloy (Dynamic & Friendly)</option>
+                  </optgroup>
                 </select>
               </div>
 
