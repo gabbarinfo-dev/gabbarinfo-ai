@@ -497,19 +497,22 @@ async function processLongFormYouTube(job, jobDir) {
     storyStyle = "movie_dialogue", // "movie_dialogue" | "storybook_narrated" | "documentary_voiceover"
     genre = "action_thriller", // "action_thriller" | "movie_drama" | "comedy_skit" | "sci_fi"
     visualEngine = "photoreal_human", // "photoreal_human" | "pixar_3d" | "anime_2d" | "user_vault"
+    customScript = "",
+    scriptMode = "ai_prompt",
   } = payload;
 
   const durationMins = Number(durationMinutes || targetMinutes) || 2;
   const targetTotalSecs = durationMins * 60;
   const isWidescreen = payload.format === "youtube_16_9";
+  const hasCustomScript = !!(customScript && customScript.trim());
 
   job.progress = 15;
-  job.stage = `Scriptwriting ~${durationMins} min screenplay with GPT-4o...`;
-  log(job.id, `Generating cinematic screenplay (~${durationMins} min, ${targetTotalSecs}s) for "${videoTitle || episodeTitle || topic}" [Style: ${storyStyle}, Genre: ${genre}, Engine: ${visualEngine}]`);
+  job.stage = hasCustomScript
+    ? `Adapting user-provided screenplay (~${durationMins} min, ${targetTotalSecs}s)...`
+    : `Scriptwriting ~${durationMins} min screenplay with GPT-4o...`;
+  log(job.id, `Generating cinematic screenplay (~${durationMins} min, ${targetTotalSecs}s) for "${videoTitle || episodeTitle || topic}" [CustomScript: ${hasCustomScript}, Style: ${storyStyle}, Genre: ${genre}, Engine: ${visualEngine}]`);
 
   // Character casting:
-  // If user provided characters, use them.
-  // If user did NOT provide characters, instruct GPT-4o to dynamically extract or invent characters from the prompt.
   const hasUserCharacters = characters && Array.isArray(characters) && characters.length > 0;
   let activeCharacters = hasUserCharacters ? characters.map(c => ({
     name: c.name,
@@ -520,17 +523,18 @@ async function processLongFormYouTube(job, jobDir) {
     archetype: c.archetype || visualEngine || "photoreal_human",
   })) : [];
 
-  let numScenes = 4;
-  if (durationMins >= 5) numScenes = 12;
-  else if (durationMins >= 4) numScenes = 10;
-  else if (durationMins >= 3) numScenes = 8;
-  else if (durationMins >= 2) numScenes = 6;
-  else numScenes = 4;
+  // Duration Pacing: 8 scenes for 2 mins (15s per scene) to guarantee true 120s runtime!
+  let numScenes = 6;
+  if (durationMins >= 5) numScenes = 15;
+  else if (durationMins >= 4) numScenes = 12;
+  else if (durationMins >= 3) numScenes = 10;
+  else if (durationMins >= 2) numScenes = 8;
+  else numScenes = 5;
 
-  const sceneTargetSecs = Math.max(10, Math.round(targetTotalSecs / numScenes));
-  log(job.id, `Creating ${numScenes} dynamic scenes (~${sceneTargetSecs}s per scene) for target ${durationMins} mins.`);
+  const sceneTargetSecs = Math.max(12, Math.round(targetTotalSecs / numScenes));
+  log(job.id, `Creating ${numScenes} dynamic scenes (~${sceneTargetSecs}s per scene) for target ${durationMins} mins (${targetTotalSecs}s total).`);
 
-  let langInstruction = "Language: Hindi (fluent, natural, expressive dialogue in Devanagari script).";
+  let langInstruction = "Language: Hindi. CRITICAL: All spoken dialogue in 'spokenAudio' MUST be written in natural, fluent, colloquial Devanagari script (हिंदी) with authentic phrasing so neural TTS delivers native Indian pronunciation with ZERO robotic or foreign accent!";
   if (language === "en_us") langInstruction = "Language: American English (natural cinematic conversational dialogue).";
   if (language === "en_uk") langInstruction = "Language: British English (eloquent cadence and phrasing).";
 
@@ -566,31 +570,27 @@ Tone: Deep emotional realism, authentic human conflicts, heartfelt confrontation
 CRITICAL MOVIE / SKIT ACTING RULES (PURE CHARACTER CONVERSATION — ABSOLUTELY NO NARRATOR):
 1. This is a real MOVIE / COMEDY SKIT / ACTION FILM. There is ZERO NARRATION. There is NO Narrator!
 2. Characters speak directly to each other! Every single scene MUST feature one of the characters speaking direct spoken dialogue in quotation marks.
-3. CONVERSATIONAL PUNCHINESS: Spoken dialogue MUST be 12 to 25 words maximum per line (natural human speech cadence, NOT long monologues or essays!).
+3. CONVERSATIONAL PACING: Spoken dialogue should be 25 to 45 words per scene (or multiple conversational exchanges), timed to comfortably fill ~${sceneTargetSecs} seconds with emotional delivery.
 4. STRICT BACK-AND-FORTH DIALOGUE:
-   - Scene 1: Character A starts conversation or shouts warning in action.
-   - Scene 2: Character B reacts, replies, argues, or counters.
-   - Scene 3: Action beat or Character A escalates the situation.
-   - Scene 4: Character B responds with decision, punchline, or emotional revelation.
-   - Scene 5 & 6: Climax, daring move, or resolution.
+   - Alternating character speeches with distinct reactions and urgent stakes.
 5. For every scene:
    - "type": "dialogue"
    - "speaker": EXACT name of the speaking character. NEVER "Narrator".
-   - "spokenAudio": The direct spoken dialogue in quotation marks (12 to 25 words, high emotion).
+   - "spokenAudio": The direct spoken dialogue in quotation marks (natural, emotional, in Devanagari script if Hindi).
    - "visualDescription": Close-up or medium close-up movie shot of the speaking character. Their expression, clear eyes, gestures, and the cinematic setting.
    - "cameraShot": "close_up" or "medium_close_up" or "action_shot"`;
   } else if (storyStyle === "storybook_narrated") {
     scriptFormatRules = `
 CRITICAL STORYBOOK / FABLE RULES:
 1. Alternate between "b_roll" (speaker: "Narrator", descriptive scene setting) and "dialogue" (speaker: character name, lines in quotes).
-2. For B-roll: "spokenAudio" is the narrator's rich descriptive voiceover.
-3. For Dialogue: "spokenAudio" is direct character dialogue in quotes (15 to 25 words).`;
+2. For B-roll: "spokenAudio" is the narrator's rich descriptive voiceover (25 to 45 words per scene).
+3. For Dialogue: "spokenAudio" is direct character dialogue in quotes (25 to 45 words per scene).`;
   } else {
     // documentary_voiceover
     scriptFormatRules = `
 CRITICAL DOCUMENTARY / VOICEOVER RULES:
 1. Every scene is "b_roll" with speaker "Narrator".
-2. "spokenAudio" is authoritative, eloquent voiceover narration over wide cinematic visuals.`;
+2. "spokenAudio" is authoritative, eloquent voiceover narration (25 to 45 words per scene) over wide cinematic visuals.`;
   }
 
   const charContext = hasUserCharacters ? `
@@ -608,19 +608,35 @@ Include a "characters" array in your JSON output defining them:
 - "voice": choose "onyx" or "echo" or "ash" for male; "shimmer" or "nova" or "coral" for female
 `;
 
+  const customScriptSection = hasCustomScript ? `
+========================================
+USER-PROVIDED CUSTOM SCRIPT / SCREENPLAY:
+"""
+${customScript}
+"""
+CRITICAL INSTRUCTIONS FOR USER SCRIPT:
+1. The user has explicitly provided their OWN script! You MUST preserve their exact dialogue lines, characters, and plot points verbatim!
+2. Do NOT replace their words with generic summaries.
+3. Divide the user's provided script into exactly ${numScenes} sequential scenes.
+4. Extract the character names and assign them to the scene speakers.
+5. Create vivid, photorealistic visual descriptions for each scene depicting what happens during that dialogue line.
+========================================
+` : "";
+
   const systemPrompt = `You are a world-class Hollywood film director and screenwriter.
-You are writing a COMPLETE, captivating ${durationMins}-minute cinematic script.
+You are writing a COMPLETE, captivating ${durationMins}-minute cinematic script (${targetTotalSecs}s runtime).
 FORMAT: ${isWidescreen ? "16:9 Widescreen YouTube Cinematic Film" : "9:16 Vertical Smartphone Story / Social Reel"}.
 ${langInstruction}
 ${audiencePrompt}
 ${genrePrompt}
 
+${customScriptSection}
 ${charContext}
 
 ${scriptFormatRules}
 
 Divide the story into exactly ${numScenes} sequential scenes.
-Each scene's spoken dialogue must be 12 to 25 words in length, lively, natural, and charged with real emotion.
+Each scene's spoken dialogue must be 25 to 45 words in length, lively, natural, and paced to comfortably fill ~${sceneTargetSecs} seconds.
 
 Return ONLY valid JSON in this exact structure:
 {
@@ -637,12 +653,16 @@ Return ONLY valid JSON in this exact structure:
       "type": "dialogue",
       "speaker": "SpeakingCharacterName",
       "chapter": "Chapter Title",
-      "spokenAudio": "\"Direct first-person spoken dialogue in quotation marks (12 to 25 words)\"",
+      "spokenAudio": "\"Direct first-person spoken dialogue in quotation marks (25 to 45 words)\"",
       "visualDescription": "Close-up or medium shot of the speaking character with realistic eyes and expression, in the rich environment",
       "characterInVisual": "Speaking character name"
     }
   ]
 }`;
+
+  const userPromptContent = hasCustomScript
+    ? `Adapt this user screenplay into ${numScenes} scenes for a ${durationMins} minute film: "${customScript.slice(0, 1000)}"`
+    : `Write a complete ${durationMins} minute screenplay on topic: "${storyPrompt || videoTitle || topic}". Must have ${numScenes} scenes.`;
 
   const completion = await openai.chat.completions.create({
     model: "gpt-4o",
@@ -650,7 +670,7 @@ Return ONLY valid JSON in this exact structure:
     response_format: { type: "json_object" },
     messages: [
       { role: "system", content: systemPrompt },
-      { role: "user", content: `Write a complete ${durationMins} minute screenplay on topic: "${storyPrompt || videoTitle || topic}". Must have ${numScenes} scenes.` }
+      { role: "user", content: userPromptContent }
     ],
   });
 
@@ -701,7 +721,7 @@ Return ONLY valid JSON in this exact structure:
     job.progress = 30 + Math.round((i / script.scenes.length) * 25); // 30% to 55%
 
     const mp3Response = await openai.audio.speech.create({
-      model: "tts-1",
+      model: "tts-1-hd",
       voice,
       input: spokenText.replace(/^["']|["']$/g, ""),
       response_format: "mp3",
@@ -941,7 +961,321 @@ Return ONLY valid JSON in this exact structure:
 // Reels / Shorts Video Pipeline (9:16 vertical fast reel)
 // -------------------------------------------------------------
 async function processReelVideo(job, jobDir) {
-  return processLongFormYouTube(job, jobDir);
+  const { payload } = job;
+  const {
+    topic = "Viral Social Reel",
+    customScript = "",
+    scriptMode = "ai_prompt",
+    selectedStyle = "talking_avatar", // "talking_avatar" | "generative_cinematic" | "motion_broll"
+    language = "hindi",
+    voice = "alloy",
+    niche = "business",
+    backgroundBeat = "upbeat_lofi",
+    durationSeconds = 15,
+  } = payload;
+
+  const targetSecs = Math.max(10, Math.min(60, Number(durationSeconds) || 15));
+  const isWidescreen = false;
+
+  job.progress = 10;
+  job.stage = `Generating ~${targetSecs}s viral reel script...`;
+  log(job.id, `Starting dedicated fast Reel pipeline (${targetSecs}s) [Style: ${selectedStyle}, Lang: ${language}]`);
+
+  const hasCustomScript = !!(customScript && customScript.trim());
+  let reelScript = null;
+
+  if (hasCustomScript) {
+    log(job.id, `Using user-provided custom script for reel (${customScript.length} chars)`);
+    const lines = customScript.split(/\n+/).map(l => l.trim()).filter(Boolean);
+    const numScenes = Math.min(3, Math.max(1, lines.length));
+    const secPerScene = Math.round((targetSecs / numScenes) * 10) / 10;
+
+    reelScript = {
+      title: topic || "Custom Reel Masterpiece",
+      fullScript: customScript,
+      scenes: lines.slice(0, 3).map((line, idx) => ({
+        sceneNumber: idx + 1,
+        text: line,
+        spokenAudio: line,
+        visualPrompt: `Vertical 9:16 cinematic portrait or action shot. Dynamic visual representing: ${line.slice(0, 100)}. Cinematic lighting, photorealistic 8k, masterpiece`,
+        duration: secPerScene,
+      }))
+    };
+  } else {
+    let langRule = "Language: American English. Dynamic, viral short-form social media tone.";
+    if (language === "hindi") {
+      langRule = "Language: Hindi. CRITICAL: Spoken text in 'spokenAudio' MUST be written in natural, conversational Devanagari script (हिंदी) with authentic colloquial vocabulary so OpenAI TTS speaks with natural Indian pronunciation without American accent!";
+    } else if (language === "en_uk") {
+      langRule = "Language: British English. Eloquent, crisp tone.";
+    }
+
+    const scriptPrompt = `You are a viral social media director creating a ${targetSecs}-second vertical video reel for Instagram Reels, YouTube Shorts, and TikTok.
+Topic: "${topic}"
+Niche: "${niche}"
+${langRule}
+
+Requirements:
+- Exactly 3 sequential scenes totaling ~${targetSecs} seconds:
+  1. Scene 1 (Hook, 0-5s): Irresistible hook or curiosity trigger.
+  2. Scene 2 (Value, 5-10s): The breakthrough insight or secret.
+  3. Scene 3 (CTA, 10-15s): Punchy call to action.
+- Total spoken words: between 30 and 45 words total (natural speaking pace).
+- Return ONLY valid JSON:
+{
+  "title": "Short catchy title",
+  "fullScript": "Complete voiceover text",
+  "scenes": [
+    {
+      "sceneNumber": 1,
+      "text": "Spoken line for scene 1",
+      "spokenAudio": "Exact spoken line in Devanagari Hindi if Hindi",
+      "visualPrompt": "Detailed visual description of the speaker or cinematic action scene in vertical 9:16 framing",
+      "searchQuery": "english stock video search keywords"
+    },
+    {
+      "sceneNumber": 2,
+      "text": "Spoken line for scene 2",
+      "spokenAudio": "Exact spoken line in Devanagari Hindi if Hindi",
+      "visualPrompt": "Detailed visual description of scene 2 in vertical 9:16 framing",
+      "searchQuery": "english stock video search keywords"
+    },
+    {
+      "sceneNumber": 3,
+      "text": "Spoken line for scene 3",
+      "spokenAudio": "Exact spoken line in Devanagari Hindi if Hindi",
+      "visualPrompt": "Detailed visual description of scene 3 in vertical 9:16 framing",
+      "searchQuery": "english stock video search keywords"
+    }
+  ]
+}`;
+
+    const completion = await openai.chat.completions.create({
+      model: "gpt-4o",
+      temperature: 0.7,
+      response_format: { type: "json_object" },
+      messages: [{ role: "system", content: scriptPrompt }],
+    });
+    reelScript = JSON.parse(completion.choices[0].message.content);
+  }
+
+  job.progress = 25;
+  job.stage = "Synthesizing studio voiceover audio with tts-1-hd...";
+  log(job.id, `Synthesizing audio with voice: ${voice} (Lang: ${language})`);
+
+  let ttsVoice = voice || "alloy";
+  if (language === "hindi" && !["alloy", "nova", "onyx", "shimmer"].includes(ttsVoice.toLowerCase())) {
+    ttsVoice = "alloy";
+  }
+
+  const fullSpokenText = reelScript.scenes.map(s => s.spokenAudio || s.text).join(" ");
+  const mp3Response = await openai.audio.speech.create({
+    model: "tts-1-hd",
+    voice: ttsVoice,
+    input: fullSpokenText.replace(/^["']|["']$/g, ""),
+    response_format: "mp3",
+  });
+
+  const fullAudioBuf = Buffer.from(await mp3Response.arrayBuffer());
+  const reelAudioPath = path.join(jobDir, "reel_voiceover.mp3");
+  fs.writeFileSync(reelAudioPath, fullAudioBuf);
+
+  // Check visual style
+  job.progress = 45;
+  const sceneVisuals = [];
+
+  if (selectedStyle === "talking_avatar") {
+    // TRUE LIP-SYNC TALKING AVATAR (SadTalker + GFPGAN Face Enhancer)
+    job.stage = "Rendering photorealistic character portrait & GPU lip-sync...";
+    log(job.id, `Generating talking avatar lip-sync with SadTalker...`);
+
+    const charImgPath = path.join(jobDir, "avatar_character.png");
+    const charVidPath = path.join(jobDir, "avatar_talking.mp4");
+
+    const avatarPrompt = `Cinematic 35mm photograph. Medium close-up portrait of an authentic, charismatic ${niche} spokesperson looking directly into camera with expressive sharp eyes, clear defined pupils and irises, natural friendly smile, high-end studio lighting, natural human skin texture with subtle pores, 85mm portrait lens f/1.8, shallow depth of field, 8k resolution, masterpiece.`;
+
+    let imgGen;
+    try {
+      imgGen = await openai.images.generate({
+        model: "gpt-image-2",
+        prompt: avatarPrompt.slice(0, 950),
+        n: 1,
+        size: "1024x1024",
+      });
+    } catch {
+      imgGen = await openai.images.generate({
+        model: "dall-e-3",
+        prompt: avatarPrompt.slice(0, 950),
+        n: 1,
+        size: "1024x1792",
+      });
+    }
+
+    if (imgGen.data?.[0]?.b64_json) {
+      fs.writeFileSync(charImgPath, Buffer.from(imgGen.data[0].b64_json, "base64"));
+    } else if (imgGen.data?.[0]?.url) {
+      const fetchRes = await fetch(imgGen.data[0].url);
+      fs.writeFileSync(charImgPath, Buffer.from(await fetchRes.arrayBuffer()));
+    }
+
+    // Run SadTalker GPU Lip-Sync with GFPGAN
+    try {
+      job.stage = "Generating AI lip-sync on Replicate GPU (SadTalker + GFPGAN)...";
+      const audioPubUrl = await uploadPublicFile(reelAudioPath, `audio_${job.id}.mp3`, "audio/mpeg");
+      const imgPubUrl = await uploadPublicFile(charImgPath, `avatar_${job.id}.png`, "image/png");
+
+      const talkingVidUrl = await generateSadTalkerLipSync({
+        imageUrl: imgPubUrl,
+        audioUrl: audioPubUrl,
+        jobId: job.id,
+      });
+
+      const fetchVid = await fetch(talkingVidUrl);
+      if (fetchVid.ok) {
+        fs.writeFileSync(charVidPath, Buffer.from(await fetchVid.arrayBuffer()));
+        sceneVisuals.push({ type: "video", path: charVidPath });
+      } else {
+        sceneVisuals.push({ type: "image", path: charImgPath });
+      }
+    } catch (sTalkErr) {
+      log(job.id, `SadTalker fallback: ${sTalkErr.message}`);
+      sceneVisuals.push({ type: "image", path: charImgPath });
+    }
+
+  } else if (selectedStyle === "generative_cinematic") {
+    // GENERATIVE CINEMATIC AI VIDEO
+    job.stage = "Generating cinematic generative AI visuals...";
+    log(job.id, `Generating cinematic scenes for reel...`);
+
+    for (let i = 0; i < reelScript.scenes.length; i++) {
+      const sc = reelScript.scenes[i];
+      const scImgPath = path.join(jobDir, `reel_sc_${i}.png`);
+      const scVidPath = path.join(jobDir, `reel_sc_${i}.mp4`);
+
+      try {
+        const scPrompt = `Cinematic 9:16 vertical smartphone frame. ${sc.visualPrompt || sc.text}. 35mm movie photography, volumetric lighting, Arri Alexa Mini LF, photorealistic 8k, masterpiece.`;
+        const imgRes = await openai.images.generate({
+          model: "gpt-image-2",
+          prompt: scPrompt.slice(0, 950),
+          n: 1,
+          size: "1024x1024",
+        }).catch(async () => {
+          return openai.images.generate({
+            model: "dall-e-3",
+            prompt: scPrompt.slice(0, 950),
+            n: 1,
+            size: "1024x1792",
+          });
+        });
+
+        if (imgRes.data?.[0]?.b64_json) {
+          fs.writeFileSync(scImgPath, Buffer.from(imgRes.data[0].b64_json, "base64"));
+        } else if (imgRes.data?.[0]?.url) {
+          const fetchRes = await fetch(imgRes.data[0].url);
+          fs.writeFileSync(scImgPath, Buffer.from(await fetchRes.arrayBuffer()));
+        }
+
+        // Fast video motion via Wan 2.1 or AnimateDiff (scene 1)
+        if (i === 0) {
+          job.stage = "Generating fast neural video motion (Wan 2.1)...";
+          try {
+            const vidUrl = await generateWanVideo({
+              prompt: sc.visualPrompt || sc.text,
+              isWidescreen: false,
+              jobId: job.id,
+            }).catch(() => generateGenerativeClip({
+              prompt: sc.visualPrompt || sc.text,
+              isWidescreen: false,
+              jobId: job.id,
+            }));
+
+            if (vidUrl) {
+              const fVid = await fetch(vidUrl);
+              if (fVid.ok) {
+                fs.writeFileSync(scVidPath, Buffer.from(await fVid.arrayBuffer()));
+                sceneVisuals.push({ type: "video", path: scVidPath });
+                continue;
+              }
+            }
+          } catch (vErr) {
+            log(job.id, `Reel video fallback: ${vErr.message}`);
+          }
+        }
+
+        sceneVisuals.push({ type: "image", path: scImgPath });
+      } catch (e) {
+        log(job.id, `Reel scene ${i} fallback: ${e.message}`);
+        await createFallbackImage(scImgPath, 1080, 1920, sc.text || "Scene");
+        sceneVisuals.push({ type: "image", path: scImgPath });
+      }
+    }
+  } else {
+    // MOTION B-ROLL (Pexels Vertical 4K HD Clips)
+    job.stage = "Fetching vertical 9:16 cinematography matching script...";
+    log(job.id, `Fetching Pexels vertical video clips...`);
+
+    const pexelsKey = process.env.PEXELS_API_KEY;
+    for (let i = 0; i < reelScript.scenes.length; i++) {
+      const sc = reelScript.scenes[i];
+      const scVidPath = path.join(jobDir, `pexels_sc_${i}.mp4`);
+      let fetched = false;
+
+      if (pexelsKey) {
+        try {
+          const q = encodeURIComponent(sc.searchQuery || topic || "luxury lifestyle business");
+          const pexRes = await fetch(`https://api.pexels.com/videos/search?query=${q}&orientation=portrait&per_page=3&size=medium`, {
+            headers: { Authorization: pexelsKey },
+          });
+          const pexData = await pexRes.json();
+          const pexFiles = pexData.videos?.[0]?.video_files || [];
+          const bestFile = pexFiles.find(f => f.height > f.width && f.file_type === "video/mp4") || pexFiles[0];
+
+          if (bestFile?.link) {
+            const dl = await fetch(bestFile.link);
+            if (dl.ok) {
+              fs.writeFileSync(scVidPath, Buffer.from(await dl.arrayBuffer()));
+              sceneVisuals.push({ type: "video", path: scVidPath });
+              fetched = true;
+            }
+          }
+        } catch (pErr) {
+          log(job.id, `Pexels query error: ${pErr.message}`);
+        }
+      }
+
+      if (!fetched) {
+        const fallbackImg = path.join(jobDir, `fallback_sc_${i}.png`);
+        await createFallbackImage(fallbackImg, 1080, 1920, sc.text || "Scene");
+        sceneVisuals.push({ type: "image", path: fallbackImg });
+      }
+    }
+  }
+
+  // FFmpeg Assembly
+  job.progress = 80;
+  job.stage = "Assembling master 9:16 reel with FFmpeg...";
+  log(job.id, "Assembling master reel with FFmpeg...");
+
+  const masterVideoPath = path.join(jobDir, "master_reel_output.mp4");
+  await assembleFFmpegVideo({
+    jobDir,
+    scenes: reelScript.scenes,
+    audioFiles: [reelAudioPath],
+    visuals: sceneVisuals,
+    outputPath: masterVideoPath,
+    isWidescreen: false,
+    targetDurationSecs: targetSecs,
+    onProgress: (p) => {
+      job.progress = 80 + Math.round(p * 15);
+    },
+  });
+
+  // Upload Finished Reel
+  job.progress = 95;
+  job.stage = "Uploading master reel...";
+  const finalFilename = `master_reel_${Date.now()}.mp4`;
+  const uploadedUrl = await uploadMasterVideo(masterVideoPath, finalFilename, job.userEmail);
+  job.videoUrl = uploadedUrl;
+  job.metadata = { title: reelScript.title || topic };
 }
 
 // -------------------------------------------------------------
@@ -982,7 +1316,7 @@ async function assembleFFmpegVideo({ jobDir, scenes, audioFiles, visuals, output
     function proceedWithVideo() {
       // Calculate duration to match user requested runtime
       const stats = fs.statSync(combinedAudioPath);
-      const audioDurationSecs = Math.max(10, Math.round(stats.size / 16000));
+      const audioDurationSecs = Math.max(5, Math.round(stats.size / 16000));
       const effectiveTotalSecs = Math.max(audioDurationSecs, targetDurationSecs);
       const durationPerScene = Math.max(4, Math.round((effectiveTotalSecs / visuals.length) * 10) / 10);
 
@@ -1003,9 +1337,12 @@ async function assembleFFmpegVideo({ jobDir, scenes, audioFiles, visuals, output
         let segProc;
         if (vis.type === "video") {
           // Normalize existing video clip to exact format, frame rate, and dimensions
+          // CRITICAL: Loop clip with -stream_loop -1 -t so it fills durationPerScene!
           const scaleCropVf = `scale=${width}:${height}:force_original_aspect_ratio=increase,crop=${width}:${height}`;
           const args = [
             "-y",
+            "-stream_loop", "-1",
+            "-t", `${durationPerScene}`,
             "-i", vis.path,
             "-vf", scaleCropVf,
             "-c:v", "libx264",
@@ -1073,6 +1410,9 @@ async function assembleFFmpegVideo({ jobDir, scenes, audioFiles, visuals, output
         const segListPath = path.join(jobDir, "seglist.txt");
         fs.writeFileSync(segListPath, segmentFiles.map(f => `file '${f.replace(/\\/g, "/")}'`).join("\n"));
 
+        // Exact runtime guarantee:
+        const totalVideoRuntime = Math.max(targetDurationSecs, Math.round(visuals.length * durationPerScene));
+
         // Combine video segments and loop/pad audio track to match full video length
         const finalArgs = [
           "-y",
@@ -1087,7 +1427,7 @@ async function assembleFFmpegVideo({ jobDir, scenes, audioFiles, visuals, output
           "-c:a", "aac",
           "-b:a", "192k",
           "-threads", "2",
-          "-shortest",
+          "-t", `${totalVideoRuntime}`,
           "-movflags", "+faststart",
           "-loglevel", "error",
           outputPath

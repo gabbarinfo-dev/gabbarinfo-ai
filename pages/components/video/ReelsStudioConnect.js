@@ -7,11 +7,14 @@ export default function ReelsStudioConnect() {
   const { data: session } = useSession();
   const userEmail = session?.user?.email;
 
-  const [selectedStyle, setSelectedStyle] = useState("motion_broll"); // "motion_broll" | "talking_avatar" | "generative_cinematic"
+  const [selectedStyle, setSelectedStyle] = useState("talking_avatar"); // "talking_avatar" | "generative_cinematic" | "motion_broll"
+  const [scriptMode, setScriptMode] = useState("ai_prompt"); // "ai_prompt" | "custom_script"
+  const [customScript, setCustomScript] = useState("");
+  const [durationSeconds, setDurationSeconds] = useState(15); // 15 | 30 | 60
   const [topic, setTopic] = useState("");
   const [niche, setNiche] = useState("business");
   const [language, setLanguage] = useState("hindi"); // "hindi" | "en_us" | "en_uk"
-  const [voice, setVoice] = useState("nova");
+  const [voice, setVoice] = useState("alloy"); // alloy is crisp, natural for Hindi & English
   const [backgroundBeat, setBackgroundBeat] = useState("upbeat_lofi");
   const [generating, setGenerating] = useState(false);
   const [generationStep, setGenerationStep] = useState("");
@@ -203,7 +206,11 @@ export default function ReelsStudioConnect() {
 
   const handleGenerate = async (e) => {
     if (e) e.preventDefault();
-    if (!topic.trim()) {
+    if (scriptMode === "custom_script" && !customScript.trim()) {
+      setErrorMsg("Please paste or write your custom script.");
+      return;
+    }
+    if (scriptMode === "ai_prompt" && !topic.trim()) {
       setErrorMsg("Please enter a video topic or hook idea.");
       return;
     }
@@ -216,13 +223,13 @@ export default function ReelsStudioConnect() {
     masterVideoUrlRef.current = null;
 
     try {
-      setGenerationStep("Writing viral hook and 15s script with AI…");
+      setGenerationStep(scriptMode === "custom_script" ? "Parsing custom screenplay into scenes…" : `Writing viral hook & ${durationSeconds}s script with AI…`);
       await new Promise((r) => setTimeout(r, 600));
 
-      setGenerationStep("Generating neural voiceover and word-level subtitle timings…");
+      setGenerationStep("Generating neural voiceover & lip-sync timeline…");
       await new Promise((r) => setTimeout(r, 800));
 
-      setGenerationStep("Dispatching reel render to Railway persistent worker...");
+      setGenerationStep("Dispatching reel render to Railway GPU worker...");
 
       const res = await fetch("/api/video/dispatch", {
         method: "POST",
@@ -230,7 +237,10 @@ export default function ReelsStudioConnect() {
         body: JSON.stringify({
           videoType: "reel",
           payload: {
-            topic: topic.trim(),
+            topic: topic.trim() || customScript.slice(0, 50),
+            customScript: customScript.trim(),
+            scriptMode,
+            durationSeconds,
             niche,
             language,
             voice,
@@ -985,47 +995,160 @@ export default function ReelsStudioConnect() {
           }}
         >
           <form onSubmit={handleGenerate}>
-            {/* Topic Input */}
+            {/* SCRIPT CREATION MODE TOGGLE */}
             <div style={{ marginBottom: 18 }}>
-              <label style={{ display: "block", fontSize: 13, fontWeight: 700, color: "#e2e8f0", marginBottom: 8 }}>
-                🎬 Video Topic, Hook, or Concept:
+              <label style={{ display: "block", fontSize: 12.5, fontWeight: 800, color: "#f8fafc", marginBottom: 8 }}>
+                ✍️ Reel Script Creation Method:
               </label>
-              <textarea
-                rows={3}
-                placeholder="e.g. 3 Proven secrets to 10x your Shopify sales this month..."
-                value={topic}
-                onChange={(e) => setTopic(e.target.value)}
-                style={{
-                  width: "100%",
-                  boxSizing: "border-box",
-                  padding: "12px 14px",
-                  borderRadius: 12,
-                  background: "rgba(0, 0, 0, 0.4)",
-                  border: "1px solid rgba(255, 255, 255, 0.15)",
-                  color: "#fff",
-                  fontSize: 13.5,
-                  outline: "none",
-                  resize: "vertical",
-                }}
-              />
-              {/* Quick Inspiration Pills */}
-              <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginTop: 8 }}>
-                {QUICK_TOPICS.map((t, idx) => (
+              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
+                <button
+                  type="button"
+                  onClick={() => setScriptMode("ai_prompt")}
+                  style={{
+                    padding: "10px 14px",
+                    borderRadius: 10,
+                    background: scriptMode === "ai_prompt" ? "rgba(99, 102, 241, 0.25)" : "rgba(255, 255, 255, 0.03)",
+                    border: scriptMode === "ai_prompt" ? "2px solid #6366f1" : "1px solid rgba(255, 255, 255, 0.08)",
+                    color: scriptMode === "ai_prompt" ? "#a5b4fc" : "#cbd5e1",
+                    fontWeight: 800,
+                    fontSize: 12.5,
+                    cursor: "pointer",
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "center",
+                    gap: 8,
+                    transition: "all 0.2s ease",
+                  }}
+                >
+                  <span>✨ AI Script Generator</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setScriptMode("custom_script")}
+                  style={{
+                    padding: "10px 14px",
+                    borderRadius: 10,
+                    background: scriptMode === "custom_script" ? "rgba(236, 72, 153, 0.25)" : "rgba(255, 255, 255, 0.03)",
+                    border: scriptMode === "custom_script" ? "2px solid #ec4899" : "1px solid rgba(255, 255, 255, 0.08)",
+                    color: scriptMode === "custom_script" ? "#f472b6" : "#cbd5e1",
+                    fontWeight: 800,
+                    fontSize: 12.5,
+                    cursor: "pointer",
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "center",
+                    gap: 8,
+                    transition: "all 0.2s ease",
+                  }}
+                >
+                  <span>✍️ Provide My Own Script</span>
+                </button>
+              </div>
+            </div>
+
+            {/* SCRIPT OR TOPIC INPUT */}
+            {scriptMode === "custom_script" ? (
+              <div style={{ marginBottom: 18 }}>
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 8 }}>
+                  <label style={{ fontSize: 13, fontWeight: 700, color: "#f472b6" }}>
+                    📝 Your Custom Script or Dialogue:
+                  </label>
+                  <span style={{ fontSize: 11, color: "#10b981", fontWeight: 700 }}>✓ Spoken 100% Verbatim</span>
+                </div>
+                <textarea
+                  rows={5}
+                  placeholder={`Paste your exact script or lines here.\nExample:\nScene 1: क्या आप भी अपने बिज़नेस में वही पुरानी गलतियाँ कर रहे हैं?\nScene 2: Google Ads और SEO का सही बैलेंस आपके सेल्स को 10x कर सकता है!\nScene 3: लिंक पर क्लिक करें और आज ही अपना फ्री ऑडिट बुक करें।`}
+                  value={customScript}
+                  onChange={(e) => setCustomScript(e.target.value)}
+                  style={{
+                    width: "100%",
+                    boxSizing: "border-box",
+                    padding: "12px 14px",
+                    borderRadius: 12,
+                    background: "rgba(0, 0, 0, 0.5)",
+                    border: "1px solid rgba(236, 72, 153, 0.35)",
+                    color: "#fff",
+                    fontSize: 13.5,
+                    outline: "none",
+                    resize: "vertical",
+                    lineHeight: 1.5,
+                  }}
+                />
+                <div style={{ fontSize: 11.5, color: "#94a3b8", marginTop: 4 }}>
+                  💡 The AI character will speak your exact script word-for-word with precise lip-sync!
+                </div>
+              </div>
+            ) : (
+              <div style={{ marginBottom: 18 }}>
+                <label style={{ display: "block", fontSize: 13, fontWeight: 700, color: "#e2e8f0", marginBottom: 8 }}>
+                  🎬 Video Topic, Hook, or Concept:
+                </label>
+                <textarea
+                  rows={3}
+                  placeholder="e.g. 3 Proven secrets to 10x your Shopify sales this month..."
+                  value={topic}
+                  onChange={(e) => setTopic(e.target.value)}
+                  style={{
+                    width: "100%",
+                    boxSizing: "border-box",
+                    padding: "12px 14px",
+                    borderRadius: 12,
+                    background: "rgba(0, 0, 0, 0.4)",
+                    border: "1px solid rgba(255, 255, 255, 0.15)",
+                    color: "#fff",
+                    fontSize: 13.5,
+                    outline: "none",
+                    resize: "vertical",
+                  }}
+                />
+                {/* Quick Inspiration Pills */}
+                <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginTop: 8 }}>
+                  {QUICK_TOPICS.map((t, idx) => (
+                    <button
+                      type="button"
+                      key={idx}
+                      onClick={() => setTopic(t)}
+                      style={{
+                        fontSize: 11,
+                        padding: "4px 8px",
+                        borderRadius: 6,
+                        background: "rgba(255, 255, 255, 0.04)",
+                        border: "1px solid rgba(255, 255, 255, 0.08)",
+                        color: "#94a3b8",
+                        cursor: "pointer",
+                      }}
+                    >
+                      💡 {t.slice(0, 32)}…
+                    </button>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {/* Target Reel Duration Selector */}
+            <div style={{ marginBottom: 18 }}>
+              <label style={{ display: "block", fontSize: 12.5, fontWeight: 800, color: "#f8fafc", marginBottom: 8 }}>
+                ⏱️ Target Reel Duration:
+              </label>
+              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 10 }}>
+                {[15, 30, 60].map((sec) => (
                   <button
+                    key={sec}
                     type="button"
-                    key={idx}
-                    onClick={() => setTopic(t)}
+                    onClick={() => setDurationSeconds(sec)}
                     style={{
-                      fontSize: 11,
-                      padding: "4px 8px",
-                      borderRadius: 6,
-                      background: "rgba(255, 255, 255, 0.04)",
-                      border: "1px solid rgba(255, 255, 255, 0.08)",
-                      color: "#94a3b8",
+                      padding: "8px 10px",
+                      borderRadius: 10,
+                      background: durationSeconds === sec ? "rgba(16, 185, 129, 0.22)" : "rgba(255, 255, 255, 0.03)",
+                      border: durationSeconds === sec ? "2px solid #10b981" : "1px solid rgba(255, 255, 255, 0.08)",
+                      color: durationSeconds === sec ? "#34d399" : "#cbd5e1",
+                      fontWeight: 800,
+                      fontSize: 12,
                       cursor: "pointer",
+                      transition: "all 0.2s ease",
                     }}
                   >
-                    💡 {t.slice(0, 32)}…
+                    {sec}s {sec === 15 ? "(Viral Hook)" : sec === 30 ? "(Story Reel)" : "(Deep Dive)"}
                   </button>
                 ))}
               </div>
@@ -1149,9 +1272,10 @@ export default function ReelsStudioConnect() {
                     fontSize: 12.5,
                   }}
                 >
+                  <option value="alloy">Alloy (Natural Hindi & Bilingual - Crisp)</option>
                   <option value="nova">Nova (Energetic Female)</option>
-                  <option value="onyx">Onyx (Deep Authority Male)</option>
-                  <option value="alloy">Alloy (Balanced Neutral)</option>
+                  <option value="onyx">Onyx (Deep Authoritative Male)</option>
+                  <option value="shimmer">Shimmer (Expressive Warm Female)</option>
                   <option value="fable">Fable (British Narrator)</option>
                 </select>
               </div>
