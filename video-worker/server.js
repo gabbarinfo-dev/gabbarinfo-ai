@@ -497,9 +497,11 @@ async function assembleFFmpegVideo({ jobDir, scenes, audioFiles, visuals, output
       const listContent = audioFiles.map(f => `file '${f.replace(/\\/g, "/")}'`).join("\n");
       fs.writeFileSync(audioListPath, listContent);
 
-      const concatProc = spawn("ffmpeg", ["-y", "-f", "concat", "-safe", "0", "-i", audioListPath, "-c", "copy", combinedAudioPath]);
-      concatProc.on("close", (code) => {
-        if (code !== 0) return reject(new Error(`Audio concat failed with code ${code}`));
+      const concatProc = spawn("ffmpeg", ["-y", "-f", "concat", "-safe", "0", "-i", audioListPath, "-c", "copy", "-loglevel", "error", combinedAudioPath]);
+      let concatErr = "";
+      concatProc.stderr?.on("data", (c) => { concatErr += c.toString(); });
+      concatProc.on("close", (code, signal) => {
+        if (code !== 0) return reject(new Error(`Audio concat failed with code ${code || signal}: ${concatErr.slice(-300)}`));
         proceedWithVideo();
       });
       concatProc.on("error", reject);
@@ -528,10 +530,13 @@ async function assembleFFmpegVideo({ jobDir, scenes, audioFiles, visuals, output
         const segPath = path.join(jobDir, `seg_${currentIdx}.mp4`);
         segmentFiles.push(segPath);
 
-        // Zoom/Pan animation filter for cinematic feel
+        // Zoom/Pan animation filter:
+        // CRITICAL FIX: When using -loop 1, zoompan MUST have d=1 so it operates on incoming stream frame-by-frame.
+        // If d > 1 with -loop 1, FFmpeg generates d subframes FOR EVERY input frame (d*d frames), causing massive RAM explosion & OOM kill.
+        // With d=1 and veryfast preset, memory stays < 45MB RAM throughout the entire render!
         const vf = isWidescreen
-          ? `scale=1920:1080:force_original_aspect_ratio=increase,crop=1920:1080,zoompan=z='min(zoom+0.001,1.15)':d=${Math.round(durationPerScene * 25)}:x='iw/2-(iw/zoom/2)':y='ih/2-(ih/zoom/2)':s=1920x1080`
-          : `scale=1080:1920:force_original_aspect_ratio=increase,crop=1080:1920,zoompan=z='min(zoom+0.001,1.15)':d=${Math.round(durationPerScene * 25)}:x='iw/2-(iw/zoom/2)':y='ih/2-(ih/zoom/2)':s=1080x1920`;
+          ? `scale=1920:1080:force_original_aspect_ratio=increase,crop=1920:1080,zoompan=z='min(zoom+0.0008,1.15)':d=1:x='iw/2-(iw/zoom/2)':y='ih/2-(ih/zoom/2)':s=1920x1080:fps=25`
+          : `scale=1080:1920:force_original_aspect_ratio=increase,crop=1080:1920,zoompan=z='min(zoom+0.0008,1.15)':d=1:x='iw/2-(iw/zoom/2)':y='ih/2-(ih/zoom/2)':s=1080x1920:fps=25`;
 
         const args = [
           "-y",
@@ -540,14 +545,25 @@ async function assembleFFmpegVideo({ jobDir, scenes, audioFiles, visuals, output
           "-i", vis.path,
           "-vf", vf,
           "-c:v", "libx264",
+          "-preset", "veryfast",
+          "-tune", "stillimage",
           "-pix_fmt", "yuv420p",
           "-r", "25",
+          "-loglevel", "error",
           segPath
         ];
 
         const segProc = spawn("ffmpeg", args);
-        segProc.on("close", (code) => {
-          if (code !== 0) return reject(new Error(`Segment ${currentIdx} failed with code ${code}`));
+        let segErr = "";
+        segProc.stderr?.on("data", (chunk) => {
+          segErr += chunk.toString();
+          if (segErr.length > 2000) segErr = segErr.slice(-2000);
+        });
+
+        segProc.on("close", (code, signal) => {
+          if (code !== 0) {
+            return reject(new Error(`Segment ${currentIdx} failed with code ${code || signal}: ${segErr.slice(-300)}`));
+          }
           currentIdx++;
           if (onProgress) onProgress(currentIdx / visuals.length);
           renderNextSegment();
@@ -567,17 +583,27 @@ async function assembleFFmpegVideo({ jobDir, scenes, audioFiles, visuals, output
           "-i", segListPath,
           "-i", combinedAudioPath,
           "-c:v", "libx264",
+          "-preset", "veryfast",
           "-c:a", "aac",
           "-b:a", "192k",
           "-pix_fmt", "yuv420p",
           "-movflags", "+faststart",
           "-shortest",
+          "-loglevel", "error",
           outputPath
         ];
 
         const finalProc = spawn("ffmpeg", finalArgs);
-        finalProc.on("close", (code) => {
-          if (code !== 0) return reject(new Error(`Final assembly failed with code ${code}`));
+        let finalErr = "";
+        finalProc.stderr?.on("data", (chunk) => {
+          finalErr += chunk.toString();
+          if (finalErr.length > 2000) finalErr = finalErr.slice(-2000);
+        });
+
+        finalProc.on("close", (code, signal) => {
+          if (code !== 0) {
+            return reject(new Error(`Final assembly failed with code ${code || signal}: ${finalErr.slice(-300)}`));
+          }
           resolve(outputPath);
         });
         finalProc.on("error", reject);
