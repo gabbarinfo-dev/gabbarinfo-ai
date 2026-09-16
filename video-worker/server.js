@@ -534,13 +534,22 @@ async function assembleFFmpegVideo({ jobDir, scenes, audioFiles, visuals, output
         const segPath = path.join(jobDir, `seg_${currentIdx}.mp4`);
         segmentFiles.push(segPath);
 
-        // Zoom/Pan animation filter:
-        // CRITICAL FIX: When using -loop 1, zoompan MUST have d=1 so it operates on incoming stream frame-by-frame.
-        // If d > 1 with -loop 1, FFmpeg generates d subframes FOR EVERY input frame (d*d frames), causing massive RAM explosion & OOM kill.
-        // With d=1 and veryfast preset, memory stays < 45MB RAM throughout the entire render!
-        const vf = isWidescreen
-          ? `scale=1920:1080:force_original_aspect_ratio=increase,crop=1920:1080,zoompan=z='min(zoom+0.0008,1.15)':d=1:x='iw/2-(iw/zoom/2)':y='ih/2-(ih/zoom/2)':s=1920x1080:fps=25`
-          : `scale=1080:1920:force_original_aspect_ratio=increase,crop=1080:1920,zoompan=z='min(zoom+0.0008,1.15)':d=1:x='iw/2-(iw/zoom/2)':y='ih/2-(ih/zoom/2)':s=1080x1920:fps=25`;
+        // Smooth cinematic camera pan/tilt using pure YUV scale + crop (Zero memory overhead, never OOMs)
+        const isEven = currentIdx % 2 === 0;
+        let vf;
+        if (isWidescreen) {
+          // Scale to 108% then smoothly pan horizontally
+          const panExpr = isEven
+            ? `(in_w-out_w)*(t/${durationPerScene})`
+            : `(in_w-out_w)*(1-t/${durationPerScene})`;
+          vf = `scale=2080:1170:force_original_aspect_ratio=increase,crop=2080:1170,crop=1920:1080:x='${panExpr}':y='(in_h-out_h)/2'`;
+        } else {
+          // Vertical 9:16: Scale to 108% then smoothly tilt vertically
+          const tiltExpr = isEven
+            ? `(in_h-out_h)*(t/${durationPerScene})`
+            : `(in_h-out_h)*(1-t/${durationPerScene})`;
+          vf = `scale=1170:2080:force_original_aspect_ratio=increase,crop=1170:2080,crop=1080:1920:x='(in_w-out_w)/2':y='${tiltExpr}'`;
+        }
 
         const args = [
           "-y",
@@ -549,8 +558,7 @@ async function assembleFFmpegVideo({ jobDir, scenes, audioFiles, visuals, output
           "-i", vis.path,
           "-vf", vf,
           "-c:v", "libx264",
-          "-preset", "veryfast",
-          "-tune", "stillimage",
+          "-preset", "ultrafast",
           "-pix_fmt", "yuv420p",
           "-r", "25",
           "-loglevel", "error",
