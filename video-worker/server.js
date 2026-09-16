@@ -315,12 +315,14 @@ REQUIREMENTS:
     const imgPath = path.join(jobDir, `scene_${i}_visual.png`);
     try {
       const isPhotoreal = activeCharacters.some(c => ["photoreal_human", "hollywood_cinema", "indian_cinema", "documentary_realism"].includes(c.archetype)) || payload.visualStyle === "photoreal_human";
+      const isWidescreen = payload.format !== "reel_9_16";
+      const aspectDesc = isWidescreen ? "16:9 widescreen YouTube format" : "vertical 9:16 smartphone format";
 
       let prompt = "";
       if (isPhotoreal) {
-        prompt = `Cinematic 16:9 35mm Hollywood film still photograph. ${scene.visualDescription}. Hyper-realistic living human characters, authentic skin pores, lifelike natural eyes with reflections, Arri Alexa Mini LF, 8k resolution, dramatic cinematic studio lighting, shallow depth of field. Zero cartoon or CGI plastic artifacts.`;
+        prompt = `Cinematic ${aspectDesc} 35mm Hollywood film still photograph. ${scene.visualDescription}. Hyper-realistic living human characters, authentic skin pores, lifelike natural eyes with reflections, Arri Alexa Mini LF, 8k resolution, dramatic cinematic studio lighting, shallow depth of field. Zero cartoon or CGI plastic artifacts.`;
       } else {
-        prompt = `Cinematic 16:9 movie still frame. ${scene.visualDescription}. Hyper-detailed, 8k resolution, dramatic cinematic lighting, rich colors, masterpiece.`;
+        prompt = `Cinematic ${aspectDesc} movie still frame. ${scene.visualDescription}. Hyper-detailed, 8k resolution, dramatic cinematic lighting, rich colors, masterpiece.`;
       }
 
       let imgGen;
@@ -336,7 +338,7 @@ REQUIREMENTS:
           model: "dall-e-3",
           prompt: prompt.slice(0, 950),
           n: 1,
-          size: "1792x1024",
+          size: isWidescreen ? "1792x1024" : "1024x1792",
         });
       }
 
@@ -355,16 +357,18 @@ REQUIREMENTS:
     } catch (imgErr) {
       log(job.id, `Image gen fallback for scene ${i}: ${imgErr.message}`);
       // Fallback solid gradient / placeholder if image gen limits hit
-      await createFallbackImage(imgPath, 1920, 1080, scene.speaker || "Scene");
+      const isWidescreen = payload.format !== "reel_9_16";
+      await createFallbackImage(imgPath, isWidescreen ? 1920 : 1080, isWidescreen ? 1080 : 1920, scene.speaker || "Scene");
       sceneVisuals.push({ type: "image", path: imgPath });
     }
   }
 
   // Step 4: FFmpeg Master Assembly
   job.progress = 75;
-  job.stage = "FFmpeg server-side master 1080p video compilation...";
+  job.stage = "FFmpeg server-side master video compilation...";
   log(job.id, "Assembling master video via FFmpeg...");
 
+  const isWidescreen = payload.format !== "reel_9_16";
   const masterVideoPath = path.join(jobDir, "master_output.mp4");
   await assembleFFmpegVideo({
     jobDir,
@@ -372,7 +376,7 @@ REQUIREMENTS:
     audioFiles,
     visuals: sceneVisuals,
     outputPath: masterVideoPath,
-    isWidescreen: true,
+    isWidescreen,
     onProgress: (p) => {
       job.progress = 75 + Math.round(p * 0.15); // 75% to 90%
     },
