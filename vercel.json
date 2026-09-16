@@ -1,6 +1,15 @@
 {
   "$schema": "https://openapi.vercel.sh/vercel.json",
-  "crons": [],
+  "crons": [
+    {
+      "path": "/api/wordpress/autopilot-cron",
+      "schedule": "30 3 * * *"
+    },
+    {
+      "path": "/api/social/autopilot-cron",
+      "schedule": "45 3 * * *"
+    }
+  ],
   "functions": {
     "pages/api/**/*": {
       "maxDuration": 60

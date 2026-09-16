@@ -1793,34 +1793,40 @@ app.post("/autopilot/seo/trigger", requireAuth, async (req, res) => {
 app.get("/autopilot/status", requireAuth, (req, res) => {
   res.json({
     ok: true,
-    social_cron: "0 3 * * * (08:30 AM IST Daily)",
-    seo_cron: "0 2 * * * (07:30 AM IST Daily)",
+    social_cron: "15 9 * * * (09:15 AM IST Daily, Asia/Kolkata)",
+    seo_cron: "0 9 * * * (09:00 AM IST Daily, Asia/Kolkata)",
     hasSupabase: Boolean(supabase),
     hasOpenAI: Boolean(openai),
   });
 });
 
 // -------------------------------------------------------------
-// Scheduled Native Cron Jobs (Reliable Background Execution)
+// Scheduled Native Cron Jobs (Reliable Background Execution at 9:00 AM IST)
 // -------------------------------------------------------------
-// 1. Daily SEO Suite Autopilot (Runs 07:30 AM IST / 02:00 UTC)
-cron.schedule("0 2 * * *", async () => {
-  log("CRON_SEO", "Executing scheduled SEO Suite Autopilot cycle...");
+// 1. Daily SEO Suite Autopilot (Runs 09:00 AM IST Daily)
+cron.schedule("0 9 * * *", async () => {
+  log("CRON_SEO", "Executing scheduled SEO Suite Autopilot cycle (09:00 AM IST)...");
   try {
     await runSeoAutopilotCycle({ supabase, openai, force: false, logger: (msg) => log("CRON_SEO", msg) });
   } catch (e) {
     log("CRON_SEO", `Scheduled SEO cycle error: ${e.message}`);
   }
+}, {
+  scheduled: true,
+  timezone: "Asia/Kolkata"
 });
 
-// 2. Daily Social Media Planner Autopilot (Runs 08:30 AM IST / 03:00 UTC)
-cron.schedule("0 3 * * *", async () => {
-  log("CRON_SOCIAL", "Executing scheduled Social Media Planner Autopilot cycle...");
+// 2. Daily Social Media Planner Autopilot (Runs 09:15 AM IST Daily)
+cron.schedule("15 9 * * *", async () => {
+  log("CRON_SOCIAL", "Executing scheduled Social Media Planner Autopilot cycle (09:15 AM IST)...");
   try {
     await runSocialAutopilotCycle({ supabase, openai, force: false, logger: (msg) => log("CRON_SOCIAL", msg) });
   } catch (e) {
     log("CRON_SOCIAL", `Scheduled Social cycle error: ${e.message}`);
   }
+}, {
+  scheduled: true,
+  timezone: "Asia/Kolkata"
 });
 
 // Start Server
