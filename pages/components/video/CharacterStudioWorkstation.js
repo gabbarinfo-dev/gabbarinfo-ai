@@ -25,7 +25,9 @@ export default function CharacterStudioWorkstation() {
 
   // Story & Episode Generator State
   const [creationMode, setCreationMode] = useState("ai_prompt"); // "ai_prompt" | "custom_script" | "business_media"
-  const [animationStyle, setAnimationStyle] = useState("generative_video"); // "generative_video" | "hybrid_lip_sync" | "cinematic_scenes"
+  const [visualEngine, setVisualEngine] = useState("photoreal_human"); // "photoreal_human" | "pixar_3d" | "anime_2d" | "user_vault"
+  const [genre, setGenre] = useState("action_thriller"); // "action_thriller" | "movie_drama" | "comedy_skit" | "sci_fi"
+  const [animationStyle, setAnimationStyle] = useState("live_talking_head"); // Default to live_talking_head for true lip-sync!
   const [storyStyle, setStoryStyle] = useState("movie_dialogue"); // "movie_dialogue" | "storybook_narrated" | "documentary_voiceover"
   const [narrativeType, setNarrativeType] = useState("standalone"); // "standalone" | "episodic"
   const [customScript, setCustomScript] = useState("");
@@ -312,6 +314,8 @@ export default function CharacterStudioWorkstation() {
             companionId: selectedCompanion?.id,
             characters: activeChars,
             storyStyle,
+            genre,
+            visualEngine,
             format: videoFormat,
             narrativeType,
             scriptMode: creationMode,
@@ -1217,32 +1221,88 @@ export default function CharacterStudioWorkstation() {
                 </div>
               </div>
 
-              {/* Animation Engine Style: Cinematic World Video vs Hybrid Dialogue Lip-Sync vs Multi-Scene */}
+              {/* Visual Character Engine Selector */}
               <div style={{ marginBottom: 16 }}>
                 <label style={{ display: "block", fontSize: 11.5, fontWeight: 800, color: "#cbd5e1", marginBottom: 6 }}>
-                  ⚡ Video Animation Engine:
+                  🎨 Visual Character Engine:
+                </label>
+                <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 8 }}>
+                  {[
+                    { id: "photoreal_human", label: "Live-Action Human", emoji: "👤", desc: "35mm Cinema 8K, realistic eyes & pores" },
+                    { id: "pixar_3d", label: "3D Pixar Animation", emoji: "✨", desc: "High-end 3D CGI, vibrant & expressive" },
+                    { id: "anime_2d", label: "2D Anime / Manga", emoji: "⚡", desc: "Crisp lines & vibrant anime key visual" },
+                    { id: "user_vault", label: "Custom Vault Cast", emoji: "🎭", desc: "Casts your exclusive saved characters" },
+                  ].map((v) => {
+                    const isSelected = visualEngine === v.id;
+                    return (
+                      <div
+                        key={v.id}
+                        onClick={() => setVisualEngine(v.id)}
+                        style={{
+                          padding: "10px 8px",
+                          borderRadius: 10,
+                          background: isSelected ? "linear-gradient(135deg, rgba(168, 85, 247, 0.25) 0%, rgba(99, 102, 241, 0.15) 100%)" : "rgba(255, 255, 255, 0.03)",
+                          border: isSelected ? "2px solid #c084fc" : "1px solid rgba(255, 255, 255, 0.08)",
+                          cursor: "pointer",
+                          transition: "all 0.15s ease",
+                        }}
+                      >
+                        <div style={{ fontWeight: 800, fontSize: 11.5, color: isSelected ? "#e9d5ff" : "#cbd5e1" }}>
+                          {v.emoji} {v.label}
+                        </div>
+                        <div style={{ fontSize: 9.5, color: "#94a3b8", marginTop: 3, lineHeight: 1.3 }}>
+                          {v.desc}
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+
+              {/* Movie Genre & Action Pace Selector */}
+              <div style={{ marginBottom: 16 }}>
+                <label style={{ display: "block", fontSize: 11.5, fontWeight: 800, color: "#cbd5e1", marginBottom: 6 }}>
+                  🎬 Movie Genre & Action Pace:
+                </label>
+                <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 8 }}>
+                  {[
+                    { id: "action_thriller", label: "Action & Thriller", emoji: "💥", desc: "Car chases, stunts & urgent dialogue" },
+                    { id: "movie_drama", label: "Drama & Skit", emoji: "🎭", desc: "Emotional acting & conversational banter" },
+                    { id: "comedy_skit", label: "Comedy Skit", emoji: "🤣", desc: "Relatable humor & witty punchlines" },
+                    { id: "sci_fi", label: "Sci-Fi & Cyberpunk", emoji: "🚀", desc: "Futuristic gadgets & neon metropolis" },
+                  ].map((g) => {
+                    const isSelected = genre === g.id;
+                    return (
+                      <div
+                        key={g.id}
+                        onClick={() => setGenre(g.id)}
+                        style={{
+                          padding: "10px 8px",
+                          borderRadius: 10,
+                          background: isSelected ? "linear-gradient(135deg, rgba(56, 189, 248, 0.25) 0%, rgba(37, 99, 235, 0.15) 100%)" : "rgba(255, 255, 255, 0.03)",
+                          border: isSelected ? "2px solid #38bdf8" : "1px solid rgba(255, 255, 255, 0.08)",
+                          cursor: "pointer",
+                          transition: "all 0.15s ease",
+                        }}
+                      >
+                        <div style={{ fontWeight: 800, fontSize: 11.5, color: isSelected ? "#bae6fd" : "#cbd5e1" }}>
+                          {g.emoji} {g.label}
+                        </div>
+                        <div style={{ fontSize: 9.5, color: "#94a3b8", marginTop: 3, lineHeight: 1.3 }}>
+                          {g.desc}
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+
+              {/* Animation Engine Style: Dialogue Lip-Sync vs Cinematic World Video vs Multi-Scene */}
+              <div style={{ marginBottom: 16 }}>
+                <label style={{ display: "block", fontSize: 11.5, fontWeight: 800, color: "#cbd5e1", marginBottom: 6 }}>
+                  ⚡ Video Animation & Acting Engine:
                 </label>
                 <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 8 }}>
-                  <div
-                    onClick={() => setAnimationStyle("generative_video")}
-                    style={{
-                      padding: "10px 10px",
-                      borderRadius: 10,
-                      background: animationStyle === "generative_video" ? "rgba(168, 85, 247, 0.2)" : "rgba(255, 255, 255, 0.03)",
-                      border: animationStyle === "generative_video" ? "2px solid #a855f7" : "1px solid rgba(255, 255, 255, 0.08)",
-                      cursor: "pointer",
-                      transition: "all 0.15s ease",
-                    }}
-                  >
-                    <div style={{ display: "flex", alignItems: "center", gap: 5, fontWeight: 800, fontSize: 11.5, color: animationStyle === "generative_video" ? "#c084fc" : "#cbd5e1" }}>
-                      <span>🎥 Cinematic AI Video</span>
-                      <span style={{ fontSize: 8.5, fontWeight: 900, padding: "1px 4px", borderRadius: 4, background: "#a855f7", color: "#fff" }}>Higgsfield GPU</span>
-                    </div>
-                    <div style={{ fontSize: 9.5, color: "#94a3b8", marginTop: 3, lineHeight: 1.3 }}>
-                      Minimax / Runway world video with moving cars, cityscapes, fluid environment physics &amp; camera motion.
-                    </div>
-                  </div>
-
                   <div
                     onClick={() => setAnimationStyle("live_talking_head")}
                     style={{
@@ -1255,11 +1315,31 @@ export default function CharacterStudioWorkstation() {
                     }}
                   >
                     <div style={{ display: "flex", alignItems: "center", gap: 5, fontWeight: 800, fontSize: 11.5, color: animationStyle === "live_talking_head" ? "#f472b6" : "#cbd5e1" }}>
-                      <span>🗣️ B-Roll + Lip-Sync</span>
-                      <span style={{ fontSize: 8.5, fontWeight: 900, padding: "1px 4px", borderRadius: 4, background: "#ec4899", color: "#fff" }}>Hybrid</span>
+                      <span>🗣️ Actor Lip-Sync</span>
+                      <span style={{ fontSize: 8.5, fontWeight: 900, padding: "1px 4px", borderRadius: 4, background: "#ec4899", color: "#fff" }}>BEST FOR DIALOGUE</span>
                     </div>
                     <div style={{ fontSize: 9.5, color: "#94a3b8", marginTop: 3, lineHeight: 1.3 }}>
-                      Wide cinematic world B-roll for narration + physical character face lip-sync strictly on spoken dialogue.
+                      Physical character lip-sync on spoken dialogue with natural eye & head motion (~2-3 mins render).
+                    </div>
+                  </div>
+
+                  <div
+                    onClick={() => setAnimationStyle("generative_video")}
+                    style={{
+                      padding: "10px 10px",
+                      borderRadius: 10,
+                      background: animationStyle === "generative_video" ? "rgba(168, 85, 247, 0.2)" : "rgba(255, 255, 255, 0.03)",
+                      border: animationStyle === "generative_video" ? "2px solid #a855f7" : "1px solid rgba(255, 255, 255, 0.08)",
+                      cursor: "pointer",
+                      transition: "all 0.15s ease",
+                    }}
+                  >
+                    <div style={{ display: "flex", alignItems: "center", gap: 5, fontWeight: 800, fontSize: 11.5, color: animationStyle === "generative_video" ? "#c084fc" : "#cbd5e1" }}>
+                      <span>🎥 Cinematic Action Video</span>
+                      <span style={{ fontSize: 8.5, fontWeight: 900, padding: "1px 4px", borderRadius: 4, background: "#a855f7", color: "#fff" }}>Runway/Minimax</span>
+                    </div>
+                    <div style={{ fontSize: 9.5, color: "#94a3b8", marginTop: 3, lineHeight: 1.3 }}>
+                      Diffusion video with moving cars, cityscapes & dynamic physics.
                     </div>
                   </div>
 
@@ -1276,9 +1356,10 @@ export default function CharacterStudioWorkstation() {
                   >
                     <div style={{ display: "flex", alignItems: "center", gap: 5, fontWeight: 800, fontSize: 11.5, color: animationStyle === "cinematic_scenes" ? "#38bdf8" : "#cbd5e1" }}>
                       <span>🎬 Multi-Scene Motion</span>
+                      <span style={{ fontSize: 8.5, fontWeight: 900, padding: "1px 4px", borderRadius: 4, background: "#38bdf8", color: "#fff" }}>ULTRA FAST</span>
                     </div>
                     <div style={{ fontSize: 9.5, color: "#94a3b8", marginTop: 3, lineHeight: 1.3 }}>
-                      High-res keyframe scenes with 2.5D camera zoom &amp; lighting pan.
+                      High-res keyframe scenes with 2.5D camera zoom & lighting pan (~60 sec render).
                     </div>
                   </div>
                 </div>

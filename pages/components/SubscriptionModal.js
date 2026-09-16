@@ -13,6 +13,7 @@
  */
 
 import { useState } from "react";
+import { useRouter } from "next/router";
 import { SUBSCRIPTION_PLANS } from "../../lib/billing/plans";
 
 const CATEGORIES = [
@@ -54,6 +55,7 @@ export default function SubscriptionModal({
   onSubscriptionUpdated,
   onRequireAuth,
 }) {
+  const router = useRouter();
   const [selectedPlan, setSelectedPlan] = useState(null);
   const [selectedCategory, setSelectedCategory] = useState("suite");
   const [step, setStep] = useState("plans"); // "plans" | "checkout" | "confirmation"
@@ -379,6 +381,88 @@ export default function SubscriptionModal({
                   }}
                 >
                   ⚡ Try for ₹99 Now
+                </button>
+              </div>
+
+              {/* 🎬 Dedicated Runway-Style Long-Form Video Studio Banner */}
+              <div
+                style={{
+                  background: "linear-gradient(135deg, rgba(168, 85, 247, 0.16) 0%, rgba(56, 189, 248, 0.1) 100%)",
+                  border: "1px solid rgba(168, 85, 247, 0.35)",
+                  borderRadius: 16,
+                  padding: "16px 20px",
+                  marginBottom: 20,
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "space-between",
+                  gap: 16,
+                  flexWrap: "wrap",
+                }}
+              >
+                <div style={{ display: "flex", alignItems: "center", gap: 14 }}>
+                  <div
+                    style={{
+                      width: 44,
+                      height: 44,
+                      borderRadius: 12,
+                      background: "linear-gradient(135deg, #a855f7 0%, #38bdf8 100%)",
+                      display: "flex",
+                      alignItems: "center",
+                      justifyContent: "center",
+                      fontSize: 22,
+                      boxShadow: "0 4px 12px rgba(168, 85, 247, 0.4)",
+                      flexShrink: 0,
+                    }}
+                  >
+                    🎬
+                  </div>
+                  <div>
+                    <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 2 }}>
+                      <h4 style={{ margin: 0, fontSize: 15, fontWeight: 800, color: "#e2e8f0" }}>
+                        Cinematic Long-Form AI Video Studio
+                      </h4>
+                      <span
+                        style={{
+                          background: "rgba(168, 85, 247, 0.3)",
+                          color: "#d8b4fe",
+                          padding: "2px 8px",
+                          borderRadius: 999,
+                          fontSize: 10,
+                          fontWeight: 800,
+                          letterSpacing: "0.05em",
+                          textTransform: "uppercase",
+                        }}
+                      >
+                        Runway Grade
+                      </span>
+                    </div>
+                    <p style={{ margin: 0, fontSize: 12, color: "#cbd5e1", lineHeight: 1.4 }}>
+                      Generate 1 to 5 minute full movies with multi-character dialogues, unique voices, and cinematic camera moves.
+                    </p>
+                  </div>
+                </div>
+
+                <button
+                  type="button"
+                  onClick={() => {
+                    onClose();
+                    router.push("/video-plans");
+                  }}
+                  style={{
+                    padding: "9px 18px",
+                    borderRadius: 10,
+                    background: "linear-gradient(135deg, #a855f7 0%, #38bdf8 100%)",
+                    color: "#ffffff",
+                    border: "none",
+                    fontWeight: 800,
+                    fontSize: 12,
+                    cursor: "pointer",
+                    boxShadow: "0 4px 14px rgba(168, 85, 247, 0.35)",
+                    transition: "all 0.15s ease",
+                    whiteSpace: "nowrap",
+                  }}
+                >
+                  🎬 Explore Video Plans →
                 </button>
               </div>
 

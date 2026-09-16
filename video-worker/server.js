@@ -262,8 +262,10 @@ async function generateSadTalkerLipSync({ imageUrl, audioUrl, jobId }) {
         source_image: imageUrl,
         driven_audio: audioUrl,
         still: false,
-        use_enhancer: false,
-        expression_scale: 1.1,
+        use_enhancer: true,
+        enhancer: "gfpgan",
+        preprocess: "crop",
+        expression_scale: 1.25,
       },
     }),
   });
@@ -491,8 +493,10 @@ async function processLongFormYouTube(job, jobDir) {
     durationMinutes,
     audience = "family",
     vocalEmotion = "dramatic_story",
-    animationStyle = "generative_video",
+    animationStyle = "hybrid_lip_sync", // Default to hybrid_lip_sync so characters visibly talk with lip-sync!
     storyStyle = "movie_dialogue", // "movie_dialogue" | "storybook_narrated" | "documentary_voiceover"
+    genre = "action_thriller", // "action_thriller" | "movie_drama" | "comedy_skit" | "sci_fi"
+    visualEngine = "photoreal_human", // "photoreal_human" | "pixar_3d" | "anime_2d" | "user_vault"
   } = payload;
 
   const durationMins = Number(durationMinutes || targetMinutes) || 2;
@@ -501,7 +505,7 @@ async function processLongFormYouTube(job, jobDir) {
 
   job.progress = 15;
   job.stage = `Scriptwriting ~${durationMins} min screenplay with GPT-4o...`;
-  log(job.id, `Generating cinematic screenplay (~${durationMins} min, ${targetTotalSecs}s) for "${videoTitle || episodeTitle || topic}" [Style: ${storyStyle}, Animation: ${animationStyle}]`);
+  log(job.id, `Generating cinematic screenplay (~${durationMins} min, ${targetTotalSecs}s) for "${videoTitle || episodeTitle || topic}" [Style: ${storyStyle}, Genre: ${genre}, Engine: ${visualEngine}]`);
 
   // Character casting:
   // If user provided characters, use them.
@@ -513,18 +517,18 @@ async function processLongFormYouTube(job, jobDir) {
     voice: resolveVoice(c),
     gender: c.gender || "male",
     traits: c.traits || c.visualTraits || "expressive photorealistic person",
-    archetype: c.archetype || "photoreal_human",
+    archetype: c.archetype || visualEngine || "photoreal_human",
   })) : [];
 
   let numScenes = 4;
-  if (durationMins >= 5) numScenes = 20;
-  else if (durationMins >= 4) numScenes = 16;
-  else if (durationMins >= 3) numScenes = 12;
-  else if (durationMins >= 2) numScenes = 8;
+  if (durationMins >= 5) numScenes = 12;
+  else if (durationMins >= 4) numScenes = 10;
+  else if (durationMins >= 3) numScenes = 8;
+  else if (durationMins >= 2) numScenes = 6;
   else numScenes = 4;
 
-  const sceneTargetSecs = Math.max(12, Math.round(targetTotalSecs / numScenes));
-  log(job.id, `Creating ${numScenes} scenes (~${sceneTargetSecs}s per scene) for target ${durationMins} mins.`);
+  const sceneTargetSecs = Math.max(10, Math.round(targetTotalSecs / numScenes));
+  log(job.id, `Creating ${numScenes} dynamic scenes (~${sceneTargetSecs}s per scene) for target ${durationMins} mins.`);
 
   let langInstruction = "Language: Hindi (fluent, natural, expressive dialogue in Devanagari script).";
   if (language === "en_us") langInstruction = "Language: American English (natural cinematic conversational dialogue).";
@@ -539,30 +543,48 @@ async function processLongFormYouTube(job, jobDir) {
     audiencePrompt = "TARGET AUDIENCE: Adults & Mature Viewers. Tone: Deep cinematic narrative, intense emotional drama, sophisticated dialogues.";
   }
 
+  let genrePrompt = "";
+  if (genre === "action_thriller") {
+    genrePrompt = `GENRE: HIGH-OCTANE ACTION THRILLER & STUNTS.
+Tone: Fast-paced, high adrenaline, urgent stakes, car chases, daring escapes, explosive confrontations. Dialogue is snappy, tense, and urgent!`;
+  } else if (genre === "comedy_skit") {
+    genrePrompt = `GENRE: SNAPPY COMEDY SKIT.
+Tone: Hilarious, relatable everyday humor, funny misunderstandings, punchy one-liners, and witty comebacks!`;
+  } else if (genre === "sci_fi") {
+    genrePrompt = `GENRE: SCI-FI & CYBERPUNK.
+Tone: Futuristic neon metropolis, advanced gadgets, space mystery, high-tech suspense!`;
+  } else {
+    // movie_drama
+    genrePrompt = `GENRE: INTENSE CINEMATIC DRAMA & EMOTIONAL ACTING.
+Tone: Deep emotional realism, authentic human conflicts, heartfelt confrontations, personal stakes!`;
+  }
+
   // Build System Prompt based on selected storyStyle
   let scriptFormatRules = "";
   if (storyStyle === "movie_dialogue") {
     scriptFormatRules = `
 CRITICAL MOVIE / SKIT ACTING RULES (PURE CHARACTER CONVERSATION — ABSOLUTELY NO NARRATOR):
-1. This is a real MOVIE / COMEDY SKIT / DRAMA. Like real films and YouTube skits, there is ZERO NARRATION. There is NO Narrator!
-2. Characters speak directly to each other! Every single scene MUST feature one of the characters speaking direct spoken dialogue in quotation marks (e.g. "सुन भाई, गाड़ी रोक! वो देख सामने क्या हो रहा है!").
-3. If 2 or more characters are present, they MUST converse back-and-forth:
-   - Scene 1: Character A initiates conversation or action.
-   - Scene 2: Character B replies, argues, reacts, or cracks a joke.
-   - Scene 3: Character A responds with emotion or urgency.
-   - Scene 4: Climax, resolution, punchline, or realization.
-4. For every scene:
+1. This is a real MOVIE / COMEDY SKIT / ACTION FILM. There is ZERO NARRATION. There is NO Narrator!
+2. Characters speak directly to each other! Every single scene MUST feature one of the characters speaking direct spoken dialogue in quotation marks.
+3. CONVERSATIONAL PUNCHINESS: Spoken dialogue MUST be 12 to 25 words maximum per line (natural human speech cadence, NOT long monologues or essays!).
+4. STRICT BACK-AND-FORTH DIALOGUE:
+   - Scene 1: Character A starts conversation or shouts warning in action.
+   - Scene 2: Character B reacts, replies, argues, or counters.
+   - Scene 3: Action beat or Character A escalates the situation.
+   - Scene 4: Character B responds with decision, punchline, or emotional revelation.
+   - Scene 5 & 6: Climax, daring move, or resolution.
+5. For every scene:
    - "type": "dialogue"
    - "speaker": EXACT name of the speaking character. NEVER "Narrator".
-   - "spokenAudio": The direct spoken dialogue in quotation marks (30 to 50 words, natural cadence, rich emotion).
-   - "visualDescription": Cinematic movie scene still. Describe the setting (moving cars, room, bustling street, lab, cafe), what the characters are doing, their expressions, gestures, and the cinematic camera shot (e.g. wide two-shot, over-the-shoulder, tracking shot).
-   - "characterInVisual": Names of characters present in the frame.`;
+   - "spokenAudio": The direct spoken dialogue in quotation marks (12 to 25 words, high emotion).
+   - "visualDescription": Close-up or medium close-up movie shot of the speaking character. Their expression, clear eyes, gestures, and the cinematic setting.
+   - "cameraShot": "close_up" or "medium_close_up" or "action_shot"`;
   } else if (storyStyle === "storybook_narrated") {
     scriptFormatRules = `
 CRITICAL STORYBOOK / FABLE RULES:
 1. Alternate between "b_roll" (speaker: "Narrator", descriptive scene setting) and "dialogue" (speaker: character name, lines in quotes).
 2. For B-roll: "spokenAudio" is the narrator's rich descriptive voiceover.
-3. For Dialogue: "spokenAudio" is direct character dialogue in quotes.`;
+3. For Dialogue: "spokenAudio" is direct character dialogue in quotes (15 to 25 words).`;
   } else {
     // documentary_voiceover
     scriptFormatRules = `
@@ -577,12 +599,12 @@ ${activeCharacters.map((c, i) => `Character ${i + 1}: Name="${c.name}", Role="${
 ` : `
 DYNAMIC CHARACTER CREATION:
 The user has NOT specified fixed characters. You MUST analyze the story prompt: "${storyPrompt || videoTitle || topic}".
-Extract or invent 1 to 3 distinct characters fitting the genre, culture, and setting of this story.
+Extract or invent 2 distinct characters fitting the genre, culture, and setting of this story.
 Include a "characters" array in your JSON output defining them:
-- "name": authentic name fitting the story (NEVER hardcode generic names)
+- "name": authentic realistic name fitting the story (e.g., Rohan, Priya, Vikram, Maya, Alex, Sophia)
 - "role": role in the scene
 - "gender": "male" or "female"
-- "traits": visual description (clothing, look, mood)
+- "traits": visual description (clothing, look, hair, mood)
 - "voice": choose "onyx" or "echo" or "ash" for male; "shimmer" or "nova" or "coral" for female
 `;
 
@@ -591,13 +613,14 @@ You are writing a COMPLETE, captivating ${durationMins}-minute cinematic script.
 FORMAT: ${isWidescreen ? "16:9 Widescreen YouTube Cinematic Film" : "9:16 Vertical Smartphone Story / Social Reel"}.
 ${langInstruction}
 ${audiencePrompt}
+${genrePrompt}
 
 ${charContext}
 
 ${scriptFormatRules}
 
 Divide the story into exactly ${numScenes} sequential scenes.
-Each scene's spoken dialogue/audio must be 30 to 50 words in length, rich with drama, emotion, and character personality.
+Each scene's spoken dialogue must be 12 to 25 words in length, lively, natural, and charged with real emotion.
 
 Return ONLY valid JSON in this exact structure:
 {
@@ -614,9 +637,9 @@ Return ONLY valid JSON in this exact structure:
       "type": "dialogue",
       "speaker": "SpeakingCharacterName",
       "chapter": "Chapter Title",
-      "spokenAudio": "\"Direct first-person spoken dialogue in quotation marks (30 to 50 words)\"",
-      "visualDescription": "Detailed cinematic movie shot of characters in the rich environment with moving elements, lighting, camera angle, and expressions",
-      "characterInVisual": "Characters in frame"
+      "spokenAudio": "\"Direct first-person spoken dialogue in quotation marks (12 to 25 words)\"",
+      "visualDescription": "Close-up or medium shot of the speaking character with realistic eyes and expression, in the rich environment",
+      "characterInVisual": "Speaking character name"
     }
   ]
 }`;
@@ -711,11 +734,26 @@ Return ONLY valid JSON in this exact structure:
 
       let prompt = "";
       if (isNarrator) {
-        prompt = `Cinematic ${aspectDesc} 35mm Hollywood film still photograph. ${scene.visualDescription}. Atmospheric wide angle cinematic shot, environmental lighting, fluid depth of field, Arri Alexa Mini LF, 8k resolution, masterpiece.`;
+        if (visualEngine === "pixar_3d") {
+          prompt = `High-end 3D Pixar Disney CGI animated scene. ${scene.visualDescription}. Colorful studio lighting, dynamic cinematic atmosphere, 8k render, masterpiece.`;
+        } else if (visualEngine === "anime_2d") {
+          prompt = `Vibrant 2D anime widescreen film scene. ${scene.visualDescription}. Studio Ghibli and Makoto Shinkai style, dynamic cinematic motion, masterpiece.`;
+        } else {
+          prompt = `Cinematic ${aspectDesc} 35mm Hollywood action film still photograph. ${scene.visualDescription}. Atmospheric wide angle cinematic shot, environmental lighting, fluid depth of field, Arri Alexa Mini LF, 8k resolution, masterpiece.`;
+        }
       } else {
         const speakingChar = activeCharacters.find(c => c.name.toLowerCase() === (scene.speaker || "").toLowerCase()) || activeCharacters[0];
-        const allChars = activeCharacters.map(c => `${c.name} (${c.traits || "detailed character"})`).join(" and ");
-        prompt = `Cinematic ${aspectDesc} movie scene photograph. ${scene.visualDescription}. Characters present: ${allChars}. Active speaking character: ${speakingChar.name}. 35mm cinema camera, Arri Alexa film still, natural skin textures, authentic expressions, dynamic movie lighting, photorealistic 8k, masterpiece.`;
+        const isFemale = speakingChar.gender === "female";
+        const charGender = isFemale ? "woman" : "man";
+
+        if (visualEngine === "pixar_3d") {
+          prompt = `High-end 3D Pixar Disney CGI animation film still. Medium close-up portrait of ${speakingChar.name}, a charismatic ${charGender} (${speakingChar.traits || "expressive animated character"}). Big expressive clear reflective eyes, open detailed eyelids, natural animated mouth speaking, vibrant subsurface scattering skin, colorful studio CGI lighting, setting: ${scene.visualDescription}, 8k render, masterpiece.`;
+        } else if (visualEngine === "anime_2d") {
+          prompt = `Studio Ghibli and Makoto Shinkai 2D anime key visual film still. Medium close-up portrait of ${speakingChar.name}, a ${charGender} (${speakingChar.traits || "expressive anime character"}). Crisp detailed anime eyes with reflections, clean linework, vibrant cinematic lighting, expressive mouth delivering dialogue, setting: ${scene.visualDescription}, masterpiece.`;
+        } else {
+          // Photorealistic human (cinema realism)
+          prompt = `Cinematic 35mm film photograph. Medium close-up portrait of ${speakingChar.name}, an authentic photorealistic ${charGender} (${speakingChar.traits || "striking expressive actor"}). Crisp sharp open eyes with clear pupils and defined irises, natural eyelids, authentic emotional facial expression delivering dialogue, natural human skin texture with subtle pores, no deformities. 85mm prime portrait lens f/1.8, shallow depth of field with soft bokeh background. Setting: ${scene.visualDescription}. Arri Alexa Mini LF 8k, master lighting, photorealistic masterpiece.`;
+        }
       }
 
       let imgGen;
@@ -749,10 +787,9 @@ Return ONLY valid JSON in this exact structure:
       // Check Scene Type & Animation Mode
       const isDialogueScene = (scene.type === "dialogue") && !isNarrator;
 
-      // 1. Live Talking Head / Hybrid Lip-Sync:
-      // - Dialogue Scene: SadTalker lip-sync on the character delivering the dialogue line
-      // - B-Roll Scene: Cinematic World Video (moving cars, city, nature) with Narrator voiceover!
-      if (animationStyle === "live_talking_head" || animationStyle === "hybrid_lip_sync") {
+      // 1. DIALOGUE LIP-SYNC: Whenever a character speaks dialogue, run GPU Lip-Sync with GFPGAN enhancer!
+      // This ensures characters visibly speak, move lips and eyes in sync with voiceover!
+      if (isDialogueScene || animationStyle === "live_talking_head" || animationStyle === "hybrid_lip_sync" || animationStyle === "lip_sync_dialogue") {
         if (isDialogueScene) {
           job.stage = `Lip-syncing character dialogue for ${scene.speaker} (${i + 1}/${script.scenes.length})...`;
           try {
@@ -775,8 +812,8 @@ Return ONLY valid JSON in this exact structure:
             log(job.id, `Lip-sync fallback for dialogue scene ${i}: ${lipErr.message}`);
           }
         } else {
-          // B-Roll Narrator Scene: Generate cinematic world video with moving cars, city, nature
-          job.stage = `Generating cinematic B-roll video (${i + 1}/${script.scenes.length})...`;
+          // B-Roll / Action Scene: Generate cinematic world video with moving cars, city, nature
+          job.stage = `Generating cinematic action B-roll video (${i + 1}/${script.scenes.length})...`;
           try {
             let brollVideoUrl;
             try {
@@ -819,8 +856,8 @@ Return ONLY valid JSON in this exact structure:
         }
       }
 
-      // 2. Generative AI Video (Higgsfield / Minimax / Runway style):
-      if (animationStyle === "generative_video" || animationStyle === "cinematic_world_video") {
+      // 2. Generative AI Video (when pure generative action video is selected and not handled above):
+      if (!isDialogueScene && (animationStyle === "generative_video" || animationStyle === "cinematic_world_video")) {
         job.stage = `Generating cinematic AI video (${i + 1}/${script.scenes.length})...`;
         try {
           let genVideoUrl;

@@ -11,10 +11,12 @@ import { useState, useEffect } from "react";
 import { useSession, signIn } from "next-auth/react";
 import { useRouter } from "next/router";
 import Head from "next/head";
+import Link from "next/link";
 import { SUBSCRIPTION_PLANS } from "../lib/billing/plans";
 
 // ─── Plan categories for tab navigation ───────────────────────────────────────
 const CATEGORIES = [
+  { key: "video",  emoji: "🎬", label: "AI Cinema Video" },
   { key: "suite",  emoji: "⚡", label: "All-in-One Suites" },
   { key: "seo",    emoji: "📝", label: "SEO Content" },
   { key: "social", emoji: "📱", label: "Social Autopilot" },
@@ -27,6 +29,9 @@ const CATEGORIES = [
 
 // ─── Ordered plan list ─────────────────────────────────────────────────────────
 const ALL_PLANS = [
+  SUBSCRIPTION_PLANS.video_creator,
+  SUBSCRIPTION_PLANS.video_pro,
+  SUBSCRIPTION_PLANS.video_cinema,
   SUBSCRIPTION_PLANS.trial_99,
   SUBSCRIPTION_PLANS.suite_1,
   SUBSCRIPTION_PLANS.suite_2,
@@ -306,6 +311,65 @@ export default function PlansPage() {
                     Sign in with Google to Subscribe
                   </button>
                 )}
+              </div>
+
+              {/* 🎬 Dedicated Long-Form Video Studio Banner */}
+              <div style={{
+                maxWidth: 860,
+                margin: "0 auto 36px",
+                background: "linear-gradient(135deg, rgba(88, 28, 135, 0.35) 0%, rgba(30, 58, 138, 0.35) 100%)",
+                border: "1px solid rgba(168, 85, 247, 0.4)",
+                borderRadius: 16,
+                padding: "20px 24px",
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "space-between",
+                flexWrap: "wrap",
+                gap: 16,
+                boxShadow: "0 10px 30px -10px rgba(168, 85, 247, 0.25)",
+              }}>
+                <div style={{ display: "flex", alignItems: "center", gap: 14 }}>
+                  <div style={{
+                    width: 44,
+                    height: 44,
+                    borderRadius: 12,
+                    background: "rgba(168, 85, 247, 0.2)",
+                    border: "1px solid rgba(168, 85, 247, 0.4)",
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "center",
+                    fontSize: 22,
+                  }}>
+                    🎬
+                  </div>
+                  <div>
+                    <div style={{ fontWeight: 800, fontSize: 16, color: "#f8fafc" }}>
+                      Looking for Cinematic Long-Form AI Video Studio?
+                    </div>
+                    <div style={{ fontSize: 13, color: "#cbd5e1", marginTop: 2 }}>
+                      1 to 5 min movie-grade video generation with multi-character dialogues & 1080p camera physics.
+                    </div>
+                  </div>
+                </div>
+
+                <Link
+                  href="/video-plans"
+                  style={{
+                    padding: "10px 20px",
+                    borderRadius: 10,
+                    background: "linear-gradient(135deg, #a855f7 0%, #38bdf8 100%)",
+                    color: "#ffffff",
+                    textDecoration: "none",
+                    fontWeight: 800,
+                    fontSize: 13,
+                    display: "inline-flex",
+                    alignItems: "center",
+                    gap: 6,
+                    boxShadow: "0 4px 14px rgba(168, 85, 247, 0.4)",
+                  }}
+                >
+                  View Runway-Style Video Plans →
+                </Link>
               </div>
 
               {/* Category Tabs */}
