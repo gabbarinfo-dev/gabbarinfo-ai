@@ -547,6 +547,7 @@ Do NOT include markdown code block backticks.`;
         return res.status(articleRes.status).json({ ok: false, error: `Shopify Article Creation Error: ${txt}` });
       }
 
+      const data = await articleRes.json();
       const chosenBlogHandle = payload.blogHandle || "news";
       return res.status(200).json({
         ok: true,
