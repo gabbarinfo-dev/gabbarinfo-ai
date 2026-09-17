@@ -432,15 +432,10 @@ export default function SeoHubPage() {
 
   // Open Article in Full Writing & Optimization Suite
   const handleOpenEditor = async (item) => {
-    if (item.content) {
-      setEditingArticle({ ...item });
-      return;
-    }
-
     setLoadingArticleContent(true);
     setEditingArticle({
       ...item,
-      content: "<p>Loading full article content from WordPress…</p>",
+      content: item.content || "<p>Loading full live article content from WordPress…</p>",
     });
 
     try {
@@ -450,7 +445,8 @@ export default function SeoHubPage() {
         body: JSON.stringify({
           action: "get-post",
           postId: item.id,
-          postType: item.type || "post",
+          postType: item.type || item.post_type || "post",
+          url: item.url,
           siteUrl: connection?.siteUrl,
           apiKey: connection?.apiKey,
           businessName: activeBusiness,
@@ -460,13 +456,22 @@ export default function SeoHubPage() {
       if (data.ok && data.post?.content) {
         setEditingArticle({
           ...item,
+          ...data.post,
           content: data.post.content,
           title: data.post.title || item.title,
           slug: data.post.slug || item.slug,
           status: data.post.status || item.status,
-          meta_title: item.meta_title || item.title,
-          meta_description: item.meta_desc || item.excerpt || "",
-          focus_keyword: item.focus_keyword || "",
+          meta_title: data.post.meta_title || item.meta_title || item.title,
+          meta_description: data.post.meta_desc || item.meta_desc || item.excerpt || "",
+          focus_keyword: data.post.focus_keyword || item.focus_keyword || "",
+          is_agent_created: data.post.is_agent_created ?? item.is_agent_created ?? false,
+          edit_count: data.post.edit_count ?? item.edit_count ?? 0,
+          edits_remaining: data.post.edits_remaining ?? item.edits_remaining ?? 0,
+          requires_credit: data.post.requires_credit ?? item.requires_credit ?? true,
+          is_custom_template: data.post.is_custom_template ?? item.is_custom_template ?? false,
+          template_file: data.post.template_file || item.template_file || "",
+          bypasses_db_content: data.post.bypasses_db_content ?? item.bypasses_db_content ?? false,
+          is_live_extracted: data.post.is_live_extracted || false,
         });
       } else {
         setEditingArticle({
@@ -485,9 +490,18 @@ export default function SeoHubPage() {
     }
   };
 
-  // Save Article (Draft or Publish Live)
+  // Save Article (Draft or Publish Live with Quota Check)
   const handleSaveArticle = async (targetStatus = "draft") => {
     if (!editingArticle || !connection) return;
+
+    // Credit quota confirmation for pre-existing content or agent content with >= 2 edits
+    if (editingArticle.requires_credit && targetStatus === "publish") {
+      const confirmSave = window.confirm(
+        "📢 Quota Confirmation: Publishing an update to this existing website page/article will consume 1 Published Blog credit from your monthly plan quota.\n\nDo you want to proceed?"
+      );
+      if (!confirmSave) return;
+    }
+
     if (targetStatus === "publish") setPublishingArticle(true);
     else setSavingArticle(true);
 
@@ -509,6 +523,9 @@ export default function SeoHubPage() {
             meta_title: editingArticle.meta_title || editingArticle.title,
             meta_description: editingArticle.meta_description || editingArticle.excerpt || "",
             focus_keyword: editingArticle.focus_keyword || "",
+            is_agent_created: editingArticle.is_agent_created,
+            edit_count: editingArticle.edit_count,
+            requires_credit: editingArticle.requires_credit,
           },
         }),
       });
@@ -519,18 +536,28 @@ export default function SeoHubPage() {
           ...prev,
           status: targetStatus,
           url: data.url || prev.url,
+          edit_count: (prev.edit_count || 0) + 1,
+          edits_remaining: prev.is_agent_created ? Math.max(0, 1 - (prev.edit_count || 0)) : 0,
+          requires_credit: !prev.is_agent_created || (prev.edit_count || 0) + 1 >= 2,
         }));
+        const creditMsg = data.credit_deducted
+          ? " (1 Blog Published credit consumed from monthly quota)"
+          : " (Free Revision applied)";
         setEditorNotice({
           type: "success",
           message:
             targetStatus === "publish"
-              ? "🎉 Article successfully published live to WordPress!"
-              : "💾 Draft saved successfully to WordPress!",
+              ? `🎉 Page successfully published live to WordPress!${creditMsg}`
+              : `💾 Draft saved successfully to WordPress!${creditMsg}`,
         });
-        setTimeout(() => setEditorNotice(null), 4500);
+        setTimeout(() => setEditorNotice(null), 6000);
         fetchContent(connection);
       } else {
-        alert("Failed to save: " + (data.error || "Unknown error"));
+        if (data.code === "MONTHLY_QUOTA_EXHAUSTED") {
+          alert(`⚠️ Plan Limit Reached: ${data.error}`);
+        } else {
+          alert("Failed to save: " + (data.error || "Unknown error"));
+        }
       }
     } catch (e) {
       alert("Save error: " + e.message);
@@ -1338,6 +1365,72 @@ export default function SeoHubPage() {
                     </div>
                   </div>
 
+                  {/* ── LIVE PAGE SYNCHRONIZED / CUSTOM TEMPLATE NOTICE (Universal across all themes) ── */}
+                  {(editingArticle.is_live_extracted || editingArticle.bypasses_db_content) && (
+                    <div style={{ background: "rgba(56, 189, 248, 0.12)", border: "1px solid rgba(56, 189, 248, 0.35)", borderRadius: 12, padding: "16px 20px", display: "flex", alignItems: "flex-start", gap: 14 }}>
+                      <span style={{ fontSize: 24, lineHeight: 1 }}>🌐</span>
+                      <div style={{ fontSize: 13, color: "#e2e8f0", lineHeight: 1.6 }}>
+                        <div style={{ fontWeight: 800, color: "#38bdf8", fontSize: 14, marginBottom: 4 }}>
+                          Live Website Content Synchronized {editingArticle.template_file ? `(${editingArticle.template_file})` : ""}
+                        </div>
+                        <div>
+                          Loaded the exact rendered HTML directly from your live website (<strong>{editingArticle.url || connection?.siteUrl}</strong>). Your live layout, media, and styles are preserved in the editor below rather than stale database placeholders.
+                        </div>
+                        {editingArticle.bypasses_db_content && (
+                          <div style={{ marginTop: 8, padding: "8px 12px", background: "rgba(0,0,0,0.25)", borderRadius: 6, fontSize: 12, color: "#94a3b8", borderLeft: "3px solid #f59e0b" }}>
+                            💡 <strong>Theme Template Architecture Notice:</strong> This page is rendered via a custom theme template file. Changes published here update your WordPress database. To ensure database changes reflect on the live frontend, verify that your theme template file includes <code>&lt;?php the_content(); ?&gt;</code>.
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  )}
+
+                  {/* ── QUOTA & REVISION CREDIT STATUS BAR (Universal 2-Free-Edits vs Pre-Existing Page Rules) ── */}
+                  <div
+                    style={{
+                      background: editingArticle.requires_credit ? "rgba(245, 158, 11, 0.1)" : "rgba(16, 185, 129, 0.1)",
+                      border: `1px solid ${editingArticle.requires_credit ? "rgba(245, 158, 11, 0.3)" : "rgba(16, 185, 129, 0.3)"}`,
+                      borderRadius: 10,
+                      padding: "12px 18px",
+                      display: "flex",
+                      alignItems: "center",
+                      justifyContent: "space-between",
+                      flexWrap: "wrap",
+                      gap: 10,
+                    }}
+                  >
+                    <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+                      <span style={{ fontSize: 18 }}>{editingArticle.requires_credit ? "💳" : "✨"}</span>
+                      <div>
+                        <div style={{ fontSize: 13, color: "#ffffff", fontWeight: 700 }}>
+                          {editingArticle.is_agent_created
+                            ? (editingArticle.edits_remaining > 0
+                                ? `Free AI Revision Active (${editingArticle.edits_remaining} of 2 free edits remaining)`
+                                : "AI Article Revision Limit Reached (Free Revisions Exhausted)")
+                            : "Pre-Existing Website Page / Content"}
+                        </div>
+                        <div style={{ fontSize: 12, color: "#94a3b8", marginTop: 2 }}>
+                          {editingArticle.requires_credit
+                            ? "Publishing this update will consume 1 Published Blog credit from your monthly plan quota."
+                            : "This update is included free under your 2-revision allowance for agent-created content."}
+                        </div>
+                      </div>
+                    </div>
+                    <span
+                      style={{
+                        padding: "5px 12px",
+                        borderRadius: 6,
+                        fontSize: 12,
+                        fontWeight: 800,
+                        background: editingArticle.requires_credit ? "rgba(245, 158, 11, 0.2)" : "rgba(16, 185, 129, 0.2)",
+                        color: editingArticle.requires_credit ? "#fbbf24" : "#34d399",
+                        border: `1px solid ${editingArticle.requires_credit ? "rgba(245, 158, 11, 0.4)" : "rgba(16, 185, 129, 0.4)"}`,
+                      }}
+                    >
+                      {editingArticle.requires_credit ? "1 Blog Credit on Live Publish" : "0 Credits (Free Revision)"}
+                    </span>
+                  </div>
+
                   {/* ── ARTICLE HEADLINE / H1 TITLE (Screenshot 3) ── */}
                   <div style={{ background: "rgba(16, 22, 34, 0.78)", border: "1px solid rgba(255, 255, 255, 0.12)", borderRadius: 14, padding: "20px 24px" }}>
                     <label style={{ fontSize: 11, color: "#94a3b8", fontWeight: 800, textTransform: "uppercase", letterSpacing: "0.8px", display: "block", marginBottom: 8 }}>
@@ -1423,7 +1516,7 @@ export default function SeoHubPage() {
                         <button
                           type="button"
                           onClick={() => {
-                            const url = prompt("Enter link URL (e.g. https://www.gabbarinfo.com/service):");
+                            const url = prompt("Enter link URL (e.g. https://example.com/service):");
                             if (url && editorMode === "visual") {
                               document.execCommand("createLink", false, url);
                             }
@@ -2166,7 +2259,14 @@ export default function SeoHubPage() {
                             <input type="checkbox" style={{ cursor: "pointer" }} />
                           </td>
                           <td style={{ padding: "14px 18px", maxWidth: 360 }}>
-                            <div style={{ fontWeight: 600, color: "#f8fafc", lineHeight: 1.4 }}>{item.title}</div>
+                            <div style={{ fontWeight: 600, color: "#f8fafc", lineHeight: 1.4, display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+                              <span>{item.title}</span>
+                              {item.bypasses_db_content && (
+                                <span style={{ fontSize: 10, background: "rgba(56, 189, 248, 0.15)", border: "1px solid rgba(56, 189, 248, 0.35)", color: "#38bdf8", padding: "1px 6px", borderRadius: 4, fontWeight: 700 }}>
+                                  ⚡ Custom Theme Template
+                                </span>
+                              )}
+                            </div>
                             <div style={{ display: "flex", alignItems: "center", gap: 8, marginTop: 4 }}>
                               <a
                                 href={item.url}
@@ -2187,18 +2287,47 @@ export default function SeoHubPage() {
                             </span>
                           </td>
                           <td style={{ padding: "14px 14px" }}>
-                            <span
-                              style={{
-                                fontSize: 11,
-                                padding: "3px 8px",
-                                borderRadius: 4,
-                                background: "rgba(59, 130, 246, 0.15)",
-                                color: "#60a5fa",
-                                fontWeight: 700,
-                              }}
-                            >
-                              Manual
-                            </span>
+                            {item.is_agent_created ? (
+                              <div style={{ display: "flex", flexDirection: "column", gap: 3 }}>
+                                <span
+                                  style={{
+                                    fontSize: 11,
+                                    padding: "3px 8px",
+                                    borderRadius: 4,
+                                    background: "rgba(16, 185, 129, 0.15)",
+                                    color: "#34d399",
+                                    fontWeight: 700,
+                                    display: "inline-flex",
+                                    alignItems: "center",
+                                    gap: 4,
+                                  }}
+                                >
+                                  <span>🤖</span> AI Agent
+                                </span>
+                                <span style={{ fontSize: 10, color: (item.edits_remaining ?? 2) > 0 ? "#34d399" : "#fbbf24", fontWeight: 600 }}>
+                                  {(item.edits_remaining ?? 2) > 0 ? `${item.edits_remaining ?? 2} free edits` : "1 credit/edit"}
+                                </span>
+                              </div>
+                            ) : (
+                              <div style={{ display: "flex", flexDirection: "column", gap: 3 }}>
+                                <span
+                                  style={{
+                                    fontSize: 11,
+                                    padding: "3px 8px",
+                                    borderRadius: 4,
+                                    background: "rgba(59, 130, 246, 0.15)",
+                                    color: "#60a5fa",
+                                    fontWeight: 700,
+                                    display: "inline-flex",
+                                    alignItems: "center",
+                                    gap: 4,
+                                  }}
+                                >
+                                  <span>🌐</span> Website Page
+                                </span>
+                                <span style={{ fontSize: 10, color: "#94a3b8" }}>1 credit/edit</span>
+                              </div>
+                            )}
                           </td>
                           {/* Status Badge (Screenshot 2: Draft Ready vs WordPress Live) */}
                           <td style={{ padding: "14px 14px" }}>

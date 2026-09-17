@@ -3,7 +3,7 @@ import { getServerSession } from "next-auth/next";
 import { authOptions } from "../auth/[...nextauth]";
 import { createClient } from "@supabase/supabase-js";
 import { verifyEntitlement, FEATURES } from "../../../lib/auth/entitlements";
-import { getBusinessSubscriptionState } from "../../../lib/billing/quota-service";
+import { getBusinessSubscriptionState, reserveQuota, commitQuota, releaseQuota } from "../../../lib/billing/quota-service";
 import { checkAssetTrialEligibility, registerAssetClaim } from "../../../lib/billing/asset-registry";
 
 const supabase = createClient(
@@ -293,32 +293,91 @@ export default async function handler(req, res) {
     if (action === "get-post") {
       const postId = body.postId || req.query.postId;
       const postType = body.postType || "post";
-      const endpoint = postType === "page" ? `pages/${postId}` : `posts/${postId}`;
+      const targetUrl = body.url || req.query.url;
 
       let fetchedData = null;
+
+      // 1. Try our enhanced plugin endpoint first
       try {
-        const resp = await fetch(`${activeUrl}/wp-json/wp/v2/${endpoint}`, {
+        const richResp = await fetch(`${activeUrl}/wp-json/gabbarinfo/v1/get-content?post_id=${postId}`, {
           method: "GET",
           headers: {
             Accept: "application/json",
             Authorization: `Bearer ${activeKey}`,
           },
         });
-        if (resp.ok) {
-          const json = await resp.json();
-          fetchedData = {
-            id: json.id,
-            title: json.title?.rendered || json.title || "",
-            content: json.content?.rendered || json.content || "",
-            slug: json.slug || "",
-            status: json.status || "publish",
-          };
+        if (richResp.ok) {
+          const richJson = await richResp.json();
+          if (richJson.ok && richJson.id) {
+            fetchedData = richJson;
+          }
         }
-      } catch (e) {
-        console.warn("WP REST API get-post failed:", e.message);
+      } catch (_) {}
+
+      // 2. Fallback to standard WP REST API if needed
+      if (!fetchedData) {
+        const endpoint = postType === "page" ? `pages/${postId}` : `posts/${postId}`;
+        try {
+          const resp = await fetch(`${activeUrl}/wp-json/wp/v2/${endpoint}`, {
+            method: "GET",
+            headers: {
+              Accept: "application/json",
+              Authorization: `Bearer ${activeKey}`,
+            },
+          });
+          if (resp.ok) {
+            const json = await resp.json();
+            fetchedData = {
+              id: json.id,
+              title: json.title?.rendered || json.title || "",
+              content: json.content?.rendered || json.content || "",
+              db_content: json.content?.rendered || json.content || "",
+              slug: json.slug || "",
+              status: json.status || "publish",
+              url: json.link || `${activeUrl}/${json.slug}/`,
+              type: postType,
+              is_agent_created: false,
+              edit_count: 0,
+              edits_remaining: 0,
+              requires_credit: true,
+            };
+          }
+        } catch (e) {
+          console.warn("WP REST API get-post failed:", e.message);
+        }
       }
 
+      // 3. Universal Live Frontend Extraction (For ANY theme / page builder where live page differs from DB)
       if (fetchedData) {
+        const liveUrl = fetchedData.url || targetUrl || `${activeUrl}/${fetchedData.slug}/`;
+        if (postType === "page" || fetchedData.bypasses_db_content) {
+          try {
+            const pageResp = await fetch(liveUrl, {
+              headers: { "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36" },
+              signal: AbortSignal.timeout(6000),
+            });
+            if (pageResp.ok) {
+              const html = await pageResp.text();
+              const mainMatch =
+                html.match(/<main[^>]*>([\s\S]*?)<\/main>/i) ||
+                html.match(/<article[^>]*>([\s\S]*?)<\/article>/i) ||
+                html.match(/<(?:div|section)[^>]*(?:class|id)=["'][^"']*(?:entry-content|site-content|page-content|elementor|et_builder_inner_content|fl-builder-content|post-content|main-content|primary)[^"']*["'][^>]*>([\s\S]*?)<\/(?:div|section)>/i);
+
+              if (mainMatch && mainMatch[1].trim().length > 100) {
+                const extractedHtml = mainMatch[1].trim();
+                fetchedData.live_content = extractedHtml;
+                // If database content is empty or template bypasses DB, provide live rendered HTML
+                if (fetchedData.bypasses_db_content || !fetchedData.content || (fetchedData.content.length < 300 && extractedHtml.length > 500)) {
+                  fetchedData.content = extractedHtml;
+                  fetchedData.is_live_extracted = true;
+                }
+              }
+            }
+          } catch (fetchErr) {
+            console.warn("Could not extract live page frontend HTML:", fetchErr.message);
+          }
+        }
+
         return res.status(200).json({ ok: true, post: fetchedData });
       } else {
         return res.status(404).json({ ok: false, error: "Post not found or could not load content" });
@@ -326,21 +385,68 @@ export default async function handler(req, res) {
     }
 
     // ----------------------------------------------------------------
-    // 6. UPDATE CONTENT (Optimize Page or Post)
+    // 6. UPDATE CONTENT (Optimize Page or Post with Quota Ledger)
     // ----------------------------------------------------------------
     if (action === "update-content") {
       const payload = updateData || seoData || {};
-      const resp = await fetch(`${activeUrl}/wp-json/gabbarinfo/v1/update-content`, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${activeKey}`,
-        },
-        body: JSON.stringify(payload),
-      });
+      const isAgentCreated = Boolean(payload.is_agent_created);
+      const editCount = Number(payload.edit_count) || 0;
+
+      // Universal Rule: Agent-created content gets 2 free edits.
+      // Pre-existing content (or agent content with >= 2 edits) consumes 1 SEO_ARTICLE credit.
+      const requiresCredit = !isAgentCreated || editCount >= 2;
+      let reservationId = null;
+
+      if (requiresCredit) {
+        const businessId = session?.user?.business_id || `biz_${normalizedBusiness}`;
+        const quotaRes = await reserveQuota({
+          session,
+          userEmail,
+          businessId,
+          actionType: "SEO_ARTICLE",
+          assetId: activeUrl,
+        });
+
+        if (!quotaRes.ok) {
+          return res.status(quotaRes.status || 403).json({
+            ok: false,
+            code: quotaRes.code || "MONTHLY_QUOTA_EXHAUSTED",
+            error: quotaRes.error || "Monthly published blog quota exhausted. Please upgrade your plan to edit existing pages or publish more articles.",
+          });
+        }
+        reservationId = quotaRes.reservationId;
+      }
+
+      let resp;
+      try {
+        resp = await fetch(`${activeUrl}/wp-json/gabbarinfo/v1/update-content`, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${activeKey}`,
+          },
+          body: JSON.stringify(payload),
+        });
+      } catch (e) {
+        if (reservationId) await releaseQuota(reservationId);
+        return res.status(500).json({ ok: false, error: `WordPress connection error: ${e.message}` });
+      }
 
       const data = await resp.json().catch(() => ({}));
-      return res.status(resp.ok ? 200 : resp.status).json(data);
+
+      if (resp.ok && data.ok) {
+        if (reservationId) {
+          await commitQuota(reservationId);
+        }
+        return res.status(200).json({
+          ...data,
+          credit_deducted: requiresCredit,
+          edits_remaining: isAgentCreated ? Math.max(0, 1 - editCount) : 0,
+        });
+      } else {
+        if (reservationId) await releaseQuota(reservationId);
+        return res.status(resp.status || 400).json(data);
+      }
     }
 
     // ----------------------------------------------------------------

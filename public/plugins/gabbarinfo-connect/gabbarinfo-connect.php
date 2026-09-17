@@ -3,7 +3,7 @@
  * Plugin Name: GabbarInfo AI Connect
  * Plugin URI: https://gabbarinfo.ai/
  * Description: Connects your WordPress & WooCommerce site to GabbarInfo AI for automated Google Ads conversion tracking (gtag.js), Meta Pixel, dynamic purchase tracking, and autonomous SEO & blogging.
- * Version: 1.1.0
+ * Version: 1.2.0
  * Author: GabbarInfo AI
  * Author URI: https://gabbarinfo.ai/
  * License: GPL v2 or later
@@ -16,7 +16,7 @@ if ( ! defined( 'ABSPATH' ) ) {
 
 class GabbarInfo_Connect {
 
-    const VERSION = '1.1.0';
+    const VERSION = '1.2.0';
     const OPTION_GROUP = 'gabbarinfo_settings_group';
 
     public function __construct() {
@@ -376,6 +376,12 @@ document.addEventListener('DOMContentLoaded', function() {
         register_rest_route( 'gabbarinfo/v1', '/list-content', array(
             'methods'  => 'GET',
             'callback' => array( $this, 'rest_list_content' ),
+            'permission_callback' => array( $this, 'authenticate_agent_request' ),
+        ) );
+
+        register_rest_route( 'gabbarinfo/v1', '/get-content', array(
+            'methods'  => array( 'GET', 'POST' ),
+            'callback' => array( $this, 'rest_get_content' ),
             'permission_callback' => array( $this, 'authenticate_agent_request' ),
         ) );
 
@@ -773,23 +779,62 @@ document.addEventListener('DOMContentLoaded', function() {
             $meta_desc = get_post_meta( $p->ID, '_yoast_wpseo_metadesc', true ) ?: get_post_meta( $p->ID, 'rank_math_description', true );
             $focus_kw = get_post_meta( $p->ID, '_yoast_wpseo_focuskw', true ) ?: get_post_meta( $p->ID, 'rank_math_focus_keyword', true );
 
+            // Universal Agent & Edit tracking (Works for all users & business types)
+            $is_agent_created = get_post_meta( $p->ID, '_gabbarinfo_agent_created', true ) === '1';
+            $edit_count = intval( get_post_meta( $p->ID, '_gabbarinfo_edit_count', true ) );
+
+            // Universal Custom Template & Static Bypass Detection
+            $is_custom_template = false;
+            $template_file = '';
+            $bypasses_db_content = false;
+            if ( $p->post_type === 'page' ) {
+                $tpl_slug = get_page_template_slug( $p->ID );
+                $theme_dir = get_stylesheet_directory();
+                $slug_tpl = 'page-' . $p->post_name . '.php';
+
+                if ( ! empty( $tpl_slug ) && $tpl_slug !== 'default' ) {
+                    $is_custom_template = true;
+                    $template_file = $tpl_slug;
+                } elseif ( file_exists( $theme_dir . '/' . $slug_tpl ) ) {
+                    $is_custom_template = true;
+                    $template_file = $slug_tpl;
+                }
+
+                if ( $is_custom_template && ! empty( $template_file ) ) {
+                    $full_tpl_path = $theme_dir . '/' . $template_file;
+                    if ( file_exists( $full_tpl_path ) ) {
+                        $tpl_code = @file_get_contents( $full_tpl_path );
+                        if ( ! empty( $tpl_code ) && strpos( $tpl_code, 'the_content' ) === false ) {
+                            $bypasses_db_content = true;
+                        }
+                    }
+                }
+            }
+
             $items[] = array(
-                'id'             => $p->ID,
-                'title'          => $p->post_title,
-                'slug'           => $p->post_name,
-                'url'            => get_permalink( $p->ID ),
-                'type'           => $p->post_type,
-                'status'         => $p->post_status,
-                'date'           => $p->post_date,
-                'modified'       => $p->post_modified,
-                'word_count'     => $word_count,
-                'excerpt'        => wp_trim_words( wp_strip_all_tags( $p->post_content ), 35 ),
-                'featured_image' => $thumb_url,
-                'image_alt'      => $thumb_alt,
-                'categories'     => $cats,
-                'meta_title'     => $meta_title ?: '',
-                'meta_desc'      => $meta_desc ?: '',
-                'focus_keyword'  => $focus_kw ?: '',
+                'id'                  => $p->ID,
+                'title'               => $p->post_title,
+                'slug'                => $p->post_name,
+                'url'                 => get_permalink( $p->ID ),
+                'type'                => $p->post_type,
+                'status'              => $p->post_status,
+                'date'                => $p->post_date,
+                'modified'            => $p->post_modified,
+                'word_count'          => $word_count,
+                'excerpt'             => wp_trim_words( wp_strip_all_tags( $p->post_content ), 35 ),
+                'featured_image'      => $thumb_url,
+                'image_alt'           => $thumb_alt,
+                'categories'          => $cats,
+                'meta_title'          => $meta_title ?: '',
+                'meta_desc'           => $meta_desc ?: '',
+                'focus_keyword'       => $focus_kw ?: '',
+                'is_agent_created'    => $is_agent_created,
+                'edit_count'          => $edit_count,
+                'edits_remaining'     => $is_agent_created ? max( 0, 2 - $edit_count ) : 0,
+                'requires_credit'     => ! $is_agent_created || $edit_count >= 2,
+                'is_custom_template'  => $is_custom_template,
+                'template_file'       => $template_file,
+                'bypasses_db_content' => $bypasses_db_content,
             );
         }
 
@@ -797,6 +842,103 @@ document.addEventListener('DOMContentLoaded', function() {
             'ok'    => true,
             'total' => $query->found_posts,
             'items' => $items,
+        ) );
+    }
+
+    /**
+     * GET/POST /wp-json/gabbarinfo/v1/get-content
+     * Retrieves rich content for any post or page with universal live render extraction
+     */
+    public function rest_get_content( $request ) {
+        $post_id = intval( $request->get_param( 'post_id' ) );
+        if ( ! $post_id ) {
+            $url = $request->get_param( 'url' );
+            if ( ! empty( $url ) ) $post_id = url_to_postid( esc_url_raw( $url ) );
+        }
+        if ( ! $post_id ) {
+            return new WP_Error( 'missing_id', 'post_id is required.', array( 'status' => 400 ) );
+        }
+
+        $p = get_post( $post_id );
+        if ( ! $p ) {
+            return new WP_Error( 'not_found', 'Post or page not found.', array( 'status' => 404 ) );
+        }
+
+        $is_agent_created = get_post_meta( $p->ID, '_gabbarinfo_agent_created', true ) === '1';
+        $edit_count = intval( get_post_meta( $p->ID, '_gabbarinfo_edit_count', true ) );
+
+        $is_custom_template = false;
+        $template_file = '';
+        $bypasses_db_content = false;
+        $live_content = '';
+
+        if ( $p->post_type === 'page' ) {
+            $tpl_slug = get_page_template_slug( $p->ID );
+            $theme_dir = get_stylesheet_directory();
+            $slug_tpl = 'page-' . $p->post_name . '.php';
+
+            if ( ! empty( $tpl_slug ) && $tpl_slug !== 'default' ) {
+                $is_custom_template = true;
+                $template_file = $tpl_slug;
+            } elseif ( file_exists( $theme_dir . '/' . $slug_tpl ) ) {
+                $is_custom_template = true;
+                $template_file = $slug_tpl;
+            }
+
+            if ( $is_custom_template && ! empty( $template_file ) ) {
+                $full_tpl_path = $theme_dir . '/' . $template_file;
+                if ( file_exists( $full_tpl_path ) ) {
+                    $tpl_code = @file_get_contents( $full_tpl_path );
+                    if ( ! empty( $tpl_code ) && strpos( $tpl_code, 'the_content' ) === false ) {
+                        $bypasses_db_content = true;
+                    }
+                }
+            }
+        }
+
+        // Universal Live Extraction: If bypasses_db_content or if content requested
+        $permalink = get_permalink( $p->ID );
+        if ( $bypasses_db_content && ! empty( $permalink ) ) {
+            $response = wp_remote_get( $permalink, array( 'timeout' => 15, 'sslverify' => false ) );
+            if ( ! is_wp_error( $response ) && wp_remote_retrieve_response_code( $response ) === 200 ) {
+                $html = wp_remote_retrieve_body( $response );
+                // Universal semantic extraction hierarchy across all themes
+                if ( preg_match( '/<main[^>]*>([\s\S]*?)<\/main>/i', $html, $m ) ) {
+                    $live_content = trim( $m[1] );
+                } elseif ( preg_match( '/<article[^>]*>([\s\S]*?)<\/article>/i', $html, $m ) ) {
+                    $live_content = trim( $m[1] );
+                } elseif ( preg_match( '/<(?:div|section)[^>]*(?:class|id)=["\'][^"\']*(?:entry-content|site-content|page-content|elementor|et_builder_inner_content|fl-builder-content|post-content|main-content|primary)[^"\']*["\'][^>]*>([\s\S]*?)<\/(?:div|section)>/i', $html, $m ) ) {
+                    $live_content = trim( $m[1] );
+                }
+            }
+        }
+
+        $meta_title = get_post_meta( $p->ID, '_yoast_wpseo_title', true ) ?: get_post_meta( $p->ID, 'rank_math_title', true );
+        $meta_desc = get_post_meta( $p->ID, '_yoast_wpseo_metadesc', true ) ?: get_post_meta( $p->ID, 'rank_math_description', true );
+        $focus_kw = get_post_meta( $p->ID, '_yoast_wpseo_focuskw', true ) ?: get_post_meta( $p->ID, 'rank_math_focus_keyword', true );
+
+        return rest_ensure_response( array(
+            'ok'                  => true,
+            'id'                  => $p->ID,
+            'title'               => $p->post_title,
+            'content'             => ! empty( $live_content ) ? $live_content : $p->post_content,
+            'db_content'          => $p->post_content,
+            'live_content'        => $live_content,
+            'is_live_extracted'   => ! empty( $live_content ),
+            'slug'                => $p->post_name,
+            'status'              => $p->post_status,
+            'type'                => $p->post_type,
+            'url'                 => $permalink,
+            'is_agent_created'    => $is_agent_created,
+            'edit_count'          => $edit_count,
+            'edits_remaining'     => $is_agent_created ? max( 0, 2 - $edit_count ) : 0,
+            'requires_credit'     => ! $is_agent_created || $edit_count >= 2,
+            'is_custom_template'  => $is_custom_template,
+            'template_file'       => $template_file,
+            'bypasses_db_content' => $bypasses_db_content,
+            'meta_title'          => $meta_title ?: '',
+            'meta_desc'           => $meta_desc ?: '',
+            'focus_keyword'       => $focus_kw ?: '',
         ) );
     }
 
@@ -879,11 +1021,20 @@ document.addEventListener('DOMContentLoaded', function() {
             update_post_meta( $post_id, 'rank_math_focus_keyword', $f_kw );
         }
 
+        // Universal Agent & Edit Count Ledger (Works for any user & business)
+        $curr_edits = intval( get_post_meta( $post_id, '_gabbarinfo_edit_count', true ) );
+        $new_edits = $curr_edits + 1;
+        update_post_meta( $post_id, '_gabbarinfo_edit_count', $new_edits );
+        $is_agent_created = get_post_meta( $post_id, '_gabbarinfo_agent_created', true ) === '1';
+
         return rest_ensure_response( array(
-            'ok'        => true,
-            'post_id'   => $post_id,
-            'url'       => get_permalink( $post_id ),
-            'message'   => 'Content and SEO updated successfully.',
+            'ok'               => true,
+            'post_id'          => $post_id,
+            'url'              => get_permalink( $post_id ),
+            'is_agent_created' => $is_agent_created,
+            'edit_count'       => $new_edits,
+            'edits_remaining'  => $is_agent_created ? max( 0, 2 - $new_edits ) : 0,
+            'message'          => 'Content and SEO updated successfully.',
         ) );
     }
 
@@ -933,6 +1084,10 @@ document.addEventListener('DOMContentLoaded', function() {
             return new WP_Error( 'post_creation_failed', $post_id->get_error_message(), array( 'status' => 500 ) );
         }
 
+        // Universal Agent Stamping (Works for any user & business)
+        update_post_meta( $post_id, '_gabbarinfo_agent_created', '1' );
+        update_post_meta( $post_id, '_gabbarinfo_edit_count', 0 );
+
         // Set Post Tags if supplied
         if ( ! empty( $params['tags'] ) ) {
             $tags_data = is_array( $params['tags'] ) ? $params['tags'] : explode( ',', $params['tags'] );
@@ -980,12 +1135,15 @@ document.addEventListener('DOMContentLoaded', function() {
         }
 
         return rest_ensure_response( array(
-            'ok'          => true,
-            'post_id'     => $post_id,
-            'post_url'    => get_permalink( $post_id ),
-            'status'      => $status,
-            'title'       => $title,
-            'featured_id' => $featured_attach_id,
+            'ok'               => true,
+            'post_id'          => $post_id,
+            'post_url'         => get_permalink( $post_id ),
+            'status'           => $status,
+            'title'            => $title,
+            'featured_id'      => $featured_attach_id,
+            'is_agent_created' => true,
+            'edit_count'       => 0,
+            'edits_remaining'  => 2,
         ) );
     }
 
