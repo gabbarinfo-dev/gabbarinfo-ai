@@ -346,6 +346,7 @@ Respond ONLY with the raw JSON object. Do not include markdown code block backti
       const {
         topic,
         keywords = "",
+        targetLocations = "",
         tone = "engaging, authoritative, and conversion-focused",
         brandName = conn.shopName || "Our Store",
       } = payload;
@@ -361,6 +362,12 @@ TOPIC: ${topic}
 TARGET KEYWORDS: ${keywords || topic}
 BRAND NAME: ${brandName}
 TONE: ${tone}
+${targetLocations ? `
+TARGET GEOGRAPHIC MARKET MANDATE (COUNTRIES & CITIES):
+The eCommerce brand is actively targeting shoppers and customers in: "${targetLocations}".
+- Deeply tailor recommendations, regional climate and styling factors, seasonal context, and shopping habits specifically to audiences in (${targetLocations}).
+- Naturally incorporate localized references, regional terminology, and city or country mentions of ${targetLocations} within styling tips, subheadings, and FAQ sections.
+` : ""}
 
 ARTICLE REQUIREMENTS:
 1. Compelling H1 Title incorporating primary keywords.
@@ -660,6 +667,8 @@ Do NOT include markdown code block backticks.`;
         blogHandle: "news",
         isDraft: false,
         targetKeywords: "",
+        targetLocations: conn.country || "",
+        targetMarket: conn.country || "",
         nicheFocus: "",
         lastPublishedAt: null,
         lastArticleTitle: null,
@@ -671,6 +680,8 @@ Do NOT include markdown code block backticks.`;
         try {
           const parsed = typeof memRow.content === "string" ? JSON.parse(memRow.content) : memRow.content;
           config = { ...config, ...parsed };
+          config.targetLocations = config.targetLocations || config.targetMarket || conn.country || "";
+          config.targetMarket = config.targetLocations;
         } catch (_) {}
       }
 
@@ -696,9 +707,14 @@ Do NOT include markdown code block backticks.`;
         } catch (_) {}
       }
 
+      const inputCfg = payload.config || {};
+      const targetLoc = (inputCfg.targetLocations || inputCfg.targetMarket || "").trim();
+
       const newConfig = {
         ...currentConfig,
-        ...(payload.config || {}),
+        ...inputCfg,
+        targetLocations: targetLoc,
+        targetMarket: targetLoc,
         updatedAt: new Date().toISOString(),
       };
 

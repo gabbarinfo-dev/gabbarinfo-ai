@@ -260,15 +260,19 @@ async function runShopifyAutopilotCycle({ supabase, openai, force = false, email
         handle: p.handle,
       }));
 
+      const targetLocations = (config.targetLocations || config.targetMarket || conn.country || "").trim();
+
       const topicPlanningPrompt = `You are a chief eCommerce content strategist for store "${brandName}".
 Catalog Snapshot:
 ${JSON.stringify(sampleProducts, null, 2)}
 
 Target Keywords / Niche: "${config.targetKeywords || config.nicheFocus || "luxury lifestyle & trending apparel"}"
+${targetLocations ? `Target Geographic Territory (Countries/Cities): "${targetLocations}"` : ""}
 Previous Published Titles (Avoid Duplication):
 ${existingTitles.slice(0, 10).join("\n")}
 
 Generate 1 fresh, highly attractive, search-intent driven eCommerce article topic for 2026.
+${targetLocations ? `Tailor the topic and keyword angle specifically to appeal to shoppers in ${targetLocations}.` : ""}
 Format response strictly as JSON:
 {
   "topic": "Compelling Title with Primary Keyword",
@@ -308,6 +312,12 @@ PRIMARY KEYWORD: ${strategicTopic.primaryKeyword}
 SECONDARY KEYWORDS: ${(strategicTopic.secondaryKeywords || []).join(", ")}
 BRAND NAME: ${brandName}
 STORE DOMAIN: ${conn.domain || shop}
+${targetLocations ? `
+TARGET GEOGRAPHIC MARKET MANDATE (COUNTRIES & CITIES):
+The store is actively targeting shoppers and clients in: "${targetLocations}".
+- Deeply tailor the styling guides, climate/seasonal factors, consumer preferences, lifestyle references, and local context specifically for shoppers in (${targetLocations}).
+- Naturally incorporate localized references, regional terminology, and city or country mentions of ${targetLocations} within subheadings, styling tips, case scenarios, and FAQ sections.
+` : ""}
 
 ARTICLE REQUIREMENTS:
 1. Compelling H1 Title incorporating primary keywords.
@@ -478,6 +488,7 @@ Respond ONLY with a valid JSON object matching this schema:
 async function generateShopifyArticleOnDemand({
   topic,
   keywords = "",
+  targetLocations = "",
   tone = "engaging, authoritative, and conversion-focused",
   brandName = "Our Store",
   openai,
@@ -494,6 +505,12 @@ TOPIC: ${topic}
 TARGET KEYWORDS: ${keywords || topic}
 BRAND NAME: ${brandName}
 TONE: ${tone}
+${targetLocations ? `
+TARGET GEOGRAPHIC MARKET MANDATE (COUNTRIES & CITIES):
+The store is actively targeting shoppers and clients in: "${targetLocations}".
+- Deeply tailor recommendations, regional climate and styling factors, seasonal context, and shopping habits specifically to audiences in (${targetLocations}).
+- Naturally incorporate localized references, regional terminology, and city or country mentions of ${targetLocations} within styling tips, subheadings, and FAQ sections.
+` : ""}
 
 ARTICLE REQUIREMENTS:
 1. Compelling H1 Title incorporating primary keywords.

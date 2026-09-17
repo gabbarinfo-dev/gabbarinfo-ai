@@ -31,6 +31,7 @@ export default function ShopifyStoreConnect({ onConnectionChange }) {
   const [selectedBlogId, setSelectedBlogId] = useState("");
   const [blogTopic, setBlogTopic] = useState("");
   const [blogKeywords, setBlogKeywords] = useState("");
+  const [blogTargetLocations, setBlogTargetLocations] = useState("");
   const [isDraft, setIsDraft] = useState(false);
   const [requireReview, setRequireReview] = useState(true);
   const [generatingBlog, setGeneratingBlog] = useState(false);
@@ -51,6 +52,7 @@ export default function ShopifyStoreConnect({ onConnectionChange }) {
     blogHandle: "news",
     isDraft: false,
     targetKeywords: "",
+    targetLocations: "",
     nicheFocus: "",
     lastPublishedAt: null,
     lastArticleTitle: null,
@@ -399,6 +401,7 @@ export default function ShopifyStoreConnect({ onConnectionChange }) {
             action: "generate-blog",
             topic: blogTopic,
             keywords: blogKeywords,
+            targetLocations: blogTargetLocations,
             tone: "engaging, authoritative, and conversion-focused",
           }),
         });
@@ -458,6 +461,7 @@ export default function ShopifyStoreConnect({ onConnectionChange }) {
             action: "generate-blog",
             topic: blogTopic,
             keywords: blogKeywords,
+            targetLocations: blogTargetLocations,
             tone: "engaging, authoritative, and conversion-focused",
           }),
         });
@@ -1229,6 +1233,56 @@ export default function ShopifyStoreConnect({ onConnectionChange }) {
               />
             </div>
 
+            <div>
+              <label style={{ display: "block", fontSize: 12.5, fontWeight: 700, color: "#cbd5e1", marginBottom: 6 }}>
+                🌍 Target Countries or Cities / Regional Market (optional):
+              </label>
+              <input
+                type="text"
+                placeholder="e.g. United States, United Kingdom, Canada, or India, Mumbai, Delhi, Dubai, Toronto"
+                value={blogTargetLocations}
+                onChange={(e) => setBlogTargetLocations(e.target.value)}
+                style={{
+                  width: "100%",
+                  boxSizing: "border-box",
+                  padding: "10px 12px",
+                  borderRadius: 8,
+                  background: "#0b101b",
+                  border: "1px solid rgba(255, 255, 255, 0.12)",
+                  color: "#fff",
+                  fontSize: 13,
+                }}
+              />
+              <div style={{ marginTop: 6, display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap" }}>
+                <span style={{ fontSize: 11, color: "#64748b" }}>Quick Presets:</span>
+                {[
+                  { label: "🌐 Global", val: "Global Commercial Markets" },
+                  { label: "🇺🇸 USA & Canada", val: "United States, Canada" },
+                  { label: "🇬🇧 UK & Europe", val: "United Kingdom, London, Germany, France" },
+                  { label: "🇮🇳 India", val: "India, Mumbai, Delhi, Bangalore" },
+                  { label: "🇦🇪 UAE & Gulf", val: "United Arab Emirates, Dubai, Saudi Arabia" },
+                  { label: "🇦🇺 Australia", val: "Australia, Sydney, Melbourne" },
+                ].map((p) => (
+                  <button
+                    key={p.label}
+                    type="button"
+                    onClick={() => setBlogTargetLocations(p.val)}
+                    style={{
+                      padding: "3px 8px",
+                      borderRadius: 5,
+                      border: blogTargetLocations === p.val ? "1px solid #f59e0b" : "1px solid rgba(255, 255, 255, 0.1)",
+                      background: blogTargetLocations === p.val ? "rgba(245, 158, 11, 0.15)" : "rgba(255, 255, 255, 0.04)",
+                      color: blogTargetLocations === p.val ? "#fbbf24" : "#94a3b8",
+                      fontSize: 10.5,
+                      cursor: "pointer",
+                    }}
+                  >
+                    {p.label}
+                  </button>
+                ))}
+              </div>
+            </div>
+
             <div style={{ display: "flex", flexDirection: "column", gap: 8, margin: "4px 0" }}>
               <label style={{ display: "flex", alignItems: "center", gap: 10, fontSize: 13, color: "#f8fafc", cursor: "pointer", fontWeight: 600 }}>
                 <input
@@ -1761,7 +1815,69 @@ export default function ShopifyStoreConnect({ onConnectionChange }) {
               </div>
             </div>
 
-            {/* 4. Engine Architecture & Verification Status */}
+            {/* 4. Target Geographic Markets (Countries & Cities) */}
+            <div style={{ background: "rgba(15, 23, 42, 0.6)", border: "1px solid rgba(255, 255, 255, 0.1)", borderRadius: 12, padding: 20 }}>
+              <div style={{ fontSize: 14, fontWeight: 700, color: "#fff", marginBottom: 6 }}>
+                🌍 Target Geographic Markets (Countries & Cities)
+              </div>
+              <p style={{ margin: "0 0 14px 0", fontSize: 12, color: "#94a3b8" }}>
+                Specify which countries, states, or cities your eCommerce blogs must target. GabbarInfo AI automatically tailors regional styling nuances, seasonal relevance, currency context, and local shopping patterns to these territories.
+              </p>
+
+              <div>
+                <label style={{ display: "block", fontSize: 12, fontWeight: 700, color: "#cbd5e1", marginBottom: 6 }}>
+                  Target Countries or Cities (comma-separated):
+                </label>
+                <input
+                  type="text"
+                  placeholder="e.g. United States, United Kingdom, Canada, or India, Mumbai, Delhi, Dubai, Toronto"
+                  value={autopilotConfig.targetLocations || ""}
+                  onChange={(e) => setAutopilotConfig({ ...autopilotConfig, targetLocations: e.target.value })}
+                  style={{
+                    width: "100%",
+                    boxSizing: "border-box",
+                    padding: "9px 12px",
+                    borderRadius: 8,
+                    background: "#0b101b",
+                    border: "1px solid rgba(255, 255, 255, 0.12)",
+                    color: "#fff",
+                    fontSize: 13,
+                  }}
+                />
+
+                {/* Quick Presets */}
+                <div style={{ marginTop: 10, display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap" }}>
+                  <span style={{ fontSize: 11, color: "#64748b", fontWeight: 600 }}>Quick Presets:</span>
+                  {[
+                    { label: "🌐 Global", val: "Global Commercial Markets" },
+                    { label: "🇺🇸 USA & Canada", val: "United States, Canada" },
+                    { label: "🇬🇧 UK & Europe", val: "United Kingdom, London, Germany, France" },
+                    { label: "🇮🇳 India", val: "India, Mumbai, Delhi, Bangalore" },
+                    { label: "🇦🇪 UAE & Gulf", val: "United Arab Emirates, Dubai, Saudi Arabia" },
+                    { label: "🇦🇺 Australia", val: "Australia, Sydney, Melbourne" },
+                  ].map((p) => (
+                    <button
+                      key={p.label}
+                      type="button"
+                      onClick={() => setAutopilotConfig({ ...autopilotConfig, targetLocations: p.val })}
+                      style={{
+                        padding: "3px 8px",
+                        borderRadius: 5,
+                        border: autopilotConfig.targetLocations === p.val ? "1px solid #f59e0b" : "1px solid rgba(255, 255, 255, 0.1)",
+                        background: autopilotConfig.targetLocations === p.val ? "rgba(245, 158, 11, 0.15)" : "rgba(255, 255, 255, 0.04)",
+                        color: autopilotConfig.targetLocations === p.val ? "#fbbf24" : "#94a3b8",
+                        fontSize: 10.5,
+                        cursor: "pointer",
+                      }}
+                    >
+                      {p.label}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            </div>
+
+            {/* 5. Engine Architecture & Verification Status */}
             <div style={{ background: "rgba(15, 23, 42, 0.6)", border: "1px solid rgba(255, 255, 255, 0.1)", borderRadius: 12, padding: 20 }}>
               <div style={{ fontSize: 14, fontWeight: 700, color: "#fff", marginBottom: 6 }}>
                 ⚙️ Engine Infrastructure & Health

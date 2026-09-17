@@ -1806,10 +1806,10 @@ app.post("/autopilot/shopify/trigger", requireAuth, async (req, res) => {
 
 app.post("/autopilot/shopify/generate-article", requireAuth, async (req, res) => {
   try {
-    const { topic, keywords, tone, brandName } = req.body || {};
+    const { topic, keywords, targetLocations, tone, brandName } = req.body || {};
     if (!topic) return res.status(400).json({ ok: false, error: "Topic is required" });
-    log("AUTOPILOT", `On-demand Shopify article generation: "${topic}" (${brandName})`);
-    const generated = await generateShopifyArticleOnDemand({ topic, keywords, tone, brandName, openai });
+    log("AUTOPILOT", `On-demand Shopify article generation: "${topic}" (${brandName}) [target: ${targetLocations || "global"}]`);
+    const generated = await generateShopifyArticleOnDemand({ topic, keywords, targetLocations, tone, brandName, openai });
     res.json({ ok: true, generated });
   } catch (err) {
     log("AUTOPILOT", `Shopify On-Demand Generation Error: ${err.message}`);
