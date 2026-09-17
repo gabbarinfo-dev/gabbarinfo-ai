@@ -896,9 +896,9 @@ document.addEventListener('DOMContentLoaded', function() {
             }
         }
 
-        // Universal Live Extraction: If bypasses_db_content or if content requested
+        // Universal Live Extraction: For any page or when template bypasses DB
         $permalink = get_permalink( $p->ID );
-        if ( $bypasses_db_content && ! empty( $permalink ) ) {
+        if ( ( $bypasses_db_content || $p->post_type === 'page' ) && ! empty( $permalink ) ) {
             $response = wp_remote_get( $permalink, array( 'timeout' => 15, 'sslverify' => false ) );
             if ( ! is_wp_error( $response ) && wp_remote_retrieve_response_code( $response ) === 200 ) {
                 $html = wp_remote_retrieve_body( $response );

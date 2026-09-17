@@ -366,11 +366,9 @@ export default async function handler(req, res) {
               if (mainMatch && mainMatch[1].trim().length > 100) {
                 const extractedHtml = mainMatch[1].trim();
                 fetchedData.live_content = extractedHtml;
-                // If database content is empty or template bypasses DB, provide live rendered HTML
-                if (fetchedData.bypasses_db_content || !fetchedData.content || (fetchedData.content.length < 300 && extractedHtml.length > 500)) {
-                  fetchedData.content = extractedHtml;
-                  fetchedData.is_live_extracted = true;
-                }
+                // Always supply live rendered frontend HTML so custom templates/page builders show what is actually live
+                fetchedData.content = extractedHtml;
+                fetchedData.is_live_extracted = true;
               }
             }
           } catch (fetchErr) {
