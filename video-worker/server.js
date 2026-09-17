@@ -10,6 +10,7 @@ const OpenAI = require("openai");
 const cron = require("node-cron");
 const { runSocialAutopilotCycle } = require("./lib/social-autopilot");
 const { runSeoAutopilotCycle } = require("./lib/seo-autopilot");
+const { runShopifyAutopilotCycle, generateShopifyArticleOnDemand } = require("./lib/shopify-autopilot");
 
 const app = express();
 app.use(cors());
@@ -1790,18 +1791,45 @@ app.post("/autopilot/seo/trigger", requireAuth, async (req, res) => {
   }
 });
 
+app.post("/autopilot/shopify/trigger", requireAuth, async (req, res) => {
+  try {
+    const force = Boolean(req.body?.force || req.query?.force);
+    const email = req.body?.email || req.query?.email || null;
+    log("AUTOPILOT", `Manual trigger: Shopify SEO Autopilot (force: ${force}, email: ${email || "all"})`);
+    const results = await runShopifyAutopilotCycle({ supabase, openai, force, email, logger: (msg) => log("SHOPIFY_AP", msg) });
+    res.json({ ok: true, count: results.length, results });
+  } catch (err) {
+    log("AUTOPILOT", `Shopify Autopilot Error: ${err.message}`);
+    res.status(500).json({ ok: false, error: err.message });
+  }
+});
+
+app.post("/autopilot/shopify/generate-article", requireAuth, async (req, res) => {
+  try {
+    const { topic, keywords, tone, brandName } = req.body || {};
+    if (!topic) return res.status(400).json({ ok: false, error: "Topic is required" });
+    log("AUTOPILOT", `On-demand Shopify article generation: "${topic}" (${brandName})`);
+    const generated = await generateShopifyArticleOnDemand({ topic, keywords, tone, brandName, openai });
+    res.json({ ok: true, generated });
+  } catch (err) {
+    log("AUTOPILOT", `Shopify On-Demand Generation Error: ${err.message}`);
+    res.status(500).json({ ok: false, error: err.message });
+  }
+});
+
 app.get("/autopilot/status", requireAuth, (req, res) => {
   res.json({
     ok: true,
     social_cron: "15 9 * * * (09:15 AM IST Daily, Asia/Kolkata)",
     seo_cron: "0 9 * * * (09:00 AM IST Daily, Asia/Kolkata)",
+    shopify_cron: "30 9 * * * (09:30 AM IST Daily, Asia/Kolkata)",
     hasSupabase: Boolean(supabase),
     hasOpenAI: Boolean(openai),
   });
 });
 
 // -------------------------------------------------------------
-// Scheduled Native Cron Jobs (Reliable Background Execution at 9:00 AM IST)
+// Scheduled Native Cron Jobs (Reliable Background Execution in Asia/Kolkata)
 // -------------------------------------------------------------
 // 1. Daily SEO Suite Autopilot (Runs 09:00 AM IST Daily)
 cron.schedule("0 9 * * *", async () => {
@@ -1823,6 +1851,19 @@ cron.schedule("15 9 * * *", async () => {
     await runSocialAutopilotCycle({ supabase, openai, force: false, logger: (msg) => log("CRON_SOCIAL", msg) });
   } catch (e) {
     log("CRON_SOCIAL", `Scheduled Social cycle error: ${e.message}`);
+  }
+}, {
+  scheduled: true,
+  timezone: "Asia/Kolkata"
+});
+
+// 3. Daily Shopify SEO Autopilot (Runs 09:30 AM IST Daily)
+cron.schedule("30 9 * * *", async () => {
+  log("CRON_SHOPIFY", "Executing scheduled Shopify SEO Autopilot cycle (09:30 AM IST)...");
+  try {
+    await runShopifyAutopilotCycle({ supabase, openai, force: false, logger: (msg) => log("CRON_SHOPIFY", msg) });
+  } catch (e) {
+    log("CRON_SHOPIFY", `Scheduled Shopify cycle error: ${e.message}`);
   }
 }, {
   scheduled: true,

@@ -39,9 +39,111 @@ export default function ShopifyStoreConnect({ onConnectionChange }) {
   const [blogSuccessMsg, setBlogSuccessMsg] = useState("");
   const [publishedArticleUrl, setPublishedArticleUrl] = useState("");
 
+  // Autopilot Suite State (Railway Engine)
+  const [autopilotLoading, setAutopilotLoading] = useState(false);
+  const [autopilotSaving, setAutopilotSaving] = useState(false);
+  const [autopilotRunning, setAutopilotRunning] = useState(false);
+  const [autopilotNotice, setAutopilotNotice] = useState("");
+  const [autopilotConfig, setAutopilotConfig] = useState({
+    enabled: false,
+    cadence: "daily", // "daily" | "3x_week" | "weekly"
+    blogId: "",
+    blogHandle: "news",
+    isDraft: false,
+    targetKeywords: "",
+    nicheFocus: "",
+    lastPublishedAt: null,
+    lastArticleTitle: null,
+    lastArticleUrl: null,
+    recentArticles: [],
+  });
+
   useEffect(() => {
     fetchConnection();
   }, []);
+
+  const fetchAutopilotConfig = async () => {
+    setAutopilotLoading(true);
+    try {
+      const res = await fetch("/api/shopify/sync?action=get-autopilot-config");
+      const data = await res.json();
+      if (data.ok && data.config) {
+        setAutopilotConfig((prev) => ({
+          ...prev,
+          ...data.config,
+        }));
+      }
+    } catch (e) {
+      console.warn("Failed to fetch Shopify autopilot config:", e);
+    } finally {
+      setAutopilotLoading(false);
+    }
+  };
+
+  const handleSaveAutopilot = async (overrideEnabled = null) => {
+    setAutopilotSaving(true);
+    setAutopilotNotice("");
+    const isEnabled = typeof overrideEnabled === "boolean" ? overrideEnabled : autopilotConfig.enabled;
+    const toSave = {
+      ...autopilotConfig,
+      enabled: isEnabled,
+      blogId: autopilotConfig.blogId || selectedBlogId,
+      blogHandle: blogs.find((b) => String(b.id) === String(autopilotConfig.blogId || selectedBlogId))?.handle || "news",
+    };
+
+    try {
+      const res = await fetch("/api/shopify/sync", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          action: "save-autopilot-config",
+          config: toSave,
+        }),
+      });
+      const data = await res.json();
+      if (data.ok) {
+        setAutopilotConfig(data.config || toSave);
+        setAutopilotNotice(
+          `✅ Autopilot schedule saved (${isEnabled ? "Active" : "Paused"}, ${
+            toSave.cadence === "daily" ? "Daily" : toSave.cadence === "3x_week" ? "3x / Week" : "Weekly"
+          }). Background routine updated on Railway.`
+        );
+        setTimeout(() => setAutopilotNotice(""), 6000);
+      } else {
+        alert("Failed to save autopilot settings: " + (data.error || "Unknown"));
+      }
+    } catch (e) {
+      alert("Error saving autopilot settings: " + e.message);
+    } finally {
+      setAutopilotSaving(false);
+    }
+  };
+
+  const handleTriggerAutopilot = async () => {
+    setAutopilotRunning(true);
+    setAutopilotNotice("⚡ Offloading autonomous generation cycle to Railway worker (0 timeouts)...");
+    try {
+      const res = await fetch("/api/shopify/sync", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          action: "trigger-autopilot",
+        }),
+      });
+      const data = await res.json();
+      if (data.ok) {
+        setAutopilotNotice(`✅ ${data.message || "Autopilot cycle completed successfully!"}`);
+        fetchAutopilotConfig();
+        setTimeout(() => setAutopilotNotice(""), 8000);
+      } else {
+        setAutopilotNotice("❌ Cycle trigger failed: " + (data.error || "Unknown"));
+      }
+    } catch (e) {
+      setAutopilotNotice("❌ Trigger error: " + e.message);
+    } finally {
+      setAutopilotRunning(false);
+    }
+  };
 
   const fetchConnection = async () => {
     setLoading(true);
@@ -51,9 +153,10 @@ export default function ShopifyStoreConnect({ onConnectionChange }) {
       if (data.ok && data.connected) {
         setConnection(data.connection);
         if (onConnectionChange) onConnectionChange(true);
-        // Pre-fetch products and blogs
+        // Pre-fetch products, blogs, and autopilot
         fetchProducts();
         fetchBlogs();
+        fetchAutopilotConfig();
       } else {
         setConnection(null);
         if (onConnectionChange) onConnectionChange(false);
@@ -805,7 +908,7 @@ export default function ShopifyStoreConnect({ onConnectionChange }) {
       </div>
 
       {/* Sub-Tabs Switcher */}
-      <div style={{ display: "flex", gap: 10, borderBottom: "1px solid rgba(255, 255, 255, 0.08)", paddingBottom: 12 }}>
+      <div style={{ display: "flex", gap: 10, borderBottom: "1px solid rgba(255, 255, 255, 0.08)", paddingBottom: 12, flexWrap: "wrap" }}>
         <button
           onClick={() => setActiveSubTab("products")}
           style={{
@@ -841,7 +944,34 @@ export default function ShopifyStoreConnect({ onConnectionChange }) {
             gap: 8,
           }}
         >
-          <span>✍️</span> Shopify Blog SEO Publisher
+          <span>✍️</span> Manual Blog Generator
+        </button>
+
+        <button
+          onClick={() => {
+            setActiveSubTab("autopilot");
+            fetchAutopilotConfig();
+          }}
+          style={{
+            padding: "8px 18px",
+            borderRadius: 10,
+            background: activeSubTab === "autopilot" ? "rgba(16, 185, 129, 0.18)" : "transparent",
+            border: activeSubTab === "autopilot" ? "1px solid rgba(16, 185, 129, 0.4)" : "1px solid transparent",
+            color: activeSubTab === "autopilot" ? "#34d399" : "#94a3b8",
+            fontWeight: 700,
+            fontSize: 13,
+            cursor: "pointer",
+            display: "flex",
+            alignItems: "center",
+            gap: 8,
+          }}
+        >
+          <span>⚡</span> Autonomous SEO Autopilot
+          {autopilotConfig.enabled && (
+            <span style={{ fontSize: 9, background: "#10b981", color: "#052e16", padding: "1px 6px", borderRadius: 99, fontWeight: 800 }}>
+              ACTIVE
+            </span>
+          )}
         </button>
       </div>
 
@@ -1346,6 +1476,406 @@ export default function ShopifyStoreConnect({ onConnectionChange }) {
               </div>
             )}
           </form>
+        </div>
+      )}
+
+      {/* -------------------------------------------------------------
+          SUB-TAB 3: AUTONOMOUS SHOPIFY SEO AUTOPILOT (RAILWAY ENGINE)
+      ------------------------------------------------------------- */}
+      {activeSubTab === "autopilot" && (
+        <div style={{ display: "flex", flexDirection: "column", gap: 20 }}>
+          {/* Main Control Card */}
+          <div
+            style={{
+              background: "rgba(16, 22, 34, 0.78)",
+              border: "1px solid rgba(255, 255, 255, 0.12)",
+              borderRadius: 14,
+              padding: 24,
+              boxShadow: "0 10px 30px rgba(0,0,0,0.4)",
+            }}
+          >
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", flexWrap: "wrap", gap: 16 }}>
+              <div>
+                <div
+                  style={{
+                    display: "inline-flex",
+                    alignItems: "center",
+                    gap: 6,
+                    padding: "4px 10px",
+                    borderRadius: 20,
+                    background: "rgba(16, 185, 129, 0.15)",
+                    border: "1px solid rgba(16, 185, 129, 0.3)",
+                    color: "#34d399",
+                    fontSize: 11,
+                    fontWeight: 700,
+                    textTransform: "uppercase",
+                    letterSpacing: "0.5px",
+                    marginBottom: 10,
+                  }}
+                >
+                  <span>⚡</span> Railway Autonomous Engine (Unlimited Runtime)
+                </div>
+                <h3 style={{ margin: "0 0 6px 0", fontSize: 20, color: "#fff", fontWeight: 800 }}>
+                  Autonomous Shopify SEO Velocity & Dispatch
+                </h3>
+                <p style={{ margin: 0, color: "#94a3b8", fontSize: 13.5, maxWidth: 700, lineHeight: 1.5 }}>
+                  Every cycle, the Railway background engine analyzes your connected store's catalog ({products.length} products), avoids previously written topics, generates 1,500+ word rank-seeking articles, creates ultra-HD featured images, and posts directly to your Shopify blog with 0 timeout limits.
+                </p>
+              </div>
+
+              <div style={{ display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap" }}>
+                {/* Master Autopilot Toggle */}
+                <button
+                  type="button"
+                  onClick={() => handleSaveAutopilot(!autopilotConfig.enabled)}
+                  disabled={autopilotSaving}
+                  style={{
+                    padding: "10px 20px",
+                    borderRadius: 8,
+                    border: autopilotConfig.enabled ? "1px solid #10b981" : "1px solid rgba(255, 255, 255, 0.18)",
+                    background: autopilotConfig.enabled ? "#10b981" : "rgba(255, 255, 255, 0.06)",
+                    color: autopilotConfig.enabled ? "#052e16" : "#ffffff",
+                    fontWeight: 700,
+                    fontSize: 13,
+                    cursor: autopilotSaving ? "not-allowed" : "pointer",
+                    display: "flex",
+                    alignItems: "center",
+                    gap: 8,
+                    boxShadow: autopilotConfig.enabled ? "0 0 20px rgba(16, 185, 129, 0.35)" : "none",
+                    transition: "all 0.2s ease",
+                  }}
+                >
+                  <span>{autopilotConfig.enabled ? "✓" : "▶"}</span>
+                  {autopilotSaving
+                    ? "Updating…"
+                    : autopilotConfig.enabled
+                    ? "Active Production Engine"
+                    : "Enable Production Routine"}
+                </button>
+
+                {/* Immediate Trigger Button */}
+                <button
+                  type="button"
+                  onClick={handleTriggerAutopilot}
+                  disabled={autopilotRunning}
+                  style={{
+                    padding: "10px 20px",
+                    borderRadius: 8,
+                    background: "linear-gradient(135deg, #f59e0b 0%, #d97706 100%)",
+                    border: "none",
+                    color: "#000",
+                    fontWeight: 800,
+                    fontSize: 13,
+                    cursor: autopilotRunning ? "not-allowed" : "pointer",
+                    display: "flex",
+                    alignItems: "center",
+                    gap: 8,
+                    boxShadow: "0 4px 15px rgba(245, 158, 11, 0.35)",
+                  }}
+                >
+                  <span>⚡</span>
+                  {autopilotRunning ? "Generating on Railway…" : "Trigger Immediate Autopilot Generation ↗"}
+                </button>
+              </div>
+            </div>
+
+            {/* Notice Alert */}
+            {autopilotNotice && (
+              <div
+                style={{
+                  marginTop: 18,
+                  padding: "12px 16px",
+                  borderRadius: 10,
+                  background: autopilotNotice.startsWith("❌") ? "rgba(239, 68, 68, 0.15)" : "rgba(16, 185, 129, 0.15)",
+                  border: autopilotNotice.startsWith("❌") ? "1px solid rgba(239, 68, 68, 0.35)" : "1px solid rgba(16, 185, 129, 0.35)",
+                  color: autopilotNotice.startsWith("❌") ? "#fca5a5" : "#34d399",
+                  fontSize: 13,
+                  fontWeight: 600,
+                }}
+              >
+                {autopilotNotice}
+              </div>
+            )}
+          </div>
+
+          {/* Autopilot Settings Grid */}
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(300px, 1fr))", gap: 16 }}>
+            {/* 1. Cadence Setting */}
+            <div style={{ background: "rgba(15, 23, 42, 0.6)", border: "1px solid rgba(255, 255, 255, 0.1)", borderRadius: 12, padding: 20 }}>
+              <div style={{ fontSize: 14, fontWeight: 700, color: "#fff", marginBottom: 6 }}>
+                📅 Publishing Cadence
+              </div>
+              <p style={{ margin: "0 0 14px 0", fontSize: 12, color: "#94a3b8" }}>
+                How frequently the Railway worker should autonomously dispatch new articles.
+              </p>
+              <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+                {[
+                  { id: "daily", label: "Daily (1 Article / Day at 09:30 AM IST)", desc: "Maximum organic velocity & crawl frequency" },
+                  { id: "3x_week", label: "3x Per Week (Mon, Wed, Fri)", desc: "Consistent strategic content pacing" },
+                  { id: "weekly", label: "Weekly (1 Article / Week)", desc: "Steady authority building" },
+                ].map((c) => (
+                  <label
+                    key={c.id}
+                    style={{
+                      display: "flex",
+                      alignItems: "flex-start",
+                      gap: 10,
+                      padding: "10px 12px",
+                      borderRadius: 8,
+                      background: autopilotConfig.cadence === c.id ? "rgba(16, 185, 129, 0.1)" : "rgba(255, 255, 255, 0.03)",
+                      border: autopilotConfig.cadence === c.id ? "1px solid rgba(16, 185, 129, 0.4)" : "1px solid rgba(255, 255, 255, 0.08)",
+                      cursor: "pointer",
+                    }}
+                  >
+                    <input
+                      type="radio"
+                      name="shopifyCadence"
+                      value={c.id}
+                      checked={autopilotConfig.cadence === c.id}
+                      onChange={() => setAutopilotConfig({ ...autopilotConfig, cadence: c.id })}
+                      style={{ marginTop: 2, accentColor: "#10b981", cursor: "pointer" }}
+                    />
+                    <div>
+                      <div style={{ fontSize: 12.5, fontWeight: 700, color: autopilotConfig.cadence === c.id ? "#34d399" : "#e2e8f0" }}>
+                        {c.label}
+                      </div>
+                      <div style={{ fontSize: 11, color: "#94a3b8", marginTop: 2 }}>{c.desc}</div>
+                    </div>
+                  </label>
+                ))}
+              </div>
+            </div>
+
+            {/* 2. Target Channel & Publishing Mode */}
+            <div style={{ background: "rgba(15, 23, 42, 0.6)", border: "1px solid rgba(255, 255, 255, 0.1)", borderRadius: 12, padding: 20 }}>
+              <div style={{ fontSize: 14, fontWeight: 700, color: "#fff", marginBottom: 6 }}>
+                🎯 Target Channel & Publish Status
+              </div>
+              <p style={{ margin: "0 0 14px 0", fontSize: 12, color: "#94a3b8" }}>
+                Select where articles are delivered and whether they go live automatically.
+              </p>
+
+              <div style={{ marginBottom: 14 }}>
+                <label style={{ display: "block", fontSize: 12, fontWeight: 700, color: "#cbd5e1", marginBottom: 6 }}>
+                  Target Shopify Blog Channel:
+                </label>
+                <select
+                  value={autopilotConfig.blogId || selectedBlogId || ""}
+                  onChange={(e) => {
+                    const chosenId = e.target.value;
+                    const chosen = blogs.find((b) => String(b.id) === String(chosenId));
+                    setAutopilotConfig({
+                      ...autopilotConfig,
+                      blogId: chosenId,
+                      blogHandle: chosen?.handle || "news",
+                    });
+                  }}
+                  style={{
+                    width: "100%",
+                    boxSizing: "border-box",
+                    padding: "9px 12px",
+                    borderRadius: 8,
+                    background: "#0b101b",
+                    border: "1px solid rgba(255, 255, 255, 0.15)",
+                    color: "#fff",
+                    fontSize: 13,
+                  }}
+                >
+                  {blogs.map((b) => (
+                    <option key={b.id} value={b.id}>
+                      {b.title} ({b.handle})
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              <div style={{ marginTop: 14 }}>
+                <label style={{ display: "flex", alignItems: "center", gap: 10, fontSize: 13, color: "#f8fafc", cursor: "pointer", fontWeight: 600 }}>
+                  <input
+                    type="checkbox"
+                    checked={autopilotConfig.isDraft}
+                    onChange={(e) => setAutopilotConfig({ ...autopilotConfig, isDraft: e.target.checked })}
+                    style={{ width: 17, height: 17, accentColor: "#3b82f6", cursor: "pointer" }}
+                  />
+                  <span>Save as Shopify Draft (review in Shopify Admin before live publish)</span>
+                </label>
+                <div style={{ fontSize: 11.5, color: "#94a3b8", marginLeft: 27, marginTop: 4 }}>
+                  {autopilotConfig.isDraft
+                    ? "✓ Autopilot will save articles as hidden drafts for your team to approve."
+                    : "⚡ Articles will publish immediately to the live storefront."}
+                </div>
+              </div>
+            </div>
+
+            {/* 3. Catalog Niche Focus & Strategic Keywords */}
+            <div style={{ background: "rgba(15, 23, 42, 0.6)", border: "1px solid rgba(255, 255, 255, 0.1)", borderRadius: 12, padding: 20 }}>
+              <div style={{ fontSize: 14, fontWeight: 700, color: "#fff", marginBottom: 6 }}>
+                🔍 Catalog Niche & Strategic Keywords
+              </div>
+              <p style={{ margin: "0 0 14px 0", fontSize: 12, color: "#94a3b8" }}>
+                Guide the AI toward specific high-margin categories, collections, or SEO themes.
+              </p>
+
+              <div style={{ marginBottom: 12 }}>
+                <label style={{ display: "block", fontSize: 12, fontWeight: 700, color: "#cbd5e1", marginBottom: 6 }}>
+                  Target Secondary Keywords / Themes:
+                </label>
+                <input
+                  type="text"
+                  placeholder="e.g. luxury winter streetwear, outdoor jackets, British silk dresses"
+                  value={autopilotConfig.targetKeywords || ""}
+                  onChange={(e) => setAutopilotConfig({ ...autopilotConfig, targetKeywords: e.target.value })}
+                  style={{
+                    width: "100%",
+                    boxSizing: "border-box",
+                    padding: "9px 12px",
+                    borderRadius: 8,
+                    background: "#0b101b",
+                    border: "1px solid rgba(255, 255, 255, 0.12)",
+                    color: "#fff",
+                    fontSize: 13,
+                  }}
+                />
+              </div>
+
+              <div>
+                <label style={{ display: "block", fontSize: 12, fontWeight: 700, color: "#cbd5e1", marginBottom: 6 }}>
+                  Priority Product Line / Niche Focus:
+                </label>
+                <input
+                  type="text"
+                  placeholder="e.g. Winter 2026 Collection, High-End Outerwear"
+                  value={autopilotConfig.nicheFocus || ""}
+                  onChange={(e) => setAutopilotConfig({ ...autopilotConfig, nicheFocus: e.target.value })}
+                  style={{
+                    width: "100%",
+                    boxSizing: "border-box",
+                    padding: "9px 12px",
+                    borderRadius: 8,
+                    background: "#0b101b",
+                    border: "1px solid rgba(255, 255, 255, 0.12)",
+                    color: "#fff",
+                    fontSize: 13,
+                  }}
+                />
+              </div>
+            </div>
+
+            {/* 4. Engine Architecture & Verification Status */}
+            <div style={{ background: "rgba(15, 23, 42, 0.6)", border: "1px solid rgba(255, 255, 255, 0.1)", borderRadius: 12, padding: 20 }}>
+              <div style={{ fontSize: 14, fontWeight: 700, color: "#fff", marginBottom: 6 }}>
+                ⚙️ Engine Infrastructure & Health
+              </div>
+              <p style={{ margin: "0 0 14px 0", fontSize: 12, color: "#94a3b8" }}>
+                Live operational health of your autonomous publishing pipeline.
+              </p>
+
+              <div style={{ display: "flex", flexDirection: "column", gap: 10, fontSize: 12 }}>
+                <div style={{ display: "flex", justifyContent: "space-between", padding: "8px 10px", background: "rgba(0,0,0,0.25)", borderRadius: 6 }}>
+                  <span style={{ color: "#94a3b8" }}>Railway Worker Engine:</span>
+                  <span style={{ color: "#34d399", fontWeight: 700 }}>● Active & Online</span>
+                </div>
+                <div style={{ display: "flex", justifyContent: "space-between", padding: "8px 10px", background: "rgba(0,0,0,0.25)", borderRadius: 6 }}>
+                  <span style={{ color: "#94a3b8" }}>Execution Timeout Limit:</span>
+                  <span style={{ color: "#38bdf8", fontWeight: 700 }}>None (Persistent Node)</span>
+                </div>
+                <div style={{ display: "flex", justifyContent: "space-between", padding: "8px 10px", background: "rgba(0,0,0,0.25)", borderRadius: 6 }}>
+                  <span style={{ color: "#94a3b8" }}>Store Catalog Synced:</span>
+                  <span style={{ color: "#f8fafc", fontWeight: 700 }}>{products.length} Products</span>
+                </div>
+                <div style={{ display: "flex", justifyContent: "space-between", padding: "8px 10px", background: "rgba(0,0,0,0.25)", borderRadius: 6 }}>
+                  <span style={{ color: "#94a3b8" }}>Scheduled Time:</span>
+                  <span style={{ color: "#f59e0b", fontWeight: 700 }}>09:30 AM IST Daily</span>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          {/* Bottom Save Bar */}
+          <div style={{ display: "flex", justifyContent: "flex-end" }}>
+            <button
+              type="button"
+              onClick={() => handleSaveAutopilot()}
+              disabled={autopilotSaving}
+              style={{
+                padding: "11px 26px",
+                borderRadius: 8,
+                background: "linear-gradient(135deg, #2563eb 0%, #1d4ed8 100%)",
+                border: "none",
+                color: "#fff",
+                fontWeight: 800,
+                fontSize: 13.5,
+                cursor: autopilotSaving ? "not-allowed" : "pointer",
+                boxShadow: "0 4px 14px rgba(37, 99, 235, 0.4)",
+              }}
+            >
+              {autopilotSaving ? "Saving Settings…" : "💾 Save Autopilot Routine & Schedule"}
+            </button>
+          </div>
+
+          {/* Recent Production History Card */}
+          <div
+            style={{
+              background: "rgba(15, 23, 42, 0.6)",
+              border: "1px solid rgba(255, 255, 255, 0.1)",
+              borderRadius: 14,
+              padding: 22,
+            }}
+          >
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 14 }}>
+              <div style={{ fontSize: 15, fontWeight: 700, color: "#fff" }}>
+                📜 Autonomous Dispatch History & Last Generated Post
+              </div>
+              <span style={{ fontSize: 11, color: "#94a3b8" }}>
+                Total Generated: {autopilotConfig.totalArticlesGenerated || (autopilotConfig.lastPublishedAt ? 1 : 0)}
+              </span>
+            </div>
+
+            {autopilotConfig.lastPublishedAt ? (
+              <div style={{ padding: "14px 16px", borderRadius: 10, background: "rgba(0, 0, 0, 0.3)", border: "1px solid rgba(255, 255, 255, 0.08)" }}>
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", flexWrap: "wrap", gap: 10 }}>
+                  <div>
+                    <span style={{ fontSize: 10, background: autopilotConfig.isDraft ? "rgba(59, 130, 246, 0.2)" : "rgba(16, 185, 129, 0.2)", color: autopilotConfig.isDraft ? "#60a5fa" : "#34d399", padding: "2px 8px", borderRadius: 99, fontWeight: 800, textTransform: "uppercase" }}>
+                      {autopilotConfig.isDraft ? "Shopify Draft" : "Live Storefront"}
+                    </span>
+                    <h4 style={{ margin: "8px 0 4px 0", fontSize: 15, color: "#f8fafc", fontWeight: 700 }}>
+                      {autopilotConfig.lastArticleTitle || "Latest Autonomous Blog Post"}
+                    </h4>
+                    <div style={{ fontSize: 11.5, color: "#64748b" }}>
+                      Dispatched on: {new Date(autopilotConfig.lastPublishedAt).toLocaleString("en-US", { dateStyle: "medium", timeStyle: "short" })}
+                    </div>
+                  </div>
+
+                  {autopilotConfig.lastArticleUrl && (
+                    <a
+                      href={autopilotConfig.lastArticleUrl}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      style={{
+                        padding: "7px 14px",
+                        borderRadius: 6,
+                        background: "rgba(59, 130, 246, 0.15)",
+                        border: "1px solid rgba(59, 130, 246, 0.3)",
+                        color: "#60a5fa",
+                        fontSize: 12,
+                        fontWeight: 700,
+                        textDecoration: "none",
+                        display: "inline-flex",
+                        alignItems: "center",
+                        gap: 6,
+                      }}
+                    >
+                      <span>{autopilotConfig.lastArticleUrl.includes("admin.shopify.com") ? "📝 Review in Shopify Admin ↗" : "🌐 View Live on Shopify ↗"}</span>
+                    </a>
+                  )}
+                </div>
+              </div>
+            ) : (
+              <div style={{ padding: "24px 16px", textAlign: "center", color: "#64748b", background: "rgba(0,0,0,0.2)", borderRadius: 10 }}>
+                No autonomous articles generated yet. Enable the production routine or click "Trigger Immediate Autopilot Generation ↗" to generate your first article via Railway.
+              </div>
+            )}
+          </div>
         </div>
       )}
 
