@@ -264,7 +264,7 @@ export default function ShopifyStoreConnect({ onConnectionChange }) {
   const fetchProducts = async () => {
     setProductsLoading(true);
     try {
-      const res = await fetch("/api/shopify/sync?action=list-products&limit=50");
+      const res = await fetch("/api/shopify/sync?action=list-products&limit=250");
       const data = await res.json();
       if (data.ok) {
         setProducts(data.products || []);

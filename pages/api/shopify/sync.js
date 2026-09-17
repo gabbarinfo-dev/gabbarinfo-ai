@@ -237,16 +237,17 @@ export default async function handler(req, res) {
     // 4. LIST PRODUCTS
     // ---------------------------------------------------------
     if (action === "list-products") {
-      const limit = Math.min(Number(payload.limit) || 50, 100);
-      const resp = await fetch(
-        `https://${shop}/admin/api/2024-01/products.json?limit=${limit}&fields=id,title,body_html,vendor,product_type,handle,images,variants,tags,status`,
-        {
-          headers: {
-            "X-Shopify-Access-Token": accessToken,
-            "Content-Type": "application/json",
-          },
-        }
-      );
+      const requestedLimit = Number(payload.limit || req.query.limit) || 250;
+      let allProducts = [];
+      const fetchLimit = Math.min(requestedLimit, 250);
+      const initialUrl = `https://${shop}/admin/api/2024-01/products.json?limit=${fetchLimit}&fields=id,title,body_html,vendor,product_type,handle,images,variants,tags,status`;
+
+      const resp = await fetch(initialUrl, {
+        headers: {
+          "X-Shopify-Access-Token": accessToken,
+          "Content-Type": "application/json",
+        },
+      });
 
       if (!resp.ok) {
         const txt = await resp.text();
@@ -254,7 +255,27 @@ export default async function handler(req, res) {
       }
 
       const data = await resp.json();
-      return res.status(200).json({ ok: true, products: data.products || [] });
+      allProducts = data.products || [];
+
+      // If user requested more than 250 or there are next pages, follow Shopify link headers
+      let linkHeader = resp.headers.get("link");
+      while (linkHeader && linkHeader.includes('rel="next"') && allProducts.length < requestedLimit) {
+        const match = linkHeader.match(/<([^>]+)>;\s*rel="next"/);
+        if (!match || !match[1]) break;
+        const nextFetch = await fetch(match[1], {
+          headers: {
+            "X-Shopify-Access-Token": accessToken,
+            "Content-Type": "application/json",
+          },
+        });
+        if (!nextFetch.ok) break;
+        const nextData = await nextFetch.json();
+        if (!nextData.products || nextData.products.length === 0) break;
+        allProducts = allProducts.concat(nextData.products);
+        linkHeader = nextFetch.headers.get("link");
+      }
+
+      return res.status(200).json({ ok: true, products: allProducts, total: allProducts.length });
     }
 
     // ---------------------------------------------------------
