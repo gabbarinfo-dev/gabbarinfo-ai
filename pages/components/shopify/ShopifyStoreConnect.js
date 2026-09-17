@@ -32,6 +32,9 @@ export default function ShopifyStoreConnect({ onConnectionChange }) {
   const [blogTopic, setBlogTopic] = useState("");
   const [blogKeywords, setBlogKeywords] = useState("");
   const [isDraft, setIsDraft] = useState(false);
+  const [requireReview, setRequireReview] = useState(true);
+  const [generatingBlog, setGeneratingBlog] = useState(false);
+  const [previewArticle, setPreviewArticle] = useState(null);
   const [publishingBlog, setPublishingBlog] = useState(false);
   const [blogSuccessMsg, setBlogSuccessMsg] = useState("");
   const [publishedArticleUrl, setPublishedArticleUrl] = useState("");
@@ -280,30 +283,84 @@ export default function ShopifyStoreConnect({ onConnectionChange }) {
       return;
     }
 
+    setBlogSuccessMsg("");
+    setPublishedArticleUrl("");
+
+    if (requireReview) {
+      setGeneratingBlog(true);
+      try {
+        const genRes = await fetch("/api/shopify/sync", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            action: "generate-blog",
+            topic: blogTopic,
+            keywords: blogKeywords,
+            tone: "engaging, authoritative, and conversion-focused",
+          }),
+        });
+
+        const genData = await genRes.json();
+        if (genData.ok && genData.generated) {
+          setPreviewArticle({
+            title: genData.generated.title || blogTopic,
+            bodyHtml: genData.generated.bodyHtml,
+            tags: genData.generated.tags || blogKeywords,
+            seoDescription: genData.generated.seoDescription || "",
+            imageBase64: genData.generated.imageBase64 || null,
+            imageUrl: genData.generated.imageUrl || null,
+          });
+        } else {
+          alert(genData.error || "Failed to generate AI blog article");
+        }
+      } catch (err) {
+        alert("Error generating blog article: " + err.message);
+      } finally {
+        setGeneratingBlog(false);
+      }
+    } else {
+      executeFinalPublish();
+    }
+  };
+
+  const executeFinalPublish = async (overrideArticle = null) => {
     setPublishingBlog(true);
     setBlogSuccessMsg("");
     setPublishedArticleUrl("");
 
     try {
-      // 1. Generate deep 1,500+ word eCommerce SEO blog content
-      const genRes = await fetch("/api/shopify/sync", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          action: "generate-blog",
-          topic: blogTopic,
-          keywords: blogKeywords,
-          tone: "engaging, authoritative, and conversion-focused",
-        }),
-      });
+      const target = overrideArticle || previewArticle;
+      let articleTitle = target?.title || blogTopic;
+      let articleHtml = target?.bodyHtml || "";
+      let articleTags = target?.tags || blogKeywords;
+      let summaryHtml = target?.seoDescription || "";
+      let imageBase64 = target?.imageBase64 || null;
+      let imageUrl = target?.imageUrl || null;
 
-      const genData = await genRes.json();
-      const articleTitle = genData?.generated?.title || blogTopic;
-      const articleHtml = genData?.generated?.bodyHtml || `<p>${blogTopic} overview and industry insights.</p>`;
-      const articleTags = genData?.generated?.tags || blogKeywords;
-      const summaryHtml = genData?.generated?.seoDescription || "";
+      if (!articleHtml) {
+        // Direct flow without preview
+        const genRes = await fetch("/api/shopify/sync", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            action: "generate-blog",
+            topic: blogTopic,
+            keywords: blogKeywords,
+            tone: "engaging, authoritative, and conversion-focused",
+          }),
+        });
+        const genData = await genRes.json();
+        if (!genData.ok) {
+          throw new Error(genData.error || "Failed to generate blog article");
+        }
+        articleTitle = genData.generated.title || blogTopic;
+        articleHtml = genData.generated.bodyHtml;
+        articleTags = genData.generated.tags || blogKeywords;
+        summaryHtml = genData.generated.seoDescription || "";
+        imageBase64 = genData.generated.imageBase64 || null;
+        imageUrl = genData.generated.imageUrl || null;
+      }
 
-      // 2. Publish to Shopify Blog
       const currentBlog = blogs.find((b) => String(b.id) === String(selectedBlogId));
       const blogHandle = currentBlog?.handle || "news";
 
@@ -318,6 +375,8 @@ export default function ShopifyStoreConnect({ onConnectionChange }) {
           bodyHtml: articleHtml,
           summaryHtml: summaryHtml,
           tags: articleTags,
+          imageBase64,
+          imageUrl,
           isDraft,
           author: "GabbarInfo AI",
         }),
@@ -327,6 +386,7 @@ export default function ShopifyStoreConnect({ onConnectionChange }) {
       if (pubData.ok) {
         setBlogSuccessMsg(pubData.message || "Article published successfully!");
         if (pubData.articleUrl) setPublishedArticleUrl(pubData.articleUrl);
+        setPreviewArticle(null);
         setBlogTopic("");
         setBlogKeywords("");
       } else {
@@ -1018,40 +1078,228 @@ export default function ShopifyStoreConnect({ onConnectionChange }) {
               />
             </div>
 
-            <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-              <input
-                type="checkbox"
-                id="shopifyDraftCheckbox"
-                checked={isDraft}
-                onChange={(e) => setIsDraft(e.target.checked)}
-                style={{ width: 16, height: 16, accentColor: "#3b82f6" }}
-              />
-              <label htmlFor="shopifyDraftCheckbox" style={{ fontSize: 13, color: "#cbd5e1", cursor: "pointer" }}>
-                Save as Shopify Draft (uncheck to publish live immediately)
+            <div style={{ display: "flex", flexDirection: "column", gap: 8, margin: "4px 0" }}>
+              <label style={{ display: "flex", alignItems: "center", gap: 10, fontSize: 13, color: "#f8fafc", cursor: "pointer", fontWeight: 600 }}>
+                <input
+                  type="checkbox"
+                  id="shopifyReviewCheckbox"
+                  checked={requireReview}
+                  onChange={(e) => setRequireReview(e.target.checked)}
+                  style={{ width: 17, height: 17, accentColor: "#f59e0b", cursor: "pointer" }}
+                />
+                <span>👁️ Review & Preview on Screen (inspect AI article & gpt-image-2 before publishing)</span>
+              </label>
+
+              <label style={{ display: "flex", alignItems: "center", gap: 10, fontSize: 13, color: "#cbd5e1", cursor: "pointer" }}>
+                <input
+                  type="checkbox"
+                  id="shopifyDraftCheckbox"
+                  checked={isDraft}
+                  onChange={(e) => setIsDraft(e.target.checked)}
+                  style={{ width: 17, height: 17, accentColor: "#3b82f6", cursor: "pointer" }}
+                />
+                <span>Save as Shopify Draft (uncheck to publish live immediately)</span>
               </label>
             </div>
 
             <button
               type="submit"
-              disabled={publishingBlog}
+              disabled={generatingBlog || publishingBlog}
               style={{
-                padding: "12px 20px",
+                padding: "13px 22px",
                 borderRadius: 10,
-                background: "linear-gradient(135deg, #2563eb 0%, #1d4ed8 100%)",
+                background: requireReview
+                  ? "linear-gradient(135deg, #f59e0b 0%, #d97706 100%)"
+                  : "linear-gradient(135deg, #2563eb 0%, #1d4ed8 100%)",
                 border: "none",
-                color: "#fff",
-                fontWeight: 700,
+                color: requireReview ? "#000" : "#fff",
+                fontWeight: 800,
                 fontSize: 14,
-                cursor: publishingBlog ? "not-allowed" : "pointer",
-                boxShadow: "0 4px 15px rgba(37, 99, 235, 0.3)",
+                cursor: (generatingBlog || publishingBlog) ? "not-allowed" : "pointer",
+                boxShadow: requireReview
+                  ? "0 4px 15px rgba(245, 158, 11, 0.35)"
+                  : "0 4px 15px rgba(37, 99, 235, 0.3)",
                 display: "flex",
                 alignItems: "center",
                 justifyContent: "center",
                 gap: 8,
               }}
             >
-              <span>{publishingBlog ? "Synthesizing & Publishing…" : "🚀 Generate & Publish Article to Shopify"}</span>
+              <span>
+                {generatingBlog
+                  ? "⚡ Generating Article & gpt-image-2 Image…"
+                  : publishingBlog
+                  ? "Publishing to Shopify…"
+                  : requireReview
+                  ? "⚡ Generate & Review Article First ↗"
+                  : "🚀 Generate & Publish Directly to Shopify"}
+              </span>
             </button>
+
+            {/* In-Page Review & Approval Workspace */}
+            {previewArticle && (
+              <div
+                style={{
+                  marginTop: 18,
+                  padding: "22px 20px",
+                  borderRadius: 14,
+                  background: "linear-gradient(180deg, rgba(17, 24, 39, 0.95) 0%, rgba(10, 15, 26, 0.98) 100%)",
+                  border: "1px solid rgba(245, 183, 22, 0.35)",
+                  boxShadow: "0 10px 30px rgba(0,0,0,0.5)",
+                }}
+              >
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 14, borderBottom: "1px solid rgba(255,255,255,0.08)", paddingBottom: 10 }}>
+                  <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                    <span style={{ fontSize: 18 }}>📄</span>
+                    <span style={{ fontSize: 15, fontWeight: 800, color: "#f8fafc" }}>
+                      Article Review & Approval Workspace
+                    </span>
+                  </div>
+                  <span style={{ fontSize: 11, background: "rgba(245, 183, 22, 0.15)", color: "#f59e0b", padding: "4px 10px", borderRadius: 999, border: "1px solid rgba(245, 183, 22, 0.3)", fontWeight: 700 }}>
+                    Preview Mode (Not yet in Shopify)
+                  </span>
+                </div>
+
+                {/* Featured Image Preview */}
+                {(previewArticle.imageBase64 || previewArticle.imageUrl) && (
+                  <div style={{ marginBottom: 16 }}>
+                    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 6 }}>
+                      <span style={{ fontSize: 12, fontWeight: 700, color: "#94a3b8" }}>
+                        🎨 Featured Hero Image (gpt-image-2)
+                      </span>
+                      <span style={{ fontSize: 10.5, color: "#34d399", fontWeight: 700 }}>
+                        ✓ 1024x1024 Ready for Shopify CDN
+                      </span>
+                    </div>
+                    <img
+                      src={
+                        previewArticle.imageBase64
+                          ? `data:image/jpeg;base64,${previewArticle.imageBase64}`
+                          : previewArticle.imageUrl
+                      }
+                      alt={previewArticle.title}
+                      style={{
+                        width: "100%",
+                        maxHeight: 280,
+                        objectFit: "cover",
+                        borderRadius: 10,
+                        border: "1px solid rgba(255,255,255,0.12)",
+                      }}
+                    />
+                  </div>
+                )}
+
+                {/* Editable Title */}
+                <div style={{ marginBottom: 14 }}>
+                  <label style={{ display: "block", fontSize: 12, fontWeight: 700, color: "#94a3b8", marginBottom: 4 }}>
+                    Article Title (H1):
+                  </label>
+                  <input
+                    type="text"
+                    value={previewArticle.title}
+                    onChange={(e) => setPreviewArticle({ ...previewArticle, title: e.target.value })}
+                    style={{
+                      width: "100%",
+                      boxSizing: "border-box",
+                      padding: "8px 12px",
+                      borderRadius: 6,
+                      background: "#080c14",
+                      border: "1px solid rgba(255, 255, 255, 0.15)",
+                      color: "#fff",
+                      fontSize: 13,
+                      fontWeight: 600,
+                    }}
+                  />
+                </div>
+
+                {/* Editable SEO Meta Description */}
+                <div style={{ marginBottom: 14 }}>
+                  <label style={{ display: "block", fontSize: 12, fontWeight: 700, color: "#94a3b8", marginBottom: 4 }}>
+                    SEO Meta Summary:
+                  </label>
+                  <textarea
+                    rows={2}
+                    value={previewArticle.seoDescription || ""}
+                    onChange={(e) => setPreviewArticle({ ...previewArticle, seoDescription: e.target.value })}
+                    style={{
+                      width: "100%",
+                      boxSizing: "border-box",
+                      padding: "8px 12px",
+                      borderRadius: 6,
+                      background: "#080c14",
+                      border: "1px solid rgba(255, 255, 255, 0.15)",
+                      color: "#cbd5e1",
+                      fontSize: 12,
+                      resize: "vertical",
+                    }}
+                  />
+                </div>
+
+                {/* Scrollable Formatted Content Preview */}
+                <div style={{ marginBottom: 18 }}>
+                  <label style={{ display: "block", fontSize: 12, fontWeight: 700, color: "#94a3b8", marginBottom: 4 }}>
+                    Formatted Article Body (1,500+ Words Preview):
+                  </label>
+                  <div
+                    dangerouslySetInnerHTML={{ __html: previewArticle.bodyHtml }}
+                    style={{
+                      maxHeight: 260,
+                      overflowY: "auto",
+                      padding: "12px 16px",
+                      borderRadius: 8,
+                      background: "#070b13",
+                      border: "1px solid rgba(255, 255, 255, 0.1)",
+                      color: "#cbd5e1",
+                      fontSize: 12.5,
+                      lineHeight: 1.6,
+                    }}
+                  />
+                </div>
+
+                {/* Actions: Discard vs Publish */}
+                <div style={{ display: "flex", gap: 12, justifyContent: "flex-end" }}>
+                  <button
+                    type="button"
+                    onClick={() => setPreviewArticle(null)}
+                    disabled={publishingBlog}
+                    style={{
+                      padding: "10px 18px",
+                      borderRadius: 8,
+                      background: "rgba(239, 68, 68, 0.15)",
+                      border: "1px solid rgba(239, 68, 68, 0.35)",
+                      color: "#f87171",
+                      fontSize: 13,
+                      fontWeight: 700,
+                      cursor: "pointer",
+                    }}
+                  >
+                    ✕ Discard Draft
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => executeFinalPublish(previewArticle)}
+                    disabled={publishingBlog}
+                    style={{
+                      padding: "10px 22px",
+                      borderRadius: 8,
+                      background: "linear-gradient(135deg, #10b981 0%, #059669 100%)",
+                      border: "none",
+                      color: "#ffffff",
+                      fontSize: 13,
+                      fontWeight: 800,
+                      cursor: publishingBlog ? "not-allowed" : "pointer",
+                      boxShadow: "0 4px 14px rgba(16, 185, 129, 0.4)",
+                      display: "flex",
+                      alignItems: "center",
+                      gap: 8,
+                    }}
+                  >
+                    <span>{publishingBlog ? "Pushing to Shopify…" : isDraft ? "📝 Save Draft to Shopify ↗" : "🚀 Approve & Publish Live to Shopify ↗"}</span>
+                  </button>
+                </div>
+              </div>
+            )}
 
             {blogSuccessMsg && (
               <div style={{ padding: "14px 16px", borderRadius: 10, background: "rgba(16, 185, 129, 0.15)", border: "1px solid rgba(16, 185, 129, 0.35)", color: "#34d399", fontSize: 13 }}>

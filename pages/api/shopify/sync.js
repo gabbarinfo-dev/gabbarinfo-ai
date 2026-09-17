@@ -406,13 +406,36 @@ Do NOT include markdown code block backticks.`;
         }
       }
 
-      if (!aiResult || !aiResult.bodyHtml) {
-        return res.status(500).json({ ok: false, error: "Failed to generate AI blog article." });
+      // Generate High-Res Editorial Featured Image using gpt-image-2
+      let imageBase64 = null;
+      let imageUrl = null;
+
+      if (process.env.OPENAI_API_KEY) {
+        try {
+          const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
+          const imagePrompt = `Ultra-realistic cinematic editorial lifestyle commercial photograph for eCommerce article titled "${aiResult.title || topic}". High fashion luxury aesthetic, 8k professional studio lighting, depth of field, award-winning shot.`;
+          const imgGen = await openai.images.generate({
+            model: "gpt-image-2",
+            prompt: imagePrompt,
+            size: "1024x1024",
+          });
+          if (imgGen.data?.[0]?.b64_json) {
+            imageBase64 = imgGen.data[0].b64_json;
+          } else if (imgGen.data?.[0]?.url) {
+            imageUrl = imgGen.data[0].url;
+          }
+        } catch (imgErr) {
+          console.warn("gpt-image-2 generation failed:", imgErr.message);
+        }
       }
 
       return res.status(200).json({
         ok: true,
-        generated: aiResult,
+        generated: {
+          ...aiResult,
+          imageBase64,
+          imageUrl,
+        },
       });
     }
 
@@ -510,6 +533,7 @@ Do NOT include markdown code block backticks.`;
         tags = "",
         isDraft = false,
         imageUrl = null,
+        imageBase64 = null,
         summaryHtml = "",
       } = payload;
 
@@ -529,18 +553,40 @@ Do NOT include markdown code block backticks.`;
         articlePayload.summary_html = summaryHtml;
       }
 
-      // Auto-generate high-res AI featured hero image if not provided
-      let finalImageUrl = imageUrl;
-      if (!finalImageUrl) {
-        const cleanTopic = encodeURIComponent(String(title).replace(/[^a-zA-Z0-9\s]/g, "").slice(0, 80));
-        finalImageUrl = `https://image.pollinations.ai/prompt/cinematic%20luxury%20editorial%20commercial%20photo%20of%20${cleanTopic}?width=1200&height=675&nologo=true`;
-      }
-
-      if (finalImageUrl) {
+      // Attach high-res AI featured hero image (base64 or url)
+      if (imageBase64) {
         articlePayload.image = {
-          src: finalImageUrl,
+          attachment: imageBase64,
           alt: title,
         };
+      } else if (imageUrl) {
+        articlePayload.image = {
+          src: imageUrl,
+          alt: title,
+        };
+      } else if (process.env.OPENAI_API_KEY) {
+        try {
+          const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
+          const imagePrompt = `Ultra-realistic cinematic editorial lifestyle commercial photograph for article titled "${title}". High fashion luxury aesthetic, 8k professional studio lighting.`;
+          const imgGen = await openai.images.generate({
+            model: "gpt-image-2",
+            prompt: imagePrompt,
+            size: "1024x1024",
+          });
+          if (imgGen.data?.[0]?.b64_json) {
+            articlePayload.image = {
+              attachment: imgGen.data[0].b64_json,
+              alt: title,
+            };
+          } else if (imgGen.data?.[0]?.url) {
+            articlePayload.image = {
+              src: imgGen.data[0].url,
+              alt: title,
+            };
+          }
+        } catch (imgErr) {
+          console.warn("gpt-image-2 featured image fallback failed:", imgErr.message);
+        }
       }
 
       const articleRes = await fetch(`https://${shop}/admin/api/2024-01/blogs/${blogId}/articles.json`, {
