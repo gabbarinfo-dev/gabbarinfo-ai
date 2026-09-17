@@ -199,6 +199,7 @@ async function runSocialAutopilotCycle({ supabase, openai, force = false, logger
       const topicTitle = `${activeService}: Scaling Your Brand with High-Impact Results`;
 
       logger(`[Social Autopilot] Generating caption for "${activeService}"...`);
+      const targetLocations = (config.targetLocations || config.targetMarket || "").trim();
       let captionText = "";
       try {
         const chatRes = await openai.chat.completions.create({
@@ -206,11 +207,14 @@ async function runSocialAutopilotCycle({ supabase, openai, force = false, logger
           messages: [
             {
               role: "system",
-              content: "You are an elite direct-response social media copywriter for a high-end digital agency. Write compelling, concise, high-converting social media copy with clean formatting and strategic hashtags."
+              content: `You are an elite direct-response social media copywriter for a high-end digital agency. Write compelling, concise, high-converting social media copy with clean formatting and strategic hashtags.${targetLocations ? ` You are specifically targeting business owners and clients in: ${targetLocations}. Reflect the regional business tone, commercial context, and market speed of these locations.` : ""}`
             },
             {
               role: "user",
-              content: `Write an engaging commercial social media post promoting "${activeService}" for "${businessName}".\nHook: "${selectedHook}"\nInclude 3-4 bullet benefits, a strong call to action, and 5-6 relevant hashtags.`
+              content: `Write an engaging commercial social media post promoting "${activeService}" for "${businessName}".
+Hook: "${selectedHook}"
+${targetLocations ? `Target Geographic Markets: "${targetLocations}" (Tailor the hook and message to resonate strongly with entrepreneurs and decision-makers in ${targetLocations})` : ""}
+Include 3-4 bullet benefits, a strong call to action, and 6-8 relevant hashtags${targetLocations ? ` (including geo-targeted hashtags for ${targetLocations})` : ""}.`
             }
           ],
           temperature: 0.7,
@@ -218,7 +222,10 @@ async function runSocialAutopilotCycle({ supabase, openai, force = false, logger
         captionText = chatRes.choices[0]?.message?.content?.trim();
       } catch (chatErr) {
         logger("[Social Autopilot] Caption generation fallback:", chatErr.message);
-        captionText = `📢 ${selectedHook}\n\nRunning a business means staying ahead of the curve. At ${businessName}, our ${activeService} solutions turn complex digital challenges into predictable revenue.\n\n👉 Send us a DM or visit our website to learn more!\n\n#${activeService.replace(/[^a-zA-Z0-9]/g, "")} #BusinessGrowth #DigitalMarketing #${businessName.replace(/[^a-zA-Z0-9]/g, "")}`;
+        const geoHashtags = targetLocations
+          ? " " + targetLocations.split(",").map((l) => `#${l.trim().replace(/[^a-zA-Z0-9]/g, "")}`).filter(h => h.length > 2).slice(0, 3).join(" ")
+          : "";
+        captionText = `📢 ${selectedHook}\n\nRunning a business means staying ahead of the curve. At ${businessName}, our ${activeService} solutions turn complex digital challenges into predictable revenue.${targetLocations ? ` Helping businesses thrive across ${targetLocations}.` : ""}\n\n👉 Send us a DM or visit our website to learn more!\n\n#${activeService.replace(/[^a-zA-Z0-9]/g, "")} #BusinessGrowth #DigitalMarketing #${businessName.replace(/[^a-zA-Z0-9]/g, "")}${geoHashtags}`;
       }
 
       // 4. Generate Bespoke 3D Poster via gpt-image-2 (ZERO STOCK PHOTOS)

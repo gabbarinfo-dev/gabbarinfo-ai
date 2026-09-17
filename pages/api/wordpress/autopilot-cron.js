@@ -173,6 +173,7 @@ export default async function handler(req, res) {
           businessName: config.businessName || "GABBARinfo",
           topic: generatedTopic,
           targetKeywords: [activeService, generatedTopic.slice(0, 30)],
+          targetLocations: config.targetLocations || config.targetMarket || clientMarket || "",
           wordCount: Math.max(Number(config.wordCount) || 1500, 1500),
           brandVoice: config.brandVoice || "consultative and results-oriented",
           industry: clientIndustry || config.industry || "Business",

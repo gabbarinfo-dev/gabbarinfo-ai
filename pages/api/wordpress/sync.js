@@ -445,7 +445,9 @@ export default async function handler(req, res) {
 
       if (autoMem?.content) {
         try {
-          return res.status(200).json({ ok: true, config: JSON.parse(autoMem.content) });
+          const cfg = JSON.parse(autoMem.content);
+          cfg.targetLocations = cfg.targetLocations || cfg.targetMarket || "";
+          return res.status(200).json({ ok: true, config: cfg });
         } catch (e) {}
       }
 
@@ -457,6 +459,8 @@ export default async function handler(req, res) {
           customDaysPerWeek: 3,
           autoShareFacebook: true,
           autoShareInstagram: true,
+          targetLocations: "",
+          targetMarket: "",
         },
       });
     }
@@ -493,6 +497,8 @@ export default async function handler(req, res) {
       const autoMemoryKey = `wp_autopilot_${targetBiz}`;
       const configPayload = body.config || {};
       configPayload.businessName = businessName || targetBiz || "default";
+      configPayload.targetLocations = (configPayload.targetLocations || configPayload.targetMarket || "").trim();
+      configPayload.targetMarket = configPayload.targetLocations;
       configPayload.updatedAt = new Date().toISOString();
 
       const { error: upsertErr } = await supabase
@@ -510,6 +516,37 @@ export default async function handler(req, res) {
       if (upsertErr) {
         console.error("Failed to upsert autopilot config:", upsertErr);
         return res.status(500).json({ ok: false, error: upsertErr.message });
+      }
+
+      // Cross-sync targetLocations to Social Autopilot memory so social posts share the same geo-targeting
+      if (configPayload.targetLocations) {
+        try {
+          const normEmail = userEmail.toLowerCase().trim();
+          const socialMemoryKey = `social_autopilot_${normEmail}`;
+          const { data: socialMem } = await supabase
+            .from("agent_memory")
+            .select("content")
+            .eq("email", normEmail)
+            .eq("memory_type", socialMemoryKey)
+            .maybeSingle();
+          let socialConfig = {};
+          if (socialMem?.content) {
+            try { socialConfig = JSON.parse(socialMem.content); } catch (_) {}
+          }
+          socialConfig.targetLocations = configPayload.targetLocations;
+          socialConfig.targetMarket = configPayload.targetLocations;
+          await supabase.from("agent_memory").upsert(
+            {
+              email: normEmail,
+              memory_type: socialMemoryKey,
+              content: JSON.stringify(socialConfig),
+              updated_at: new Date().toISOString(),
+            },
+            { onConflict: "email,memory_type" }
+          );
+        } catch (syncErr) {
+          console.warn("Could not cross-sync targetLocations to social autopilot:", syncErr.message);
+        }
       }
 
       return res.status(200).json({ ok: true, config: configPayload, message: "Autopilot settings saved successfully" });

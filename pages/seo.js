@@ -129,6 +129,7 @@ export default function SeoHubPage() {
   const [customDaysPerWeek, setCustomDaysPerWeek] = useState(3);
   const [autoShareFb, setAutoShareFb] = useState(true);
   const [autoShareIg, setAutoShareIg] = useState(true);
+  const [autopilotTargetLocations, setAutopilotTargetLocations] = useState("");
   const [savingAutopilotConfig, setSavingAutopilotConfig] = useState(false);
   const [runningCycle, setRunningCycle] = useState(false);
   const [cycleNotice, setCycleNotice] = useState("");
@@ -215,6 +216,9 @@ export default function SeoHubPage() {
         if (Array.isArray(data.config.targetKeywords) && data.config.targetKeywords.length > 0) {
           setKeywords(data.config.targetKeywords);
         }
+        if (data.config.targetLocations || data.config.targetMarket) {
+          setAutopilotTargetLocations(data.config.targetLocations || data.config.targetMarket);
+        }
       }
     } catch (e) {
       console.warn("Could not load autopilot config:", e);
@@ -244,6 +248,8 @@ export default function SeoHubPage() {
             autoShareFacebook: autoShareFb,
             autoShareInstagram: autoShareIg,
             targetKeywords: keywords,
+            targetLocations: autopilotTargetLocations.trim(),
+            targetMarket: autopilotTargetLocations.trim(),
             wordCount: 1500,
           },
         }),
@@ -616,8 +622,9 @@ export default function SeoHubPage() {
         body: JSON.stringify({
           businessName: activeBusiness,
           topic: topicToUse,
-          targetMarket: targetMarket || "",
-          city: targetMarket || "",
+          targetMarket: targetMarket || autopilotTargetLocations || "",
+          city: targetMarket || autopilotTargetLocations || "",
+          targetLocations: targetMarket || autopilotTargetLocations || "",
           targetKeywords: cleanKeywords,
           wordCount: newWordCount,
           publishStatus: publishStatus,
@@ -2848,14 +2855,92 @@ export default function SeoHubPage() {
               </div>
             </div>
 
-            {/* ── SECTION 2: INSTANT SOCIAL BROADCAST & AMPLIFICATION ── */}
+            {/* ── SECTION 2: TARGET GEOGRAPHIC SCOPE (COUNTRIES & CITIES) ── */}
+            <div style={{ background: "rgba(16, 22, 34, 0.78)", border: "1px solid rgba(255, 255, 255, 0.12)", borderRadius: 14, padding: 28, boxShadow: "0 10px 30px rgba(0,0,0,0.4)" }}>
+              <div style={{ marginBottom: 16 }}>
+                <div style={{ display: "inline-flex", alignItems: "center", gap: 6, padding: "4px 10px", borderRadius: 20, background: "rgba(245, 158, 11, 0.15)", border: "1px solid rgba(245, 158, 11, 0.3)", color: "#fbbf24", fontSize: 11, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.5px", marginBottom: 8 }}>
+                  <span>🌍</span> Geo-Targeting Intelligence
+                </div>
+                <h3 style={{ margin: "0 0 6px 0", fontSize: 18, color: "#fff", fontWeight: 800 }}>
+                  2. Target Geographic Markets (Countries, States & Cities)
+                </h3>
+                <p style={{ margin: 0, color: "#94a3b8", fontSize: 13, lineHeight: 1.5 }}>
+                  Define which countries, states, or cities your automated blogs and social media posts must target. GabbarInfo AI automatically tailors regional market context, commercial statistics, localized examples, and relevant hashtags to these territories.
+                </p>
+              </div>
+
+              <div>
+                <label style={{ display: "block", fontSize: 12, fontWeight: 700, color: "#cbd5e1", marginBottom: 8 }}>
+                  Target Countries or Cities (comma-separated):
+                </label>
+                <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
+                  <input
+                    type="text"
+                    value={autopilotTargetLocations}
+                    onChange={(e) => setAutopilotTargetLocations(e.target.value)}
+                    placeholder="e.g. United States, United Kingdom, Canada, or India, Mumbai, Delhi, Dubai, Toronto"
+                    style={{
+                      flex: 1,
+                      minWidth: 280,
+                      padding: "12px 16px",
+                      borderRadius: 8,
+                      border: "1px solid rgba(255, 255, 255, 0.16)",
+                      background: "rgba(13, 20, 35, 0.9)",
+                      color: "#fff",
+                      fontSize: 14,
+                      outline: "none",
+                    }}
+                  />
+                  <button
+                    onClick={() => handleSaveAutopilotSettings()}
+                    disabled={savingAutopilotConfig}
+                    className="btn-gabbar-primary"
+                    style={{ padding: "10px 20px", fontSize: 13, cursor: "pointer", whiteSpace: "nowrap" }}
+                  >
+                    {savingAutopilotConfig ? "Saving…" : "Save Target Territories ↗"}
+                  </button>
+                </div>
+
+                {/* Popular Region Presets */}
+                <div style={{ marginTop: 12, display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+                  <span style={{ fontSize: 11, color: "#64748b", fontWeight: 600 }}>Quick Presets:</span>
+                  {[
+                    { label: "🌐 Global / Worldwide", val: "Global Commercial Markets" },
+                    { label: "🇺🇸 USA & Canada", val: "United States, Canada" },
+                    { label: "🇬🇧 UK & Europe", val: "United Kingdom, Germany, France, European Union" },
+                    { label: "🇮🇳 India (Pan-India)", val: "India, Mumbai, Delhi, Bangalore, Ahmedabad" },
+                    { label: "🇦🇪 UAE & Gulf", val: "United Arab Emirates, Dubai, Saudi Arabia, Qatar" },
+                    { label: "🇦🇺 Australia & NZ", val: "Australia, Sydney, Melbourne, New Zealand" },
+                  ].map((preset) => (
+                    <button
+                      key={preset.label}
+                      onClick={() => setAutopilotTargetLocations(preset.val)}
+                      style={{
+                        padding: "4px 10px",
+                        borderRadius: 6,
+                        border: autopilotTargetLocations === preset.val ? "1px solid #f59e0b" : "1px solid rgba(255, 255, 255, 0.1)",
+                        background: autopilotTargetLocations === preset.val ? "rgba(245, 158, 11, 0.15)" : "rgba(255, 255, 255, 0.04)",
+                        color: autopilotTargetLocations === preset.val ? "#fbbf24" : "#94a3b8",
+                        fontSize: 11,
+                        cursor: "pointer",
+                        fontWeight: 600,
+                      }}
+                    >
+                      {preset.label}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            </div>
+
+            {/* ── SECTION 3: INSTANT SOCIAL BROADCAST & AMPLIFICATION ── */}
             <div style={{ background: "rgba(16, 22, 34, 0.78)", border: "1px solid rgba(255, 255, 255, 0.12)", borderRadius: 14, padding: 28, boxShadow: "0 10px 30px rgba(0,0,0,0.4)" }}>
               <div style={{ marginBottom: 20 }}>
                 <div style={{ display: "inline-flex", alignItems: "center", gap: 6, padding: "4px 10px", borderRadius: 20, background: "rgba(56, 189, 248, 0.15)", border: "1px solid rgba(56, 189, 248, 0.3)", color: "#38bdf8", fontSize: 11, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.5px", marginBottom: 8 }}>
                   <span>⚡</span> Syndication Protocol
                 </div>
                 <h3 style={{ margin: "0 0 6px 0", fontSize: 18, color: "#fff", fontWeight: 800 }}>
-                  2. Instant Multichannel Social Syndication
+                  3. Instant Multichannel Social Syndication
                 </h3>
                 <p style={{ margin: 0, color: "#94a3b8", fontSize: 13, lineHeight: 1.5 }}>
                   Amplify every live blog instantly. The moment an article goes live on WordPress, GabbarInfo AI automatically distributes it to your active social networks.

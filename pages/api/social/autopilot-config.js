@@ -344,6 +344,8 @@ export default async function handler(req, res) {
         const merged = {
           ...current,
           ...updatedConfig,
+          targetLocations: (updatedConfig?.targetLocations !== undefined ? updatedConfig.targetLocations : current?.targetLocations || current?.targetMarket || "").trim(),
+          targetMarket: (updatedConfig?.targetLocations !== undefined ? updatedConfig.targetLocations : current?.targetLocations || current?.targetMarket || "").trim(),
           updatedAt: new Date().toISOString()
         };
 
@@ -360,6 +362,30 @@ export default async function handler(req, res) {
         if (saveErr) {
           console.error("[Social Autopilot] Failed to save config:", saveErr.message);
           return res.status(500).json({ ok: false, error: saveErr.message });
+        }
+
+        // Cross-sync targetLocations to WordPress SEO Autopilot memory
+        if (merged.targetLocations) {
+          try {
+            const { data: wpMems } = await supabase
+              .from("agent_memory")
+              .select("memory_type, content")
+              .eq("email", normalizedEmail)
+              .like("memory_type", "wp_autopilot_%");
+            for (const wpM of wpMems || []) {
+              try {
+                const parsed = JSON.parse(wpM.content);
+                parsed.targetLocations = merged.targetLocations;
+                parsed.targetMarket = merged.targetLocations;
+                await supabase.from("agent_memory").update({
+                  content: JSON.stringify(parsed),
+                  updated_at: new Date().toISOString(),
+                }).eq("email", normalizedEmail).eq("memory_type", wpM.memory_type);
+              } catch (_) {}
+            }
+          } catch (syncErr) {
+            console.warn("[Social Autopilot] Could not cross-sync targetLocations to wp_autopilot:", syncErr.message);
+          }
         }
 
         return res.status(200).json({ ok: true, message: "Autopilot configuration saved.", config: merged });

@@ -37,6 +37,8 @@ export default function SocialMediaPlannerModal({ onClose }) {
   const [isOwner, setIsOwner] = useState(false);
   const [isRestricted, setIsRestricted] = useState(false);
   const [restrictionReason, setRestrictionReason] = useState("");
+  const [targetLocationsInput, setTargetLocationsInput] = useState("");
+  const [savingLocations, setSavingLocations] = useState(false);
 
   // Load initial config
   useEffect(() => {
@@ -50,6 +52,7 @@ export default function SocialMediaPlannerModal({ onClose }) {
       const data = await res.json();
       if (data.ok) {
         setConfig(data.config);
+        setTargetLocationsInput(data.config.targetLocations || data.config.targetMarket || "");
         setIsOwner(Boolean(data.isOwner));
         setIsRestricted(Boolean(data.isRestricted));
         setRestrictionReason(data.restrictionReason || "");
@@ -1184,6 +1187,115 @@ export default function SocialMediaPlannerModal({ onClose }) {
                   >
                     + Add
                   </button>
+                </div>
+              </div>
+
+              {/* 4. Target Geographic Markets (Countries & Cities) */}
+              <div
+                style={{
+                  padding: "20px 24px",
+                  borderRadius: 16,
+                  background: "rgba(255, 255, 255, 0.02)",
+                  border: "1px solid rgba(255, 255, 255, 0.08)",
+                  marginTop: 16,
+                }}
+              >
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", flexWrap: "wrap", gap: 10, marginBottom: 8 }}>
+                  <div>
+                    <h3 style={{ margin: "0 0 6px 0", fontSize: 16, fontWeight: 800, color: "#fff", display: "flex", alignItems: "center", gap: 8 }}>
+                      <span>🌍</span> 4. Target Geographic Markets (Countries & Cities)
+                    </h3>
+                    <p style={{ margin: 0, fontSize: 13, color: "#94a3b8", lineHeight: 1.5, maxWidth: 680 }}>
+                      Specify the exact countries, states, or cities you want to attract clients from. The AI will customize hooks, business language, case contexts, and localized hashtags for these locations.
+                    </p>
+                  </div>
+                </div>
+
+                <div style={{ marginTop: 14 }}>
+                  <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
+                    <input
+                      type="text"
+                      value={targetLocationsInput}
+                      onChange={(e) => setTargetLocationsInput(e.target.value)}
+                      placeholder="e.g. United States, United Kingdom, Dubai, Mumbai, Sydney (comma-separated)..."
+                      style={{
+                        flex: "1 1 320px",
+                        padding: "11px 16px",
+                        borderRadius: 10,
+                        background: "rgba(255, 255, 255, 0.05)",
+                        border: "1px solid rgba(255, 255, 255, 0.12)",
+                        color: "#fff",
+                        fontSize: 13.5,
+                        outline: "none",
+                      }}
+                    />
+                    <button
+                      type="button"
+                      disabled={savingLocations}
+                      onClick={async () => {
+                        setSavingLocations(true);
+                        await saveConfig({
+                          targetLocations: targetLocationsInput.trim(),
+                          targetMarket: targetLocationsInput.trim(),
+                        });
+                        setSavingLocations(false);
+                      }}
+                      style={{
+                        padding: "11px 22px",
+                        borderRadius: 10,
+                        border: "none",
+                        background: savingLocations ? "rgba(56, 189, 248, 0.3)" : "#38bdf8",
+                        color: "#030712",
+                        fontSize: 13.5,
+                        fontWeight: 700,
+                        cursor: savingLocations ? "wait" : "pointer",
+                        whiteSpace: "nowrap",
+                        transition: "all 0.2s ease",
+                      }}
+                    >
+                      {savingLocations ? "Saving..." : "Save Locations ✓"}
+                    </button>
+                  </div>
+
+                  {/* Preset Pills */}
+                  <div style={{ marginTop: 12, display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap" }}>
+                    <span style={{ fontSize: 11.5, color: "#64748b", fontWeight: 600 }}>Quick Presets:</span>
+                    {[
+                      "USA & Canada",
+                      "United Kingdom & Europe",
+                      "India (Pan-India)",
+                      "UAE & Middle East",
+                      "Australia & New Zealand",
+                      "Singapore & SE Asia",
+                      "Global / International",
+                    ].map((preset) => (
+                      <button
+                        key={preset}
+                        type="button"
+                        onClick={() => {
+                          const current = targetLocationsInput.trim();
+                          const updated = current ? `${current}, ${preset}` : preset;
+                          setTargetLocationsInput(updated);
+                        }}
+                        style={{
+                          fontSize: 11,
+                          padding: "4px 9px",
+                          borderRadius: 6,
+                          background: "rgba(255, 255, 255, 0.04)",
+                          border: "1px solid rgba(255, 255, 255, 0.1)",
+                          color: "#94a3b8",
+                          cursor: "pointer",
+                          transition: "all 0.15s ease",
+                        }}
+                      >
+                        + {preset}
+                      </button>
+                    ))}
+                  </div>
+
+                  <div style={{ fontSize: 11.5, color: "#64748b", marginTop: 10 }}>
+                    💡 <em>Saved automatically and synchronized with your SEO Suite Autopilot. Supports multiple countries or cities.</em>
+                  </div>
                 </div>
               </div>
             </div>

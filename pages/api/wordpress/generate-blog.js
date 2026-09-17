@@ -25,6 +25,7 @@ export async function executeBlogGeneration({
   topic,
   targetMarket,
   city,
+  targetLocations,
   targetKeywords = [],
   brandVoice = "authoritative, engaging, and consultative",
   industry = "",
@@ -172,7 +173,7 @@ export async function executeBlogGeneration({
     const openai = new OpenAI({ apiKey });
 
     // 4. Resolve Target Market / Location / Services from Client Memory
-    let businessLocation = (targetMarket || city || "").trim();
+    let businessLocation = (targetLocations || targetMarket || city || "").trim();
     let businessServices = "";
     if (clientMemRes?.data?.content) {
       try {
@@ -190,21 +191,25 @@ export async function executeBlogGeneration({
       businessLocation = "National & Global Commercial";
     }
 
-    // 5. Fetch existing posts & pages for Anti-Duplication (Skip during autopilot for sub-40s speed)
-    let existingContent = [];
-    if (!isAutopilot) {
-      try {
-        const listResp = await fetch(`${siteUrl}/wp-json/gabbarinfo/v1/list-content?per_page=30`, {
-          method: "GET",
-          headers: { Authorization: `Bearer ${wpApiKey}` },
-        });
-        const listData = await listResp.json();
-        if (listData?.ok && Array.isArray(listData.items)) {
-          existingContent = listData.items;
+    // 5. Fetch existing published posts for Authentic Contextual Internal Linking (ALWAYS run, <200ms)
+    let existingPublishedPosts = [];
+    try {
+      const postsResp = await fetch(`${siteUrl}/wp-json/wp/v2/posts?per_page=15&_fields=id,title,slug,link`, {
+        headers: { Accept: "application/json" },
+      });
+      if (postsResp.ok) {
+        const rawPosts = await postsResp.json();
+        if (Array.isArray(rawPosts)) {
+          existingPublishedPosts = rawPosts.map((p) => ({
+            id: p.id,
+            title: typeof p.title === "object" ? p.title.rendered : p.title,
+            link: p.link,
+            slug: p.slug,
+          })).filter((p) => p.link && p.title);
         }
-      } catch (e) {
-        console.warn("Could not pre-fetch existing content for internal linking:", e.message);
       }
+    } catch (e) {
+      console.warn("Could not pre-fetch existing content for internal linking:", e.message);
     }
 
     const keywordList = Array.isArray(targetKeywords)
@@ -216,8 +221,13 @@ export async function executeBlogGeneration({
 
     const isTopicSeo = /seo|search engine/i.test(topic);
     const systemPrompt = `You are a world-class commercial strategist and elite enterprise copywriter specializing in ${topic}.
-Generate an exhaustive, authoritative, 100% human-grade pillar guide focused specifically on "${topic}" for ${effectiveBusiness}, optimized for maximum reader dwell-time, deep operational insight, and commercial conversion.
-
+Generate an exhaustive, authoritative, 100% human-grade pillar guide focused specifically on "${topic}" for ${effectiveBusiness} (${siteUrl}), optimized for maximum reader dwell-time, deep operational insight, and commercial conversion.
+${businessLocation && businessLocation !== "National & Global Commercial" ? `
+TARGET GEOGRAPHIC MARKET MANDATE:
+The business is specifically targeting clients and audiences in: "${businessLocation}".
+- Deeply localize the analysis, market dynamics, regulatory landscape, consumer purchasing behavior, and regional industry context to these target countries/cities (${businessLocation}).
+- Incorporate specific regional references naturally within case examples, economic statistics, and strategic playbooks (e.g. contrasting market speeds, local compliance, or consumer search patterns in ${businessLocation}).
+` : ""}
 CRITICAL TOPIC FIDELITY MANDATE:
 - Focus 100% strictly and specifically on the nuances, mechanics, and strategies of "${topic}".
 ${!isTopicSeo ? `- DO NOT divert into generic SEO, search engine indexing, or Core Web Vitals. Address the actual domain of "${topic}" directly.` : ""}
@@ -236,14 +246,39 @@ CRITICAL LENGTH & DEPTH MANDATES:
    - <h2>9. Frequently Asked Questions (FAQ)</h2> (Provide 5 high-impact questions specifically about ${topic}, each answered with comprehensive multi-paragraph explanations of 100+ words, totaling 500+ words for this section)
    - <h2>10. Strategic Conclusion and Actionable Roadmap for 2026</h2> (At least 140 words summary with a clear commercial call to action for ${effectiveBusiness})
 
-3. MANDATORY INTERNAL & EXTERNAL HYPERLINKING:
-   - Internal Links: Embed working HTML anchor tags (<a href="URL" style="color: #f59e0b; font-weight: 700; text-decoration: underline;">anchor text</a>) naturally within body copy using the client's own website links:
-${(existingContent || []).slice(0, 4).map(i => `     - ${i.url} (${i.title})`).join('\n') || `     - ${siteUrl || '#'} (${effectiveBusiness} Services & Solutions)\n     - ${(siteUrl || '').replace(/\/+$/, '') + '/contact/'} (Contact ${effectiveBusiness})`}
-   - External Authority: Embed at least 2 external links to trusted, authoritative industry resources, research benchmarks, or professional standards directly relevant to "${topic}".
+3. MANDATORY 8 TO 12 TARGET KEYWORD CLUSTER & ORGANIC DENSITY:
+   - Generate and target a rich semantic keyword cluster of 8 to 12 distinct keywords directly relevant to "${topic}":
+     * 1 Primary Focus Keyword
+     * 3 to 4 Secondary Commercial Intent Keywords
+     * 4 to 7 Semantic LSI Variations and long-tail query phrases
+   - NATURAL HIGH DENSITY USAGE (1.5% - 2.5%):
+     * The Primary Keyword MUST appear in the title, in the first 100 words of the opening paragraph (bolded as <strong>primary keyword</strong>), in at least two <h2> or <h3> subheadings, and naturally 4 to 6 times across the body.
+     * Each of the 7 to 11 Secondary and LSI keywords MUST be woven organically throughout the article sections (at least 2 to 4 times each).
+     * NEVER stuff keywords robotically. Every keyword MUST be integrated in natural, fluent, syntactically correct English.
 
-4. TARGET KEYWORD VISIBILITY:
-   - Feature and bold (<strong>keyword</strong>) the primary target keyword in the very first paragraph.
-   - Organically weave target keywords into headings and body paragraphs.
+4. MANDATORY INTERNAL & EXTERNAL HYPERLINKING:
+   - Internal Links (Styled with theme amber #f59e0b, bold, underline):
+     * Core Pages:
+       - <a href="${siteUrl}/services/" style="color: #f59e0b; font-weight: 700; text-decoration: underline;">${effectiveBusiness} Services & Solutions</a>
+       - <a href="${(siteUrl || '').replace(/\/+$/, '')}/contact-us/" style="color: #f59e0b; font-weight: 700; text-decoration: underline;">Schedule a Consultation with ${effectiveBusiness}</a>
+       - <a href="${(siteUrl || '').replace(/\/+$/, '')}/packages/" style="color: #f59e0b; font-weight: 700; text-decoration: underline;">Explore Growth Packages</a>
+${existingPublishedPosts.length > 0 ? `     * MANDATORY EXISTING BLOG LINK:
+       You MUST choose at least ONE relevant published blog post from the site's existing catalog below and contextually embed an internal hyperlink to it in Section 3, Section 4, or Section 5 with natural, fluent sentence anchor text:
+${existingPublishedPosts.slice(0, 8).map((p) => `       - Link: <a href="${p.link}" style="color: #f59e0b; font-weight: 700; text-decoration: underline;">[Contextual anchor related to ${p.title}]</a> (Title: "${p.title}")`).join("\n")}` : ""}
+
+   - MANDATORY 4+ SCATTERED EXTERNAL AUTHORITY LINKS (STRICT SPATIAL DISTRIBUTION):
+     You MUST embed AT LEAST 4 authoritative, topic-relevant, non-competing external links.
+     CRITICAL SPATIAL DISTRIBUTION RULE: These links MUST BE SCATTERED across different parts of the article. It is STRICTLY FORBIDDEN to clump them together or put them only in the last 2 paragraphs or conclusion.
+     
+     Embed strictly across these sections:
+     - Early Body (Section 1 or Section 2): 1 external link citing recognized market statistics, economic analysis, or industry shifts (e.g., Gartner [https://www.gartner.com], McKinsey & Company [https://www.mckinsey.com], Harvard Business Review [https://hbr.org], Forrester [https://www.forrester.com], or Statista [https://www.statista.com]).
+     - Mid-First Half (Section 3 or Section 4): 1 external link to an authoritative publication or technical standard directly relevant to the topic (e.g., Search Engine Journal [https://www.searchenginejournal.com], HubSpot Research [https://www.hubspot.com], Content Marketing Institute [https://contentmarketinginstitute.com], W3C Standards [https://www.w3.org], Nielsen Norman Group [https://www.nngroup.com], or IEEE Computer Society [https://www.computer.org]).
+     - Mid-Second Half (Section 5 or Section 6): 1 external link to an authoritative commercial benchmark, conversion index, or analytics framework (e.g., Bain & Company [https://www.bain.com], Deloitte Insights [https://www2.deloitte.com], PwC Global [https://www.pwc.com], or eMarketer [https://www.emarketer.com]).
+     - Late Body (Section 7 or Section 8): 1 external link to a credible professional guideline, compliance standard, or recognized industry benchmark (e.g., FTC Consumer & Advertising Guidelines [https://www.ftc.gov], IAB Interactive Advertising Bureau [https://www.iab.com], or ISO Standards [https://www.iso.org]).
+     
+     External Link Styling:
+     Every external link MUST have target="_blank" rel="noopener noreferrer" and be styled in theme amber:
+     <a href="URL" target="_blank" rel="noopener noreferrer" style="color: #f59e0b; font-weight: 700; text-decoration: underline;">Descriptive Anchor Text</a>
 
 5. FORMATTING & BRAND THEME MANDATES:
    - Use semantic HTML: <h2>, <h3>, <p>, <ul>, <li>, <strong>, <em>.
@@ -262,6 +297,7 @@ ${(existingContent || []).slice(0, 4).map(i => `     - ${i.url} (${i.title})`).j
      "meta_title": "SEO Meta Title (max 60 chars)",
      "meta_description": "SEO Meta Description (max 155 chars)",
      "focus_keyword": "Primary target keyword",
+     "target_keywords": ["keyword 1", "keyword 2", "keyword 3", "keyword 4", "keyword 5", "keyword 6", "keyword 7", "keyword 8"],
      "secondary_keywords": ["keyword 2", "keyword 3"],
      "tags": ["SEO Optimization", "Digital Marketing", "Business Growth"],
      "html_content": "Full HTML content strictly 1600+ words with all 10 sections"
@@ -644,6 +680,7 @@ export default async function handler(req, res) {
     topic: req.body?.topic,
     targetMarket: req.body?.targetMarket,
     city: req.body?.city,
+    targetLocations: req.body?.targetLocations || req.body?.targetMarket || req.body?.city || "",
     targetKeywords: req.body?.targetKeywords,
     brandVoice: req.body?.brandVoice,
     industry: req.body?.industry,
