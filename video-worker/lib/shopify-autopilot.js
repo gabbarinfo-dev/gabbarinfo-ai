@@ -131,6 +131,21 @@ function getRelevantProductsForLinking(products = [], queryText = "", primaryDom
   return selected;
 }
 
+function isProductInStock(p) {
+  if (!p) return false;
+  if (p.status && p.status !== "active") return false;
+
+  const variants = p.variants;
+  if (!Array.isArray(variants) || variants.length === 0) return true;
+
+  // Available if continue policy, unmanaged inventory, or quantity > 0
+  return variants.some((v) => {
+    if (!v.inventory_management) return true;
+    if (v.inventory_policy === "continue") return true;
+    return typeof v.inventory_quantity === "number" && v.inventory_quantity > 0;
+  });
+}
+
 /**
  * Main autonomous Shopify publishing cycle on Railway worker.
  */
@@ -241,19 +256,23 @@ async function runShopifyAutopilotCycle({ supabase, openai, force = false, email
     }
 
     try {
-      // 5. Fetch Store Products for Dynamic Catalog Intelligence
-      logger(`[Shopify Autopilot] Fetching catalog products for ${shop}...`);
+      // 5. Fetch Store Products for Dynamic Catalog Intelligence (Only In-Stock Products)
+      logger(`[Shopify Autopilot] Fetching in-stock catalog products for ${shop}...`);
       let products = [];
       try {
-        const prodRes = await fetch(`https://${shop}/admin/api/2024-01/products.json?limit=50`, {
-          headers: {
-            "X-Shopify-Access-Token": accessToken,
-            "Content-Type": "application/json",
-          },
-        });
+        const prodRes = await fetch(
+          `https://${shop}/admin/api/2024-01/products.json?limit=250&fields=id,title,handle,product_type,tags,variants,status`,
+          {
+            headers: {
+              "X-Shopify-Access-Token": accessToken,
+              "Content-Type": "application/json",
+            },
+          }
+        );
         if (prodRes.ok) {
           const pData = await prodRes.json();
-          products = pData.products || [];
+          // Filter out sold-out and inactive products so they are NEVER interlinked
+          products = (pData.products || []).filter(isProductInStock);
         }
       } catch (pErr) {
         logger(`[Shopify Autopilot] Catalog fetch note: ${pErr.message}`);
@@ -312,17 +331,31 @@ async function runShopifyAutopilotCycle({ supabase, openai, force = false, email
         logger(`[Shopify Autopilot] Recent articles fetch note: ${aErr.message}`);
       }
 
-      // 8. Generate High-Converting Topic & SEO Strategy
-      const sampleProducts = products.slice(0, 10).map((p) => ({
-        title: p.title,
-        tags: p.tags,
-        product_type: p.product_type,
-        handle: p.handle,
-      }));
+      // 8. Determine Strategic Topic (Priority 1: User-Selected Topic Lineup Queue)
+      let strategicTopic = null;
+      if (Array.isArray(config.topicQueue) && config.topicQueue.length > 0) {
+        const nextQueued = config.topicQueue.shift();
+        if (nextQueued && typeof nextQueued === "string" && nextQueued.trim()) {
+          strategicTopic = {
+            topic: nextQueued.trim(),
+            primaryKeyword: nextQueued.trim(),
+            secondaryKeywords: config.targetKeywords ? [config.targetKeywords] : [],
+          };
+          logger(`[Shopify Autopilot] Consuming topic from user topic lineup queue: "${strategicTopic.topic}". Remaining in queue: ${config.topicQueue.length}`);
+        }
+      }
 
-      const targetLocations = (config.targetLocations || config.targetMarket || conn.country || "").trim();
+      if (!strategicTopic) {
+        const sampleProducts = products.slice(0, 10).map((p) => ({
+          title: p.title,
+          tags: p.tags,
+          product_type: p.product_type,
+          handle: p.handle,
+        }));
 
-      const topicPlanningPrompt = `You are a chief eCommerce content strategist for store "${brandName}".
+        const targetLocations = (config.targetLocations || config.targetMarket || conn.country || "").trim();
+
+        const topicPlanningPrompt = `You are a chief eCommerce content strategist for store "${brandName}".
 Catalog Snapshot:
 ${JSON.stringify(sampleProducts, null, 2)}
 
@@ -341,25 +374,26 @@ Format response strictly as JSON:
   "featuredProductHandle": "${sampleProducts[0]?.handle || ""}"
 }`;
 
-      let strategicTopic = {
-        topic: `Top Trending Styles and Curated Essentials for 2026: Elevate Your Wardrobe`,
-        primaryKeyword: "luxury fashion trends 2026",
-        secondaryKeywords: ["designer streetwear", "premium apparel", "winter style guide"],
-      };
+        strategicTopic = {
+          topic: `Top Trending Styles and Curated Essentials for 2026: Elevate Your Wardrobe`,
+          primaryKeyword: "luxury fashion trends 2026",
+          secondaryKeywords: ["designer streetwear", "premium apparel", "winter style guide"],
+        };
 
-      try {
-        const topicComp = await openai.chat.completions.create({
-          model: "gpt-4o-mini",
-          messages: [{ role: "user", content: topicPlanningPrompt }],
-          response_format: { type: "json_object" },
-          temperature: 0.8,
-        });
-        const parsedTopic = JSON.parse(topicComp.choices[0]?.message?.content || "{}");
-        if (parsedTopic.topic) {
-          strategicTopic = parsedTopic;
+        try {
+          const topicComp = await openai.chat.completions.create({
+            model: "gpt-4o-mini",
+            messages: [{ role: "user", content: topicPlanningPrompt }],
+            response_format: { type: "json_object" },
+            temperature: 0.8,
+          });
+          const parsedTopic = JSON.parse(topicComp.choices[0]?.message?.content || "{}");
+          if (parsedTopic.topic) {
+            strategicTopic = parsedTopic;
+          }
+        } catch (tErr) {
+          logger(`[Shopify Autopilot] Fallback to default strategic topic: ${tErr.message}`);
         }
-      } catch (tErr) {
-        logger(`[Shopify Autopilot] Fallback to default strategic topic: ${tErr.message}`);
       }
 
       // 9. Generate Full 1,500+ Word Authoritative Article Body
@@ -514,6 +548,87 @@ Respond ONLY with a valid JSON object matching this schema:
 
       logger(`[Shopify Autopilot] Successfully published article ID ${articleObj.id} for ${shop}: ${finalUrl}`);
 
+      // 11.5 Autonomous Social Media Syndication (Facebook & Instagram)
+      const socialShares = {};
+      if (!config.isDraft) {
+        try {
+          const { data: meta } = await supabase
+            .from("meta_connections")
+            .select("fb_page_id, fb_page_access_token, fb_user_access_token, instagram_actor_id, ig_business_id")
+            .eq("email", userEmail.toLowerCase())
+            .maybeSingle();
+
+          if (meta) {
+            const pageId = meta.fb_page_id ? meta.fb_page_id.split(",")[0].trim() : null;
+            const effectiveToken = meta.fb_page_access_token || meta.fb_user_access_token;
+            const igId = meta.instagram_actor_id || meta.ig_business_id;
+
+            // Facebook Page link preview / photo post
+            if (config.autoShareFacebook !== false && pageId && effectiveToken) {
+              try {
+                logger(`[Shopify Autopilot] Syndicating article to Facebook Page (${pageId})...`);
+                const feedParams = new URLSearchParams();
+                feedParams.append("link", publicUrl);
+                feedParams.append(
+                  "message",
+                  `📢 ${articleData.title}\n\n${articleData.seoDescription || ""}\n\nRead full article & explore pieces 👇\n${publicUrl}\n\n#Shopify #OnlineShopping #TrendingStyles`
+                );
+                feedParams.append("access_token", effectiveToken);
+                const fbRes = await fetch(`https://graph.facebook.com/v21.0/${pageId}/feed`, {
+                  method: "POST",
+                  body: feedParams,
+                });
+                const fbData = await fbRes.json();
+                if (fbData.id) {
+                  socialShares.facebook = { ok: true, id: fbData.id };
+                  logger(`[Shopify Autopilot] Facebook post published: ${fbData.id}`);
+                }
+              } catch (fbErr) {
+                logger(`[Shopify Autopilot] Facebook syndication error: ${fbErr.message}`);
+              }
+            }
+
+            // Instagram Feed Photo post
+            const shareImg = imageData.imageUrl;
+            if (config.autoShareInstagram !== false && igId && effectiveToken && shareImg) {
+              try {
+                logger(`[Shopify Autopilot] Syndicating article to Instagram (${igId})...`);
+                const igCaption = `📢 ${articleData.title}\n\n${articleData.seoDescription || ""}\n\n🔗 Read full story & shop the pieces: ${publicUrl}\n\n#Shopify #OnlineShopping #TrendingStyles`;
+                const containerParams = new URLSearchParams();
+                containerParams.append("image_url", shareImg);
+                containerParams.append("caption", igCaption);
+                containerParams.append("access_token", effectiveToken);
+
+                const cRes = await fetch(`https://graph.facebook.com/v21.0/${igId}/media`, {
+                  method: "POST",
+                  body: containerParams,
+                });
+                const cData = await cRes.json();
+                if (cData.id) {
+                  await new Promise((resolve) => setTimeout(resolve, 5000));
+                  const pubParams = new URLSearchParams();
+                  pubParams.append("creation_id", cData.id);
+                  pubParams.append("access_token", effectiveToken);
+                  const pubRes = await fetch(`https://graph.facebook.com/v21.0/${igId}/media_publish`, {
+                    method: "POST",
+                    body: pubParams,
+                  });
+                  const pubData = await pubRes.json();
+                  if (pubData.id) {
+                    socialShares.instagram = { ok: true, id: pubData.id };
+                    logger(`[Shopify Autopilot] Instagram post published: ${pubData.id}`);
+                  }
+                }
+              } catch (igErr) {
+                logger(`[Shopify Autopilot] Instagram syndication error: ${igErr.message}`);
+              }
+            }
+          }
+        } catch (metaErr) {
+          logger(`[Shopify Autopilot] Social syndication check note: ${metaErr.message}`);
+        }
+      }
+
       // 12. Save Updated Autopilot State & History
       const updatedRecent = [
         {
@@ -522,12 +637,14 @@ Respond ONLY with a valid JSON object matching this schema:
           url: finalUrl,
           isDraft: !!config.isDraft,
           publishedAt: new Date().toISOString(),
+          socialShares,
         },
         ...(config.recentArticles || []).slice(0, 9),
       ];
 
       const updatedConfig = {
         ...config,
+        topicQueue: config.topicQueue || [],
         lastPublishedAt: new Date().toISOString(),
         lastArticleTitle: articleObj.title || articleData.title,
         lastArticleUrl: finalUrl,
@@ -555,6 +672,7 @@ Respond ONLY with a valid JSON object matching this schema:
         title: articleObj.title,
         articleUrl: finalUrl,
         isDraft: !!config.isDraft,
+        socialShares,
       });
     } catch (cycleErr) {
       logger(`[Shopify Autopilot] Error during generation for ${shop}: ${cycleErr.message}`);

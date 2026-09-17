@@ -69,11 +69,30 @@ export default function ShopifyStoreConnect({ onConnectionChange }) {
     targetKeywords: "",
     targetLocations: "",
     nicheFocus: "",
+    autoShareFacebook: true,
+    autoShareInstagram: true,
+    topicQueue: [],
+    suggestedTopics: [],
+    bulkTopicsInput: "",
     lastPublishedAt: null,
     lastArticleTitle: null,
     lastArticleUrl: null,
     recentArticles: [],
   });
+
+  // Topic Lineup Suite State
+  const [loadingTopics, setLoadingTopics] = useState(false);
+  const [bulkInput, setBulkInput] = useState("");
+
+  // Social Media Sharing Suite State (Facebook & Instagram)
+  const [socialModalOpen, setSocialModalOpen] = useState(false);
+  const [socialShareData, setSocialShareData] = useState(null);
+  const [socialPlatform, setSocialPlatform] = useState("both"); // "both" | "facebook" | "instagram"
+  const [socialCustomCaption, setSocialCustomCaption] = useState("");
+  const [socialCustomHashtags, setSocialCustomHashtags] = useState("#eCommerce #Shopify #OnlineShopping #TrendingStyles");
+  const [socialSharing, setSocialSharing] = useState(false);
+  const [socialShareStatus, setSocialShareStatus] = useState(null);
+  const [showMetaConnectNotice, setShowMetaConnectNotice] = useState(false);
 
   useEffect(() => {
     fetchConnection();
@@ -88,12 +107,184 @@ export default function ShopifyStoreConnect({ onConnectionChange }) {
         setAutopilotConfig((prev) => ({
           ...prev,
           ...data.config,
+          autoShareFacebook: data.config.autoShareFacebook !== false,
+          autoShareInstagram: data.config.autoShareInstagram !== false,
+          topicQueue: Array.isArray(data.config.topicQueue) ? data.config.topicQueue : [],
+          suggestedTopics: Array.isArray(data.config.suggestedTopics) ? data.config.suggestedTopics : [],
+          bulkTopicsInput: data.config.bulkTopicsInput || "",
         }));
+
+        // If no topics suggested yet, automatically trigger topic generation
+        if (!data.config.suggestedTopics || data.config.suggestedTopics.length === 0) {
+          handleAutoSuggestTopics();
+        }
       }
     } catch (e) {
       console.warn("Failed to fetch Shopify autopilot config:", e);
     } finally {
       setAutopilotLoading(false);
+    }
+  };
+
+  const handleAutoSuggestTopics = async () => {
+    setLoadingTopics(true);
+    try {
+      const res = await fetch("/api/shopify/sync", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          action: "suggest-topics",
+          targetKeywords: autopilotConfig.targetKeywords,
+          targetLocations: autopilotConfig.targetLocations,
+          nicheFocus: autopilotConfig.nicheFocus,
+        }),
+      });
+      const data = await res.json();
+      if (data.ok && Array.isArray(data.topics) && data.topics.length > 0) {
+        const newTopics = data.topics;
+        setAutopilotConfig((prev) => {
+          const currentQueue = new Set(prev.topicQueue || []);
+          // Ensure all topics are selected into active queue
+          newTopics.forEach((t) => currentQueue.add(t));
+          return {
+            ...prev,
+            suggestedTopics: newTopics,
+            topicQueue: Array.from(currentQueue),
+          };
+        });
+      }
+    } catch (e) {
+      console.warn("Error suggesting topics:", e.message);
+    } finally {
+      setLoadingTopics(false);
+    }
+  };
+
+  const handleToggleTopic = (topic) => {
+    setAutopilotConfig((prev) => {
+      const queue = prev.topicQueue || [];
+      const exists = queue.includes(topic);
+      const newQueue = exists ? queue.filter((t) => t !== topic) : [...queue, topic];
+      return { ...prev, topicQueue: newQueue };
+    });
+  };
+
+  const handleSelectAllTopics = () => {
+    setAutopilotConfig((prev) => {
+      const all = prev.suggestedTopics || [];
+      const set = new Set([...(prev.topicQueue || []), ...all]);
+      return { ...prev, topicQueue: Array.from(set) };
+    });
+  };
+
+  const handleDeselectAllTopics = () => {
+    setAutopilotConfig((prev) => ({
+      ...prev,
+      topicQueue: [],
+    }));
+  };
+
+  const handleAddBulkTopics = () => {
+    if (!bulkInput.trim()) {
+      alert("Please enter topics separated by commas or new lines.");
+      return;
+    }
+    const rawItems = bulkInput.split(/[\n,]+/);
+    const cleaned = rawItems
+      .map((t) => t.trim().replace(/^["']|["']$/g, ""))
+      .filter((t) => t.length > 5);
+
+    if (cleaned.length === 0) {
+      alert("Please enter complete topic titles.");
+      return;
+    }
+
+    setAutopilotConfig((prev) => {
+      const currentList = prev.suggestedTopics || [];
+      const currentQueue = new Set(prev.topicQueue || []);
+
+      const updatedSuggested = [...currentList];
+      cleaned.forEach((topic) => {
+        if (!updatedSuggested.includes(topic)) {
+          updatedSuggested.push(topic);
+        }
+        currentQueue.add(topic);
+      });
+
+      return {
+        ...prev,
+        suggestedTopics: updatedSuggested,
+        topicQueue: Array.from(currentQueue),
+      };
+    });
+
+    setBulkInput("");
+    alert(`✅ Added ${cleaned.length} custom topics directly to your Autopilot queue!`);
+  };
+
+  const openSocialShareModal = (postData) => {
+    setSocialShareData(postData);
+    setSocialCustomCaption(postData.caption || postData.title || "");
+    const brandTag = connection?.shopName
+      ? `#${connection.shopName.replace(/[^a-zA-Z0-9]/g, "")}`
+      : "#Shopify";
+    setSocialCustomHashtags(`${brandTag} #Shopify #OnlineShopping #TrendingStyles`);
+    setSocialShareStatus(null);
+    setShowMetaConnectNotice(false);
+    setSocialModalOpen(true);
+  };
+
+  const handleExecuteSocialShare = async () => {
+    if (!socialShareData?.postUrl) {
+      alert("Post URL is required for social sharing.");
+      return;
+    }
+
+    setSocialSharing(true);
+    setSocialShareStatus(null);
+    setShowMetaConnectNotice(false);
+
+    try {
+      const res = await fetch("/api/shopify/social-share", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          platform: socialPlatform,
+          title: socialShareData.title,
+          postUrl: socialShareData.postUrl,
+          featuredImageUrl: socialShareData.featuredImageUrl,
+          caption: socialCustomCaption,
+          hashtags: socialCustomHashtags,
+        }),
+      });
+
+      const data = await res.json();
+      if (data.require_connect) {
+        setShowMetaConnectNotice(true);
+      } else if (data.ok) {
+        const platLabel =
+          socialPlatform === "both"
+            ? "Facebook Page & Instagram"
+            : socialPlatform === "facebook"
+            ? "Facebook Page"
+            : "Instagram";
+        setSocialShareStatus({
+          ok: true,
+          message: `✅ Successfully shared to ${platLabel}!`,
+        });
+      } else {
+        setSocialShareStatus({
+          ok: false,
+          message: `❌ Failed: ${data.error || "Please verify Meta permissions."}`,
+        });
+      }
+    } catch (e) {
+      setSocialShareStatus({
+        ok: false,
+        message: `❌ Share error: ${e.message}`,
+      });
+    } finally {
+      setSocialSharing(false);
     }
   };
 
@@ -123,7 +314,7 @@ export default function ShopifyStoreConnect({ onConnectionChange }) {
         setAutopilotNotice(
           `✅ Autopilot schedule saved (${isEnabled ? "Active" : "Paused"}, ${
             toSave.cadence === "daily" ? "Daily" : toSave.cadence === "3x_week" ? "3x / Week" : "Weekly"
-          }). Background routine updated on Railway.`
+          }). ${toSave.topicQueue?.length || 0} topics in queue. Background routine updated on Railway.`
         );
         setTimeout(() => setAutopilotNotice(""), 6000);
       } else {
@@ -1420,6 +1611,33 @@ export default function ShopifyStoreConnect({ onConnectionChange }) {
                           >
                             <span>✨</span> Optimize with AI
                           </button>
+                          <button
+                            type="button"
+                            onClick={() =>
+                              openSocialShareModal({
+                                title: art.title,
+                                postUrl: art.live_url,
+                                featuredImageUrl: art.image?.src || null,
+                                caption: art.summary_html ? art.summary_html.replace(/<[^>]+>/g, "") : art.title,
+                              })
+                            }
+                            title="Share to Facebook & Instagram"
+                            style={{
+                              padding: "9px 12px",
+                              borderRadius: 8,
+                              background: "rgba(24, 119, 242, 0.15)",
+                              border: "1px solid rgba(24, 119, 242, 0.35)",
+                              color: "#60a5fa",
+                              fontSize: 12,
+                              fontWeight: 700,
+                              cursor: "pointer",
+                              display: "flex",
+                              alignItems: "center",
+                              gap: 4,
+                            }}
+                          >
+                            <span>📢</span> Share
+                          </button>
                           <a
                             href={art.live_url}
                             target="_blank"
@@ -1852,7 +2070,7 @@ export default function ShopifyStoreConnect({ onConnectionChange }) {
               <div style={{ padding: "14px 16px", borderRadius: 10, background: "rgba(16, 185, 129, 0.15)", border: "1px solid rgba(16, 185, 129, 0.35)", color: "#34d399", fontSize: 13 }}>
                 <div style={{ fontWeight: 700 }}>{blogSuccessMsg}</div>
                 {publishedArticleUrl && (
-                  <div style={{ marginTop: 8 }}>
+                  <div style={{ marginTop: 10, display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap" }}>
                     {publishedArticleUrl.includes("admin.shopify.com") ? (
                       <div>
                         <a href={publishedArticleUrl} target="_blank" rel="noopener noreferrer" style={{ color: "#38bdf8", fontWeight: 700, textDecoration: "underline", display: "inline-flex", alignItems: "center", gap: 6 }}>
@@ -1867,6 +2085,33 @@ export default function ShopifyStoreConnect({ onConnectionChange }) {
                         <span>🌐</span> View Published Article on Shopify Storefront ↗
                       </a>
                     )}
+                    <button
+                      type="button"
+                      onClick={() =>
+                        openSocialShareModal({
+                          title: blogTopic || "New Shopify Blog Article",
+                          postUrl: publishedArticleUrl,
+                          featuredImageUrl: previewArticle?.imageUrl || null,
+                          caption: previewArticle?.seoDescription || blogTopic,
+                        })
+                      }
+                      style={{
+                        padding: "7px 14px",
+                        borderRadius: 8,
+                        background: "linear-gradient(135deg, #1877f2 0%, #0d6efd 100%)",
+                        border: "none",
+                        color: "#fff",
+                        fontWeight: 700,
+                        fontSize: 12,
+                        cursor: "pointer",
+                        display: "inline-flex",
+                        alignItems: "center",
+                        gap: 6,
+                        boxShadow: "0 2px 10px rgba(24, 119, 242, 0.35)",
+                      }}
+                    >
+                      <span>📢</span> Share to Facebook & Instagram ↗
+                    </button>
                   </div>
                 )}
               </div>
@@ -2250,6 +2495,373 @@ export default function ShopifyStoreConnect({ onConnectionChange }) {
             </div>
           </div>
 
+          {/* 5. Strategic Topic Lineup & Content Pipeline (At least 40 Topics) */}
+          <div
+            style={{
+              background: "rgba(16, 22, 34, 0.8)",
+              border: "1px solid rgba(56, 189, 248, 0.25)",
+              borderRadius: 14,
+              padding: 24,
+              boxShadow: "0 10px 30px rgba(0,0,0,0.4)",
+            }}
+          >
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", flexWrap: "wrap", gap: 14, marginBottom: 16 }}>
+              <div>
+                <div style={{ display: "inline-flex", alignItems: "center", gap: 6, padding: "3px 10px", borderRadius: 20, background: "rgba(56, 189, 248, 0.15)", border: "1px solid rgba(56, 189, 248, 0.3)", color: "#38bdf8", fontSize: 11, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.5px", marginBottom: 8 }}>
+                  <span>📋</span> Content Queue & Pipeline
+                </div>
+                <h3 style={{ margin: "0 0 6px 0", fontSize: 18, color: "#fff", fontWeight: 800 }}>
+                  Strategic Topic Lineup & Suggestions (40+ Topics)
+                </h3>
+                <p style={{ margin: 0, color: "#94a3b8", fontSize: 13, maxWidth: 740, lineHeight: 1.5 }}>
+                  Select the topics you want your Autonomous Autopilot to write and publish in order. The Railway worker will consume from your selected queue first. You can also paste 30+ custom topics in bulk below.
+                </p>
+              </div>
+
+              <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
+                <span
+                  style={{
+                    fontSize: 11.5,
+                    fontWeight: 700,
+                    padding: "6px 12px",
+                    borderRadius: 8,
+                    background: "rgba(56, 189, 248, 0.12)",
+                    border: "1px solid rgba(56, 189, 248, 0.3)",
+                    color: "#38bdf8",
+                  }}
+                >
+                  {autopilotConfig.topicQueue?.length || 0} Queued for Autopilot
+                </span>
+                <button
+                  type="button"
+                  onClick={handleAutoSuggestTopics}
+                  disabled={loadingTopics}
+                  style={{
+                    padding: "7px 14px",
+                    borderRadius: 8,
+                    background: "linear-gradient(135deg, rgba(56, 189, 248, 0.25) 0%, rgba(14, 165, 233, 0.3) 100%)",
+                    border: "1px solid rgba(56, 189, 248, 0.4)",
+                    color: "#38bdf8",
+                    fontWeight: 700,
+                    fontSize: 12,
+                    cursor: loadingTopics ? "not-allowed" : "pointer",
+                    display: "inline-flex",
+                    alignItems: "center",
+                    gap: 6,
+                  }}
+                >
+                  <span>{loadingTopics ? "⏳ Analyzing Catalog…" : "⚡ Re-Generate 40 Store Topics"}</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={handleSelectAllTopics}
+                  style={{
+                    padding: "7px 12px",
+                    borderRadius: 8,
+                    background: "rgba(255, 255, 255, 0.05)",
+                    border: "1px solid rgba(255, 255, 255, 0.12)",
+                    color: "#cbd5e1",
+                    fontSize: 12,
+                    fontWeight: 600,
+                    cursor: "pointer",
+                  }}
+                >
+                  ✓ Select All
+                </button>
+                <button
+                  type="button"
+                  onClick={handleDeselectAllTopics}
+                  style={{
+                    padding: "7px 12px",
+                    borderRadius: 8,
+                    background: "rgba(255, 255, 255, 0.05)",
+                    border: "1px solid rgba(255, 255, 255, 0.12)",
+                    color: "#94a3b8",
+                    fontSize: 12,
+                    fontWeight: 600,
+                    cursor: "pointer",
+                  }}
+                >
+                  ✕ Deselect All
+                </button>
+              </div>
+            </div>
+
+            {/* Topics Checklist Grid */}
+            <div
+              style={{
+                maxHeight: 340,
+                overflowY: "auto",
+                background: "#080c14",
+                border: "1px solid rgba(255, 255, 255, 0.08)",
+                borderRadius: 10,
+                padding: 12,
+                display: "grid",
+                gridTemplateColumns: "repeat(auto-fill, minmax(360px, 1fr))",
+                gap: 10,
+                marginBottom: 16,
+              }}
+            >
+              {loadingTopics && (!autopilotConfig.suggestedTopics || autopilotConfig.suggestedTopics.length === 0) ? (
+                <div style={{ gridColumn: "1 / -1", padding: 30, textAlign: "center", color: "#38bdf8", fontSize: 13 }}>
+                  ⏳ Analyzing store catalog and synthesizing 40+ high-ranking eCommerce topic titles…
+                </div>
+              ) : (!autopilotConfig.suggestedTopics || autopilotConfig.suggestedTopics.length === 0) ? (
+                <div style={{ gridColumn: "1 / -1", padding: 30, textAlign: "center", color: "#64748b", fontSize: 13 }}>
+                  No topic suggestions loaded yet. Click <strong>"⚡ Re-Generate 40 Store Topics"</strong> above to ideate rank-seeking topics for your store.
+                </div>
+              ) : (
+                autopilotConfig.suggestedTopics.map((top, idx) => {
+                  const isSelected = (autopilotConfig.topicQueue || []).includes(top);
+                  return (
+                    <label
+                      key={idx}
+                      onClick={() => handleToggleTopic(top)}
+                      style={{
+                        display: "flex",
+                        alignItems: "flex-start",
+                        gap: 10,
+                        padding: "10px 12px",
+                        borderRadius: 8,
+                        background: isSelected ? "rgba(56, 189, 248, 0.08)" : "rgba(255, 255, 255, 0.02)",
+                        border: isSelected ? "1px solid rgba(56, 189, 248, 0.35)" : "1px solid rgba(255, 255, 255, 0.06)",
+                        cursor: "pointer",
+                        transition: "all 0.15s ease",
+                      }}
+                    >
+                      <input
+                        type="checkbox"
+                        checked={isSelected}
+                        onChange={() => {}} // handled by parent onClick
+                        style={{ marginTop: 2, accentColor: "#38bdf8", cursor: "pointer", width: 16, height: 16, flexShrink: 0 }}
+                      />
+                      <div style={{ flex: 1, minWidth: 0 }}>
+                        <div style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 2 }}>
+                          <span style={{ fontSize: 10, fontWeight: 800, color: isSelected ? "#38bdf8" : "#64748b" }}>
+                            #{idx + 1}
+                          </span>
+                          {isSelected && (
+                            <span style={{ fontSize: 9.5, padding: "1px 5px", borderRadius: 4, background: "rgba(16, 185, 129, 0.2)", color: "#34d399", fontWeight: 700 }}>
+                              IN QUEUE
+                            </span>
+                          )}
+                        </div>
+                        <div style={{ fontSize: 12.5, fontWeight: isSelected ? 600 : 400, color: isSelected ? "#f8fafc" : "#94a3b8", lineHeight: 1.4 }}>
+                          {top}
+                        </div>
+                      </div>
+                    </label>
+                  );
+                })
+              )}
+            </div>
+
+            {/* Bulk Suggest Box */}
+            <div style={{ background: "rgba(255, 255, 255, 0.02)", border: "1px solid rgba(255, 255, 255, 0.08)", borderRadius: 10, padding: 14 }}>
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 6, flexWrap: "wrap", gap: 8 }}>
+                <label style={{ fontSize: 12.5, fontWeight: 700, color: "#e2e8f0" }}>
+                  ✍️ Or Suggest Custom Blog Topics in Bulk (Separated by Commas or Newlines):
+                </label>
+                <span style={{ fontSize: 11, color: "#94a3b8" }}>
+                  Paste 30+ titles all together
+                </span>
+              </div>
+              <textarea
+                rows={3}
+                value={bulkInput}
+                onChange={(e) => setBulkInput(e.target.value)}
+                placeholder="e.g. 10 Essential Kundan Pieces for London Brides, Everyday Anti-Tarnish Jewellery Care Guide, How to Pair Statement Necklaces with Evening Gowns, Trending Western Party Styling Tips 2026..."
+                style={{
+                  width: "100%",
+                  boxSizing: "border-box",
+                  padding: "10px 12px",
+                  borderRadius: 8,
+                  background: "#080c14",
+                  border: "1px solid rgba(255, 255, 255, 0.12)",
+                  color: "#fff",
+                  fontSize: 12.5,
+                  lineHeight: 1.5,
+                  resize: "vertical",
+                  marginBottom: 10,
+                }}
+              />
+              <div style={{ display: "flex", justifyContent: "flex-end" }}>
+                <button
+                  type="button"
+                  onClick={handleAddBulkTopics}
+                  style={{
+                    padding: "8px 18px",
+                    borderRadius: 8,
+                    background: "linear-gradient(135deg, #0284c7 0%, #0369a1 100%)",
+                    border: "none",
+                    color: "#fff",
+                    fontWeight: 700,
+                    fontSize: 12.5,
+                    cursor: "pointer",
+                    boxShadow: "0 2px 10px rgba(2, 132, 199, 0.3)",
+                  }}
+                >
+                  + Add Custom Topics to Queue ↗
+                </button>
+              </div>
+            </div>
+          </div>
+
+          {/* 6. Instant Multichannel Social Syndication (Syndication Protocol) */}
+          <div
+            style={{
+              background: "rgba(16, 22, 34, 0.78)",
+              border: "1px solid rgba(255, 255, 255, 0.12)",
+              borderRadius: 14,
+              padding: 24,
+              boxShadow: "0 10px 30px rgba(0,0,0,0.4)",
+            }}
+          >
+            <div style={{ marginBottom: 18 }}>
+              <div style={{ display: "inline-flex", alignItems: "center", gap: 6, padding: "3px 10px", borderRadius: 20, background: "rgba(56, 189, 248, 0.15)", border: "1px solid rgba(56, 189, 248, 0.3)", color: "#38bdf8", fontSize: 11, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.5px", marginBottom: 8 }}>
+                <span>⚡</span> Syndication Protocol
+              </div>
+              <h3 style={{ margin: "0 0 6px 0", fontSize: 18, color: "#fff", fontWeight: 800 }}>
+                Instant Multichannel Social Syndication
+              </h3>
+              <p style={{ margin: 0, color: "#94a3b8", fontSize: 13, lineHeight: 1.5 }}>
+                Amplify every live blog post immediately. The moment an article goes live on your Shopify blog, GabbarInfo AI automatically distributes it across your connected social networks.
+              </p>
+            </div>
+
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(280px, 1fr))", gap: 16 }}>
+              {/* Facebook Option Card */}
+              <div
+                onClick={() => setAutopilotConfig({ ...autopilotConfig, autoShareFacebook: !autopilotConfig.autoShareFacebook })}
+                style={{
+                  background: autopilotConfig.autoShareFacebook ? "rgba(24, 119, 242, 0.1)" : "rgba(13, 20, 35, 0.7)",
+                  border: autopilotConfig.autoShareFacebook ? "1.5px solid #1877f2" : "1px solid rgba(255, 255, 255, 0.1)",
+                  borderRadius: 12,
+                  padding: 18,
+                  cursor: "pointer",
+                  display: "flex",
+                  justifyContent: "space-between",
+                  alignItems: "center",
+                  gap: 14,
+                  transition: "all 0.2s ease",
+                }}
+              >
+                <div style={{ display: "flex", gap: 12, alignItems: "flex-start" }}>
+                  <div style={{ width: 38, height: 38, borderRadius: 10, background: "#1877f2", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
+                    <svg width="20" height="20" viewBox="0 0 24 24" fill="#ffffff">
+                      <path d="M24 12.073c0-6.627-5.373-12-12-12s-12 5.373-12 12c0 5.99 4.388 10.954 10.125 11.854v-8.385H7.078v-3.47h3.047V9.43c0-3.007 1.792-4.669 4.533-4.669 1.312 0 2.686.235 2.686.235v2.953H15.83c-1.491 0-1.956.925-1.956 1.874v2.25h3.328l-.532 3.47h-2.796v8.385C19.612 23.027 24 18.062 24 12.073z"/>
+                    </svg>
+                  </div>
+                  <div>
+                    <div style={{ fontSize: 14, fontWeight: 700, color: "#fff", display: "flex", alignItems: "center", gap: 8 }}>
+                      Facebook Business Page
+                      {autopilotConfig.autoShareFacebook && (
+                        <span style={{ fontSize: 9.5, padding: "1px 6px", borderRadius: 4, background: "rgba(16, 185, 129, 0.2)", color: "#34d399", fontWeight: 700 }}>
+                          ACTIVE
+                        </span>
+                      )}
+                    </div>
+                    <p style={{ margin: "4px 0 0 0", color: "#94a3b8", fontSize: 11.5, lineHeight: 1.4 }}>
+                      Automatically broadcasts a high-CTR interactive preview card with article synopsis, featured artwork, and direct site link.
+                    </p>
+                  </div>
+                </div>
+
+                {/* Toggle Switch */}
+                <div
+                  style={{
+                    width: 42,
+                    height: 22,
+                    borderRadius: 12,
+                    background: autopilotConfig.autoShareFacebook ? "#10b981" : "#334155",
+                    position: "relative",
+                    flexShrink: 0,
+                    transition: "background 0.2s ease",
+                  }}
+                >
+                  <div
+                    style={{
+                      width: 16,
+                      height: 16,
+                      borderRadius: "50%",
+                      background: "#fff",
+                      position: "absolute",
+                      top: 3,
+                      left: autopilotConfig.autoShareFacebook ? 23 : 3,
+                      transition: "left 0.2s ease",
+                      boxShadow: "0 2px 4px rgba(0,0,0,0.3)",
+                    }}
+                  />
+                </div>
+              </div>
+
+              {/* Instagram Option Card */}
+              <div
+                onClick={() => setAutopilotConfig({ ...autopilotConfig, autoShareInstagram: !autopilotConfig.autoShareInstagram })}
+                style={{
+                  background: autopilotConfig.autoShareInstagram ? "rgba(225, 48, 108, 0.1)" : "rgba(13, 20, 35, 0.7)",
+                  border: autopilotConfig.autoShareInstagram ? "1.5px solid #e1306c" : "1px solid rgba(255, 255, 255, 0.1)",
+                  borderRadius: 12,
+                  padding: 18,
+                  cursor: "pointer",
+                  display: "flex",
+                  justifyContent: "space-between",
+                  alignItems: "center",
+                  gap: 14,
+                  transition: "all 0.2s ease",
+                }}
+              >
+                <div style={{ display: "flex", gap: 12, alignItems: "flex-start" }}>
+                  <div style={{ width: 38, height: 38, borderRadius: 10, background: "linear-gradient(45deg, #f09433 0%, #e6683c 25%, #dc2743 50%, #cc2366 75%, #bc1888 100%)", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
+                    <svg width="20" height="20" viewBox="0 0 24 24" fill="#ffffff">
+                      <path d="M12 2.163c3.204 0 3.584.012 4.85.07 3.252.148 4.771 1.691 4.919 4.919.058 1.265.069 1.645.069 4.849 0 3.205-.012 3.584-.069 4.849-.149 3.225-1.664 4.771-4.919 4.919-1.266.058-1.644.07-4.85.07-3.204 0-3.584-.012-4.849-.07-3.26-.149-4.771-1.699-4.919-4.92-.058-1.265-.07-1.644-.07-4.849 0-3.204.013-3.583.07-4.849.149-3.227 1.664-4.771 4.919-4.919 1.266-.057 1.645-.069 4.849-.069zm0-2.163c-3.259 0-3.667.014-4.947.072-4.358.2-6.78 2.618-6.98 6.98-.059 1.281-.073 1.689-.073 4.948 0 3.259.014 3.668.072 4.948.2 4.358 2.618 6.78 6.98 6.98 1.281.058 1.689.072 4.948.072 3.259 0 3.668-.014 4.948-.072 4.354-.2 6.782-2.618 6.979-6.98.059-1.28.073-1.689.073-4.948 0-3.259-.014-3.667-.072-4.947-.196-4.354-2.617-6.78-6.979-6.98-1.281-.059-1.69-.073-4.949-.073zm0 5.838c-3.403 0-6.162 2.759-6.162 6.162s2.759 6.163 6.162 6.163 6.162-2.759 6.162-6.163c0-3.403-2.759-6.162-6.162-6.162zm0 10.162c-2.209 0-4-1.79-4-4 0-2.209 1.791-4 4-4s4 1.791 4 4c0 2.21-1.791 4-4 4zm6.406-11.845c-.796 0-1.441.645-1.441 1.44s.645 1.44 1.441 1.44c.795 0 1.439-.645 1.439-1.44s-.644-1.44-1.439-1.44z"/>
+                    </svg>
+                  </div>
+                  <div>
+                    <div style={{ fontSize: 14, fontWeight: 700, color: "#fff", display: "flex", alignItems: "center", gap: 8 }}>
+                      Instagram Visual Feed Drop
+                      {autopilotConfig.autoShareInstagram && (
+                        <span style={{ fontSize: 9.5, padding: "1px 6px", borderRadius: 4, background: "rgba(16, 185, 129, 0.2)", color: "#34d399", fontWeight: 700 }}>
+                          ACTIVE
+                        </span>
+                      )}
+                    </div>
+                    <p style={{ margin: "4px 0 0 0", color: "#94a3b8", fontSize: 11.5, lineHeight: 1.4 }}>
+                      Auto-formats your article's featured hero image with an AI-crafted caption, high-ranking hashtags, and store link.
+                    </p>
+                  </div>
+                </div>
+
+                {/* Toggle Switch */}
+                <div
+                  style={{
+                    width: 42,
+                    height: 22,
+                    borderRadius: 12,
+                    background: autopilotConfig.autoShareInstagram ? "#10b981" : "#334155",
+                    position: "relative",
+                    flexShrink: 0,
+                    transition: "background 0.2s ease",
+                  }}
+                >
+                  <div
+                    style={{
+                      width: 16,
+                      height: 16,
+                      borderRadius: "50%",
+                      background: "#fff",
+                      position: "absolute",
+                      top: 3,
+                      left: autopilotConfig.autoShareInstagram ? 23 : 3,
+                      transition: "left 0.2s ease",
+                      boxShadow: "0 2px 4px rgba(0,0,0,0.3)",
+                    }}
+                  />
+                </div>
+              </div>
+            </div>
+          </div>
+
           {/* Bottom Save Bar */}
           <div style={{ display: "flex", justifyContent: "flex-end" }}>
             <button
@@ -2268,7 +2880,7 @@ export default function ShopifyStoreConnect({ onConnectionChange }) {
                 boxShadow: "0 4px 14px rgba(37, 99, 235, 0.4)",
               }}
             >
-              {autopilotSaving ? "Saving Settings…" : "💾 Save Autopilot Routine & Schedule"}
+              {autopilotSaving ? "Saving Settings…" : "💾 Save Autopilot Routine & Topic Lineup"}
             </button>
           </div>
 
@@ -2917,6 +3529,262 @@ export default function ShopifyStoreConnect({ onConnectionChange }) {
                 }}
               >
                 {updatingArticle ? "Pushing Live Updates to Shopify…" : "🚀 Push Updates Live to Shopify ↗"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* -------------------------------------------------------------
+          1-CLICK SOCIAL MEDIA SHARING MODAL (FACEBOOK & INSTAGRAM)
+      ------------------------------------------------------------- */}
+      {socialModalOpen && socialShareData && (
+        <div
+          style={{
+            position: "fixed",
+            inset: 0,
+            background: "rgba(0, 0, 0, 0.8)",
+            backdropFilter: "blur(8px)",
+            WebkitBackdropFilter: "blur(8px)",
+            zIndex: 99999,
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            padding: 16,
+          }}
+        >
+          <div
+            style={{
+              background: "#0d131f",
+              border: "1px solid rgba(255, 255, 255, 0.12)",
+              borderRadius: 20,
+              width: "100%",
+              maxWidth: 640,
+              display: "flex",
+              flexDirection: "column",
+              boxShadow: "0 25px 60px rgba(0, 0, 0, 0.8)",
+              overflow: "hidden",
+            }}
+          >
+            {/* Header */}
+            <div
+              style={{
+                padding: "18px 22px",
+                borderBottom: "1px solid rgba(255, 255, 255, 0.08)",
+                display: "flex",
+                justifyContent: "space-between",
+                alignItems: "center",
+                background: "rgba(255, 255, 255, 0.02)",
+              }}
+            >
+              <div>
+                <h3 style={{ margin: 0, fontSize: 17, fontWeight: 800, color: "#fff", display: "flex", alignItems: "center", gap: 8 }}>
+                  <span>📢</span> Share Blog to Social Media
+                </h3>
+                <div style={{ fontSize: 12, color: "#94a3b8", marginTop: 2 }}>
+                  1-Click Direct Publishing to Connected Facebook Page & Instagram
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setSocialModalOpen(false)}
+                style={{
+                  background: "transparent",
+                  border: "none",
+                  color: "#94a3b8",
+                  fontSize: 20,
+                  cursor: "pointer",
+                }}
+              >
+                ✕
+              </button>
+            </div>
+
+            {/* Body */}
+            <div style={{ padding: 22, display: "flex", flexDirection: "column", gap: 16, maxHeight: "78vh", overflowY: "auto" }}>
+              {/* Article Target Preview */}
+              <div style={{ padding: "12px 14px", background: "#080c14", border: "1px solid rgba(255, 255, 255, 0.08)", borderRadius: 10, display: "flex", gap: 12, alignItems: "center" }}>
+                {socialShareData.featuredImageUrl ? (
+                  <img src={socialShareData.featuredImageUrl} alt={socialShareData.title} style={{ width: 60, height: 60, borderRadius: 8, objectFit: "cover", flexShrink: 0 }} />
+                ) : (
+                  <div style={{ width: 60, height: 60, borderRadius: 8, background: "rgba(255,255,255,0.05)", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 24, flexShrink: 0 }}>
+                    🛍️
+                  </div>
+                )}
+                <div style={{ minWidth: 0, flex: 1 }}>
+                  <div style={{ fontSize: 13.5, fontWeight: 700, color: "#f1f5f9", lineHeight: 1.3 }}>
+                    {socialShareData.title}
+                  </div>
+                  <div style={{ fontSize: 11, color: "#38bdf8", marginTop: 4, textOverflow: "ellipsis", overflow: "hidden", whiteSpace: "nowrap" }}>
+                    🔗 {socialShareData.postUrl}
+                  </div>
+                </div>
+              </div>
+
+              {/* Target Platform Select */}
+              <div>
+                <label style={{ display: "block", fontSize: 12, fontWeight: 700, color: "#cbd5e1", marginBottom: 8 }}>
+                  Target Destination Channel:
+                </label>
+                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 10 }}>
+                  {[
+                    { id: "both", label: "Facebook + IG", icon: "🚀" },
+                    { id: "facebook", label: "Facebook Page", icon: "🌐" },
+                    { id: "instagram", label: "Instagram Feed", icon: "📸" },
+                  ].map((p) => (
+                    <button
+                      key={p.id}
+                      type="button"
+                      onClick={() => setSocialPlatform(p.id)}
+                      style={{
+                        padding: "10px",
+                        borderRadius: 8,
+                        background: socialPlatform === p.id ? "rgba(24, 119, 242, 0.2)" : "rgba(255, 255, 255, 0.03)",
+                        border: socialPlatform === p.id ? "1.5px solid #1877f2" : "1px solid rgba(255, 255, 255, 0.08)",
+                        color: socialPlatform === p.id ? "#60a5fa" : "#94a3b8",
+                        fontWeight: 700,
+                        fontSize: 12,
+                        cursor: "pointer",
+                        display: "flex",
+                        flexDirection: "column",
+                        alignItems: "center",
+                        gap: 4,
+                      }}
+                    >
+                      <span style={{ fontSize: 16 }}>{p.icon}</span>
+                      <span>{p.label}</span>
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              {/* Custom Caption */}
+              <div>
+                <label style={{ display: "block", fontSize: 12, fontWeight: 700, color: "#cbd5e1", marginBottom: 6 }}>
+                  Post Caption & Teaser:
+                </label>
+                <textarea
+                  rows={3}
+                  value={socialCustomCaption}
+                  onChange={(e) => setSocialCustomCaption(e.target.value)}
+                  style={{
+                    width: "100%",
+                    boxSizing: "border-box",
+                    padding: "9px 12px",
+                    borderRadius: 8,
+                    background: "#080c14",
+                    border: "1px solid rgba(255, 255, 255, 0.12)",
+                    color: "#fff",
+                    fontSize: 12.5,
+                    lineHeight: 1.5,
+                    resize: "vertical",
+                  }}
+                />
+              </div>
+
+              {/* Hashtags */}
+              <div>
+                <label style={{ display: "block", fontSize: 12, fontWeight: 700, color: "#cbd5e1", marginBottom: 6 }}>
+                  Search & Discovery Hashtags:
+                </label>
+                <input
+                  type="text"
+                  value={socialCustomHashtags}
+                  onChange={(e) => setSocialCustomHashtags(e.target.value)}
+                  style={{
+                    width: "100%",
+                    boxSizing: "border-box",
+                    padding: "9px 12px",
+                    borderRadius: 8,
+                    background: "#080c14",
+                    border: "1px solid rgba(255, 255, 255, 0.12)",
+                    color: "#fff",
+                    fontSize: 12.5,
+                  }}
+                />
+              </div>
+
+              {/* Meta Connect Notice */}
+              {showMetaConnectNotice && (
+                <div style={{ padding: "12px 14px", borderRadius: 8, background: "rgba(239, 68, 68, 0.15)", border: "1px solid rgba(239, 68, 68, 0.35)", color: "#fca5a5", fontSize: 12.5, lineHeight: 1.5 }}>
+                  ⚠️ <strong>Meta Account Not Linked:</strong> Your Facebook Page or Instagram Business Account is not yet connected to GabbarInfo AI.
+                  <div style={{ marginTop: 8 }}>
+                    <a
+                      href="/social-pilot"
+                      style={{ color: "#38bdf8", fontWeight: 700, textDecoration: "underline" }}
+                    >
+                      Connect Meta in Social Pilot Tab ↗
+                    </a>
+                  </div>
+                </div>
+              )}
+
+              {/* Status Notice */}
+              {socialShareStatus && (
+                <div
+                  style={{
+                    padding: "10px 14px",
+                    borderRadius: 8,
+                    background: socialShareStatus.ok ? "rgba(16, 185, 129, 0.15)" : "rgba(239, 68, 68, 0.15)",
+                    border: socialShareStatus.ok ? "1px solid rgba(16, 185, 129, 0.3)" : "1px solid rgba(239, 68, 68, 0.3)",
+                    color: socialShareStatus.ok ? "#34d399" : "#fca5a5",
+                    fontSize: 13,
+                    textAlign: "center",
+                    fontWeight: 600,
+                  }}
+                >
+                  {socialShareStatus.message}
+                </div>
+              )}
+            </div>
+
+            {/* Footer */}
+            <div
+              style={{
+                padding: "14px 22px",
+                borderTop: "1px solid rgba(255, 255, 255, 0.08)",
+                display: "flex",
+                justifyContent: "space-between",
+                alignItems: "center",
+                background: "rgba(255, 255, 255, 0.02)",
+              }}
+            >
+              <button
+                type="button"
+                onClick={() => setSocialModalOpen(false)}
+                style={{
+                  padding: "8px 16px",
+                  borderRadius: 8,
+                  background: "rgba(255, 255, 255, 0.05)",
+                  border: "1px solid rgba(255, 255, 255, 0.1)",
+                  color: "#94a3b8",
+                  fontSize: 12,
+                  cursor: "pointer",
+                }}
+              >
+                Close
+              </button>
+
+              <button
+                type="button"
+                onClick={handleExecuteSocialShare}
+                disabled={socialSharing}
+                style={{
+                  padding: "10px 22px",
+                  borderRadius: 8,
+                  background: "linear-gradient(135deg, #1877f2 0%, #0d6efd 100%)",
+                  border: "none",
+                  color: "#fff",
+                  fontWeight: 800,
+                  fontSize: 13,
+                  cursor: socialSharing ? "not-allowed" : "pointer",
+                  boxShadow: "0 2px 10px rgba(24, 119, 242, 0.35)",
+                  display: "flex",
+                  alignItems: "center",
+                  gap: 8,
+                }}
+              >
+                <span>{socialSharing ? "Publishing to Social Media…" : "🚀 Publish to Social Media Now ↗"}</span>
               </button>
             </div>
           </div>

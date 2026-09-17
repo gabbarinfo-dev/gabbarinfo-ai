@@ -81,6 +81,73 @@ function getRelevantProductsForLinking(products = [], queryText = "", primaryDom
   return selected;
 }
 
+function isProductInStock(p) {
+  if (!p) return false;
+  if (p.status && p.status !== "active") return false;
+
+  const variants = p.variants;
+  if (!Array.isArray(variants) || variants.length === 0) return true;
+
+  // Product is available if any variant has continue policy, unmanaged inventory, or quantity > 0
+  return variants.some((v) => {
+    if (!v.inventory_management) return true;
+    if (v.inventory_policy === "continue") return true;
+    return typeof v.inventory_quantity === "number" && v.inventory_quantity > 0;
+  });
+}
+
+function getFallbackEcommerceTopics(brandName = "Our Store", targetLoc = "", niche = "") {
+  const locSuffix = targetLoc ? ` in ${targetLoc}` : "";
+  const nicheName = niche || "Designer Jewellery & Accessories";
+  return [
+    `The Ultimate Guide to Styling ${nicheName}${locSuffix}: 2026 Trends`,
+    `How to Choose the Perfect ${nicheName} for Special Occasions & Parties`,
+    `Everyday Elegance: Transitioning Your Signature Look from Day to Night`,
+    `The Complete Care and Maintenance Guide for Long-Lasting ${nicheName}`,
+    `Top 10 ${nicheName} Pieces Every Modern Wardrobe Needs This Season`,
+    `How to Pair Contemporary Outfits with Heritage & Traditional Pieces`,
+    `Bridal & Wedding Guest Styling: The Definitive ${nicheName} Checklist${locSuffix}`,
+    `Demystifying Metals & Stones: How to Identify Premium Quality Craftsmanship`,
+    `Minimalist vs Statement Styling: How to Balance Your Ensemble Flawlessly`,
+    `The Art of Layering: How to Stack Necklaces and Bracelets Like a Pro`,
+    `Hypoallergenic & Sensitive Skin: Choosing Safe, High-Quality ${nicheName}`,
+    `Gift Guide 2026: Meaningful & Memorable ${nicheName} for Every Loved One`,
+    `Red Carpet Glamour: How to Achieve Luxury Celebrity Looks on Any Budget`,
+    `Workplace Chic: Professional Yet Striking Accessories for the Office`,
+    `Festive Season Spotlight: Curated Styling Tips for Celebrations${locSuffix}`,
+    `Investment Pieces: Timeless Accessories That Retain Their Charm Over Decades`,
+    `How to Clean and Store Fine Pieces Without Damaging Delicate Finishes`,
+    `Color Psychology in Fashion: Choosing Pieces That Complement Your Skin Tone`,
+    `Bespoke vs Ready-to-Wear: Finding Your Signature Personal Aesthetic`,
+    `Weekend Casuals: Elevating T-Shirts and Denim with Strategic Accessories`,
+    `The Modern Bride's Guide to Choosing Ceremony and Reception Pieces`,
+    `Spring & Summer Style Forecast: The Hottest Trends Emerging in 2026`,
+    `Autumn & Winter Layering: Incorporating Rich Tones and Ornate Textures`,
+    `Behind the Craft: How Master Artisans Create Exquisite Handcrafted Designs`,
+    `Sustainable & Ethical Fashion: Caring for Pieces That Last a Lifetime`,
+    `Cocktail Hour Essentials: Standout Accessories That Spark Conversations`,
+    `Airport & Vacation Styling: Chic, Travel-Friendly Pieces That Won't Tangle`,
+    `How to Style Western Evening Gowns with Ethnic Statement Accents`,
+    `Subtle Glamour: The Power of Delicate Studs and Understated Chains`,
+    `The Definitive Guide to Anti-Tarnish Finishes and Plating Longevity`,
+    `Graduation, Milestones & Promotions: Marking Life's Achievements in Style`,
+    `Vintage Revival: How Classic Silhouettes are Dominating 2026 Runways`,
+    `How to Organize Your Dressing Table & Keep Chains from Tangling`,
+    `Neckline Masterclass: Matching Pendants and Chokers to Your Dress Cut`,
+    `Earring Guide: Selecting Shapes That Flatter Your Unique Face Structure`,
+    `Ring Stacking Secrets: Creating Harmonious Combinations Across Fingers`,
+    `The Power of Pearls and Gemstones: Symbolism, Energy, and Styling`,
+    `How to Avoid Over-Accessorizing: The Rule of Three in Modern Fashion`,
+    `Seasonal Transitions: Refreshing Your Look Between Warm and Cold Weather`,
+    `Mother's Day & Anniversary Gifts: Curated Highlights She Will Cherish`,
+    `Modern Bohemian Chic: How to Incorporate Earthy and Eclectic Textures`,
+    `Monochrome Dressing: Adding Depth with Contrasting Metallic Highlights`,
+    `Destination Wedding Survival Guide: Packing and Caring for Your Outfits`,
+    `The Evolution of London and Global Streetwear: Blending Luxury with Comfort`,
+    `Confidence Through Styling: How the Right Piece Transforms Your Presence`
+  ];
+}
+
 export default async function handler(req, res) {
   if (req.method !== "GET" && req.method !== "POST") {
     return res.status(405).json({ ok: false, error: "Method not allowed" });
@@ -521,7 +588,7 @@ Respond ONLY with the raw JSON object. Do not include markdown code block backti
       let storeProducts = [];
       try {
         const prodResp = await fetch(
-          `https://${shop}/admin/api/2024-01/products.json?limit=250&fields=id,title,handle,product_type,tags`,
+          `https://${shop}/admin/api/2024-01/products.json?limit=250&fields=id,title,handle,product_type,tags,variants,status`,
           {
             headers: {
               "X-Shopify-Access-Token": accessToken,
@@ -531,7 +598,9 @@ Respond ONLY with the raw JSON object. Do not include markdown code block backti
         );
         if (prodResp.ok) {
           const pData = await prodResp.json();
-          storeProducts = pData.products || [];
+          const rawProducts = pData.products || [];
+          // EXCLUDE SOLD-OUT AND INACTIVE PRODUCTS (ONLY LINK IN-STOCK PRODUCTS)
+          storeProducts = rawProducts.filter(isProductInStock);
         }
       } catch (pErr) {
         console.warn("Could not fetch products for blog internal linking:", pErr.message);
@@ -810,7 +879,7 @@ Do NOT include markdown code block backticks.`;
       let storeProducts = [];
       try {
         const prodResp = await fetch(
-          `https://${shop}/admin/api/2024-01/products.json?limit=250&fields=id,title,handle,product_type,tags`,
+          `https://${shop}/admin/api/2024-01/products.json?limit=250&fields=id,title,handle,product_type,tags,variants,status`,
           {
             headers: {
               "X-Shopify-Access-Token": accessToken,
@@ -820,7 +889,9 @@ Do NOT include markdown code block backticks.`;
         );
         if (prodResp.ok) {
           const pData = await prodResp.json();
-          storeProducts = pData.products || [];
+          const rawProducts = pData.products || [];
+          // EXCLUDE SOLD-OUT AND INACTIVE PRODUCTS (ONLY LINK IN-STOCK PRODUCTS)
+          storeProducts = rawProducts.filter(isProductInStock);
         }
       } catch (pErr) {
         console.warn("Could not fetch products for optimize-article internal linking:", pErr.message);
@@ -1067,6 +1138,145 @@ Respond ONLY with a valid JSON object matching this structure:
     }
 
     // ---------------------------------------------------------
+    // 7.8 SUGGEST AT LEAST 40 STRATEGIC ECOMMERCE TOPICS
+    // ---------------------------------------------------------
+    if (action === "suggest-topics") {
+      const {
+        targetKeywords = "",
+        targetLocations = "",
+        nicheFocus = "",
+      } = payload;
+
+      // 1. Fetch store catalog products for intelligent context (in-stock only)
+      let sampleProducts = [];
+      try {
+        const prodResp = await fetch(
+          `https://${shop}/admin/api/2024-01/products.json?limit=100&fields=id,title,handle,product_type,tags,variants,status`,
+          {
+            headers: {
+              "X-Shopify-Access-Token": accessToken,
+              "Content-Type": "application/json",
+            },
+          }
+        );
+        if (prodResp.ok) {
+          const pData = await prodResp.json();
+          const inStockProds = (pData.products || []).filter(isProductInStock);
+          sampleProducts = inStockProds.slice(0, 30).map((p) => ({
+            title: p.title,
+            tags: p.tags,
+            type: p.product_type,
+          }));
+        }
+      } catch (pErr) {
+        console.warn("Could not fetch products for topic suggestions:", pErr.message);
+      }
+
+      // 2. Fetch existing blog article titles to prevent duplicates
+      let existingTitles = [];
+      try {
+        const blogResp = await fetch(`https://${shop}/admin/api/2024-01/blogs.json`, {
+          headers: {
+            "X-Shopify-Access-Token": accessToken,
+            "Content-Type": "application/json",
+          },
+        });
+        if (blogResp.ok) {
+          const bData = await blogResp.json();
+          const blogs = bData.blogs || [];
+          if (blogs.length > 0) {
+            const artResp = await fetch(
+              `https://${shop}/admin/api/2024-01/blogs/${blogs[0].id}/articles.json?limit=50&fields=title`,
+              {
+                headers: {
+                  "X-Shopify-Access-Token": accessToken,
+                  "Content-Type": "application/json",
+                },
+              }
+            );
+            if (artResp.ok) {
+              const aData = await artResp.json();
+              existingTitles = (aData.articles || []).map((a) => a.title).filter(Boolean);
+            }
+          }
+        }
+      } catch (bErr) {
+        console.warn("Could not fetch existing articles for topic suggestions:", bErr.message);
+      }
+
+      const brandName = conn.shopName || shop.split(".")[0] || "Our Store";
+      const targetLoc = (targetLocations || conn.country || "").trim();
+
+      const topicPrompt = `You are a chief eCommerce content strategist and SEO director for brand "${brandName}".
+Catalog Snapshot (In-Stock Products & Categories):
+${JSON.stringify(sampleProducts.slice(0, 25), null, 2)}
+
+Target Keywords / Niche: "${targetKeywords || nicheFocus || "designer lifestyle & trending accessories"}"
+${targetLoc ? `Target Geographic Territory (Cities / Countries): "${targetLoc}"` : ""}
+Already Published Titles (DO NOT DUPLICATE):
+${existingTitles.slice(0, 25).join("\n")}
+
+YOUR MISSION:
+Generate AT LEAST 40 unique, high-ranking, buyer-intent eCommerce blog topic titles.
+Cover a balanced mix of:
+1. Styling & Outfit Pairing Guides (occasion wear, formal vs casual, layering).
+2. Occasion & Seasonal Guides (festivals, weddings, party wear, seasonal trends${targetLoc ? ` in ${targetLoc}` : ""}).
+3. Material, Care & Longevity Guides (cleaning, maintenance, anti-tarnish, craftsmanship).
+4. Gift Guides & Shopping Checklists (gifts for her, bridal trousseau, milestones).
+5. Trend Spotlights & Modern Styling Innovations for 2026.
+${targetLoc ? `6. Localized Guides catering specifically to shoppers in ${targetLoc}.` : ""}
+
+Respond ONLY with a valid JSON object matching this schema:
+{
+  "topics": [
+    "Topic 1 Title",
+    "Topic 2 Title",
+    ...
+    "Topic 40 Title"
+  ]
+}`;
+
+      let topics = [];
+      if (process.env.OPENAI_API_KEY) {
+        try {
+          const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
+          const comp = await openai.chat.completions.create({
+            model: "gpt-4o-mini",
+            messages: [{ role: "user", content: topicPrompt }],
+            response_format: { type: "json_object" },
+            temperature: 0.75,
+          });
+          const parsed = JSON.parse(comp.choices[0]?.message?.content || "{}");
+          if (Array.isArray(parsed.topics)) {
+            topics = parsed.topics.filter(Boolean);
+          } else if (Array.isArray(parsed)) {
+            topics = parsed.filter(Boolean);
+          } else {
+            const arrVal = Object.values(parsed).find(Array.isArray);
+            if (arrVal) topics = arrVal.filter(Boolean);
+          }
+        } catch (e) {
+          console.warn("OpenAI topic suggest error:", e.message);
+        }
+      }
+
+      // Ensure at least 40 topics are present
+      if (topics.length < 40) {
+        const fallbacks = getFallbackEcommerceTopics(brandName, targetLoc, targetKeywords || nicheFocus);
+        const existingSet = new Set(topics.map((t) => t.toLowerCase()));
+        for (const fb of fallbacks) {
+          if (!existingSet.has(fb.toLowerCase())) {
+            topics.push(fb);
+            existingSet.add(fb.toLowerCase());
+            if (topics.length >= 45) break;
+          }
+        }
+      }
+
+      return res.status(200).json({ ok: true, topics: topics.slice(0, 50), count: topics.length });
+    }
+
+    // ---------------------------------------------------------
     // 8. GET SHOPIFY AUTOPILOT CONFIG
     // ---------------------------------------------------------
     if (action === "get-autopilot-config") {
@@ -1088,6 +1298,11 @@ Respond ONLY with a valid JSON object matching this structure:
         targetLocations: conn.country || "",
         targetMarket: conn.country || "",
         nicheFocus: "",
+        autoShareFacebook: true,
+        autoShareInstagram: true,
+        topicQueue: [],
+        suggestedTopics: [],
+        bulkTopicsInput: "",
         lastPublishedAt: null,
         lastArticleTitle: null,
         lastArticleUrl: null,
@@ -1100,6 +1315,11 @@ Respond ONLY with a valid JSON object matching this structure:
           config = { ...config, ...parsed };
           config.targetLocations = config.targetLocations || config.targetMarket || conn.country || "";
           config.targetMarket = config.targetLocations;
+          config.autoShareFacebook = parsed.autoShareFacebook !== false;
+          config.autoShareInstagram = parsed.autoShareInstagram !== false;
+          config.topicQueue = Array.isArray(parsed.topicQueue) ? parsed.topicQueue : [];
+          config.suggestedTopics = Array.isArray(parsed.suggestedTopics) ? parsed.suggestedTopics : [];
+          config.bulkTopicsInput = typeof parsed.bulkTopicsInput === "string" ? parsed.bulkTopicsInput : "";
         } catch (_) {}
       }
 
@@ -1133,6 +1353,11 @@ Respond ONLY with a valid JSON object matching this structure:
         ...inputCfg,
         targetLocations: targetLoc,
         targetMarket: targetLoc,
+        autoShareFacebook: inputCfg.autoShareFacebook !== undefined ? !!inputCfg.autoShareFacebook : (currentConfig.autoShareFacebook !== false),
+        autoShareInstagram: inputCfg.autoShareInstagram !== undefined ? !!inputCfg.autoShareInstagram : (currentConfig.autoShareInstagram !== false),
+        topicQueue: Array.isArray(inputCfg.topicQueue) ? inputCfg.topicQueue : (currentConfig.topicQueue || []),
+        suggestedTopics: Array.isArray(inputCfg.suggestedTopics) ? inputCfg.suggestedTopics : (currentConfig.suggestedTopics || []),
+        bulkTopicsInput: typeof inputCfg.bulkTopicsInput === "string" ? inputCfg.bulkTopicsInput : (currentConfig.bulkTopicsInput || ""),
         updatedAt: new Date().toISOString(),
       };
 
