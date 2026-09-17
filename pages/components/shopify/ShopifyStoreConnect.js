@@ -1054,13 +1054,24 @@ export default function ShopifyStoreConnect({ onConnectionChange }) {
             </button>
 
             {blogSuccessMsg && (
-              <div style={{ padding: "12px 14px", borderRadius: 8, background: "rgba(16, 185, 129, 0.15)", border: "1px solid rgba(16, 185, 129, 0.3)", color: "#34d399", fontSize: 13 }}>
-                <div>{blogSuccessMsg}</div>
+              <div style={{ padding: "14px 16px", borderRadius: 10, background: "rgba(16, 185, 129, 0.15)", border: "1px solid rgba(16, 185, 129, 0.35)", color: "#34d399", fontSize: 13 }}>
+                <div style={{ fontWeight: 700 }}>{blogSuccessMsg}</div>
                 {publishedArticleUrl && (
-                  <div style={{ marginTop: 6 }}>
-                    <a href={publishedArticleUrl} target="_blank" rel="noopener noreferrer" style={{ color: "#60a5fa", textDecoration: "underline" }}>
-                      View Live Article on Shopify ↗
-                    </a>
+                  <div style={{ marginTop: 8 }}>
+                    {publishedArticleUrl.includes("admin.shopify.com") ? (
+                      <div>
+                        <a href={publishedArticleUrl} target="_blank" rel="noopener noreferrer" style={{ color: "#38bdf8", fontWeight: 700, textDecoration: "underline", display: "inline-flex", alignItems: "center", gap: 6 }}>
+                          <span>📝</span> Open & Review Draft in Shopify Admin ↗
+                        </a>
+                        <div style={{ fontSize: 11.5, color: "#94a3b8", marginTop: 4 }}>
+                          ℹ️ Draft articles are hidden from the public storefront until you click "Visible" in your Shopify Admin.
+                        </div>
+                      </div>
+                    ) : (
+                      <a href={publishedArticleUrl} target="_blank" rel="noopener noreferrer" style={{ color: "#60a5fa", fontWeight: 700, textDecoration: "underline", display: "inline-flex", alignItems: "center", gap: 6 }}>
+                        <span>🌐</span> View Live Article on Shopify Storefront ↗
+                      </a>
+                    )}
                   </div>
                 )}
               </div>

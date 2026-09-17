@@ -529,8 +529,18 @@ Do NOT include markdown code block backticks.`;
         articlePayload.summary_html = summaryHtml;
       }
 
-      if (imageUrl) {
-        articlePayload.image = { src: imageUrl };
+      // Auto-generate high-res AI featured hero image if not provided
+      let finalImageUrl = imageUrl;
+      if (!finalImageUrl) {
+        const cleanTopic = encodeURIComponent(String(title).replace(/[^a-zA-Z0-9\s]/g, "").slice(0, 80));
+        finalImageUrl = `https://image.pollinations.ai/prompt/cinematic%20luxury%20editorial%20commercial%20photo%20of%20${cleanTopic}?width=1200&height=675&nologo=true`;
+      }
+
+      if (finalImageUrl) {
+        articlePayload.image = {
+          src: finalImageUrl,
+          alt: title,
+        };
       }
 
       const articleRes = await fetch(`https://${shop}/admin/api/2024-01/blogs/${blogId}/articles.json`, {
@@ -549,11 +559,18 @@ Do NOT include markdown code block backticks.`;
 
       const data = await articleRes.json();
       const chosenBlogHandle = payload.blogHandle || "news";
+      const storeHandle = shop.replace(".myshopify.com", "");
+      const adminDraftUrl = `https://admin.shopify.com/store/${storeHandle}/articles/${data.article?.id}`;
+      const livePublicUrl = `https://${conn.domain || shop}/blogs/${chosenBlogHandle}/${data.article?.handle}`;
+
       return res.status(200).json({
         ok: true,
-        message: isDraft ? "Article saved as Shopify Draft!" : "Article published live to Shopify blog!",
+        message: isDraft ? "Article saved as Shopify Draft in your Admin!" : "Article published live to Shopify blog!",
+        isDraft: !!isDraft,
         article: data.article,
-        articleUrl: `https://${conn.domain || shop}/blogs/${chosenBlogHandle}/${data.article?.handle}`,
+        articleUrl: isDraft ? adminDraftUrl : livePublicUrl,
+        adminUrl: adminDraftUrl,
+        publicUrl: livePublicUrl,
       });
     }
 
