@@ -274,21 +274,23 @@ export default function ShopifyStoreConnect({ onConnectionChange }) {
     setPublishedArticleUrl("");
 
     try {
-      // 1. Generate SEO blog content using Gemini
+      // 1. Generate deep 1,500+ word eCommerce SEO blog content
       const genRes = await fetch("/api/shopify/sync", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          action: "generate-product-description",
-          title: blogTopic,
+          action: "generate-blog",
+          topic: blogTopic,
           keywords: blogKeywords,
-          category: "SEO Blog Article",
-          tone: "engaging, authoritative, and helpful",
+          tone: "engaging, authoritative, and conversion-focused",
         }),
       });
 
       const genData = await genRes.json();
+      const articleTitle = genData?.generated?.title || blogTopic;
       const articleHtml = genData?.generated?.bodyHtml || `<p>${blogTopic} overview and industry insights.</p>`;
+      const articleTags = genData?.generated?.tags || blogKeywords;
+      const summaryHtml = genData?.generated?.seoDescription || "";
 
       // 2. Publish to Shopify Blog
       const pubRes = await fetch("/api/shopify/sync", {
@@ -297,9 +299,10 @@ export default function ShopifyStoreConnect({ onConnectionChange }) {
         body: JSON.stringify({
           action: "publish-blog",
           blogId: selectedBlogId,
-          title: blogTopic,
+          title: articleTitle,
           bodyHtml: articleHtml,
-          tags: blogKeywords,
+          summaryHtml: summaryHtml,
+          tags: articleTags,
           isDraft,
           author: "GabbarInfo AI",
         }),

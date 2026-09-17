@@ -3,6 +3,7 @@
 import NextAuth from "next-auth";
 import GoogleProvider from "next-auth/providers/google";
 import FacebookProvider from "next-auth/providers/facebook";
+import CredentialsProvider from "next-auth/providers/credentials";
 import { createClient } from "@supabase/supabase-js";
 
 const SUPABASE_URL = process.env.NEXT_PUBLIC_SUPABASE_URL;
@@ -56,6 +57,30 @@ export const authOptions = {
           email: rawEmail || syntheticEmail,
           image: profile.picture?.data?.url || null,
         };
+      },
+    }),
+
+    // 🔐 SHOPIFY REVIEWER & DEMO TESTER CREDENTIALS
+    CredentialsProvider({
+      id: "credentials",
+      name: "Shopify Reviewer Access",
+      credentials: {
+        email: { label: "Email", type: "email" },
+        password: { label: "Password", type: "password" },
+      },
+      async authorize(credentials) {
+        const email = (credentials?.email || "").toLowerCase().trim();
+        const password = credentials?.password || "";
+
+        if (email === "shopify-tester@gabbarinfo.com" && password === "TestPass@2026") {
+          return {
+            id: "shopify_tester_user",
+            name: "Shopify App Reviewer",
+            email: "shopify-tester@gabbarinfo.com",
+            role: "owner",
+          };
+        }
+        return null;
       },
     }),
   ],

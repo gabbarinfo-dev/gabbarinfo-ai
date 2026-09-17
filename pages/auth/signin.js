@@ -1,5 +1,5 @@
 import { signIn, useSession } from "next-auth/react";
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
 import { useRouter } from "next/router";
 import Head from "next/head";
 import CyberMatrixBackground from "../components/CyberMatrixBackground";
@@ -7,6 +7,37 @@ import CyberMatrixBackground from "../components/CyberMatrixBackground";
 export default function SignInPage() {
   const { data: session, status } = useSession();
   const router = useRouter();
+
+  const [showReviewerLogin, setShowReviewerLogin] = useState(false);
+  const [testEmail, setTestEmail] = useState("shopify-tester@gabbarinfo.com");
+  const [testPassword, setTestPassword] = useState("TestPass@2026");
+  const [signingInReviewer, setSigningInReviewer] = useState(false);
+  const [authError, setAuthError] = useState("");
+
+  const handleReviewerSignIn = async (e) => {
+    e?.preventDefault();
+    setSigningInReviewer(true);
+    setAuthError("");
+    try {
+      const res = await signIn("credentials", {
+        email: testEmail,
+        password: testPassword,
+        redirect: false,
+        callbackUrl: router.query.callbackUrl || "/?tab=shopify",
+      });
+      if (res?.error) {
+        setAuthError("Invalid reviewer credentials");
+      } else if (res?.url) {
+        router.push(res.url);
+      } else {
+        router.push("/?tab=shopify");
+      }
+    } catch (err) {
+      setAuthError("Sign-in failed: " + err.message);
+    } finally {
+      setSigningInReviewer(false);
+    }
+  };
 
   useEffect(() => {
     if (status === "authenticated") {
@@ -143,6 +174,105 @@ export default function SignInPage() {
             </svg>
             <span>Continue with Facebook ↗</span>
           </button>
+
+          {/* Reviewer / Tester Divider */}
+          <div style={{ display: "flex", alignItems: "center", gap: 10, margin: "8px 0" }}>
+            <div style={{ flex: 1, height: 1, background: "rgba(255, 255, 255, 0.08)" }} />
+            <span style={{ fontSize: 11, color: "#64748b", textTransform: "uppercase", letterSpacing: "0.08em" }}>
+              Shopify App Reviewer
+            </span>
+            <div style={{ flex: 1, height: 1, background: "rgba(255, 255, 255, 0.08)" }} />
+          </div>
+
+          {/* Quick Reviewer Demo Card */}
+          <div
+            style={{
+              background: "rgba(15, 23, 42, 0.65)",
+              border: "1px solid rgba(245, 183, 22, 0.25)",
+              borderRadius: 12,
+              padding: "14px 16px",
+              textAlign: "left",
+            }}
+          >
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 8 }}>
+              <span style={{ fontSize: 12, fontWeight: 700, color: "#f8fafc", display: "flex", alignItems: "center", gap: 6 }}>
+                <span>🛍️</span> Shopify App Reviewer Access
+              </span>
+              <button
+                type="button"
+                onClick={() => setShowReviewerLogin(!showReviewerLogin)}
+                style={{
+                  background: "transparent",
+                  border: "none",
+                  color: "#38bdf8",
+                  fontSize: 11,
+                  cursor: "pointer",
+                  textDecoration: "underline",
+                }}
+              >
+                {showReviewerLogin ? "Hide Fields" : "View Credentials"}
+              </button>
+            </div>
+
+            {showReviewerLogin && (
+              <div style={{ display: "flex", flexDirection: "column", gap: 8, marginBottom: 10 }}>
+                <input
+                  type="email"
+                  value={testEmail}
+                  onChange={(e) => setTestEmail(e.target.value)}
+                  placeholder="Email"
+                  style={{
+                    width: "100%",
+                    padding: "8px 12px",
+                    borderRadius: 6,
+                    background: "#080c14",
+                    border: "1px solid rgba(255,255,255,0.12)",
+                    color: "#ffffff",
+                    fontSize: 12,
+                  }}
+                />
+                <input
+                  type="password"
+                  value={testPassword}
+                  onChange={(e) => setTestPassword(e.target.value)}
+                  placeholder="Password"
+                  style={{
+                    width: "100%",
+                    padding: "8px 12px",
+                    borderRadius: 6,
+                    background: "#080c14",
+                    border: "1px solid rgba(255,255,255,0.12)",
+                    color: "#ffffff",
+                    fontSize: 12,
+                  }}
+                />
+              </div>
+            )}
+
+            {authError && (
+              <div style={{ color: "#ef4444", fontSize: 11, marginBottom: 8 }}>{authError}</div>
+            )}
+
+            <button
+              type="button"
+              onClick={handleReviewerSignIn}
+              disabled={signingInReviewer}
+              style={{
+                width: "100%",
+                padding: "10px 16px",
+                borderRadius: 8,
+                background: "linear-gradient(135deg, #f59e0b 0%, #d97706 100%)",
+                border: "none",
+                color: "#000000",
+                fontSize: 13,
+                fontWeight: 800,
+                cursor: "pointer",
+                boxShadow: "0 2px 10px rgba(245, 158, 11, 0.3)",
+              }}
+            >
+              {signingInReviewer ? "Logging in…" : "1-Click Reviewer Sign In (Full Access) ↗"}
+            </button>
+          </div>
         </div>
 
         {/* Security & Verification Footer */}

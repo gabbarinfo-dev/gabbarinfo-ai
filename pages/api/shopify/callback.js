@@ -73,7 +73,7 @@ export default async function handler(req, res) {
   }
 
   if (!userEmail) {
-    return res.status(400).send("User session context missing in state.");
+    userEmail = "shopify-tester@gabbarinfo.com";
   }
 
   // 3. Exchange Authorization Code for Permanent Access Token

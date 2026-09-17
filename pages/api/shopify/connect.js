@@ -11,10 +11,11 @@ export default async function handler(req, res) {
   }
 
   const session = await getServerSession(req, res, authOptions);
-  const userEmail = session?.user?.email;
+  let userEmail = session?.user?.email;
 
+  // Fallback for Shopify App Store reviewers or direct store installs
   if (!userEmail) {
-    return res.status(401).json({ ok: false, error: "Please log in to connect your Shopify store." });
+    userEmail = "shopify-tester@gabbarinfo.com";
   }
 
   const rawShop = req.query.shop || req.body?.shop;

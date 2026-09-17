@@ -307,6 +307,88 @@ Respond ONLY with the raw JSON object. Do not include markdown code block backti
     }
 
     // ---------------------------------------------------------
+    // 5.5 GENERATE AI ECOMMERCE SEO BLOG ARTICLE (1,500+ WORDS)
+    // ---------------------------------------------------------
+    if (action === "generate-blog") {
+      const {
+        topic,
+        keywords = "",
+        tone = "engaging, authoritative, and conversion-focused",
+        brandName = conn.shopName || "Our Store",
+      } = payload;
+
+      if (!topic) {
+        return res.status(400).json({ ok: false, error: "Blog topic is required." });
+      }
+
+      const blogPrompt = `You are a world-class eCommerce SEO copywriter and lifestyle content strategist for "${brandName}".
+Write an in-depth, authoritative, and engaging 1,500+ word eCommerce blog article optimized for Google rank and product conversion.
+
+TOPIC: ${topic}
+TARGET KEYWORDS: ${keywords || topic}
+BRAND NAME: ${brandName}
+TONE: ${tone}
+
+ARTICLE REQUIREMENTS:
+1. Compelling H1 Title incorporating primary keywords.
+2. Hook paragraph capturing attention and addressing shopper desires or problems.
+3. 5-6 detailed sections with clear <h2> and <h3> subheadings providing practical guides, styling advice, or solutions.
+4. Curated shopping tips and recommendations linking value directly back to the store's catalog.
+5. <h3>Frequently Asked Questions</h3> with 3 clear, schema-ready Q&As.
+6. Engaging conclusion with a strong Call to Action (CTA).
+7. Pure semantic HTML formatting (<h2>, <h3>, <p>, <ul>, <li>, <strong>, <em>, <blockquote>).
+8. Provide calibrated SEO Meta Title (50-60 characters) and Meta Description (145-155 characters).
+
+Respond ONLY with a valid JSON object matching this schema:
+{
+  "title": "Full Article Title",
+  "seoTitle": "Calibrated SEO Title under 60 characters",
+  "seoDescription": "Compelling Meta Description between 145-155 chars",
+  "bodyHtml": "<p>Article HTML content...</p>",
+  "tags": ["keyword1", "keyword2", "keyword3"]
+}
+Do NOT include markdown code block backticks.`;
+
+      let aiResult = null;
+
+      if (process.env.OPENAI_API_KEY) {
+        try {
+          const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
+          const comp = await openai.chat.completions.create({
+            model: "gpt-4o-mini",
+            messages: [{ role: "user", content: blogPrompt }],
+            response_format: { type: "json_object" },
+            temperature: 0.7,
+          });
+          aiResult = JSON.parse(comp.choices[0]?.message?.content || "{}");
+        } catch (e) {
+          console.warn("OpenAI blog generation fallback:", e.message);
+        }
+      }
+
+      if (!aiResult && process.env.GEMINI_API_KEY) {
+        try {
+          const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
+          const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash" });
+          const res = await model.generateContent(blogPrompt);
+          const text = res.response.text().replace(/```json/gi, "").replace(/```/g, "").trim();
+          aiResult = JSON.parse(text);
+        } catch (geminiErr) {
+          console.error("Gemini blog generation failed:", geminiErr);
+        }
+      }
+
+      if (!aiResult || !aiResult.bodyHtml) {
+        return res.status(500).json({ ok: false, error: "Failed to generate AI blog article." });
+      }
+
+      return res.status(200).json({
+        ok: true,
+        generated: aiResult,
+      });
+    }
+
+    // ---------------------------------------------------------
     // 6. UPDATE PRODUCT ON SHOPIFY (LIVE PUSH)
     // ---------------------------------------------------------
     if (action === "update-product") {
