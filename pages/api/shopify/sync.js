@@ -225,6 +225,11 @@ export default async function handler(req, res) {
               blogs = [createdData.blog];
             }
           }
+        } catch (e) {
+          console.warn("Could not auto-create blog:", e);
+        }
+      }
+
       // Augment each blog with its article count
       const blogsWithCounts = await Promise.all(
         blogs.map(async (b) => {
@@ -638,6 +643,134 @@ Do NOT include markdown code block backticks.`;
         ok: true,
         message: "Shopify product updated successfully!",
         product: updatedProductData.product,
+      });
+    }
+
+    // ---------------------------------------------------------
+    // 6.5 OPTIMIZE EXISTING BLOG ARTICLE (SEO REWRITE & UPGRADE)
+    // ---------------------------------------------------------
+    if (action === "optimize-article") {
+      const {
+        articleId,
+        blogId,
+        title,
+        currentBody = "",
+        keywords = "",
+        tone = "luxury, persuasive, and SEO-optimized",
+        targetLocations = "",
+      } = payload;
+
+      if (!title) {
+        return res.status(400).json({ ok: false, error: "Article title is required." });
+      }
+
+      const prompt = `You are a world-class luxury eCommerce content strategist, copywriter, and SEO specialist.
+You are tasked with thoroughly optimizing, upgrading, and rewriting an EXISTING blog article for an eCommerce brand.
+
+EXISTING ARTICLE TITLE: ${title}
+STORE/BRAND NAME: ${conn.shopName || "Brand"}
+TARGET SEO KEYWORDS: ${keywords || title}
+DESIRED TONE: ${tone}
+TARGET GEOGRAPHIC LOCATIONS: ${targetLocations || "Global / Worldwide"}
+
+EXISTING ARTICLE CONTENT / DRAFT:
+${String(currentBody).substring(0, 3000)}
+
+YOUR MISSION:
+1. Elevate the title to be irresistible, click-worthy, and optimized for search engine ranking (under 70 chars).
+2. Rewrite the article body with:
+   - An engaging, high-retention introduction hook.
+   - Rich semantic subheadings (<h2>, <h3>).
+   - Deep styling advice, product pairing suggestions, and valuable consumer insights.
+   - Natural incorporation of the target keywords: "${keywords || title}".
+   - Natural references to the target market: "${targetLocations || "Global"}".
+   - A dedicated <h3>Frequently Asked Questions</h3> section with 3 practical Q&As.
+   - A concluding call-to-action encouraging readers to browse the store's curated collections.
+3. Provide a concise, high-CTR meta summary (under 160 characters).
+4. Provide 4-6 relevant SEO tags.
+
+OUTPUT FORMAT:
+Respond ONLY with a valid JSON object matching this structure:
+{
+  "optimizedTitle": "A captivating, high-ranking SEO article title",
+  "summaryHtml": "A compelling meta description under 160 characters",
+  "bodyHtml": "Rich semantic HTML using <p>, <h2>, <h3>, <ul>, <li>, <strong>. No markdown code blocks.",
+  "suggestedTags": ["tag1", "tag2", "tag3", "tag4"]
+}`;
+
+      let aiResult = null;
+      if (process.env.OPENAI_API_KEY) {
+        try {
+          const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
+          const comp = await openai.chat.completions.create({
+            model: "gpt-4o-mini",
+            messages: [{ role: "user", content: prompt }],
+            response_format: { type: "json_object" },
+            temperature: 0.7,
+          });
+          aiResult = JSON.parse(comp.choices[0]?.message?.content || "{}");
+        } catch (e) {
+          console.warn("OpenAI article optimization fallback:", e.message);
+        }
+      }
+
+      if (!aiResult || !aiResult.bodyHtml) {
+        return res.status(500).json({ ok: false, error: "Failed to generate optimized article content." });
+      }
+
+      return res.status(200).json({
+        ok: true,
+        optimized: aiResult,
+      });
+    }
+
+    // ---------------------------------------------------------
+    // 6.6 PUSH UPDATED ARTICLE LIVE TO SHOPIFY
+    // ---------------------------------------------------------
+    if (action === "update-article") {
+      const {
+        articleId,
+        blogId,
+        title,
+        bodyHtml,
+        summaryHtml = "",
+        tags = "",
+      } = payload;
+
+      if (!articleId || !blogId || !title || !bodyHtml) {
+        return res.status(400).json({ ok: false, error: "Article ID, Blog ID, Title, and Article HTML are required." });
+      }
+
+      const updatePayload = {
+        id: articleId,
+        title,
+        body_html: bodyHtml,
+        summary_html: summaryHtml,
+        tags: Array.isArray(tags) ? tags.join(", ") : tags,
+      };
+
+      const updateResp = await fetch(
+        `https://${shop}/admin/api/2024-01/blogs/${blogId}/articles/${articleId}.json`,
+        {
+          method: "PUT",
+          headers: {
+            "X-Shopify-Access-Token": accessToken,
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({ article: updatePayload }),
+        }
+      );
+
+      if (!updateResp.ok) {
+        const txt = await updateResp.text();
+        return res.status(updateResp.status).json({ ok: false, error: `Shopify Article Update Error: ${txt}` });
+      }
+
+      const updatedArticleData = await updateResp.json();
+      return res.status(200).json({
+        ok: true,
+        message: "Article updated successfully on Shopify!",
+        article: updatedArticleData.article,
       });
     }
 

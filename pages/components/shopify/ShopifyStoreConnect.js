@@ -43,6 +43,17 @@ export default function ShopifyStoreConnect({ onConnectionChange }) {
   const [storeArticles, setStoreArticles] = useState([]);
   const [articlesLoading, setArticlesLoading] = useState(false);
 
+  // Existing Article Optimizer State
+  const [selectedArticle, setSelectedArticle] = useState(null);
+  const [optimizingArticle, setOptimizingArticle] = useState(false);
+  const [optimizedArticleData, setOptimizedArticleData] = useState(null);
+  const [updatingArticle, setUpdatingArticle] = useState(false);
+  const [articleSuccessMsg, setArticleSuccessMsg] = useState("");
+  const [articleKeywords, setArticleKeywords] = useState("");
+  const [articleTone, setArticleTone] = useState("luxury, persuasive, and SEO-optimized");
+  const [articleTargetLocations, setArticleTargetLocations] = useState("");
+  const [articleSearchQuery, setArticleSearchQuery] = useState("");
+
   // Autopilot Suite State (Railway Engine)
   const [autopilotLoading, setAutopilotLoading] = useState(false);
   const [autopilotSaving, setAutopilotSaving] = useState(false);
@@ -393,6 +404,93 @@ export default function ShopifyStoreConnect({ onConnectionChange }) {
       alert("Error updating product: " + err.message);
     } finally {
       setPushingProduct(false);
+    }
+  };
+
+  const openOptimizeArticleModal = (art) => {
+    setSelectedArticle(art);
+    setOptimizedArticleData(null);
+    setArticleSuccessMsg("");
+    setArticleKeywords(art.tags ? String(art.tags) : art.title);
+    setArticleTargetLocations(blogTargetLocations || "");
+  };
+
+  const handleGenerateArticleOptimization = async () => {
+    if (!selectedArticle) return;
+    setOptimizingArticle(true);
+    setArticleSuccessMsg("");
+    try {
+      const res = await fetch("/api/shopify/sync", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          action: "optimize-article",
+          articleId: selectedArticle.id,
+          blogId: selectedArticle.blog_id,
+          title: selectedArticle.title,
+          currentBody: selectedArticle.body_html || selectedArticle.summary_html || "",
+          keywords: articleKeywords,
+          tone: articleTone,
+          targetLocations: articleTargetLocations,
+        }),
+      });
+
+      const data = await res.json();
+      if (data.ok && data.optimized) {
+        setOptimizedArticleData(data.optimized);
+      } else {
+        alert(data.error || "Failed to generate AI blog optimization");
+      }
+    } catch (err) {
+      alert("Error optimizing article: " + err.message);
+    } finally {
+      setOptimizingArticle(false);
+    }
+  };
+
+  const handlePushUpdatedArticleToShopify = async () => {
+    if (!selectedArticle || !optimizedArticleData) return;
+    setUpdatingArticle(true);
+    setArticleSuccessMsg("");
+    try {
+      const res = await fetch("/api/shopify/sync", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          action: "update-article",
+          articleId: selectedArticle.id,
+          blogId: selectedArticle.blog_id,
+          title: optimizedArticleData.optimizedTitle || selectedArticle.title,
+          bodyHtml: optimizedArticleData.bodyHtml,
+          summaryHtml: optimizedArticleData.summaryHtml || "",
+          tags: optimizedArticleData.suggestedTags || selectedArticle.tags,
+        }),
+      });
+
+      const data = await res.json();
+      if (data.ok) {
+        setArticleSuccessMsg("✅ Article successfully updated on Shopify live storefront!");
+        // Update local article state
+        setStoreArticles((prev) =>
+          prev.map((a) =>
+            a.id === selectedArticle.id
+              ? {
+                  ...a,
+                  title: optimizedArticleData.optimizedTitle || a.title,
+                  body_html: optimizedArticleData.bodyHtml,
+                  summary_html: optimizedArticleData.summaryHtml,
+                  tags: optimizedArticleData.suggestedTags?.join(", ") || a.tags,
+                }
+              : a
+          )
+        );
+      } else {
+        alert(data.error || "Failed to push updated article to Shopify");
+      }
+    } catch (err) {
+      alert("Error updating article: " + err.message);
+    } finally {
+      setUpdatingArticle(false);
     }
   };
 
@@ -952,6 +1050,25 @@ export default function ShopifyStoreConnect({ onConnectionChange }) {
         </button>
 
         <button
+          onClick={() => setActiveSubTab("existing-blogs")}
+          style={{
+            padding: "8px 18px",
+            borderRadius: 10,
+            background: activeSubTab === "existing-blogs" ? "rgba(56, 189, 248, 0.18)" : "transparent",
+            border: activeSubTab === "existing-blogs" ? "1px solid rgba(56, 189, 248, 0.4)" : "1px solid transparent",
+            color: activeSubTab === "existing-blogs" ? "#38bdf8" : "#94a3b8",
+            fontWeight: 700,
+            fontSize: 13,
+            cursor: "pointer",
+            display: "flex",
+            alignItems: "center",
+            gap: 8,
+          }}
+        >
+          <span>📰</span> Optimize Existing Blogs ({storeArticles.length})
+        </button>
+
+        <button
           onClick={() => setActiveSubTab("blogs")}
           style={{
             padding: "8px 18px",
@@ -967,7 +1084,7 @@ export default function ShopifyStoreConnect({ onConnectionChange }) {
             gap: 8,
           }}
         >
-          <span>✍️</span> Manual Blog Generator {storeArticles.length > 0 ? `(${storeArticles.length} Live Articles)` : ""}
+          <span>✍️</span> Create New Blog Post
         </button>
 
         <button
@@ -1131,6 +1248,191 @@ export default function ShopifyStoreConnect({ onConnectionChange }) {
                 </div>
               );
             })}
+          </div>
+        </div>
+      )}
+
+      {/* -------------------------------------------------------------
+          SUB-TAB 2: OPTIMIZE EXISTING BLOG ARTICLES (AI REWRITE & UPGRADE)
+      ------------------------------------------------------------- */}
+      {activeSubTab === "existing-blogs" && (
+        <div style={{ display: "flex", flexDirection: "column", gap: 20 }}>
+          <div
+            style={{
+              background: "rgba(15, 23, 42, 0.6)",
+              border: "1px solid rgba(255, 255, 255, 0.08)",
+              borderRadius: 16,
+              padding: "24px",
+            }}
+          >
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 20, flexWrap: "wrap", gap: 12 }}>
+              <div>
+                <h4 style={{ margin: "0 0 6px 0", fontSize: 18, fontWeight: 800, color: "#fff", display: "flex", alignItems: "center", gap: 8 }}>
+                  <span>📰</span> Optimize Existing Blog Articles
+                  <span style={{ fontSize: 12, background: "rgba(56, 189, 248, 0.18)", color: "#38bdf8", padding: "3px 10px", borderRadius: 12, border: "1px solid rgba(56, 189, 248, 0.35)", fontWeight: 700 }}>
+                    {storeArticles.length} Live on Store
+                  </span>
+                </h4>
+                <p style={{ margin: 0, fontSize: 13, color: "#94a3b8" }}>
+                  Scan your live Shopify articles and use AI to rewrite, upgrade headings, improve search rankings, and push updates with 1 click.
+                </p>
+              </div>
+
+              <div style={{ display: "flex", gap: 10, alignItems: "center" }}>
+                <input
+                  type="text"
+                  placeholder="Filter articles by title..."
+                  value={articleSearchQuery}
+                  onChange={(e) => setArticleSearchQuery(e.target.value)}
+                  style={{
+                    padding: "8px 14px",
+                    borderRadius: 8,
+                    background: "#0b101b",
+                    border: "1px solid rgba(255, 255, 255, 0.12)",
+                    color: "#fff",
+                    fontSize: 12.5,
+                    width: 200,
+                  }}
+                />
+                <button
+                  type="button"
+                  onClick={fetchArticles}
+                  disabled={articlesLoading}
+                  style={{
+                    background: "rgba(255, 255, 255, 0.06)",
+                    border: "1px solid rgba(255, 255, 255, 0.12)",
+                    color: "#38bdf8",
+                    padding: "8px 14px",
+                    borderRadius: 8,
+                    fontSize: 12.5,
+                    cursor: "pointer",
+                    fontWeight: 600,
+                    display: "inline-flex",
+                    alignItems: "center",
+                    gap: 6,
+                  }}
+                >
+                  <span>↻</span> {articlesLoading ? "Syncing..." : "Refresh Articles"}
+                </button>
+              </div>
+            </div>
+
+            {articlesLoading && storeArticles.length === 0 ? (
+              <div style={{ padding: "60px 0", textAlign: "center", color: "#94a3b8", fontSize: 14 }}>
+                ⏳ Syncing live blog articles from your Shopify store...
+              </div>
+            ) : storeArticles.length === 0 ? (
+              <div style={{ padding: "60px 0", textAlign: "center", color: "#64748b", fontSize: 14 }}>
+                No published articles found in your store. Use the "Create New Blog Post" tab to publish your first article!
+              </div>
+            ) : (
+              <div
+                style={{
+                  display: "grid",
+                  gridTemplateColumns: "repeat(auto-fill, minmax(320px, 1fr))",
+                  gap: 18,
+                }}
+              >
+                {storeArticles
+                  .filter((art) => !articleSearchQuery.trim() || art.title.toLowerCase().includes(articleSearchQuery.toLowerCase()))
+                  .map((art) => (
+                    <div
+                      key={art.id}
+                      style={{
+                        background: "rgba(11, 16, 27, 0.8)",
+                        border: "1px solid rgba(255, 255, 255, 0.08)",
+                        borderRadius: 12,
+                        overflow: "hidden",
+                        display: "flex",
+                        flexDirection: "column",
+                        justifyContent: "space-between",
+                        transition: "border-color 0.15s ease",
+                      }}
+                    >
+                      {art.image?.src ? (
+                        <div style={{ width: "100%", height: 160, overflow: "hidden", background: "#050811" }}>
+                          <img
+                            src={art.image.src}
+                            alt={art.title}
+                            style={{ width: "100%", height: "100%", objectFit: "cover" }}
+                          />
+                        </div>
+                      ) : (
+                        <div style={{ width: "100%", height: 90, background: "rgba(255,255,255,0.03)", display: "flex", alignItems: "center", justifyContent: "center", color: "#64748b", fontSize: 28 }}>
+                          📰
+                        </div>
+                      )}
+                      <div style={{ padding: 16, display: "flex", flexDirection: "column", flex: 1, justifyContent: "space-between", gap: 14 }}>
+                        <div>
+                          <div style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 8 }}>
+                            <span style={{ fontSize: 11, fontWeight: 700, textTransform: "uppercase", padding: "3px 8px", borderRadius: 4, background: "rgba(56, 189, 248, 0.15)", color: "#38bdf8" }}>
+                              {art.blog_title || "News"}
+                            </span>
+                            {art.published_at && (
+                              <span style={{ fontSize: 11.5, color: "#64748b" }}>
+                                {new Date(art.published_at).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })}
+                              </span>
+                            )}
+                          </div>
+                          <h4 style={{ fontSize: 14.5, fontWeight: 700, color: "#f1f5f9", margin: 0, lineHeight: 1.4 }}>
+                            {art.title}
+                          </h4>
+                          {art.summary_html && (
+                            <div style={{ marginTop: 8, fontSize: 12, color: "#94a3b8", display: "-webkit-box", WebkitLineClamp: 2, WebkitBoxOrient: "vertical", overflow: "hidden" }}>
+                              {art.summary_html.replace(/<[^>]+>/g, "")}
+                            </div>
+                          )}
+                        </div>
+
+                        <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+                          <button
+                            type="button"
+                            onClick={() => openOptimizeArticleModal(art)}
+                            style={{
+                              flex: 1,
+                              padding: "9px 12px",
+                              borderRadius: 8,
+                              background: "linear-gradient(135deg, rgba(56, 189, 248, 0.2) 0%, rgba(14, 165, 233, 0.25) 100%)",
+                              border: "1px solid rgba(56, 189, 248, 0.4)",
+                              color: "#38bdf8",
+                              fontWeight: 700,
+                              fontSize: 12.5,
+                              cursor: "pointer",
+                              display: "flex",
+                              alignItems: "center",
+                              justifyContent: "center",
+                              gap: 6,
+                            }}
+                          >
+                            <span>✨</span> Optimize with AI
+                          </button>
+                          <a
+                            href={art.live_url}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            style={{
+                              padding: "9px 12px",
+                              borderRadius: 8,
+                              background: "rgba(255, 255, 255, 0.05)",
+                              border: "1px solid rgba(255, 255, 255, 0.12)",
+                              color: "#94a3b8",
+                              fontSize: 12,
+                              fontWeight: 600,
+                              textDecoration: "none",
+                              cursor: "pointer",
+                              display: "flex",
+                              alignItems: "center",
+                              gap: 4,
+                            }}
+                          >
+                            <span>👁️</span> View ↗
+                          </a>
+                        </div>
+                      </div>
+                    </div>
+                  ))}
+              </div>
+            )}
           </div>
         </div>
       )}
@@ -1547,149 +1849,18 @@ export default function ShopifyStoreConnect({ onConnectionChange }) {
                         </div>
                       </div>
                     ) : (
-                      <a href={publishedArticleUrl} target="_blank" rel="noopener noreferrer" style={{ color: "#60a5fa", fontWeight: 700, textDecoration: "underline", display: "inline-flex", alignItems: "center", gap: 6 }}>
-                        <span>🌐</span> View Live Article on Shopify Storefront ↗
+                      <a href={publishedArticleUrl} target="_blank" rel="noopener noreferrer" style={{ color: "#38bdf8", fontWeight: 700, textDecoration: "underline", display: "inline-flex", alignItems: "center", gap: 6 }}>
+                        <span>🌐</span> View Published Article on Shopify Storefront ↗
                       </a>
                     )}
                   </div>
                 )}
               </div>
             )}
-          </div>
-
-          {/* Live Published Store Articles Card */}
-          <div
-            style={{
-              background: "rgba(15, 23, 42, 0.6)",
-              border: "1px solid rgba(255, 255, 255, 0.08)",
-              borderRadius: 16,
-              padding: "24px",
-            }}
-          >
-            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 18, flexWrap: "wrap", gap: 12 }}>
-              <div>
-                <h4 style={{ margin: "0 0 4px 0", fontSize: 16, fontWeight: 700, color: "#fff", display: "flex", alignItems: "center", gap: 8 }}>
-                  <span>📰</span> Live Published Articles on Store
-                  <span style={{ fontSize: 12, background: "rgba(59, 130, 246, 0.2)", color: "#60a5fa", padding: "2px 8px", borderRadius: 12, border: "1px solid rgba(59, 130, 246, 0.4)" }}>
-                    {storeArticles.length} Live
-                  </span>
-                </h4>
-                <p style={{ margin: 0, fontSize: 13, color: "#94a3b8" }}>
-                  Articles currently active on your live Shopify storefront across all channels.
-                </p>
-              </div>
-              <button
-                type="button"
-                onClick={fetchArticles}
-                disabled={articlesLoading}
-                style={{
-                  background: "rgba(255, 255, 255, 0.06)",
-                  border: "1px solid rgba(255, 255, 255, 0.12)",
-                  color: "#38bdf8",
-                  padding: "8px 14px",
-                  borderRadius: 8,
-                  fontSize: 12.5,
-                  cursor: "pointer",
-                  fontWeight: 600,
-                  display: "inline-flex",
-                  alignItems: "center",
-                  gap: 6,
-                }}
-              >
-                <span>↻</span> {articlesLoading ? "Syncing..." : "Refresh Live Articles"}
-              </button>
-            </div>
-
-            {articlesLoading && storeArticles.length === 0 ? (
-              <div style={{ padding: "30px 0", textAlign: "center", color: "#94a3b8", fontSize: 14 }}>
-                ⏳ Syncing live blog articles from Shopify...
-              </div>
-            ) : storeArticles.length === 0 ? (
-              <div style={{ padding: "30px 0", textAlign: "center", color: "#64748b", fontSize: 14 }}>
-                No published articles found in your store yet. Generate your first AI article above!
-              </div>
-            ) : (
-              <div
-                style={{
-                  display: "grid",
-                  gridTemplateColumns: "repeat(auto-fill, minmax(280px, 1fr))",
-                  gap: 16,
-                }}
-              >
-                {storeArticles.map((art) => (
-                  <div
-                    key={art.id}
-                    style={{
-                      background: "rgba(11, 16, 27, 0.8)",
-                      border: "1px solid rgba(255, 255, 255, 0.08)",
-                      borderRadius: 10,
-                      overflow: "hidden",
-                      display: "flex",
-                      flexDirection: "column",
-                      justifyContent: "space-between",
-                    }}
-                  >
-                    {art.image?.src ? (
-                      <div style={{ width: "100%", height: 140, overflow: "hidden", background: "#050811" }}>
-                        <img
-                          src={art.image.src}
-                          alt={art.title}
-                          style={{ width: "100%", height: "100%", objectFit: "cover" }}
-                        />
-                      </div>
-                    ) : (
-                      <div style={{ width: "100%", height: 80, background: "rgba(255,255,255,0.03)", display: "flex", alignItems: "center", justifyContent: "center", color: "#64748b", fontSize: 24 }}>
-                        📰
-                      </div>
-                    )}
-                    <div style={{ padding: 14, display: "flex", flexDirection: "column", flex: 1, justifyContent: "space-between", gap: 10 }}>
-                      <div>
-                        <div style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 6 }}>
-                          <span style={{ fontSize: 10.5, fontWeight: 700, textTransform: "uppercase", padding: "2px 6px", borderRadius: 4, background: "rgba(56, 189, 248, 0.15)", color: "#38bdf8" }}>
-                            {art.blog_title || "News"}
-                          </span>
-                          {art.published_at && (
-                            <span style={{ fontSize: 11, color: "#64748b" }}>
-                              {new Date(art.published_at).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })}
-                            </span>
-                          )}
-                        </div>
-                        <h5 style={{ fontSize: 13.5, fontWeight: 700, color: "#f1f5f9", margin: 0, lineHeight: 1.35 }}>
-                          {art.title}
-                        </h5>
-                      </div>
-                      <a
-                        href={art.live_url}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        style={{
-                          display: "inline-flex",
-                          alignItems: "center",
-                          justifyContent: "center",
-                          gap: 6,
-                          width: "100%",
-                          padding: "8px 10px",
-                          borderRadius: 6,
-                          background: "rgba(59, 130, 246, 0.15)",
-                          border: "1px solid rgba(59, 130, 246, 0.3)",
-                          color: "#60a5fa",
-                          fontSize: 12,
-                          fontWeight: 700,
-                          textDecoration: "none",
-                          cursor: "pointer",
-                        }}
-                      >
-                        <span>👁️ View Live on Website</span>
-                        <span>↗</span>
-                      </a>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            )}
-          </div>
+          </form>
         </div>
-      )}
+      </div>
+    )}
 
       {/* -------------------------------------------------------------
           SUB-TAB 3: AUTONOMOUS SHOPIFY SEO AUTOPILOT (RAILWAY ENGINE)
@@ -2401,6 +2572,337 @@ export default function ShopifyStoreConnect({ onConnectionChange }) {
                 }}
               >
                 {pushingProduct ? "Pushing Live…" : "🚀 Push to Live Shopify Store"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* -------------------------------------------------------------
+          AI EXISTING BLOG ARTICLE OPTIMIZER MODAL
+      ------------------------------------------------------------- */}
+      {selectedArticle && (
+        <div
+          style={{
+            position: "fixed",
+            inset: 0,
+            background: "rgba(0, 0, 0, 0.8)",
+            backdropFilter: "blur(8px)",
+            WebkitBackdropFilter: "blur(8px)",
+            zIndex: 99999,
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            padding: 16,
+          }}
+        >
+          <div
+            style={{
+              background: "#0d131f",
+              border: "1px solid rgba(255, 255, 255, 0.12)",
+              borderRadius: 20,
+              width: "100%",
+              maxWidth: 960,
+              maxHeight: "92vh",
+              display: "flex",
+              flexDirection: "column",
+              boxShadow: "0 25px 60px rgba(0, 0, 0, 0.8)",
+              overflow: "hidden",
+            }}
+          >
+            {/* Modal Header */}
+            <div
+              style={{
+                padding: "16px 22px",
+                borderBottom: "1px solid rgba(255, 255, 255, 0.08)",
+                display: "flex",
+                justifyContent: "space-between",
+                alignItems: "center",
+                background: "rgba(255, 255, 255, 0.02)",
+              }}
+            >
+              <div>
+                <h3 style={{ margin: 0, fontSize: 16, fontWeight: 800, color: "#fff", display: "flex", alignItems: "center", gap: 8 }}>
+                  <span>📰</span> AI Blog Article Optimizer & Upgrader
+                  <span style={{ fontSize: 11, background: "rgba(56, 189, 248, 0.15)", color: "#38bdf8", padding: "2px 8px", borderRadius: 4 }}>
+                    {selectedArticle.blog_title || "News"}
+                  </span>
+                </h3>
+                <div style={{ fontSize: 12, color: "#94a3b8", marginTop: 2 }}>
+                  {selectedArticle.title}
+                </div>
+              </div>
+              <button
+                onClick={() => setSelectedArticle(null)}
+                style={{
+                  background: "transparent",
+                  border: "none",
+                  color: "#94a3b8",
+                  fontSize: 20,
+                  cursor: "pointer",
+                }}
+              >
+                ✕
+              </button>
+            </div>
+
+            {/* Modal Body */}
+            <div style={{ padding: 22, overflowY: "auto", flex: 1, display: "flex", flexDirection: "column", gap: 16 }}>
+              {/* Target Controls */}
+              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
+                <div>
+                  <label style={{ display: "block", fontSize: 12, fontWeight: 700, color: "#cbd5e1", marginBottom: 4 }}>
+                    Target SEO Keywords:
+                  </label>
+                  <input
+                    type="text"
+                    value={articleKeywords}
+                    onChange={(e) => setArticleKeywords(e.target.value)}
+                    placeholder="e.g. Kundan Jewellery, bridal choker, Indian artificial jewellery UK"
+                    style={{
+                      width: "100%",
+                      padding: "8px 12px",
+                      borderRadius: 8,
+                      background: "#070a10",
+                      border: "1px solid rgba(255, 255, 255, 0.1)",
+                      color: "#fff",
+                      fontSize: 12.5,
+                    }}
+                  />
+                </div>
+
+                <div>
+                  <label style={{ display: "block", fontSize: 12, fontWeight: 700, color: "#cbd5e1", marginBottom: 4 }}>
+                    Desired Tone & Angle:
+                  </label>
+                  <select
+                    value={articleTone}
+                    onChange={(e) => setArticleTone(e.target.value)}
+                    style={{
+                      width: "100%",
+                      padding: "8px 10px",
+                      borderRadius: 8,
+                      background: "#070a10",
+                      border: "1px solid rgba(255, 255, 255, 0.1)",
+                      color: "#fff",
+                      fontSize: 12.5,
+                    }}
+                  >
+                    <option value="luxury, persuasive, and SEO-optimized">Luxury & High-Fashion</option>
+                    <option value="expert styling authority and educational guide">Styling Guide & Authority</option>
+                    <option value="punchy, trending, and benefit-driven">Modern & Viral Trend</option>
+                    <option value="conversational, warm, and story-driven">Warm Storytelling</option>
+                  </select>
+                </div>
+              </div>
+
+              {/* Geographic Targeting with Presets */}
+              <div>
+                <label style={{ display: "block", fontSize: 12, fontWeight: 700, color: "#cbd5e1", marginBottom: 4 }}>
+                  🌍 Target Countries or Cities / Regional Market:
+                </label>
+                <input
+                  type="text"
+                  value={articleTargetLocations}
+                  onChange={(e) => setArticleTargetLocations(e.target.value)}
+                  placeholder="e.g. United Kingdom, London, Birmingham, USA, India, Dubai"
+                  style={{
+                    width: "100%",
+                    padding: "8px 12px",
+                    borderRadius: 8,
+                    background: "#070a10",
+                    border: "1px solid rgba(255, 255, 255, 0.1)",
+                    color: "#fff",
+                    fontSize: 12.5,
+                  }}
+                />
+                <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginTop: 6 }}>
+                  {[
+                    { label: "🌐 Global", val: "Global / Worldwide" },
+                    { label: "🇬🇧 UK & Europe", val: "United Kingdom, London, Manchester, Western Europe" },
+                    { label: "🇺🇸 USA & Canada", val: "United States, New York, California, Canada, Toronto" },
+                    { label: "🇮🇳 India", val: "India, Mumbai, Delhi, Bangalore" },
+                    { label: "🇦🇪 UAE & Gulf", val: "United Arab Emirates, Dubai, Abu Dhabi, Saudi Arabia" },
+                    { label: "🇦🇺 Australia", val: "Australia, Sydney, Melbourne, New Zealand" },
+                  ].map((p) => (
+                    <button
+                      key={p.label}
+                      type="button"
+                      onClick={() => setArticleTargetLocations(p.val)}
+                      style={{
+                        padding: "3px 8px",
+                        borderRadius: 6,
+                        background: "rgba(255, 255, 255, 0.05)",
+                        border: "1px solid rgba(255, 255, 255, 0.1)",
+                        color: "#94a3b8",
+                        fontSize: 11,
+                        cursor: "pointer",
+                      }}
+                    >
+                      {p.label}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              <button
+                type="button"
+                onClick={handleGenerateArticleOptimization}
+                disabled={optimizingArticle}
+                style={{
+                  padding: "10px 16px",
+                  borderRadius: 10,
+                  background: "linear-gradient(135deg, #38bdf8 0%, #0ea5e9 100%)",
+                  border: "none",
+                  color: "#070a10",
+                  fontWeight: 800,
+                  fontSize: 13,
+                  cursor: optimizingArticle ? "not-allowed" : "pointer",
+                  boxShadow: "0 2px 10px rgba(56, 189, 248, 0.3)",
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  gap: 8,
+                }}
+              >
+                <span>{optimizingArticle ? "Synthesizing SEO Upgrade, Headings & FAQs…" : "⚡ Generate AI SEO Upgrade"}</span>
+              </button>
+
+              {/* Side-by-side Preview */}
+              <div style={{ display: "grid", gridTemplateColumns: "1fr 1.3fr", gap: 16 }}>
+                {/* Left: Current Article on Store */}
+                <div style={{ background: "rgba(0,0,0,0.3)", borderRadius: 12, padding: 14, border: "1px solid rgba(255,255,255,0.06)", display: "flex", flexDirection: "column", gap: 8 }}>
+                  <div style={{ fontSize: 11.5, fontWeight: 700, color: "#94a3b8", textTransform: "uppercase" }}>
+                    Current Store Article
+                  </div>
+                  <div style={{ fontSize: 13, fontWeight: 700, color: "#fff" }}>
+                    {selectedArticle.title}
+                  </div>
+                  <div
+                    style={{ fontSize: 12, color: "#cbd5e1", maxHeight: 300, overflowY: "auto", lineHeight: 1.5 }}
+                    dangerouslySetInnerHTML={{ __html: selectedArticle.body_html || selectedArticle.summary_html || "<em>No body content found.</em>" }}
+                  />
+                </div>
+
+                {/* Right: AI Optimized Preview */}
+                <div style={{ background: "rgba(56, 189, 248, 0.04)", borderRadius: 12, padding: 14, border: "1px solid rgba(56, 189, 248, 0.25)" }}>
+                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 8 }}>
+                    <span style={{ fontSize: 11.5, fontWeight: 800, color: "#38bdf8", textTransform: "uppercase" }}>
+                      AI Optimized Article Preview
+                    </span>
+                    {optimizedArticleData && (
+                      <span style={{ fontSize: 10, color: "#34d399", fontWeight: 700 }}>Ready to Push Live</span>
+                    )}
+                  </div>
+
+                  {!optimizedArticleData && !optimizingArticle && (
+                    <div style={{ color: "#64748b", fontSize: 12, padding: "40px 0", textAlign: "center" }}>
+                      Click "Generate AI SEO Upgrade" above to rewrite and upgrade this article with high-ranking SEO schema, richer headings, and FAQs.
+                    </div>
+                  )}
+
+                  {optimizingArticle && (
+                    <div style={{ color: "#38bdf8", fontSize: 12, padding: "40px 0", textAlign: "center" }}>
+                      ⏳ Elevating title, structuring H2/H3 subheadings, expanding content, and crafting FAQs…
+                    </div>
+                  )}
+
+                  {optimizedArticleData && (
+                    <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+                      <div style={{ padding: "8px 10px", background: "#0b101b", borderRadius: 8, border: "1px solid rgba(255,255,255,0.08)" }}>
+                        <div style={{ fontSize: 10, color: "#94a3b8", textTransform: "uppercase", fontWeight: 700, marginBottom: 2 }}>
+                          Optimized Search Title
+                        </div>
+                        <div style={{ fontSize: 13, color: "#60a5fa", fontWeight: 700 }}>
+                          {optimizedArticleData.optimizedTitle}
+                        </div>
+                        {optimizedArticleData.summaryHtml && (
+                          <div style={{ fontSize: 11, color: "#94a3b8", marginTop: 4 }}>
+                            {optimizedArticleData.summaryHtml}
+                          </div>
+                        )}
+                      </div>
+
+                      <div
+                        style={{ fontSize: 12, color: "#e2e8f0", maxHeight: 260, overflowY: "auto", lineHeight: 1.5, padding: "8px 10px", background: "rgba(0,0,0,0.2)", borderRadius: 8 }}
+                        dangerouslySetInnerHTML={{ __html: optimizedArticleData.bodyHtml }}
+                      />
+
+                      {optimizedArticleData.suggestedTags?.length > 0 && (
+                        <div style={{ display: "flex", gap: 4, flexWrap: "wrap", marginTop: 4 }}>
+                          {optimizedArticleData.suggestedTags.map((t, idx) => (
+                            <span key={idx} style={{ fontSize: 10, padding: "2px 6px", borderRadius: 4, background: "rgba(255,255,255,0.06)", color: "#cbd5e1" }}>
+                              #{t}
+                            </span>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                  )}
+                </div>
+              </div>
+
+              {articleSuccessMsg && (
+                <div style={{ padding: "10px 14px", borderRadius: 8, background: "rgba(16, 185, 129, 0.15)", border: "1px solid rgba(16, 185, 129, 0.3)", color: "#34d399", fontSize: 13, textAlign: "center" }}>
+                  <div>{articleSuccessMsg}</div>
+                  <a
+                    href={selectedArticle.live_url}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    style={{ color: "#38bdf8", fontWeight: 700, textDecoration: "underline", marginTop: 6, display: "inline-block" }}
+                  >
+                    View Updated Live Article on Shopify Storefront ↗
+                  </a>
+                </div>
+              )}
+            </div>
+
+            {/* Modal Footer */}
+            <div
+              style={{
+                padding: "14px 22px",
+                borderTop: "1px solid rgba(255, 255, 255, 0.08)",
+                display: "flex",
+                justifyContent: "space-between",
+                alignItems: "center",
+                background: "rgba(255, 255, 255, 0.02)",
+              }}
+            >
+              <button
+                type="button"
+                onClick={() => setSelectedArticle(null)}
+                style={{
+                  padding: "8px 16px",
+                  borderRadius: 8,
+                  background: "rgba(255, 255, 255, 0.05)",
+                  border: "1px solid rgba(255, 255, 255, 0.1)",
+                  color: "#94a3b8",
+                  fontSize: 12,
+                  cursor: "pointer",
+                }}
+              >
+                Close
+              </button>
+
+              <button
+                type="button"
+                onClick={handlePushUpdatedArticleToShopify}
+                disabled={!optimizedArticleData || updatingArticle}
+                style={{
+                  padding: "10px 22px",
+                  borderRadius: 8,
+                  background: optimizedArticleData
+                    ? "linear-gradient(135deg, #10b981 0%, #059669 100%)"
+                    : "rgba(255, 255, 255, 0.05)",
+                  border: "none",
+                  color: optimizedArticleData ? "#fff" : "#64748b",
+                  fontWeight: 800,
+                  fontSize: 13,
+                  cursor: optimizedArticleData && !updatingArticle ? "pointer" : "not-allowed",
+                  boxShadow: optimizedArticleData ? "0 2px 10px rgba(16, 185, 129, 0.35)" : "none",
+                }}
+              >
+                {updatingArticle ? "Pushing Live Updates to Shopify…" : "🚀 Push Updates Live to Shopify ↗"}
               </button>
             </div>
           </div>
