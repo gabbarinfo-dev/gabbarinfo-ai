@@ -432,6 +432,7 @@ Respond ONLY with a valid JSON object matching this schema:
           model: "gpt-4o-mini",
           messages: [{ role: "user", content: fullArticlePrompt }],
           response_format: { type: "json_object" },
+          max_tokens: 4096,
           temperature: 0.7,
         });
         return JSON.parse(comp.choices[0]?.message?.content || "{}");

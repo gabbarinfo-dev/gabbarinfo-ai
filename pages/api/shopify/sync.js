@@ -579,6 +579,17 @@ CRITICAL RULES FOR INTERNAL PRODUCT LINKS:
 3. Strict URL Precision: Only use the EXACT product URLs provided above. Do NOT modify the URL path or invent imaginary links.
 ` : ""}
 
+MANDATORY LENGTH & COMPREHENSIVE SECTION STRUCTURE (MUST BE 1,500+ WORDS):
+You MUST write an extensive, publication-grade editorial article (1,500+ words). Develop at least 6 substantial sections with 2-3 detailed paragraphs each, covering:
+- Immersive introduction & cultural / style trends (250+ words).
+- Essential styling rules and outfit coordination (250+ words).
+- Day-to-night styling transitions and accessorizing secrets (250+ words).
+- Material craftsmanship, hypoallergenic metal alloys, and durability (250+ words).
+- Curated Store Highlights & Signature Pieces featuring our linked products (300+ words).
+- Comprehensive Frequently Asked Questions with 4 detailed Q&As (250+ words).
+- Concluding styling verdict & inspiring Call to Action (150+ words).
+Do NOT write short overviews or shallow summaries. Provide rich, actionable, editorial paragraphs.
+
 ARTICLE REQUIREMENTS:
 1. Compelling H1 Title incorporating primary keywords.
 2. Hook paragraph capturing attention and addressing shopper desires or problems.
@@ -609,6 +620,7 @@ Do NOT include markdown code block backticks.`;
               model: "gpt-4o-mini",
               messages: [{ role: "user", content: blogPrompt }],
               response_format: { type: "json_object" },
+              max_tokens: 4096,
               temperature: 0.7,
             });
             result = JSON.parse(comp.choices[0]?.message?.content || "{}");
@@ -856,14 +868,15 @@ CRITICAL RULES FOR INTERNAL PRODUCT LINKS:
 
 YOUR MISSION:
 1. Elevate the title to be irresistible, click-worthy, and optimized for search engine ranking (under 70 chars).
-2. Rewrite the article body with:
+2. Rewrite and dramatically expand the article body to a comprehensive, publication-grade 1,400+ words:
    - An engaging, high-retention introduction hook.
-   - Rich semantic subheadings (<h2>, <h3>).
+   - At least 5-6 substantial sections with rich semantic subheadings (<h2>, <h3>).
    - Deep styling advice, product pairing suggestions, and valuable consumer insights.
    - Natural incorporation of the target keywords: "${keywords || title}".
    - Natural references to the target market: "${targetLocations || "Global"}".
-   - Organic internal product links to 4-5 store products.
-   - A dedicated <h3>Frequently Asked Questions</h3> section with 3 practical Q&As.
+   - Organic internal product links to 4-5 store products with exact URLs.
+   - A dedicated <h3>Curated Store Highlights / Featured Pieces</h3> section with direct links to the matched store products.
+   - A dedicated <h3>Frequently Asked Questions</h3> section with 3-4 practical Q&As.
    - A concluding call-to-action encouraging readers to browse the store's curated collections.
 3. Provide a concise, high-CTR meta summary (under 160 characters).
 4. Provide 4-6 relevant SEO tags.
@@ -885,6 +898,7 @@ Respond ONLY with a valid JSON object matching this structure:
             model: "gpt-4o-mini",
             messages: [{ role: "user", content: prompt }],
             response_format: { type: "json_object" },
+            max_tokens: 4096,
             temperature: 0.7,
           });
           aiResult = JSON.parse(comp.choices[0]?.message?.content || "{}");
