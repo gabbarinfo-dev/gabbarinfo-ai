@@ -113,34 +113,74 @@ async function runSeoAutopilotCycle({ supabase, openai, force = false, logger = 
       const siteUrl = wpConn.siteUrl.replace(/\/$/, "");
       const wpApiKey = wpConn.apiKey;
 
-      // 4. Select Legitimate Service Topic
+      // 4. Select Legitimate Service Topic for ANY Business Type
       let candidateServices = [];
       if (Array.isArray(config.discoveredServices)) candidateServices.push(...config.discoveredServices.map(decodeHtmlEntities));
       if (Array.isArray(config.targetKeywords)) candidateServices.push(...config.targetKeywords.map(decodeHtmlEntities));
       candidateServices = [...new Set(candidateServices)].filter(isLegitimateService);
 
+      // If not yet discovered, check client onboarding memory for their exact business services
       if (candidateServices.length === 0) {
+        try {
+          const { data: clientMem } = await supabase
+            .from("agent_memory")
+            .select("content")
+            .eq("email", item.email)
+            .eq("memory_type", "client")
+            .maybeSingle();
+          if (clientMem?.content) {
+            const parsedClient = typeof clientMem.content === "string" ? JSON.parse(clientMem.content) : clientMem.content;
+            const bAnswers = parsedClient?.business_answers?.[businessName] || parsedClient?.business_answers?.["default_business"] || parsedClient || {};
+            const clientServ = bAnswers.services || bAnswers.service || bAnswers.products || "";
+            if (clientServ) {
+              const splitted = String(clientServ).split(/[,|\n]+/).map((s) => s.trim()).filter((s) => s.length > 2);
+              if (splitted.length > 0) candidateServices.push(...splitted.filter(isLegitimateService));
+            }
+          }
+        } catch (_) {}
+      }
+
+      // If still empty, dynamically crawl their actual site's published pages
+      if (candidateServices.length === 0 && siteUrl) {
+        try {
+          const pagesRes = await fetch(`${siteUrl}/wp-json/wp/v2/pages?per_page=20&_fields=title,slug`);
+          if (pagesRes.ok) {
+            const pages = await pagesRes.json();
+            const skipSlugs = /^(home|about|contact|privacy|terms|faq|cart|checkout|my-account|sample-page)$/i;
+            for (const p of pages || []) {
+              const title = (p?.title?.rendered || p?.slug || "").replace(/<[^>]+>/g, "").trim();
+              if (title && title.length > 2 && !skipSlugs.test((p.slug || "").toLowerCase())) {
+                candidateServices.push(title);
+              }
+            }
+          }
+        } catch (_) {}
+      }
+
+      // Dynamic fallback based on the user's specific business name & industry
+      if (candidateServices.length === 0) {
+        const ind = config.industry || businessName || "Commercial Growth";
         candidateServices = [
-          "Search Engine Optimization (SEO) & Topical Authority",
-          "High-ROI Google Ads Management & Search PPC",
-          "High-Performance Meta & Instagram Ads Scaling",
-          "Custom Website Design & High-Converting UI/UX",
-          "Google Business Profile & Local 3-Pack Dominance",
-          "Full-Funnel Digital Marketing Strategy"
+          `${ind} Core Services & Solutions`,
+          `High-ROI Strategic ${ind}`,
+          `Customer Acquisition & ${ind} Operations`,
+          `Quality Excellence & Delivery in ${ind}`
         ];
       }
 
       let nextIndex = (Number(config.lastServiceIndex) || 0) + 1;
       if (nextIndex >= candidateServices.length) nextIndex = 0;
-      const activeService = candidateServices[nextIndex] || "Full-Funnel Digital Marketing Strategy";
+      const activeService = candidateServices[nextIndex] || `${businessName} Core Services`;
       const targetLocations = (config.targetLocations || config.targetMarket || "").trim();
 
-      // 4.5 Fetch Existing Published WordPress Posts for Authentic Internal Linking
+      // 4.5 Fetch Existing Published WordPress Posts & Pages for Authentic Internal Linking
       let existingPublishedPosts = [];
+      let existingPublishedPages = [];
       try {
-        const postsResp = await fetch(`${siteUrl}/wp-json/wp/v2/posts?per_page=15&_fields=id,title,slug,link`, {
-          headers: { Accept: "application/json" },
-        });
+        const [postsResp, pagesResp] = await Promise.all([
+          fetch(`${siteUrl}/wp-json/wp/v2/posts?per_page=15&_fields=id,title,slug,link`, { headers: { Accept: "application/json" } }),
+          fetch(`${siteUrl}/wp-json/wp/v2/pages?per_page=10&_fields=id,title,slug,link`, { headers: { Accept: "application/json" } })
+        ]);
         if (postsResp.ok) {
           const rawPosts = await postsResp.json();
           if (Array.isArray(rawPosts)) {
@@ -152,13 +192,24 @@ async function runSeoAutopilotCycle({ supabase, openai, force = false, logger = 
             })).filter((p) => p.link && p.title);
           }
         }
+        if (pagesResp.ok) {
+          const rawPages = await pagesResp.json();
+          if (Array.isArray(rawPages)) {
+            existingPublishedPages = rawPages.map((p) => ({
+              id: p.id,
+              title: typeof p.title === "object" ? p.title.rendered : p.title,
+              link: p.link,
+              slug: p.slug,
+            })).filter((p) => p.link && p.title);
+          }
+        }
       } catch (e) {
-        logger(`[SEO Autopilot] Note: Could not fetch existing published posts (${e.message}).`);
+        logger(`[SEO Autopilot] Note: Could not fetch existing published content (${e.message}).`);
       }
 
       // 5. Generate Full SEO Article (STRICT 1,650+ words, 10 structured sections) via GPT-4o
-      logger(`[SEO Autopilot] Generating exhaustive 1,650+ word SEO guide for "${activeService}"...`);
-      const systemPrompt = `You are an elite commercial SEO director, tech journalist, and enterprise growth strategist writing for ${businessName} (${siteUrl}).
+      logger(`[SEO Autopilot] Generating exhaustive 1,650+ word SEO guide for "${activeService}" (${businessName})...`);
+      const systemPrompt = `You are an elite commercial director, subject matter expert, and enterprise journalist writing for ${businessName} (${siteUrl}).
 Write an exhaustive, authoritative, 100% human-grade master guide focused specifically on "${activeService}".
 ${targetLocations ? `
 TARGET GEOGRAPHIC MARKET MANDATE:
@@ -169,14 +220,14 @@ The business is specifically targeting clients and audiences in: "${targetLocati
 CRITICAL LENGTH & DEPTH MANDATES:
 1. STRICT WORD COUNT: Body content MUST BE AT LEAST 1,650 WORDS (target: 1,700 to 2,200 words). Any shallow summaries under 1,500 words are strictly unacceptable.
 2. MANDATORY 10 SECTIONS (You MUST include ALL 10 of these exact <h2> sections with 2 to 3 detailed <h3> subsections each):
-   - <h2>1. The Strategic Evolution of ${activeService} in 2026</h2> (At least 170 words across 2 detailed paragraphs explaining the modern landscape, AI discovery, and market shifts)
-   - <h2>2. Core Foundations, Strategic Principles & Attribution Frameworks</h2> (At least 180 words detailing key methodologies, first-party data capture, and operational mechanics)
-   - <h2>3. High-Converting Campaign Architecture & Execution Systems</h2> (At least 200 words with actionable structural frameworks, audience modeling, and formulas)
-   - <h2>4. Technology Infrastructure, Analytics & Conversion Mastery</h2> (At least 180 words detailing measurement, CAPI/tracking, modern tooling, and data accuracy)
-   - <h2>5. Omnichannel Growth Funnels & Audience Monetization</h2> (At least 180 words on cross-platform synergy, CAC reduction, and ROI scaling)
+   - <h2>1. The Strategic Evolution of ${activeService} in 2026</h2> (At least 170 words across 2 detailed paragraphs explaining the modern landscape, industry discovery, and market shifts)
+   - <h2>2. Core Foundations, Strategic Principles & Attribution Frameworks</h2> (At least 180 words detailing key methodologies, customer touchpoints, and operational mechanics)
+   - <h2>3. High-Converting Campaign Architecture & Execution Systems</h2> (At least 200 words with actionable structural frameworks, audience modeling, and operational formulas)
+   - <h2>4. Technology Infrastructure, Analytics & Conversion Mastery</h2> (At least 180 words detailing measurement, modern tooling, and service accuracy)
+   - <h2>5. Omnichannel Growth Funnels & Audience Monetization</h2> (At least 180 words on cross-channel synergy, client retention, and ROI scaling)
    - <h2>6. In-Depth Real-World Case Study: 0 to 480% Revenue Acceleration</h2> (At least 220 words detailing baseline metrics, strategic interventions, and verified commercial gains)
    - <h2>7. Step-by-Step 90-Day Execution Playbook for Hyper-Growth</h2> (At least 220 words with Month 1, Month 2, Month 3 actionable sprints)
-   - <h2>8. 5 Critical Pitfalls & Costly Strategic Mistakes to Avoid</h2> (At least 200 words detailing common misconceptions, vanity metrics, and operational fixes)
+   - <h2>8. 5 Critical Pitfalls & Costly Strategic Mistakes to Avoid</h2> (At least 200 words detailing common misconceptions, operational errors, and actionable fixes)
    - <h2>9. Frequently Asked Questions (FAQ)</h2> (Provide 5 detailed, high-impact questions specifically about ${activeService}, each answered with comprehensive multi-paragraph explanations of 100+ words, totaling 500+ words for this FAQ section)
    - <h2>10. Strategic Conclusion and Actionable Roadmap for 2026</h2> (At least 150 words summary with a clear commercial call to action to partner with ${businessName})
 
@@ -191,25 +242,27 @@ CRITICAL LENGTH & DEPTH MANDATES:
      * NEVER stuff keywords robotically. Every keyword MUST be integrated in natural, fluent, syntactically correct English.
 
 4. MANDATORY EMBEDDED INTERNAL HYPERLINKS (Styled with theme amber #f59e0b, bold, underline):
-   - Core Services & Pages:
-     * <a href="${siteUrl}/services/" style="color: #f59e0b; font-weight: 700; text-decoration: underline;">${businessName} Digital Marketing & Development Services</a>
-     * <a href="${siteUrl}/contact-us/" style="color: #f59e0b; font-weight: 700; text-decoration: underline;">Schedule a Growth Strategy Session with ${businessName}</a>
-     * <a href="${siteUrl}/packages/" style="color: #f59e0b; font-weight: 700; text-decoration: underline;">Explore Enterprise Digital Growth Packages</a>
+   - Core Pages & Solutions:
+${existingPublishedPages.length > 0 ? existingPublishedPages.slice(0, 4).map((p) => `     * <a href="${p.link}" style="color: #f59e0b; font-weight: 700; text-decoration: underline;">${businessName} - ${p.title}</a>`).join("\n") : `     * <a href="${siteUrl}/" style="color: #f59e0b; font-weight: 700; text-decoration: underline;">${businessName} Official Website</a>
+     * <a href="${siteUrl}/services/" style="color: #f59e0b; font-weight: 700; text-decoration: underline;">${businessName} Services & Solutions</a>
+     * <a href="${siteUrl}/contact/" style="color: #f59e0b; font-weight: 700; text-decoration: underline;">Contact ${businessName}</a>`}
 ${existingPublishedPosts.length > 0 ? `
    - MANDATORY EXISTING PUBLISHED BLOG INTERNAL LINK:
      You MUST choose at least ONE relevant published blog post from the site's existing catalog below and contextually embed an internal hyperlink to it in Section 3, Section 4, or Section 5 with natural, fluent sentence anchor text:
 ${existingPublishedPosts.slice(0, 8).map((p) => `     * Link: <a href="${p.link}" style="color: #f59e0b; font-weight: 700; text-decoration: underline;">[Contextual anchor related to ${p.title}]</a> (Title: "${p.title}")`).join("\n")}
 ` : ""}
 
-5. MANDATORY 4+ SCATTERED EXTERNAL AUTHORITY LINKS (STRICT SPATIAL DISTRIBUTION):
+5. MANDATORY 4+ SCATTERED EXTERNAL AUTHORITY LINKS (STRICT SPATIAL DISTRIBUTION & TOPIC RELEVANCE):
    You MUST embed AT LEAST 4 authoritative, topic-relevant, non-competing external links.
+   CRITICAL RELEVANCE MANDATE: All 4 external links MUST be directly relevant to "${activeService}" and the specific industry of ${businessName} (e.g., for healthcare/medical: ADA, PubMed, WHO, WebMD; for real estate: NAR, Zillow Research, Urban Land Institute; for legal/finance: ABA, Forbes, Bloomberg, SEC; for eCommerce/retail: NRF, eMarketer, Statista; for engineering/construction: AGC, IEEE, ANSI; for B2B/technology/marketing: Gartner, McKinsey, HBR, Forrester, Search Engine Journal, W3C). NEVER use generic tech/SEO links for a healthcare, retail, or real estate business.
+   
    CRITICAL SPATIAL DISTRIBUTION RULE: These links MUST BE SCATTERED across different parts of the article. It is STRICTLY FORBIDDEN to clump them together or put them only in the last 2 paragraphs or conclusion.
    
    Embed strictly across these sections:
-   - Early Body (Section 1 or Section 2): 1 external link citing recognized market statistics, economic analysis, or industry shifts (e.g., Gartner [https://www.gartner.com], McKinsey & Company [https://www.mckinsey.com], Harvard Business Review [https://hbr.org], Forrester [https://www.forrester.com], or Statista [https://www.statista.com]).
-   - Mid-First Half (Section 3 or Section 4): 1 external link to an authoritative publication or technical standard directly relevant to the topic (e.g., Search Engine Journal [https://www.searchenginejournal.com], HubSpot Research [https://www.hubspot.com], Content Marketing Institute [https://contentmarketinginstitute.com], W3C Standards [https://www.w3.org], Nielsen Norman Group [https://www.nngroup.com], or IEEE Computer Society [https://www.computer.org]).
-   - Mid-Second Half (Section 5 or Section 6): 1 external link to an authoritative commercial benchmark, conversion index, or analytics framework (e.g., Bain & Company [https://www.bain.com], Deloitte Insights [https://www2.deloitte.com], PwC Global [https://www.pwc.com], or eMarketer [https://www.emarketer.com]).
-   - Late Body (Section 7 or Section 8): 1 external link to a credible professional guideline, compliance standard, or recognized industry benchmark (e.g., FTC Consumer & Advertising Guidelines [https://www.ftc.gov], IAB Interactive Advertising Bureau [https://www.iab.com], or ISO Standards [https://www.iso.org]).
+   - Early Body (Section 1 or Section 2): 1 external link citing recognized market statistics, economic analysis, or industry shifts relevant to the business domain.
+   - Mid-First Half (Section 3 or Section 4): 1 external link to an authoritative publication, professional association, or technical standard directly relevant to ${activeService}.
+   - Mid-Second Half (Section 5 or Section 6): 1 external link to an authoritative commercial benchmark, industry index, or verified research study.
+   - Late Body (Section 7 or Section 8): 1 external link to a credible professional guideline, safety/compliance standard, or recognized industry governing body.
    
    External Link Styling:
    Every external link MUST have target="_blank" rel="noopener noreferrer" and be styled in theme amber:

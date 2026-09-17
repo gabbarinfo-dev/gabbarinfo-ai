@@ -46,29 +46,29 @@ function isLegitimateService(serviceName) {
 }
 
 function getCreativeArchetypes(service, industry) {
-  const s = service || "Professional Digital Services";
-  const ind = industry || "Digital Marketing";
+  const s = service || "Professional Services";
+  const ind = industry || "Commercial Solutions";
 
   return [
     {
       name: "HERO_COMMERCIAL_SHOWCASE",
       description: `
 [VISUAL ARCHETYPE: HERO COMMERCIAL SHOWCASE & PEDESTAL]
-- Ultra-premium, high-gloss commercial ad poster for "${s}".
+- Ultra-premium, high-gloss commercial ad poster for "${s}" (${ind}).
 - Features a striking, hyper-realistic focal subject representing "${s}" displayed with pride on a sleek modern pedestal or floating center-right with dramatic studio lighting.
-- Materials & Atmosphere: Polished obsidian reflections, subtle ambient gold/cyan particle glow, and deep rich contrast.
-- Color Palette: Sophisticated dark luxury palette (obsidian slate, deep charcoal) with vibrant color-matched rim lighting.
+- Materials & Atmosphere: Polished obsidian reflections, subtle ambient particle glow, and deep rich contrast.
+- Color Palette: Sophisticated luxury palette with vibrant color-matched rim lighting.
 - Typography: Ultra-clean, bold modern display typography with high readability: "${s}".
 `
     },
     {
       name: "DYNAMIC_MODERN_GRAPHIC",
       description: `
-[VISUAL ARCHETYPE: DYNAMIC MODERN 3D AGENCY GRAPHIC]
-- Cutting-edge agency commercial graphic design with dynamic depth and layered 3D accents.
-- Features high-impact 3D visual icons, floating holographic dashboards, or stylized physical elements representing "${s}" with realistic materials and glossy finishes.
+[VISUAL ARCHETYPE: DYNAMIC MODERN 3D COMMERCIAL GRAPHIC]
+- Cutting-edge commercial graphic design with dynamic depth and layered 3D accents.
+- Features high-impact 3D visual icons, floating contextual dashboards, or stylized physical elements representing "${s}" with realistic materials and glossy finishes.
 - Materials & Atmosphere: Sleek glassmorphism panels, energetic directional lighting, and crisp geometric accents.
-- Color Palette: Bold high-contrast dark palette with vibrant glowing neon cyan and amber accents.
+- Color Palette: Bold high-contrast dark palette with vibrant glowing ambient accents.
 - Typography: High-impact powerhouse advertising typography: "${s}".
 `
     },
@@ -77,7 +77,7 @@ function getCreativeArchetypes(service, industry) {
       description: `
 [VISUAL ARCHETYPE: BRIGHT MINIMALIST & CONTEMPORARY STUDIO]
 - Pristine, daylight-filled high-end commercial ad aesthetic with soft architectural shadows.
-- Features clean, elegant composition showing modern workstation, analytics charts, and digital architecture representing "${s}".
+- Features clean, elegant composition showing modern workspace, key equipment, refined architecture, and presentation elements representing "${s}".
 - Materials & Atmosphere: Soft matte textures, bright airy space, smooth light travertine or clean off-white gradient backdrop.
 - Color Palette: Crisp high-contrast dark typography and vibrant accent lines.
 - Typography: Sophisticated contemporary sans-serif typography: "${s}".
@@ -87,14 +87,15 @@ function getCreativeArchetypes(service, industry) {
 }
 
 function buildGraphicPrompt(businessName, service, industry, hook, topic) {
-  const archetypes = getCreativeArchetypes(service, industry);
+  const userIndustry = industry || businessName || "Professional Services";
+  const archetypes = getCreativeArchetypes(service, userIndustry);
   const archetype = archetypes[Math.floor(Math.random() * archetypes.length)];
 
   return `You are an award-winning commercial graphic designer creating a finished agency-grade commercial ad poster for social media advertising.
 
 [CLIENT BUSINESS CONTEXT]
 - Brand Name: "${businessName}"
-- Industry: "${industry || 'Digital Marketing & Growth'}"
+- Industry: "${userIndustry}"
 - Specific Service: "${service}"
 - Core Message / Hook: "${hook}: ${topic}"
 
@@ -102,9 +103,9 @@ function buildGraphicPrompt(businessName, service, industry, hook, topic) {
 ${archetype.description}
 
 [SUBJECT MATTER RULES - CRITICAL]
-- Accurately depict high-tech digital marketing, website design, performance growth, and modern business tools.
-- NEVER depict physical delivery trucks, unrelated street photos, or random stock scenes.
-- Sleek studio lighting, 3D geometric accents, high contrast, clean agency composition, pristine 4K quality.
+- Accurately depict premium, professional visual elements and commercial atmosphere directly relevant to "${service}" and "${userIndustry}".
+- NEVER depict random unrelated stock scenes or physical delivery trucks unless specifically requested.
+- Sleek studio lighting, 3D geometric accents, high contrast, clean commercial composition, pristine 4K quality.
 - Absolutely NO text watermarks or random gibberish letters.`;
 }
 
@@ -148,6 +149,27 @@ async function runSocialAutopilotCycle({ supabase, openai, force = false, logger
         continue;
       }
 
+      // Discover siteUrl if available in config or from connected WordPress
+      let siteUrl = (config.siteUrl || config.website || "").replace(/\/$/, "");
+      if (!siteUrl) {
+        try {
+          const { data: wpMemList } = await supabase
+            .from("agent_memory")
+            .select("content")
+            .eq("email", item.email)
+            .or("memory_type.like.wp_conn_%,memory_type.like.wp_connection_%");
+          for (const m of wpMemList || []) {
+            try {
+              const parsed = JSON.parse(m.content);
+              if (parsed.siteUrl) {
+                siteUrl = parsed.siteUrl.replace(/\/$/, "");
+                break;
+              }
+            } catch (_) {}
+          }
+        } catch (_) {}
+      }
+
       // 2. Discover / Filter legitimate services
       let candidateServices = [];
       if (Array.isArray(config.services)) candidateServices.push(...config.services.map(decodeHtmlEntities));
@@ -159,14 +181,52 @@ async function runSocialAutopilotCycle({ supabase, openai, force = false, logger
       }
       candidateServices = [...new Set(candidateServices)].filter(isLegitimateService);
 
+      // If not yet discovered, check client onboarding memory for their exact business services
       if (candidateServices.length === 0) {
+        try {
+          const { data: clientMem } = await supabase
+            .from("agent_memory")
+            .select("content")
+            .eq("email", item.email)
+            .eq("memory_type", "client")
+            .maybeSingle();
+          if (clientMem?.content) {
+            const parsedClient = typeof clientMem.content === "string" ? JSON.parse(clientMem.content) : clientMem.content;
+            const bAnswers = parsedClient?.business_answers?.[businessName] || parsedClient?.business_answers?.["default_business"] || parsedClient || {};
+            const clientServ = bAnswers.services || bAnswers.service || bAnswers.products || "";
+            if (clientServ) {
+              const splitted = String(clientServ).split(/[,|\n]+/).map((s) => s.trim()).filter((s) => s.length > 2);
+              if (splitted.length > 0) candidateServices.push(...splitted.filter(isLegitimateService));
+            }
+          }
+        } catch (_) {}
+      }
+
+      // If still empty, dynamically crawl their actual site's published pages
+      if (candidateServices.length === 0 && siteUrl) {
+        try {
+          const pagesRes = await fetch(`${siteUrl}/wp-json/wp/v2/pages?per_page=20&_fields=title,slug`);
+          if (pagesRes.ok) {
+            const pages = await pagesRes.json();
+            const skipSlugs = /^(home|about|contact|privacy|terms|faq|cart|checkout|my-account|sample-page)$/i;
+            for (const p of pages || []) {
+              const title = (p?.title?.rendered || p?.slug || "").replace(/<[^>]+>/g, "").trim();
+              if (title && title.length > 2 && !skipSlugs.test((p.slug || "").toLowerCase())) {
+                candidateServices.push(title);
+              }
+            }
+          }
+        } catch (_) {}
+      }
+
+      // Dynamic fallback based on the user's specific business name & industry
+      if (candidateServices.length === 0) {
+        const ind = config.industry || businessName || "Commercial Services";
         candidateServices = [
-          "Website Design & High-Performance UI",
-          "Search Engine Optimization (SEO)",
-          "Meta Social Media Ads",
-          "Google Ads & PPC Campaigns",
-          "Local Maps & Google Business Optimization",
-          "Brand Strategy & Digital Growth"
+          `${ind} Core Solutions`,
+          `Professional High-Quality ${ind}`,
+          `Strategic Client Delivery in ${ind}`,
+          `Trusted Industry Standards in ${ind}`
         ];
       }
 
@@ -184,19 +244,21 @@ async function runSocialAutopilotCycle({ supabase, openai, force = false, logger
       let nextIndex = (Number(config.lastServiceIndex) || 0) + 1;
       if (nextIndex >= candidateServices.length) nextIndex = 0;
       if (!activeService) {
-        activeService = candidateServices[nextIndex] || "Website Design & High-Performance UI";
+        activeService = candidateServices[nextIndex] || `${businessName} Core Services`;
       }
+
+      const businessIndustry = config.industry || businessName || "Commercial Services";
 
       // 3. Generate Caption & Topic Hook via OpenAI / LLM
       const topicHooks = [
-        "Is your website silently losing high-ticket clients?",
-        "How to turn digital traffic into predictable paying customers",
-        "Stop burning your ad budget without clear measurable ROI",
-        "The modern growth framework every brand needs to dominate online",
-        "Why standard templates fail and custom digital experiences win"
+        `Are you getting the full commercial return you deserve from your ${activeService}?`,
+        `How premier ${businessIndustry} standards unlock greater reliability and growth`,
+        `The difference between ordinary providers and industry leaders in ${activeService}`,
+        `3 proven principles that elevate ${activeService} to the highest professional standard`,
+        `Why excellence and consistency in ${activeService} create lasting customer loyalty`
       ];
       const selectedHook = topicHooks[Math.floor(Math.random() * topicHooks.length)];
-      const topicTitle = `${activeService}: Scaling Your Brand with High-Impact Results`;
+      const topicTitle = `${activeService}: Elevating Your Brand with Industry Excellence`;
 
       logger(`[Social Autopilot] Generating caption for "${activeService}"...`);
       const targetLocations = (config.targetLocations || config.targetMarket || "").trim();
@@ -207,13 +269,14 @@ async function runSocialAutopilotCycle({ supabase, openai, force = false, logger
           messages: [
             {
               role: "system",
-              content: `You are an elite direct-response social media copywriter for a high-end digital agency. Write compelling, concise, high-converting social media copy with clean formatting and strategic hashtags.${targetLocations ? ` You are specifically targeting business owners and clients in: ${targetLocations}. Reflect the regional business tone, commercial context, and market speed of these locations.` : ""}`
+              content: `You are an elite direct-response commercial copywriter representing "${businessName}", an industry leader in ${businessIndustry}. Write compelling, authoritative, high-converting social media copy with clean formatting and strategic hashtags.${targetLocations ? ` You are specifically targeting clients and decision-makers in: ${targetLocations}. Reflect the regional business tone, commercial context, and market speed of these locations.` : ""}`
             },
             {
               role: "user",
               content: `Write an engaging commercial social media post promoting "${activeService}" for "${businessName}".
+Industry: "${businessIndustry}"
 Hook: "${selectedHook}"
-${targetLocations ? `Target Geographic Markets: "${targetLocations}" (Tailor the hook and message to resonate strongly with entrepreneurs and decision-makers in ${targetLocations})` : ""}
+${targetLocations ? `Target Geographic Markets: "${targetLocations}" (Tailor the hook and message to resonate strongly with customers and decision-makers in ${targetLocations})` : ""}
 Include 3-4 bullet benefits, a strong call to action, and 6-8 relevant hashtags${targetLocations ? ` (including geo-targeted hashtags for ${targetLocations})` : ""}.`
             }
           ],
@@ -225,12 +288,12 @@ Include 3-4 bullet benefits, a strong call to action, and 6-8 relevant hashtags$
         const geoHashtags = targetLocations
           ? " " + targetLocations.split(",").map((l) => `#${l.trim().replace(/[^a-zA-Z0-9]/g, "")}`).filter(h => h.length > 2).slice(0, 3).join(" ")
           : "";
-        captionText = `📢 ${selectedHook}\n\nRunning a business means staying ahead of the curve. At ${businessName}, our ${activeService} solutions turn complex digital challenges into predictable revenue.${targetLocations ? ` Helping businesses thrive across ${targetLocations}.` : ""}\n\n👉 Send us a DM or visit our website to learn more!\n\n#${activeService.replace(/[^a-zA-Z0-9]/g, "")} #BusinessGrowth #DigitalMarketing #${businessName.replace(/[^a-zA-Z0-9]/g, "")}${geoHashtags}`;
+        captionText = `📢 ${selectedHook}\n\nAt ${businessName}, our ${activeService} solutions are built to deliver uncompromised quality, measurable outcomes, and lasting peace of mind.${targetLocations ? ` Proudly serving clients across ${targetLocations}.` : ""}\n\n👉 Send us a message or visit our website to get started!\n\n#${activeService.replace(/[^a-zA-Z0-9]/g, "")} #${businessIndustry.replace(/[^a-zA-Z0-9]/g, "")} #${businessName.replace(/[^a-zA-Z0-9]/g, "")}${geoHashtags}`;
       }
 
       // 4. Generate Bespoke 3D Poster via gpt-image-2 (ZERO STOCK PHOTOS)
       logger(`[Social Autopilot] Invoking gpt-image-2 for "${activeService}"...`);
-      const graphicPrompt = buildGraphicPrompt(businessName, activeService, "Digital Marketing", selectedHook, topicTitle);
+      const graphicPrompt = buildGraphicPrompt(businessName, activeService, businessIndustry, selectedHook, topicTitle);
 
       let imageBuffer = null;
       try {
