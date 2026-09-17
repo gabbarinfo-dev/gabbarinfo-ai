@@ -14,7 +14,72 @@ const supabase = createClient(
 export const maxDuration = 60;
 export const config = {
   maxDuration: 60,
+  api: {
+    bodyParser: {
+      sizeLimit: "25mb",
+    },
+  },
 };
+
+function getRelevantProductsForLinking(products = [], queryText = "", primaryDomain = "", maxCount = 8) {
+  if (!Array.isArray(products) || products.length === 0) return [];
+
+  const stopwords = new Set([
+    "a", "an", "the", "and", "or", "but", "if", "because", "as", "what",
+    "when", "where", "how", "all", "any", "both", "each", "few", "more",
+    "most", "other", "some", "such", "no", "nor", "not", "only", "own",
+    "same", "so", "than", "too", "very", "can", "will", "just", "should",
+    "now", "in", "on", "at", "to", "for", "with", "by", "from", "about",
+    "into", "through", "during", "before", "after", "above", "below",
+    "of", "off", "over", "under", "again", "further", "then", "once",
+    "here", "there", "why", "our", "your", "my", "their", "its", "is", "are"
+  ]);
+
+  const tokens = String(queryText || "")
+    .toLowerCase()
+    .replace(/[^a-z0-9\s]/g, " ")
+    .split(/\s+/)
+    .filter((w) => w.length > 2 && !stopwords.has(w));
+
+  const scored = products.map((p) => {
+    let score = 0;
+    const titleLower = (p.title || "").toLowerCase();
+    const tagsLower = (Array.isArray(p.tags) ? p.tags.join(" ") : String(p.tags || "")).toLowerCase();
+    const typeLower = (p.product_type || "").toLowerCase();
+
+    for (const token of tokens) {
+      if (titleLower.includes(token)) score += 3;
+      if (tagsLower.includes(token)) score += 2;
+      if (typeLower.includes(token)) score += 2;
+    }
+
+    return {
+      id: p.id,
+      title: p.title,
+      handle: p.handle,
+      product_type: p.product_type,
+      tags: p.tags,
+      url: `https://${primaryDomain}/products/${p.handle}`,
+      score,
+    };
+  });
+
+  scored.sort((a, b) => b.score - a.score);
+  let selected = scored.filter((p) => p.score > 0).slice(0, maxCount);
+
+  if (selected.length < 5) {
+    const selectedIds = new Set(selected.map((p) => p.id));
+    for (const p of scored) {
+      if (!selectedIds.has(p.id)) {
+        selected.push(p);
+        selectedIds.add(p.id);
+        if (selected.length >= 6) break;
+      }
+    }
+  }
+
+  return selected;
+}
 
 export default async function handler(req, res) {
   if (req.method !== "GET" && req.method !== "POST") {
@@ -452,6 +517,38 @@ Respond ONLY with the raw JSON object. Do not include markdown code block backti
         return res.status(400).json({ ok: false, error: "Blog topic is required." });
       }
 
+      // 1. Fetch store products to identify candidate pieces for internal linking
+      let storeProducts = [];
+      try {
+        const prodResp = await fetch(
+          `https://${shop}/admin/api/2024-01/products.json?limit=250&fields=id,title,handle,product_type,tags`,
+          {
+            headers: {
+              "X-Shopify-Access-Token": accessToken,
+              "Content-Type": "application/json",
+            },
+          }
+        );
+        if (prodResp.ok) {
+          const pData = await prodResp.json();
+          storeProducts = pData.products || [];
+        }
+      } catch (pErr) {
+        console.warn("Could not fetch products for blog internal linking:", pErr.message);
+      }
+
+      const primaryDomain = conn.domain || conn.primary_domain || conn.myshopify_domain || shop;
+      const candidateProducts = getRelevantProductsForLinking(
+        storeProducts,
+        `${topic} ${keywords}`,
+        primaryDomain,
+        8
+      );
+
+      const candidateProductsText = candidateProducts.length > 0
+        ? candidateProducts.map((p, idx) => `${idx + 1}. Title: "${p.title}" | Direct Link: "${p.url}"`).join("\n")
+        : "";
+
       const blogPrompt = `You are a world-class eCommerce SEO copywriter and lifestyle content strategist for "${brandName}".
 Write an in-depth, authoritative, and engaging 1,500+ word eCommerce blog article optimized for Google rank and product conversion.
 
@@ -459,11 +556,27 @@ TOPIC: ${topic}
 TARGET KEYWORDS: ${keywords || topic}
 BRAND NAME: ${brandName}
 TONE: ${tone}
+STORE DOMAIN: ${primaryDomain}
 ${targetLocations ? `
 TARGET GEOGRAPHIC MARKET MANDATE (COUNTRIES & CITIES):
 The eCommerce brand is actively targeting shoppers and customers in: "${targetLocations}".
 - Deeply tailor recommendations, regional climate and styling factors, seasonal context, and shopping habits specifically to audiences in (${targetLocations}).
 - Naturally incorporate localized references, regional terminology, and city or country mentions of ${targetLocations} within styling tips, subheadings, and FAQ sections.
+` : ""}
+
+${candidateProductsText ? `
+MANDATORY INTERNAL PRODUCT LINKING REQUIREMENTS (CRITICAL ECOMMERCE CONVERSION ENGINE):
+You MUST organically interlink AT LEAST 4 to 5 relevant products from this store into the article body HTML.
+Available Store Products to Interlink:
+${candidateProductsText}
+
+CRITICAL RULES FOR INTERNAL PRODUCT LINKS:
+1. In-Text Mentions: Embed at least 3-4 clickable product links naturally within styling recommendations, accessorizing paragraphs, or outfit breakdowns using standard HTML anchor tags:
+   <a href="EXACT_PRODUCT_URL" title="Product Title" target="_blank" rel="noopener noreferrer">Descriptive Anchor Text or Product Name</a>
+   (Never use generic "click here" or "check this out". Use descriptive anchor text, e.g. "...pair this look with an ornate <a href=\"EXACT_URL\">Product Name</a> for timeless elegance...")
+2. Dedicated "Curated Store Highlights / Featured Pieces" Section:
+   Near the conclusion or after the main styling guide, include a dedicated <h3>Curated Store Highlights / Featured Pieces</h3> or <h3>Shop the Story</h3> callout block featuring 4 to 5 of these products with direct links and 1-sentence reasons why each piece completes the ensemble.
+3. Strict URL Precision: Only use the EXACT product URLs provided above. Do NOT modify the URL path or invent imaginary links.
 ` : ""}
 
 ARTICLE REQUIREMENTS:
@@ -481,7 +594,7 @@ Respond ONLY with a valid JSON object matching this schema:
   "title": "Full Article Title",
   "seoTitle": "Calibrated SEO Title under 60 characters",
   "seoDescription": "Compelling Meta Description between 145-155 chars",
-  "bodyHtml": "<p>Article HTML content...</p>",
+  "bodyHtml": "<p>Article HTML content with internal product links...</p>",
   "tags": ["keyword1", "keyword2", "keyword3"]
 }
 Do NOT include markdown code block backticks.`;
@@ -533,6 +646,23 @@ Do NOT include markdown code block backticks.`;
             });
             if (imgGen.data?.[0]?.b64_json) {
               imageBase64 = imgGen.data[0].b64_json;
+              // Upload to Supabase Storage bucket so client can pass lightweight URL instead of 2MB payload
+              try {
+                const imgBuffer = Buffer.from(imageBase64, "base64");
+                const imgFileName = `shopify-blog-${Date.now()}-${Math.random().toString(36).substring(7)}.png`;
+                const { error: upErr } = await supabase.storage.from("instagram-creatives").upload(imgFileName, imgBuffer, {
+                  contentType: "image/png",
+                  upsert: true,
+                });
+                if (!upErr) {
+                  const { data: pubData } = supabase.storage.from("instagram-creatives").getPublicUrl(imgFileName);
+                  if (pubData?.publicUrl) {
+                    imageUrl = pubData.publicUrl;
+                  }
+                }
+              } catch (storageErr) {
+                console.warn("Could not upload blog hero image to Supabase storage:", storageErr.message);
+              }
             } else if (imgGen.data?.[0]?.url) {
               imageUrl = imgGen.data[0].url;
             }
@@ -664,6 +794,38 @@ Do NOT include markdown code block backticks.`;
         return res.status(400).json({ ok: false, error: "Article title is required." });
       }
 
+      // Fetch store products to identify candidate pieces for internal linking
+      let storeProducts = [];
+      try {
+        const prodResp = await fetch(
+          `https://${shop}/admin/api/2024-01/products.json?limit=250&fields=id,title,handle,product_type,tags`,
+          {
+            headers: {
+              "X-Shopify-Access-Token": accessToken,
+              "Content-Type": "application/json",
+            },
+          }
+        );
+        if (prodResp.ok) {
+          const pData = await prodResp.json();
+          storeProducts = pData.products || [];
+        }
+      } catch (pErr) {
+        console.warn("Could not fetch products for optimize-article internal linking:", pErr.message);
+      }
+
+      const primaryDomain = conn.domain || conn.primary_domain || conn.myshopify_domain || shop;
+      const candidateProducts = getRelevantProductsForLinking(
+        storeProducts,
+        `${title} ${keywords} ${currentBody.slice(0, 400)}`,
+        primaryDomain,
+        8
+      );
+
+      const candidateProductsText = candidateProducts.length > 0
+        ? candidateProducts.map((p, idx) => `${idx + 1}. Title: "${p.title}" | Direct Link: "${p.url}"`).join("\n")
+        : "";
+
       const prompt = `You are a world-class luxury eCommerce content strategist, copywriter, and SEO specialist.
 You are tasked with thoroughly optimizing, upgrading, and rewriting an EXISTING blog article for an eCommerce brand.
 
@@ -672,9 +834,25 @@ STORE/BRAND NAME: ${conn.shopName || "Brand"}
 TARGET SEO KEYWORDS: ${keywords || title}
 DESIRED TONE: ${tone}
 TARGET GEOGRAPHIC LOCATIONS: ${targetLocations || "Global / Worldwide"}
+STORE DOMAIN: ${primaryDomain}
 
 EXISTING ARTICLE CONTENT / DRAFT:
 ${String(currentBody).substring(0, 3000)}
+
+${candidateProductsText ? `
+MANDATORY INTERNAL PRODUCT LINKING REQUIREMENTS (ECOMMERCE CONVERSION ENGINE):
+You MUST organically interlink AT LEAST 4 to 5 relevant products from this store into the updated article body HTML.
+Available Store Products to Interlink:
+${candidateProductsText}
+
+CRITICAL RULES FOR INTERNAL PRODUCT LINKS:
+1. In-Text Mentions: Embed at least 3-4 clickable product links naturally within styling recommendations, accessorizing paragraphs, or outfit breakdowns using standard HTML anchor tags:
+   <a href="EXACT_PRODUCT_URL" title="Product Title" target="_blank" rel="noopener noreferrer">Descriptive Anchor Text or Product Name</a>
+   (Never use generic "click here" or "check this out". Use descriptive anchor text, e.g. "...pair this look with an ornate <a href=\"EXACT_URL\">Product Name</a> for timeless elegance...")
+2. Dedicated "Curated Store Highlights / Featured Pieces" Section:
+   Near the conclusion or after the main styling guide, include a dedicated <h3>Curated Store Highlights / Featured Pieces</h3> or <h3>Shop the Story</h3> callout block featuring 4 to 5 of these products with direct links and 1-sentence reasons why each piece completes the ensemble.
+3. Strict URL Precision: Only use the EXACT product URLs provided above. Do NOT modify the URL path or invent imaginary links.
+` : ""}
 
 YOUR MISSION:
 1. Elevate the title to be irresistible, click-worthy, and optimized for search engine ranking (under 70 chars).
@@ -684,6 +862,7 @@ YOUR MISSION:
    - Deep styling advice, product pairing suggestions, and valuable consumer insights.
    - Natural incorporation of the target keywords: "${keywords || title}".
    - Natural references to the target market: "${targetLocations || "Global"}".
+   - Organic internal product links to 4-5 store products.
    - A dedicated <h3>Frequently Asked Questions</h3> section with 3 practical Q&As.
    - A concluding call-to-action encouraging readers to browse the store's curated collections.
 3. Provide a concise, high-CTR meta summary (under 160 characters).

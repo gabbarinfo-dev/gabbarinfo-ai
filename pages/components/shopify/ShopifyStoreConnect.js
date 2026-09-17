@@ -619,7 +619,7 @@ export default function ShopifyStoreConnect({ onConnectionChange }) {
           bodyHtml: articleHtml,
           summaryHtml: summaryHtml,
           tags: articleTags,
-          imageBase64,
+          imageBase64: imageUrl ? null : imageBase64,
           imageUrl,
           isDraft,
           author: "GabbarInfo AI",

@@ -71,6 +71,66 @@ async function getValidShopifyAccessToken(connection, email, supabase, logger = 
   return connection.access_token;
 }
 
+function getRelevantProductsForLinking(products = [], queryText = "", primaryDomain = "", maxCount = 8) {
+  if (!Array.isArray(products) || products.length === 0) return [];
+
+  const stopwords = new Set([
+    "a", "an", "the", "and", "or", "but", "if", "because", "as", "what",
+    "when", "where", "how", "all", "any", "both", "each", "few", "more",
+    "most", "other", "some", "such", "no", "nor", "not", "only", "own",
+    "same", "so", "than", "too", "very", "can", "will", "just", "should",
+    "now", "in", "on", "at", "to", "for", "with", "by", "from", "about",
+    "into", "through", "during", "before", "after", "above", "below",
+    "of", "off", "over", "under", "again", "further", "then", "once",
+    "here", "there", "why", "our", "your", "my", "their", "its", "is", "are"
+  ]);
+
+  const tokens = String(queryText || "")
+    .toLowerCase()
+    .replace(/[^a-z0-9\s]/g, " ")
+    .split(/\s+/)
+    .filter((w) => w.length > 2 && !stopwords.has(w));
+
+  const scored = products.map((p) => {
+    let score = 0;
+    const titleLower = (p.title || "").toLowerCase();
+    const tagsLower = (Array.isArray(p.tags) ? p.tags.join(" ") : String(p.tags || "")).toLowerCase();
+    const typeLower = (p.product_type || "").toLowerCase();
+
+    for (const token of tokens) {
+      if (titleLower.includes(token)) score += 3;
+      if (tagsLower.includes(token)) score += 2;
+      if (typeLower.includes(token)) score += 2;
+    }
+
+    return {
+      id: p.id,
+      title: p.title,
+      handle: p.handle,
+      product_type: p.product_type,
+      tags: p.tags,
+      url: `https://${primaryDomain}/products/${p.handle}`,
+      score,
+    };
+  });
+
+  scored.sort((a, b) => b.score - a.score);
+  let selected = scored.filter((p) => p.score > 0).slice(0, maxCount);
+
+  if (selected.length < 5) {
+    const selectedIds = new Set(selected.map((p) => p.id));
+    for (const p of scored) {
+      if (!selectedIds.has(p.id)) {
+        selected.push(p);
+        selectedIds.add(p.id);
+        if (selected.length >= 6) break;
+      }
+    }
+  }
+
+  return selected;
+}
+
 /**
  * Main autonomous Shopify publishing cycle on Railway worker.
  */
@@ -304,6 +364,19 @@ Format response strictly as JSON:
 
       // 9. Generate Full 1,500+ Word Authoritative Article Body
       logger(`[Shopify Autopilot] Generating 1,500+ word article: "${strategicTopic.topic}"...`);
+
+      const primaryDomain = conn.domain || shop;
+      const candidateProducts = getRelevantProductsForLinking(
+        products,
+        `${strategicTopic.topic} ${strategicTopic.primaryKeyword} ${(strategicTopic.secondaryKeywords || []).join(" ")}`,
+        primaryDomain,
+        8
+      );
+
+      const candidateProductsText = candidateProducts.length > 0
+        ? candidateProducts.map((p, idx) => `${idx + 1}. Title: "${p.title}" | Direct Link: "${p.url}"`).join("\n")
+        : "";
+
       const fullArticlePrompt = `You are a world-class eCommerce SEO copywriter and lifestyle content strategist for "${brandName}".
 Write an in-depth, authoritative, and engaging 1,500+ word eCommerce blog article optimized for Google rank and product conversion.
 
@@ -311,12 +384,27 @@ TOPIC: ${strategicTopic.topic}
 PRIMARY KEYWORD: ${strategicTopic.primaryKeyword}
 SECONDARY KEYWORDS: ${(strategicTopic.secondaryKeywords || []).join(", ")}
 BRAND NAME: ${brandName}
-STORE DOMAIN: ${conn.domain || shop}
+STORE DOMAIN: ${primaryDomain}
 ${targetLocations ? `
 TARGET GEOGRAPHIC MARKET MANDATE (COUNTRIES & CITIES):
 The store is actively targeting shoppers and clients in: "${targetLocations}".
 - Deeply tailor the styling guides, climate/seasonal factors, consumer preferences, lifestyle references, and local context specifically for shoppers in (${targetLocations}).
 - Naturally incorporate localized references, regional terminology, and city or country mentions of ${targetLocations} within subheadings, styling tips, case scenarios, and FAQ sections.
+` : ""}
+
+${candidateProductsText ? `
+MANDATORY INTERNAL PRODUCT LINKING REQUIREMENTS (ECOMMERCE CONVERSION ENGINE):
+You MUST organically interlink AT LEAST 4 to 5 relevant products from this store into the article body HTML.
+Available Store Products to Interlink:
+${candidateProductsText}
+
+CRITICAL RULES FOR INTERNAL PRODUCT LINKS:
+1. In-Text Mentions: Embed at least 3-4 clickable product links naturally within styling recommendations, accessorizing paragraphs, or outfit breakdowns using standard HTML anchor tags:
+   <a href="EXACT_PRODUCT_URL" title="Product Title" target="_blank" rel="noopener noreferrer">Descriptive Anchor Text or Product Name</a>
+   (Never use generic "click here" or "check this out". Use descriptive anchor text, e.g. "...pair this look with an ornate <a href=\"EXACT_URL\">Product Name</a> for timeless elegance...")
+2. Dedicated "Curated Store Highlights / Featured Pieces" Section:
+   Near the conclusion or after the main styling guide, include a dedicated <h3>Curated Store Highlights / Featured Pieces</h3> or <h3>Shop the Story</h3> callout block featuring 4 to 5 of these products with direct links and 1-sentence reasons why each piece completes the ensemble.
+3. Strict URL Precision: Only use the EXACT product URLs provided above. Do NOT modify the URL path or invent imaginary links.
 ` : ""}
 
 ARTICLE REQUIREMENTS:
