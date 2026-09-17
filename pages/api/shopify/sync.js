@@ -547,12 +547,12 @@ Do NOT include markdown code block backticks.`;
         return res.status(articleRes.status).json({ ok: false, error: `Shopify Article Creation Error: ${txt}` });
       }
 
-      const data = await articleRes.json();
+      const chosenBlogHandle = payload.blogHandle || "news";
       return res.status(200).json({
         ok: true,
         message: isDraft ? "Article saved as Shopify Draft!" : "Article published live to Shopify blog!",
         article: data.article,
-        articleUrl: `https://${conn.domain || shop}/blogs/${blogId}/${data.article?.handle}`,
+        articleUrl: `https://${conn.domain || shop}/blogs/${chosenBlogHandle}/${data.article?.handle}`,
       });
     }
 

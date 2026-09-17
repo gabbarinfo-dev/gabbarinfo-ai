@@ -304,12 +304,16 @@ export default function ShopifyStoreConnect({ onConnectionChange }) {
       const summaryHtml = genData?.generated?.seoDescription || "";
 
       // 2. Publish to Shopify Blog
+      const currentBlog = blogs.find((b) => String(b.id) === String(selectedBlogId));
+      const blogHandle = currentBlog?.handle || "news";
+
       const pubRes = await fetch("/api/shopify/sync", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           action: "publish-blog",
           blogId: selectedBlogId,
+          blogHandle: blogHandle,
           title: articleTitle,
           bodyHtml: articleHtml,
           summaryHtml: summaryHtml,
