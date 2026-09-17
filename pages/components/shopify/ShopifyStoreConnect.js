@@ -53,6 +53,7 @@ export default function ShopifyStoreConnect({ onConnectionChange }) {
   const [articleTone, setArticleTone] = useState("luxury, persuasive, and SEO-optimized");
   const [articleTargetLocations, setArticleTargetLocations] = useState("");
   const [articleSearchQuery, setArticleSearchQuery] = useState("");
+  const [articlesError, setArticlesError] = useState("");
 
   // Autopilot Suite State (Railway Engine)
   const [autopilotLoading, setAutopilotLoading] = useState(false);
@@ -315,14 +316,18 @@ export default function ShopifyStoreConnect({ onConnectionChange }) {
 
   const fetchArticles = async () => {
     setArticlesLoading(true);
+    setArticlesError("");
     try {
       const res = await fetch("/api/shopify/sync?action=list-articles");
       const data = await res.json();
       if (data.ok) {
         setStoreArticles(data.articles || []);
+      } else {
+        setArticlesError(data.error || "Failed to load articles from Shopify.");
       }
     } catch (err) {
       console.error("Failed to load Shopify articles:", err);
+      setArticlesError(err.message || "Network error loading articles.");
     } finally {
       setArticlesLoading(false);
     }
@@ -1050,7 +1055,10 @@ export default function ShopifyStoreConnect({ onConnectionChange }) {
         </button>
 
         <button
-          onClick={() => setActiveSubTab("existing-blogs")}
+          onClick={() => {
+            setActiveSubTab("existing-blogs");
+            if (storeArticles.length === 0) fetchArticles();
+          }}
           style={{
             padding: "8px 18px",
             borderRadius: 10,
@@ -1316,6 +1324,12 @@ export default function ShopifyStoreConnect({ onConnectionChange }) {
                 </button>
               </div>
             </div>
+
+            {articlesError && (
+              <div style={{ padding: "10px 14px", borderRadius: 8, background: "rgba(239, 68, 68, 0.15)", border: "1px solid rgba(239, 68, 68, 0.3)", color: "#f87171", fontSize: 13, marginBottom: 14 }}>
+                ⚠️ {articlesError}
+              </div>
+            )}
 
             {articlesLoading && storeArticles.length === 0 ? (
               <div style={{ padding: "60px 0", textAlign: "center", color: "#94a3b8", fontSize: 14 }}>

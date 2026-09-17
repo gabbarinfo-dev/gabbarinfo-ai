@@ -269,7 +269,7 @@ export default async function handler(req, res) {
         const allBlogs = blogData.blogs || [];
 
         let allArticles = [];
-        const primaryDomain = storeDomain || shop;
+        const primaryDomain = conn.domain || conn.primary_domain || conn.myshopify_domain || shop;
 
         await Promise.all(
           allBlogs.map(async (b) => {
