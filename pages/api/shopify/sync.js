@@ -11,6 +11,11 @@ const supabase = createClient(
   process.env.SUPABASE_SERVICE_ROLE_KEY
 );
 
+export const maxDuration = 60;
+export const config = {
+  maxDuration: 60,
+};
+
 export default async function handler(req, res) {
   if (req.method !== "GET" && req.method !== "POST") {
     return res.status(405).json({ ok: false, error: "Method not allowed" });
@@ -377,64 +382,80 @@ Respond ONLY with a valid JSON object matching this schema:
 }
 Do NOT include markdown code block backticks.`;
 
-      let aiResult = null;
-
-      if (process.env.OPENAI_API_KEY) {
-        try {
-          const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
-          const comp = await openai.chat.completions.create({
-            model: "gpt-4o-mini",
-            messages: [{ role: "user", content: blogPrompt }],
-            response_format: { type: "json_object" },
-            temperature: 0.7,
-          });
-          aiResult = JSON.parse(comp.choices[0]?.message?.content || "{}");
-        } catch (e) {
-          console.warn("OpenAI blog generation fallback:", e.message);
-        }
-      }
-
-      if (!aiResult && process.env.GEMINI_API_KEY) {
-        try {
-          const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
-          const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash" });
-          const res = await model.generateContent(blogPrompt);
-          const text = res.response.text().replace(/```json/gi, "").replace(/```/g, "").trim();
-          aiResult = JSON.parse(text);
-        } catch (geminiErr) {
-          console.error("Gemini blog generation failed:", geminiErr);
-        }
-      }
-
-      // Generate High-Res Editorial Featured Image using gpt-image-2
-      let imageBase64 = null;
-      let imageUrl = null;
-
-      if (process.env.OPENAI_API_KEY) {
-        try {
-          const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
-          const imagePrompt = `Ultra-realistic cinematic editorial lifestyle commercial photograph for eCommerce article titled "${aiResult.title || topic}". High fashion luxury aesthetic, 8k professional studio lighting, depth of field, award-winning shot.`;
-          const imgGen = await openai.images.generate({
-            model: "gpt-image-2",
-            prompt: imagePrompt,
-            size: "1024x1024",
-          });
-          if (imgGen.data?.[0]?.b64_json) {
-            imageBase64 = imgGen.data[0].b64_json;
-          } else if (imgGen.data?.[0]?.url) {
-            imageUrl = imgGen.data[0].url;
+      // Run Text Generation and Image Generation in Parallel for minimum latency
+      const textPromise = (async () => {
+        let result = null;
+        if (process.env.OPENAI_API_KEY) {
+          try {
+            const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
+            const comp = await openai.chat.completions.create({
+              model: "gpt-4o-mini",
+              messages: [{ role: "user", content: blogPrompt }],
+              response_format: { type: "json_object" },
+              temperature: 0.7,
+            });
+            result = JSON.parse(comp.choices[0]?.message?.content || "{}");
+          } catch (e) {
+            console.warn("OpenAI blog generation fallback:", e.message);
           }
-        } catch (imgErr) {
-          console.warn("gpt-image-2 generation failed:", imgErr.message);
         }
+
+        if (!result && process.env.GEMINI_API_KEY) {
+          try {
+            const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
+            const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash" });
+            const res = await model.generateContent(blogPrompt);
+            const text = res.response.text().replace(/```json/gi, "").replace(/```/g, "").trim();
+            result = JSON.parse(text);
+          } catch (geminiErr) {
+            console.error("Gemini blog generation failed:", geminiErr);
+          }
+        }
+        return result;
+      })();
+
+      const imagePromise = (async () => {
+        let imageBase64 = null;
+        let imageUrl = null;
+
+        if (process.env.OPENAI_API_KEY) {
+          try {
+            const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
+            const imagePrompt = `Ultra-realistic cinematic editorial lifestyle commercial photograph for eCommerce article about "${topic}". High fashion luxury aesthetic, 8k professional studio lighting, depth of field, award-winning shot, clean product styling.`;
+            const imgGen = await openai.images.generate({
+              model: "gpt-image-2",
+              prompt: imagePrompt,
+              size: "1024x1024",
+            });
+            if (imgGen.data?.[0]?.b64_json) {
+              imageBase64 = imgGen.data[0].b64_json;
+            } else if (imgGen.data?.[0]?.url) {
+              imageUrl = imgGen.data[0].url;
+            }
+          } catch (imgErr) {
+            console.warn("gpt-image-2 generation failed:", imgErr.message);
+          }
+        }
+        return { imageBase64, imageUrl };
+      })();
+
+      const [textResSettled, imgResSettled] = await Promise.allSettled([textPromise, imagePromise]);
+      const aiResult = textResSettled.status === "fulfilled" && textResSettled.value ? textResSettled.value : null;
+      const imgResult = imgResSettled.status === "fulfilled" && imgResSettled.value ? imgResSettled.value : { imageBase64: null, imageUrl: null };
+
+      if (!aiResult || !aiResult.title) {
+        return res.status(500).json({
+          ok: false,
+          error: "AI failed to generate article content. Please check your topic and try again.",
+        });
       }
 
       return res.status(200).json({
         ok: true,
         generated: {
           ...aiResult,
-          imageBase64,
-          imageUrl,
+          imageBase64: imgResult.imageBase64,
+          imageUrl: imgResult.imageUrl,
         },
       });
     }

@@ -680,7 +680,7 @@ export default function SubscriptionModal({
 
                           {/* Image Generation */}
                           <li style={{ color: "#cbd5e1" }}>
-                            🎨 <strong>{p.quotas.IMAGE_GENERATION}</strong> AI Images/mo (gpt-image-2)
+                            🎨 <strong>{p.quotas.IMAGE_GENERATION}</strong> AI Images/mo (Ultra HD)
                           </li>
 
                           {/* Autopilot Toggles */}

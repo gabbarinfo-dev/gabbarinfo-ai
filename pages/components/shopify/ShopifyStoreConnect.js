@@ -300,7 +300,16 @@ export default function ShopifyStoreConnect({ onConnectionChange }) {
           }),
         });
 
-        const genData = await genRes.json();
+        const resText = await genRes.text();
+        let genData;
+        try {
+          genData = JSON.parse(resText);
+        } catch {
+          throw new Error(
+            `Server responded with status ${genRes.status}: ${resText.slice(0, 120)}`
+          );
+        }
+
         if (genData.ok && genData.generated) {
           setPreviewArticle({
             title: genData.generated.title || blogTopic,
@@ -349,7 +358,13 @@ export default function ShopifyStoreConnect({ onConnectionChange }) {
             tone: "engaging, authoritative, and conversion-focused",
           }),
         });
-        const genData = await genRes.json();
+        const genText = await genRes.text();
+        let genData;
+        try {
+          genData = JSON.parse(genText);
+        } catch {
+          throw new Error(`Server returned status ${genRes.status}: ${genText.slice(0, 120)}`);
+        }
         if (!genData.ok) {
           throw new Error(genData.error || "Failed to generate blog article");
         }
@@ -382,7 +397,13 @@ export default function ShopifyStoreConnect({ onConnectionChange }) {
         }),
       });
 
-      const pubData = await pubRes.json();
+      const pubText = await pubRes.text();
+      let pubData;
+      try {
+        pubData = JSON.parse(pubText);
+      } catch {
+        throw new Error(`Publish error (${pubRes.status}): ${pubText.slice(0, 120)}`);
+      }
       if (pubData.ok) {
         setBlogSuccessMsg(pubData.message || "Article published successfully!");
         if (pubData.articleUrl) setPublishedArticleUrl(pubData.articleUrl);
@@ -1087,7 +1108,7 @@ export default function ShopifyStoreConnect({ onConnectionChange }) {
                   onChange={(e) => setRequireReview(e.target.checked)}
                   style={{ width: 17, height: 17, accentColor: "#f59e0b", cursor: "pointer" }}
                 />
-                <span>👁️ Review & Preview on Screen (inspect AI article & gpt-image-2 before publishing)</span>
+                <span>👁️ Review & Preview on Screen (inspect AI article before publishing)</span>
               </label>
 
               <label style={{ display: "flex", alignItems: "center", gap: 10, fontSize: 13, color: "#cbd5e1", cursor: "pointer" }}>
@@ -1127,7 +1148,7 @@ export default function ShopifyStoreConnect({ onConnectionChange }) {
             >
               <span>
                 {generatingBlog
-                  ? "⚡ Generating Article & gpt-image-2 Image…"
+                  ? "⚡ Generating article for review…"
                   : publishingBlog
                   ? "Publishing to Shopify…"
                   : requireReview
@@ -1165,7 +1186,7 @@ export default function ShopifyStoreConnect({ onConnectionChange }) {
                   <div style={{ marginBottom: 16 }}>
                     <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 6 }}>
                       <span style={{ fontSize: 12, fontWeight: 700, color: "#94a3b8" }}>
-                        🎨 Featured Hero Image (gpt-image-2)
+                        🎨 Featured Hero Image
                       </span>
                       <span style={{ fontSize: 10.5, color: "#34d399", fontWeight: 700 }}>
                         ✓ 1024x1024 Ready for Shopify CDN
