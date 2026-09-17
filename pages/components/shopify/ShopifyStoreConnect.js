@@ -26,6 +26,8 @@ export default function ShopifyStoreConnect({ onConnectionChange }) {
 
   // Blog Suite State
   const [blogs, setBlogs] = useState([]);
+  const [blogsLoading, setBlogsLoading] = useState(false);
+  const [blogsError, setBlogsError] = useState("");
   const [selectedBlogId, setSelectedBlogId] = useState("");
   const [blogTopic, setBlogTopic] = useState("");
   const [blogKeywords, setBlogKeywords] = useState("");
@@ -167,15 +169,24 @@ export default function ShopifyStoreConnect({ onConnectionChange }) {
   };
 
   const fetchBlogs = async () => {
+    setBlogsLoading(true);
+    setBlogsError("");
     try {
       const res = await fetch("/api/shopify/sync?action=list-blogs");
       const data = await res.json();
       if (data.ok && data.blogs?.length > 0) {
         setBlogs(data.blogs);
         setSelectedBlogId(String(data.blogs[0].id));
+      } else if (!data.ok) {
+        setBlogsError(data.error || "Failed to load blogs from Shopify store.");
+      } else {
+        setBlogs([]);
       }
     } catch (err) {
       console.error("Failed to load Shopify blogs:", err);
+      setBlogsError(err.message);
+    } finally {
+      setBlogsLoading(false);
     }
   };
 
@@ -907,12 +918,30 @@ export default function ShopifyStoreConnect({ onConnectionChange }) {
 
           <form onSubmit={handlePublishShopifyBlog} style={{ display: "flex", flexDirection: "column", gap: 16, maxWidth: 640 }}>
             <div>
-              <label style={{ display: "block", fontSize: 12.5, fontWeight: 700, color: "#cbd5e1", marginBottom: 6 }}>
-                Target Blog Channel:
-              </label>
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 6 }}>
+                <label style={{ fontSize: 12.5, fontWeight: 700, color: "#cbd5e1" }}>
+                  Target Blog Channel:
+                </label>
+                <button
+                  type="button"
+                  onClick={fetchBlogs}
+                  disabled={blogsLoading}
+                  style={{
+                    background: "transparent",
+                    border: "none",
+                    color: "#38bdf8",
+                    fontSize: 12,
+                    cursor: "pointer",
+                    textDecoration: "underline",
+                  }}
+                >
+                  {blogsLoading ? "Refreshing..." : "↻ Refresh Channels"}
+                </button>
+              </div>
               <select
                 value={selectedBlogId}
                 onChange={(e) => setSelectedBlogId(e.target.value)}
+                disabled={blogsLoading}
                 style={{
                   width: "100%",
                   padding: "10px 12px",
@@ -923,12 +952,22 @@ export default function ShopifyStoreConnect({ onConnectionChange }) {
                   fontSize: 13,
                 }}
               >
+                {blogs.length === 0 && (
+                  <option value="">
+                    {blogsLoading ? "Loading blog channels..." : "No blogs found (Click Refresh Channels)"}
+                  </option>
+                )}
                 {blogs.map((b) => (
                   <option key={b.id} value={b.id}>
                     {b.title} ({b.handle})
                   </option>
                 ))}
               </select>
+              {blogsError && (
+                <div style={{ marginTop: 6, fontSize: 11.5, color: "#f87171", background: "rgba(239, 68, 68, 0.1)", padding: "6px 10px", borderRadius: 6, border: "1px solid rgba(239, 68, 68, 0.2)" }}>
+                  ⚠️ {blogsError}
+                </div>
+              )}
             </div>
 
             <div>

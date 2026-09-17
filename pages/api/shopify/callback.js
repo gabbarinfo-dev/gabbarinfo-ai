@@ -79,6 +79,10 @@ export default async function handler(req, res) {
   // 3. Exchange Authorization Code for Permanent Access Token
   let accessToken = null;
   let grantedScope = "";
+  let refreshToken = null;
+  let expiresIn = 3600;
+  let expiresAt = null;
+
   try {
     const tokenResponse = await fetch(`https://${shop}/admin/oauth/access_token`, {
       method: "POST",
@@ -87,6 +91,7 @@ export default async function handler(req, res) {
         client_id: clientId,
         client_secret: clientSecret,
         code,
+        expiring: 1,
       }),
     });
 
@@ -99,6 +104,9 @@ export default async function handler(req, res) {
     const tokenData = await tokenResponse.json();
     accessToken = tokenData.access_token;
     grantedScope = tokenData.scope || "";
+    refreshToken = tokenData.refresh_token || null;
+    expiresIn = tokenData.expires_in || 3600;
+    expiresAt = Date.now() + (expiresIn * 1000);
   } catch (err) {
     console.error("Shopify token request error:", err);
     return res.status(500).send(`Shopify token exchange network error: ${err.message}`);
@@ -132,6 +140,9 @@ export default async function handler(req, res) {
     currency: shopDetails.currency || "USD",
     country: shopDetails.country_name || "",
     access_token: accessToken,
+    refresh_token: refreshToken,
+    expires_in: expiresIn,
+    expires_at: expiresAt,
     scope: grantedScope,
     connected_at: new Date().toISOString(),
     primary_domain: shopDetails.domain || shop,

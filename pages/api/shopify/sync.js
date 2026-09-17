@@ -4,6 +4,7 @@ import { authOptions } from "../auth/[...nextauth]";
 import { createClient } from "@supabase/supabase-js";
 import OpenAI from "openai";
 import { GoogleGenerativeAI } from "@google/generative-ai";
+import { getValidShopifyAccessToken } from "../../../lib/shopify/token-service";
 
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL,
@@ -174,7 +175,8 @@ export default async function handler(req, res) {
     }
 
     const conn = typeof mem.content === "string" ? JSON.parse(mem.content) : mem.content;
-    const { shop, access_token: accessToken } = conn;
+    const { shop } = conn;
+    const accessToken = await getValidShopifyAccessToken(conn, userEmail, supabase);
 
     if (!shop || !accessToken) {
       return res.status(400).json({ ok: false, error: "Shopify connection credentials invalid or missing." });
@@ -197,7 +199,33 @@ export default async function handler(req, res) {
       }
 
       const data = await resp.json();
-      return res.status(200).json({ ok: true, blogs: data.blogs || [] });
+      let blogs = data.blogs || [];
+
+      // If store has no blog channel created yet, automatically create default "News" channel
+      if (blogs.length === 0) {
+        try {
+          const createBlogRes = await fetch(`https://${shop}/admin/api/2024-01/blogs.json`, {
+            method: "POST",
+            headers: {
+              "X-Shopify-Access-Token": accessToken,
+              "Content-Type": "application/json",
+            },
+            body: JSON.stringify({
+              blog: { title: "News", commentable: "no" },
+            }),
+          });
+          if (createBlogRes.ok) {
+            const createdData = await createBlogRes.json();
+            if (createdData?.blog) {
+              blogs = [createdData.blog];
+            }
+          }
+        } catch (e) {
+          console.warn("Could not auto-create blog:", e);
+        }
+      }
+
+      return res.status(200).json({ ok: true, blogs });
     }
 
     // ---------------------------------------------------------
