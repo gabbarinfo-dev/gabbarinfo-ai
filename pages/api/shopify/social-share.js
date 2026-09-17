@@ -3,6 +3,7 @@ import { getServerSession } from "next-auth/next";
 import { authOptions } from "../auth/[...nextauth]";
 import { createClient } from "@supabase/supabase-js";
 import { executeFacebookPost } from "../../../lib/execute-facebook-post";
+import { getMetaIdentity, checkBrandMatch } from "../../../lib/meta/brand-verifier";
 
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL,
@@ -47,6 +48,38 @@ export default async function handler(req, res) {
         ok: false,
         require_connect: true,
         message: "Your Meta (Facebook/Instagram) account is not connected yet. Please connect Meta in the Social Pilot tab to enable 1-click social sharing.",
+      });
+    }
+
+    // 1.5 Anti-Exploitation & Brand Identity Verification
+    const { data: shopMem } = await supabase
+      .from("agent_memory")
+      .select("content")
+      .eq("email", userEmail.toLowerCase())
+      .eq("memory_type", "shopify_connection")
+      .maybeSingle();
+
+    let shopData = {};
+    if (shopMem?.content) {
+      try {
+        shopData = typeof shopMem.content === "string" ? JSON.parse(shopMem.content) : shopMem.content;
+      } catch (_) {}
+    }
+
+    const metaIdentity = await getMetaIdentity(meta);
+    const brandCheck = checkBrandMatch({
+      storeName: shopData.name || "Shopify Store",
+      storeDomain: shopData.domain || shopData.shop,
+      shopHandle: shopData.shop,
+      metaIdentity,
+    });
+
+    if (!brandCheck.isMatched) {
+      return res.status(403).json({
+        ok: false,
+        brandMismatch: true,
+        brandSecurity: brandCheck,
+        error: brandCheck.reason || "Anti-Exploitation Block: The connected social channel belongs to a different business. Cross-brand posting is prohibited to preserve audience trust and prevent multi-tenant abuse.",
       });
     }
 

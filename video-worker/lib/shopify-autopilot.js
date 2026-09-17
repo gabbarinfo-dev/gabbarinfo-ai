@@ -563,64 +563,109 @@ Respond ONLY with a valid JSON object matching this schema:
             const effectiveToken = meta.fb_page_access_token || meta.fb_user_access_token;
             const igId = meta.instagram_actor_id || meta.ig_business_id;
 
-            // Facebook Page link preview / photo post
-            if (config.autoShareFacebook !== false && pageId && effectiveToken) {
-              try {
-                logger(`[Shopify Autopilot] Syndicating article to Facebook Page (${pageId})...`);
-                const feedParams = new URLSearchParams();
-                feedParams.append("link", publicUrl);
-                feedParams.append(
-                  "message",
-                  `📢 ${articleData.title}\n\n${articleData.seoDescription || ""}\n\nRead full article & explore pieces 👇\n${publicUrl}\n\n#Shopify #OnlineShopping #TrendingStyles`
-                );
-                feedParams.append("access_token", effectiveToken);
-                const fbRes = await fetch(`https://graph.facebook.com/v21.0/${pageId}/feed`, {
-                  method: "POST",
-                  body: feedParams,
-                });
-                const fbData = await fbRes.json();
-                if (fbData.id) {
-                  socialShares.facebook = { ok: true, id: fbData.id };
-                  logger(`[Shopify Autopilot] Facebook post published: ${fbData.id}`);
-                }
-              } catch (fbErr) {
-                logger(`[Shopify Autopilot] Facebook syndication error: ${fbErr.message}`);
-              }
-            }
+            // 11.5.1 Brand Integrity & Anti-Exploitation Cross-Check
+            let isBrandMatched = false;
+            let metaAssetTitle = "";
+            try {
+              if (pageId && effectiveToken) {
+                const checkRes = await fetch(`https://graph.facebook.com/v21.0/${pageId}?fields=name,website&access_token=${effectiveToken}`);
+                if (checkRes.ok) {
+                  const checkData = await checkRes.json();
+                  metaAssetTitle = checkData.name || "";
+                  const pWeb = checkData.website || "";
 
-            // Instagram Feed Photo post
-            const shareImg = imageData.imageUrl;
-            if (config.autoShareInstagram !== false && igId && effectiveToken && shareImg) {
-              try {
-                logger(`[Shopify Autopilot] Syndicating article to Instagram (${igId})...`);
-                const igCaption = `📢 ${articleData.title}\n\n${articleData.seoDescription || ""}\n\n🔗 Read full story & shop the pieces: ${publicUrl}\n\n#Shopify #OnlineShopping #TrendingStyles`;
-                const containerParams = new URLSearchParams();
-                containerParams.append("image_url", shareImg);
-                containerParams.append("caption", igCaption);
-                containerParams.append("access_token", effectiveToken);
+                  const normStore = String(brandName || primaryDomain || shop || "").toLowerCase().replace(/[^a-z0-9]/g, "");
+                  const normMeta = String(metaAssetTitle || "").toLowerCase().replace(/[^a-z0-9]/g, "");
+                  const normWeb = String(pWeb || "").toLowerCase().replace(/[^a-z0-9]/g, "");
 
-                const cRes = await fetch(`https://graph.facebook.com/v21.0/${igId}/media`, {
-                  method: "POST",
-                  body: containerParams,
-                });
-                const cData = await cRes.json();
-                if (cData.id) {
-                  await new Promise((resolve) => setTimeout(resolve, 5000));
-                  const pubParams = new URLSearchParams();
-                  pubParams.append("creation_id", cData.id);
-                  pubParams.append("access_token", effectiveToken);
-                  const pubRes = await fetch(`https://graph.facebook.com/v21.0/${igId}/media_publish`, {
-                    method: "POST",
-                    body: pubParams,
-                  });
-                  const pubData = await pubRes.json();
-                  if (pubData.id) {
-                    socialShares.instagram = { ok: true, id: pubData.id };
-                    logger(`[Shopify Autopilot] Instagram post published: ${pubData.id}`);
+                  if (normStore && normMeta && (normStore.includes(normMeta) || normMeta.includes(normStore))) {
+                    isBrandMatched = true;
+                  }
+                  if (normStore && normWeb && (normStore.includes(normWeb) || normWeb.includes(normStore))) {
+                    isBrandMatched = true;
                   }
                 }
-              } catch (igErr) {
-                logger(`[Shopify Autopilot] Instagram syndication error: ${igErr.message}`);
+              }
+            } catch (vErr) {
+              logger(`[Shopify Autopilot] Brand validation warning: ${vErr.message}`);
+            }
+
+            if (!isBrandMatched) {
+              logger(`[Shopify Autopilot 🛡️ Anti-Exploitation Shield] Social syndication BLOCKED: Store "${brandName}" (${primaryDomain}) does not match connected Meta channel "${metaAssetTitle || pageId}". Cross-business posting prevented.`);
+            } else {
+              // Facebook Page link preview / photo post
+              if (config.autoShareFacebook === true && pageId && effectiveToken) {
+                try {
+                  logger(`[Shopify Autopilot] Syndicating article to Facebook Page (${pageId})...`);
+                  const feedParams = new URLSearchParams();
+                  feedParams.append("link", publicUrl);
+                  feedParams.append(
+                    "message",
+                    `📢 ${articleData.title}\n\n${articleData.seoDescription || ""}\n\nRead full article & explore pieces 👇\n${publicUrl}\n\n#Shopify #OnlineShopping #TrendingStyles`
+                  );
+                  feedParams.append("access_token", effectiveToken);
+                  const fbRes = await fetch(`https://graph.facebook.com/v21.0/${pageId}/feed`, {
+                    method: "POST",
+                    body: feedParams,
+                  });
+                  const fbData = await fbRes.json();
+                  if (fbData.id) {
+                    socialShares.facebook = { ok: true, id: fbData.id };
+                    logger(`[Shopify Autopilot] Facebook post published: ${fbData.id}`);
+                  }
+                } catch (fbErr) {
+                  logger(`[Shopify Autopilot] Facebook syndication error: ${fbErr.message}`);
+                }
+              }
+
+              // Instagram Feed Photo post
+              const shareImg = imageData.imageUrl;
+              if (config.autoShareInstagram === true && igId && effectiveToken && shareImg) {
+                try {
+                  logger(`[Shopify Autopilot] Syndicating article to Instagram (${igId})...`);
+                  const igCaption = `📢 ${articleData.title}\n\n${articleData.seoDescription || ""}\n\n🔗 Read full story & shop the pieces: ${publicUrl}\n\n#Shopify #OnlineShopping #TrendingStyles`;
+                  const containerParams = new URLSearchParams();
+                  containerParams.append("image_url", shareImg);
+                  containerParams.append("caption", igCaption);
+                  containerParams.append("access_token", effectiveToken);
+
+                  const cRes = await fetch(`https://graph.facebook.com/v21.0/${igId}/media`, {
+                    method: "POST",
+                    body: containerParams,
+                  });
+                  const cData = await cRes.json();
+
+                  if (cData.id) {
+                    // Poll container status then publish
+                    let ready = false;
+                    for (let attempt = 0; attempt < 5; attempt++) {
+                      await new Promise((r) => setTimeout(r, 3000));
+                      const sRes = await fetch(`https://graph.facebook.com/v21.0/${cData.id}?fields=status_code&access_token=${effectiveToken}`);
+                      const sData = await sRes.json();
+                      if (sData.status_code === "FINISHED") {
+                        ready = true;
+                        break;
+                      }
+                    }
+
+                    if (ready) {
+                      const pubParams = new URLSearchParams();
+                      pubParams.append("creation_id", cData.id);
+                      pubParams.append("access_token", effectiveToken);
+                      const pubRes = await fetch(`https://graph.facebook.com/v21.0/${igId}/media_publish`, {
+                        method: "POST",
+                        body: pubParams,
+                      });
+                      const pubData = await pubRes.json();
+                      if (pubData.id) {
+                        socialShares.instagram = { ok: true, id: pubData.id };
+                        logger(`[Shopify Autopilot] Instagram post published: ${pubData.id}`);
+                      }
+                    }
+                  }
+                } catch (igErr) {
+                  logger(`[Shopify Autopilot] Instagram syndication error: ${igErr.message}`);
+                }
               }
             }
           }

@@ -93,6 +93,7 @@ export default function ShopifyStoreConnect({ onConnectionChange }) {
   const [socialSharing, setSocialSharing] = useState(false);
   const [socialShareStatus, setSocialShareStatus] = useState(null);
   const [showMetaConnectNotice, setShowMetaConnectNotice] = useState(false);
+  const [brandSecurity, setBrandSecurity] = useState(null);
 
   useEffect(() => {
     fetchConnection();
@@ -104,11 +105,14 @@ export default function ShopifyStoreConnect({ onConnectionChange }) {
       const res = await fetch("/api/shopify/sync?action=get-autopilot-config");
       const data = await res.json();
       if (data.ok && data.config) {
+        if (data.brandSecurity) {
+          setBrandSecurity(data.brandSecurity);
+        }
         setAutopilotConfig((prev) => ({
           ...prev,
           ...data.config,
-          autoShareFacebook: data.config.autoShareFacebook !== false,
-          autoShareInstagram: data.config.autoShareInstagram !== false,
+          autoShareFacebook: data.config.autoShareFacebook === true,
+          autoShareInstagram: data.config.autoShareInstagram === true,
           topicQueue: Array.isArray(data.config.topicQueue) ? data.config.topicQueue : [],
           suggestedTopics: Array.isArray(data.config.suggestedTopics) ? data.config.suggestedTopics : [],
           bulkTopicsInput: data.config.bulkTopicsInput || "",
@@ -2711,16 +2715,25 @@ export default function ShopifyStoreConnect({ onConnectionChange }) {
           <div
             style={{
               background: "rgba(16, 22, 34, 0.78)",
-              border: "1px solid rgba(255, 255, 255, 0.12)",
+              border: brandSecurity && !brandSecurity.isMatched ? "1.5px solid rgba(239, 68, 68, 0.4)" : "1px solid rgba(255, 255, 255, 0.12)",
               borderRadius: 14,
               padding: 24,
               boxShadow: "0 10px 30px rgba(0,0,0,0.4)",
             }}
           >
             <div style={{ marginBottom: 18 }}>
-              <div style={{ display: "inline-flex", alignItems: "center", gap: 6, padding: "3px 10px", borderRadius: 20, background: "rgba(56, 189, 248, 0.15)", border: "1px solid rgba(56, 189, 248, 0.3)", color: "#38bdf8", fontSize: 11, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.5px", marginBottom: 8 }}>
-                <span>⚡</span> Syndication Protocol
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: 10, marginBottom: 8 }}>
+                <div style={{ display: "inline-flex", alignItems: "center", gap: 6, padding: "3px 10px", borderRadius: 20, background: "rgba(56, 189, 248, 0.15)", border: "1px solid rgba(56, 189, 248, 0.3)", color: "#38bdf8", fontSize: 11, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.5px" }}>
+                  <span>⚡</span> Syndication Protocol
+                </div>
+
+                {brandSecurity && !brandSecurity.isMatched && (
+                  <span style={{ fontSize: 11, padding: "3px 10px", borderRadius: 20, background: "rgba(239, 68, 68, 0.2)", border: "1px solid rgba(239, 68, 68, 0.4)", color: "#fca5a5", fontWeight: 700, display: "inline-flex", alignItems: "center", gap: 5 }}>
+                    <span>🛡️</span> Cross-Brand Exploitation Shield Active
+                  </span>
+                )}
               </div>
+
               <h3 style={{ margin: "0 0 6px 0", fontSize: 18, color: "#fff", fontWeight: 800 }}>
                 Instant Multichannel Social Syndication
               </h3>
@@ -2729,20 +2742,107 @@ export default function ShopifyStoreConnect({ onConnectionChange }) {
               </p>
             </div>
 
+            {/* Anti-Exploitation & Brand Integrity Guard Shield Banner */}
+            {brandSecurity && !brandSecurity.isMatched && (
+              <div
+                style={{
+                  marginBottom: 20,
+                  padding: "16px 20px",
+                  borderRadius: 12,
+                  background: "linear-gradient(135deg, rgba(239, 68, 68, 0.15) 0%, rgba(185, 28, 28, 0.08) 100%)",
+                  border: "1.5px solid rgba(239, 68, 68, 0.4)",
+                  boxShadow: "0 8px 24px rgba(239, 68, 68, 0.15)",
+                }}
+              >
+                <div style={{ display: "flex", alignItems: "flex-start", gap: 14 }}>
+                  <div style={{ fontSize: 28, flexShrink: 0, marginTop: 2 }}>🛡️</div>
+                  <div style={{ flex: 1 }}>
+                    <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+                      <h4 style={{ margin: 0, fontSize: 15, fontWeight: 800, color: "#fca5a5" }}>
+                        Brand Isolation & Anti-Exploitation Guard Active
+                      </h4>
+                      <span style={{ fontSize: 10, padding: "2px 8px", borderRadius: 4, background: "rgba(239, 68, 68, 0.3)", color: "#fee2e2", fontWeight: 800, textTransform: "uppercase" }}>
+                        Cross-Business Syndication Locked
+                      </span>
+                    </div>
+
+                    <div style={{ margin: "8px 0 12px 0", color: "#e2e8f0", fontSize: 12.5, lineHeight: 1.6 }}>
+                      Our AI security engine identified an entity mismatch:
+                      <div style={{ marginTop: 6, display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(240px, 1fr))", gap: 10 }}>
+                        <div style={{ padding: "8px 12px", borderRadius: 8, background: "rgba(0, 0, 0, 0.3)", border: "1px solid rgba(255, 255, 255, 0.1)" }}>
+                          <div style={{ fontSize: 11, color: "#94a3b8", fontWeight: 700 }}>Connected Meta Asset:</div>
+                          <div style={{ fontSize: 13, color: "#38bdf8", fontWeight: 800, marginTop: 2 }}>
+                            {brandSecurity.meta?.display || "GABBARinfo (@gabbarinfo)"}
+                          </div>
+                          {brandSecurity.meta?.website && (
+                            <div style={{ fontSize: 11, color: "#64748b" }}>{brandSecurity.meta.website}</div>
+                          )}
+                        </div>
+
+                        <div style={{ padding: "8px 12px", borderRadius: 8, background: "rgba(0, 0, 0, 0.3)", border: "1px solid rgba(255, 255, 255, 0.1)" }}>
+                          <div style={{ fontSize: 11, color: "#94a3b8", fontWeight: 700 }}>Current Shopify Store:</div>
+                          <div style={{ fontSize: 13, color: "#34d399", fontWeight: 800, marginTop: 2 }}>
+                            {connection?.name || "Bella & Diva"}
+                          </div>
+                          <div style={{ fontSize: 11, color: "#64748b" }}>{connection?.domain || "www.bellandiva.com"}</div>
+                        </div>
+                      </div>
+                    </div>
+
+                    <div style={{ padding: "8px 12px", borderRadius: 8, background: "rgba(0, 0, 0, 0.4)", border: "1px solid rgba(239, 68, 68, 0.3)", fontSize: 11.8, color: "#fca5a5", lineHeight: 1.5 }}>
+                      ⛔ <strong>Cross-Business Syndication Blocked:</strong> To protect your brand authority and prevent unauthorized multi-business account exploitation, jewellery blogs from <strong>{connection?.name || "Bella & Diva"}</strong> cannot be broadcast onto <strong>{brandSecurity.meta?.display || "GABBARinfo"}</strong>.
+                    </div>
+
+                    <div style={{ marginTop: 12, display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap" }}>
+                      <a
+                        href="/social-pilot"
+                        style={{
+                          display: "inline-flex",
+                          alignItems: "center",
+                          gap: 6,
+                          padding: "7px 14px",
+                          borderRadius: 8,
+                          background: "rgba(56, 189, 248, 0.15)",
+                          border: "1px solid rgba(56, 189, 248, 0.4)",
+                          color: "#38bdf8",
+                          fontSize: 12,
+                          fontWeight: 700,
+                          textDecoration: "none",
+                        }}
+                      >
+                        <span>🔗</span> Connect {connection?.name || "Store"}'s Social Media in Social Pilot ↗
+                      </a>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            )}
+
             <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(280px, 1fr))", gap: 16 }}>
               {/* Facebook Option Card */}
               <div
-                onClick={() => setAutopilotConfig({ ...autopilotConfig, autoShareFacebook: !autopilotConfig.autoShareFacebook })}
+                onClick={() => {
+                  if (brandSecurity && !brandSecurity.isMatched) {
+                    alert(`Brand Mismatch: Connected Meta profile belongs to ${brandSecurity.meta?.display || "another business"}, not ${connection?.name || "Bella & Diva"}. Cross-business syndication is locked.`);
+                    return;
+                  }
+                  setAutopilotConfig({ ...autopilotConfig, autoShareFacebook: !autopilotConfig.autoShareFacebook });
+                }}
                 style={{
-                  background: autopilotConfig.autoShareFacebook ? "rgba(24, 119, 242, 0.1)" : "rgba(13, 20, 35, 0.7)",
-                  border: autopilotConfig.autoShareFacebook ? "1.5px solid #1877f2" : "1px solid rgba(255, 255, 255, 0.1)",
+                  background: (brandSecurity && !brandSecurity.isMatched)
+                    ? "rgba(239, 68, 68, 0.05)"
+                    : (autopilotConfig.autoShareFacebook ? "rgba(24, 119, 242, 0.1)" : "rgba(13, 20, 35, 0.7)"),
+                  border: (brandSecurity && !brandSecurity.isMatched)
+                    ? "1px solid rgba(239, 68, 68, 0.3)"
+                    : (autopilotConfig.autoShareFacebook ? "1.5px solid #1877f2" : "1px solid rgba(255, 255, 255, 0.1)"),
                   borderRadius: 12,
                   padding: 18,
-                  cursor: "pointer",
+                  cursor: (brandSecurity && !brandSecurity.isMatched) ? "not-allowed" : "pointer",
                   display: "flex",
                   justifyContent: "space-between",
                   alignItems: "center",
                   gap: 14,
+                  opacity: (brandSecurity && !brandSecurity.isMatched) ? 0.75 : 1,
                   transition: "all 0.2s ease",
                 }}
               >
@@ -2753,16 +2853,22 @@ export default function ShopifyStoreConnect({ onConnectionChange }) {
                     </svg>
                   </div>
                   <div>
-                    <div style={{ fontSize: 14, fontWeight: 700, color: "#fff", display: "flex", alignItems: "center", gap: 8 }}>
+                    <div style={{ fontSize: 14, fontWeight: 700, color: "#fff", display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
                       Facebook Business Page
-                      {autopilotConfig.autoShareFacebook && (
+                      {brandSecurity && !brandSecurity.isMatched ? (
+                        <span style={{ fontSize: 9.5, padding: "1px 6px", borderRadius: 4, background: "rgba(239, 68, 68, 0.25)", color: "#f87171", fontWeight: 700 }}>
+                          🔒 LOCKED (MISMATCH)
+                        </span>
+                      ) : autopilotConfig.autoShareFacebook ? (
                         <span style={{ fontSize: 9.5, padding: "1px 6px", borderRadius: 4, background: "rgba(16, 185, 129, 0.2)", color: "#34d399", fontWeight: 700 }}>
                           ACTIVE
                         </span>
-                      )}
+                      ) : null}
                     </div>
-                    <p style={{ margin: "4px 0 0 0", color: "#94a3b8", fontSize: 11.5, lineHeight: 1.4 }}>
-                      Automatically broadcasts a high-CTR interactive preview card with article synopsis, featured artwork, and direct site link.
+                    <p style={{ margin: "4px 0 0 0", color: (brandSecurity && !brandSecurity.isMatched) ? "#f87171" : "#94a3b8", fontSize: 11.5, lineHeight: 1.4 }}>
+                      {brandSecurity && !brandSecurity.isMatched
+                        ? `Locked: Connected profile (${brandSecurity.meta?.display || "GABBARinfo"}) does not match this store.`
+                        : "Automatically broadcasts a high-CTR interactive preview card with article synopsis, featured artwork, and direct site link."}
                     </p>
                   </div>
                 </div>
@@ -2773,7 +2879,7 @@ export default function ShopifyStoreConnect({ onConnectionChange }) {
                     width: 42,
                     height: 22,
                     borderRadius: 12,
-                    background: autopilotConfig.autoShareFacebook ? "#10b981" : "#334155",
+                    background: (brandSecurity && !brandSecurity.isMatched) ? "#1e293b" : (autopilotConfig.autoShareFacebook ? "#10b981" : "#334155"),
                     position: "relative",
                     flexShrink: 0,
                     transition: "background 0.2s ease",
@@ -2784,30 +2890,47 @@ export default function ShopifyStoreConnect({ onConnectionChange }) {
                       width: 16,
                       height: 16,
                       borderRadius: "50%",
-                      background: "#fff",
+                      background: (brandSecurity && !brandSecurity.isMatched) ? "#64748b" : "#fff",
                       position: "absolute",
                       top: 3,
-                      left: autopilotConfig.autoShareFacebook ? 23 : 3,
+                      left: (brandSecurity && !brandSecurity.isMatched) ? 3 : (autopilotConfig.autoShareFacebook ? 23 : 3),
                       transition: "left 0.2s ease",
                       boxShadow: "0 2px 4px rgba(0,0,0,0.3)",
+                      display: "flex",
+                      alignItems: "center",
+                      justifyContent: "center",
+                      fontSize: 9,
                     }}
-                  />
+                  >
+                    {brandSecurity && !brandSecurity.isMatched ? "🔒" : null}
+                  </div>
                 </div>
               </div>
 
               {/* Instagram Option Card */}
               <div
-                onClick={() => setAutopilotConfig({ ...autopilotConfig, autoShareInstagram: !autopilotConfig.autoShareInstagram })}
+                onClick={() => {
+                  if (brandSecurity && !brandSecurity.isMatched) {
+                    alert(`Brand Mismatch: Connected Meta profile belongs to ${brandSecurity.meta?.display || "another business"}, not ${connection?.name || "Bella & Diva"}. Cross-business syndication is locked.`);
+                    return;
+                  }
+                  setAutopilotConfig({ ...autopilotConfig, autoShareInstagram: !autopilotConfig.autoShareInstagram });
+                }}
                 style={{
-                  background: autopilotConfig.autoShareInstagram ? "rgba(225, 48, 108, 0.1)" : "rgba(13, 20, 35, 0.7)",
-                  border: autopilotConfig.autoShareInstagram ? "1.5px solid #e1306c" : "1px solid rgba(255, 255, 255, 0.1)",
+                  background: (brandSecurity && !brandSecurity.isMatched)
+                    ? "rgba(239, 68, 68, 0.05)"
+                    : (autopilotConfig.autoShareInstagram ? "rgba(225, 48, 108, 0.1)" : "rgba(13, 20, 35, 0.7)"),
+                  border: (brandSecurity && !brandSecurity.isMatched)
+                    ? "1px solid rgba(239, 68, 68, 0.3)"
+                    : (autopilotConfig.autoShareInstagram ? "1.5px solid #e1306c" : "1px solid rgba(255, 255, 255, 0.1)"),
                   borderRadius: 12,
                   padding: 18,
-                  cursor: "pointer",
+                  cursor: (brandSecurity && !brandSecurity.isMatched) ? "not-allowed" : "pointer",
                   display: "flex",
                   justifyContent: "space-between",
                   alignItems: "center",
                   gap: 14,
+                  opacity: (brandSecurity && !brandSecurity.isMatched) ? 0.75 : 1,
                   transition: "all 0.2s ease",
                 }}
               >
@@ -2818,16 +2941,22 @@ export default function ShopifyStoreConnect({ onConnectionChange }) {
                     </svg>
                   </div>
                   <div>
-                    <div style={{ fontSize: 14, fontWeight: 700, color: "#fff", display: "flex", alignItems: "center", gap: 8 }}>
+                    <div style={{ fontSize: 14, fontWeight: 700, color: "#fff", display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
                       Instagram Visual Feed Drop
-                      {autopilotConfig.autoShareInstagram && (
+                      {brandSecurity && !brandSecurity.isMatched ? (
+                        <span style={{ fontSize: 9.5, padding: "1px 6px", borderRadius: 4, background: "rgba(239, 68, 68, 0.25)", color: "#f87171", fontWeight: 700 }}>
+                          🔒 LOCKED (MISMATCH)
+                        </span>
+                      ) : autopilotConfig.autoShareInstagram ? (
                         <span style={{ fontSize: 9.5, padding: "1px 6px", borderRadius: 4, background: "rgba(16, 185, 129, 0.2)", color: "#34d399", fontWeight: 700 }}>
                           ACTIVE
                         </span>
-                      )}
+                      ) : null}
                     </div>
-                    <p style={{ margin: "4px 0 0 0", color: "#94a3b8", fontSize: 11.5, lineHeight: 1.4 }}>
-                      Auto-formats your article's featured hero image with an AI-crafted caption, high-ranking hashtags, and store link.
+                    <p style={{ margin: "4px 0 0 0", color: (brandSecurity && !brandSecurity.isMatched) ? "#f87171" : "#94a3b8", fontSize: 11.5, lineHeight: 1.4 }}>
+                      {brandSecurity && !brandSecurity.isMatched
+                        ? `Locked: Connected profile (${brandSecurity.meta?.display || "GABBARinfo"}) does not match this store.`
+                        : "Auto-formats your article's featured hero image with an AI-crafted caption, high-ranking hashtags, and store link."}
                     </p>
                   </div>
                 </div>
@@ -2838,7 +2967,7 @@ export default function ShopifyStoreConnect({ onConnectionChange }) {
                     width: 42,
                     height: 22,
                     borderRadius: 12,
-                    background: autopilotConfig.autoShareInstagram ? "#10b981" : "#334155",
+                    background: (brandSecurity && !brandSecurity.isMatched) ? "#1e293b" : (autopilotConfig.autoShareInstagram ? "#10b981" : "#334155"),
                     position: "relative",
                     flexShrink: 0,
                     transition: "background 0.2s ease",
@@ -2849,14 +2978,20 @@ export default function ShopifyStoreConnect({ onConnectionChange }) {
                       width: 16,
                       height: 16,
                       borderRadius: "50%",
-                      background: "#fff",
+                      background: (brandSecurity && !brandSecurity.isMatched) ? "#64748b" : "#fff",
                       position: "absolute",
                       top: 3,
-                      left: autopilotConfig.autoShareInstagram ? 23 : 3,
+                      left: (brandSecurity && !brandSecurity.isMatched) ? 3 : (autopilotConfig.autoShareInstagram ? 23 : 3),
                       transition: "left 0.2s ease",
                       boxShadow: "0 2px 4px rgba(0,0,0,0.3)",
+                      display: "flex",
+                      alignItems: "center",
+                      justifyContent: "center",
+                      fontSize: 9,
                     }}
-                  />
+                  >
+                    {brandSecurity && !brandSecurity.isMatched ? "🔒" : null}
+                  </div>
                 </div>
               </div>
             </div>
@@ -3704,6 +3839,19 @@ export default function ShopifyStoreConnect({ onConnectionChange }) {
                 />
               </div>
 
+              {/* Brand Mismatch Alert in Modal */}
+              {brandSecurity && !brandSecurity.isMatched && (
+                <div style={{ padding: "14px 16px", borderRadius: 10, background: "rgba(239, 68, 68, 0.15)", border: "1.5px solid rgba(239, 68, 68, 0.4)", color: "#fca5a5", fontSize: 12.5, lineHeight: 1.5 }}>
+                  <div style={{ fontWeight: 800, color: "#fee2e2", display: "flex", alignItems: "center", gap: 6, marginBottom: 4 }}>
+                    <span>🛡️</span> Brand Mismatch Guard Active
+                  </div>
+                  Connected Meta profile belongs to <strong>{brandSecurity.meta?.display || "GABBARinfo"}</strong>, whereas this article belongs to <strong>{connection?.name || "Bella & Diva"}</strong>.
+                  <div style={{ marginTop: 4, fontSize: 11.5, color: "#f87171" }}>
+                    Social publishing is locked to prevent brand contamination and unauthorized multi-business asset sharing.
+                  </div>
+                </div>
+              )}
+
               {/* Meta Connect Notice */}
               {showMetaConnectNotice && (
                 <div style={{ padding: "12px 14px", borderRadius: 8, background: "rgba(239, 68, 68, 0.15)", border: "1px solid rgba(239, 68, 68, 0.35)", color: "#fca5a5", fontSize: 12.5, lineHeight: 1.5 }}>
@@ -3768,23 +3916,29 @@ export default function ShopifyStoreConnect({ onConnectionChange }) {
               <button
                 type="button"
                 onClick={handleExecuteSocialShare}
-                disabled={socialSharing}
+                disabled={socialSharing || (brandSecurity && !brandSecurity.isMatched)}
                 style={{
                   padding: "10px 22px",
                   borderRadius: 8,
-                  background: "linear-gradient(135deg, #1877f2 0%, #0d6efd 100%)",
-                  border: "none",
-                  color: "#fff",
+                  background: (brandSecurity && !brandSecurity.isMatched)
+                    ? "rgba(239, 68, 68, 0.2)"
+                    : "linear-gradient(135deg, #1877f2 0%, #0d6efd 100%)",
+                  border: (brandSecurity && !brandSecurity.isMatched) ? "1px solid rgba(239, 68, 68, 0.4)" : "none",
+                  color: (brandSecurity && !brandSecurity.isMatched) ? "#fca5a5" : "#fff",
                   fontWeight: 800,
                   fontSize: 13,
-                  cursor: socialSharing ? "not-allowed" : "pointer",
-                  boxShadow: "0 2px 10px rgba(24, 119, 242, 0.35)",
+                  cursor: (socialSharing || (brandSecurity && !brandSecurity.isMatched)) ? "not-allowed" : "pointer",
+                  boxShadow: (brandSecurity && !brandSecurity.isMatched) ? "none" : "0 2px 10px rgba(24, 119, 242, 0.35)",
                   display: "flex",
                   alignItems: "center",
                   gap: 8,
                 }}
               >
-                <span>{socialSharing ? "Publishing to Social Media…" : "🚀 Publish to Social Media Now ↗"}</span>
+                <span>
+                  {brandSecurity && !brandSecurity.isMatched
+                    ? "🔒 Blocked: Brand Mismatch"
+                    : (socialSharing ? "Publishing to Social Media…" : "🚀 Publish to Social Media Now ↗")}
+                </span>
               </button>
             </div>
           </div>

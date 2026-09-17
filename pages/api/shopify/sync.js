@@ -5,6 +5,7 @@ import { createClient } from "@supabase/supabase-js";
 import OpenAI from "openai";
 import { GoogleGenerativeAI } from "@google/generative-ai";
 import { getValidShopifyAccessToken } from "../../../lib/shopify/token-service";
+import { getMetaIdentity, checkBrandMatch } from "../../../lib/meta/brand-verifier";
 
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL,
@@ -1315,15 +1316,50 @@ Respond ONLY with a valid JSON object matching this schema:
           config = { ...config, ...parsed };
           config.targetLocations = config.targetLocations || config.targetMarket || conn.country || "";
           config.targetMarket = config.targetLocations;
-          config.autoShareFacebook = parsed.autoShareFacebook !== false;
-          config.autoShareInstagram = parsed.autoShareInstagram !== false;
+          config.autoShareFacebook = parsed.autoShareFacebook === true;
+          config.autoShareInstagram = parsed.autoShareInstagram === true;
           config.topicQueue = Array.isArray(parsed.topicQueue) ? parsed.topicQueue : [];
           config.suggestedTopics = Array.isArray(parsed.suggestedTopics) ? parsed.suggestedTopics : [];
           config.bulkTopicsInput = typeof parsed.bulkTopicsInput === "string" ? parsed.bulkTopicsInput : "";
         } catch (_) {}
       }
 
-      return res.status(200).json({ ok: true, config });
+      // Brand Security & Anti-Exploitation Cross-Check
+      let brandSecurity = {
+        isMatched: false,
+        status: "NO_SOCIAL_CONNECTED",
+        reason: "No Meta account connected.",
+      };
+
+      try {
+        const { data: metaRow } = await supabase
+          .from("meta_connections")
+          .select("fb_page_id, fb_page_access_token, fb_user_access_token, ig_business_id")
+          .eq("email", userEmail)
+          .maybeSingle();
+
+        if (metaRow) {
+          const metaIdentity = await getMetaIdentity(metaRow);
+          if (metaIdentity) {
+            brandSecurity = checkBrandMatch({
+              storeName: conn.name || "Shopify Store",
+              storeDomain: conn.domain || conn.shop,
+              shopHandle: conn.shop,
+              metaIdentity,
+            });
+
+            // If brand mismatch detected, strictly disable social syndication
+            if (!brandSecurity.isMatched) {
+              config.autoShareFacebook = false;
+              config.autoShareInstagram = false;
+            }
+          }
+        }
+      } catch (secErr) {
+        console.warn("[BrandSecurity] Check error:", secErr.message);
+      }
+
+      return res.status(200).json({ ok: true, config, brandSecurity });
     }
 
     // ---------------------------------------------------------
@@ -1348,13 +1384,41 @@ Respond ONLY with a valid JSON object matching this schema:
       const inputCfg = payload.config || {};
       const targetLoc = (inputCfg.targetLocations || inputCfg.targetMarket || "").trim();
 
+      // Anti-Exploitation Shield: Ensure user cannot force autoShare if brand mismatch exists
+      let brandSecurity = { isMatched: true };
+      try {
+        const { data: metaRow } = await supabase
+          .from("meta_connections")
+          .select("fb_page_id, fb_page_access_token, fb_user_access_token, ig_business_id")
+          .eq("email", userEmail)
+          .maybeSingle();
+
+        if (metaRow) {
+          const metaIdentity = await getMetaIdentity(metaRow);
+          if (metaIdentity) {
+            brandSecurity = checkBrandMatch({
+              storeName: conn.name || "Shopify Store",
+              storeDomain: conn.domain || conn.shop,
+              shopHandle: conn.shop,
+              metaIdentity,
+            });
+
+            if (!brandSecurity.isMatched) {
+              // Strictly force false to prevent multi-tenant cross-brand exploitation
+              inputCfg.autoShareFacebook = false;
+              inputCfg.autoShareInstagram = false;
+            }
+          }
+        }
+      } catch (_) {}
+
       const newConfig = {
         ...currentConfig,
         ...inputCfg,
         targetLocations: targetLoc,
         targetMarket: targetLoc,
-        autoShareFacebook: inputCfg.autoShareFacebook !== undefined ? !!inputCfg.autoShareFacebook : (currentConfig.autoShareFacebook !== false),
-        autoShareInstagram: inputCfg.autoShareInstagram !== undefined ? !!inputCfg.autoShareInstagram : (currentConfig.autoShareInstagram !== false),
+        autoShareFacebook: brandSecurity.isMatched ? (inputCfg.autoShareFacebook === true) : false,
+        autoShareInstagram: brandSecurity.isMatched ? (inputCfg.autoShareInstagram === true) : false,
         topicQueue: Array.isArray(inputCfg.topicQueue) ? inputCfg.topicQueue : (currentConfig.topicQueue || []),
         suggestedTopics: Array.isArray(inputCfg.suggestedTopics) ? inputCfg.suggestedTopics : (currentConfig.suggestedTopics || []),
         bulkTopicsInput: typeof inputCfg.bulkTopicsInput === "string" ? inputCfg.bulkTopicsInput : (currentConfig.bulkTopicsInput || ""),
@@ -1375,7 +1439,12 @@ Respond ONLY with a valid JSON object matching this schema:
         return res.status(500).json({ ok: false, error: upsertErr.message });
       }
 
-      return res.status(200).json({ ok: true, message: "Shopify Autopilot configuration saved successfully!", config: newConfig });
+      return res.status(200).json({
+        ok: true,
+        message: "Shopify Autopilot configuration saved successfully!",
+        config: newConfig,
+        brandSecurity,
+      });
     }
 
     // ---------------------------------------------------------
