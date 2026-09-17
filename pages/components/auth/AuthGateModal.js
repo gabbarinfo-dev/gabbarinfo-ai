@@ -1,9 +1,39 @@
-"use client";
-
+import { useState } from "react";
 import { signIn } from "next-auth/react";
 import Link from "next/link";
 
 export default function AuthGateModal({ isOpen, onClose, title = "Sign In Required", subtitle }) {
+  const [signingInReviewer, setSigningInReviewer] = useState(false);
+  const [showReviewerFields, setShowReviewerFields] = useState(false);
+  const [testEmail, setTestEmail] = useState("shopify-tester@gabbarinfo.com");
+  const [testPassword, setTestPassword] = useState("TestPass@2026");
+  const [authError, setAuthError] = useState("");
+
+  const handleReviewerSignIn = async (e) => {
+    e?.preventDefault();
+    setSigningInReviewer(true);
+    setAuthError("");
+    try {
+      const res = await signIn("credentials", {
+        email: testEmail,
+        password: testPassword,
+        redirect: false,
+        callbackUrl: "/?tab=shopify",
+      });
+      if (res?.error) {
+        setAuthError("Invalid credentials: " + res.error);
+      } else {
+        if (typeof window !== "undefined") {
+          window.location.href = "/?tab=shopify";
+        }
+      }
+    } catch (err) {
+      setAuthError("Sign-in failed: " + err.message);
+    } finally {
+      setSigningInReviewer(false);
+    }
+  };
+
   if (!isOpen) return null;
 
   return (
@@ -184,6 +214,109 @@ export default function AuthGateModal({ isOpen, onClose, title = "Sign In Requir
             </svg>
             <span>Continue with Facebook</span>
           </button>
+
+          {/* Shopify App Reviewer / Tester Access */}
+          <div style={{ display: "flex", alignItems: "center", gap: 10, margin: "6px 0 2px" }}>
+            <div style={{ flex: 1, height: 1, background: "rgba(255, 255, 255, 0.1)" }} />
+            <span style={{ fontSize: 10.5, color: "#94a3b8", textTransform: "uppercase", letterSpacing: "0.08em", fontWeight: 700 }}>
+              Shopify App Reviewer Access
+            </span>
+            <div style={{ flex: 1, height: 1, background: "rgba(255, 255, 255, 0.1)" }} />
+          </div>
+
+          <div
+            style={{
+              background: "rgba(15, 23, 42, 0.75)",
+              border: "1px solid rgba(245, 183, 22, 0.35)",
+              borderRadius: 14,
+              padding: "12px 14px",
+              textAlign: "left",
+            }}
+          >
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 8 }}>
+              <span style={{ fontSize: 12, fontWeight: 700, color: "#f8fafc", display: "flex", alignItems: "center", gap: 6 }}>
+                <span>🛍️</span> Reviewer Demo Account
+              </span>
+              <button
+                type="button"
+                onClick={() => setShowReviewerFields(!showReviewerFields)}
+                style={{
+                  background: "transparent",
+                  border: "none",
+                  color: "#38bdf8",
+                  fontSize: 11,
+                  cursor: "pointer",
+                  textDecoration: "underline",
+                }}
+              >
+                {showReviewerFields ? "Hide Details" : "View Details"}
+              </button>
+            </div>
+
+            {showReviewerFields && (
+              <div style={{ display: "flex", flexDirection: "column", gap: 6, marginBottom: 10 }}>
+                <input
+                  type="email"
+                  value={testEmail}
+                  onChange={(e) => setTestEmail(e.target.value)}
+                  placeholder="Email"
+                  style={{
+                    width: "100%",
+                    padding: "7px 10px",
+                    borderRadius: 6,
+                    background: "#080c14",
+                    border: "1px solid rgba(255,255,255,0.15)",
+                    color: "#ffffff",
+                    fontSize: 11.5,
+                  }}
+                />
+                <input
+                  type="password"
+                  value={testPassword}
+                  onChange={(e) => setTestPassword(e.target.value)}
+                  placeholder="Password"
+                  style={{
+                    width: "100%",
+                    padding: "7px 10px",
+                    borderRadius: 6,
+                    background: "#080c14",
+                    border: "1px solid rgba(255,255,255,0.15)",
+                    color: "#ffffff",
+                    fontSize: 11.5,
+                  }}
+                />
+              </div>
+            )}
+
+            {authError && (
+              <div style={{ color: "#ef4444", fontSize: 11, marginBottom: 8 }}>{authError}</div>
+            )}
+
+            <button
+              type="button"
+              onClick={handleReviewerSignIn}
+              disabled={signingInReviewer}
+              style={{
+                width: "100%",
+                padding: "10px 14px",
+                borderRadius: 9,
+                background: "linear-gradient(135deg, #f59e0b 0%, #d97706 100%)",
+                border: "none",
+                color: "#000000",
+                fontSize: 12.5,
+                fontWeight: 800,
+                cursor: "pointer",
+                boxShadow: "0 2px 10px rgba(245, 158, 11, 0.35)",
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
+                gap: 8,
+              }}
+            >
+              <span>⚡</span>
+              <span>{signingInReviewer ? "Logging in…" : "1-Click Reviewer Sign In (Full Access) ↗"}</span>
+            </button>
+          </div>
         </div>
 
         {/* Security / Compliance Badges */}
