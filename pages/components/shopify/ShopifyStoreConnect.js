@@ -39,6 +39,9 @@ export default function ShopifyStoreConnect({ onConnectionChange }) {
   const [publishingBlog, setPublishingBlog] = useState(false);
   const [blogSuccessMsg, setBlogSuccessMsg] = useState("");
   const [publishedArticleUrl, setPublishedArticleUrl] = useState("");
+  // Live Store Articles State
+  const [storeArticles, setStoreArticles] = useState([]);
+  const [articlesLoading, setArticlesLoading] = useState(false);
 
   // Autopilot Suite State (Railway Engine)
   const [autopilotLoading, setAutopilotLoading] = useState(false);
@@ -155,9 +158,10 @@ export default function ShopifyStoreConnect({ onConnectionChange }) {
       if (data.ok && data.connected) {
         setConnection(data.connection);
         if (onConnectionChange) onConnectionChange(true);
-        // Pre-fetch products, blogs, and autopilot
+        // Pre-fetch products, blogs, live articles, and autopilot
         fetchProducts();
         fetchBlogs();
+        fetchArticles();
         fetchAutopilotConfig();
       } else {
         setConnection(null);
@@ -295,6 +299,21 @@ export default function ShopifyStoreConnect({ onConnectionChange }) {
       setBlogsError(err.message);
     } finally {
       setBlogsLoading(false);
+    }
+  };
+
+  const fetchArticles = async () => {
+    setArticlesLoading(true);
+    try {
+      const res = await fetch("/api/shopify/sync?action=list-articles");
+      const data = await res.json();
+      if (data.ok) {
+        setStoreArticles(data.articles || []);
+      }
+    } catch (err) {
+      console.error("Failed to load Shopify articles:", err);
+    } finally {
+      setArticlesLoading(false);
     }
   };
 
@@ -948,7 +967,7 @@ export default function ShopifyStoreConnect({ onConnectionChange }) {
             gap: 8,
           }}
         >
-          <span>✍️</span> Manual Blog Generator
+          <span>✍️</span> Manual Blog Generator {storeArticles.length > 0 ? `(${storeArticles.length} Live Articles)` : ""}
         </button>
 
         <button
@@ -1117,20 +1136,21 @@ export default function ShopifyStoreConnect({ onConnectionChange }) {
       )}
 
       {/* -------------------------------------------------------------
-          SUB-TAB 2: SHOPIFY BLOG PUBLISHER
+          SUB-TAB 2: SHOPIFY BLOG SUITE (MANUAL ENGINE & LIVE ARTICLES)
       ------------------------------------------------------------- */}
       {activeSubTab === "blogs" && (
-        <div
-          style={{
-            background: "rgba(15, 23, 42, 0.6)",
-            border: "1px solid rgba(255, 255, 255, 0.08)",
-            borderRadius: 16,
-            padding: "24px",
-          }}
-        >
-          <h4 style={{ margin: "0 0 8px 0", fontSize: 16, fontWeight: 700, color: "#fff" }}>
-            Publish Autonomous SEO Article to Shopify Blog
-          </h4>
+        <div style={{ display: "flex", flexDirection: "column", gap: 20 }}>
+          <div
+            style={{
+              background: "rgba(15, 23, 42, 0.6)",
+              border: "1px solid rgba(255, 255, 255, 0.08)",
+              borderRadius: 16,
+              padding: "24px",
+            }}
+          >
+            <h4 style={{ margin: "0 0 8px 0", fontSize: 16, fontWeight: 700, color: "#fff" }}>
+              Publish Autonomous SEO Article to Shopify Blog
+            </h4>
           <p style={{ margin: "0 0 20px 0", fontSize: 13, color: "#94a3b8" }}>
             Creates high-authority articles with structured headers, product mention links, and SEO tags.
           </p>
@@ -1143,8 +1163,11 @@ export default function ShopifyStoreConnect({ onConnectionChange }) {
                 </label>
                 <button
                   type="button"
-                  onClick={fetchBlogs}
-                  disabled={blogsLoading}
+                  onClick={() => {
+                    fetchBlogs();
+                    fetchArticles();
+                  }}
+                  disabled={blogsLoading || articlesLoading}
                   style={{
                     background: "transparent",
                     border: "none",
@@ -1154,7 +1177,7 @@ export default function ShopifyStoreConnect({ onConnectionChange }) {
                     textDecoration: "underline",
                   }}
                 >
-                  {blogsLoading ? "Refreshing..." : "↻ Refresh Channels"}
+                  {blogsLoading || articlesLoading ? "Refreshing..." : "↻ Refresh Channels & Articles"}
                 </button>
               </div>
               <select
@@ -1178,10 +1201,13 @@ export default function ShopifyStoreConnect({ onConnectionChange }) {
                 )}
                 {blogs.map((b) => (
                   <option key={b.id} value={b.id}>
-                    {b.title} ({b.handle})
+                    {b.title} ({b.handle}) {typeof b.article_count === "number" ? `— ${b.article_count} published ${b.article_count === 1 ? "article" : "articles"}` : ""}
                   </option>
                 ))}
               </select>
+              <div style={{ marginTop: 6, fontSize: 11.5, color: "#94a3b8" }}>
+                💡 <strong>Target Blog Channel</strong> is the category where new articles will publish (e.g. selecting <strong>News</strong> publishes live to <code>{connection?.domain || "yourstore.com"}/blogs/news</code> alongside your existing articles).
+              </div>
               {blogsError && (
                 <div style={{ marginTop: 6, fontSize: 11.5, color: "#f87171", background: "rgba(239, 68, 68, 0.1)", padding: "6px 10px", borderRadius: 6, border: "1px solid rgba(239, 68, 68, 0.2)" }}>
                   ⚠️ {blogsError}
@@ -1529,7 +1555,139 @@ export default function ShopifyStoreConnect({ onConnectionChange }) {
                 )}
               </div>
             )}
-          </form>
+          </div>
+
+          {/* Live Published Store Articles Card */}
+          <div
+            style={{
+              background: "rgba(15, 23, 42, 0.6)",
+              border: "1px solid rgba(255, 255, 255, 0.08)",
+              borderRadius: 16,
+              padding: "24px",
+            }}
+          >
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 18, flexWrap: "wrap", gap: 12 }}>
+              <div>
+                <h4 style={{ margin: "0 0 4px 0", fontSize: 16, fontWeight: 700, color: "#fff", display: "flex", alignItems: "center", gap: 8 }}>
+                  <span>📰</span> Live Published Articles on Store
+                  <span style={{ fontSize: 12, background: "rgba(59, 130, 246, 0.2)", color: "#60a5fa", padding: "2px 8px", borderRadius: 12, border: "1px solid rgba(59, 130, 246, 0.4)" }}>
+                    {storeArticles.length} Live
+                  </span>
+                </h4>
+                <p style={{ margin: 0, fontSize: 13, color: "#94a3b8" }}>
+                  Articles currently active on your live Shopify storefront across all channels.
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={fetchArticles}
+                disabled={articlesLoading}
+                style={{
+                  background: "rgba(255, 255, 255, 0.06)",
+                  border: "1px solid rgba(255, 255, 255, 0.12)",
+                  color: "#38bdf8",
+                  padding: "8px 14px",
+                  borderRadius: 8,
+                  fontSize: 12.5,
+                  cursor: "pointer",
+                  fontWeight: 600,
+                  display: "inline-flex",
+                  alignItems: "center",
+                  gap: 6,
+                }}
+              >
+                <span>↻</span> {articlesLoading ? "Syncing..." : "Refresh Live Articles"}
+              </button>
+            </div>
+
+            {articlesLoading && storeArticles.length === 0 ? (
+              <div style={{ padding: "30px 0", textAlign: "center", color: "#94a3b8", fontSize: 14 }}>
+                ⏳ Syncing live blog articles from Shopify...
+              </div>
+            ) : storeArticles.length === 0 ? (
+              <div style={{ padding: "30px 0", textAlign: "center", color: "#64748b", fontSize: 14 }}>
+                No published articles found in your store yet. Generate your first AI article above!
+              </div>
+            ) : (
+              <div
+                style={{
+                  display: "grid",
+                  gridTemplateColumns: "repeat(auto-fill, minmax(280px, 1fr))",
+                  gap: 16,
+                }}
+              >
+                {storeArticles.map((art) => (
+                  <div
+                    key={art.id}
+                    style={{
+                      background: "rgba(11, 16, 27, 0.8)",
+                      border: "1px solid rgba(255, 255, 255, 0.08)",
+                      borderRadius: 10,
+                      overflow: "hidden",
+                      display: "flex",
+                      flexDirection: "column",
+                      justifyContent: "space-between",
+                    }}
+                  >
+                    {art.image?.src ? (
+                      <div style={{ width: "100%", height: 140, overflow: "hidden", background: "#050811" }}>
+                        <img
+                          src={art.image.src}
+                          alt={art.title}
+                          style={{ width: "100%", height: "100%", objectFit: "cover" }}
+                        />
+                      </div>
+                    ) : (
+                      <div style={{ width: "100%", height: 80, background: "rgba(255,255,255,0.03)", display: "flex", alignItems: "center", justifyContent: "center", color: "#64748b", fontSize: 24 }}>
+                        📰
+                      </div>
+                    )}
+                    <div style={{ padding: 14, display: "flex", flexDirection: "column", flex: 1, justifyContent: "space-between", gap: 10 }}>
+                      <div>
+                        <div style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 6 }}>
+                          <span style={{ fontSize: 10.5, fontWeight: 700, textTransform: "uppercase", padding: "2px 6px", borderRadius: 4, background: "rgba(56, 189, 248, 0.15)", color: "#38bdf8" }}>
+                            {art.blog_title || "News"}
+                          </span>
+                          {art.published_at && (
+                            <span style={{ fontSize: 11, color: "#64748b" }}>
+                              {new Date(art.published_at).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })}
+                            </span>
+                          )}
+                        </div>
+                        <h5 style={{ fontSize: 13.5, fontWeight: 700, color: "#f1f5f9", margin: 0, lineHeight: 1.35 }}>
+                          {art.title}
+                        </h5>
+                      </div>
+                      <a
+                        href={art.live_url}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        style={{
+                          display: "inline-flex",
+                          alignItems: "center",
+                          justifyContent: "center",
+                          gap: 6,
+                          width: "100%",
+                          padding: "8px 10px",
+                          borderRadius: 6,
+                          background: "rgba(59, 130, 246, 0.15)",
+                          border: "1px solid rgba(59, 130, 246, 0.3)",
+                          color: "#60a5fa",
+                          fontSize: 12,
+                          fontWeight: 700,
+                          textDecoration: "none",
+                          cursor: "pointer",
+                        }}
+                      >
+                        <span>👁️ View Live on Website</span>
+                        <span>↗</span>
+                      </a>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
         </div>
       )}
 

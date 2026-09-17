@@ -225,12 +225,83 @@ export default async function handler(req, res) {
               blogs = [createdData.blog];
             }
           }
-        } catch (e) {
-          console.warn("Could not auto-create blog:", e);
-        }
-      }
+      // Augment each blog with its article count
+      const blogsWithCounts = await Promise.all(
+        blogs.map(async (b) => {
+          try {
+            const countRes = await fetch(`https://${shop}/admin/api/2024-01/blogs/${b.id}/articles/count.json`, {
+              headers: {
+                "X-Shopify-Access-Token": accessToken,
+                "Content-Type": "application/json",
+              },
+            });
+            if (countRes.ok) {
+              const cData = await countRes.json();
+              return { ...b, article_count: cData.count ?? 0 };
+            }
+          } catch (cErr) {
+            // ignore
+          }
+          return { ...b, article_count: 0 };
+        })
+      );
 
-      return res.status(200).json({ ok: true, blogs });
+      return res.status(200).json({ ok: true, blogs: blogsWithCounts });
+    }
+
+    // ---------------------------------------------------------
+    // 3.5 LIST ALL ARTICLES ACROSS BLOGS
+    // ---------------------------------------------------------
+    if (action === "list-articles") {
+      try {
+        const blogResp = await fetch(`https://${shop}/admin/api/2024-01/blogs.json`, {
+          headers: {
+            "X-Shopify-Access-Token": accessToken,
+            "Content-Type": "application/json",
+          },
+        });
+        const blogData = blogResp.ok ? await blogResp.json() : { blogs: [] };
+        const allBlogs = blogData.blogs || [];
+
+        let allArticles = [];
+        const primaryDomain = storeDomain || shop;
+
+        await Promise.all(
+          allBlogs.map(async (b) => {
+            try {
+              const artResp = await fetch(
+                `https://${shop}/admin/api/2024-01/blogs/${b.id}/articles.json?limit=50&fields=id,title,handle,published_at,created_at,author,image,tags,summary_html,body_html`,
+                {
+                  headers: {
+                    "X-Shopify-Access-Token": accessToken,
+                    "Content-Type": "application/json",
+                  },
+                }
+              );
+              if (artResp.ok) {
+                const artData = await artResp.json();
+                const items = (artData.articles || []).map((art) => ({
+                  ...art,
+                  blog_id: b.id,
+                  blog_title: b.title,
+                  blog_handle: b.handle,
+                  live_url: `https://${primaryDomain}/blogs/${b.handle}/${art.handle}`,
+                }));
+                allArticles = allArticles.concat(items);
+              }
+            } catch (aErr) {
+              console.warn(`Error fetching articles for blog ${b.id}:`, aErr);
+            }
+          })
+        );
+
+        // Sort descending by published_at / created_at
+        allArticles.sort((a, b) => new Date(b.published_at || b.created_at) - new Date(a.published_at || a.created_at));
+
+        return res.status(200).json({ ok: true, articles: allArticles, total: allArticles.length });
+      } catch (err) {
+        return res.status(500).json({ ok: false, error: "Failed to list articles: " + err.message });
+      }
     }
 
     // ---------------------------------------------------------
