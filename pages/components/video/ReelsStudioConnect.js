@@ -398,12 +398,25 @@ export default function ReelsStudioConnect() {
                   .filter(Boolean);
 
                 const scenesToUse = (jobData.metadata?.scenes && jobData.metadata.scenes.length > 0)
-                  ? jobData.metadata.scenes
+                  ? jobData.metadata.scenes.map((s, idx) => ({
+                      sceneNumber: s.sceneNumber || idx + 1,
+                      text: (s.spokenAudio || s.text || "")
+                        .replace(/^Scene\s*\d+\s*[:\-–—]?\s*/i, "")
+                        .replace(/^\s*\(?\b(Customer|Client|Founder|Owner|Speaker|Host)\b\)?\s*[:\-–—]?\s*/i, "")
+                        .replace(/^["']|["']$/g, "")
+                        .trim(),
+                      startSec: s.startSec || Math.round(idx * (durationSeconds / jobData.metadata.scenes.length) * 10) / 10,
+                      endSec: s.endSec || Math.round((idx + 1) * (durationSeconds / jobData.metadata.scenes.length) * 10) / 10,
+                    }))
                   : (rawLines.length > 0 ? rawLines : [topic || "Viral AI Reel"]).map((line, idx, arr) => {
                       const dur = durationSeconds / arr.length;
                       return {
                         sceneNumber: idx + 1,
-                        text: line.replace(/^Scene\s*\d+\s*[:\-–—]?\s*/i, "").trim(),
+                        text: line
+                          .replace(/^Scene\s*\d+\s*[:\-–—]?\s*/i, "")
+                          .replace(/^\s*\(?\b(Customer|Client|Founder|Owner|Speaker|Host)\b\)?\s*[:\-–—]?\s*/i, "")
+                          .replace(/^["']|["']$/g, "")
+                          .trim(),
                         startSec: Math.round(idx * dur * 10) / 10,
                         endSec: Math.round((idx + 1) * dur * 10) / 10,
                       };
