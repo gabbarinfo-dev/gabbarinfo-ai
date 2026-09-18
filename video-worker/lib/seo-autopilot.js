@@ -207,6 +207,11 @@ async function runSeoAutopilotCycle({ supabase, openai, force = false, logger = 
         logger(`[SEO Autopilot] Note: Could not fetch existing published content (${e.message}).`);
       }
 
+      // Filter out off-topic / junk articles if any
+      const offTopicFilter = /santa|christmas|herbal-beauty/i;
+      const relevantPublishedPosts = existingPublishedPosts.filter(p => !offTopicFilter.test(p.slug || p.title));
+      const selectedInternalPosts = relevantPublishedPosts.length > 0 ? relevantPublishedPosts.slice(0, 8) : existingPublishedPosts.slice(0, 8);
+
       // 5. Generate Full SEO Article (STRICT 1,650+ words, 10 structured sections) via GPT-4o
       logger(`[SEO Autopilot] Generating exhaustive 1,650+ word SEO guide for "${activeService}" (${businessName})...`);
       const systemPrompt = `You are an elite commercial director, subject matter expert, and enterprise journalist writing for ${businessName} (${siteUrl}).
@@ -241,16 +246,23 @@ CRITICAL LENGTH & DEPTH MANDATES:
      * Each of the 7 to 11 Secondary and LSI keywords MUST be woven organically throughout the article sections (at least 2 to 4 times each).
      * NEVER stuff keywords robotically. Every keyword MUST be integrated in natural, fluent, syntactically correct English.
 
-4. MANDATORY EMBEDDED INTERNAL HYPERLINKS (Styled with theme amber #f59e0b, bold, underline):
-   - Core Pages & Solutions:
-${existingPublishedPages.length > 0 ? existingPublishedPages.slice(0, 4).map((p) => `     * <a href="${p.link}" style="color: #f59e0b; font-weight: 700; text-decoration: underline;">${businessName} - ${p.title}</a>`).join("\n") : `     * <a href="${siteUrl}/" style="color: #f59e0b; font-weight: 700; text-decoration: underline;">${businessName} Official Website</a>
-     * <a href="${siteUrl}/services/" style="color: #f59e0b; font-weight: 700; text-decoration: underline;">${businessName} Services & Solutions</a>
-     * <a href="${siteUrl}/contact/" style="color: #f59e0b; font-weight: 700; text-decoration: underline;">Contact ${businessName}</a>`}
-${existingPublishedPosts.length > 0 ? `
-   - MANDATORY EXISTING PUBLISHED BLOG INTERNAL LINK:
-     You MUST choose at least ONE relevant published blog post from the site's existing catalog below and contextually embed an internal hyperlink to it in Section 3, Section 4, or Section 5 with natural, fluent sentence anchor text:
-${existingPublishedPosts.slice(0, 8).map((p) => `     * Link: <a href="${p.link}" style="color: #f59e0b; font-weight: 700; text-decoration: underline;">[Contextual anchor related to ${p.title}]</a> (Title: "${p.title}")`).join("\n")}
-` : ""}
+4. MANDATORY INTERNAL HYPERLINKS (STRICT SPATIAL DISTRIBUTION - ZERO LINK DUMPING):
+   CRITICAL MANDATE: You MUST embed 3 to 4 distinct internal hyperlinks to existing published blog articles from the catalog below, smoothly integrated into informative, explanatory sentences.
+
+   STRICT SPATIAL DISTRIBUTION RULES:
+   - Early Body (Section 2 or Section 3): Embed 1 contextual link to an existing related published article from the catalog below.
+   - Mid Body (Section 4 or Section 5): Embed 1 contextual link to an existing related published article from the catalog below.
+   - Mid-Late Body (Section 6 or Section 7): Embed 1 contextual link to an existing related published article from the catalog below.
+   - Late Body (Section 8 or Section 9): Embed 1 contextual link to an existing related published article or solutions page.
+
+   STRICT FORBIDDEN RULES (NO LAST PARAGRAPH CLUSTERING):
+   - IT IS STRICTLY FORBIDDEN TO STUFF, CLUMP, OR DUMP INTERNAL LINKS INTO SECTION 10 (CONCLUSION) OR IN THE FINAL PARAGRAPH!
+   - NO MORE THAN ONE internal link may appear in any single section.
+   - NEVER dump multiple links next to each other.
+   - Anchor Text Mandate: EVERY internal link MUST be integrated into a natural, flowing sentence with descriptive semantic anchor text describing the content. (Example: "As detailed in our breakdown of <a href="..." style="color: #f59e0b; font-weight: 700; text-decoration: underline;">high-performance Google Ads management</a>, attribution modeling is essential..."). NEVER use generic anchors like "Click Here", "Official Website", or "Services".
+
+   CATALOG OF EXISTING PUBLISHED ARTICLES TO LINK TO:
+${selectedInternalPosts.map((p) => `   * Title: "${p.title}" | Link: <a href="${p.link}" style="color: #f59e0b; font-weight: 700; text-decoration: underline;">[Descriptive semantic anchor for "${p.title}"]</a>`).join("\n")}
 
 5. MANDATORY 4+ SCATTERED EXTERNAL AUTHORITY LINKS (STRICT SPATIAL DISTRIBUTION & TOPIC RELEVANCE):
    You MUST embed AT LEAST 4 authoritative, topic-relevant, non-competing external links.
@@ -427,19 +439,23 @@ Format output as valid JSON:
 
       // 8. In-Process Social Media Syndication (Guaranteed Facebook & Instagram Posting)
       const socialShares = {};
-      const { data: metaConn } = await supabase
+      const { data: metaConn, error: metaErr } = await supabase
         .from("meta_connections")
-        .select("fb_page_id, fb_page_access_token, fb_user_access_token, ig_business_id, instagram_id")
+        .select("fb_page_id, fb_page_access_token, fb_user_access_token, ig_business_id, instagram_actor_id")
         .ilike("email", item.email.trim())
         .order("updated_at", { ascending: false })
         .limit(1)
         .maybeSingle();
 
+      if (metaErr) {
+        logger(`[SEO Autopilot] Error querying meta_connections for ${item.email}: ${metaErr.message}`);
+      }
+
       if (metaConn) {
         let pageToken = metaConn.fb_page_access_token;
         const userToken = metaConn.fb_user_access_token;
         const pageId = metaConn.fb_page_id ? metaConn.fb_page_id.split(",")[0].trim() : null;
-        const igId = metaConn.ig_business_id || metaConn.instagram_id;
+        const igId = metaConn.ig_business_id || metaConn.instagram_actor_id;
 
         if (!pageToken && userToken && pageId) {
           try {

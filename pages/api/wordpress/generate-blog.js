@@ -212,6 +212,10 @@ export async function executeBlogGeneration({
       console.warn("Could not pre-fetch existing content for internal linking:", e.message);
     }
 
+    const offTopicFilter = /santa|christmas|herbal-beauty/i;
+    const relevantPublishedPosts = existingPublishedPosts.filter(p => !offTopicFilter.test(p.slug || p.title));
+    const selectedInternalPosts = relevantPublishedPosts.length > 0 ? relevantPublishedPosts.slice(0, 8) : existingPublishedPosts.slice(0, 8);
+
     const keywordList = Array.isArray(targetKeywords)
       ? targetKeywords.filter(Boolean).join(", ")
       : String(targetKeywords || "").trim();
@@ -256,15 +260,23 @@ CRITICAL LENGTH & DEPTH MANDATES:
      * Each of the 7 to 11 Secondary and LSI keywords MUST be woven organically throughout the article sections (at least 2 to 4 times each).
      * NEVER stuff keywords robotically. Every keyword MUST be integrated in natural, fluent, syntactically correct English.
 
-4. MANDATORY INTERNAL & EXTERNAL HYPERLINKING:
-   - Internal Links (Styled with theme amber #f59e0b, bold, underline):
-     * Core Pages:
-       - <a href="${siteUrl}/services/" style="color: #f59e0b; font-weight: 700; text-decoration: underline;">${effectiveBusiness} Services & Solutions</a>
-       - <a href="${(siteUrl || '').replace(/\/+$/, '')}/contact-us/" style="color: #f59e0b; font-weight: 700; text-decoration: underline;">Schedule a Consultation with ${effectiveBusiness}</a>
-       - <a href="${(siteUrl || '').replace(/\/+$/, '')}/packages/" style="color: #f59e0b; font-weight: 700; text-decoration: underline;">Explore Growth Packages</a>
-${existingPublishedPosts.length > 0 ? `     * MANDATORY EXISTING BLOG LINK:
-       You MUST choose at least ONE relevant published blog post from the site's existing catalog below and contextually embed an internal hyperlink to it in Section 3, Section 4, or Section 5 with natural, fluent sentence anchor text:
-${existingPublishedPosts.slice(0, 8).map((p) => `       - Link: <a href="${p.link}" style="color: #f59e0b; font-weight: 700; text-decoration: underline;">[Contextual anchor related to ${p.title}]</a> (Title: "${p.title}")`).join("\n")}` : ""}
+4. MANDATORY INTERNAL HYPERLINKS (STRICT SPATIAL DISTRIBUTION - ZERO LINK DUMPING):
+   CRITICAL MANDATE: You MUST embed 3 to 4 distinct internal hyperlinks to existing published blog articles from the catalog below, smoothly integrated into informative, explanatory sentences.
+
+   STRICT SPATIAL DISTRIBUTION RULES:
+   - Early Body (Section 2 or Section 3): Embed 1 contextual link to an existing related published article from the catalog below.
+   - Mid Body (Section 4 or Section 5): Embed 1 contextual link to an existing related published article from the catalog below.
+   - Mid-Late Body (Section 6 or Section 7): Embed 1 contextual link to an existing related published article from the catalog below.
+   - Late Body (Section 8 or Section 9): Embed 1 contextual link to an existing related published article or solutions page.
+
+   STRICT FORBIDDEN RULES (NO LAST PARAGRAPH CLUSTERING):
+   - IT IS STRICTLY FORBIDDEN TO STUFF, CLUMP, OR DUMP INTERNAL LINKS INTO SECTION 10 (CONCLUSION) OR IN THE FINAL PARAGRAPH!
+   - NO MORE THAN ONE internal link may appear in any single section.
+   - NEVER dump multiple links next to each other.
+   - Anchor Text Mandate: EVERY internal link MUST be integrated into a natural, flowing sentence with descriptive semantic anchor text describing the content. (Example: "As detailed in our breakdown of <a href="..." style="color: #f59e0b; font-weight: 700; text-decoration: underline;">high-performance Google Ads management</a>, attribution modeling is essential..."). NEVER use generic anchors like "Click Here", "Official Website", or "Services".
+
+   CATALOG OF EXISTING PUBLISHED ARTICLES TO LINK TO:
+${selectedInternalPosts.map((p) => `   * Title: "${p.title}" | Link: <a href="${p.link}" style="color: #f59e0b; font-weight: 700; text-decoration: underline;">[Descriptive semantic anchor for "${p.title}"]</a>`).join("\n")}
 
    - MANDATORY 4+ SCATTERED EXTERNAL AUTHORITY LINKS (STRICT SPATIAL DISTRIBUTION):
      You MUST embed AT LEAST 4 authoritative, topic-relevant, non-competing external links.

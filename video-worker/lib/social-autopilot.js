@@ -337,13 +337,17 @@ Include 3-4 bullet benefits, a strong call to action, and 6-8 relevant hashtags$
       logger(`[Social Autopilot] Public image URL ready: ${publicImageUrl}`);
 
       // 6. Fetch User's Live Meta Connection
-      const { data: metaConn } = await supabase
+      const { data: metaConn, error: metaErr } = await supabase
         .from("meta_connections")
-        .select("fb_page_id, fb_page_access_token, fb_user_access_token, ig_business_id, instagram_id")
+        .select("fb_page_id, fb_page_access_token, fb_user_access_token, ig_business_id, instagram_actor_id")
         .ilike("email", item.email.trim())
         .order("updated_at", { ascending: false })
         .limit(1)
         .maybeSingle();
+
+      if (metaErr) {
+        logger(`[Social Autopilot] Error fetching meta_connections for ${item.email}: ${metaErr.message}`);
+      }
 
       const published = {};
 
@@ -351,7 +355,7 @@ Include 3-4 bullet benefits, a strong call to action, and 6-8 relevant hashtags$
         let pageToken = metaConn.fb_page_access_token;
         const userToken = metaConn.fb_user_access_token;
         const pageId = metaConn.fb_page_id ? metaConn.fb_page_id.split(",")[0].trim() : null;
-        const igId = metaConn.ig_business_id || metaConn.instagram_id;
+        const igId = metaConn.ig_business_id || metaConn.instagram_actor_id;
 
         // If pageToken is missing or needs refresh, exchange from userToken
         if (!pageToken && userToken && pageId) {

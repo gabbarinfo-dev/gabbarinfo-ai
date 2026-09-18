@@ -1,19 +1,5 @@
 {
   "$schema": "https://openapi.vercel.sh/vercel.json",
-  "crons": [
-    {
-      "path": "/api/wordpress/autopilot-cron",
-      "schedule": "30 3 * * *"
-    },
-    {
-      "path": "/api/social/autopilot-cron",
-      "schedule": "45 3 * * *"
-    },
-    {
-      "path": "/api/shopify/autopilot-cron",
-      "schedule": "0 4 * * *"
-    }
-  ],
   "functions": {
     "pages/api/**/*": {
       "maxDuration": 60
@@ -23,18 +9,6 @@
     },
     "pages/api/agent/execute.js": {
       "maxDuration": 60
-    },
-    "pages/api/social/autopilot-cron.js": {
-      "maxDuration": 300
-    },
-    "pages/api/wordpress/autopilot-cron.js": {
-      "maxDuration": 300
-    },
-    "pages/api/wordpress/generate-blog.js": {
-      "maxDuration": 300
-    },
-    "pages/api/shopify/autopilot-cron.js": {
-      "maxDuration": 300
     }
   }
 }

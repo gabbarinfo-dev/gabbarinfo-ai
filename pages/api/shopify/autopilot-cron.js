@@ -1,16 +1,4 @@
 // pages/api/shopify/autopilot-cron.js
-import { runShopifyAutopilotCycle } from "../../../lib/shopify/shopify-autopilot.js";
-
-export const maxDuration = 300;
-export const config = {
-  maxDuration: 300,
-  api: {
-    bodyParser: {
-      sizeLimit: "25mb",
-    },
-  },
-};
-
 export default async function handler(req, res) {
   const cronSecret = process.env.CRON_SECRET;
   const isVercelCron =
@@ -31,25 +19,25 @@ export default async function handler(req, res) {
   const force = req.query?.force === "true" || req.body?.force === true;
   const email = req.query?.email || req.body?.email || null;
 
-  console.log(`[Shopify Autopilot Cron] Executing cycle (force: ${force}, email: ${email || "all"})...`);
+  console.log(`[Shopify Autopilot Cron] Offloading cycle to Railway worker (force: ${force}, email: ${email || "all"})...`);
+
+  const workerUrl = process.env.RAILWAY_WORKER_URL || "https://video-worker-production-96d4.up.railway.app";
+  const workerSecret = process.env.WORKER_SECRET_KEY || "gabbar_worker_secret_2026";
 
   try {
-    const results = await runShopifyAutopilotCycle({
-      force,
-      email,
-      logger: (msg) => console.log(`[Shopify Cron] ${msg}`),
+    const workerRes = await fetch(`${workerUrl}/autopilot/shopify/trigger?token=${encodeURIComponent(workerSecret)}`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ force, email }),
     });
 
-    return res.status(200).json({
-      ok: true,
-      message: "Shopify Autopilot cycle executed successfully.",
-      results,
-    });
+    const data = await workerRes.json();
+    return res.status(workerRes.status).json(data);
   } catch (err) {
-    console.error("[Shopify Autopilot Cron Error]:", err);
+    console.error("[Shopify Autopilot Cron Proxy Error]:", err);
     return res.status(500).json({
       ok: false,
-      error: err.message || "Failed to execute Shopify autopilot cycle.",
+      error: `Railway worker connection error: ${err.message}`,
     });
   }
 }
