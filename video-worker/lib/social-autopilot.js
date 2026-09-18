@@ -314,8 +314,27 @@ Include 3-4 bullet benefits, a strong call to action, and 6-8 relevant hashtags$
         logger("[Social Autopilot] Primary gpt-image-2 image generation error:", imgErr.message);
       }
 
+      // Robust secondary fallback to dall-e-3 if gpt-image-2 encountered any error
       if (!imageBuffer) {
-        logger(`[Social Autopilot] CRITICAL: No image could be generated. Skipping post for ${item.email} to prevent low-quality fallback.`);
+        try {
+          logger(`[Social Autopilot] Attempting secondary visual generation via dall-e-3 for "${activeService}"...`);
+          const dallRes = await openai.images.generate({
+            model: "dall-e-3",
+            prompt: graphicPrompt.substring(0, 1000),
+            size: "1024x1024",
+            response_format: "b64_json",
+          });
+          if (dallRes.data?.[0]?.b64_json) {
+            imageBuffer = Buffer.from(dallRes.data[0].b64_json, "base64");
+            logger(`[Social Autopilot] Successfully generated fallback visual via dall-e-3 (${imageBuffer.length} bytes)`);
+          }
+        } catch (dallErr) {
+          logger("[Social Autopilot] Secondary dall-e-3 generation error:", dallErr.message);
+        }
+      }
+
+      if (!imageBuffer) {
+        logger(`[Social Autopilot] CRITICAL: All image generation engines failed. Skipping post for ${item.email}.`);
         results.push({ email: item.email, status: "skipped", reason: "image_generation_failed" });
         continue;
       }

@@ -525,44 +525,48 @@ MANDATORY MINIMUM WORD COUNT: Strictly 1600+ Words across all 10 detailed sectio
       }
     }
 
-    // Dedicated Strategic Resources Hub (Tailored specifically to the active client business)
-    if (!finalContent.includes("client-internal-resources-hub")) {
-      const baseUrl = (siteUrl || "").replace(/\/+$/, "");
-      const clientLinks = (existingContent || []).slice(0, 4).map(item => {
-        return `<li style="background: rgba(255,255,255,0.05); border: 1px solid rgba(255,255,255,0.08); padding: 12px 16px; border-radius: 8px;"><a href="${item.url}" style="color: #fbbf24; font-weight: 600; text-decoration: none;">📌 ${item.title}</a></li>`;
-      });
+    // Enforce strict spatial link distribution & remove any final-paragraph link dumping
+    // 1. Clean Section 10 / Final Paragraph from dumped links
+    finalContent = finalContent.replace(/<p>[^<]*partner with\s*<a[^>]*href=["'][^"']*services[^"']*["'][^>]*>[\s\S]*?<\/p>/gi, () => {
+      return `<p>To stay ahead of the competition in 2026, building an agile, multi-channel growth engine is no longer optional—it is the foundation of sustainable enterprise scale. By pairing disciplined data analytics with high-converting creative execution, modern businesses can unlock predictable revenue streams and outpace market disruption.</p>`;
+    });
 
-      if (clientLinks.length === 0 && baseUrl) {
-        clientLinks.push(
-          `<li style="background: rgba(255,255,255,0.05); border: 1px solid rgba(255,255,255,0.08); padding: 12px 16px; border-radius: 8px;"><a href="${baseUrl}" style="color: #fbbf24; font-weight: 600; text-decoration: none;">💼 ${effectiveBusiness} Services & Solutions</a></li>`,
-          `<li style="background: rgba(255,255,255,0.05); border: 1px solid rgba(255,255,255,0.08); padding: 12px 16px; border-radius: 8px;"><a href="${baseUrl}/contact" style="color: #fbbf24; font-weight: 600; text-decoration: none;">📞 Contact & Client Support</a></li>`
-        );
-      }
+    const lastSecRegex = /<h2>10\.\s*Strategic Conclusion[\s\S]*$/i;
+    const matchSec10 = finalContent.match(lastSecRegex);
+    if (matchSec10) {
+      let sec10Html = matchSec10[0];
+      const strippedSec10 = sec10Html.replace(/<a\s+[^>]*href=["'][^"']*(?:services|contact-us|packages)[^"']*["'][^>]*>(.*?)<\/a>/gi, '$1');
+      finalContent = finalContent.replace(sec10Html, strippedSec10);
+    }
 
-      if (clientLinks.length > 0) {
-        const hubHtml = `\n<div class="client-internal-resources-hub" style="margin: 40px 0; padding: 24px 28px; background: #0f172a; border-radius: 12px; border-left: 5px solid #f59e0b; border: 1px solid rgba(255, 255, 255, 0.1); color: #f8fafc;">
-  <h3 style="color: #f59e0b; margin-top: 0; font-size: 20px; font-weight: 700;">🚀 Recommended ${effectiveBusiness} Resources & Services</h3>
-  <p style="color: #cbd5e1; font-size: 15px; margin-bottom: 16px;">Explore our specialized offerings, expert insights, and client solutions:</p>
-  <ul style="list-style-type: none; padding: 0; margin: 0; display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 12px;">
-    ${clientLinks.join("\n    ")}
-  </ul>
-</div>\n`;
-        if (finalContent.includes("FAQ") || finalContent.includes("Frequently Asked Questions")) {
-          finalContent = finalContent.replace(/(<h2[^>]*>(?:FAQ|Frequently Asked Questions)[\s\S]*?<\/h2>)/i, `${hubHtml}\n$1`);
-        } else {
-          finalContent += hubHtml;
-        }
+    // 2. Count internal links to real blog posts across the body
+    const intLinkRegex = /<a\s+[^>]*href=["']https?:\/\/[^"']+\/([^"']+)["'][^>]*>(.*?)<\/a>/gi;
+    const existingBlogLinks = [];
+    let bMatch;
+    while ((bMatch = intLinkRegex.exec(finalContent)) !== null) {
+      const path = bMatch[1];
+      if (!path.includes('services') && !path.includes('contact') && !path.includes('packages') && !path.includes('#')) {
+        existingBlogLinks.push({ url: bMatch[0], path });
       }
     }
 
-    // External Authority Citations Guarantee (Universal industry relevance)
-    if (!finalContent.includes("official-industry-citations")) {
-      const authorityCitationHtml = `\n<div class="official-industry-citations" style="margin: 32px 0; padding: 20px 24px; background: rgba(255, 255, 255, 0.04); border: 1px solid rgba(255, 255, 255, 0.1); border-left: 4px solid #f59e0b; border-radius: 8px; font-size: 14px; color: #cbd5e1; line-height: 1.6;"><strong>Industry Standards & Research Authority:</strong> For best practices, operational benchmarks, and professional standards in ${topic}, consult verified industry publications, certified trade associations, and authoritative research bodies.</div>\n`;
-      const closingH2Index = finalContent.lastIndexOf("<h2>");
-      if (closingH2Index > 0) {
-        finalContent = finalContent.slice(0, closingH2Index) + authorityCitationHtml + finalContent.slice(closingH2Index);
-      } else {
-        finalContent += authorityCitationHtml;
+    // If fewer than 3 internal blog links exist in the body, inject them into sections 2, 4, 6
+    if (existingBlogLinks.length < 3 && Array.isArray(selectedInternalPosts) && selectedInternalPosts.length > 0) {
+      const usable = selectedInternalPosts.filter(p => p.link && !p.link.includes('santa') && !p.link.includes('christmas'));
+      if (usable[0] && !finalContent.includes(usable[0].link)) {
+        finalContent = finalContent.replace(/(2\.\s*Core Foundations[\s\S]*?<\/h2>\s*<p>)/i, (m) => {
+          return `${m}As detailed in our foundational analysis of <a href="${usable[0].link}" style="color: #f59e0b; font-weight: 700; text-decoration: underline;">${usable[0].title.toLowerCase()}</a>, establishing rigorous commercial foundations is essential. `;
+        });
+      }
+      if (usable[1] && !finalContent.includes(usable[1].link)) {
+        finalContent = finalContent.replace(/(4\.\s*Technology Infrastructure[\s\S]*?<\/h2>\s*<p>)/i, (m) => {
+          return `${m}Modern digital infrastructure requires strict attribution fidelity. For teams scaling campaigns, referencing our guide on <a href="${usable[1].link}" style="color: #f59e0b; font-weight: 700; text-decoration: underline;">${usable[1].title.toLowerCase()}</a> provides actionable technical frameworks. `;
+        });
+      }
+      if (usable[2] && !finalContent.includes(usable[2].link)) {
+        finalContent = finalContent.replace(/(6\.\s*In-Depth Real-World Case Study[\s\S]*?<\/h2>\s*<p>)/i, (m) => {
+          return `${m}Organic discovery remains a powerful compounding asset. As analyzed in our <a href="${usable[2].link}" style="color: #f59e0b; font-weight: 700; text-decoration: underline;">${usable[2].title.toLowerCase()}</a>, coupling organic authority with targeted outreach dramatically lowers customer acquisition costs. `;
+        });
       }
     }
 

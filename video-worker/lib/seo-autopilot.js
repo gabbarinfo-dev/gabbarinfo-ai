@@ -45,6 +45,57 @@ function isLegitimateService(serviceName) {
   return true;
 }
 
+function enforceSpatialLinkDistribution(contentHtml, catalogPosts = [], activeService = "Our Services") {
+  if (!contentHtml) return contentHtml;
+  let clean = contentHtml;
+
+  // 1. Clean Section 10 / Final Paragraph from dumped links
+  clean = clean.replace(/<p>[^<]*partner with\s*<a[^>]*href=["'][^"']*services[^"']*["'][^>]*>[\s\S]*?<\/p>/gi, () => {
+    return `<p>To stay ahead of the competition in 2026, building an agile, multi-channel growth engine is no longer optional—it is the foundation of sustainable enterprise scale. By pairing disciplined data analytics with high-converting creative execution, modern businesses can unlock predictable revenue streams and outpace market disruption.</p>`;
+  });
+
+  const lastSectionRegex = /<h2>10\.\s*Strategic Conclusion[\s\S]*$/i;
+  const matchSection10 = clean.match(lastSectionRegex);
+  if (matchSection10) {
+    let section10Html = matchSection10[0];
+    const strippedSection10 = section10Html.replace(/<a\s+[^>]*href=["'][^"']*(?:services|contact-us|packages)[^"']*["'][^>]*>(.*?)<\/a>/gi, '$1');
+    clean = clean.replace(section10Html, strippedSection10);
+  }
+
+  // 2. Count internal links to real blog posts across the body
+  const internalLinkRegex = /<a\s+[^>]*href=["']https?:\/\/[^"']+\/([^"']+)["'][^>]*>(.*?)<\/a>/gi;
+  const foundBlogLinks = [];
+  let m;
+  while ((m = internalLinkRegex.exec(clean)) !== null) {
+    const path = m[1];
+    if (!path.includes('services') && !path.includes('contact') && !path.includes('packages') && !path.includes('#')) {
+      foundBlogLinks.push({ url: m[0], path });
+    }
+  }
+
+  // If fewer than 3 internal blog links exist in the body, inject them into sections 2, 4, 6
+  if (foundBlogLinks.length < 3 && Array.isArray(catalogPosts) && catalogPosts.length > 0) {
+    const usablePosts = catalogPosts.filter(p => p.link && !p.link.includes('santa') && !p.link.includes('christmas'));
+    if (usablePosts[0] && !clean.includes(usablePosts[0].link)) {
+      clean = clean.replace(/(2\.\s*Core Foundations[\s\S]*?<\/h2>\s*<p>)/i, (match) => {
+        return `${match}As detailed in our foundational analysis of <a href="${usablePosts[0].link}" style="color: #f59e0b; font-weight: 700; text-decoration: underline;">${usablePosts[0].title.toLowerCase()}</a>, establishing rigorous commercial foundations is essential. `;
+      });
+    }
+    if (usablePosts[1] && !clean.includes(usablePosts[1].link)) {
+      clean = clean.replace(/(4\.\s*Technology Infrastructure[\s\S]*?<\/h2>\s*<p>)/i, (match) => {
+        return `${match}Modern digital infrastructure requires strict attribution fidelity. For teams scaling campaigns, referencing our guide on <a href="${usablePosts[1].link}" style="color: #f59e0b; font-weight: 700; text-decoration: underline;">${usablePosts[1].title.toLowerCase()}</a> provides actionable technical frameworks. `;
+      });
+    }
+    if (usablePosts[2] && !clean.includes(usablePosts[2].link)) {
+      clean = clean.replace(/(6\.\s*In-Depth Real-World Case Study[\s\S]*?<\/h2>\s*<p>)/i, (match) => {
+        return `${match}Organic discovery remains a powerful compounding asset. As analyzed in our <a href="${usablePosts[2].link}" style="color: #f59e0b; font-weight: 700; text-decoration: underline;">${usablePosts[2].title.toLowerCase()}</a>, coupling organic authority with targeted outreach dramatically lowers customer acquisition costs. `;
+      });
+    }
+  }
+
+  return clean;
+}
+
 async function runSeoAutopilotCycle({ supabase, openai, force = false, logger = console.log }) {
   if (!supabase) throw new Error("Supabase client is required.");
   if (!openai) throw new Error("OpenAI client is required for blog & visual generation.");
@@ -402,6 +453,9 @@ Format output as valid JSON:
           finalContentHtml = midFigureHtml + finalContentHtml;
         }
       }
+
+      // Enforce spatial internal link distribution & remove any final-paragraph link dumps
+      finalContentHtml = enforceSpatialLinkDistribution(finalContentHtml, selectedInternalPosts, activeService);
 
       // 7. Publish Post to WordPress via Official Plugin Endpoint
       logger(`[SEO Autopilot] Publishing live post to ${siteUrl}/wp-json/gabbarinfo/v1/create-post...`);
