@@ -346,7 +346,8 @@ export default function ShopifyStoreConnect({ onConnectionChange }) {
       if (data.ok) {
         setAutopilotNotice(`✅ ${data.message || "Autopilot cycle completed successfully!"}`);
         fetchAutopilotConfig();
-        setTimeout(() => setAutopilotNotice(""), 8000);
+        fetchLiveArticles();
+        setTimeout(() => setAutopilotNotice(""), 10000);
       } else {
         setAutopilotNotice("❌ Cycle trigger failed: " + (data.error || "Unknown"));
       }

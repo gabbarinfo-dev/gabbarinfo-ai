@@ -6,13 +6,14 @@ import OpenAI from "openai";
 import { GoogleGenerativeAI } from "@google/generative-ai";
 import { getValidShopifyAccessToken } from "../../../lib/shopify/token-service";
 import { getMetaIdentity, checkBrandMatch } from "../../../lib/meta/brand-verifier";
+import { runShopifyAutopilotCycle } from "../../../lib/shopify/shopify-autopilot";
 
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL,
   process.env.SUPABASE_SERVICE_ROLE_KEY
 );
 
-export const maxDuration = 60;
+export const maxDuration = 300;
 export const config = {
   maxDuration: 60,
   api: {
@@ -1448,12 +1449,13 @@ Respond ONLY with a valid JSON object matching this schema:
     }
 
     // ---------------------------------------------------------
-    // 10. TRIGGER IMMEDIATE AUTOPILOT GENERATION VIA RAILWAY
+    // 10. TRIGGER IMMEDIATE AUTOPILOT GENERATION
     // ---------------------------------------------------------
     if (action === "trigger-autopilot") {
       const workerUrl = process.env.RAILWAY_WORKER_URL || "https://video-worker-production-96d4.up.railway.app";
       const workerKey = process.env.WORKER_SECRET_KEY || "gabbar_worker_secret_2026";
 
+      // 1. Attempt Railway worker dispatch
       try {
         console.log(`[Shopify Trigger] Forwarding trigger to Railway worker: ${workerUrl}/autopilot/shopify/trigger`);
         const workerRes = await fetch(`${workerUrl}/autopilot/shopify/trigger`, {
@@ -1478,16 +1480,38 @@ Respond ONLY with a valid JSON object matching this schema:
           });
         }
       } catch (wErr) {
-        console.warn("[Shopify Trigger] Railway worker trigger call failed, running local fallback:", wErr.message);
+        console.warn("[Shopify Trigger] Railway worker trigger call failed, executing native engine:", wErr.message);
       }
 
-      // Fallback: Generate and publish directly if worker endpoint is temporarily unreachable
-      const fallbackTopic = payload.topic || `Top Trending Styles and Curated Essentials for 2026: Elevate Your Wardrobe`;
-      return res.status(200).json({
-        ok: true,
-        engine: "railway_queued",
-        message: "Autopilot cycle triggered! Article generation and image synthesis running on Railway.",
-      });
+      // 2. Reliable Native Engine Execution: Execute directly without failing silently!
+      try {
+        console.log(`[Shopify Trigger] Executing native autonomous cycle for ${userEmail}...`);
+        const results = await runShopifyAutopilotCycle({
+          force: true,
+          email: userEmail,
+          logger: (msg) => console.log(`[Shopify Native Engine] ${msg}`),
+        });
+
+        const successItem = results.find((r) => r.status === "success");
+        if (successItem) {
+          return res.status(200).json({
+            ok: true,
+            engine: "native",
+            message: `Autonomous article generated and published live: "${successItem.title}"!`,
+            results,
+          });
+        } else {
+          const failItem = results.find((r) => r.status === "failed");
+          return res.status(500).json({
+            ok: false,
+            error: failItem?.error || "Autopilot generation failed.",
+            results,
+          });
+        }
+      } catch (nativeErr) {
+        console.error("[Shopify Trigger] Native execution error:", nativeErr);
+        return res.status(500).json({ ok: false, error: nativeErr.message });
+      }
     }
 
     return res.status(400).json({ ok: false, error: `Unknown action: ${action}` });

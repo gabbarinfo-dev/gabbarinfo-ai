@@ -8,6 +8,10 @@
     {
       "path": "/api/social/autopilot-cron",
       "schedule": "45 3 * * *"
+    },
+    {
+      "path": "/api/shopify/autopilot-cron",
+      "schedule": "0 4 * * *"
     }
   ],
   "functions": {
@@ -27,6 +31,9 @@
       "maxDuration": 300
     },
     "pages/api/wordpress/generate-blog.js": {
+      "maxDuration": 300
+    },
+    "pages/api/shopify/autopilot-cron.js": {
       "maxDuration": 300
     }
   }

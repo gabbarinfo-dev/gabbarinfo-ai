@@ -332,6 +332,7 @@ async function runShopifyAutopilotCycle({ supabase, openai, force = false, email
       }
 
       // 8. Determine Strategic Topic (Priority 1: User-Selected Topic Lineup Queue)
+      const targetLocations = (config.targetLocations || config.targetMarket || conn.country || "").trim();
       let strategicTopic = null;
       if (Array.isArray(config.topicQueue) && config.topicQueue.length > 0) {
         const nextQueued = config.topicQueue.shift();
@@ -352,8 +353,6 @@ async function runShopifyAutopilotCycle({ supabase, openai, force = false, email
           product_type: p.product_type,
           handle: p.handle,
         }));
-
-        const targetLocations = (config.targetLocations || config.targetMarket || conn.country || "").trim();
 
         const topicPlanningPrompt = `You are a chief eCommerce content strategist for store "${brandName}".
 Catalog Snapshot:
