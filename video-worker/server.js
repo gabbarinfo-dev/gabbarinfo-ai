@@ -1066,7 +1066,7 @@ function getSmartBrollQuery(text = "", sceneIdx = 0, totalScenes = 4, niche = ""
       .replace(/\b(gabbarinfo|gabbar|brand|company|app|system|software|assistant)\b/gi, "")
       .replace(/\s+/g, " ")
       .trim();
-    if (cleanCand.length >= 3 && !/^(scene|promo|reel|video)/i.test(cleanCand)) {
+    if (cleanCand.length >= 3 && !/^(scene|promo|reel|video|robot|rocket|space)/i.test(cleanCand)) {
       return cleanCand;
     }
   }
@@ -1076,28 +1076,28 @@ function getSmartBrollQuery(text = "", sceneIdx = 0, totalScenes = 4, niche = ""
   // 1. Pain / Hook / Chaos / Burning money / Bad agencies
   if (
     sceneIdx === 0 ||
-    /burning|waste|wasting|expensive|retainer|agencies|tools|fragmented|chaos|trap|trapped|struggling|exhausted|frustrated|problem|loss|spending|dollars|thousands|money|bleeding|juggling/i.test(lower)
+    /burning|waste|wasting|expensive|retainer|agencies|tools|fragmented|chaos|trap|trapped|struggling|exhausted|frustrated|problem|loss|spending|dollars|thousands|money|bleeding|juggling|sick of/i.test(lower)
   ) {
     const hookQueries = [
-      "stressed business person laptop office",
-      "frustrated entrepreneur computer desk",
-      "tired professional financial charts",
-      "overwhelmed office worker computer",
-      "worried business owner accounting",
+      "entrepreneur working laptop office",
+      "busy modern office workspace",
+      "creative agency team meeting",
+      "business professional typing laptop",
+      "modern corporate executive desk",
     ];
     return hookQueries[sceneIdx % hookQueries.length];
   }
 
   // 2. AI / Autonomous / Solution / Technology / Dashboard
   if (
-    /ai|autonomous|self-driving|assistant|eliminat|breakthrough|all-in-one|solution|secret|mechanism|operating system|robot|autopilot|smart/i.test(lower)
+    /ai|autonomous|self-driving|assistant|eliminat|breakthrough|all-in-one|solution|secret|mechanism|operating system|autopilot|smart/i.test(lower)
   ) {
     const aiQueries = [
-      "modern high tech office dashboard",
-      "artificial intelligence analytics software",
-      "futuristic computer screen interface",
-      "innovative technology workspace laptop",
-      "digital automation analytics code",
+      "data analytics screen laptop",
+      "modern computer code screen",
+      "high tech office workflow",
+      "digital marketing dashboard computer",
+      "technology team modern office",
     ];
     return aiQueries[sceneIdx % aiQueries.length];
   }
@@ -1109,41 +1109,52 @@ function getSmartBrollQuery(text = "", sceneIdx = 0, totalScenes = 4, niche = ""
     const marketingQueries = [
       "digital marketing analytics screen",
       "social media advertising campaigns laptop",
-      "business growth charts stock market",
+      "business growth charts modern office",
       "online traffic analytics strategy",
       "data analytics dashboard graphs",
     ];
     return marketingQueries[sceneIdx % marketingQueries.length];
   }
 
-  // 4. CTA / Offer / Success / Pricing / Access
+  // 4. CTA / Offer / Success / Pricing / Access (NEVER space rockets!)
   const ctaQueries = [
-    "confident business entrepreneur smiling office",
-    "successful professional smartphone modern studio",
-    "hand holding phone tapping screen mobile app",
-    "happy business executive celebrating success",
-    "modern business handshake partnership",
+    "confident business founder smiling modern office",
+    "executive working on laptop modern studio",
+    "business partnership handshake celebration",
+    "happy entrepreneur celebrating success",
+    "creative team applauding modern office",
   ];
   return ctaQueries[sceneIdx % ctaQueries.length];
 }
 
 function getSmartVisualPrompt(cleanText = "", speaker = "", sceneIdx = 0, totalScenes = 4, brandName = "", serviceToPromote = "") {
-  if (speaker === "customer") {
-    return `Vertical 9:16 cinematic portrait. Stressed professional sitting at office desk looking frustrated at laptop screen, dramatic rim lighting, natural skin texture, 8k photorealistic`;
+  const lowerSpeaker = (speaker || "").toLowerCase();
+  const lowerText = (cleanText || "").toLowerCase();
+
+  // 1. Customer Scene (Scene 1 or 3 in Skit, or pain hook)
+  if (lowerSpeaker.includes("customer") || lowerSpeaker.includes("client") || (sceneIdx === 0 && /sick|waste|wasting|expensive|struggl|frustrated|thousands|agencies|chaos/i.test(lowerText))) {
+    return `Vertical 9:16 cinematic film photograph. Medium close-up portrait of an authentic, expressive business professional client in a modern high-end co-working office, looking at a laptop screen with relatable frustration and stress, natural human skin texture with subtle pores, natural clear open eyes, shallow depth of field, 85mm prime lens f/1.8, soft ambient office lighting, 8k resolution, masterpiece, no deformities`;
   }
-  if (speaker === "owner") {
-    if (sceneIdx === totalScenes - 1) {
-      return `Vertical 9:16 cinematic portrait. Confident charismatic founder of ${brandName || 'our brand'} smiling directly at camera with welcoming gesture, modern ambient studio with neon lighting, 8k photorealistic`;
+
+  // 2. Founder / Owner Scene (Scene 2 or 4 in Skit, or solution pitch)
+  if (lowerSpeaker.includes("founder") || lowerSpeaker.includes("owner") || (sceneIdx % 2 === 1)) {
+    if (sceneIdx === totalScenes - 1 || /launch|pricing|check|call|claim|tap|link|subscribe/i.test(lowerText)) {
+      return `Vertical 9:16 cinematic film photograph. Confident charismatic business founder and executive for "${brandName || 'our brand'}" in a modern high-tech studio, smiling warmly directly at camera with professional welcoming gesture, sleek dual computer monitors displaying marketing software in background, 85mm prime lens, master lighting, 8k photorealistic`;
     }
-    return `Vertical 9:16 cinematic portrait. Confident business leader standing in front of glowing multi-screen dashboard displaying analytics and software, cinematic lighting, photorealistic 8k`;
+    return `Vertical 9:16 cinematic film photograph. Professional business founder for "${brandName || 'our brand'}" in a sleek glass office, standing before glowing computer monitors showing live digital marketing analytics and growth dashboards, looking knowledgeable and confident, 35mm cinema lens, 8k photorealistic`;
   }
-  if (/google ads|meta|campaigns|seo|marketing|traffic|analytics|leads/i.test(cleanText)) {
-    return `Vertical 9:16 cinematic frame. Sleek futuristic digital marketing interface with glowing charts, campaign metrics and live growth graphs, high-tech studio environment, 8k`;
+
+  // 3. Marketing & Ads Analytics
+  if (/google ads|meta|campaigns|seo|marketing|traffic|analytics|leads/i.test(lowerText)) {
+    return `Vertical 9:16 cinematic scene. Ultra-modern creative agency workspace with sleek computer screens displaying real-time digital advertising performance, campaign metrics, and growth graphs, cinematic atmospheric lighting, 8k resolution`;
   }
-  if (/ai|autonomous|self-driving|assistant|eliminat|autopilot/i.test(cleanText)) {
-    return `Vertical 9:16 cinematic scene. Ultra-modern tech workstation with autonomous artificial intelligence dashboard running automated workflows, vibrant ambient studio lighting, 8k`;
+
+  // 4. Autonomous AI / Software (NEVER mechanical toy robots!)
+  if (/ai|autonomous|self-driving|assistant|eliminat|autopilot/i.test(lowerText)) {
+    return `Vertical 9:16 cinematic scene. Modern minimalist tech office with high-end workstation displaying automated software workflows and clean digital interfaces, executive studio lighting, 8k resolution`;
   }
-  return `Vertical 9:16 cinematic action frame representing: ${cleanText.slice(0, 100)}. Photorealistic 8k, volumetric lighting, masterpiece`;
+
+  return `Vertical 9:16 cinematic commercial frame. Professional business workspace representing modern digital agency operations, 8k photorealistic, volumetric lighting, masterpiece`;
 }
 
 // -------------------------------------------------------------
@@ -1464,10 +1475,12 @@ Requirements:
   job.progress = 45;
   const sceneVisuals = [];
 
-  if (selectedStyle === "talking_avatar") {
+  if (selectedStyle === "talking_avatar" || isSkitJob) {
     // TRUE LIP-SYNC TALKING AVATAR (Sync Labs Precision Lip-Sync + Replicate Fallback)
-    job.stage = "Rendering photorealistic character portrait & precision lip-sync...";
-    log(job.id, `Generating talking avatar lip-sync with Sync Labs / Precision Engine...`);
+    job.stage = isSkitJob
+      ? "Rendering 2-character lip-synced commercial skit (Customer & Founder)..."
+      : "Rendering photorealistic character portrait & precision lip-sync...";
+    log(job.id, isSkitJob ? "Rendering 2-character skit with alternating Customer & Founder actors..." : "Generating talking avatar lip-sync with Sync Labs / Precision Engine...");
 
     // Helper to generate a precision lip-synced scene video with native embedded audio
     async function renderTalkingActorScene({ characterImgPrompt, spokenText, voiceToUse, filenamePrefix }) {
@@ -1639,7 +1652,8 @@ Requirements:
       const scVidPath = path.join(jobDir, `reel_sc_${i}.mp4`);
 
       try {
-        const scPrompt = `Cinematic 9:16 vertical smartphone frame. ${sc.visualPrompt || sc.text}. 35mm movie photography, volumetric lighting, Arri Alexa Mini LF, photorealistic 8k, masterpiece.`;
+        const smartPrompt = getSmartVisualPrompt(sc.text, sc.speaker, i, reelScript.scenes.length, brandName, serviceToPromote);
+        const scPrompt = smartPrompt;
         let imgRes = null;
         const reelImageModels = ["gpt-image-2", "gpt-image-2-2026-04-21", "gpt-image-1.5"];
         for (const m of reelImageModels) {
@@ -1668,11 +1682,11 @@ Requirements:
           job.stage = "Generating fast neural video motion (Wan 2.1)...";
           try {
             const vidUrl = await generateWanVideo({
-              prompt: sc.visualPrompt || sc.text,
+              prompt: smartPrompt,
               isWidescreen: false,
               jobId: job.id,
             }).catch(() => generateGenerativeClip({
-              prompt: sc.visualPrompt || sc.text,
+              prompt: smartPrompt,
               isWidescreen: false,
               jobId: job.id,
             }));

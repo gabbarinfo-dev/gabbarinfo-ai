@@ -345,6 +345,8 @@ export default function ReelsStudioConnect() {
       setGenerationStep("Dispatching reel render to Railway GPU worker...");
 
       const effectiveTopic = topic.trim() || (brandName ? `${brandName} ${serviceToPromote}` : customScript.slice(0, 50));
+      const isSkit = promoAngle === "customer_owner_skit" || /\b(Customer|Founder|Owner)\b/i.test(customScript);
+      const effectiveStyle = isSkit ? "talking_avatar" : selectedStyle;
 
       const res = await fetch("/api/video/dispatch", {
         method: "POST",
@@ -366,7 +368,7 @@ export default function ReelsStudioConnect() {
             language,
             voice,
             backgroundBeat,
-            selectedStyle,
+            selectedStyle: effectiveStyle,
           },
           userEmail,
         }),
@@ -1430,7 +1432,12 @@ export default function ReelsStudioConnect() {
                       <button
                         key={ang.id}
                         type="button"
-                        onClick={() => setPromoAngle(ang.id)}
+                        onClick={() => {
+                          setPromoAngle(ang.id);
+                          if (ang.id === "customer_owner_skit" || ang.id === "founder_pitch") {
+                            setSelectedStyle("talking_avatar");
+                          }
+                        }}
                         style={{
                           padding: "8px 10px",
                           borderRadius: 8,
@@ -1451,6 +1458,29 @@ export default function ReelsStudioConnect() {
                       </button>
                     ))}
                   </div>
+
+                  {promoAngle === "customer_owner_skit" && (
+                    <div
+                      style={{
+                        marginTop: 10,
+                        padding: "8px 12px",
+                        borderRadius: 8,
+                        background: "rgba(99, 102, 241, 0.15)",
+                        border: "1px solid rgba(99, 102, 241, 0.4)",
+                        display: "flex",
+                        alignItems: "center",
+                        gap: 8,
+                        fontSize: 11,
+                        color: "#c7d2fe",
+                        lineHeight: 1.4,
+                      }}
+                    >
+                      <span style={{ fontSize: 16 }}>🎭</span>
+                      <div>
+                        <strong style={{ color: "#a5b4fc" }}>2-Actor Lip-Sync Mode Active:</strong> Customer and Founder characters will visibly speak each scene with synchronized facial lip-sync and distinct alternating voices in a modern office/studio setting.
+                      </div>
+                    </div>
+                  )}
                 </div>
 
                 {/* Script Language & Duration Quick Controls */}
