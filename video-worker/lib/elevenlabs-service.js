@@ -151,18 +151,29 @@ async function generateStudioSpeech({
     }
   }
 
-  // Graceful Fallback: OpenAI TTS (model: "tts-1")
+  // Graceful Fallback: OpenAI TTS (model: "tts-1-hd" with "tts-1" fallback)
   if (openai || process.env.OPENAI_API_KEY) {
     try {
       const aiInstance = openai || new (require("openai"))({ apiKey: process.env.OPENAI_API_KEY });
       const openaiVoice = gender === "female" ? "shimmer" : "onyx";
 
-      const mp3Res = await aiInstance.audio.speech.create({
-        model: "tts-1",
-        voice: openaiVoice,
-        input: cleanText,
-        response_format: "mp3",
-      });
+      let mp3Res;
+      try {
+        mp3Res = await aiInstance.audio.speech.create({
+          model: "tts-1-hd",
+          voice: openaiVoice,
+          input: cleanText,
+          response_format: "mp3",
+        });
+      } catch (hdErr) {
+        console.warn("[OpenAI TTS] tts-1-hd error, trying tts-1:", hdErr.message);
+        mp3Res = await aiInstance.audio.speech.create({
+          model: "tts-1",
+          voice: openaiVoice,
+          input: cleanText,
+          response_format: "mp3",
+        });
+      }
 
       const buffer = Buffer.from(await mp3Res.arrayBuffer());
       return { ok: true, buffer, provider: "openai" };
