@@ -11,6 +11,8 @@ const cron = require("node-cron");
 const { runSocialAutopilotCycle } = require("./lib/social-autopilot");
 const { runSeoAutopilotCycle } = require("./lib/seo-autopilot");
 const { runShopifyAutopilotCycle, generateShopifyArticleOnDemand } = require("./lib/shopify-autopilot");
+const { generateStudioSpeech } = require("./lib/elevenlabs-service");
+const { generateSyncLabsLipSync } = require("./lib/synclabs-service");
 
 const app = express();
 app.use(cors());
@@ -244,13 +246,38 @@ async function uploadPublicFile(filePath, filename, contentType = "application/o
 }
 
 // -------------------------------------------------------------
-// Replicate GPU Video & Lip-Sync Engines
+// Precision Lip-Sync Engines (Sync Labs v2 Flagship + Replicate Fallback)
 // -------------------------------------------------------------
-async function generateSadTalkerLipSync({ imageUrl, audioUrl, jobId }) {
-  const token = process.env.REPLICATE_API_TOKEN;
-  if (!token) throw new Error("Missing REPLICATE_API_TOKEN in environment variables");
+async function generatePrecisionLipSync({ imageUrl, videoUrl, audioUrl, jobId }) {
+  const targetMediaUrl = videoUrl || imageUrl;
 
-  log(jobId, `Dispatching SadTalker GPU lip-sync prediction to Replicate...`);
+  // 1. Primary: Sync Labs v2 Precision Lip-Sync (sync-3 -> lipsync-2-pro -> lipsync-2)
+  if (process.env.SYNC_LABS_API_KEY && targetMediaUrl && audioUrl) {
+    try {
+      log(jobId, `Attempting precision lip-sync via Sync Labs (sync-3)...`);
+      const syncRes = await generateSyncLabsLipSync({
+        videoUrl: targetMediaUrl,
+        audioUrl,
+        model: "sync-3",
+        jobId,
+        log,
+      });
+
+      if (syncRes.ok && syncRes.videoUrl) {
+        log(jobId, `Sync Labs precision lip-sync succeeded: ${syncRes.videoUrl}`);
+        return syncRes.videoUrl;
+      }
+      log(jobId, `Sync Labs returned note: ${syncRes.error || "Falling back to secondary engine"}`);
+    } catch (syncErr) {
+      log(jobId, `Sync Labs exception: ${syncErr.message}, falling back to Replicate...`);
+    }
+  }
+
+  // 2. Secondary Fallback: Replicate GPU SadTalker
+  const token = process.env.REPLICATE_API_TOKEN;
+  if (!token) throw new Error("Missing both SYNC_LABS_API_KEY and REPLICATE_API_TOKEN in environment variables");
+
+  log(jobId, `Dispatching fallback SadTalker GPU lip-sync prediction to Replicate...`);
   const createRes = await fetch("https://api.replicate.com/v1/predictions", {
     method: "POST",
     headers: {
@@ -260,7 +287,7 @@ async function generateSadTalkerLipSync({ imageUrl, audioUrl, jobId }) {
     body: JSON.stringify({
       version: "a519cc0cfebaaeade068b23899165a11ec76aaa1d2b313d40d214f204ec957a3",
       input: {
-        source_image: imageUrl,
+        source_image: imageUrl || targetMediaUrl,
         driven_audio: audioUrl,
         still: false,
         use_enhancer: true,
@@ -296,8 +323,11 @@ async function generateSadTalkerLipSync({ imageUrl, audioUrl, jobId }) {
       throw new Error(`SadTalker failed: ${statusData.error || "Unknown error"}`);
     }
   }
-  throw new Error("SadTalker prediction timed out after 240s");
+  throw new Error("Lip-sync prediction timed out after 240s");
 }
+
+// Backward-compatibility alias
+const generateSadTalkerLipSync = generatePrecisionLipSync;
 
 async function generateGenerativeClip({ prompt, isWidescreen, jobId }) {
   const token = process.env.REPLICATE_API_TOKEN;
@@ -760,14 +790,16 @@ Return ONLY valid JSON in this exact structure:
 
     log(job.id, `Recording Scene ${i + 1}: Speaker="${isNarrator ? "Narrator" : scene.speaker}" | Voice="${voice}" | Text="${spokenText.slice(0, 40)}..."`);
 
-    const mp3Response = await openai.audio.speech.create({
-      model: "tts-1-hd",
-      voice,
-      input: spokenText.replace(/^["']|["']$/g, ""),
-      response_format: "mp3",
+    const charGender = isNarrator ? "male" : ((voice === "shimmer" || voice === "nova") ? "female" : "male");
+    const speechResult = await generateStudioSpeech({
+      text: spokenText.replace(/^["']|["']$/g, ""),
+      language: language || "hindi",
+      gender: charGender,
+      voiceId: voice,
+      openai,
     });
 
-    const audioBuf = Buffer.from(await mp3Response.arrayBuffer());
+    const audioBuf = speechResult.buffer;
     const audioPath = path.join(jobDir, `scene_${i}_audio.mp3`);
     fs.writeFileSync(audioPath, audioBuf);
     audioFiles.push(audioPath);
@@ -1210,19 +1242,21 @@ Requirements:
   }
 
   job.progress = 25;
-  job.stage = "Synthesizing studio voiceover audio with tts-1-hd...";
+  job.stage = "Synthesizing studio voiceover audio (ElevenLabs / TTS-HD)...";
   log(job.id, `Synthesizing audio with base voice: ${ttsVoice} (Lang: ${language})`);
 
   // Baseline combined voiceover (used for B-roll / fallback)
   const fullSpokenText = reelScript.scenes.map(s => sanitizeDialogue(s.spokenAudio || s.text)).join(" ");
-  const mp3Response = await openai.audio.speech.create({
-    model: "tts-1-hd",
-    voice: ttsVoice,
-    input: fullSpokenText.replace(/^["']|["']$/g, ""),
-    response_format: "mp3",
+  const baselineGender = (ttsVoice === "shimmer" || ttsVoice === "nova") ? "female" : "male";
+  const fullAudioRes = await generateStudioSpeech({
+    text: fullSpokenText.replace(/^["']|["']$/g, ""),
+    language: language || "hindi",
+    gender: baselineGender,
+    voiceId: ttsVoice,
+    openai,
   });
 
-  const fullAudioBuf = Buffer.from(await mp3Response.arrayBuffer());
+  const fullAudioBuf = fullAudioRes.buffer;
   const reelAudioPath = path.join(jobDir, "reel_voiceover.mp3");
   fs.writeFileSync(reelAudioPath, fullAudioBuf);
 
@@ -1231,25 +1265,27 @@ Requirements:
   const sceneVisuals = [];
 
   if (selectedStyle === "talking_avatar") {
-    // TRUE LIP-SYNC TALKING AVATAR (SadTalker + GFPGAN Face Enhancer)
-    job.stage = "Rendering photorealistic character portrait & GPU lip-sync...";
-    log(job.id, `Generating talking avatar lip-sync with SadTalker...`);
+    // TRUE LIP-SYNC TALKING AVATAR (Sync Labs Precision Lip-Sync + Replicate Fallback)
+    job.stage = "Rendering photorealistic character portrait & precision lip-sync...";
+    log(job.id, `Generating talking avatar lip-sync with Sync Labs / Precision Engine...`);
 
-    // Helper to generate a SadTalker scene video with native embedded audio
+    // Helper to generate a precision lip-synced scene video with native embedded audio
     async function renderTalkingActorScene({ characterImgPrompt, spokenText, voiceToUse, filenamePrefix }) {
       const imgPath = path.join(jobDir, `${filenamePrefix}_char.png`);
       const audioPath = path.join(jobDir, `${filenamePrefix}_audio.mp3`);
       const vidPath = path.join(jobDir, `${filenamePrefix}_talking.mp4`);
 
-      // 1. Synthesize Scene Audio
+      // 1. Synthesize Scene Audio via ElevenLabs
       const cleanLine = sanitizeDialogue(spokenText);
-      const mp3 = await openai.audio.speech.create({
-        model: "tts-1-hd",
-        voice: voiceToUse,
-        input: cleanLine.replace(/^["']|["']$/g, ""),
-        response_format: "mp3",
+      const actorGender = (voiceToUse === "shimmer" || voiceToUse === "nova") ? "female" : "male";
+      const actorSpeechRes = await generateStudioSpeech({
+        text: cleanLine.replace(/^["']|["']$/g, ""),
+        language: language || "hindi",
+        gender: actorGender,
+        voiceId: voiceToUse,
+        openai,
       });
-      fs.writeFileSync(audioPath, Buffer.from(await mp3.arrayBuffer()));
+      fs.writeFileSync(audioPath, actorSpeechRes.buffer);
 
       // 2. Generate Character Image
       let imgGen = null;
