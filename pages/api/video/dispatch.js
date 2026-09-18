@@ -24,6 +24,27 @@ export default async function handler(req, res) {
 
   const { videoType = "reel", payload = {} } = req.body;
 
+  // Normalize voice to valid engine enum ('nova', 'shimmer', 'echo', 'onyx', 'fable', 'alloy', 'ash', 'sage', 'coral')
+  const OPENAI_VOICE_MAP = {
+    adam: "alloy",
+    charlie: "onyx",
+    roger: "echo",
+    george: "fable",
+    arnold: "alloy",
+    rachel: "nova",
+    sarah: "shimmer",
+    lily: "nova",
+    emily: "nova",
+  };
+  const ALLOWED_VOICES = ["nova", "shimmer", "echo", "onyx", "fable", "alloy", "ash", "sage", "coral"];
+
+  let normalizedVoice = String(payload.voice || "alloy").toLowerCase().trim();
+  if (OPENAI_VOICE_MAP[normalizedVoice]) {
+    normalizedVoice = OPENAI_VOICE_MAP[normalizedVoice];
+  } else if (!ALLOWED_VOICES.includes(normalizedVoice)) {
+    normalizedVoice = "alloy";
+  }
+
   // Railway Worker Configuration
   const workerUrl = process.env.RAILWAY_WORKER_URL || "http://localhost:8080";
   const workerSecret = process.env.WORKER_SECRET_KEY || "gabbar_worker_secret_2026";
@@ -39,6 +60,7 @@ export default async function handler(req, res) {
         videoType,
         payload: {
           ...payload,
+          voice: normalizedVoice,
           elevenLabsApiKey: process.env.ELEVENLABS_API_KEY,
           syncLabsApiKey: process.env.SYNC_LABS_API_KEY,
           openAiApiKey: process.env.OPENAI_API_KEY,

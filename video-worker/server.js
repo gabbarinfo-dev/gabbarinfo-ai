@@ -1236,11 +1236,24 @@ Requirements:
     }
   }
 
-  let ttsVoice = voice || (language === "en_uk" ? "fable" : "alloy");
-  if (language === "en_uk" && ttsVoice.toLowerCase() === "alloy") {
-    ttsVoice = "fable";
-  } else if (language === "hindi" && !["alloy", "nova", "onyx", "shimmer"].includes(ttsVoice.toLowerCase())) {
-    ttsVoice = "alloy";
+  const OPENAI_VOICE_MAP = {
+    adam: "alloy",
+    charlie: "onyx",
+    roger: "echo",
+    george: "fable",
+    arnold: "alloy",
+    rachel: "nova",
+    sarah: "shimmer",
+    lily: "nova",
+    emily: "nova",
+  };
+  const ALLOWED_VOICES = ["nova", "shimmer", "echo", "onyx", "fable", "alloy", "ash", "sage", "coral"];
+
+  let ttsVoice = String(voice || (language === "en_uk" ? "fable" : "alloy")).toLowerCase().trim();
+  if (OPENAI_VOICE_MAP[ttsVoice]) {
+    ttsVoice = OPENAI_VOICE_MAP[ttsVoice];
+  } else if (!ALLOWED_VOICES.includes(ttsVoice)) {
+    ttsVoice = language === "en_uk" ? "fable" : "alloy";
   }
 
   job.progress = 25;
