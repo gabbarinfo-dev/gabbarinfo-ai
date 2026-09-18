@@ -14,7 +14,7 @@ export default function ReelsStudioConnect() {
   const [topic, setTopic] = useState("");
   const [niche, setNiche] = useState("business");
   const [language, setLanguage] = useState("hindi"); // "hindi" | "en_us" | "en_uk"
-  const [voice, setVoice] = useState("alloy"); // dynamically updated on lang change
+  const [voice, setVoice] = useState("arnold"); // dynamically updated on lang change
   const [backgroundBeat, setBackgroundBeat] = useState("upbeat_lofi");
   const [generating, setGenerating] = useState(false);
   const [generationStep, setGenerationStep] = useState("");
@@ -236,35 +236,34 @@ export default function ReelsStudioConnect() {
 
   const VOICES_BY_LANG = {
     en_uk: [
-      { id: "fable", name: "Fable (Refined British Accent - Gentleman)" },
-      { id: "alloy", name: "Alloy (Crisp International / Modern UK)" },
-      { id: "nova", name: "Nova (Articulate British/International Female)" },
-      { id: "onyx", name: "Onyx (Deep Authoritative Baritone)" },
-      { id: "shimmer", name: "Shimmer (Warm Expressive Female)" },
+      { id: "george", name: "George (Refined British Gentleman - ElevenLabs)" },
+      { id: "lily", name: "Lily (Articulate British Female - ElevenLabs)" },
+      { id: "fable", name: "Fable (Classic UK Storyteller)" },
+      { id: "alloy", name: "Alloy (Modern International)" },
     ],
     en_us: [
-      { id: "alloy", name: "Alloy (Crisp American / Modern Tech)" },
-      { id: "nova", name: "Nova (High-Energy American Female)" },
-      { id: "onyx", name: "Onyx (Deep Authoritative American Male)" },
-      { id: "shimmer", name: "Shimmer (Warm Engaging American Female)" },
-      { id: "echo", name: "Echo (Dynamic Storyteller Male)" },
+      { id: "adam", name: "Adam (Deep Engaging Narrator - ElevenLabs)" },
+      { id: "rachel", name: "Rachel (Warm Professional Female - ElevenLabs)" },
+      { id: "charlie", name: "Charlie (Confident Commercial Executive - ElevenLabs)" },
+      { id: "sarah", name: "Sarah (Mature Reassuring Authority - ElevenLabs)" },
+      { id: "roger", name: "Roger (Casual Resonant Storyteller - ElevenLabs)" },
     ],
     hindi: [
-      { id: "alloy", name: "Alloy (Natural Hindi & Bilingual - Crisp)" },
-      { id: "nova", name: "Nova (Energetic Hindi Female)" },
-      { id: "onyx", name: "Onyx (Deep Authoritative Hindi Male)" },
-      { id: "shimmer", name: "Shimmer (Warm Expressive Hindi Female)" },
+      { id: "arnold", name: "Arnold (Fluent Hindi Commercial Male - ElevenLabs)" },
+      { id: "emily", name: "Emily (Warm Hindi Commercial Female - ElevenLabs)" },
+      { id: "adam", name: "Adam (Multilingual High-Energy Male - ElevenLabs)" },
+      { id: "rachel", name: "Rachel (Multilingual Professional Female - ElevenLabs)" },
     ],
   };
 
   const handleLanguageChange = (newLang) => {
     setLanguage(newLang);
     if (newLang === "en_uk") {
-      setVoice("fable");
+      setVoice("george");
     } else if (newLang === "en_us") {
-      setVoice("alloy");
+      setVoice("adam");
     } else {
-      setVoice("alloy");
+      setVoice("arnold");
     }
   };
 

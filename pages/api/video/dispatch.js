@@ -37,7 +37,12 @@ export default async function handler(req, res) {
       },
       body: JSON.stringify({
         videoType,
-        payload,
+        payload: {
+          ...payload,
+          elevenLabsApiKey: process.env.ELEVENLABS_API_KEY,
+          syncLabsApiKey: process.env.SYNC_LABS_API_KEY,
+          openAiApiKey: process.env.OPENAI_API_KEY,
+        },
         userEmail,
       }),
     });

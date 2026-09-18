@@ -129,6 +129,9 @@ export default async function handler(req, res) {
   } = req.body;
 
   const targetSecs = Math.max(10, Math.min(60, Number(durationSeconds) || 15));
+  const effectiveOffer = specialOffer && specialOffer.trim()
+    ? specialOffer.trim()
+    : "Launch Pricing & Full Autonomous Access";
 
   // 1. Deeply crawl website context if URL is provided
   const scrapedContext = await scrapeDeepWebsiteContext(websiteUrl);
@@ -147,7 +150,7 @@ export default async function handler(req, res) {
 All spoken lines MUST be written in natural, fluent, colloquial Devanagari script (हिंदी) with authentic Indian commercial phrasing and idioms so neural Indian voices speak with native Indian cadence and 0% foreign accent! Do NOT write Latin transliterated Hinglish. Write pure Devanagari.`;
   } else if (language === "en_uk") {
     langInstruction = `CRITICAL LANGUAGE DIRECTIVE (BRITISH ENGLISH):
-Write in refined, eloquent, charismatic British English. Use authentic British commercial terminology (e.g. bespoke, brilliant, whilst, enquire, complimentary, tailored, claim your slot). Absolutely NO American slang.`;
+Write in refined, eloquent, charismatic British English. Use authentic British commercial terminology (e.g. bespoke, whilst, enquire, complimentary, tailored, claim your slot). Absolutely NO American slang.`;
   } else {
     langInstruction = `CRITICAL LANGUAGE DIRECTIVE (AMERICAN ENGLISH):
 Write in high-energy, authoritative, punchy American commercial direct-response cadence. Crisp, confident, and action-oriented.`;
@@ -155,21 +158,44 @@ Write in high-energy, authoritative, punchy American commercial direct-response 
 
   // 3. Duration calibration & pacing
   let durationSpecs = "";
+  let fewShotExamples = "";
+
   if (targetSecs <= 15) {
     durationSpecs = `DURATION SPECIFICATIONS (${targetSecs}-Second Viral Hook Reel):
-- Scene Count: Exactly 3 to 4 punchy, high-impact sequential scenes.
-- Spoken Word Count: Exactly 38 to 48 spoken words total across all scenes (ideal pacing for 15s with zero dead air).
-- Tone: Fast-paced, high impact, pattern-interrupting, punchy hooks.`;
+- Scene Count: Exactly 4 sequential scenes.
+- Total Spoken Word Count: Exactly 38 to 48 spoken words total across all scenes (at ~2.8 words/sec, this fills 14-15s with zero dead air).
+- Each scene MUST be 9 to 13 spoken words (1 full, punchy sentence). NEVER write 3-word fragments!`;
+
+    fewShotExamples = `GOLD STANDARD EXAMPLES (STUDY THESE FOR STYLE, TONE, AND WORD COUNT):
+
+EXAMPLE 15s DIRECT RESPONSE:
+Scene 1: If you're still paying five thousand a month for bloated marketing agencies, you're literally burning cash.
+Scene 2: Gabbarinfo AI replaces your entire media buying team with self-driving autonomous agents that never sleep.
+Scene 3: Launch high-converting Google Ads, Meta campaigns, and dual-visual SEO from one single dashboard.
+Scene 4: Tap the link below right now. Subscribe your plan today and put your marketing on pure autopilot.`;
   } else if (targetSecs <= 30) {
     durationSpecs = `DURATION SPECIFICATIONS (${targetSecs}-Second Commercial Story Reel):
-- Scene Count: Exactly 4 to 6 structured sequential scenes.
-- Spoken Word Count: Exactly 75 to 95 spoken words total across all scenes.
-- Flow: Scroll-stopping Hook -> Problem Agitation & Cost of Inaction -> Breakthrough Mechanism & Core USPs -> Proof/Transformation -> Irresistible Urgency Offer & CTA.`;
+- Scene Count: Exactly 5 to 6 structured sequential scenes.
+- Total Spoken Word Count: Exactly 75 to 95 spoken words total across all scenes.
+- Flow: Shock Hook -> Agitation & Cost of Inaction -> Breakthrough Mechanism & Core USPs -> Proof / Transformation -> Irresistible Urgency Offer & CTA.`;
+
+    fewShotExamples = `GOLD STANDARD EXAMPLES (STUDY THESE FOR STYLE, TONE, AND WORD COUNT):
+
+EXAMPLE 30s DIRECT RESPONSE:
+Scene 1: Why are smart business owners firing their marketing agencies and canceling five software subscriptions this week?
+Scene 2: Because jumping between Google Ads Manager, Meta, Canva, and WordPress burns fifteen hours a week with mediocre results.
+Scene 3: Gabbarinfo AI replaces the entire tool chaos with one unified, autonomous operating system.
+Scene 4: It launches high-converting Search campaigns, designs daily social graphics, and authors dual-visual SEO articles around the clock.
+Scene 5: You get ten-x marketing leverage without hiring a single media buyer or paying bloated monthly retainers.
+Scene 6: Don't get left behind. Subscribe your plan right now and watch your marketing run completely on self-driving mode.`;
   } else {
     durationSpecs = `DURATION SPECIFICATIONS (${targetSecs}-Second Deep-Dive Commercial):
 - Scene Count: Exactly 6 to 8 comprehensive sequential scenes.
-- Spoken Word Count: Exactly 140 to 175 spoken words total across all scenes.
+- Total Spoken Word Count: Exactly 140 to 175 spoken words total across all scenes.
 - Flow: Pattern Interrupt -> Detailed Industry Pain & Why Alternatives Fail -> Deep Feature & USP Breakdown -> Tangible Proof & ROI -> Irresistible Offer -> Direct Action CTA.`;
+
+    fewShotExamples = `GOLD STANDARD EXAMPLES (STUDY THESE FOR STYLE, TONE, AND WORD COUNT):
+Each scene should be 20 to 25 words of rich, persuasive narrative, giving deep detail on the pain, the breakthrough USPs, the mechanism, proof, and closing offer.`;
   }
 
   // 4. Promotional Angle & Copywriting Framework
@@ -179,7 +205,7 @@ Write in high-energy, authoritative, punchy American commercial direct-response 
 - Scene 1 (Customer Problem): The customer speaks with genuine, visceral frustration about the burning pain point or costly nightmare they are dealing with (e.g. burning thousands on agencies, dealing with 5 broken tools, or zero results).
 - Scene 2 (Owner Solution & Empathy): The business owner/founder steps in with confidence and warmth, introducing "${brandName || "our company"}" and how "${serviceToPromote || "our signature solution"}" eliminates that exact frustration.
 - Scenes 3-4 (Breakthrough USPs & Proof): The owner breaks down the specific USPs, technology, or capabilities extracted from the product/website, proving why it delivers superior results.
-- Final Scene (Offer & CTA): The owner delivers the special deal: "${specialOffer || "exclusive limited-time offer"}" and direct CTA: "${promoCTA}".
+- Final Scene (Offer & CTA): The owner delivers the special deal: "${effectiveOffer}" and direct CTA: "${promoCTA}".
 - Tag each scene with the speaker: "Scene 1 (Customer): ...", "Scene 2 (Founder): ...".`;
   } else if (promoAngle === "founder_pitch") {
     anglePrompt = `PROMOTIONAL ANGLE: Charismatic Founder / Owner Direct Pitch
@@ -188,23 +214,22 @@ Write in high-energy, authoritative, punchy American commercial direct-response 
 - Agitation: Calling out the exact fatigue, confusion, or wasted budget prospects experience.
 - The Breakthrough: Why we built "${brandName || "our brand"}" and how "${serviceToPromote || "our system"}" transforms results with its unique autonomous USPs.
 - Proof & Contrast: Concrete outcomes and operational freedom.
-- Urgency Offer & CTA: Direct invitation presenting "${specialOffer || "special deal"}" and command: "${promoCTA}".`;
+- Urgency Offer & CTA: Direct invitation presenting "${effectiveOffer}" and command: "${promoCTA}".`;
   } else {
-    anglePrompt = `PROMOTIONAL ANGLE: High-Converting Direct Response Commercial Ad (Battle-Tested PAS / Direct Response)
-- This is an aggressive, high-converting commercial video sales ad designed for immediate action.
-- Hook (0-3s): Scroll-stopping pattern interrupt directly calling out the prospect's most painful, costly mistake or frustration using real context.
-- Agitate: Expose the hidden drain and daily chaos of continuing with the old way.
-- Core Mechanism & USPs: Reveal "${brandName || "our brand"}" as the ultimate unfair advantage, highlighting the specific capabilities of "${serviceToPromote || "our system"}" and extracted USPs.
-- Tangible Transformation: Contrast the chaotic before vs effortless after with concrete leverage.
-- Irresistible Urgency & CTA: Unbeatable limited-time offer "${specialOffer || "special offer"}" + unequivocal action command "${promoCTA}".`;
+    anglePrompt = `PROMOTIONAL ANGLE: High-Converting Direct Response Commercial Ad (Alex Hormozi / Dan Kennedy Style)
+- Hook (0-3s): Contrarian shock hook or bold pattern interrupt that stops the scroll dead. Expose the painful cost or rip-off of traditional methods.
+- Agitate: Call out the chaotic reality—jumping between multiple apps, generic AI chatbots that don't execute, and burning thousands on retainers.
+- Unfair Advantage & Mechanism: Introduce "${brandName || "our brand"}" with its signature mechanism (${serviceToPromote || "our autonomous system"}), highlighting its real extracted USPs.
+- Concrete Transformation: Contrast the chaotic manual struggle vs effortless automated growth.
+- Action Command & Urgency: Deliver the irresistible offer "${effectiveOffer}" with an unignorable CTA: "${promoCTA}".`;
   }
 
-  const prompt = `You are an elite, world-class direct-response commercial copywriter and viral video director.
-Create an authentic, punchy, high-converting commercial screenplay for a ${targetSecs}-second vertical promotional reel (Instagram Reels, TikTok, YouTube Shorts).
+  const prompt = `You are an elite, top 0.1% direct-response commercial copywriter and viral video director (producing eight-figure video sales ads).
+Write a mind-blowing, high-converting commercial screenplay for a ${targetSecs}-second vertical video reel (Instagram Reels, TikTok, YouTube Shorts).
 
 BRAND / BUSINESS NAME: "${brandName || "Our Brand"}"
 PRODUCT / SERVICE TO PROMOTE: "${serviceToPromote || "Autonomous Growth Suite"}"
-SPECIAL DEAL / LIMITED OFFER: "${specialOffer || "Exclusive Limited-Time Promotion"}"
+SPECIAL DEAL / LIMITED OFFER: "${effectiveOffer}"
 CALL TO ACTION (CTA): "${promoCTA}"
 TARGET DURATION: ${targetSecs} seconds
 
@@ -216,17 +241,21 @@ ${durationSpecs}
 
 ${anglePrompt}
 
-CRITICAL COPYWRITING DIRECTIVES:
-1. NO ROBOTIC TRIVIAL 1-SENTENCE SUMMARIES:
-   - NEVER output shallow, lazy generic bullet lines like "Scene 1: Struggling? Scene 2: Solution! Scene 3: Buy now!".
-   - Each scene MUST contain 1 to 2 complete, expressive spoken sentences that flow naturally when spoken aloud by a real human or digital avatar.
-2. WEAVE IN CONCRETE CHANNELS, METRICS & USPs:
-   - Do NOT just say generic words like "marketing" or "flawless campaigns". Weave in the REAL concrete channels, tools, numbers, and features extracted from the website context (e.g., Google Ads, Meta campaigns, SEO articles, social graphics, replacing $5K agencies, or eliminating 5-app tool hopping).
-   - The brand name "${brandName || "Our Brand"}" MUST be spoken clearly and prominently.
-   - The CTA "${promoCTA}" and offer "${specialOffer}" must be delivered with natural urgency in the closing scene.
-3. FORMAT:
-   - "formattedScript" must be clean multiline text where each scene starts with "Scene 1:" (or "Scene 1 (Customer):").
-   - Spoken dialogue ONLY in the script lines—no stage directions or parenthetical sound effects inside the spoken dialogue.
+CRITICAL COPYWRITING DIRECTIVES (ZERO TOLERANCE FOR GENERIC AI SLOGANS):
+1. STRICTLY BANNED PHRASES (DO NOT USE UNDER ANY CIRCUMSTANCES):
+   - NEVER start with "Struggling with...", "Are you tired of...", or "Looking for..."
+   - NEVER use corporate announcements like "Meet [Brand]—your [buzzword]!"
+   - NEVER output bullet lists disguised as sentences like "Google Ads, Meta campaigns, SEO—on autopilot 24/7!"
+   - NEVER use generic filler like "for our exclusive limited-time promotion!"
+2. FULL SENTENCES & CADENCE:
+   - Each scene MUST be a complete, well-crafted conversational sentence (9 to 14 words per scene).
+   - NEVER output short 3-word fragments!
+3. REAL USPs & INTEGRATION:
+   - Weave in the actual channels, metrics, and tools from the website context (Google Ads, Meta ads, dual-visual SEO articles, daily graphics, autonomous 24/7 execution, eliminating $5K retainers or 5-tool chaos).
+   - Brand name "${brandName || "Our Brand"}" must be spoken clearly.
+   - Closing scene MUST deliver the CTA "${promoCTA}".
+
+${fewShotExamples}
 
 Return ONLY valid JSON:
 {
@@ -236,12 +265,12 @@ Return ONLY valid JSON:
     "Concrete USP 2",
     "Concrete USP 3"
   ],
-  "formattedScript": "Scene 1: [Spoken line]\\nScene 2: [Spoken line]\\n...",
+  "formattedScript": "Scene 1: [Full spoken line]\\nScene 2: [Full spoken line]\\n...",
   "scenes": [
     {
       "sceneNumber": 1,
       "speaker": "Speaker Name",
-      "line": "Spoken line",
+      "line": "Full spoken line",
       "visualDescription": "Visual camera framing and backdrop for vertical 9:16 video",
       "durationEstimate": 4
     }

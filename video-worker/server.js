@@ -532,6 +532,10 @@ async function processLongFormYouTube(job, jobDir) {
     scriptMode = "ai_prompt",
   } = payload;
 
+  if (payload.elevenLabsApiKey) process.env.ELEVENLABS_API_KEY = payload.elevenLabsApiKey;
+  if (payload.syncLabsApiKey) process.env.SYNC_LABS_API_KEY = payload.syncLabsApiKey;
+  if (payload.openAiApiKey) process.env.OPENAI_API_KEY = payload.openAiApiKey;
+
   const durationMins = Number(durationMinutes || targetMinutes) || 2;
   const targetTotalSecs = durationMins * 60;
   const isWidescreen = payload.format === "youtube_16_9";
@@ -797,7 +801,12 @@ Return ONLY valid JSON in this exact structure:
       gender: charGender,
       voiceId: voice,
       openai,
+      apiKey: process.env.ELEVENLABS_API_KEY,
     });
+
+    if (!speechResult.ok || !speechResult.buffer) {
+      throw new Error(speechResult.error || "Failed to synthesize character speech audio.");
+    }
 
     const audioBuf = speechResult.buffer;
     const audioPath = path.join(jobDir, `scene_${i}_audio.mp3`);
@@ -1051,6 +1060,10 @@ async function processReelVideo(job, jobDir) {
     durationSeconds = 15,
   } = payload;
 
+  if (payload.elevenLabsApiKey) process.env.ELEVENLABS_API_KEY = payload.elevenLabsApiKey;
+  if (payload.syncLabsApiKey) process.env.SYNC_LABS_API_KEY = payload.syncLabsApiKey;
+  if (payload.openAiApiKey) process.env.OPENAI_API_KEY = payload.openAiApiKey;
+
   const targetSecs = Math.max(10, Math.min(60, Number(durationSeconds) || 15));
   const isWidescreen = false;
 
@@ -1243,7 +1256,12 @@ Requirements:
     gender: baselineGender,
     voiceId: ttsVoice,
     openai,
+    apiKey: process.env.ELEVENLABS_API_KEY,
   });
+
+  if (!fullAudioRes.ok || !fullAudioRes.buffer) {
+    throw new Error(fullAudioRes.error || "Failed to synthesize studio voiceover audio.");
+  }
 
   const fullAudioBuf = fullAudioRes.buffer;
   const reelAudioPath = path.join(jobDir, "reel_voiceover.mp3");
@@ -1273,7 +1291,13 @@ Requirements:
         gender: actorGender,
         voiceId: voiceToUse,
         openai,
+        apiKey: process.env.ELEVENLABS_API_KEY,
       });
+
+      if (!actorSpeechRes.ok || !actorSpeechRes.buffer) {
+        throw new Error(actorSpeechRes.error || "Failed to synthesize actor speech audio.");
+      }
+
       fs.writeFileSync(audioPath, actorSpeechRes.buffer);
 
       // 2. Generate Character Image
