@@ -1038,6 +1038,76 @@ Return ONLY valid JSON in this exact structure:
 }
 
 // -------------------------------------------------------------
+// Smart B-Roll & Visual Keyword Generator for Commercial Reels
+// -------------------------------------------------------------
+function getSmartBrollQuery(text = "", sceneIdx = 0, totalScenes = 4, niche = "", topic = "", candidateQuery = "") {
+  if (candidateQuery && candidateQuery.trim()) {
+    const cleanCand = candidateQuery
+      .replace(/\b(gabbarinfo|gabbar|brand|company|app|system|software|assistant)\b/gi, "")
+      .replace(/\s+/g, " ")
+      .trim();
+    if (cleanCand.length >= 3 && !/^(scene|promo|reel|video)/i.test(cleanCand)) {
+      return cleanCand;
+    }
+  }
+
+  const lower = (text + " " + topic + " " + niche).toLowerCase();
+
+  // 1. Pain / Hook / Chaos / Burning money / Bad agencies
+  if (
+    sceneIdx === 0 ||
+    /burning|waste|wasting|expensive|retainer|agencies|tools|fragmented|chaos|trap|trapped|struggling|exhausted|frustrated|problem|loss|spending|dollars|thousands|money|bleeding|juggling/i.test(lower)
+  ) {
+    const hookQueries = [
+      "stressed business person laptop office",
+      "frustrated entrepreneur computer desk",
+      "tired professional financial charts",
+      "overwhelmed office worker computer",
+      "worried business owner accounting",
+    ];
+    return hookQueries[sceneIdx % hookQueries.length];
+  }
+
+  // 2. AI / Autonomous / Solution / Technology / Dashboard
+  if (
+    /ai|autonomous|self-driving|assistant|eliminat|breakthrough|all-in-one|solution|secret|mechanism|operating system|robot|autopilot|smart/i.test(lower)
+  ) {
+    const aiQueries = [
+      "modern high tech office dashboard",
+      "artificial intelligence analytics software",
+      "futuristic computer screen interface",
+      "innovative technology workspace laptop",
+      "digital automation analytics code",
+    ];
+    return aiQueries[sceneIdx % aiQueries.length];
+  }
+
+  // 3. Marketing / Growth / Ads / SEO / Campaigns / Traffic
+  if (
+    /google ads|meta|campaigns|seo|marketing|traffic|clicks|leads|sales|growth|results|scale|rankings|dual-visual|social media|analytics/i.test(lower)
+  ) {
+    const marketingQueries = [
+      "digital marketing analytics screen",
+      "social media advertising campaigns laptop",
+      "business growth charts stock market",
+      "online traffic analytics strategy",
+      "data analytics dashboard graphs",
+    ];
+    return marketingQueries[sceneIdx % marketingQueries.length];
+  }
+
+  // 4. CTA / Offer / Success / Pricing / Access
+  const ctaQueries = [
+    "confident business entrepreneur smiling office",
+    "successful professional smartphone modern studio",
+    "hand holding phone tapping screen mobile app",
+    "happy business executive celebrating success",
+    "modern business handshake partnership",
+  ];
+  return ctaQueries[sceneIdx % ctaQueries.length];
+}
+
+// -------------------------------------------------------------
 // Reels / Shorts Video Pipeline (9:16 vertical fast reel)
 // -------------------------------------------------------------
 async function processReelVideo(job, jobDir) {
@@ -1075,10 +1145,9 @@ async function processReelVideo(job, jobDir) {
   function sanitizeDialogue(str) {
     if (!str) return "";
     return str
-      .replace(/^Scene\s*\d+\s*[:\-–—]?\s*/i, "")
-      .replace(/^(Customer|Client|Consumer|User)\s*[:\-–—]\s*/i, "")
-      .replace(/^(Owner|Founder|Agency|Director|Host|Speaker\s*\d*)\s*[:\-–—]\s*/i, "")
-      .replace(/^["'“”‘’]|["'“”‘’]$/g, "")
+      .replace(/^Scene\s*\d+\s*(?:\([^)]+\)|\[[^\]]+\])?\s*[:\-–—]?\s*/i, "")
+      .replace(/^(?:\(?\s*(?:Customer|Client|Consumer|User|Owner|Founder|Agency|Director|Host|Speaker\s*\d*)\s*\)?)\s*[:\-–—]?\s*/i, "")
+      .replace(/^["'“”‘’]+|["'“”‘’]+$/g, "")
       .trim();
   }
 
@@ -1095,12 +1164,15 @@ async function processReelVideo(job, jobDir) {
       fullScript: customScript,
       scenes: lines.slice(0, numScenes).map((line, idx) => {
         const clean = sanitizeDialogue(line) || line;
+        const speaker = /customer|client/i.test(line) ? "customer" : (/founder|owner/i.test(line) ? "owner" : (idx % 2 === 0 ? "customer" : "owner"));
         return {
           sceneNumber: idx + 1,
           rawLine: line,
+          speaker,
           text: clean,
           spokenAudio: clean,
           visualPrompt: `Vertical 9:16 cinematic portrait or action shot. Dynamic visual representing: ${clean.slice(0, 100)}. Cinematic lighting, photorealistic 8k, masterpiece`,
+          searchQuery: getSmartBrollQuery(clean, idx, numScenes, niche, topic),
           duration: secPerScene,
         };
       })
@@ -1260,25 +1332,94 @@ Requirements:
   job.stage = "Synthesizing studio voiceover audio (ElevenLabs / TTS-HD)...";
   log(job.id, `Synthesizing audio with base voice: ${ttsVoice} (Lang: ${language})`);
 
-  // Baseline combined voiceover (used for B-roll / fallback)
-  const fullSpokenText = reelScript.scenes.map(s => sanitizeDialogue(s.spokenAudio || s.text)).join(" ");
-  const baselineGender = (ttsVoice === "shimmer" || ttsVoice === "nova") ? "female" : "male";
-  const fullAudioRes = await generateStudioSpeech({
-    text: fullSpokenText.replace(/^["']|["']$/g, ""),
-    language: language || "hindi",
-    gender: baselineGender,
-    voiceId: ttsVoice,
-    openai,
-    apiKey: process.env.ELEVENLABS_API_KEY,
-  });
+  const isSkitJob = promoAngle === "customer_owner_skit" || (
+    reelScript.scenes.length >= 2 &&
+    (
+      reelScript.scenes.some(s => /(?:customer|client)\s*[:\-–—\)]/i.test(s.rawLine || "")) ||
+      (/frustrated|outdated|struggling|broken|customer|client/i.test(reelScript.scenes[0].text || reelScript.scenes[0].rawLine || ""))
+    )
+  );
 
-  if (!fullAudioRes.ok || !fullAudioRes.buffer) {
-    throw new Error(fullAudioRes.error || "Failed to synthesize studio voiceover audio.");
-  }
-
-  const fullAudioBuf = fullAudioRes.buffer;
   const reelAudioPath = path.join(jobDir, "reel_voiceover.mp3");
-  fs.writeFileSync(reelAudioPath, fullAudioBuf);
+
+  if (isSkitJob && reelScript.scenes.length >= 2) {
+    log(job.id, "Synthesizing alternating 2-character skit voiceover (Customer + Founder)...");
+    let customerVoice = "nova";
+    if (["nova", "shimmer"].includes(ttsVoice.toLowerCase())) {
+      customerVoice = language === "en_uk" ? "fable" : "onyx";
+    } else {
+      customerVoice = "nova";
+    }
+    const ownerVoice = ttsVoice || "alloy";
+
+    const sceneAudioPaths = [];
+    for (let sIdx = 0; sIdx < reelScript.scenes.length; sIdx++) {
+      const sc = reelScript.scenes[sIdx];
+      const isCustomer = sc.speaker === "customer" || sIdx % 2 === 0;
+      const v = isCustomer ? customerVoice : ownerVoice;
+      const g = (v === "nova" || v === "shimmer") ? "female" : "male";
+      const cleanText = sanitizeDialogue(sc.spokenAudio || sc.text);
+
+      const sRes = await generateStudioSpeech({
+        text: cleanText.replace(/^["']|["']$/g, ""),
+        language: language || "hindi",
+        gender: g,
+        voiceId: v,
+        openai,
+        apiKey: process.env.ELEVENLABS_API_KEY,
+      });
+
+      if (!sRes.ok || !sRes.buffer) {
+        throw new Error(sRes.error || `Failed to synthesize audio for scene ${sIdx + 1}`);
+      }
+
+      const scAudioP = path.join(jobDir, `skit_audio_${sIdx}.mp3`);
+      fs.writeFileSync(scAudioP, sRes.buffer);
+      sceneAudioPaths.push(scAudioP);
+    }
+
+    // Concatenate scene audio files with FFmpeg
+    const concatListFile = path.join(jobDir, "skit_audio_list.txt");
+    const fileContent = sceneAudioPaths.map(p => `file '${p.replace(/\\/g, "/")}'`).join("\n");
+    fs.writeFileSync(concatListFile, fileContent);
+
+    await new Promise((resolve, reject) => {
+      const p = spawn("ffmpeg", [
+        "-y",
+        "-f", "concat",
+        "-safe", "0",
+        "-i", concatListFile,
+        "-c", "copy",
+        "-loglevel", "error",
+        reelAudioPath,
+      ]);
+      p.on("close", (code) => {
+        if (code === 0 && fs.existsSync(reelAudioPath)) resolve();
+        else reject(new Error(`Audio concat failed with code ${code}`));
+      });
+      p.on("error", reject);
+    });
+    log(job.id, "Multi-character skit voiceover successfully concatenated!");
+  } else {
+    // Baseline combined voiceover (used for B-roll / fallback)
+    const fullSpokenText = reelScript.scenes.map(s => sanitizeDialogue(s.spokenAudio || s.text)).join(" ");
+    const baselineGender = (ttsVoice === "shimmer" || ttsVoice === "nova") ? "female" : "male";
+    const fullAudioRes = await generateStudioSpeech({
+      text: fullSpokenText.replace(/^["']|["']$/g, ""),
+      language: language || "hindi",
+      gender: baselineGender,
+      voiceId: ttsVoice,
+      openai,
+      apiKey: process.env.ELEVENLABS_API_KEY,
+    });
+
+    if (!fullAudioRes.ok || !fullAudioRes.buffer) {
+      throw new Error(fullAudioRes.error || "Failed to synthesize studio voiceover audio.");
+    }
+
+    const fullAudioBuf = fullAudioRes.buffer;
+    fs.writeFileSync(reelAudioPath, fullAudioBuf);
+  }
 
   // Check visual style
   job.progress = 45;
@@ -1497,6 +1638,8 @@ Requirements:
     log(job.id, `Fetching Pexels vertical video clips...`);
 
     const pexelsKey = process.env.PEXELS_API_KEY;
+    const usedPexelsIds = new Set();
+
     for (let i = 0; i < reelScript.scenes.length; i++) {
       const sc = reelScript.scenes[i];
       const scVidPath = path.join(jobDir, `pexels_sc_${i}.mp4`);
@@ -1504,24 +1647,38 @@ Requirements:
 
       if (pexelsKey) {
         try {
-          const q = encodeURIComponent(sc.searchQuery || topic || "luxury lifestyle business");
-          const pexRes = await fetch(`https://api.pexels.com/videos/search?query=${q}&orientation=portrait&per_page=3&size=medium`, {
+          const smartQ = getSmartBrollQuery(sc.text, i, reelScript.scenes.length, niche, topic, sc.searchQuery);
+          const q = encodeURIComponent(smartQ);
+          log(job.id, `Scene ${i + 1}/${reelScript.scenes.length} B-roll query: "${smartQ}"`);
+
+          const pexRes = await fetch(`https://api.pexels.com/videos/search?query=${q}&orientation=portrait&per_page=12&size=medium`, {
             headers: { Authorization: pexelsKey },
           });
           const pexData = await pexRes.json();
-          const pexFiles = pexData.videos?.[0]?.video_files || [];
-          const bestFile = pexFiles.find(f => f.height > f.width && f.file_type === "video/mp4") || pexFiles[0];
+          const videos = (pexData.videos && Array.isArray(pexData.videos)) ? pexData.videos : [];
 
-          if (bestFile?.link) {
-            const dl = await fetch(bestFile.link);
-            if (dl.ok) {
-              fs.writeFileSync(scVidPath, Buffer.from(await dl.arrayBuffer()));
-              sceneVisuals.push({ type: "video", path: scVidPath });
-              fetched = true;
+          // Select a unique video not yet used in this reel
+          const chosenVideo = videos.find(v => !usedPexelsIds.has(v.id)) || videos[i % Math.max(1, videos.length)] || videos[0];
+
+          if (chosenVideo) {
+            usedPexelsIds.add(chosenVideo.id);
+            const pexFiles = chosenVideo.video_files || [];
+            const bestFile = pexFiles.find(f => f.height > f.width && f.file_type === "video/mp4") ||
+                             pexFiles.find(f => f.file_type === "video/mp4") ||
+                             pexFiles[0];
+
+            if (bestFile?.link) {
+              const dl = await fetch(bestFile.link);
+              if (dl.ok) {
+                fs.writeFileSync(scVidPath, Buffer.from(await dl.arrayBuffer()));
+                sceneVisuals.push({ type: "video", path: scVidPath });
+                fetched = true;
+                log(job.id, `Scene ${i + 1} acquired unique vertical B-roll: Pexels #${chosenVideo.id} (${bestFile.width}x${bestFile.height})`);
+              }
             }
           }
         } catch (pErr) {
-          log(job.id, `Pexels query error: ${pErr.message}`);
+          log(job.id, `Pexels query error scene ${i}: ${pErr.message}`);
         }
       }
 

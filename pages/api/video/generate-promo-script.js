@@ -158,14 +158,41 @@ Write in high-energy, authoritative, punchy American commercial direct-response 
 
   // 3. Duration calibration & pacing
   let durationSpecs = "";
-  let fewShotExamples = "";
-
   if (targetSecs <= 15) {
     durationSpecs = `DURATION SPECIFICATIONS (${targetSecs}-Second Viral Hook Reel):
 - Scene Count: Exactly 4 sequential scenes.
 - Total Spoken Word Count: Exactly 38 to 48 spoken words total across all scenes (at ~2.8 words/sec, this fills 14-15s with zero dead air).
 - Each scene MUST be 9 to 13 spoken words (1 full, punchy sentence). NEVER write 3-word fragments!`;
+  } else if (targetSecs <= 30) {
+    durationSpecs = `DURATION SPECIFICATIONS (${targetSecs}-Second Commercial Story Reel):
+- Scene Count: Exactly 5 to 6 structured sequential scenes.
+- Total Spoken Word Count: Exactly 75 to 95 spoken words total across all scenes.
+- Flow: Shock Hook -> Agitation & Cost of Inaction -> Breakthrough Mechanism & Core USPs -> Proof / Transformation -> Irresistible Urgency Offer & CTA.`;
+  } else {
+    durationSpecs = `DURATION SPECIFICATIONS (${targetSecs}-Second Deep-Dive Commercial):
+- Scene Count: Exactly 6 to 8 comprehensive sequential scenes.
+- Total Spoken Word Count: Exactly 140 to 175 spoken words total across all scenes.
+- Flow: Pattern Interrupt -> Detailed Industry Pain & Why Alternatives Fail -> Deep Feature & USP Breakdown -> Tangible Proof & ROI -> Irresistible Offer -> Direct Action CTA.`;
+  }
 
+  let fewShotExamples = "";
+  if (promoAngle === "customer_owner_skit") {
+    fewShotExamples = `GOLD STANDARD 2-CHARACTER SKIT EXAMPLES:
+
+EXAMPLE 15s CUSTOMER & OWNER SKIT:
+Scene 1 (Customer): I'm burning five thousand dollars a month on marketing agencies and getting zero qualified leads!
+Scene 2 (Founder): Stop the bleeding! Gabbarinfo AI replaces agency retainers with autonomous AI agents that run 24/7.
+Scene 3 (Customer): Wait, it actually creates Google Ads, Meta campaigns, and SEO with zero manual work?
+Scene 4 (Founder): Completely on autopilot. Claim your launch pricing right now and take back your time!
+
+EXAMPLE 30s CUSTOMER & OWNER SKIT:
+Scene 1 (Customer): I'm exhausted jumping between Google Ads, Facebook Manager, and Canva every day—it's total chaos!
+Scene 2 (Founder): That's why we built Gabbarinfo AI—your all-in-one autonomous marketing operating system.
+Scene 3 (Customer): But can an AI really run high-converting ad campaigns and write full SEO blogs?
+Scene 4 (Founder): It does it all! Autonomous Google Ads, Meta creatives, and daily dual-visual SEO articles.
+Scene 5 (Customer): How much does it cost compared to hiring an expensive agency retainer?
+Scene 6 (Founder): A fraction of the cost. Claim your early-bird launch pricing today and put your marketing on self-driving mode!`;
+  } else if (targetSecs <= 15) {
     fewShotExamples = `GOLD STANDARD EXAMPLES (STUDY THESE FOR STYLE, TONE, AND WORD COUNT):
 
 EXAMPLE 15s DIRECT RESPONSE:
@@ -174,11 +201,6 @@ Scene 2: Gabbarinfo AI replaces your entire media buying team with self-driving 
 Scene 3: Launch high-converting Google Ads, Meta campaigns, and dual-visual SEO from one single dashboard.
 Scene 4: Tap the link below right now. Subscribe your plan today and put your marketing on pure autopilot.`;
   } else if (targetSecs <= 30) {
-    durationSpecs = `DURATION SPECIFICATIONS (${targetSecs}-Second Commercial Story Reel):
-- Scene Count: Exactly 5 to 6 structured sequential scenes.
-- Total Spoken Word Count: Exactly 75 to 95 spoken words total across all scenes.
-- Flow: Shock Hook -> Agitation & Cost of Inaction -> Breakthrough Mechanism & Core USPs -> Proof / Transformation -> Irresistible Urgency Offer & CTA.`;
-
     fewShotExamples = `GOLD STANDARD EXAMPLES (STUDY THESE FOR STYLE, TONE, AND WORD COUNT):
 
 EXAMPLE 30s DIRECT RESPONSE:
@@ -189,11 +211,6 @@ Scene 4: It launches high-converting Search campaigns, designs daily social grap
 Scene 5: You get ten-x marketing leverage without hiring a single media buyer or paying bloated monthly retainers.
 Scene 6: Don't get left behind. Subscribe your plan right now and watch your marketing run completely on self-driving mode.`;
   } else {
-    durationSpecs = `DURATION SPECIFICATIONS (${targetSecs}-Second Deep-Dive Commercial):
-- Scene Count: Exactly 6 to 8 comprehensive sequential scenes.
-- Total Spoken Word Count: Exactly 140 to 175 spoken words total across all scenes.
-- Flow: Pattern Interrupt -> Detailed Industry Pain & Why Alternatives Fail -> Deep Feature & USP Breakdown -> Tangible Proof & ROI -> Irresistible Offer -> Direct Action CTA.`;
-
     fewShotExamples = `GOLD STANDARD EXAMPLES (STUDY THESE FOR STYLE, TONE, AND WORD COUNT):
 Each scene should be 20 to 25 words of rich, persuasive narrative, giving deep detail on the pain, the breakthrough USPs, the mechanism, proof, and closing offer.`;
   }
@@ -201,12 +218,20 @@ Each scene should be 20 to 25 words of rich, persuasive narrative, giving deep d
   // 4. Promotional Angle & Copywriting Framework
   let anglePrompt = "";
   if (promoAngle === "customer_owner_skit") {
-    anglePrompt = `PROMOTIONAL ANGLE: Customer & Owner Relatable Skit (2-Character Screenplay)
-- Scene 1 (Customer Problem): The customer speaks with genuine, visceral frustration about the burning pain point or costly nightmare they are dealing with (e.g. burning thousands on agencies, dealing with 5 broken tools, or zero results).
-- Scene 2 (Owner Solution & Empathy): The business owner/founder steps in with confidence and warmth, introducing "${brandName || "our company"}" and how "${serviceToPromote || "our signature solution"}" eliminates that exact frustration.
-- Scenes 3-4 (Breakthrough USPs & Proof): The owner breaks down the specific USPs, technology, or capabilities extracted from the product/website, proving why it delivers superior results.
-- Final Scene (Offer & CTA): The owner delivers the special deal: "${effectiveOffer}" and direct CTA: "${promoCTA}".
-- Tag each scene with the speaker: "Scene 1 (Customer): ...", "Scene 2 (Founder): ...".`;
+    anglePrompt = `PROMOTIONAL ANGLE: Customer & Owner Relatable Skit (MANDATORY 2-PERSON DIALOGUE)
+CRITICAL REQUIREMENTS FOR SKIT:
+- This is a true conversational SKIT between TWO PEOPLE: The "Customer" (or Client) and the "Founder" (or Business Owner).
+- Scene 1 MUST be spoken by the Customer: expressing deep, relatable frustration about wasted money, broken tools, or bad agency results.
+- Scene 2 MUST be spoken by the Founder: cutting in with confidence and empathy, revealing how "${brandName || "our brand"}" solves it with "${serviceToPromote || "our autonomous system"}".
+- Scene 3 MUST be spoken by the Customer: asking a sharp, skeptical question or reacting with astonishment (e.g. "Wait, it really runs Google Ads and SEO by itself?").
+- Scene 4 MUST be spoken by the Founder: confirming the breakthrough USPs, presenting the offer: "${effectiveOffer}", and commanding: "${promoCTA}".
+- EVERY scene in 'formattedScript' MUST be strictly prefixed with the speaker:
+  "Scene 1 (Customer): ..."
+  "Scene 2 (Founder): ..."
+  "Scene 3 (Customer): ..."
+  "Scene 4 (Founder): ..."
+- In the JSON output, 'speaker' MUST alternate between "Customer" and "Founder".
+- Spoken lines must be NATURAL CONVERSATIONAL SPEECH, not generic narrator monologues!`;
   } else if (promoAngle === "founder_pitch") {
     anglePrompt = `PROMOTIONAL ANGLE: Charismatic Founder / Owner Direct Pitch
 - The visionary business owner speaks straight into the camera lens with raw honesty, high passion, and deep authority.
@@ -265,13 +290,14 @@ Return ONLY valid JSON:
     "Concrete USP 2",
     "Concrete USP 3"
   ],
-  "formattedScript": "Scene 1: [Full spoken line]\\nScene 2: [Full spoken line]\\n...",
+  "formattedScript": "${promoAngle === "customer_owner_skit" ? "Scene 1 (Customer): [Visceral frustration line]\\nScene 2 (Founder): [Autonomous solution]\\nScene 3 (Customer): [Sharp objection or curiosity]\\nScene 4 (Founder): [Offer and CTA]" : "Scene 1: [Hook]\\nScene 2: [Solution]\\nScene 3: [USPs]\\nScene 4: [CTA]"}",
   "scenes": [
     {
       "sceneNumber": 1,
-      "speaker": "Speaker Name",
+      "speaker": "${promoAngle === "customer_owner_skit" ? "Customer" : "Founder"}",
       "line": "Full spoken line",
-      "visualDescription": "Visual camera framing and backdrop for vertical 9:16 video",
+      "visualDescription": "Detailed visual action in vertical 9:16 framing",
+      "searchQuery": "2 to 3 word English B-roll video keywords (e.g. 'stressed person laptop', 'marketing analytics dashboard', 'business handshake celebration')",
       "durationEstimate": 4
     }
   ]
