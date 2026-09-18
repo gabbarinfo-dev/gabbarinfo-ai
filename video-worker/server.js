@@ -277,14 +277,10 @@ async function generatePrecisionLipSync({ imageUrl, videoUrl, audioUrl, jobId })
   const token = process.env.REPLICATE_API_TOKEN;
   if (!token) throw new Error("Missing both SYNC_LABS_API_KEY and REPLICATE_API_TOKEN in environment variables");
 
-  log(jobId, `Dispatching fallback SadTalker GPU lip-sync prediction to Replicate...`);
-  const createRes = await fetch("https://api.replicate.com/v1/predictions", {
-    method: "POST",
-    headers: {
-      Authorization: `Token ${token}`,
-      "Content-Type": "application/json",
-    },
-    body: JSON.stringify({
+  log(jobId, `Dispatching fallback SadTalker GPU lip-sync prediction to Replicate (preprocess: full)...`);
+  const prediction = await callReplicateWithRetry(
+    "https://api.replicate.com/v1/predictions",
+    {
       version: "a519cc0cfebaaeade068b23899165a11ec76aaa1d2b313d40d214f204ec957a3",
       input: {
         source_image: imageUrl || targetMediaUrl,
@@ -292,18 +288,13 @@ async function generatePrecisionLipSync({ imageUrl, videoUrl, audioUrl, jobId })
         still: false,
         use_enhancer: true,
         enhancer: "gfpgan",
-        preprocess: "crop",
+        preprocess: "full",
         expression_scale: 1.25,
       },
-    }),
-  });
-
-  if (!createRes.ok) {
-    const errText = await createRes.text();
-    throw new Error(`SadTalker start error: ${errText}`);
-  }
-
-  const prediction = await createRes.json();
+    },
+    token,
+    jobId
+  );
   const pollUrl = prediction.urls?.get;
 
   const startTime = Date.now();
@@ -326,6 +317,39 @@ async function generatePrecisionLipSync({ imageUrl, videoUrl, audioUrl, jobId })
   throw new Error("Lip-sync prediction timed out after 240s");
 }
 
+// Resilient Replicate caller with automatic 429 rate-limit backoff
+async function callReplicateWithRetry(url, payload, token, jobId, maxRetries = 3) {
+  for (let attempt = 1; attempt <= maxRetries; attempt++) {
+    const res = await fetch(url, {
+      method: "POST",
+      headers: {
+        Authorization: `Token ${token}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify(payload),
+    });
+
+    if (res.status === 429) {
+      let waitSec = 12;
+      try {
+        const body = await res.json();
+        if (body.retry_after) waitSec = Math.max(10, Number(body.retry_after) + 2);
+      } catch (_) {}
+      log(jobId, `Replicate rate limited (429). Cooling down for ${waitSec}s before attempt ${attempt + 1}/${maxRetries}...`);
+      await new Promise((r) => setTimeout(r, waitSec * 1000));
+      continue;
+    }
+
+    if (!res.ok) {
+      const errText = await res.text();
+      throw new Error(`Replicate API error (${res.status}): ${errText}`);
+    }
+
+    return await res.json();
+  }
+  throw new Error(`Replicate call exceeded max rate-limit retries (${maxRetries})`);
+}
+
 // Backward-compatibility alias
 const generateSadTalkerLipSync = generatePrecisionLipSync;
 
@@ -335,31 +359,22 @@ async function generateGenerativeClip({ prompt, isWidescreen, jobId }) {
 
   log(jobId, `Dispatching Generative AI Video prediction to Replicate (AnimateDiff)...`);
   const aspectDesc = isWidescreen ? "16:9 widescreen cinematic landscape" : "9:16 vertical smartphone format";
-  const cleanPrompt = `${prompt}, ${aspectDesc}, cinematic lighting, photorealistic 8k, physical character motion, fluid movement, masterpiece`;
+  const cleanPrompt = `${prompt}, ${aspectDesc}, cinematic lighting, photorealistic 8k, physical character motion, fluid movement, no text, no watermark, masterpiece`;
 
-  const createRes = await fetch("https://api.replicate.com/v1/predictions", {
-    method: "POST",
-    headers: {
-      Authorization: `Token ${token}`,
-      "Content-Type": "application/json",
-    },
-    body: JSON.stringify({
+  const prediction = await callReplicateWithRetry(
+    "https://api.replicate.com/v1/predictions",
+    {
       version: "beecf59c4aee8d81bf04f0381033dfa10dc16e845b4ae00d281e2fa377e48a9f",
       input: {
         prompt: cleanPrompt,
-        n_prompt: "bad quality, blurry, distorted, static, low resolution",
+        n_prompt: "bad quality, blurry, distorted, static, low resolution, text, typography, watermark, logo, poster",
         steps: 25,
         guidance_scale: 7.5,
       },
-    }),
-  });
-
-  if (!createRes.ok) {
-    const errText = await createRes.text();
-    throw new Error(`Generative Video start error: ${errText}`);
-  }
-
-  const prediction = await createRes.json();
+    },
+    token,
+    jobId
+  );
   const pollUrl = prediction.urls?.get;
 
   const startTime = Date.now();
@@ -388,7 +403,7 @@ async function generateMinimaxVideo({ prompt, firstFrameUrl, isWidescreen, jobId
 
   log(jobId, `Dispatching Minimax Video-01 (Higgsfield/Hailuo class) to Replicate...`);
   const aspectDesc = isWidescreen ? "16:9 cinematic widescreen landscape" : "9:16 vertical cinema reel";
-  const cleanPrompt = `${prompt}, ${aspectDesc}, cinematic lighting, photorealistic 8k, fluid physical motion, moving elements, masterpiece`;
+  const cleanPrompt = `${prompt}, ${aspectDesc}, cinematic lighting, photorealistic 8k, fluid physical motion, moving elements, no text, no watermark, masterpiece`;
 
   const inputPayload = {
     prompt: cleanPrompt,
@@ -398,21 +413,12 @@ async function generateMinimaxVideo({ prompt, firstFrameUrl, isWidescreen, jobId
     inputPayload.first_frame_image = firstFrameUrl;
   }
 
-  const createRes = await fetch("https://api.replicate.com/v1/models/minimax/video-01/predictions", {
-    method: "POST",
-    headers: {
-      Authorization: `Token ${token}`,
-      "Content-Type": "application/json",
-    },
-    body: JSON.stringify({ input: inputPayload }),
-  });
-
-  if (!createRes.ok) {
-    const errText = await createRes.text();
-    throw new Error(`Minimax Video start error: ${errText}`);
-  }
-
-  const prediction = await createRes.json();
+  const prediction = await callReplicateWithRetry(
+    "https://api.replicate.com/v1/models/minimax/video-01/predictions",
+    { input: inputPayload },
+    token,
+    jobId
+  );
   const pollUrl = prediction.urls?.get;
 
   const startTime = Date.now();
@@ -442,26 +448,17 @@ async function generateWanVideo({ prompt, isWidescreen, jobId }) {
   log(jobId, `Dispatching Wan 2.1 Video prediction to Replicate...`);
   const aspectDesc = isWidescreen ? "16:9" : "9:16";
 
-  const createRes = await fetch("https://api.replicate.com/v1/models/wan-video/wan-2.1-1.3b/predictions", {
-    method: "POST",
-    headers: {
-      Authorization: `Token ${token}`,
-      "Content-Type": "application/json",
-    },
-    body: JSON.stringify({
+  const prediction = await callReplicateWithRetry(
+    "https://api.replicate.com/v1/models/wan-video/wan-2.1-1.3b/predictions",
+    {
       input: {
-        prompt: `${prompt}, cinematic lighting, photorealistic 8k, fluid motion, atmospheric depth`,
+        prompt: `${prompt}, cinematic lighting, photorealistic 8k, fluid motion, atmospheric depth, no text, no watermark`,
         aspect_ratio: aspectDesc,
       },
-    }),
-  });
-
-  if (!createRes.ok) {
-    const errText = await createRes.text();
-    throw new Error(`Wan Video start error: ${errText}`);
-  }
-
-  const prediction = await createRes.json();
+    },
+    token,
+    jobId
+  );
   const pollUrl = prediction.urls?.get;
 
   const startTime = Date.now();
@@ -1130,31 +1127,32 @@ function getSmartBrollQuery(text = "", sceneIdx = 0, totalScenes = 4, niche = ""
 function getSmartVisualPrompt(cleanText = "", speaker = "", sceneIdx = 0, totalScenes = 4, brandName = "", serviceToPromote = "") {
   const lowerSpeaker = (speaker || "").toLowerCase();
   const lowerText = (cleanText || "").toLowerCase();
+  const noTextGuard = " Absolutely NO text, NO letters, NO words, NO subtitles, NO typography, NO watermark, NO logo, NO posters, NO banners, NO UI overlays, NO buttons. Pure photorealistic cinematic film scene.";
 
   // 1. Customer Scene (Scene 1 or 3 in Skit, or pain hook)
   if (lowerSpeaker.includes("customer") || lowerSpeaker.includes("client") || (sceneIdx === 0 && /sick|waste|wasting|expensive|struggl|frustrated|thousands|agencies|chaos/i.test(lowerText))) {
-    return `Vertical 9:16 cinematic film photograph. Medium close-up portrait of an authentic, expressive business professional client in a modern high-end co-working office, looking at a laptop screen with relatable frustration and stress, natural human skin texture with subtle pores, natural clear open eyes, shallow depth of field, 85mm prime lens f/1.8, soft ambient office lighting, 8k resolution, masterpiece, no deformities`;
+    return `Vertical 9:16 cinematic film scene. Medium close-up portrait of an authentic business professional client in a modern high-end office, sitting at a desk with an open laptop, looking at the screen with relatable frustration and stress, natural human skin texture, shallow depth of field, 85mm prime lens f/1.8, soft ambient office lighting, 8k resolution, photorealistic, masterpiece.${noTextGuard}`;
   }
 
   // 2. Founder / Owner Scene (Scene 2 or 4 in Skit, or solution pitch)
   if (lowerSpeaker.includes("founder") || lowerSpeaker.includes("owner") || (sceneIdx % 2 === 1)) {
     if (sceneIdx === totalScenes - 1 || /launch|pricing|check|call|claim|tap|link|subscribe/i.test(lowerText)) {
-      return `Vertical 9:16 cinematic film photograph. Confident charismatic business founder and executive for "${brandName || 'our brand'}" in a modern high-tech studio, smiling warmly directly at camera with professional welcoming gesture, sleek dual computer monitors displaying marketing software in background, 85mm prime lens, master lighting, 8k photorealistic`;
+      return `Vertical 9:16 cinematic film scene. Confident charismatic business founder and executive for "${brandName || 'our brand'}" in a modern high-tech studio, smiling warmly directly at camera with professional welcoming gesture, sleek dual computer monitors in background, 85mm prime lens, master lighting, 8k photorealistic.${noTextGuard}`;
     }
-    return `Vertical 9:16 cinematic film photograph. Professional business founder for "${brandName || 'our brand'}" in a sleek glass office, standing before glowing computer monitors showing live digital marketing analytics and growth dashboards, looking knowledgeable and confident, 35mm cinema lens, 8k photorealistic`;
+    return `Vertical 9:16 cinematic film scene. Professional business founder for "${brandName || 'our brand'}" in a sleek glass office, standing before glowing computer monitors showing live digital marketing analytics and growth dashboards, looking knowledgeable and confident, 35mm cinema lens, 8k photorealistic.${noTextGuard}`;
   }
 
   // 3. Marketing & Ads Analytics
   if (/google ads|meta|campaigns|seo|marketing|traffic|analytics|leads/i.test(lowerText)) {
-    return `Vertical 9:16 cinematic scene. Ultra-modern creative agency workspace with sleek computer screens displaying real-time digital advertising performance, campaign metrics, and growth graphs, cinematic atmospheric lighting, 8k resolution`;
+    return `Vertical 9:16 cinematic scene. Ultra-modern creative agency workspace with sleek computer screens displaying real-time digital advertising performance, campaign metrics, and growth graphs, cinematic atmospheric lighting, 8k resolution.${noTextGuard}`;
   }
 
   // 4. Autonomous AI / Software (NEVER mechanical toy robots!)
   if (/ai|autonomous|self-driving|assistant|eliminat|autopilot/i.test(lowerText)) {
-    return `Vertical 9:16 cinematic scene. Modern minimalist tech office with high-end workstation displaying automated software workflows and clean digital interfaces, executive studio lighting, 8k resolution`;
+    return `Vertical 9:16 cinematic scene. Modern minimalist tech office with high-end workstation displaying automated software workflows and clean digital interfaces, executive studio lighting, 8k resolution.${noTextGuard}`;
   }
 
-  return `Vertical 9:16 cinematic commercial frame. Professional business workspace representing modern digital agency operations, 8k photorealistic, volumetric lighting, masterpiece`;
+  return `Vertical 9:16 cinematic commercial scene. Professional business workspace representing modern digital agency operations, 8k photorealistic, volumetric lighting, masterpiece.${noTextGuard}`;
 }
 
 // -------------------------------------------------------------
@@ -1512,18 +1510,29 @@ Requirements:
         log(job.id, `Reusing locked actor portrait for ${filenamePrefix}`);
       } else {
         let imgGen = null;
-        const charImageModels = ["gpt-image-2", "gpt-image-2-2026-04-21", "gpt-image-1.5"];
+        const charImageModels = ["gpt-image-2", "gpt-image-1.5", "dall-e-3"];
         for (const m of charImageModels) {
           try {
             imgGen = await openai.images.generate({
               model: m,
               prompt: characterImgPrompt.slice(0, 950),
               n: 1,
-              size: "1024x1024",
+              size: "1024x1792",
             });
             if (imgGen.data?.[0]?.b64_json || imgGen.data?.[0]?.url) break;
           } catch (e) {
-            console.warn(`[VideoWorker] Character image generation with ${m} failed:`, e.message);
+            console.warn(`[VideoWorker] Character image generation with ${m} (1024x1792) failed:`, e.message);
+            try {
+              imgGen = await openai.images.generate({
+                model: m,
+                prompt: characterImgPrompt.slice(0, 950),
+                n: 1,
+                size: "1024x1024",
+              });
+              if (imgGen.data?.[0]?.b64_json || imgGen.data?.[0]?.url) break;
+            } catch (e2) {
+              console.warn(`[VideoWorker] Character image generation with ${m} (1024x1024) failed:`, e2.message);
+            }
           }
         }
 
@@ -1596,13 +1605,13 @@ Requirements:
           if (cachedCustomerImg && fs.existsSync(cachedCustomerImg)) {
             reusePath = cachedCustomerImg;
           } else {
-            prompt = `Cinematic 9:16 vertical smartphone portrait. Stressed client looking frustrated at a laptop or bills in a modern office, expressive disappointed eyes, natural human skin texture, cinematic rim lighting, 8k photorealistic.`;
+            prompt = `Vertical 9:16 cinematic portrait of an authentic business professional client in a modern high-end office, sitting at a desk with an open laptop, relatable frustrated expression, natural human skin texture, soft ambient office lighting, 8k resolution, photorealistic. Absolutely NO text, NO words, NO letters, NO typography, NO watermark, NO posters, NO banners.`;
           }
         } else {
           if (cachedFounderImg && fs.existsSync(cachedFounderImg)) {
             reusePath = cachedFounderImg;
           } else {
-            prompt = `Cinematic 9:16 vertical smartphone portrait. Confident creative director and agency founder for "${brandName || 'our brand'}" in a high-tech modern studio with multiple glowing dual monitors displaying sleek software dashboards, smiling into camera, expressive sharp eyes, photorealistic 8k, Arri cinema lighting.`;
+            prompt = `Vertical 9:16 cinematic portrait of a charismatic business founder for "${brandName || 'our brand'}" in a high-end modern glass studio, smiling warmly directly at camera, professional welcoming gesture, sleek modern workstation in background, 85mm prime lens, master lighting, 8k photorealistic. Absolutely NO text, NO words, NO letters, NO typography, NO watermark, NO posters, NO banners.`;
           }
         }
 
@@ -1628,8 +1637,8 @@ Requirements:
       // SINGLE SPOKESPERSON: Deeply tailored to topic, brand, and niche
       const presenterContext = serviceToPromote || topic || niche;
       const presenterPrompt = scriptMode === "product_promo"
-        ? `Cinematic 9:16 vertical smartphone portrait. Charismatic founder and expert spokesperson for "${brandName || 'our brand'}" specializing in "${presenterContext}", looking directly into camera with confident friendly expression, modern high-tech studio with dual monitors displaying modern digital designs in background, professional studio lighting, 8k resolution, photorealistic.`
-        : `Cinematic 9:16 vertical smartphone portrait. Charismatic, authentic ${niche} expert looking directly into camera with expressive sharp eyes, clear defined pupils and irises, natural friendly smile, modern ambient studio with subtle background relevant to ${topic}, professional lighting, 8k resolution, photorealistic.`;
+        ? `Vertical 9:16 cinematic portrait of a charismatic founder and expert spokesperson for "${brandName || 'our brand'}" specializing in "${presenterContext}", looking directly into camera with confident friendly expression, modern high-tech studio with dual monitors in background, professional lighting, 8k photorealistic. Absolutely NO text, NO words, NO letters, NO poster graphics.`
+        : `Vertical 9:16 cinematic portrait of an authentic ${niche} expert looking directly into camera with expressive sharp eyes, natural friendly smile, modern ambient studio relevant to ${topic}, professional lighting, 8k photorealistic. Absolutely NO text, NO words, NO letters, NO poster graphics.`;
 
       job.stage = "Rendering spokesperson actor & GPU lip-sync...";
       const presenterSeg = await renderTalkingActorScene({
@@ -1655,53 +1664,62 @@ Requirements:
         const smartPrompt = getSmartVisualPrompt(sc.text, sc.speaker, i, reelScript.scenes.length, brandName, serviceToPromote);
         const scPrompt = smartPrompt;
         let imgRes = null;
-        const reelImageModels = ["gpt-image-2", "gpt-image-2-2026-04-21", "gpt-image-1.5"];
+        const reelImageModels = ["gpt-image-2", "gpt-image-1.5", "dall-e-3"];
         for (const m of reelImageModels) {
           try {
             imgRes = await openai.images.generate({
               model: m,
               prompt: scPrompt.slice(0, 950),
               n: 1,
-              size: "1024x1024",
+              size: "1024x1792",
             });
             if (imgRes?.data?.[0]?.b64_json || imgRes?.data?.[0]?.url) break;
           } catch (e) {
-            console.warn(`[VideoWorker] Reel scene image generation with ${m} failed:`, e.message);
+            console.warn(`[VideoWorker] Reel scene image generation with ${m} (1024x1792) failed:`, e.message);
+            try {
+              imgRes = await openai.images.generate({
+                model: m,
+                prompt: scPrompt.slice(0, 950),
+                n: 1,
+                size: "1024x1024",
+              });
+              if (imgRes?.data?.[0]?.b64_json || imgRes?.data?.[0]?.url) break;
+            } catch (e2) {
+              console.warn(`[VideoWorker] Reel scene image generation with ${m} (1024x1024) failed:`, e2.message);
+            }
           }
         }
 
-        if (imgRes.data?.[0]?.b64_json) {
+        if (imgRes?.data?.[0]?.b64_json) {
           fs.writeFileSync(scImgPath, Buffer.from(imgRes.data[0].b64_json, "base64"));
-        } else if (imgRes.data?.[0]?.url) {
+        } else if (imgRes?.data?.[0]?.url) {
           const fetchRes = await fetch(imgRes.data[0].url);
           fs.writeFileSync(scImgPath, Buffer.from(await fetchRes.arrayBuffer()));
         }
 
-        // Fast video motion via Wan 2.1 or AnimateDiff (scene 1)
-        if (i === 0) {
-          job.stage = "Generating fast neural video motion (Wan 2.1)...";
-          try {
-            const vidUrl = await generateWanVideo({
-              prompt: smartPrompt,
-              isWidescreen: false,
-              jobId: job.id,
-            }).catch(() => generateGenerativeClip({
-              prompt: smartPrompt,
-              isWidescreen: false,
-              jobId: job.id,
-            }));
+        // Fast video motion via Wan 2.1 or AnimateDiff (all scenes)
+        job.stage = `Generating neural video motion for scene ${i + 1}/${reelScript.scenes.length}...`;
+        try {
+          const vidUrl = await generateWanVideo({
+            prompt: smartPrompt,
+            isWidescreen: false,
+            jobId: job.id,
+          }).catch(() => generateGenerativeClip({
+            prompt: smartPrompt,
+            isWidescreen: false,
+            jobId: job.id,
+          }));
 
-            if (vidUrl) {
-              const fVid = await fetch(vidUrl);
-              if (fVid.ok) {
-                fs.writeFileSync(scVidPath, Buffer.from(await fVid.arrayBuffer()));
-                sceneVisuals.push({ type: "video", path: scVidPath });
-                continue;
-              }
+          if (vidUrl) {
+            const fVid = await fetch(vidUrl);
+            if (fVid.ok) {
+              fs.writeFileSync(scVidPath, Buffer.from(await fVid.arrayBuffer()));
+              sceneVisuals.push({ type: "video", path: scVidPath });
+              continue;
             }
-          } catch (vErr) {
-            log(job.id, `Reel video fallback: ${vErr.message}`);
           }
+        } catch (vErr) {
+          log(job.id, `Reel scene ${i + 1} video fallback: ${vErr.message}`);
         }
 
         sceneVisuals.push({ type: "image", path: scImgPath });
@@ -1895,7 +1913,7 @@ async function assembleFFmpegVideo({ jobDir, scenes, audioFiles, visuals, output
             const tiltExpr = isEven
               ? `(in_h-out_h)*(t/${durationPerScene})`
               : `(in_h-out_h)*(1-t/${durationPerScene})`;
-            vf = `scale=1170:2080:force_original_aspect_ratio=increase,crop=1170:2080,crop=1080:1920:(in_w-out_w)/2:${tiltExpr}`;
+            vf = `scale=1080:1920:force_original_aspect_ratio=increase,crop=1080:1920`;
           }
 
           const args = [
