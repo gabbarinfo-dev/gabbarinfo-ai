@@ -13,8 +13,8 @@ export default function ReelsStudioConnect() {
   const [durationSeconds, setDurationSeconds] = useState(15); // 15 | 30 | 60
   const [topic, setTopic] = useState("");
   const [niche, setNiche] = useState("business");
-  const [language, setLanguage] = useState("hindi"); // "hindi" | "en_us" | "en_uk"
-  const [voice, setVoice] = useState("arnold"); // dynamically updated on lang change
+  const [language, setLanguage] = useState("en_us"); // "en_us" | "en_uk" | "hindi"
+  const [voice, setVoice] = useState("adam"); // dynamically updated on lang change
   const [backgroundBeat, setBackgroundBeat] = useState("upbeat_lofi");
   const [generating, setGenerating] = useState(false);
   const [generationStep, setGenerationStep] = useState("");
@@ -1389,6 +1389,76 @@ export default function ReelsStudioConnect() {
                   </div>
                 </div>
 
+                {/* Script Language & Duration Quick Controls */}
+                <div
+                  style={{
+                    display: "flex",
+                    flexWrap: "wrap",
+                    gap: 8,
+                    justifyContent: "space-between",
+                    alignItems: "center",
+                    marginBottom: 10,
+                    padding: "8px 12px",
+                    background: "rgba(0, 0, 0, 0.35)",
+                    borderRadius: 8,
+                    border: "1px solid rgba(255, 255, 255, 0.08)",
+                  }}
+                >
+                  <div style={{ display: "flex", alignItems: "center", gap: 5 }}>
+                    <span style={{ fontSize: 11, fontWeight: 700, color: "#94a3b8" }}>Language:</span>
+                    {[
+                      { id: "en_us", label: "🇺🇸 US English" },
+                      { id: "en_uk", label: "🇬🇧 UK English" },
+                      { id: "hindi", label: "🇮🇳 Hindi (हिंदी)" },
+                    ].map((l) => (
+                      <button
+                        key={l.id}
+                        type="button"
+                        onClick={() => handleLanguageChange(l.id)}
+                        style={{
+                          padding: "3px 8px",
+                          borderRadius: 6,
+                          fontSize: 10.5,
+                          fontWeight: 700,
+                          border: language === l.id ? "1px solid #3b82f6" : "1px solid rgba(255, 255, 255, 0.1)",
+                          background: language === l.id ? "rgba(59, 130, 246, 0.25)" : "transparent",
+                          color: language === l.id ? "#60a5fa" : "#94a3b8",
+                          cursor: "pointer",
+                        }}
+                      >
+                        {l.label}
+                      </button>
+                    ))}
+                  </div>
+
+                  <div style={{ display: "flex", alignItems: "center", gap: 5 }}>
+                    <span style={{ fontSize: 11, fontWeight: 700, color: "#94a3b8" }}>Pacing:</span>
+                    {[
+                      { id: 15, label: "15s Viral" },
+                      { id: 30, label: "30s Story" },
+                      { id: 60, label: "60s Deep Dive" },
+                    ].map((d) => (
+                      <button
+                        key={d.id}
+                        type="button"
+                        onClick={() => setDurationSeconds(d.id)}
+                        style={{
+                          padding: "3px 8px",
+                          borderRadius: 6,
+                          fontSize: 10.5,
+                          fontWeight: 700,
+                          border: durationSeconds === d.id ? "1px solid #10b981" : "1px solid rgba(255, 255, 255, 0.1)",
+                          background: durationSeconds === d.id ? "rgba(16, 185, 129, 0.25)" : "transparent",
+                          color: durationSeconds === d.id ? "#34d1bf" : "#94a3b8",
+                          cursor: "pointer",
+                        }}
+                      >
+                        {d.label}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
                 {/* Instant Craft Screenplay Button */}
                 <div style={{ display: "flex", gap: 8, marginBottom: 12 }}>
                   <button
@@ -1468,10 +1538,11 @@ export default function ReelsStudioConnect() {
                         background: "rgba(0, 0, 0, 0.6)",
                         border: "1px solid rgba(16, 185, 129, 0.4)",
                         color: "#fff",
-                        fontSize: 12.5,
+                        fontFamily: "inherit, 'Inter', 'Segoe UI', 'Noto Sans Devanagari', -apple-system, sans-serif",
+                        fontSize: 13,
                         outline: "none",
                         resize: "vertical",
-                        lineHeight: 1.5,
+                        lineHeight: 1.55,
                       }}
                     />
                   </div>
