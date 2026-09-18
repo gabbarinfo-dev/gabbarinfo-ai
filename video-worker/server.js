@@ -1623,20 +1623,25 @@ async function assembleFFmpegVideo({ jobDir, scenes, audioFiles, visuals, output
           const scaleCropVf = `scale=${width}:${height}:force_original_aspect_ratio=increase,crop=${width}:${height}`;
           const args = [
             "-y",
+          ];
+          if (!vis.hasEmbeddedAudio) {
+            args.push("-stream_loop", "-1");
+          }
+          args.push(
             "-i", vis.path,
             "-vf", scaleCropVf,
             "-c:v", "libx264",
             "-threads", "2",
             "-preset", "ultrafast",
             "-pix_fmt", "yuv420p",
-            "-r", "25",
-          ];
+            "-r", "25"
+          );
 
           if (vis.hasEmbeddedAudio) {
             // CRITICAL: Preserve SadTalker's native frame-perfect lip-synced audio without stripping or looping!
             args.push("-c:a", "aac", "-b:a", "192k", "-ar", "44100", "-ac", "2");
           } else {
-            args.push("-stream_loop", "-1", "-t", `${durationPerScene}`, "-an");
+            args.push("-t", `${durationPerScene}`, "-an");
           }
 
           args.push("-loglevel", "error", segPath);

@@ -391,12 +391,41 @@ export default function ReelsStudioConnect() {
               if (jobData.status === "completed" && jobData.videoUrl) {
                 clearInterval(interval);
                 masterVideoUrlRef.current = jobData.videoUrl;
+
+                const rawLines = customScript
+                  .split(/\n+/)
+                  .map((l) => l.trim())
+                  .filter(Boolean);
+
+                const scenesToUse = (jobData.metadata?.scenes && jobData.metadata.scenes.length > 0)
+                  ? jobData.metadata.scenes
+                  : (rawLines.length > 0 ? rawLines : [topic || "Viral AI Reel"]).map((line, idx, arr) => {
+                      const dur = durationSeconds / arr.length;
+                      return {
+                        sceneNumber: idx + 1,
+                        text: line.replace(/^Scene\s*\d+\s*[:\-–—]?\s*/i, "").trim(),
+                        startSec: Math.round(idx * dur * 10) / 10,
+                        endSec: Math.round((idx + 1) * dur * 10) / 10,
+                      };
+                    });
+
+                const fullText = scenesToUse.map((s) => s.text).join(" ");
+                const words = fullText.split(/\s+/).filter(Boolean);
+                const wordDur = words.length > 0 ? durationSeconds / words.length : 0.4;
+                const captionsToUse = words.map((w, idx) => ({
+                  word: w.replace(/^[^\w]+|[^\w]+$/g, ""),
+                  original: w,
+                  startTime: Math.round(idx * wordDur * 100) / 100,
+                  endTime: Math.round((idx + 1) * wordDur * 100) / 100,
+                }));
+
                 setGeneratedVideo({
                   compositeVideoUrl: jobData.videoUrl,
                   title: jobData.metadata?.title || topic,
-                  scenes: [],
-                  captions: [],
+                  scenes: scenesToUse,
+                  captions: captionsToUse,
                 });
+                setIsPlaying(true);
                 setToastMsg("🎬 Master reel rendered by Railway background worker!");
                 setTimeout(() => setToastMsg(""), 6000);
                 resolve();
@@ -420,27 +449,49 @@ export default function ReelsStudioConnect() {
   };
 
   // Video Time Synchronizer
-  const handleTimeUpdate = () => {
-    if (!voiceoverRef.current || !generatedVideo) return;
-    const t = voiceoverRef.current.currentTime;
+  const handleTimeUpdate = (e) => {
+    let t = 0;
+    if (e?.target?.currentTime !== undefined) {
+      t = e.target.currentTime;
+    } else if (videoPlayerRef.current) {
+      t = videoPlayerRef.current.currentTime;
+    } else if (voiceoverRef.current) {
+      t = voiceoverRef.current.currentTime;
+    }
     setCurrentTime(t);
 
     // Determine current scene
-    const scenes = generatedVideo.scenes || [];
+    const scenes = generatedVideo?.scenes || [];
     const currentSceneIdx = scenes.findIndex((s) => t >= s.startSec && t <= s.endSec);
     if (currentSceneIdx !== -1 && currentSceneIdx !== activeSceneIndex) {
       setActiveSceneIndex(currentSceneIdx);
     }
 
     // Determine active karaoke caption word
-    const captions = generatedVideo.captions || [];
-    const activeWord = captions.find((c) => t >= c.startTime && t <= c.endTime);
-    if (activeWord) {
-      setActiveCaption(activeWord.original);
+    const captions = generatedVideo?.captions || [];
+    if (captions.length > 0) {
+      const activeWord = captions.find((c) => t >= c.startTime && t <= c.endTime);
+      if (activeWord) {
+        setActiveCaption(activeWord.original || activeWord.word);
+      }
+    } else if (scenes.length > 0 && currentSceneIdx !== -1) {
+      setActiveCaption(scenes[currentSceneIdx]?.text || "");
     }
   };
 
   const togglePlayback = () => {
+    // If playing composite video directly, control videoPlayerRef
+    if (generatedVideo?.compositeVideoUrl && videoPlayerRef.current) {
+      if (videoPlayerRef.current.paused) {
+        videoPlayerRef.current.play().catch(console.warn);
+        setIsPlaying(true);
+      } else {
+        videoPlayerRef.current.pause();
+        setIsPlaying(false);
+      }
+      return;
+    }
+
     if (!voiceoverRef.current) return;
     if (isPlaying) {
       voiceoverRef.current.pause();
@@ -464,9 +515,9 @@ export default function ReelsStudioConnect() {
     setIsPlaying(false);
     setCurrentTime(0);
     setActiveSceneIndex(0);
+    if (videoPlayerRef.current) videoPlayerRef.current.currentTime = 0;
     if (voiceoverRef.current) voiceoverRef.current.currentTime = 0;
     if (bgMusicRef.current) bgMusicRef.current.currentTime = 0;
-    if (videoPlayerRef.current) videoPlayerRef.current.currentTime = 0;
   };
 
   // Master In-Browser Video & Audio Compositor Engine
@@ -1861,6 +1912,7 @@ export default function ReelsStudioConnect() {
                     key={i}
                     onClick={() => {
                       setActiveSceneIndex(i);
+                      if (videoPlayerRef.current) videoPlayerRef.current.currentTime = sc.startSec;
                       if (voiceoverRef.current) voiceoverRef.current.currentTime = sc.startSec;
                     }}
                     style={{
@@ -1921,11 +1973,15 @@ export default function ReelsStudioConnect() {
               <div style={{ flex: 1, position: "relative", overflow: "hidden", background: "#090d16" }}>
                 {generatedVideo.compositeVideoUrl ? (
                   <video
+                    ref={videoPlayerRef}
                     src={generatedVideo.compositeVideoUrl}
-                    controls
                     autoPlay
-                    loop
                     playsInline
+                    loop
+                    onTimeUpdate={handleTimeUpdate}
+                    onEnded={handleEnded}
+                    onPlay={() => setIsPlaying(true)}
+                    onPause={() => setIsPlaying(false)}
                     style={{
                       width: "100%",
                       height: "100%",
@@ -1941,6 +1997,10 @@ export default function ReelsStudioConnect() {
                     playsInline
                     loop
                     muted
+                    onTimeUpdate={handleTimeUpdate}
+                    onEnded={handleEnded}
+                    onPlay={() => setIsPlaying(true)}
+                    onPause={() => setIsPlaying(false)}
                     style={{
                       width: "100%",
                       height: "100%",
@@ -1974,8 +2034,8 @@ export default function ReelsStudioConnect() {
                   style={{
                     position: "absolute",
                     bottom: 80,
-                    left: 16,
-                    right: 16,
+                    left: 14,
+                    right: 14,
                     textAlign: "center",
                     zIndex: 20,
                     pointerEvents: "none",
@@ -1984,20 +2044,22 @@ export default function ReelsStudioConnect() {
                   <div
                     style={{
                       display: "inline-block",
-                      padding: "6px 14px",
-                      borderRadius: 10,
-                      background: "rgba(0, 0, 0, 0.75)",
-                      backdropFilter: "blur(6px)",
-                      border: "1px solid rgba(255, 255, 255, 0.15)",
-                      fontSize: 16,
+                      padding: "8px 14px",
+                      borderRadius: 12,
+                      background: "rgba(0, 0, 0, 0.85)",
+                      backdropFilter: "blur(8px)",
+                      border: "1px solid rgba(255, 255, 255, 0.2)",
+                      fontSize: 15,
                       fontWeight: 900,
                       color: "#facc15",
                       textTransform: "uppercase",
                       letterSpacing: "0.03em",
-                      textShadow: "0 2px 10px rgba(0,0,0,0.8)",
+                      textShadow: "0 2px 10px rgba(0,0,0,0.9)",
+                      maxWidth: "95%",
+                      lineHeight: 1.35,
                     }}
                   >
-                    {activeCaption || currentScene?.text?.slice(0, 30) || "GABBARINFO AI"}
+                    {activeCaption || (generatedVideo.scenes && generatedVideo.scenes[activeSceneIndex]?.text) || "GABBARINFO AI"}
                   </div>
                 </div>
 
