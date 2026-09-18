@@ -28,6 +28,7 @@ export default function ReelsStudioConnect() {
   const [promoCTA, setPromoCTA] = useState("Click the link in bio to book your free slot");
   const [websiteUrl, setWebsiteUrl] = useState("");
   const [generatingPromoScript, setGeneratingPromoScript] = useState(false);
+  const [extractedUsps, setExtractedUsps] = useState([]);
 
   // Generated Video Data
   const [generatedVideo, setGeneratedVideo] = useState(null);
@@ -295,7 +296,10 @@ export default function ReelsStudioConnect() {
         throw new Error(data.error || "Failed to craft promotional screenplay.");
       }
       setCustomScript(data.formattedScript);
-      setToastMsg("✅ Commercial ad script crafted! Review or edit below before generating.");
+      if (Array.isArray(data.extractedUsps) && data.extractedUsps.length > 0) {
+        setExtractedUsps(data.extractedUsps);
+      }
+      setToastMsg(`✅ ${data.title ? `"${data.title}"` : "Commercial screenplay"} crafted with deep USPs!`);
       setTimeout(() => setToastMsg(""), 6000);
     } catch (err) {
       setErrorMsg(err.message || "Failed to generate promotional script.");
@@ -1415,6 +1419,38 @@ export default function ReelsStudioConnect() {
                 {/* Screenplay Preview / Edit Box */}
                 {customScript && (
                   <div>
+                    {extractedUsps && extractedUsps.length > 0 && (
+                      <div
+                        style={{
+                          marginBottom: 10,
+                          padding: "8px 12px",
+                          borderRadius: 8,
+                          background: "rgba(16, 185, 129, 0.08)",
+                          border: "1px solid rgba(16, 185, 129, 0.25)",
+                        }}
+                      >
+                        <div style={{ fontSize: 10.5, fontWeight: 800, color: "#10b981", marginBottom: 5 }}>
+                          🎯 Analyzed USPs & Conversion Hooks from Website:
+                        </div>
+                        <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
+                          {extractedUsps.map((usp, idx) => (
+                            <span
+                              key={idx}
+                              style={{
+                                fontSize: 10,
+                                padding: "2px 8px",
+                                borderRadius: 4,
+                                background: "rgba(16, 185, 129, 0.18)",
+                                color: "#6ee7b7",
+                                border: "1px solid rgba(16, 185, 129, 0.3)",
+                              }}
+                            >
+                              ✓ {usp}
+                            </span>
+                          ))}
+                        </div>
+                      </div>
+                    )}
                     <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 6 }}>
                       <label style={{ fontSize: 11.5, fontWeight: 700, color: "#10b981" }}>
                         ✓ Screenplay Preview (Editable):
@@ -1422,7 +1458,7 @@ export default function ReelsStudioConnect() {
                       <span style={{ fontSize: 10, color: "#94a3b8" }}>Characters speak this verbatim</span>
                     </div>
                     <textarea
-                      rows={4}
+                      rows={Math.max(5, Math.min(10, (customScript.split("\n").length || 4) + 1))}
                       value={customScript}
                       onChange={(e) => setCustomScript(e.target.value)}
                       style={{
@@ -1436,7 +1472,7 @@ export default function ReelsStudioConnect() {
                         fontSize: 12.5,
                         outline: "none",
                         resize: "vertical",
-                        lineHeight: 1.45,
+                        lineHeight: 1.5,
                       }}
                     />
                   </div>

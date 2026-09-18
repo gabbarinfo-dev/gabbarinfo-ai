@@ -1074,13 +1074,13 @@ async function processReelVideo(job, jobDir) {
   if (hasCustomScript) {
     log(job.id, `Using user-provided custom script for reel (${customScript.length} chars)`);
     const lines = customScript.split(/\n+/).map(l => l.trim()).filter(Boolean);
-    const numScenes = Math.min(3, Math.max(1, lines.length));
+    const numScenes = Math.min(8, Math.max(1, lines.length));
     const secPerScene = Math.round((targetSecs / numScenes) * 10) / 10;
 
     reelScript = {
       title: topic || (brandName ? `${brandName} Promo` : "Custom Reel Masterpiece"),
       fullScript: customScript,
-      scenes: lines.slice(0, 3).map((line, idx) => {
+      scenes: lines.slice(0, numScenes).map((line, idx) => {
         const clean = sanitizeDialogue(line) || line;
         return {
           sceneNumber: idx + 1,
@@ -1104,21 +1104,24 @@ async function processReelVideo(job, jobDir) {
     let angleRule = "";
     if (promoAngle === "customer_owner_skit") {
       angleRule = `PROMOTIONAL ANGLE: Customer & Owner Conversation (2-Character Skit)
-- Scene 1 (Customer Problem): The customer complains about a real frustration or problem.
+- Scene 1 (Customer Problem): The customer complains about a real frustration, wasted money, or struggle with old methods.
 - Scene 2 (Owner Solution): The business owner introduces "${brandName || "our brand"}" and how "${serviceToPromote || "our signature service"}" solves it effortlessly.
-- Scene 3 (Urgency Offer & CTA): The owner announces the special deal: "${specialOffer || "exclusive promotion"}" and CTA: "${promoCTA}".`;
+- Scene 3+ (Proof, Offer & CTA): The owner highlights key USPs, announces the special deal: "${specialOffer || "exclusive promotion"}" and CTA: "${promoCTA}".`;
     } else if (promoAngle === "founder_pitch") {
       angleRule = `PROMOTIONAL ANGLE: Excited Founder / Owner Direct Pitch
-- The charismatic business owner speaks directly to camera with high passion.
-- Scene 1: Hook calling out the customer's costly mistake or problem.
+- The charismatic business owner speaks directly to camera with high passion and authority.
+- Scene 1: Provocative hook calling out the customer's costly mistake or bloated industry traps.
 - Scene 2: The breakthrough: Introduces "${brandName || "our company"}" and how "${serviceToPromote || "our service"}" transforms results.
-- Scene 3: Unbeatable offer: "${specialOffer || "limited-time offer"}" + Urgency CTA: "${promoCTA}".`;
+- Scene 3+ (USPs, Offer & CTA): Key differentiators, unbeatable offer: "${specialOffer || "limited-time offer"}" + Urgency CTA: "${promoCTA}".`;
     } else {
       angleRule = `PROMOTIONAL ANGLE: High-Converting Direct Response Commercial Ad
-- Scene 1: Pattern interrupt hook targeting the prospect's immediate pain.
+- Scene 1: Pattern interrupt hook targeting the prospect's immediate pain and cost of inaction.
 - Scene 2: Clear value: Why "${brandName || "our team"}" delivers 10x better results with "${serviceToPromote || "our solution"}".
-- Scene 3: Scarcity deal: "${specialOffer || "special deal"}" + Action CTA: "${promoCTA}".`;
+- Scene 3+ (USPs, Offer & CTA): Specific capabilities, scarcity deal: "${specialOffer || "special deal"}" + Action CTA: "${promoCTA}".`;
     }
+
+    let wordTarget = targetSecs <= 15 ? "between 38 and 48 spoken words total" : targetSecs <= 30 ? "between 75 and 95 spoken words total" : "between 140 and 175 spoken words total";
+    let sceneCountReq = targetSecs <= 15 ? "3 to 4 sequential scenes" : targetSecs <= 30 ? "4 to 6 sequential scenes" : "6 to 8 sequential scenes";
 
     const promoPrompt = `You are an elite commercial video director creating a high-converting ${targetSecs}-second vertical promo ad for Instagram Reels, TikTok, and YouTube Shorts.
 Brand Name: "${brandName || "Our Brand"}"
@@ -1129,11 +1132,11 @@ ${langRule}
 ${angleRule}
 
 Requirements:
-- Exactly 3 sequential scenes totaling ~${targetSecs} seconds:
-  1. Scene 1 (Hook / Problem, 0-5s)
-  2. Scene 2 (Solution & Brand Name, 5-10s) - MUST speak brand name "${brandName || "Our Brand"}"
-  3. Scene 3 (Offer & CTA, 10-15s) - MUST announce offer "${specialOffer}" and CTA "${promoCTA}"
-- Total spoken words: between 30 and 45 words total (natural speaking pace).
+- Structure: ${sceneCountReq} totaling ~${targetSecs} seconds.
+- Total spoken words: ${wordTarget} (natural human speaking pace).
+- Spoken lines must be full, expressive spoken sentences (1-2 sentences per scene). NEVER write robotic 3-word bullets!
+- Brand name "${brandName || "Our Brand"}" MUST be spoken clearly.
+- Offer "${specialOffer}" and CTA "${promoCTA}" MUST be delivered in the final scene.
 - Return ONLY valid JSON:
 {
   "title": "${brandName || "Special"} Promo Reel",
@@ -1145,20 +1148,6 @@ Requirements:
       "spokenAudio": "Exact spoken line in Devanagari Hindi if Hindi",
       "visualPrompt": "Vertical 9:16 cinematic portrait of speaker looking into camera, professional studio lighting",
       "searchQuery": "business product advertisement"
-    },
-    {
-      "sceneNumber": 2,
-      "text": "Spoken line for scene 2",
-      "spokenAudio": "Exact spoken line in Devanagari Hindi if Hindi",
-      "visualPrompt": "Vertical 9:16 cinematic close-up of speaker confidently explaining solution",
-      "searchQuery": "entrepreneur presentation"
-    },
-    {
-      "sceneNumber": 3,
-      "text": "Spoken line for scene 3",
-      "spokenAudio": "Exact spoken line in Devanagari Hindi if Hindi",
-      "visualPrompt": "Vertical 9:16 cinematic portrait of speaker smiling with compelling gesture",
-      "searchQuery": "special offer announcement"
     }
   ]
 }`;
