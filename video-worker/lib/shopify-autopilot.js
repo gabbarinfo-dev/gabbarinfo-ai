@@ -146,6 +146,29 @@ function isProductInStock(p) {
   });
 }
 
+function sanitizeShopifyBodyHtml(bodyHtml, title) {
+  if (!bodyHtml) return "";
+  let clean = String(bodyHtml).trim();
+  // Remove markdown code fences if present
+  clean = clean.replace(/^```html\s*/i, "").replace(/^```\s*/i, "").replace(/\s*```$/i, "").trim();
+
+  // Strip any leading <h1>...</h1> tag completely
+  clean = clean.replace(/^\s*<h1[^>]*>[\s\S]*?<\/h1>\s*/i, "");
+
+  // If the body starts with an <h2> that is identical or near-identical to the title, strip it too
+  if (title) {
+    const normTitle = title.toLowerCase().replace(/[^a-z0-9]/g, "");
+    const leadingH2Match = clean.match(/^\s*<h2[^>]*>([\s\S]*?)<\/h2>\s*/i);
+    if (leadingH2Match) {
+      const normH2 = leadingH2Match[1].replace(/<[^>]+>/g, "").toLowerCase().replace(/[^a-z0-9]/g, "");
+      if (normH2 === normTitle || (normH2.length > 15 && normTitle.includes(normH2))) {
+        clean = clean.replace(/^\s*<h2[^>]*>[\s\S]*?<\/h2>\s*/i, "");
+      }
+    }
+  }
+  return clean.trim();
+}
+
 /**
  * Main autonomous Shopify publishing cycle on Railway worker.
  */
@@ -410,59 +433,66 @@ Format response strictly as JSON:
         ? candidateProducts.map((p, idx) => `${idx + 1}. Title: "${p.title}" | Direct Link: "${p.url}"`).join("\n")
         : "";
 
-      const fullArticlePrompt = `You are a world-class eCommerce SEO copywriter and lifestyle content strategist for "${brandName}".
-Write an in-depth, authoritative, and engaging 1,500+ word eCommerce blog article optimized for Google rank and product conversion.
+      const fullArticlePrompt = `You are an elite, award-winning eCommerce lifestyle editor and senior SEO copywriter for "${brandName}".
+Write an in-depth, authoritative, and deeply engaging 1,600 to 2,000+ word eCommerce blog guide optimized for high Google rankings, reader dwell time, and e-commerce product conversion.
 
 TOPIC: ${strategicTopic.topic}
-PRIMARY KEYWORD: ${strategicTopic.primaryKeyword}
+PRIMARY FOCUS KEYWORD: ${strategicTopic.primaryKeyword}
 SECONDARY KEYWORDS: ${(strategicTopic.secondaryKeywords || []).join(", ")}
 BRAND NAME: ${brandName}
 STORE DOMAIN: ${primaryDomain}
 ${targetLocations ? `
-TARGET GEOGRAPHIC MARKET MANDATE (COUNTRIES & CITIES):
-The store is actively targeting shoppers and clients in: "${targetLocations}".
-- Deeply tailor the styling guides, climate/seasonal factors, consumer preferences, lifestyle references, and local context specifically for shoppers in (${targetLocations}).
-- Naturally incorporate localized references, regional terminology, and city or country mentions of ${targetLocations} within subheadings, styling tips, case scenarios, and FAQ sections.
+TARGET GEOGRAPHIC MARKET (COUNTRIES & CITIES):
+The store targets shoppers in: "${targetLocations}".
+- Deeply tailor styling recommendations, lifestyle context, seasonal climate, and cultural nuances specifically to shoppers in ${targetLocations}.
+- Naturally weave in city/regional terminology and local context into subheadings, styling scenarios, and FAQ answers.
 ` : ""}
 
 ${candidateProductsText ? `
-MANDATORY INTERNAL PRODUCT LINKING REQUIREMENTS (ECOMMERCE CONVERSION ENGINE):
-You MUST organically interlink AT LEAST 4 to 5 relevant products from this store into the article body HTML.
-Available Store Products to Interlink:
+MANDATORY INTERNAL PRODUCT LINKING (CONVERSION ENGINE):
+You MUST naturally interlink AT LEAST 4 to 5 of these available in-stock products within the article body:
 ${candidateProductsText}
 
 CRITICAL RULES FOR INTERNAL PRODUCT LINKS:
-1. In-Text Mentions: Embed at least 3-4 clickable product links naturally within styling recommendations, accessorizing paragraphs, or outfit breakdowns using standard HTML anchor tags:
+1. In-Text Mentions: Embed at least 3-4 clickable product links naturally within styling recommendations and outfit breakdowns using standard HTML:
    <a href="EXACT_PRODUCT_URL" title="Product Title" target="_blank" rel="noopener noreferrer">Descriptive Anchor Text or Product Name</a>
-   (Never use generic "click here" or "check this out". Use descriptive anchor text, e.g. "...pair this look with an ornate <a href=\"EXACT_URL\">Product Name</a> for timeless elegance...")
-2. Dedicated "Curated Store Highlights / Featured Pieces" Section:
-   Near the conclusion or after the main styling guide, include a dedicated <h3>Curated Store Highlights / Featured Pieces</h3> or <h3>Shop the Story</h3> callout block featuring 4 to 5 of these products with direct links and 1-sentence reasons why each piece completes the ensemble.
-3. Strict URL Precision: Only use the EXACT product URLs provided above. Do NOT modify the URL path or invent imaginary links.
+   (Never use generic "click here". Use natural descriptive phrasing, e.g. "...complement this look with an intricate <a href=\"EXACT_URL\">Product Title</a> for an effortless statement...")
+2. Dedicated Featured Collection Block:
+   Include an <h3>Curated Store Highlights / Featured Pieces</h3> section showcasing 4 to 5 products with direct links and 1-2 sentences on why each completes the look.
+3. Strict URL Precision: Use ONLY the exact product URLs provided. Do NOT invent URLs.
 ` : ""}
 
-ARTICLE REQUIREMENTS:
-1. Compelling H1 Title incorporating primary keywords.
-2. Hook paragraph capturing attention and addressing shopper desires or problems.
-3. 5-6 detailed sections with clear <h2> and <h3> subheadings providing practical guides, styling advice, or solutions.
-4. Curated shopping tips and recommendations linking value directly back to the store's catalog.
-5. <h3>Frequently Asked Questions</h3> with 3 clear, schema-ready Q&As.
-6. Engaging conclusion with a strong Call to Action (CTA).
-7. Pure semantic HTML formatting (<h2>, <h3>, <p>, <ul>, <li>, <strong>, <em>, <blockquote>).
-8. Provide calibrated SEO Meta Title (50-60 characters) and Meta Description (145-155 characters).
+CRITICAL FORMATTING & STRUCTURE RULES (AVOID DUPLICATE TITLES & ENSURE 1,800+ WORDS):
+1. STRICTLY FORBIDDEN: DO NOT INCLUDE AN <h1> TAG ANYWHERE IN bodyHtml!
+   Shopify's theme template automatically displays the article's title in an <h1> tag at the top of the page. Repeating an <h1> tag or repeating the title in bodyHtml causes an ugly duplicate title error on the live storefront!
+2. Start bodyHtml directly with the captivating opening narrative paragraph. Do NOT repeat the exact title in the opening heading.
+3. MINIMUM LENGTH: 1,800 to 2,400+ words. Do NOT write brief summaries. Write comprehensive, descriptive multi-paragraph content across 10 structured sections (each with at least 3 detailed paragraphs):
+   - Section 1: Compelling Hook & Introduction (min 220 words, 3 detailed paragraphs. Bold the primary keyword in the first 100 words. Start directly with text, NO <h1>).
+   - Section 2: Trend Evolution & Styling Heritage in ${targetLocations || "Modern Fashion"} (min 250 words, 3 detailed paragraphs).
+   - Section 3: Craftsmanship, Metalwork & Design Artistry (min 250 words, detailing materials, oxidation finish, durability, and skin-friendly design).
+   - Section 4: Day-to-Night Styling & Wardrobe Pairing Blueprint (min 320 words, detailing casual, workwear, festive, and evening looks).
+   - Section 5: The Ergonomics of Adjustable Sizing & Versatile Styling (min 220 words, addressing size flexibility, thumb/index/midi ring versatility).
+   - Section 6: Seasonal Wardrobe Harmony: From Chunky Knitwear to Summer Silks (min 240 words).
+   - Section 7: Curated Store Highlights & Featured Pieces (min 280 words, organic product links with styling reasons).
+   - Section 8: Longevity, Tarnish Prevention & Care Playbook (min 240 words, practical preservation tips).
+   - Section 9: Frequently Asked Questions (min 650 words, at least 6 comprehensive, schema-ready Q&As with multi-paragraph detailed answers).
+   - Section 10: The Final Verdict & Styling Inspiration (min 200 words, inspiring concluding thoughts with CTA).
+4. Pure semantic HTML formatting: <h2>, <h3>, <p>, <ul>, <li>, <strong>, <em>, <blockquote>.
+5. Calibrated SEO Title (50-60 characters) and Meta Description (145-155 characters).
 
 Respond ONLY with a valid JSON object matching this schema:
 {
   "title": "Full Article Title",
   "seoTitle": "Calibrated SEO Title under 60 characters",
   "seoDescription": "Compelling Meta Description between 145-155 chars",
-  "bodyHtml": "<p>Article HTML content...</p>",
+  "bodyHtml": "<p>Direct opening paragraph...</p>",
   "tags": ["tag1", "tag2", "tag3"]
 }`;
 
       // 10. Run Text Generation and Image Generation Concurrently
       const articlePromise = (async () => {
         const comp = await openai.chat.completions.create({
-          model: "gpt-4o-mini",
+          model: "gpt-4o",
           messages: [{ role: "user", content: fullArticlePrompt }],
           response_format: { type: "json_object" },
           max_tokens: 4096,
@@ -498,12 +528,15 @@ Respond ONLY with a valid JSON object matching this schema:
         throw new Error("AI failed to generate valid article HTML content.");
       }
 
+      // Sanitize bodyHtml: strip any accidental <h1> or duplicate title headers
+      const sanitizedBodyHtml = sanitizeShopifyBodyHtml(articleData.bodyHtml, articleData.title);
+
       // 11. Post Article with Featured Image Directly to Shopify
       logger(`[Shopify Autopilot] Publishing article to Shopify Blog (${blogHandle})...`);
       const articlePayload = {
         title: articleData.title,
-        body_html: articleData.bodyHtml,
-        author: "GabbarInfo AI",
+        body_html: sanitizedBodyHtml,
+        author: brandName || "Bella & Diva",
         tags: Array.isArray(articleData.tags) ? articleData.tags.join(", ") : (articleData.tags || strategicTopic.primaryKeyword),
         published: !config.isDraft,
       };
@@ -749,44 +782,52 @@ async function generateShopifyArticleOnDemand({
   }
   if (!openai) throw new Error("OpenAI client is required.");
 
-  const blogPrompt = `You are a world-class eCommerce SEO copywriter and lifestyle content strategist for "${brandName}".
-Write an in-depth, authoritative, and engaging 1,500+ word eCommerce blog article optimized for Google rank and product conversion.
+  const blogPrompt = `You are an elite, award-winning eCommerce lifestyle editor and senior SEO copywriter for "${brandName}".
+Write an in-depth, authoritative, and deeply engaging 1,600 to 2,000+ word eCommerce blog guide optimized for high Google rankings, reader dwell time, and e-commerce product conversion.
 
 TOPIC: ${topic}
 TARGET KEYWORDS: ${keywords || topic}
 BRAND NAME: ${brandName}
 TONE: ${tone}
 ${targetLocations ? `
-TARGET GEOGRAPHIC MARKET MANDATE (COUNTRIES & CITIES):
-The store is actively targeting shoppers and clients in: "${targetLocations}".
-- Deeply tailor recommendations, regional climate and styling factors, seasonal context, and shopping habits specifically to audiences in (${targetLocations}).
-- Naturally incorporate localized references, regional terminology, and city or country mentions of ${targetLocations} within styling tips, subheadings, and FAQ sections.
+TARGET GEOGRAPHIC MARKET (COUNTRIES & CITIES):
+The store targets shoppers in: "${targetLocations}".
+- Deeply tailor styling recommendations, lifestyle context, seasonal climate, and cultural nuances specifically to shoppers in ${targetLocations}.
+- Naturally weave in city/regional terminology and local context into subheadings, styling scenarios, and FAQ answers.
 ` : ""}
 
-ARTICLE REQUIREMENTS:
-1. Compelling H1 Title incorporating primary keywords.
-2. Hook paragraph capturing attention and addressing shopper desires or problems.
-3. 5-6 detailed sections with clear <h2> and <h3> subheadings providing practical guides, styling advice, or solutions.
-4. Curated shopping tips and recommendations linking value directly back to the store's catalog.
-5. <h3>Frequently Asked Questions</h3> with 3 clear, schema-ready Q&As.
-6. Engaging conclusion with a strong Call to Action (CTA).
-7. Pure semantic HTML formatting (<h2>, <h3>, <p>, <ul>, <li>, <strong>, <em>, <blockquote>).
-8. Provide calibrated SEO Meta Title (50-60 characters) and Meta Description (145-155 characters).
+CRITICAL FORMATTING & STRUCTURE RULES (AVOID DUPLICATE TITLES & ENSURE 1,600+ WORDS):
+1. STRICTLY FORBIDDEN: DO NOT INCLUDE AN <h1> TAG ANYWHERE IN bodyHtml!
+   Shopify's theme template automatically displays the article's title in an <h1> tag at the top of the page. Repeating an <h1> tag or repeating the title in bodyHtml causes an ugly duplicate title error on the live storefront!
+2. Start bodyHtml directly with the captivating opening narrative paragraph, or an engaging introductory <h2> that does NOT repeat the exact title.
+3. MINIMUM LENGTH: 1,600 to 2,000+ words. Do NOT write brief summaries. Write comprehensive, descriptive paragraphs across 8 to 10 structured sections:
+   - Section 1: Compelling Hook & Introduction (min 180 words, 2-3 paragraphs. Bold the primary keyword in the first 100 words. Start directly with text, NO <h1>).
+   - Section 2: Trend Evolution & Styling Heritage in ${targetLocations || "Modern Fashion"} (min 200 words).
+   - Section 3: Craftsmanship, Metalwork & Design Artistry (min 220 words, detailing materials, oxidation finish, durability, and skin-friendly design).
+   - Section 4: Day-to-Night Styling & Wardrobe Pairing Blueprint (min 250 words, detailing casual, workwear, festive, and evening looks).
+   - Section 5: The Ergonomics of Adjustable Sizing & Versatile Styling (min 200 words, addressing size flexibility, thumb/index/midi ring versatility).
+   - Section 6: Longevity, Tarnish Prevention & Care Playbook (min 180 words, practical preservation tips).
+   - Section 7: Curated Store Highlights & Featured Pieces (min 220 words, organic product recommendations with styling reasons).
+   - Section 8: Frequently Asked Questions (min 300 words, at least 4 to 5 comprehensive, schema-ready Q&As with detailed answers).
+   - Section 9: The Final Verdict & Styling Inspiration (min 150 words, inspiring concluding thoughts with CTA).
+4. Pure semantic HTML formatting: <h2>, <h3>, <p>, <ul>, <li>, <strong>, <em>, <blockquote>.
+5. Calibrated SEO Title (50-60 characters) and Meta Description (145-155 characters).
 
 Respond ONLY with a valid JSON object matching this schema:
 {
   "title": "Full Article Title",
   "seoTitle": "Calibrated SEO Title under 60 characters",
   "seoDescription": "Compelling Meta Description between 145-155 chars",
-  "bodyHtml": "<p>Article HTML content...</p>",
+  "bodyHtml": "<p>Direct opening paragraph...</p>",
   "tags": ["keyword1", "keyword2", "keyword3"]
 }`;
 
   const textPromise = (async () => {
     const comp = await openai.chat.completions.create({
-      model: "gpt-4o-mini",
+      model: "gpt-4o",
       messages: [{ role: "user", content: blogPrompt }],
       response_format: { type: "json_object" },
+      max_tokens: 4096,
       temperature: 0.7,
     });
     return JSON.parse(comp.choices[0]?.message?.content || "{}");
@@ -818,8 +859,11 @@ Respond ONLY with a valid JSON object matching this schema:
     throw new Error("AI failed to generate article content.");
   }
 
+  const sanitizedBodyHtml = sanitizeShopifyBodyHtml(textResult.bodyHtml, textResult.title);
+
   return {
     ...textResult,
+    bodyHtml: sanitizedBodyHtml,
     imageBase64: imgResult.imageBase64,
     imageUrl: imgResult.imageUrl,
   };

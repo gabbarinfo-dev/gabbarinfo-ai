@@ -1007,10 +1007,24 @@ Respond ONLY with a valid JSON object matching this structure:
         return res.status(400).json({ ok: false, error: "Article ID, Blog ID, Title, and Article HTML are required." });
       }
 
+      let sanitizedUpdateBody = String(bodyHtml || "").trim();
+      sanitizedUpdateBody = sanitizedUpdateBody.replace(/^```html\s*/i, "").replace(/^```\s*/i, "").replace(/\s*```$/i, "").trim();
+      sanitizedUpdateBody = sanitizedUpdateBody.replace(/^\s*<h1[^>]*>[\s\S]*?<\/h1>\s*/i, "");
+      if (title) {
+        const normTitle = title.toLowerCase().replace(/[^a-z0-9]/g, "");
+        const leadingH2Match = sanitizedUpdateBody.match(/^\s*<h2[^>]*>([\s\S]*?)<\/h2>\s*/i);
+        if (leadingH2Match) {
+          const normH2 = leadingH2Match[1].replace(/<[^>]+>/g, "").toLowerCase().replace(/[^a-z0-9]/g, "");
+          if (normH2 === normTitle || (normH2.length > 15 && normTitle.includes(normH2))) {
+            sanitizedUpdateBody = sanitizedUpdateBody.replace(/^\s*<h2[^>]*>[\s\S]*?<\/h2>\s*/i, "");
+          }
+        }
+      }
+
       const updatePayload = {
         id: articleId,
         title,
-        body_html: bodyHtml,
+        body_html: sanitizedUpdateBody,
         summary_html: summaryHtml,
         tags: Array.isArray(tags) ? tags.join(", ") : tags,
       };
@@ -1048,7 +1062,7 @@ Respond ONLY with a valid JSON object matching this structure:
         blogId,
         title,
         bodyHtml,
-        author = "GabbarInfo AI",
+        author = "Bella & Diva",
         tags = "",
         isDraft = false,
         imageUrl = null,
@@ -1060,9 +1074,23 @@ Respond ONLY with a valid JSON object matching this structure:
         return res.status(400).json({ ok: false, error: "Blog ID, Title, and Article HTML are required." });
       }
 
+      let sanitizedPublishBody = String(bodyHtml || "").trim();
+      sanitizedPublishBody = sanitizedPublishBody.replace(/^```html\s*/i, "").replace(/^```\s*/i, "").replace(/\s*```$/i, "").trim();
+      sanitizedPublishBody = sanitizedPublishBody.replace(/^\s*<h1[^>]*>[\s\S]*?<\/h1>\s*/i, "");
+      if (title) {
+        const normTitle = title.toLowerCase().replace(/[^a-z0-9]/g, "");
+        const leadingH2Match = sanitizedPublishBody.match(/^\s*<h2[^>]*>([\s\S]*?)<\/h2>\s*/i);
+        if (leadingH2Match) {
+          const normH2 = leadingH2Match[1].replace(/<[^>]+>/g, "").toLowerCase().replace(/[^a-z0-9]/g, "");
+          if (normH2 === normTitle || (normH2.length > 15 && normTitle.includes(normH2))) {
+            sanitizedPublishBody = sanitizedPublishBody.replace(/^\s*<h2[^>]*>[\s\S]*?<\/h2>\s*/i, "");
+          }
+        }
+      }
+
       const articlePayload = {
         title,
-        body_html: bodyHtml,
+        body_html: sanitizedPublishBody,
         author,
         tags: Array.isArray(tags) ? tags.join(", ") : tags,
         published: !isDraft,
