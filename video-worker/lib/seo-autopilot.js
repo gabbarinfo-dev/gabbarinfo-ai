@@ -371,70 +371,89 @@ Format output as valid JSON:
       let featuredImageUrl = null;
       let midImageUrl = null;
 
-      // Image 1: Hero Featured Image
-      try {
-        const heroPrompt = `Award-winning commercial editorial hero illustration for blog article. Title: "${parsedArticle.title}". Subject: "${activeService}". Sleek modern studio lighting, 3D holographic digital accents, dark luxury slate aesthetics, high contrast, clean agency composition, pristine 4K quality, no text watermark.`;
-        const heroRes = await openai.images.generate({
-          model: "gpt-image-2",
-          prompt: heroPrompt,
-          size: "1024x1024",
-        });
+      // Image 1: Hero Featured Image (Hierarchy: gpt-image-2 -> gpt-image-2-2026-04-21 -> gpt-image-1.5)
+      const imageModels = ["gpt-image-2", "gpt-image-2-2026-04-21", "gpt-image-1.5"];
+      const heroPrompt = `Award-winning commercial editorial hero illustration for blog article. Title: "${parsedArticle.title}". Subject: "${activeService}". Sleek modern studio lighting, 3D holographic digital accents, dark luxury slate aesthetics, high contrast, clean agency composition, pristine 4K quality, no text watermark.`;
 
-        let heroBuffer = null;
-        if (heroRes.data?.[0]?.b64_json) {
-          heroBuffer = Buffer.from(heroRes.data[0].b64_json, "base64");
-        } else if (heroRes.data?.[0]?.url) {
-          const fetchRes = await fetch(heroRes.data[0].url);
-          heroBuffer = Buffer.from(await fetchRes.arrayBuffer());
-        }
+      let heroBuffer = null;
+      for (const modelName of imageModels) {
+        try {
+          logger(`[SEO Autopilot] Generating hero visual with ${modelName}...`);
+          const heroRes = await openai.images.generate({
+            model: modelName,
+            prompt: heroPrompt,
+            size: "1024x1024",
+          });
 
-        if (heroBuffer) {
-          const fileName = `wp_feat_${Date.now()}_${Math.random().toString(36).substring(7)}.png`;
-          const { data: uploadData, error: uploadErr } = await supabase.storage
-            .from("instagram-creatives")
-            .upload(fileName, heroBuffer, { contentType: "image/png", upsert: true });
-
-          if (!uploadErr && uploadData) {
-            const { data: pubUrlData } = supabase.storage.from("instagram-creatives").getPublicUrl(fileName);
-            featuredImageUrl = pubUrlData.publicUrl;
-            logger(`[SEO Autopilot] Featured hero image hosted: ${featuredImageUrl}`);
+          if (heroRes.data?.[0]?.b64_json) {
+            heroBuffer = Buffer.from(heroRes.data[0].b64_json, "base64");
+          } else if (heroRes.data?.[0]?.url) {
+            const fetchRes = await fetch(heroRes.data[0].url);
+            heroBuffer = Buffer.from(await fetchRes.arrayBuffer());
           }
+
+          if (heroBuffer && heroBuffer.length > 0) {
+            logger(`[SEO Autopilot] Successfully generated hero image via ${modelName}`);
+            break;
+          }
+        } catch (imgErr) {
+          logger(`[SEO Autopilot] Hero image gen with ${modelName} failed (${imgErr.message}), trying next approved model...`);
         }
-      } catch (imgErr) {
-        logger("[SEO Autopilot] Hero image generation notice:", imgErr.message);
+      }
+
+      if (heroBuffer) {
+        const fileName = `wp_feat_${Date.now()}_${Math.random().toString(36).substring(7)}.png`;
+        const { data: uploadData, error: uploadErr } = await supabase.storage
+          .from("instagram-creatives")
+          .upload(fileName, heroBuffer, { contentType: "image/png", upsert: true });
+
+        if (!uploadErr && uploadData) {
+          const { data: pubUrlData } = supabase.storage.from("instagram-creatives").getPublicUrl(fileName);
+          featuredImageUrl = pubUrlData.publicUrl;
+          logger(`[SEO Autopilot] Featured hero image hosted: ${featuredImageUrl}`);
+        }
       }
 
       // Image 2: Secondary Mid-Article Architecture Diagram / Infographic
-      try {
-        const midPrompt = `Award-winning commercial editorial diagram graphic showing modern technical architecture, workflow flowcharts, and multi-channel attribution model for "${activeService}". Sleek dark luxury slate aesthetic, glowing cyan and warm amber accent lighting, clean geometric flow lines, 3D holographic analytics panels, high contrast, clean agency composition, pristine 4K quality, no text gibberish.`;
-        const midRes = await openai.images.generate({
-          model: "gpt-image-2",
-          prompt: midPrompt,
-          size: "1024x1024",
-        });
+      const midPrompt = `Award-winning commercial editorial diagram graphic showing modern technical architecture, workflow flowcharts, and multi-channel attribution model for "${activeService}". Sleek dark luxury slate aesthetic, glowing cyan and warm amber accent lighting, clean geometric flow lines, 3D holographic analytics panels, high contrast, clean agency composition, pristine 4K quality, no text gibberish.`;
 
-        let midBuffer = null;
-        if (midRes.data?.[0]?.b64_json) {
-          midBuffer = Buffer.from(midRes.data[0].b64_json, "base64");
-        } else if (midRes.data?.[0]?.url) {
-          const fetchRes = await fetch(midRes.data[0].url);
-          midBuffer = Buffer.from(await fetchRes.arrayBuffer());
-        }
+      let midBuffer = null;
+      for (const modelName of imageModels) {
+        try {
+          logger(`[SEO Autopilot] Generating mid-article diagram with ${modelName}...`);
+          const midRes = await openai.images.generate({
+            model: modelName,
+            prompt: midPrompt,
+            size: "1024x1024",
+          });
 
-        if (midBuffer) {
-          const midFileName = `wp_mid_${Date.now()}_${Math.random().toString(36).substring(7)}.png`;
-          const { data: uploadData, error: uploadErr } = await supabase.storage
-            .from("instagram-creatives")
-            .upload(midFileName, midBuffer, { contentType: "image/png", upsert: true });
-
-          if (!uploadErr && uploadData) {
-            const { data: pubUrlData } = supabase.storage.from("instagram-creatives").getPublicUrl(midFileName);
-            midImageUrl = pubUrlData.publicUrl;
-            logger(`[SEO Autopilot] Secondary mid-article diagram hosted: ${midImageUrl}`);
+          if (midRes.data?.[0]?.b64_json) {
+            midBuffer = Buffer.from(midRes.data[0].b64_json, "base64");
+          } else if (midRes.data?.[0]?.url) {
+            const fetchRes = await fetch(midRes.data[0].url);
+            midBuffer = Buffer.from(await fetchRes.arrayBuffer());
           }
+
+          if (midBuffer && midBuffer.length > 0) {
+            logger(`[SEO Autopilot] Successfully generated mid-article diagram via ${modelName}`);
+            break;
+          }
+        } catch (midErr) {
+          logger(`[SEO Autopilot] Mid-article diagram gen with ${modelName} failed (${midErr.message}), trying next approved model...`);
         }
-      } catch (midErr) {
-        logger("[SEO Autopilot] Mid-article diagram notice:", midErr.message);
+      }
+
+      if (midBuffer) {
+        const midFileName = `wp_mid_${Date.now()}_${Math.random().toString(36).substring(7)}.png`;
+        const { data: uploadData, error: uploadErr } = await supabase.storage
+          .from("instagram-creatives")
+          .upload(midFileName, midBuffer, { contentType: "image/png", upsert: true });
+
+        if (!uploadErr && uploadData) {
+          const { data: pubUrlData } = supabase.storage.from("instagram-creatives").getPublicUrl(midFileName);
+          midImageUrl = pubUrlData.publicUrl;
+          logger(`[SEO Autopilot] Secondary mid-article diagram hosted: ${midImageUrl}`);
+        }
       }
 
       // Inject Secondary Mid-Article Diagram Image into HTML content after section 2

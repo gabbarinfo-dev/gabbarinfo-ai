@@ -816,21 +816,20 @@ Return ONLY valid JSON in this exact structure:
         }
       }
 
-      let imgGen;
-      try {
-        imgGen = await openai.images.generate({
-          model: "gpt-image-2",
-          prompt: prompt.slice(0, 950),
-          n: 1,
-          size: "1024x1024",
-        });
-      } catch (e1) {
-        imgGen = await openai.images.generate({
-          model: "dall-e-3",
-          prompt: prompt.slice(0, 950),
-          n: 1,
-          size: isWidescreen ? "1792x1024" : "1024x1792",
-        });
+      let imgGen = null;
+      const sceneImageModels = ["gpt-image-2", "gpt-image-2-2026-04-21", "gpt-image-1.5"];
+      for (const m of sceneImageModels) {
+        try {
+          imgGen = await openai.images.generate({
+            model: m,
+            prompt: prompt.slice(0, 950),
+            n: 1,
+            size: "1024x1024",
+          });
+          if (imgGen.data?.[0]?.b64_json || imgGen.data?.[0]?.url) break;
+        } catch (e) {
+          console.warn(`[VideoWorker] Scene image generation with ${m} failed:`, e.message);
+        }
       }
 
       if (imgGen.data?.[0]?.b64_json) {
@@ -1253,21 +1252,20 @@ Requirements:
       fs.writeFileSync(audioPath, Buffer.from(await mp3.arrayBuffer()));
 
       // 2. Generate Character Image
-      let imgGen;
-      try {
-        imgGen = await openai.images.generate({
-          model: "gpt-image-2",
-          prompt: characterImgPrompt.slice(0, 950),
-          n: 1,
-          size: "1024x1024",
-        });
-      } catch {
-        imgGen = await openai.images.generate({
-          model: "dall-e-3",
-          prompt: characterImgPrompt.slice(0, 950),
-          n: 1,
-          size: "1024x1792",
-        });
+      let imgGen = null;
+      const charImageModels = ["gpt-image-2", "gpt-image-2-2026-04-21", "gpt-image-1.5"];
+      for (const m of charImageModels) {
+        try {
+          imgGen = await openai.images.generate({
+            model: m,
+            prompt: characterImgPrompt.slice(0, 950),
+            n: 1,
+            size: "1024x1024",
+          });
+          if (imgGen.data?.[0]?.b64_json || imgGen.data?.[0]?.url) break;
+        } catch (e) {
+          console.warn(`[VideoWorker] Character image generation with ${m} failed:`, e.message);
+        }
       }
 
       if (imgGen.data?.[0]?.b64_json) {
@@ -1374,19 +1372,21 @@ Requirements:
 
       try {
         const scPrompt = `Cinematic 9:16 vertical smartphone frame. ${sc.visualPrompt || sc.text}. 35mm movie photography, volumetric lighting, Arri Alexa Mini LF, photorealistic 8k, masterpiece.`;
-        const imgRes = await openai.images.generate({
-          model: "gpt-image-2",
-          prompt: scPrompt.slice(0, 950),
-          n: 1,
-          size: "1024x1024",
-        }).catch(async () => {
-          return openai.images.generate({
-            model: "dall-e-3",
-            prompt: scPrompt.slice(0, 950),
-            n: 1,
-            size: "1024x1792",
-          });
-        });
+        let imgRes = null;
+        const reelImageModels = ["gpt-image-2", "gpt-image-2-2026-04-21", "gpt-image-1.5"];
+        for (const m of reelImageModels) {
+          try {
+            imgRes = await openai.images.generate({
+              model: m,
+              prompt: scPrompt.slice(0, 950),
+              n: 1,
+              size: "1024x1024",
+            });
+            if (imgRes?.data?.[0]?.b64_json || imgRes?.data?.[0]?.url) break;
+          } catch (e) {
+            console.warn(`[VideoWorker] Reel scene image generation with ${m} failed:`, e.message);
+          }
+        }
 
         if (imgRes.data?.[0]?.b64_json) {
           fs.writeFileSync(scImgPath, Buffer.from(imgRes.data[0].b64_json, "base64"));

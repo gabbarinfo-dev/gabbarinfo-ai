@@ -502,22 +502,28 @@ Respond ONLY with a valid JSON object matching this schema:
       })();
 
       const imagePromise = (async () => {
-        try {
-          const imagePrompt = `Ultra-realistic cinematic editorial lifestyle commercial photograph for eCommerce article titled "${strategicTopic.topic}". High fashion luxury aesthetic, 8k professional studio lighting, depth of field, award-winning commercial shot, clean product styling.`;
-          logger(`[Shopify Autopilot] Generating ultra-HD hero image via gpt-image-2 for ${shop}...`);
-          const imgGen = await openai.images.generate({
-            model: "gpt-image-2",
-            prompt: imagePrompt,
-            size: "1024x1024",
-          });
-          return {
-            imageBase64: imgGen.data?.[0]?.b64_json || null,
-            imageUrl: imgGen.data?.[0]?.url || null,
-          };
-        } catch (imgErr) {
-          logger(`[Shopify Autopilot] Image generation note: ${imgErr.message}`);
-          return { imageBase64: null, imageUrl: null };
+        const imagePrompt = `Ultra-realistic cinematic editorial lifestyle commercial photograph for eCommerce article titled "${strategicTopic.topic}". High fashion luxury aesthetic, 8k professional studio lighting, depth of field, award-winning commercial shot, clean product styling.`;
+        const candidateModels = ["gpt-image-2", "gpt-image-2-2026-04-21", "gpt-image-1.5"];
+        for (const modelName of candidateModels) {
+          try {
+            logger(`[Shopify Autopilot] Generating hero image via ${modelName} for ${shop}...`);
+            const imgGen = await openai.images.generate({
+              model: modelName,
+              prompt: imagePrompt,
+              size: "1024x1024",
+            });
+            if (imgGen.data?.[0]?.b64_json || imgGen.data?.[0]?.url) {
+              return {
+                imageBase64: imgGen.data?.[0]?.b64_json || null,
+                imageUrl: imgGen.data?.[0]?.url || null,
+              };
+            }
+          } catch (imgErr) {
+            logger(`[Shopify Autopilot] ${modelName} failed (${imgErr.message}), trying next candidate...`);
+          }
         }
+        logger(`[Shopify Autopilot] All approved gpt-image models failed. Aborting image attachment rather than using degraded models.`);
+        return { imageBase64: null, imageUrl: null };
       })();
 
       const [articleSettled, imageSettled] = await Promise.allSettled([articlePromise, imagePromise]);
@@ -834,21 +840,26 @@ Respond ONLY with a valid JSON object matching this schema:
   })();
 
   const imagePromise = (async () => {
-    try {
-      const imagePrompt = `Ultra-realistic cinematic editorial lifestyle commercial photograph for eCommerce article about "${topic}". High fashion luxury aesthetic, 8k professional studio lighting, depth of field, award-winning shot, clean product styling.`;
-      const imgGen = await openai.images.generate({
-        model: "gpt-image-2",
-        prompt: imagePrompt,
-        size: "1024x1024",
-      });
-      return {
-        imageBase64: imgGen.data?.[0]?.b64_json || null,
-        imageUrl: imgGen.data?.[0]?.url || null,
-      };
-    } catch (imgErr) {
-      console.warn("[Shopify Autopilot] On-demand image gen failed:", imgErr.message);
-      return { imageBase64: null, imageUrl: null };
+    const imagePrompt = `Ultra-realistic cinematic editorial lifestyle commercial photograph for eCommerce article about "${topic}". High fashion luxury aesthetic, 8k professional studio lighting, depth of field, award-winning shot, clean product styling.`;
+    const candidateModels = ["gpt-image-2", "gpt-image-2-2026-04-21", "gpt-image-1.5"];
+    for (const modelName of candidateModels) {
+      try {
+        const imgGen = await openai.images.generate({
+          model: modelName,
+          prompt: imagePrompt,
+          size: "1024x1024",
+        });
+        if (imgGen.data?.[0]?.b64_json || imgGen.data?.[0]?.url) {
+          return {
+            imageBase64: imgGen.data?.[0]?.b64_json || null,
+            imageUrl: imgGen.data?.[0]?.url || null,
+          };
+        }
+      } catch (imgErr) {
+        console.warn(`[Shopify Autopilot] On-demand image gen with ${modelName} failed:`, imgErr.message);
+      }
     }
+    return { imageBase64: null, imageUrl: null };
   })();
 
   const [textSettled, imageSettled] = await Promise.allSettled([textPromise, imagePromise]);

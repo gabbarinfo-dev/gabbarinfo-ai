@@ -21,31 +21,34 @@ async function generateSocialVisual(prompt, label = "social") {
   if (apiKey) {
     try {
       const openai = new OpenAI({ apiKey });
-      const modelToUse = process.env.OPENAI_IMAGE_MODEL || "gpt-image-2";
-      console.log(`[Social Autopilot] Generating visual with OpenAI (${modelToUse})...`);
-
-      let response;
-      try {
-        response = await openai.images.generate({
-          model: modelToUse,
-          prompt,
-          size: "1024x1024",
-        });
-      } catch (err) {
-        console.warn(`[Social Autopilot] Primary model ${modelToUse} failed, trying gpt-image-1.5:`, err.message);
-        response = await openai.images.generate({
-          model: "gpt-image-1.5",
-          prompt,
-          size: "1024x1024",
-        });
-      }
-
+      const candidateModels = ["gpt-image-2", "gpt-image-2-2026-04-21", "gpt-image-1.5"];
       let imgBuffer = null;
-      if (response.data?.[0]?.b64_json) {
-        imgBuffer = Buffer.from(response.data[0].b64_json, "base64");
-      } else if (response.data?.[0]?.url) {
-        const fetchRes = await fetch(response.data[0].url);
-        imgBuffer = Buffer.from(await fetchRes.arrayBuffer());
+      let modelUsed = null;
+
+      for (const modelName of candidateModels) {
+        try {
+          console.log(`[Social Autopilot] Generating visual with approved model ${modelName}...`);
+          const response = await openai.images.generate({
+            model: modelName,
+            prompt,
+            size: "1024x1024",
+          });
+
+          if (response.data?.[0]?.b64_json) {
+            imgBuffer = Buffer.from(response.data[0].b64_json, "base64");
+          } else if (response.data?.[0]?.url) {
+            const fetchRes = await fetch(response.data[0].url);
+            imgBuffer = Buffer.from(await fetchRes.arrayBuffer());
+          }
+
+          if (imgBuffer && imgBuffer.length > 0) {
+            modelUsed = modelName;
+            console.log(`[Social Autopilot] Successfully generated visual using ${modelName}`);
+            break;
+          }
+        } catch (err) {
+          console.warn(`[Social Autopilot] Model ${modelName} failed (${err.message}), trying next approved model...`);
+        }
       }
 
       if (imgBuffer) {
@@ -73,39 +76,8 @@ async function generateSocialVisual(prompt, label = "social") {
     }
   }
 
-  // Pollinations reliable high-speed fallback
-  try {
-    const encoded = encodeURIComponent(prompt);
-    const pollinationsUrl = `https://image.pollinations.ai/prompt/${encoded}?width=1024&height=1024&nologo=true&seed=${Math.floor(Math.random() * 1000000)}`;
-    const pollRes = await fetch(pollinationsUrl);
-    if (pollRes.ok) {
-      const pollBuf = Buffer.from(await pollRes.arrayBuffer());
-      try {
-        const mb = await uploadToMediaBridge({
-          filename: `social_poll_${Date.now()}.png`,
-          buffer: pollBuf,
-        });
-        return mb.url;
-      } catch (mbErr) {
-        console.warn("[Social Autopilot] Media bridge fallback for poll image:", mbErr.message);
-        const fileName = `social_poll_${Date.now()}_${Math.random().toString(36).substring(7)}.png`;
-        const { data: uploadData, error: uploadErr } = await supabase.storage
-          .from("instagram-creatives")
-          .upload(fileName, pollBuf, { contentType: "image/png", upsert: true });
-
-        if (!uploadErr && uploadData) {
-          const { data: pubUrl } = supabase.storage.from("instagram-creatives").getPublicUrl(fileName);
-          return pubUrl.publicUrl;
-        }
-        return pollinationsUrl;
-      }
-    }
-    return pollinationsUrl;
-  } catch (pollErr) {
-    console.warn("[Social Autopilot] Pollinations fallback error:", pollErr.message);
-  }
-
-  return "https://images.unsplash.com/photo-1460925895917-afdab827c52f?w=1024&q=80";
+  console.warn("[Social Autopilot] All approved image models failed. Aborting image generation rather than using degraded visuals.");
+  return null;
 }
 
 // 5 Core Marketing Pillars for high engagement & conversion

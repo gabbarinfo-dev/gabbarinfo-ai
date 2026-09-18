@@ -719,38 +719,44 @@ Do NOT include markdown code block backticks.`;
         let imageUrl = null;
 
         if (process.env.OPENAI_API_KEY) {
-          try {
-            const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
-            const imagePrompt = `Ultra-realistic cinematic editorial lifestyle commercial photograph for eCommerce article about "${topic}". High fashion luxury aesthetic, 8k professional studio lighting, depth of field, award-winning shot, clean product styling.`;
-            const imgGen = await openai.images.generate({
-              model: "gpt-image-2",
-              prompt: imagePrompt,
-              size: "1024x1024",
-            });
-            if (imgGen.data?.[0]?.b64_json) {
-              imageBase64 = imgGen.data[0].b64_json;
-              // Upload to Supabase Storage bucket so client can pass lightweight URL instead of 2MB payload
-              try {
-                const imgBuffer = Buffer.from(imageBase64, "base64");
-                const imgFileName = `shopify-blog-${Date.now()}-${Math.random().toString(36).substring(7)}.png`;
-                const { error: upErr } = await supabase.storage.from("instagram-creatives").upload(imgFileName, imgBuffer, {
-                  contentType: "image/png",
-                  upsert: true,
-                });
-                if (!upErr) {
-                  const { data: pubData } = supabase.storage.from("instagram-creatives").getPublicUrl(imgFileName);
-                  if (pubData?.publicUrl) {
-                    imageUrl = pubData.publicUrl;
+          const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
+          const imagePrompt = `Ultra-realistic cinematic editorial lifestyle commercial photograph for eCommerce article about "${topic}". High fashion luxury aesthetic, 8k professional studio lighting, depth of field, award-winning shot, clean product styling.`;
+          const candidateModels = ["gpt-image-2", "gpt-image-2-2026-04-21", "gpt-image-1.5"];
+
+          for (const modelName of candidateModels) {
+            try {
+              const imgGen = await openai.images.generate({
+                model: modelName,
+                prompt: imagePrompt,
+                size: "1024x1024",
+              });
+              if (imgGen.data?.[0]?.b64_json) {
+                imageBase64 = imgGen.data[0].b64_json;
+                // Upload to Supabase Storage bucket so client can pass lightweight URL instead of 2MB payload
+                try {
+                  const imgBuffer = Buffer.from(imageBase64, "base64");
+                  const imgFileName = `shopify-blog-${Date.now()}-${Math.random().toString(36).substring(7)}.png`;
+                  const { error: upErr } = await supabase.storage.from("instagram-creatives").upload(imgFileName, imgBuffer, {
+                    contentType: "image/png",
+                    upsert: true,
+                  });
+                  if (!upErr) {
+                    const { data: pubData } = supabase.storage.from("instagram-creatives").getPublicUrl(imgFileName);
+                    if (pubData?.publicUrl) {
+                      imageUrl = pubData.publicUrl;
+                    }
                   }
+                } catch (storageErr) {
+                  console.warn("Could not upload blog hero image to Supabase storage:", storageErr.message);
                 }
-              } catch (storageErr) {
-                console.warn("Could not upload blog hero image to Supabase storage:", storageErr.message);
+                break;
+              } else if (imgGen.data?.[0]?.url) {
+                imageUrl = imgGen.data[0].url;
+                break;
               }
-            } else if (imgGen.data?.[0]?.url) {
-              imageUrl = imgGen.data[0].url;
+            } catch (imgErr) {
+              console.warn(`[Shopify Manual Blog] Model ${modelName} failed (${imgErr.message}), trying next candidate...`);
             }
-          } catch (imgErr) {
-            console.warn("gpt-image-2 generation failed:", imgErr.message);
           }
         }
         return { imageBase64, imageUrl };
@@ -1112,27 +1118,33 @@ Respond ONLY with a valid JSON object matching this structure:
           alt: title,
         };
       } else if (process.env.OPENAI_API_KEY) {
-        try {
-          const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
-          const imagePrompt = `Ultra-realistic cinematic editorial lifestyle commercial photograph for article titled "${title}". High fashion luxury aesthetic, 8k professional studio lighting.`;
-          const imgGen = await openai.images.generate({
-            model: "gpt-image-2",
-            prompt: imagePrompt,
-            size: "1024x1024",
-          });
-          if (imgGen.data?.[0]?.b64_json) {
-            articlePayload.image = {
-              attachment: imgGen.data[0].b64_json,
-              alt: title,
-            };
-          } else if (imgGen.data?.[0]?.url) {
-            articlePayload.image = {
-              src: imgGen.data[0].url,
-              alt: title,
-            };
+        const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
+        const imagePrompt = `Ultra-realistic cinematic editorial lifestyle commercial photograph for article titled "${title}". High fashion luxury aesthetic, 8k professional studio lighting.`;
+        const candidateModels = ["gpt-image-2", "gpt-image-2-2026-04-21", "gpt-image-1.5"];
+
+        for (const modelName of candidateModels) {
+          try {
+            const imgGen = await openai.images.generate({
+              model: modelName,
+              prompt: imagePrompt,
+              size: "1024x1024",
+            });
+            if (imgGen.data?.[0]?.b64_json) {
+              articlePayload.image = {
+                attachment: imgGen.data[0].b64_json,
+                alt: title,
+              };
+              break;
+            } else if (imgGen.data?.[0]?.url) {
+              articlePayload.image = {
+                src: imgGen.data[0].url,
+                alt: title,
+              };
+              break;
+            }
+          } catch (imgErr) {
+            console.warn(`[Shopify Manual Blog] Fallback image gen with ${modelName} failed:`, imgErr.message);
           }
-        } catch (imgErr) {
-          console.warn("gpt-image-2 featured image fallback failed:", imgErr.message);
         }
       }
 

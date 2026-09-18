@@ -292,49 +292,41 @@ Include 3-4 bullet benefits, a strong call to action, and 6-8 relevant hashtags$
       }
 
       // 4. Generate Bespoke 3D Poster via gpt-image-2 (ZERO STOCK PHOTOS)
-      logger(`[Social Autopilot] Invoking gpt-image-2 for "${activeService}"...`);
+      logger(`[Social Autopilot] Generating commercial ad visual for "${activeService}"...`);
       const graphicPrompt = buildGraphicPrompt(businessName, activeService, businessIndustry, selectedHook, topicTitle);
 
+      const candidateModels = ["gpt-image-2", "gpt-image-2-2026-04-21", "gpt-image-1.5"];
       let imageBuffer = null;
-      try {
-        const imgRes = await openai.images.generate({
-          model: "gpt-image-2",
-          prompt: graphicPrompt,
-          size: "1024x1024",
-        });
+      let modelUsed = null;
 
-        if (imgRes.data?.[0]?.b64_json) {
-          imageBuffer = Buffer.from(imgRes.data[0].b64_json, "base64");
-        } else if (imgRes.data?.[0]?.url) {
-          const fetchRes = await fetch(imgRes.data[0].url);
-          imageBuffer = Buffer.from(await fetchRes.arrayBuffer());
-        }
-        logger(`[Social Autopilot] Successfully generated image with gpt-image-2 (Buffer size: ${imageBuffer?.length} bytes)`);
-      } catch (imgErr) {
-        logger("[Social Autopilot] Primary gpt-image-2 image generation error:", imgErr.message);
-      }
-
-      // Robust secondary fallback to dall-e-3 if gpt-image-2 encountered any error
-      if (!imageBuffer) {
+      for (const modelName of candidateModels) {
         try {
-          logger(`[Social Autopilot] Attempting secondary visual generation via dall-e-3 for "${activeService}"...`);
-          const dallRes = await openai.images.generate({
-            model: "dall-e-3",
-            prompt: graphicPrompt.substring(0, 1000),
+          logger(`[Social Autopilot] Attempting visual generation with ${modelName}...`);
+          const imgRes = await openai.images.generate({
+            model: modelName,
+            prompt: graphicPrompt,
             size: "1024x1024",
-            response_format: "b64_json",
           });
-          if (dallRes.data?.[0]?.b64_json) {
-            imageBuffer = Buffer.from(dallRes.data[0].b64_json, "base64");
-            logger(`[Social Autopilot] Successfully generated fallback visual via dall-e-3 (${imageBuffer.length} bytes)`);
+
+          if (imgRes.data?.[0]?.b64_json) {
+            imageBuffer = Buffer.from(imgRes.data[0].b64_json, "base64");
+          } else if (imgRes.data?.[0]?.url) {
+            const fetchRes = await fetch(imgRes.data[0].url);
+            imageBuffer = Buffer.from(await fetchRes.arrayBuffer());
           }
-        } catch (dallErr) {
-          logger("[Social Autopilot] Secondary dall-e-3 generation error:", dallErr.message);
+
+          if (imageBuffer && imageBuffer.length > 0) {
+            modelUsed = modelName;
+            logger(`[Social Autopilot] Successfully generated visual via ${modelName} (${imageBuffer.length} bytes)`);
+            break;
+          }
+        } catch (imgErr) {
+          logger(`[Social Autopilot] ${modelName} generation failed (${imgErr.message}), trying next approved model...`);
         }
       }
 
       if (!imageBuffer) {
-        logger(`[Social Autopilot] CRITICAL: All image generation engines failed. Skipping post for ${item.email}.`);
+        logger(`[Social Autopilot] CRITICAL: All approved gpt-image models failed. Aborting post for ${item.email} rather than using degraded models.`);
         results.push({ email: item.email, status: "skipped", reason: "image_generation_failed" });
         continue;
       }
