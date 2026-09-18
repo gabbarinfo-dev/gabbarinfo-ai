@@ -1661,7 +1661,17 @@ Requirements:
       const scVidPath = path.join(jobDir, `reel_sc_${i}.mp4`);
 
       try {
-        const smartPrompt = getSmartVisualPrompt(sc.text, sc.speaker, i, reelScript.scenes.length, brandName, serviceToPromote);
+        let smartPrompt;
+        if (scriptMode === "product_promo") {
+          smartPrompt = getSmartVisualPrompt(sc.text, sc.speaker, i, reelScript.scenes.length, brandName, serviceToPromote);
+        } else {
+          const cleanAction = (sc.visualPrompt || sc.text || "")
+            .replace(/^Scene\s*\d+\s*(?:\([^)]+\)|\[[^\]]+\])?\s*[:\-–—]?\s*/i, "")
+            .replace(/^(?:\(?\s*(?:Customer|Client|Consumer|User|Owner|Founder|Agency|Director|Host|Speaker|Narrator\s*\d*)\s*\)?)\s*[:\-–—]?\s*/i, "")
+            .replace(/^["'“”‘’]+|["'“”‘’]+$/g, "")
+            .trim();
+          smartPrompt = `Vertical 9:16 cinematic movie scene. ${cleanAction}. Photorealistic 8k, dynamic camera motion, cinematic dramatic lighting, masterpiece. Absolutely NO text, NO letters, NO words, NO subtitles, NO watermark, NO logo, NO posters, NO banners.`;
+        }
         const scPrompt = smartPrompt;
         let imgRes = null;
         const reelImageModels = ["gpt-image-2", "gpt-image-1.5", "dall-e-3"];
