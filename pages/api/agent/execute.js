@@ -43,6 +43,7 @@ import {
   auditWebsiteTracking,
   auditConversionTracking,
 } from "../../../lib/googleAdsHelper";
+import { fetchCuratedStoreProducts } from "../../../lib/ecommerceMerchandising";
 
 const Messages = {
   META_EXECUTION_FAILED: "Meta Execution Failed",
@@ -5950,6 +5951,7 @@ async function handleGoogleAdsCampaignFlow(req, res, session, body) {
           biddingStrategy,
           loginCustomerId: targetManagerId,
           services,
+          curatedProductItemIds: plan.campaign?.curatedProductItemIds || plan.curatedProductItemIds || [],
         });
 
         if (!createRes.ok) {
@@ -6212,6 +6214,12 @@ Respond with ONLY the JSON object, wrapped in \`\`\`json \`\`\`.
       intakeData.landing_page_url = urlMatch[1].trim();
     }
 
+    // Extract individual product URLs if user pasted specific product links
+    const productUrlMatches = instruction.match(/https?:\/\/[^\s>)]+?\/products\/[a-z0-9-_]+/gi);
+    if (productUrlMatches && productUrlMatches.length > 0) {
+      intakeData.product_urls = [...new Set(productUrlMatches)];
+    }
+
     const lowerTrimInst = instruction.toLowerCase().trim();
     if (!intakeData.campaign_type) {
       if (lowerTrimInst.includes("pmax shopping") || lowerTrimInst.includes("performance max shopping") ||
@@ -6245,6 +6253,7 @@ Respond with ONLY the JSON object, wrapped in \`\`\`json \`\`\`.
       campaign_type: intakeData.campaign_type || gAdsState?.intake?.campaign_type || detectedCampaignType || null,
       ...(intakeData.network_preference ? { network_preference: intakeData.network_preference } : {}),
       ...(Array.isArray(intakeData.custom_sitelinks) && intakeData.custom_sitelinks.length > 0 ? { custom_sitelinks: intakeData.custom_sitelinks } : {}),
+      ...(Array.isArray(intakeData.product_urls) && intakeData.product_urls.length > 0 ? { product_urls: intakeData.product_urls } : {}),
     };
 
     // Auto-detect connected Shopify store details for effortless ecommerce intake
@@ -6427,43 +6436,64 @@ Respond with ONLY the JSON object, wrapped in \`\`\`json \`\`\`.
         if (!mergedIntake.bidding_strategy) missingList.push("6. 📈 **Bidding Strategy:** Do you prefer **Maximize Conversions** *(Recommended to get maximum results within your budget)* or **Target CPA**?");
         if (!hasLandingPage) missingList.push("7. 🌐 **Landing Page:** What website URL should visitors land on to convert?");
 
-      } else if (activeCampaignType === "PERFORMANCE_MAX_SHOPPING") {
+      } else if (activeCampaignType === "PERFORMANCE_MAX_SHOPPING" || activeCampaignType === "SHOPPING") {
+        const isPMaxRetail = activeCampaignType === "PERFORMANCE_MAX_SHOPPING";
+        const hasGmc = Boolean(mergedIntake.merchant_id || linkedGmc?.merchantId);
+
+        // STRICT REQUIREMENT: If Google Merchant Center is missing, be 100% upfront in first statement
+        // NEVER downgrade or convert to a search ad!
+        if (!hasGmc) {
+          const noGmcGuidance =
+            `${accountNoticeHeader}\n\n` +
+            `⚠️ **Google Merchant Center (GMC) Required for Visual Shopping Cards**\n\n` +
+            `You selected **${isPMaxRetail ? "Performance Max Shopping (Retail)" : "Standard Shopping"}**, which specifically displays **visual Product Cards (photo, price, title, store name)** in Google Shopping.\n\n` +
+            `🛑 **Current Status:** No linked Google Merchant Center catalog was detected for Google Ads account **${activeAccountObj.descriptiveName}** (\`${formattedAccId}\`). Google strictly requires a Merchant Center feed to render visual product cards.\n\n` +
+            `**Here is how we can resolve this:**\n` +
+            `1. **If you have a Shopify store:** Open your Shopify Admin ➔ **Google & YouTube app** ➔ Confirm your Merchant Center account is linked to Google Ads \`${formattedAccId}\`.\n` +
+            `2. **If you already have a GMC account:** Simply reply with your **10-digit Merchant Center ID** (e.g. \`551-389-5166\`), and I will link it.\n` +
+            `3. **If you don't have a GMC yet:** Create a free catalog at [merchants.google.com](https://merchants.google.com) and link your store.\n\n` +
+            `ℹ️ *Note: We will not downgrade you to a text search ad because visual product cards are a must. Once your GMC is connected or you provide your ID, reply here to launch your shopping cards immediately!*`;
+
+          return res.status(200).json({
+            ok: true,
+            text: noGmcGuidance,
+            status: "AWAITING_GMC_CONNECTION",
+          });
+        }
+
         const autoSyncNotice = (mergedIntake.merchant_id || connectedShopify || mergedIntake.youtube_video_url)
           ? `\n\n✅ **Auto-Detected Connected Store, Catalog & Media:**\n` +
             (mergedIntake.business_name ? `• 🏬 **Store:** ${mergedIntake.business_name} (${mergedIntake.landing_page_url || ""})\n` : "") +
             (mergedIntake.merchant_id ? `• 📦 **Google Merchant Center Feed:** \`${mergedIntake.merchant_id}\`\n` : "") +
             (mergedIntake.location ? `• 📍 **Country of Sale:** ${mergedIntake.location}\n` : "") +
             (mergedIntake.services ? `• 💎 **Target Products:** ${mergedIntake.services}\n` : "") +
-            (mergedIntake.youtube_video_url ? `• 🎥 **Paired YouTube Video:** "${mergedIntake.youtube_video_title}" (${mergedIntake.youtube_video_url})\n` : "")
+            (isPMaxRetail && mergedIntake.youtube_video_url ? `• 🎥 **Paired YouTube Video:** "${mergedIntake.youtube_video_title}" (${mergedIntake.youtube_video_url})\n` : "")
           : "";
 
-        formatIntro = `${accountNoticeHeader}\n\n🛍️⚡ **Performance Max Shopping (Retail) Campaign**\nPMax Shopping blends your Google Merchant Center catalog with visual ads across Shopping, YouTube, Search, Gmail, and Display.${autoSyncNotice}\nTo finalize your campaign blueprint, please share:`;
-        if (!hasBusiness) missingList.push("1. 🛍️ **Store & Products:** What is your online store name and what product categories are you promoting?");
-        if (!mergedIntake.merchant_id && !linkedGmc?.merchantId) {
-          missingList.push(`2. 📦 **Google Merchant Center (GMC) ID:** What is your GMC Account ID (e.g. \`123-456-7890\`)${linkedGmc?.merchantId ? ` *(Detected linked GMC: \`${linkedGmc.merchantId}\`)*` : ""}?`);
-        }
-        if (!hasLocation) missingList.push("3. 📍 **Country of Sale & Location:** Which country and regions do you sell and ship products in (e.g., India, United States, UK)?");
-        if (!hasBudget) missingList.push(`4. 💰 **Daily Budget:** What is your target daily budget (e.g. £25/day or ₹1,500/day in ${accountCurrency})?`);
-        if (!mergedIntake.bidding_strategy) missingList.push("5. 📈 **Bidding Strategy:** Do you prefer **Maximize Conversion Value** *(optimize for total store revenue)* or **Maximize Conversions**?");
-        if (!hasLandingPage) missingList.push("6. 🌐 **Store Website URL:** What is your online store or collection URL?");
+        formatIntro = isPMaxRetail
+          ? `${accountNoticeHeader}\n\n🛍️⚡ **Performance Max Shopping (Retail) Campaign**\nPMax Shopping displays your visual Google Shopping product cards (Photo + Price + Title + Store Name) across Google Shopping, Search, YouTube, and Display.${autoSyncNotice}\nTo finalize your campaign blueprint, please confirm or adjust:`
+          : `${accountNoticeHeader}\n\n🛍️ **Standard Shopping Campaign**\nStandard Shopping showcases your visual product cards (photo, price, store name) directly in Google Shopping and Search product grids.${autoSyncNotice}\nTo finalize your campaign blueprint, please confirm or adjust:`;
 
-      } else if (activeCampaignType === "SHOPPING") {
-        const autoSyncNotice = (mergedIntake.merchant_id || connectedShopify)
-          ? `\n\n✅ **Auto-Detected Connected Store & Catalog:**\n` +
-            (mergedIntake.business_name ? `• 🏬 **Store:** ${mergedIntake.business_name} (${mergedIntake.landing_page_url || ""})\n` : "") +
-            (mergedIntake.merchant_id ? `• 📦 **Google Merchant Center Feed:** \`${mergedIntake.merchant_id}\`\n` : "") +
-            (mergedIntake.location ? `• 📍 **Country of Sale:** ${mergedIntake.location}\n` : "")
-          : "";
+        missingList.push(
+          "1. 🎯 **What products would you like to feature in this campaign?**\n" +
+          "   • **A Specific Category** (e.g., *\"Kundan Jewellery\"*, *\"Sneakers\"*, *\"Watches\"*) — our AI will auto-curate your **Highest-Value Showpieces** + **Highest-Discount Deal Magnets**!\n" +
+          "   • **Specific Products** (Paste 2 to 5 product links from your store!)\n" +
+          "   • **Entire Catalog** (All products in your store)"
+        );
 
-        formatIntro = `${accountNoticeHeader}\n\n🛍️ **Standard Shopping Campaign**\nStandard Shopping showcases your product images, prices, and store name directly in Google Shopping and Google Search product grids.${autoSyncNotice}\n\nPlease share your campaign details:`;
-        if (!hasBusiness) missingList.push("1. 🛍️ **Store & Products:** What is your store name and main products?");
-        if (!mergedIntake.merchant_id && !linkedGmc?.merchantId) {
-          missingList.push(`2. 📦 **Google Merchant Center (GMC) ID:** What is your GMC Account ID (e.g. \`123-456-7890\`)${linkedGmc?.merchantId ? ` *(Detected linked GMC: \`${linkedGmc.merchantId}\`)*` : ""}?`);
+        if (!hasLocation) {
+          missingList.push(`2. 📍 **Target Location:** ${mergedIntake.location || "United Kingdom"} *(Default: entire country. Want to target specific cities like London, Manchester, or a different region? Just type it!)*`);
         }
-        if (!hasLocation) missingList.push("3. 📍 **Country of Sale & Location:** Which country and target regions should your product card ads appear in?");
-        if (!hasBudget) missingList.push(`4. 💰 **Daily Budget:** What is your target daily budget (e.g. £25/day or ₹1,000/day in ${accountCurrency})?`);
-        if (!mergedIntake.bidding_strategy) missingList.push("5. 📈 **Bidding Strategy:** Do you prefer **Maximize Clicks** *(drive maximum visitors to product pages)* or **Manual CPC**?");
-        if (!hasLandingPage) missingList.push("6. 🌐 **Store URL:** What is your online storefront URL?");
+        if (!hasBudget) {
+          missingList.push(`3. 💰 **Daily Budget:** What is your target daily budget (e.g. £5/day or ₹1,000/day in ${accountCurrency})?`);
+        }
+        if (!mergedIntake.bidding_strategy) {
+          missingList.push(
+            isPMaxRetail
+              ? "4. 📈 **Bidding Strategy:** Do you prefer **Maximize Conversions** *(highest sales volume)* or **Maximize Conversion Value** *(highest total store revenue)*?"
+              : "4. 📈 **Bidding Strategy:** Do you prefer **Maximize Clicks** *(drive maximum visitors to product pages)* or **Manual CPC**?"
+          );
+        }
 
       } else if (activeCampaignType === "DISPLAY") {
         formatIntro = `${accountNoticeHeader}\n\n🎨🌐 **Google Display Network (GDN) Campaign**\nDisplay campaigns place responsive visual and banner ads across millions of partner websites, apps, and YouTube to build massive brand awareness and re-engage visitors. To design your Display campaign, please share:`;
@@ -6940,6 +6970,20 @@ ${JSON.stringify(candidateSitelinks, null, 2)}
     };
     const formatDisplayLabel = formatNameMap[chosenCampaignType] || "Google Search";
 
+    let curatedStoreMerchandising = null;
+    if (chosenCampaignType === "PERFORMANCE_MAX_SHOPPING" || chosenCampaignType === "SHOPPING") {
+      try {
+        curatedStoreMerchandising = await fetchCuratedStoreProducts({
+          shopifyConnection: connectedShopify,
+          category: mergedIntake.services || null,
+          productUrls: mergedIntake.product_urls || [],
+          targetCountry: (countryIso || mergedIntake.location || "GB").slice(0, 2).toUpperCase(),
+        });
+      } catch (curateErr) {
+        console.warn("fetchCuratedStoreProducts non-fatal error:", curateErr.message);
+      }
+    }
+
     let formatSpecificRules = "";
     let formatJsonAdGroups = "";
     let formatSummaryBulletPoints = "";
@@ -6959,6 +7003,18 @@ ${JSON.stringify(candidateSitelinks, null, 2)}
     }
   ]`;
 
+      let shoppingCuratedSummary = "";
+      if (curatedStoreMerchandising?.curatedProducts?.length > 0) {
+        shoppingCuratedSummary =
+          `\n- 🛍️ **Curated Products Targeted:** (${curatedStoreMerchandising.curatedProducts.length} items targeted in Shopping Grid)\n` +
+          (curatedStoreMerchandising.showpieces?.length > 0
+            ? `  • 💎 **Top Showpieces:** ${curatedStoreMerchandising.showpieces.map((p) => `${p.title} (£${p.price})`).join(", ")}\n`
+            : "") +
+          (curatedStoreMerchandising.dealMagnets?.length > 0
+            ? `  • 🔥 **Top Deals:** ${curatedStoreMerchandising.dealMagnets.map((p) => `${p.title} (${p.discountPercent}% OFF)`).join(", ")}\n`
+            : "");
+      }
+
       formatSummaryBulletPoints = `- 📊 **Campaign Format:** ${formatDisplayLabel}
 - 🏬 **Merchant Center ID:** \`${mergedIntake.merchant_id || "Active GMC Feed"}\`
 - 🌍 **Sales Country / Feed Label:** ${countryIso || "IN"}
@@ -6966,7 +7022,7 @@ ${JSON.stringify(candidateSitelinks, null, 2)}
 - 📈 **Bidding Strategy:** ${biddingChoice}
 - 📍 **Target Location:** ${targetLocation}
 - 💰 **Daily Budget:** ${accountCurrency === "INR" ? "₹" : accountCurrency + " "}${mergedIntake.daily_budget}/day
-- 🌐 **Destination Store:** ${landingUrl}
+- 🌐 **Destination Store:** ${landingUrl}${shoppingCuratedSummary}
 - 🛡️ **Negative Keywords Applied:** ${finalizedNegatives.length > 0 ? finalizedNegatives.join(", ") : "Standard e-commerce exclusions applied"}
 - ℹ️ **Catalog Notice:** Google Shopping will automatically sync your products, prices, images, and inventory from your Merchant Center catalog!`;
 
@@ -7095,6 +7151,19 @@ ${chosenCampaignType === "PERFORMANCE_MAX_SHOPPING" ? `9. Merchant Center: Conne
     }
   ]`;
 
+      let pmaxCuratedSummary = "";
+      if (chosenCampaignType === "PERFORMANCE_MAX_SHOPPING" && curatedStoreMerchandising?.curatedProducts?.length > 0) {
+        pmaxCuratedSummary =
+          `\n- 🛍️ **Curated Product Portfolio (Featured in Google Shopping Cards):**\n` +
+          (curatedStoreMerchandising.showpieces?.length > 0
+            ? `  • 💎 **High-Value Luxury Showpieces:** ${curatedStoreMerchandising.showpieces.map((p) => `${p.title} (£${p.price})`).join(", ")}\n`
+            : "") +
+          (curatedStoreMerchandising.dealMagnets?.length > 0
+            ? `  • 🔥 **High-Discount Deal Magnets:** ${curatedStoreMerchandising.dealMagnets.map((p) => `${p.title} (${p.discountPercent}% OFF)`).join(", ")}\n`
+            : "") +
+          `  • 📸 **Authentic Visual Assets:** We will use authentic high-res product photos from these items directly for your visual ad banners!\n`;
+      }
+
       formatSummaryBulletPoints = `- 📊 **Campaign Format:** ${formatDisplayLabel}
 - 🌐 **Omnichannel Reach:** Google Search, YouTube, Google Maps, Gmail, Discover, & Display Network
 ${chosenCampaignType === "PERFORMANCE_MAX_SHOPPING" ? `- 🏬 **Merchant Center Catalog:** Linked feed ID \`${mergedIntake.merchant_id || "Active GMC Feed"}\`\n` : ""}- 🎯 **Primary Campaign Goal:** ${isCallGoal ? "Direct Phone Calls / Inbound Leads 📞" : "Maximizing Omnichannel Conversion Value 🌐"}
@@ -7102,7 +7171,7 @@ ${chosenCampaignType === "PERFORMANCE_MAX_SHOPPING" ? `- 🏬 **Merchant Center 
 - 🏢 **Business Name Asset:** ${(mergedIntake.business_name || businessLabel).slice(0, 25)}
 - 📍 **Targeting & Location:** ${targetLocation}
 - 💰 **Daily Budget:** ${accountCurrency === "INR" ? "₹" : accountCurrency + " "}${mergedIntake.daily_budget}/day
-- 🌐 **Landing Page:** ${landingUrl}
+- 🌐 **Landing Page:** ${landingUrl}${pmaxCuratedSummary}
 ${mergedIntake.phone_number ? `- 📞 **Call Extension:** Attached with number \`${mergedIntake.phone_number}\`\n` : ""}${candidateSitelinks.length > 0 ? `- 🔗 **Sitelink Extensions (${candidateSitelinks.length}):** Included\n` : ""}- 💡 **Callout Badges (4):** Included
 - 🔍 **Audience Search Themes (${finalizedKeywords.length}):** ${finalizedKeywords.slice(0, 10).join(", ")}${finalizedKeywords.length > 10 ? "..." : ""}
 - ✍️ **Asset Group Copy Preview (10-12 Headlines & 4-5 Descriptions):**
@@ -7327,6 +7396,18 @@ And conclude with:
               if (!extractedPlan.campaign.campaignType) extractedPlan.campaign.campaignType = chosenCampaignType;
               if (!extractedPlan.campaign.networkSettings) extractedPlan.campaign.networkSettings = resolvedNetworkSettings;
               if (!extractedPlan.campaign.merchantId && mergedIntake.merchant_id) extractedPlan.campaign.merchantId = mergedIntake.merchant_id;
+              if (curatedStoreMerchandising?.itemIds?.length > 0) {
+                extractedPlan.campaign.curatedProductItemIds = curatedStoreMerchandising.itemIds;
+              }
+              if (curatedStoreMerchandising?.productImages?.length > 0) {
+                extractedPlan.campaign.curatedProductImages = curatedStoreMerchandising.productImages;
+              }
+            }
+            if (curatedStoreMerchandising?.itemIds?.length > 0) {
+              extractedPlan.curatedProductItemIds = curatedStoreMerchandising.itemIds;
+            }
+            if (curatedStoreMerchandising?.productImages?.length > 0) {
+              extractedPlan.curatedProductImages = curatedStoreMerchandising.productImages;
             }
           }
         }
