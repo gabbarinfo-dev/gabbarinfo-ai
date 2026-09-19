@@ -5602,11 +5602,15 @@ async function handleGoogleAdsCampaignFlow(req, res, session, body) {
               services: userServices,
               loginCustomerId: targetManagerId,
             });
-            resolvedImages = imgRes.images || [];
+            resolvedImages = {
+              landscapes: imgRes.landscapes || [],
+              squares: imgRes.squares || [],
+              images: imgRes.images || [],
+            };
             resolvedLogo = imgRes.logo || null;
           } catch (_) {}
-          const userLocation = String(lastPlan.location || gAdsState?.intake?.target_location || gAdsState?.intake?.location || "").trim();
-          const cleanBiz = String(bizName || "Business").trim().slice(0, 20);
+          const userLocation = stripPhoneNumbersFromAdText(String(lastPlan.location || gAdsState?.intake?.target_location || gAdsState?.intake?.location || "")).trim();
+          const cleanBiz = stripPhoneNumbersFromAdText(String(bizName || "Business")).trim().slice(0, 20);
 
           const serviceKeywords = Array.isArray(lastPlan.keywords) && lastPlan.keywords.length > 0
             ? lastPlan.keywords
@@ -6172,6 +6176,40 @@ Respond with ONLY the JSON object, wrapped in \`\`\`json \`\`\`.
           ]));
         }
       }
+    }
+
+    // Direct field extractors for structured user prompt intake formats
+    const storeNameMatch = instruction.match(/(?:store name|business name)\s*:\s*([^\n\r]+?)(?=(?:product category|category|products?|services?|gmc|google merchant|country|location|goal|phone|language|daily budget|budget|bidding|store website|url|$))/i);
+    if (storeNameMatch && storeNameMatch[1].trim()) {
+      intakeData.business_name = storeNameMatch[1].replace(/[()[\]{}<>~^|*]/g, " ").trim();
+    }
+
+    const prodCatMatch = instruction.match(/(?:product category|category|products?|services?)\s*:\s*([^\n\r]+?)(?=(?:google merchant|gmc|country|location|goal|phone|language|daily budget|budget|bidding|store website|url|$))/i);
+    if (prodCatMatch && prodCatMatch[1].trim()) {
+      intakeData.services = prodCatMatch[1].replace(/[()[\]{}<>~^|*]/g, " ").trim();
+    }
+
+    const locMatch = instruction.match(/(?:country of sale & location|country of sale|target location|location)\s*:\s*([^\n\r]+?)(?=(?:primary campaign goal|campaign goal|goal|phone|target language|language|daily budget|budget|bidding|store website|url|$))/i);
+    if (locMatch && locMatch[1].trim()) {
+      intakeData.location = locMatch[1].replace(/[()[\]{}<>~^|*]/g, " ").trim();
+    }
+
+    const budgetMatch = instruction.match(/(?:daily budget|budget)\s*:\s*([^\n\r]+?)(?=(?:bidding|store website|url|$))/i);
+    if (budgetMatch && budgetMatch[1].trim()) {
+      const numMatch = budgetMatch[1].replace(/,/g, "").match(/(\d+(?:\.\d+)?)/);
+      if (numMatch) intakeData.daily_budget = parseFloat(numMatch[1]);
+    }
+
+    const biddingMatch = instruction.match(/(?:bidding strategy|bidding)\s*:\s*([^\n\r]+?)(?=(?:store website|url|$))/i);
+    if (biddingMatch && biddingMatch[1].trim()) {
+      intakeData.bidding_strategy = /conversion value|roas|revenue/i.test(biddingMatch[1])
+        ? "MAXIMIZE_CONVERSION_VALUE"
+        : "MAXIMIZE_CONVERSIONS";
+    }
+
+    const urlMatch = instruction.match(/(?:store website url|store url|website url|landing page)\s*:\s*<?(https?:\/\/[^\s>]+)/i);
+    if (urlMatch && urlMatch[1].trim()) {
+      intakeData.landing_page_url = urlMatch[1].trim();
     }
 
     const lowerTrimInst = instruction.toLowerCase().trim();
