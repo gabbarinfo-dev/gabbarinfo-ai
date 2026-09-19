@@ -13,6 +13,7 @@ import { createClient } from "@supabase/supabase-js";
 import {
   cleanCustomerId,
   getAccountHierarchy,
+  getLinkedMerchantCenterAccount,
 } from "../../../lib/googleAdsHelper";
 
 const SUPABASE_URL = process.env.NEXT_PUBLIC_SUPABASE_URL;
@@ -90,12 +91,58 @@ export default async function handler(req, res) {
 
       const accountDetails = hierarchyResp.accounts || [];
 
+      // Fetch connected Shopify store details for user, if any
+      let connectedShopify = null;
+      try {
+        const { data: sMem } = await supabase
+          .from("agent_memory")
+          .select("content")
+          .eq("email", email)
+          .eq("memory_type", "shopify_connection")
+          .maybeSingle();
+        if (sMem?.content) {
+          connectedShopify = typeof sMem.content === "string" ? JSON.parse(sMem.content) : sMem.content;
+        }
+      } catch (_) {}
+
+      // Enrich accounts with linked Google Merchant Center ID & paired ecommerce store
+      const enrichedAccounts = await Promise.all(
+        accountDetails.map(async (acc) => {
+          try {
+            const linkedGmc = await Promise.race([
+              getLinkedMerchantCenterAccount({
+                refreshToken,
+                customerId: acc.customerId,
+                loginCustomerId: acc.managerId || null,
+              }),
+              new Promise((resolve) => setTimeout(() => resolve(null), 3000)),
+            ]);
+
+            const merchantId = linkedGmc?.merchantId || null;
+            const isEcom = Boolean(merchantId);
+
+            return {
+              ...acc,
+              merchantId,
+              feedLabel: linkedGmc?.feedLabel || null,
+              linkedStoreName: isEcom && connectedShopify?.shopName ? connectedShopify.shopName : null,
+              linkedStoreDomain:
+                isEcom && (connectedShopify?.primary_domain || connectedShopify?.domain || connectedShopify?.shop)
+                  ? connectedShopify.primary_domain || connectedShopify.domain || connectedShopify.shop
+                  : null,
+            };
+          } catch (_) {
+            return acc;
+          }
+        })
+      );
+
       // 3. Determine selected Customer ID
       let selectedCustomerId = connection?.customer_id || null;
 
       // Auto-select if only one account and none selected yet
-      if (!selectedCustomerId && accountDetails.length === 1) {
-        selectedCustomerId = accountDetails[0].customerId;
+      if (!selectedCustomerId && enrichedAccounts.length === 1) {
+        selectedCustomerId = enrichedAccounts[0].customerId;
 
         try {
           await supabase
@@ -115,7 +162,7 @@ export default async function handler(req, res) {
         ok: true,
         connected: true,
         hasAdsScope: hierarchyResp.hasAdsScope !== false,
-        accounts: accountDetails, // Each account includes managerId for campaign creation
+        accounts: enrichedAccounts, // Each account includes managerId and auto-discovered merchantId/store
         selectedCustomerId,
       });
     } catch (err) {

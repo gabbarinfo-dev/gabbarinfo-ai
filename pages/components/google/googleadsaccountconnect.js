@@ -415,7 +415,32 @@ export default function GoogleAdsAccountConnect() {
                   </div>
                   <div style={{ fontSize: "12px", color: "#94a3b8", marginTop: "4px" }}>
                     ID: <code style={{ color: "#60a5fa" }}>{formatCustomerId(acc.customerId)}</code> • Currency: {acc.currencyCode || "INR"}
+                    {acc.merchantId && (
+                      <span style={{ marginLeft: "8px", color: "#34d399", fontWeight: 600 }}>
+                        • 🛍️ GMC: <code style={{ color: "#34d399" }}>{formatCustomerId(acc.merchantId)}</code>
+                      </span>
+                    )}
                   </div>
+                  {acc.linkedStoreName && (
+                    <div style={{ marginTop: "6px", display: "flex", alignItems: "center", gap: "6px" }}>
+                      <span
+                        style={{
+                          fontSize: "11px",
+                          fontWeight: 600,
+                          padding: "2px 8px",
+                          borderRadius: "6px",
+                          background: "rgba(16, 185, 129, 0.15)",
+                          color: "#34d399",
+                          border: "1px solid rgba(16, 185, 129, 0.3)",
+                          display: "inline-flex",
+                          alignItems: "center",
+                          gap: "4px",
+                        }}
+                      >
+                        🛍️ STORE PAIRED: {acc.linkedStoreName} {acc.linkedStoreDomain ? `(${acc.linkedStoreDomain})` : ""}
+                      </span>
+                    </div>
+                  )}
                 </div>
 
                 <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
