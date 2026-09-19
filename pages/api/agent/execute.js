@@ -31,6 +31,7 @@ import {
   detectCountryCode,
   detectWebsiteType,
   getLinkedMerchantCenterAccount,
+  getAccountVideoAssets,
   discoverWebsiteSubpages,
   extractLandingPageIntelligence,
   getExistingCampaignNames,
@@ -5691,8 +5692,16 @@ async function handleGoogleAdsCampaignFlow(req, res, session, body) {
             businessName: bizName,
             images: resolvedImages,
             logo: resolvedLogo,
+            videoAsset:
+              lastPlan?.videoAsset ||
+              lastPlan?.youtubeVideoResource ||
+              lastPlan?.youtube_video_resource ||
+              gAdsState?.intake?.video_asset_resource ||
+              null,
             isRetail: Boolean(lastPlan.merchantId),
             loginCustomerId: targetManagerId,
+            services: lastPlan?.services || gAdsState?.intake?.services || null,
+            targetLocation: lastPlan?.targetLocation || gAdsState?.intake?.location || null,
           });
 
           if (pmaxRes.ok) {
@@ -5710,6 +5719,7 @@ async function handleGoogleAdsCampaignFlow(req, res, session, body) {
                 `  - 1 Landscape Marketing Image (1200x628, ratio 1.91:1)\n` +
                 `  - 1 Square Marketing Image (1200x1200, ratio 1:1)\n` +
                 `• **Brand Logo Attached:** 1 Square Logo (1200x1200)\n` +
+                `• **YouTube Video Asset:** ${pmaxRes.videoAttached ? "✅ 1 Verified Brand Video Linked" : "Auto-Optimized Video Enabled"}\n` +
                 `• **Audience Search Themes:** ${pmaxRes.searchThemesCount} Search Signals Linked\n\n` +
                 `👉 **Next Step:** Return to your Google Ads dashboard, click on **Asset groups** under your campaign (or refresh the page). Your asset group and all creative assets are now live and ready! 🚀`
             });
@@ -6249,6 +6259,27 @@ Respond with ONLY the JSON object, wrapped in \`\`\`json \`\`\`.
       mergedIntake.store_platform = "shopify";
     }
 
+    // Auto-detect and select relevant YouTube video asset from Google Ads account
+    let selectedYoutubeVideo = null;
+    try {
+      const vRes = await getAccountVideoAssets({
+        refreshToken,
+        customerId: selectedCustomerId,
+        businessName: mergedIntake.business_name || activeAccountObj.descriptiveName,
+        storeName: connectedShopify?.shopName || null,
+        services: mergedIntake.services,
+        loginCustomerId: activeAccountObj.managerId || null,
+      });
+      if (vRes?.bestVideo) {
+        selectedYoutubeVideo = vRes.bestVideo;
+        mergedIntake.youtube_video_url = selectedYoutubeVideo.url || `https://www.youtube.com/watch?v=${selectedYoutubeVideo.videoId}`;
+        mergedIntake.youtube_video_title = selectedYoutubeVideo.title;
+        mergedIntake.youtube_video_id = selectedYoutubeVideo.videoId;
+        mergedIntake.video_asset_resource = selectedYoutubeVideo.resourceName;
+        mergedIntake.youtube_video_count = vRes.verifiedVideos?.length || vRes.allVideos?.length || 0;
+      }
+    } catch (_) {}
+
     const hasLandingPage = Boolean(mergedIntake.landing_page_url);
     let siteAnalysis = { isEcommerce: Boolean(mergedIntake.is_ecommerce), platform: mergedIntake.store_platform || "unknown", detectedSignals: [] };
     if (hasLandingPage && !mergedIntake.is_ecommerce) {
@@ -6340,7 +6371,14 @@ Respond with ONLY the JSON object, wrapped in \`\`\`json \`\`\`.
       const accountNoticeHeader = `Your active Google Ads account is **${activeAccountObj.descriptiveName}** (\`${formattedAccId}\`). We are building this campaign on this active account. (If you want to use a different account, please activate it from your Dashboard.)`;
 
       if (activeCampaignType === "PERFORMANCE_MAX") {
-        formatIntro = `${accountNoticeHeader}\n\n⚡ **Performance Max (PMax) Campaign**\nPerformance Max runs across Google Search, Maps, YouTube, Gmail, and the Display Network using smart automation. To craft your multi-channel blueprint, please share your campaign details:`;
+        const pmaxSyncNotice = (mergedIntake.business_name || mergedIntake.youtube_video_url)
+          ? `\n\n✅ **Auto-Detected Brand & Media Assets:**\n` +
+            (mergedIntake.business_name ? `• 🏢 **Business / Brand:** ${mergedIntake.business_name} (${mergedIntake.landing_page_url || ""})\n` : "") +
+            (mergedIntake.location ? `• 📍 **Target Location:** ${mergedIntake.location}\n` : "") +
+            (mergedIntake.youtube_video_url ? `• 🎥 **Paired YouTube Video:** "${mergedIntake.youtube_video_title}" (${mergedIntake.youtube_video_url})\n` : "")
+          : "";
+
+        formatIntro = `${accountNoticeHeader}\n\n⚡ **Performance Max (PMax) Campaign**\nPerformance Max runs across Google Search, Maps, YouTube, Gmail, and the Display Network using smart automation.${pmaxSyncNotice}\nTo craft your multi-channel blueprint, please share your campaign details:`;
         if (!hasBusiness) missingList.push("1. 🏢 **Business & Services:** What is your business name, and what specific service or product do you want to promote?");
         if (!mergedIntake.campaign_goal) {
           missingList.push("2. 🎯 **Campaign Goal:** What is your primary objective (e.g. **Website Leads & Inquiries**, **Online Conversions**, or **Direct Phone Calls**)? *(Optional: provide your business phone number if you want a direct call button attached)*.");
@@ -6352,12 +6390,13 @@ Respond with ONLY the JSON object, wrapped in \`\`\`json \`\`\`.
         if (!hasLandingPage) missingList.push("7. 🌐 **Landing Page:** What website URL should visitors land on to convert?");
 
       } else if (activeCampaignType === "PERFORMANCE_MAX_SHOPPING") {
-        const autoSyncNotice = (mergedIntake.merchant_id || connectedShopify)
-          ? `\n\n✅ **Auto-Detected Connected Store & Catalog:**\n` +
+        const autoSyncNotice = (mergedIntake.merchant_id || connectedShopify || mergedIntake.youtube_video_url)
+          ? `\n\n✅ **Auto-Detected Connected Store, Catalog & Media:**\n` +
             (mergedIntake.business_name ? `• 🏬 **Store:** ${mergedIntake.business_name} (${mergedIntake.landing_page_url || ""})\n` : "") +
             (mergedIntake.merchant_id ? `• 📦 **Google Merchant Center Feed:** \`${mergedIntake.merchant_id}\`\n` : "") +
             (mergedIntake.location ? `• 📍 **Country of Sale:** ${mergedIntake.location}\n` : "") +
-            (mergedIntake.services ? `• 💎 **Target Products:** ${mergedIntake.services}\n` : "")
+            (mergedIntake.services ? `• 💎 **Target Products:** ${mergedIntake.services}\n` : "") +
+            (mergedIntake.youtube_video_url ? `• 🎥 **Paired YouTube Video:** "${mergedIntake.youtube_video_title}" (${mergedIntake.youtube_video_url})\n` : "")
           : "";
 
         formatIntro = `${accountNoticeHeader}\n\n🛍️⚡ **Performance Max Shopping (Retail) Campaign**\nPMax Shopping blends your Google Merchant Center catalog with visual ads across Shopping, YouTube, Search, Gmail, and Display.${autoSyncNotice}\nTo finalize your campaign blueprint, please share:`;

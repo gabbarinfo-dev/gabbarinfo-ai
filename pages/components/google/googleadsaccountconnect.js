@@ -420,25 +420,55 @@ export default function GoogleAdsAccountConnect() {
                         • 🛍️ GMC: <code style={{ color: "#34d399" }}>{formatCustomerId(acc.merchantId)}</code>
                       </span>
                     )}
-                  </div>
-                  {acc.linkedStoreName && (
-                    <div style={{ marginTop: "6px", display: "flex", alignItems: "center", gap: "6px" }}>
-                      <span
-                        style={{
-                          fontSize: "11px",
-                          fontWeight: 600,
-                          padding: "2px 8px",
-                          borderRadius: "6px",
-                          background: "rgba(16, 185, 129, 0.15)",
-                          color: "#34d399",
-                          border: "1px solid rgba(16, 185, 129, 0.3)",
-                          display: "inline-flex",
-                          alignItems: "center",
-                          gap: "4px",
-                        }}
-                      >
-                        🛍️ STORE PAIRED: {acc.linkedStoreName} {acc.linkedStoreDomain ? `(${acc.linkedStoreDomain})` : ""}
+                    {acc.youtubeConnected && (
+                      <span style={{ marginLeft: "8px", color: "#f87171", fontWeight: 600 }}>
+                        • 🎥 YouTube: {acc.youtubeVideoCount} Video{acc.youtubeVideoCount > 1 ? "s" : ""}
                       </span>
+                    )}
+                  </div>
+                  {(acc.linkedStoreName || acc.sampleYoutubeVideo) && (
+                    <div style={{ marginTop: "6px", display: "flex", flexWrap: "wrap", alignItems: "center", gap: "6px" }}>
+                      {acc.linkedStoreName && (
+                        <span
+                          style={{
+                            fontSize: "11px",
+                            fontWeight: 600,
+                            padding: "2px 8px",
+                            borderRadius: "6px",
+                            background: "rgba(16, 185, 129, 0.15)",
+                            color: "#34d399",
+                            border: "1px solid rgba(16, 185, 129, 0.3)",
+                            display: "inline-flex",
+                            alignItems: "center",
+                            gap: "4px",
+                          }}
+                        >
+                          🛍️ STORE PAIRED: {acc.linkedStoreName} {acc.linkedStoreDomain ? `(${acc.linkedStoreDomain})` : ""}
+                        </span>
+                      )}
+                      {acc.sampleYoutubeVideo && (
+                        <span
+                          style={{
+                            fontSize: "11px",
+                            fontWeight: 500,
+                            padding: "2px 8px",
+                            borderRadius: "6px",
+                            background: "rgba(239, 68, 68, 0.12)",
+                            color: "#fca5a5",
+                            border: "1px solid rgba(239, 68, 68, 0.25)",
+                            display: "inline-flex",
+                            alignItems: "center",
+                            gap: "4px",
+                            maxWidth: "340px",
+                            overflow: "hidden",
+                            textOverflow: "ellipsis",
+                            whiteSpace: "nowrap",
+                          }}
+                          title={acc.sampleYoutubeVideo.title}
+                        >
+                          🎥 Top Video: {acc.sampleYoutubeVideo.title}
+                        </span>
+                      )}
                     </div>
                   )}
                 </div>

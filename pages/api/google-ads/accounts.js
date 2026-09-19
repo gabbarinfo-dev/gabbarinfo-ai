@@ -14,6 +14,7 @@ import {
   cleanCustomerId,
   getAccountHierarchy,
   getLinkedMerchantCenterAccount,
+  getAccountVideoAssets,
 } from "../../../lib/googleAdsHelper";
 
 const SUPABASE_URL = process.env.NEXT_PUBLIC_SUPABASE_URL;
@@ -105,21 +106,37 @@ export default async function handler(req, res) {
         }
       } catch (_) {}
 
-      // Enrich accounts with linked Google Merchant Center ID & paired ecommerce store
+      // Enrich accounts with linked Google Merchant Center ID, paired ecommerce store & YouTube assets
       const enrichedAccounts = await Promise.all(
         accountDetails.map(async (acc) => {
           try {
-            const linkedGmc = await Promise.race([
-              getLinkedMerchantCenterAccount({
-                refreshToken,
-                customerId: acc.customerId,
-                loginCustomerId: acc.managerId || null,
-              }),
-              new Promise((resolve) => setTimeout(() => resolve(null), 3000)),
+            const [linkedGmc, videoRes] = await Promise.all([
+              Promise.race([
+                getLinkedMerchantCenterAccount({
+                  refreshToken,
+                  customerId: acc.customerId,
+                  loginCustomerId: acc.managerId || null,
+                }),
+                new Promise((resolve) => setTimeout(() => resolve(null), 3500)),
+              ]),
+              Promise.race([
+                getAccountVideoAssets({
+                  refreshToken,
+                  customerId: acc.customerId,
+                  businessName: acc.descriptiveName,
+                  storeName: connectedShopify?.shopName || null,
+                  loginCustomerId: acc.managerId || null,
+                }),
+                new Promise((resolve) => setTimeout(() => resolve(null), 3500)),
+              ]),
             ]);
 
             const merchantId = linkedGmc?.merchantId || null;
             const isEcom = Boolean(merchantId);
+            const verifiedVideos = videoRes?.verifiedVideos || [];
+            const allVideos = videoRes?.allVideos || [];
+            const youtubeVideoCount = verifiedVideos.length || allVideos.length || 0;
+            const sampleVideo = videoRes?.bestVideo || verifiedVideos[0] || allVideos[0] || null;
 
             return {
               ...acc,
@@ -130,6 +147,15 @@ export default async function handler(req, res) {
                 isEcom && (connectedShopify?.primary_domain || connectedShopify?.domain || connectedShopify?.shop)
                   ? connectedShopify.primary_domain || connectedShopify.domain || connectedShopify.shop
                   : null,
+              youtubeConnected: Boolean(youtubeVideoCount > 0),
+              youtubeVideoCount,
+              sampleYoutubeVideo: sampleVideo
+                ? {
+                    title: sampleVideo.title,
+                    videoId: sampleVideo.videoId,
+                    url: sampleVideo.url || `https://www.youtube.com/watch?v=${sampleVideo.videoId}`,
+                  }
+                : null,
             };
           } catch (_) {
             return acc;
