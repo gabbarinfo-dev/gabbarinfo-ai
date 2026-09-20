@@ -5941,6 +5941,7 @@ async function handleGoogleAdsCampaignFlow(req, res, session, body) {
           campaignType,
           merchantId,
           networkSettings,
+          salesCountry: plan.salesCountry || plan.campaign?.salesCountry || plan.campaign?.feedLabel || null,
           adGroups: plan.adGroups,
           businessName,
           targetLocation,
@@ -6673,7 +6674,7 @@ Respond with ONLY the JSON object, wrapped in \`\`\`json \`\`\`.
           `🛍️ **Phase 2: Standard Shopping Campaign & Product Feed Architecture**\n\n` +
           `Standard Shopping campaigns use your Google Merchant Center product catalog rather than search keywords to automatically display rich product cards when shoppers search for items you sell.\n\n` +
           `• **Target Store / Merchant Center ID:** \`${mergedIntake.merchant_id || "Connected Store"}\`\n` +
-          `• **Country of Sale:** ${mergedIntake.location || "India"}\n` +
+          `• **Country of Sale / Feed Label:** ${countryIso ? `${countryIso} (${mergedIntake.location || "United Kingdom"})` : (mergedIntake.location || "India")}\n` +
           `• **Product Partition:** All Products (Unit)\n` +
           `• **Bidding Strategy:** ${mergedIntake.bidding_strategy || "Maximize Clicks (Highest Product Views)"}\n` +
           `• **Daily Budget:** ${accountCurrency === "INR" ? "₹" : ""}${mergedIntake.daily_budget}/day\n\n` +
@@ -7307,6 +7308,8 @@ You MUST start with a valid JSON block inside \`\`\`json ... \`\`\` using this E
     "network": "${chosenCampaignType === "DISPLAY" ? "DISPLAY" : (chosenCampaignType === "SHOPPING" ? "SHOPPING" : (chosenCampaignType.includes("PERFORMANCE") ? "PERFORMANCE_MAX" : "SEARCH"))}",
     "campaignType": "${chosenCampaignType}",
     "merchantId": ${mergedIntake.merchant_id ? `"${mergedIntake.merchant_id}"` : "null"},
+    "salesCountry": "${countryIso || "IN"}",
+    "feedLabel": "${countryIso || "IN"}",
     "networkSettings": ${JSON.stringify(resolvedNetworkSettings)},
     "location": "${targetLocation}",
     "dailyBudgetMicros": ${budgetMicros},
