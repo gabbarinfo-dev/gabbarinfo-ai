@@ -8,14 +8,17 @@
 //   - Returns managerId per account for correct campaign creation login path
 
 import { getServerSession } from "next-auth/next";
-import { authOptions } from "../auth/[...nextauth]";
+import { authOptions } from "../auth/[...nextauth].js";
 import { createClient } from "@supabase/supabase-js";
 import {
   cleanCustomerId,
   getAccountHierarchy,
   getLinkedMerchantCenterAccount,
   getAccountVideoAssets,
-} from "../../../lib/googleAdsHelper";
+  matchAccountToYouTubeChannel,
+  fetchYouTubeChannelVideos,
+  pickBestYouTubeChannelVideo,
+} from "../../../lib/googleAdsHelper.js";
 
 const SUPABASE_URL = process.env.NEXT_PUBLIC_SUPABASE_URL;
 const SUPABASE_SERVICE_ROLE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY;
@@ -106,11 +109,34 @@ export default async function handler(req, res) {
         }
       } catch (_) {}
 
-      // Enrich accounts with linked Google Merchant Center ID, paired ecommerce store & YouTube assets
+      // Fetch user's YouTube channels from agent_memory if available
+      let userYouTubeChannels = [];
+      try {
+        const { data: ytMem } = await supabase
+          .from("agent_memory")
+          .select("content")
+          .eq("email", email)
+          .eq("memory_type", "youtube_channels")
+          .maybeSingle();
+        if (ytMem?.content) {
+          userYouTubeChannels =
+            typeof ytMem.content === "string" ? JSON.parse(ytMem.content) : ytMem.content;
+        }
+      } catch (_) {}
+
+      // Enrich accounts with linked Google Merchant Center ID, paired ecommerce store & matched YouTube assets
       const enrichedAccounts = await Promise.all(
         accountDetails.map(async (acc) => {
           try {
-            const [linkedGmc, videoRes] = await Promise.all([
+            // 1. Evaluate if any user YouTube channel matches this account
+            const matchedChannel = matchAccountToYouTubeChannel({
+              accountName: acc.descriptiveName,
+              storeName: connectedShopify?.shopName || null,
+              services: null,
+              channels: userYouTubeChannels,
+            });
+
+            const [linkedGmc, channelVideos, videoRes] = await Promise.all([
               Promise.race([
                 getLinkedMerchantCenterAccount({
                   refreshToken,
@@ -119,24 +145,54 @@ export default async function handler(req, res) {
                 }),
                 new Promise((resolve) => setTimeout(() => resolve(null), 3500)),
               ]),
-              Promise.race([
-                getAccountVideoAssets({
-                  refreshToken,
-                  customerId: acc.customerId,
-                  businessName: acc.descriptiveName,
-                  storeName: connectedShopify?.shopName || null,
-                  loginCustomerId: acc.managerId || null,
-                }),
-                new Promise((resolve) => setTimeout(() => resolve(null), 3500)),
-              ]),
+              matchedChannel
+                ? Promise.race([
+                    fetchYouTubeChannelVideos({
+                      channel: matchedChannel,
+                      clientId: process.env.GOOGLE_CLIENT_ID,
+                      clientSecret: process.env.GOOGLE_CLIENT_SECRET,
+                    }),
+                    new Promise((resolve) => setTimeout(() => resolve([]), 3500)),
+                  ])
+                : Promise.resolve([]),
+              !matchedChannel
+                ? Promise.race([
+                    getAccountVideoAssets({
+                      refreshToken,
+                      customerId: acc.customerId,
+                      businessName: acc.descriptiveName,
+                      storeName: connectedShopify?.shopName || null,
+                      loginCustomerId: acc.managerId || null,
+                    }),
+                    new Promise((resolve) => setTimeout(() => resolve(null), 3500)),
+                  ])
+                : Promise.resolve(null),
             ]);
 
             const merchantId = linkedGmc?.merchantId || null;
             const isEcom = Boolean(merchantId);
-            const verifiedVideos = videoRes?.verifiedVideos || [];
-            const allVideos = videoRes?.allVideos || [];
-            const youtubeVideoCount = verifiedVideos.length || allVideos.length || 0;
-            const sampleVideo = videoRes?.bestVideo || verifiedVideos[0] || allVideos[0] || null;
+
+            let youtubeConnected = false;
+            let youtubeVideoCount = 0;
+            let matchedChannelTitle = null;
+            let sampleVideo = null;
+
+            if (matchedChannel) {
+              const bestVid = pickBestYouTubeChannelVideo(channelVideos);
+              youtubeConnected = true;
+              youtubeVideoCount = matchedChannel.videoCount || channelVideos.length;
+              matchedChannelTitle = matchedChannel.title;
+              sampleVideo = bestVid;
+            } else {
+              const verifiedVideos = (videoRes?.verifiedVideos || []).filter(
+                (v) => (v.score || 0) >= 20
+              );
+              if (verifiedVideos.length > 0 && videoRes?.bestVideo) {
+                youtubeConnected = true;
+                youtubeVideoCount = verifiedVideos.length;
+                sampleVideo = videoRes.bestVideo;
+              }
+            }
 
             return {
               ...acc,
@@ -147,8 +203,9 @@ export default async function handler(req, res) {
                 isEcom && (connectedShopify?.primary_domain || connectedShopify?.domain || connectedShopify?.shop)
                   ? connectedShopify.primary_domain || connectedShopify.domain || connectedShopify.shop
                   : null,
-              youtubeConnected: Boolean(youtubeVideoCount > 0),
+              youtubeConnected,
               youtubeVideoCount,
+              matchedChannelTitle,
               sampleYoutubeVideo: sampleVideo
                 ? {
                     title: sampleVideo.title,

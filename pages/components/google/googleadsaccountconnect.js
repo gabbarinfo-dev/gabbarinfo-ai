@@ -422,7 +422,7 @@ export default function GoogleAdsAccountConnect() {
                     )}
                     {acc.youtubeConnected && (
                       <span style={{ marginLeft: "8px", color: "#f87171", fontWeight: 600 }}>
-                        • 🎥 YouTube: {acc.youtubeVideoCount} Video{acc.youtubeVideoCount > 1 ? "s" : ""}
+                        • 🎥 {acc.matchedChannelTitle ? `${acc.matchedChannelTitle}: ` : "YouTube: "}{acc.youtubeVideoCount} Video{acc.youtubeVideoCount > 1 ? "s" : ""}
                       </span>
                     )}
                   </div>
@@ -459,14 +459,14 @@ export default function GoogleAdsAccountConnect() {
                             display: "inline-flex",
                             alignItems: "center",
                             gap: "4px",
-                            maxWidth: "340px",
+                            maxWidth: "400px",
                             overflow: "hidden",
                             textOverflow: "ellipsis",
                             whiteSpace: "nowrap",
                           }}
                           title={acc.sampleYoutubeVideo.title}
                         >
-                          🎥 Top Video: {acc.sampleYoutubeVideo.title}
+                          🎥 {acc.matchedChannelTitle ? `[${acc.matchedChannelTitle}] ` : ""}Top Video: {acc.sampleYoutubeVideo.title}
                         </span>
                       )}
                     </div>
