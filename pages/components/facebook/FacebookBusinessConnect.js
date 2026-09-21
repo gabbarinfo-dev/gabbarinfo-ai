@@ -180,50 +180,96 @@ export default function FacebookBusinessConnect({ onOpenSocialPlanner }) {
   const [showAdInsightsModal, setShowAdInsightsModal] = useState(false);
   const [adData, setAdData] = useState(null);
   const [adLoading, setAdLoading] = useState(false);
+  const [adError, setAdError] = useState(null);
+  const [accessibleAds, setAccessibleAds] = useState([]);
+  const [selectedAdAccount, setSelectedAdAccount] = useState("");
   const [showAdConsentModal, setShowAdConsentModal] = useState(false);
+  const [syncingAll, setSyncingAll] = useState(false);
 
   const handleAdInsightsClick = () => {
-    if (meta?.business_info_synced !== true) {
-      alert("Please sync business info first");
-      return;
-    }
     setShowAdConsentModal(true);
   };
 
-  const handleAdConsentYes = async () => {
-    setShowAdConsentModal(false);
-    setShowAdInsightsModal(true);
+  const executeFetchAdInsights = async (customAdId = null) => {
     setAdLoading(true);
+    setAdError(null);
     const activeProfile = allMetaConnections[selectedBrand] || meta;
+    const adToUse = customAdId || selectedAdAccount || activeProfile?.adAccountId;
+
     try {
       const res = await fetch("/api/meta/ad-insights", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          businessName: activeProfile?.businessName,
-          adAccountId: activeProfile?.adAccountId,
+          businessName: activeProfile?.businessName || activeProfile?.pageName,
+          adAccountId: adToUse,
         }),
       });
       const data = await res.json();
       if (data.ok) {
         setAdData(data.data);
+        setAdError(null);
+        if (data.accessibleAdAccounts?.length) setAccessibleAds(data.accessibleAdAccounts);
       } else {
-        alert("Ad Insights note: " + (data.message || "Permissions pending on ad account"));
-        setShowAdInsightsModal(false);
+        setAdData(null);
+        setAdError(data.message || "Permissions pending or restricted on ad account");
+        if (data.accessibleAdAccounts?.length) {
+          setAccessibleAds(data.accessibleAdAccounts);
+          if (!selectedAdAccount && data.accessibleAdAccounts.length > 0) {
+            setSelectedAdAccount(data.accessibleAdAccounts[0].id);
+          }
+        }
       }
     } catch (e) {
-      alert("Error: " + e.message);
-      setShowAdInsightsModal(false);
+      setAdError(e.message || "Network error fetching ad insights");
     } finally {
       setAdLoading(false);
     }
   };
 
-  const handleBoostClick = () => {
-    if (meta?.business_info_synced !== true) {
-      alert("Please sync business info first");
-      return;
+  const handleAdConsentYes = async () => {
+    setShowAdConsentModal(false);
+    setShowAdInsightsModal(true);
+    await executeFetchAdInsights();
+  };
+
+  const handleSyncAllMetaAssets = async () => {
+    setSyncingAll(true);
+    try {
+      const res = await fetch("/api/meta/sync-business-info", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+      });
+      const data = await res.json();
+      if (data.ok) {
+        if (data.allMetaConnections) {
+          setAllMetaConnections(data.allMetaConnections);
+        }
+        if (data.connectedBrands?.length > 0) {
+          if (!selectedBrand || !data.connectedBrands.includes(selectedBrand)) {
+            setSelectedBrand(data.connectedBrands[0]);
+          }
+        }
+        // Refresh status
+        fetch("/api/meta/status")
+          .then(r => r.json())
+          .then(st => {
+            if (st.connected) {
+              setMeta(st.meta);
+              setAllMetaConnections(st.allMetaConnections || {});
+            }
+          });
+      } else {
+        alert("Sync warning: " + (data.error || data.message));
+      }
+    } catch (e) {
+      console.warn("Failed to sync Meta assets:", e);
+    } finally {
+      setSyncingAll(false);
     }
+  };
+
+  const handleBoostClick = () => {
     setShowBoostModal(true);
   };
 
@@ -255,19 +301,36 @@ export default function FacebookBusinessConnect({ onOpenSocialPlanner }) {
           </p>
 
           {/* Dynamic Brand Profile Switcher */}
-          {Object.keys(allMetaConnections).length > 0 && (
-            <div style={{ marginBottom: "14px" }}>
-              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "4px" }}>
-                <label style={{ fontSize: "11px", fontWeight: 700, color: "#94a3b8" }}>
-                  Active Brand Profile:
-                </label>
+          <div style={{ marginBottom: "14px" }}>
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "6px", flexWrap: "wrap", gap: 6 }}>
+              <label style={{ fontSize: "11px", fontWeight: 700, color: "#94a3b8" }}>
+                Active Brand Profile:
+              </label>
+              <div style={{ display: "flex", gap: 10, alignItems: "center" }}>
+                <button
+                  type="button"
+                  onClick={handleSyncAllMetaAssets}
+                  disabled={syncingAll}
+                  style={{
+                    background: "rgba(56, 189, 248, 0.12)",
+                    border: "1px solid rgba(56, 189, 248, 0.3)",
+                    borderRadius: 6,
+                    color: "#38bdf8",
+                    fontSize: "11px",
+                    fontWeight: 700,
+                    cursor: syncingAll ? "not-allowed" : "pointer",
+                    padding: "3px 8px",
+                  }}
+                >
+                  {syncingAll ? "🔄 Syncing..." : "🔄 Sync All Pages"}
+                </button>
                 <button
                   type="button"
                   onClick={() => setShowPairingModal(true)}
                   style={{
                     background: "none",
                     border: "none",
-                    color: "#38bdf8",
+                    color: "#a78bfa",
                     fontSize: "11px",
                     fontWeight: 700,
                     cursor: "pointer",
@@ -275,9 +338,11 @@ export default function FacebookBusinessConnect({ onOpenSocialPlanner }) {
                     textDecoration: "underline",
                   }}
                 >
-                  ⚙️ Pair / Bundle Assets ↗
+                  ⚙️ Pair Assets ↗
                 </button>
               </div>
+            </div>
+            {Object.keys(allMetaConnections).length > 0 ? (
               <select
                 value={selectedBrand}
                 onChange={(e) => setSelectedBrand(e.target.value)}
@@ -303,8 +368,12 @@ export default function FacebookBusinessConnect({ onOpenSocialPlanner }) {
                   );
                 })}
               </select>
-            </div>
-          )}
+            ) : (
+              <div style={{ fontSize: 12, color: "#94a3b8", background: "rgba(255,255,255,0.04)", padding: "8px 12px", borderRadius: 6 }}>
+                Primary: <strong style={{ color: "#38bdf8" }}>{meta?.business_name || "Connected Page"}</strong>
+              </div>
+            )}
+          </div>
 
           {(() => {
             const activeProfile = allMetaConnections[selectedBrand] || meta;
@@ -594,54 +663,125 @@ export default function FacebookBusinessConnect({ onOpenSocialPlanner }) {
           {/* AD INSIGHTS RESULTS MODAL */}
           {showAdInsightsModal && (
             <div style={modalOverlayStyle}>
-              <div style={modalContentStyle}>
-                <h3 style={{ marginBottom: adData?.account_id ? "4px" : "16px" }}>
-                  {adData?.account_name ? `${adData.account_name} ` : ""}Ad Account Insights
-                </h3>
-                {adData?.account_id && (
-                  <p style={{ fontSize: 13, color: "#666", marginBottom: "4px" }}>
-                    Ad Account ID: {adData.account_id}
-                  </p>
+              <div style={{ ...modalContentStyle, maxWidth: 520, background: "#0f172a", border: "1px solid rgba(255, 255, 255, 0.12)", color: "#f8fafc" }}>
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 14 }}>
+                  <h3 style={{ margin: 0, fontSize: 16, fontWeight: 700, color: "#fff" }}>
+                    📊 Ad Account Performance
+                  </h3>
+                  <button
+                    onClick={() => setShowAdInsightsModal(false)}
+                    style={{ background: "none", border: "none", color: "#94a3b8", fontSize: 20, cursor: "pointer" }}
+                  >
+                    ✕
+                  </button>
+                </div>
+
+                {/* Account Switcher if multiple accessible accounts */}
+                {accessibleAds.length > 1 && (
+                  <div style={{ marginBottom: 14, background: "rgba(255, 255, 255, 0.04)", padding: 10, borderRadius: 8 }}>
+                    <label style={{ fontSize: 11, fontWeight: 700, color: "#94a3b8", display: "block", marginBottom: 4 }}>
+                      Select Ad Account:
+                    </label>
+                    <div style={{ display: "flex", gap: 8 }}>
+                      <select
+                        value={selectedAdAccount}
+                        onChange={(e) => {
+                          setSelectedAdAccount(e.target.value);
+                          executeFetchAdInsights(e.target.value);
+                        }}
+                        style={{
+                          flex: 1,
+                          padding: "6px 10px",
+                          borderRadius: 6,
+                          background: "#0d111c",
+                          border: "1px solid rgba(255,255,255,0.2)",
+                          color: "#38bdf8",
+                          fontSize: 12,
+                          fontWeight: 600,
+                          cursor: "pointer",
+                        }}
+                      >
+                        {accessibleAds.map((a) => (
+                          <option key={a.id} value={a.id}>
+                            {a.name || a.id} ({a.currency || "INR"})
+                          </option>
+                        ))}
+                      </select>
+                      <button
+                        onClick={() => executeFetchAdInsights(selectedAdAccount)}
+                        disabled={adLoading}
+                        style={{
+                          background: "#2563eb",
+                          border: "none",
+                          borderRadius: 6,
+                          color: "#fff",
+                          padding: "6px 12px",
+                          fontSize: 12,
+                          fontWeight: 700,
+                          cursor: "pointer",
+                        }}
+                      >
+                        {adLoading ? "..." : "Load"}
+                      </button>
+                    </div>
+                  </div>
                 )}
-                {adData?.currency && (
-                  <p style={{ fontSize: 13, color: "#666", marginBottom: "16px" }}>
-                    Currency: {adData.currency}
-                  </p>
-                )}
+
                 {adLoading ? (
-                  <p>Fetching ad performance...</p>
+                  <div style={{ padding: "24px 0", textAlign: "center", color: "#94a3b8", fontSize: 13 }}>
+                    <div style={{ width: 22, height: 22, border: "2px solid rgba(56, 189, 248, 0.2)", borderTopColor: "#38bdf8", borderRadius: "50%", animation: "spin 0.8s linear infinite", margin: "0 auto 10px" }} />
+                    Fetching ad performance from Meta Ads API...
+                  </div>
+                ) : adError ? (
+                  <div style={{ background: "rgba(239, 68, 68, 0.1)", border: "1px solid rgba(239, 68, 68, 0.3)", borderRadius: 10, padding: 14, color: "#fca5a5", fontSize: 13, lineHeight: 1.6, marginBottom: 16 }}>
+                    <div style={{ fontWeight: 700, color: "#f87171", marginBottom: 4 }}>
+                      ⚠️ Ad Account Notice
+                    </div>
+                    {adError.includes("#200") ? (
+                      <div>
+                        The connected Facebook user token does not have <code>ads_read</code> permission on this specific Ad Account.
+                        {accessibleAds.length > 0 && (
+                          <div style={{ marginTop: 8 }}>
+                            You have access to <strong>{accessibleAds.length}</strong> other Ad Account(s). Choose one above to view its live metrics.
+                          </div>
+                        )}
+                      </div>
+                    ) : (
+                      <div>{adError}</div>
+                    )}
+                  </div>
                 ) : adData ? (
-                  <div style={{ marginTop: 15 }}>
+                  <div style={{ marginTop: 8 }}>
+                    <div style={{ background: "rgba(255, 255, 255, 0.05)", padding: "10px 14px", borderRadius: 8, marginBottom: 14 }}>
+                      <div style={{ fontSize: 13, fontWeight: 700, color: "#38bdf8" }}>{adData.account_name || "Ad Account"}</div>
+                      <div style={{ fontSize: 11, color: "#94a3b8" }}>ID: {adData.account_id} · Currency: {adData.currency || "INR"}</div>
+                    </div>
+
                     {adData.campaign_name ? (
                       <>
-                        <div style={{ marginBottom: 15, padding: "8px", background: "#f9fafb", borderRadius: "4px" }}>
-                          <strong style={{ fontSize: 12, color: "#666", display: "block", marginBottom: 4 }}>LATEST CAMPAIGN</strong>
-                          <span style={{ fontWeight: 500 }}>{adData.campaign_name}</span>
+                        <div style={{ marginBottom: 12, padding: "10px 14px", background: "rgba(56, 189, 248, 0.08)", border: "1px solid rgba(56, 189, 248, 0.2)", borderRadius: 8 }}>
+                          <span style={{ fontSize: 11, color: "#94a3b8", display: "block", textTransform: "uppercase", fontWeight: 700 }}>Latest Campaign</span>
+                          <span style={{ fontWeight: 700, color: "#f8fafc", fontSize: 14 }}>{adData.campaign_name}</span>
                         </div>
-                        <div style={metricRowStyle}>
-                          <strong>Impressions</strong>
-                          <span>{adData.impressions.toLocaleString()}</span>
-                        </div>
-                        <div style={metricRowStyle}>
-                          <strong>Lifetime Reach</strong>
-                          <span>{adData.reach.toLocaleString()} people</span>
+                        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
+                          <div style={{ background: "rgba(255, 255, 255, 0.04)", padding: 12, borderRadius: 8 }}>
+                            <div style={{ fontSize: 11, color: "#94a3b8" }}>Impressions</div>
+                            <div style={{ fontSize: 18, fontWeight: 800, color: "#38bdf8", marginTop: 4 }}>{(adData.impressions || 0).toLocaleString()}</div>
+                          </div>
+                          <div style={{ background: "rgba(255, 255, 255, 0.04)", padding: 12, borderRadius: 8 }}>
+                            <div style={{ fontSize: 11, color: "#94a3b8" }}>Lifetime Reach</div>
+                            <div style={{ fontSize: 18, fontWeight: 800, color: "#34d399", marginTop: 4 }}>{(adData.reach || 0).toLocaleString()}</div>
+                          </div>
                         </div>
                       </>
                     ) : (
-                      <p>No active campaigns found in this account.</p>
+                      <p style={{ color: "#94a3b8", fontSize: 13 }}>No campaigns currently active in this ad account.</p>
                     )}
-                    <p style={{ fontSize: 12, color: "#666", marginTop: 20 }}>
-                      * Insights are shown for the most recent campaign in this ad account.
-                    </p>
-                    <p style={{ fontSize: 11, color: "#aaa", marginTop: 4, borderTop: "1px solid #eee", paddingTop: "8px" }}>
-                      Data fetched using Facebook Ads API.
-                    </p>
                   </div>
-                ) : (
-                  <p>No data available.</p>
-                )}
-                <div style={{ display: "flex", justifyContent: "flex-end", marginTop: 20 }}>
-                  <button onClick={() => setShowAdInsightsModal(false)} style={confirmBtnStyle}>Close</button>
+                ) : null}
+
+                <div style={{ display: "flex", justifyContent: "flex-end", marginTop: 18 }}>
+                  <button onClick={() => setShowAdInsightsModal(false)} className="btn-gabbar-dark" style={{ padding: "8px 18px", fontSize: 13 }}>Close</button>
                 </div>
               </div>
             </div>

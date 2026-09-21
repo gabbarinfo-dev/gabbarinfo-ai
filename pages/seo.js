@@ -150,6 +150,55 @@ export default function SeoHubPage() {
   // Social Connect Modal
   const [showFbConnectModal, setShowFbConnectModal] = useState(false);
 
+  // New Website Connection Modal & State in SEO Suite
+  const [showAddSiteModal, setShowAddSiteModal] = useState(false);
+  const [addBizName, setAddBizName] = useState("");
+  const [addSiteUrl, setAddSiteUrl] = useState("");
+  const [addApiKey, setAddApiKey] = useState("");
+  const [addingSite, setAddingSite] = useState(false);
+  const [addSiteError, setAddSiteError] = useState("");
+
+  const handleAddSite = async () => {
+    if (!addBizName.trim() || !addSiteUrl.trim() || !addApiKey.trim()) {
+      setAddSiteError("Please provide business name, website URL, and plugin key.");
+      return;
+    }
+    setAddingSite(true);
+    setAddSiteError("");
+    try {
+      const res = await fetch("/api/wordpress/sync", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          action: "save-connection",
+          businessName: addBizName.trim(),
+          siteUrl: addSiteUrl.trim(),
+          apiKey: addApiKey.trim(),
+        }),
+      });
+      const data = await res.json();
+      if (data.ok) {
+        setShowAddSiteModal(false);
+        const newBiz = addBizName.trim().toLowerCase().replace(/[^a-z0-9]/g, "_");
+        setActiveBusiness(newBiz);
+        if (typeof window !== "undefined") {
+          localStorage.setItem("gabbar_active_business", newBiz);
+        }
+        await fetchConnection();
+        setAddBizName("");
+        setAddSiteUrl("");
+        setAddApiKey("");
+        alert("🎉 Website connected successfully!");
+      } else {
+        setAddSiteError(data.error || "Failed to pair website.");
+      }
+    } catch (e) {
+      setAddSiteError("Error: " + e.message);
+    } finally {
+      setAddingSite(false);
+    }
+  };
+
   const connectedProfiles = Object.keys(allConnections || {}).filter(k => allConnections[k]?.siteUrl);
 
   // 1. Initial Load: Read from URL query or localStorage
@@ -203,7 +252,7 @@ export default function SeoHubPage() {
 
   const handleSelectBusiness = (newBiz) => {
     if (newBiz === "__add_new__") {
-      setActiveTab("integrations");
+      setShowAddSiteModal(true);
       return;
     }
     setActiveBusiness(newBiz);
@@ -921,11 +970,11 @@ export default function SeoHubPage() {
             </select>
             <button
               type="button"
-              onClick={() => setActiveTab("integrations")}
+              onClick={() => setShowAddSiteModal(true)}
               title="Connect another WordPress website"
               style={{
                 fontSize: 11,
-                color: "#38bdf8",
+                color: "#10b981",
                 fontWeight: 700,
                 textDecoration: "underline",
                 marginLeft: 4,
@@ -936,7 +985,7 @@ export default function SeoHubPage() {
                 flexShrink: 0,
               }}
             >
-              + Add Site
+              + Add Website
             </button>
           </div>
 
@@ -3421,38 +3470,75 @@ export default function SeoHubPage() {
                 </div>
               </div>
 
-              <div style={{ display: "flex", gap: 10, flexWrap: "wrap", marginTop: 20 }}>
-                <a
-                  href="/api/wordpress/download"
-                  download
-                  style={{
-                    padding: "8px 14px",
-                    borderRadius: 6,
-                    background: "#2563eb",
-                    color: "#fff",
-                    textDecoration: "none",
-                    fontSize: 13,
-                    fontWeight: 600,
-                  }}
-                >
-                  📥 Download Plugin Zip
-                </a>
-                <a
-                  href="/"
-                  style={{
-                    padding: "8px 14px",
-                    borderRadius: 6,
-                    border: "1px solid #1e293b",
-                    background: "#131b2e",
-                    color: "#e2e8f0",
-                    textDecoration: "none",
-                    fontSize: 13,
-                  }}
-                >
-                  ⚙️ Manage in Dashboard
-                </a>
+                <div style={{ display: "flex", gap: 10, flexWrap: "wrap", marginTop: 20 }}>
+                  <a
+                    href="/api/wordpress/download"
+                    download
+                    style={{
+                      padding: "8px 14px",
+                      borderRadius: 6,
+                      background: "#2563eb",
+                      color: "#fff",
+                      textDecoration: "none",
+                      fontSize: 13,
+                      fontWeight: 600,
+                    }}
+                  >
+                    📥 Download Plugin Zip
+                  </a>
+                  <button
+                    type="button"
+                    onClick={() => setShowAddSiteModal(true)}
+                    className="btn-gabbar-primary"
+                    style={{
+                      padding: "8px 14px",
+                      fontSize: 13,
+                    }}
+                  >
+                    + Connect Another Website
+                  </button>
+                </div>
               </div>
-            </div>
+
+              {/* Connected Profiles Overview */}
+              <div style={{ background: "#0f172a", border: "1px solid #1e293b", borderRadius: 12, padding: 24, gridColumn: "1 / -1" }}>
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 14 }}>
+                  <h3 style={{ margin: 0, fontSize: 16, color: "#fff" }}>All Connected Websites ({connectedProfiles.length})</h3>
+                  <button
+                    onClick={() => setShowAddSiteModal(true)}
+                    className="btn-gabbar-primary"
+                    style={{ padding: "6px 14px", fontSize: 12 }}
+                  >
+                    + Add New Website
+                  </button>
+                </div>
+                <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(280px, 1fr))", gap: 14 }}>
+                  {connectedProfiles.map((pName) => {
+                    const c = allConnections[pName];
+                    const isSelected = pName === activeBusiness;
+                    return (
+                      <div
+                        key={pName}
+                        onClick={() => handleSelectBusiness(pName)}
+                        style={{
+                          padding: 14,
+                          borderRadius: 10,
+                          background: isSelected ? "rgba(56, 189, 248, 0.1)" : "rgba(255, 255, 255, 0.03)",
+                          border: `1px solid ${isSelected ? "#38bdf8" : "#1e293b"}`,
+                          cursor: "pointer",
+                        }}
+                      >
+                        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 6 }}>
+                          <strong style={{ color: isSelected ? "#38bdf8" : "#fff", fontSize: 14 }}>{pName}</strong>
+                          {isSelected && <span style={{ fontSize: 10, background: "#0284c7", color: "#fff", padding: "2px 6px", borderRadius: 4 }}>Active</span>}
+                        </div>
+                        <div style={{ fontSize: 12, color: "#94a3b8", wordBreak: "break-all" }}>{c?.siteUrl}</div>
+                        <div style={{ fontSize: 11, color: "#64748b", marginTop: 6 }}>Plugin v{c?.pluginVersion || "1.0.0"}</div>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
 
             {/* Google Search Console Card */}
             <div style={{ background: "#0f172a", border: "1px solid #1e293b", borderRadius: 12, padding: 24 }}>
@@ -3931,6 +4017,78 @@ export default function SeoHubPage() {
                 </div>
               );
             })()}
+          </div>
+        </div>
+      )}
+
+      {/* ── MODAL: CONNECT NEW WEBSITE (IN SEO SUITE) ── */}
+      {showAddSiteModal && (
+        <div style={{ position: "fixed", top: 0, left: 0, right: 0, bottom: 0, background: "rgba(0, 0, 0, 0.85)", backdropFilter: "blur(8px)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 9999, padding: 16 }}>
+          <div style={{ background: "#0f172a", border: "1px solid #1e293b", borderRadius: 16, maxWidth: 520, width: "100%", padding: 26, color: "#f8fafc" }}>
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 16 }}>
+              <h3 style={{ margin: 0, fontSize: 17, color: "#fff" }}>🌐 Connect Another WordPress Site</h3>
+              <button onClick={() => setShowAddSiteModal(false)} style={{ border: "none", background: "none", color: "#94a3b8", fontSize: 20, cursor: "pointer" }}>✕</button>
+            </div>
+
+            <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
+              <div>
+                <label style={{ fontSize: 12, color: "#cbd5e1", display: "block", marginBottom: 4 }}>Business / Website Profile Name</label>
+                <input
+                  type="text"
+                  placeholder="e.g. Divine Auto CNG, MyStore, Woman Massage Hub..."
+                  value={addBizName}
+                  onChange={(e) => setAddBizName(e.target.value)}
+                  style={{ width: "100%", padding: "10px 14px", borderRadius: 8, border: "1px solid #1e293b", background: "#131b2e", color: "#fff", fontSize: 13, boxSizing: "border-box" }}
+                />
+              </div>
+
+              <div>
+                <label style={{ fontSize: 12, color: "#cbd5e1", display: "block", marginBottom: 4 }}>WordPress Website URL</label>
+                <input
+                  type="url"
+                  placeholder="https://www.yourdomain.com"
+                  value={addSiteUrl}
+                  onChange={(e) => setAddSiteUrl(e.target.value)}
+                  style={{ width: "100%", padding: "10px 14px", borderRadius: 8, border: "1px solid #1e293b", background: "#131b2e", color: "#fff", fontSize: 13, boxSizing: "border-box" }}
+                />
+              </div>
+
+              <div>
+                <label style={{ fontSize: 12, color: "#cbd5e1", display: "block", marginBottom: 4 }}>Plugin Secret Key</label>
+                <input
+                  type="text"
+                  placeholder="e.g. gb_sec_..."
+                  value={addApiKey}
+                  onChange={(e) => setAddApiKey(e.target.value)}
+                  style={{ width: "100%", padding: "10px 14px", borderRadius: 8, border: "1px solid #1e293b", background: "#131b2e", color: "#fff", fontSize: 13, fontFamily: "monospace", boxSizing: "border-box" }}
+                />
+                <div style={{ fontSize: 11, color: "#94a3b8", marginTop: 4 }}>
+                  Copy this key from your WordPress Admin under <code>Settings ➔ GabbarInfo AI</code>.
+                </div>
+              </div>
+
+              <div style={{ background: "rgba(255, 255, 255, 0.03)", padding: "8px 12px", borderRadius: 8, display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                <span style={{ fontSize: 11, color: "#94a3b8" }}>Need the plugin zip?</span>
+                <a href="/api/wordpress/download" download style={{ fontSize: 11, color: "#38bdf8", fontWeight: 700, textDecoration: "underline" }}>
+                  Download Plugin
+                </a>
+              </div>
+
+              {addSiteError && (
+                <div style={{ padding: 10, background: "rgba(239, 68, 68, 0.1)", border: "1px solid #ef4444", color: "#f87171", borderRadius: 6, fontSize: 12 }}>
+                  ⚠️ {addSiteError}
+                </div>
+              )}
+
+              <div style={{ display: "flex", justifyContent: "flex-end", gap: 10, marginTop: 10 }}>
+                <button onClick={() => setShowAddSiteModal(false)} className="btn-gabbar-dark" style={{ padding: "8px 16px", fontSize: 12 }}>
+                  Cancel
+                </button>
+                <button onClick={handleAddSite} disabled={addingSite} className="btn-gabbar-primary" style={{ padding: "9px 20px", fontSize: 13 }}>
+                  {addingSite ? "Connecting…" : "Connect Website ↗"}
+                </button>
+              </div>
+            </div>
           </div>
         </div>
       )}

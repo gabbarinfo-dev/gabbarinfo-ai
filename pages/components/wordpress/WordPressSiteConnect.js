@@ -9,9 +9,10 @@ export default function WordPressSiteConnect({ onConnectionChange }) {
   const [allConnections, setAllConnections] = useState({});
   const [loading, setLoading] = useState(true);
   const [showModal, setShowModal] = useState(false);
-  const [modalStep, setModalStep] = useState(1); // 1: Download, 2: Install, 3: Connect
+  const [modalStep, setModalStep] = useState(3); // Default to Step 3 for quick pairing
   const [siteUrlInput, setSiteUrlInput] = useState("");
   const [apiKeyInput, setApiKeyInput] = useState("");
+  const [newBizNameInput, setNewBizNameInput] = useState("");
   const [connecting, setConnecting] = useState(false);
   const [errorMsg, setErrorMsg] = useState("");
   const [testing, setTesting] = useState(false);
@@ -26,7 +27,7 @@ export default function WordPressSiteConnect({ onConnectionChange }) {
 
   useEffect(() => {
     const profiles = Object.keys(allConnections || {}).filter(k => allConnections[k]?.siteUrl);
-    if (profiles.length > 0 && (!businessName || businessName === "custom")) {
+    if (profiles.length > 0 && !businessName) {
       setBusinessName(profiles[0]);
     }
   }, [allConnections]);
@@ -51,22 +52,13 @@ export default function WordPressSiteConnect({ onConnectionChange }) {
     }
   };
 
-  const handleStartConnect = () => {
-    const biz = (customBusiness.trim() || (businessName !== "custom" && businessName !== "" ? businessName : "")).trim();
-    if (!biz) {
-      alert("Please enter your business or website name in the input box before connecting.");
-      return;
-    }
+  const openNewSiteModal = () => {
     setErrorMsg("");
-    setModalStep(1);
+    setNewBizNameInput("");
+    setSiteUrlInput("");
+    setApiKeyInput("");
+    setModalStep(3);
     setShowModal(true);
-    // Trigger automatic download
-    const link = document.createElement("a");
-    link.href = "/api/wordpress/download";
-    link.download = "gabbarinfo-connect.zip";
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
   };
 
   const handleTestConnection = async () => {
@@ -96,7 +88,7 @@ export default function WordPressSiteConnect({ onConnectionChange }) {
   };
 
   const handleSaveConnection = async () => {
-    const biz = (customBusiness.trim() || (businessName !== "custom" && businessName !== "" ? businessName : "")).trim();
+    const biz = (newBizNameInput.trim() || customBusiness.trim() || (businessName !== "custom" && businessName !== "" ? businessName : "")).trim();
     if (!biz) {
       setErrorMsg("Please enter your business or website name.");
       return;
@@ -131,7 +123,8 @@ export default function WordPressSiteConnect({ onConnectionChange }) {
         setShowModal(false);
         setSiteUrlInput("");
         setApiKeyInput("");
-        alert("🎉 WordPress site connected successfully!");
+        setNewBizNameInput("");
+        alert("🎉 WordPress website paired successfully!");
       } else {
         setErrorMsg(data.error || "Failed to pair with WordPress site.");
       }
@@ -156,6 +149,7 @@ export default function WordPressSiteConnect({ onConnectionChange }) {
       });
       setConnection(null);
       setTestResult(null);
+      fetchConnections();
       if (onConnectionChange) onConnectionChange(false);
     } catch (e) {
       alert("Failed to disconnect: " + e.message);
@@ -172,8 +166,12 @@ export default function WordPressSiteConnect({ onConnectionChange }) {
         <select
           value={businessName}
           onChange={(e) => {
-            setBusinessName(e.target.value);
-            if (e.target.value !== "custom") setCustomBusiness("");
+            if (e.target.value === "__add_new__") {
+              openNewSiteModal();
+            } else {
+              setBusinessName(e.target.value);
+              setCustomBusiness("");
+            }
           }}
           style={{
             padding: "9px 14px",
@@ -181,7 +179,7 @@ export default function WordPressSiteConnect({ onConnectionChange }) {
             border: "1px solid rgba(255, 255, 255, 0.16)",
             fontSize: 13,
             background: "#0d111c",
-            color: "#f8fafc",
+            color: "#38bdf8",
             fontWeight: 700,
             cursor: "pointer",
             outline: "none",
@@ -200,35 +198,23 @@ export default function WordPressSiteConnect({ onConnectionChange }) {
               </option>
             ))
           ) : (
-            <option value="custom" style={{ background: "#0d111c", color: "#94a3b8" }}>
+            <option value="none" style={{ background: "#0d111c", color: "#94a3b8" }}>
               [ No Website Connected Yet ]
             </option>
           )}
-          <option value="custom" style={{ background: "#0d111c", color: "#38bdf8" }}>
-            + Connect New Business Profile
+          <option value="__add_new__" style={{ background: "#0d111c", color: "#10b981", fontWeight: "bold" }}>
+            + Connect New Business / Website ↗
           </option>
         </select>
 
-        {(businessName === "custom" || !businessName || connectedProfiles.length === 0) && (
-          <input
-            type="text"
-            placeholder="Type your business or website name (e.g. MyStore, TechBlog)..."
-            value={customBusiness}
-            onChange={(e) => setCustomBusiness(e.target.value)}
-            style={{
-              padding: "8px 14px",
-              borderRadius: 8,
-              border: "1px solid rgba(255, 255, 255, 0.16)",
-              fontSize: 13,
-              background: "#0d111c",
-              color: "#fff",
-              minWidth: 0,
-              width: "100%",
-              flex: "1 1 200px",
-              outline: "none",
-            }}
-          />
-        )}
+        <button
+          type="button"
+          onClick={openNewSiteModal}
+          className="btn-gabbar-primary"
+          style={{ padding: "8px 14px", fontSize: 12, borderRadius: 8, whiteSpace: "nowrap" }}
+        >
+          + Add Website
+        </button>
       </div>
 
       {loading ? (
@@ -307,13 +293,13 @@ export default function WordPressSiteConnect({ onConnectionChange }) {
           )}
         </div>
       ) : (
-        /* ⚪ DISCONNECTED STATE (DARK LUXURY WITH TITANIUM WHITE SLIDING BUTTON) */
+        /* ⚪ DISCONNECTED STATE */
         <div style={{ background: "rgba(16, 22, 34, 0.6)", border: "1px dashed rgba(255, 255, 255, 0.16)", borderRadius: 14, padding: 24 }}>
           <p style={{ margin: "0 0 18px 0", color: "#94a3b8", fontSize: 14, lineHeight: 1.6 }}>
             Connect your WordPress / WooCommerce website to enable autonomous scheduled blogging, on-page SEO optimization, dual visual generation, and Google Search Console indexing.
           </p>
           <button
-            onClick={handleStartConnect}
+            onClick={openNewSiteModal}
             className="btn-gabbar-primary"
             style={{
               padding: "12px 24px",
@@ -326,7 +312,7 @@ export default function WordPressSiteConnect({ onConnectionChange }) {
         </div>
       )}
 
-      {/* ── 3-STEP ONBOARDING MODAL (DARK LUXURY) ── */}
+      {/* ── ONBOARDING & PAIRING MODAL ── */}
       {showModal && (
         <div
           style={{
@@ -360,7 +346,7 @@ export default function WordPressSiteConnect({ onConnectionChange }) {
           >
             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 18 }}>
               <h2 style={{ margin: 0, fontSize: 18, color: "#fff" }}>
-                Connect WordPress Site for <strong style={{ color: "#60a5fa" }}>{activeBusiness}</strong>
+                Connect WordPress Site {newBizNameInput ? `for ${newBizNameInput}` : ""}
               </h2>
               <button
                 onClick={() => setShowModal(false)}
@@ -370,148 +356,93 @@ export default function WordPressSiteConnect({ onConnectionChange }) {
               </button>
             </div>
 
-            {/* Stepper Progress */}
-            <div style={{ display: "flex", gap: 8, marginBottom: 24 }}>
-              <div style={{ flex: 1, height: 4, borderRadius: 2, background: modalStep >= 1 ? "#3b82f6" : "#1e293b" }} />
-              <div style={{ flex: 1, height: 4, borderRadius: 2, background: modalStep >= 2 ? "#3b82f6" : "#1e293b" }} />
-              <div style={{ flex: 1, height: 4, borderRadius: 2, background: modalStep >= 3 ? "#3b82f6" : "#1e293b" }} />
+            {/* Quick Steps Toggle */}
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 20, background: "rgba(255,255,255,0.03)", padding: "8px 12px", borderRadius: 8 }}>
+              <span style={{ fontSize: 12, color: "#94a3b8" }}>Need the plugin zip file?</span>
+              <a
+                href="/api/wordpress/download"
+                download
+                style={{ fontSize: 12, color: "#38bdf8", fontWeight: 700, textDecoration: "underline" }}
+              >
+                📥 Download gabbarinfo-connect.zip
+              </a>
             </div>
 
-            {/* STEP 1 */}
-            {modalStep === 1 && (
-              <div>
-                <h3 style={{ fontSize: 16, marginTop: 0, color: "#fff" }}>Step 1: Plugin Download</h3>
-                <p style={{ fontSize: 14, color: "#94a3b8", lineHeight: 1.5 }}>
-                  The <strong>gabbarinfo-connect.zip</strong> file was downloaded automatically. If your download did not start, click below:
-                </p>
-                <div style={{ margin: "18px 0", padding: 16, background: "#131b2e", border: "1px solid #1e293b", borderRadius: 10, display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-                  <span style={{ fontSize: 13, fontWeight: 600, color: "#cbd5e1" }}>📦 gabbarinfo-connect.zip (v1.0.0)</span>
-                  <a
-                    href="/api/wordpress/download"
-                    download
-                    style={{ padding: "7px 14px", background: "#1e293b", border: "1px solid #334155", borderRadius: 6, fontSize: 12, fontWeight: 600, color: "#60a5fa", textDecoration: "none" }}
-                  >
-                    Download Again
-                  </a>
+            {/* PAIRING FORM */}
+            <div>
+              <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
+                <div>
+                  <label style={{ fontSize: 13, fontWeight: 600, color: "#cbd5e1", display: "block", marginBottom: 6 }}>
+                    Business / Website Name
+                  </label>
+                  <input
+                    type="text"
+                    placeholder="e.g. Divine Auto CNG, MyStore, Woman Massage Hub..."
+                    value={newBizNameInput || customBusiness}
+                    onChange={(e) => {
+                      setNewBizNameInput(e.target.value);
+                      setCustomBusiness(e.target.value);
+                    }}
+                    style={{ width: "100%", padding: "10px 14px", borderRadius: 8, border: "1px solid #1e293b", background: "#131b2e", color: "#fff", fontSize: 14, boxSizing: "border-box" }}
+                  />
                 </div>
-                <div style={{ display: "flex", justifyContent: "flex-end", marginTop: 26 }}>
-                  <button
-                    onClick={() => setModalStep(2)}
-                    className="btn-gabbar-primary"
-                    style={{ padding: "11px 22px", fontSize: 13 }}
-                  >
-                    Next: Installation Steps ➔
-                  </button>
-                </div>
-              </div>
-            )}
 
-            {/* STEP 2 */}
-            {modalStep === 2 && (
-              <div>
-                <h3 style={{ fontSize: 16, marginTop: 0, color: "#fff" }}>Step 2: Install in WordPress</h3>
-                <div style={{ fontSize: 13, color: "#cbd5e1", lineHeight: 1.7, background: "#131b2e", padding: 18, borderRadius: 10, border: "1px solid #1e293b" }}>
-                  <p style={{ margin: "0 0 8px 0" }}>1. Open your WordPress Admin (<code>yourdomain.com/wp-admin</code>).</p>
-                  <p style={{ margin: "0 0 8px 0" }}>2. In the left menu, click <strong>Plugins ➔ Add New Plugin</strong>.</p>
-                  <p style={{ margin: "0 0 8px 0" }}>3. Click <strong>Upload Plugin</strong> at the top, select <strong>gabbarinfo-connect.zip</strong>, and click <strong>Install Now</strong>.</p>
-                  <p style={{ margin: "0 0 8px 0" }}>4. Click <strong>Activate Plugin</strong>.</p>
-                  <p style={{ margin: 0 }}>5. In the left sidebar, click <strong>Settings ➔ GabbarInfo AI</strong> and copy your <strong>Pairing Key</strong>.</p>
+                <div>
+                  <label style={{ fontSize: 13, fontWeight: 600, color: "#cbd5e1", display: "block", marginBottom: 6 }}>
+                    Target Website URL
+                  </label>
+                  <input
+                    type="url"
+                    placeholder="https://www.yourdomain.com"
+                    value={siteUrlInput}
+                    onChange={(e) => setSiteUrlInput(e.target.value)}
+                    style={{ width: "100%", padding: "10px 14px", borderRadius: 8, border: "1px solid #1e293b", background: "#131b2e", color: "#fff", fontSize: 14, boxSizing: "border-box" }}
+                  />
                 </div>
-                <div style={{ display: "flex", justifyContent: "space-between", marginTop: 26 }}>
-                  <button
-                    onClick={() => setModalStep(1)}
-                    className="btn-gabbar-dark"
-                    style={{ padding: "10px 18px", fontSize: 13 }}
-                  >
-                    ← Back
-                  </button>
-                  <button
-                    onClick={() => setModalStep(3)}
-                    className="btn-gabbar-primary"
-                    style={{ padding: "11px 22px", fontSize: 13 }}
-                  >
-                    Next: Enter Pairing Key ➔
-                  </button>
-                </div>
-              </div>
-            )}
 
-            {/* STEP 3 */}
-            {modalStep === 3 && (
-              <div>
-                <h3 style={{ fontSize: 16, marginTop: 0, color: "#fff" }}>Step 3: Pair Your Site</h3>
-                <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
-                  <div>
-                    <label style={{ fontSize: 13, fontWeight: 600, color: "#cbd5e1", display: "block", marginBottom: 6 }}>Target Website URL</label>
-                    <input
-                      type="url"
-                      placeholder="https://www.yourdomain.com"
-                      value={siteUrlInput}
-                      onChange={(e) => setSiteUrlInput(e.target.value)}
-                      style={{ width: "100%", padding: "10px 14px", borderRadius: 8, border: "1px solid #1e293b", background: "#131b2e", color: "#fff", fontSize: 14 }}
-                    />
-                  </div>
-
-                  <div>
-                    <label style={{ fontSize: 13, fontWeight: 600, color: "#cbd5e1", display: "block", marginBottom: 6 }}>Plugin Secret Pairing Key</label>
-                    <input
-                      type="text"
-                      placeholder="e.g. gb_sec_..."
-                      value={apiKeyInput}
-                      onChange={(e) => setApiKeyInput(e.target.value)}
-                      style={{ width: "100%", padding: "10px 14px", borderRadius: 8, border: "1px solid #1e293b", background: "#131b2e", color: "#fff", fontSize: 14, fontFamily: "monospace" }}
-                    />
-                    <div style={{ fontSize: 12, color: "#94a3b8", marginTop: 4 }}>
-                      Found in your WordPress Admin under <code>Settings ➔ GabbarInfo AI</code>.
-                    </div>
+                <div>
+                  <label style={{ fontSize: 13, fontWeight: 600, color: "#cbd5e1", display: "block", marginBottom: 6 }}>
+                    Plugin Secret Pairing Key
+                  </label>
+                  <input
+                    type="text"
+                    placeholder="e.g. gb_sec_..."
+                    value={apiKeyInput}
+                    onChange={(e) => setApiKeyInput(e.target.value)}
+                    style={{ width: "100%", padding: "10px 14px", borderRadius: 8, border: "1px solid #1e293b", background: "#131b2e", color: "#fff", fontSize: 14, fontFamily: "monospace", boxSizing: "border-box" }}
+                  />
+                  <div style={{ fontSize: 12, color: "#94a3b8", marginTop: 4 }}>
+                    Found in your WordPress Admin under <code>Settings ➔ GabbarInfo AI</code>.
                   </div>
                 </div>
+              </div>
 
-                {/* Slot Binding Notice */}
-                <div
-                  style={{
-                    background: "rgba(245, 158, 11, 0.1)",
-                    border: "1px solid rgba(245, 158, 11, 0.3)",
-                    borderRadius: 10,
-                    padding: "12px 14px",
-                    marginTop: 14,
-                    fontSize: 12,
-                    lineHeight: 1.5,
-                    color: "#fef08a",
-                  }}
+              {errorMsg && (
+                <div style={{ marginTop: 14, padding: 12, background: "rgba(239, 68, 68, 0.1)", border: "1px solid #ef4444", color: "#f87171", borderRadius: 8, fontSize: 13 }}>
+                  ⚠️ {errorMsg}
+                </div>
+              )}
+
+              <div style={{ display: "flex", justifyContent: "flex-end", gap: 10, marginTop: 24 }}>
+                <button
+                  type="button"
+                  onClick={() => setShowModal(false)}
+                  className="btn-gabbar-dark"
+                  style={{ padding: "10px 18px", fontSize: 13 }}
                 >
-                  <div style={{ display: "flex", alignItems: "center", gap: 6, fontWeight: 700, marginBottom: 4, color: "#fbbf24" }}>
-                    <span>⚠️</span>
-                    <span>Important: Website Slot Binding Policy</span>
-                  </div>
-                  Connecting this website binds it as your licensed site for this billing cycle. Single-site plans lock this asset slot to prevent cycling between multiple client domains. Additional client websites require an Agency Suite.
-                </div>
-
-                {errorMsg && (
-                  <div style={{ marginTop: 14, padding: 12, background: "rgba(239, 68, 68, 0.1)", border: "1px solid #ef4444", color: "#f87171", borderRadius: 8, fontSize: 13 }}>
-                    ⚠️ {errorMsg}
-                  </div>
-                )}
-
-                <div style={{ display: "flex", justifyContent: "space-between", marginTop: 26 }}>
-                  <button
-                    onClick={() => setModalStep(2)}
-                    className="btn-gabbar-dark"
-                    style={{ padding: "10px 18px", fontSize: 13 }}
-                  >
-                    ← Back
-                  </button>
-                  <button
-                    onClick={handleSaveConnection}
-                    disabled={connecting}
-                    className="btn-gabbar-primary"
-                    style={{ padding: "11px 24px", fontSize: 13 }}
-                  >
-                    {connecting ? "Verifying…" : "Verify & Pair Website ↗"}
-                  </button>
-                </div>
+                  Cancel
+                </button>
+                <button
+                  type="button"
+                  onClick={handleSaveConnection}
+                  disabled={connecting}
+                  className="btn-gabbar-primary"
+                  style={{ padding: "11px 24px", fontSize: 13 }}
+                >
+                  {connecting ? "Verifying…" : "Verify & Pair Website ↗"}
+                </button>
               </div>
-            )}
+            </div>
           </div>
         </div>
       )}

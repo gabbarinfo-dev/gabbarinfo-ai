@@ -5,20 +5,22 @@ import { supabaseServer } from "../../../lib/supabaseServer";
 export default async function handler(req, res) {
   try {
     const session = await getServerSession(req, res, authOptions);
-    if (!session?.user?.email) {
-      return res.status(401).json({ ok: false });
+    const userEmail = session?.user?.email || req.body?.userEmail || req.query?.userEmail;
+    if (!userEmail) {
+      return res.status(401).json({ ok: false, error: "Not authenticated" });
     }
 
-    // 🔥 Get user-specific access token
+    const normEmail = userEmail.toLowerCase().trim();
+
+    // 1. Get user-specific access token
     const { data: metaRow } = await supabaseServer
       .from("meta_connections")
       .select("fb_business_id, fb_user_access_token")
-      .eq("email", session.user.email)
-      .single();
+      .ilike("email", normEmail)
+      .maybeSingle();
 
     const businessId = metaRow?.fb_business_id;
     const user_access_token = metaRow?.fb_user_access_token;
-    let adAccountId = null;
 
     if (!user_access_token) {
       return res.status(400).json({
@@ -27,194 +29,122 @@ export default async function handler(req, res) {
       });
     }
 
-    // --- STEP 0: Fetch Ad Account (Try Business Owned, then Fallback to Personal) ---
-    try {
-      // 1. Try Business Owned Ad Accounts
-      if (businessId) {
-        console.log(`🏢 [Sync] Attempting Business sync for ID: ${businessId}`);
-        const bizAdRes = await fetch(
-          `https://graph.facebook.com/v21.0/${businessId}/owned_ad_accounts?access_token=${user_access_token}`
-        );
-        const bizAdJson = await bizAdRes.json();
-        if (bizAdJson?.data?.length) {
-          adAccountId = bizAdJson.data[0].id;
-          console.log(`✅ [Sync] Business ad account found: ${adAccountId}`);
-        }
-      }
+    // 2. Fetch all businesses, ad accounts, and pages in parallel
+    const [bizRes, adRes, pagesRes] = await Promise.all([
+      fetch(`https://graph.facebook.com/v21.0/me/businesses?access_token=${user_access_token}`)
+        .then(r => r.json())
+        .catch(() => ({ data: [] })),
+      fetch(`https://graph.facebook.com/v21.0/me/adaccounts?fields=id,name,account_id,currency,business&access_token=${user_access_token}`)
+        .then(r => r.json())
+        .catch(() => ({ data: [] })),
+      fetch(`https://graph.facebook.com/v21.0/me/accounts?fields=id,name,phone,website,about,category,access_token,instagram_business_account{id,username}&access_token=${user_access_token}`)
+        .then(r => r.json())
+        .catch(() => ({ data: [] })),
+    ]);
 
-      // 2. Fallback: Fetch any accessible ad accounts (Personal/Direct)
-      if (!adAccountId) {
-        console.log("📍 [Sync] No business ad account. Falling back to personal accounts (/me/adaccounts)...");
-        const personalAdRes = await fetch(
-          `https://graph.facebook.com/v21.0/me/adaccounts?access_token=${user_access_token}`
-        );
-        const personalAdJson = await personalAdRes.json();
-        if (personalAdJson?.data?.length) {
-          adAccountId = personalAdJson.data[0].id;
-          console.log(`✅ [Sync] Personal/Fallback ad account found: ${adAccountId}`);
-        }
-      }
+    const allBusinesses = bizRes.data || [];
+    const allAdAccounts = adRes.data || [];
+    const allPages = pagesRes.data || [];
 
-      // 3. Optional: Only error if ABSOLUTELY no ad account found and we need it for Ads
-      // For now, we allow continuing if Page sync might still work (for Instagram organic)
-      if (!adAccountId) {
-        console.warn("⚠️ [Sync] No ad accounts found. Only Page/Instagram features will be enabled.");
-      }
-    } catch (e) {
-      console.error(`[Sync AdAccount Error] ${e.message}`);
-    }
-
-    // 1️⃣ Get Pages user manages
-    const pagesRes = await fetch(
-      `https://graph.facebook.com/v21.0/me/accounts?access_token=${user_access_token}`
-    );
-    const pagesJson = await pagesRes.json();
-
-    if (!pagesJson?.data?.length) {
+    if (allPages.length === 0) {
       return res.status(400).json({
         ok: false,
-        message: "No Facebook Pages found",
+        message: "No Facebook Pages found on this account. Please verify permissions in Facebook Business.",
       });
     }
 
-    // Pick first page (you can improve later)
-    const page = pagesJson.data[0];
+    // 3. Multi-brand isolation: save every page/brand bundle to agent_memory
+    const allMetaConnections = {};
+    const connectedBrands = [];
 
-    // 2️⃣ Fetch Page details (Including Page Access Token)
-    const pageInfoRes = await fetch(
-      `https://graph.facebook.com/v21.0/${page.id}?fields=name,phone,website,about,category,access_token&access_token=${user_access_token}`
-    );
-    const pageInfo = await pageInfoRes.json();
+    for (let i = 0; i < allPages.length; i++) {
+      const page = allPages[i];
+      const pageName = page.name || `Brand_${page.id}`;
+      const normName = pageName.toLowerCase().trim().replace(/[^a-z0-9]/g, "_");
 
-    // 3️⃣ Fetch Instagram business (if connected)
-    let instagram = null;
-    let instagramActorId = null;
+      // Match closest Ad Account (by business or page name or index)
+      const matchingAd = allAdAccounts.find(a =>
+        (a.business?.name && pageName.toLowerCase().includes(a.business.name.toLowerCase())) ||
+        (a.name && pageName.toLowerCase().includes(a.name.toLowerCase()))
+      ) || allAdAccounts[i] || allAdAccounts[0] || null;
 
-    const igRes = await fetch(
-      `https://graph.facebook.com/v21.0/${page.id}?fields=instagram_business_account&access_token=${user_access_token}`
-    );
-    const igJson = await igRes.json();
+      // Match closest Business Manager
+      const matchingBiz = allBusinesses.find(b =>
+        pageName.toLowerCase().includes(b.name.toLowerCase())
+      ) || allBusinesses[i] || allBusinesses[0] || null;
 
-    if (igJson?.instagram_business_account?.id) {
-      const igId = igJson.instagram_business_account.id;
+      const igData = page.instagram_business_account || null;
 
-      // Explicitly resolve Actor ID for creatives
-      try {
-        const actorRes = await fetch(
-          `https://graph.facebook.com/v21.0/${igId}?fields=id,username&access_token=${user_access_token}`
-        );
-        const actorJson = await actorRes.json();
-        if (actorJson?.id) instagramActorId = actorJson.id;
-      } catch (e) {
-        console.warn(`[IG Actor Resolution Failed] ${e.message}`);
-      }
+      const brandPayload = {
+        businessName: pageName,
+        pageId: page.id,
+        pageName: pageName,
+        pageToken: page.access_token,
+        igId: igData?.id || null,
+        igUsername: igData?.username || null,
+        businessId: matchingBiz?.id || businessId || null,
+        businessTitle: matchingBiz?.name || pageName,
+        adAccountId: matchingAd?.id || null,
+        adAccountName: matchingAd?.name || null,
+        currency: matchingAd?.currency || "INR",
+        phone: page.phone || null,
+        website: page.website || null,
+        category: page.category || null,
+        userToken: user_access_token,
+        connectedAt: new Date().toISOString(),
+      };
 
-      const igInfoRes = await fetch(
-        `https://graph.facebook.com/v21.0/${igId}?fields=name,biography,website&access_token=${user_access_token}`
+      allMetaConnections[normName] = brandPayload;
+      connectedBrands.push(normName);
+
+      await supabaseServer.from("agent_memory").upsert(
+        {
+          email: normEmail,
+          memory_type: `meta_conn_${normName}`,
+          content: JSON.stringify(brandPayload),
+          updated_at: new Date().toISOString(),
+        },
+        { onConflict: "email,memory_type" }
       );
-      instagram = await igInfoRes.json();
     }
 
-    // 4️⃣ Fetch Ad Account Currency
-    let accountCurrency = null;
-    try {
-      const currRes = await fetch(
-        `https://graph.facebook.com/v21.0/${adAccountId}?fields=currency&access_token=${user_access_token}`
-      );
-      const currJson = await currRes.json();
-      if (currJson.currency) {
-        accountCurrency = currJson.currency;
-        console.log(`💱 [Sync] Currency detected: ${accountCurrency}`);
-      }
-    } catch (e) {
-      console.warn(`⚠️ [Sync] Currency detection failed: ${e.message}`);
-    }
+    // 4. Update primary meta_connections row with first/primary asset
+    const primaryPage = allPages[0];
+    const primaryAd = allAdAccounts[0];
+    const primaryBiz = allBusinesses[0];
 
-    // 5️⃣ Fetch Pixel ID
-    let pixelId = null;
-    try {
-      const pixRes = await fetch(
-        `https://graph.facebook.com/v21.0/${adAccountId}/adspixels?fields=id,name&access_token=${user_access_token}`
-      );
-      const pixJson = await pixRes.json();
-      if (pixJson?.data?.length) {
-        pixelId = pixJson.data[0].id;
-        console.log(`🎯 [Sync] Pixel found: ${pixelId}`);
-      }
-    } catch (e) {
-      console.warn(`⚠️ [Sync] Pixel discovery failed: ${e.message}`);
-    }
-
-    // 6️⃣ Deep Catalogue Scan
-    let catalogId = null;
-    try {
-      const cleanAdId = (adAccountId || "").toString().replace(/^act_/, "");
-      const catalogEndpoints = [
-        businessId ? `https://graph.facebook.com/v21.0/${businessId}/owned_product_catalogs?fields=id,name,product_count&access_token=${user_access_token}` : null,
-        adAccountId ? `https://graph.facebook.com/v21.0/${adAccountId}/product_catalogs?fields=id,name,product_count&access_token=${user_access_token}` : null,
-        adAccountId ? `https://graph.facebook.com/v21.0/act_${cleanAdId}/assigned_product_catalogs?fields=id,name,product_count&access_token=${user_access_token}` : null,
-        page?.id ? `https://graph.facebook.com/v21.0/${page.id}/product_catalogs?fields=id,name,product_count&access_token=${user_access_token}` : null,
-      ].filter(Boolean);
-
-      const allCatalogs = [];
-      for (const url of catalogEndpoints) {
-        try {
-          const catRes = await fetch(url);
-          const catJson = await catRes.json();
-          if (catJson?.data?.length) allCatalogs.push(...catJson.data);
-        } catch (_) { /* skip failed endpoint */ }
-      }
-
-      // De-duplicate and pick the one with the most products
-      const unique = Array.from(new Map(allCatalogs.map(c => [c.id, c])).values());
-      if (unique.length > 0) {
-        unique.sort((a, b) => (b.product_count || 0) - (a.product_count || 0));
-        catalogId = unique[0].id;
-        console.log(`🛍️ [Sync] Best catalogue: "${unique[0].name}" (ID: ${catalogId}, Products: ${unique[0].product_count || 0})`);
-      }
-    } catch (e) {
-      console.warn(`⚠️ [Sync] Catalogue discovery failed: ${e.message}`);
-    }
-
-    // 7️⃣ Store extracted data
     await supabaseServer
       .from("meta_connections")
       .update({
-        fb_ad_account_id: adAccountId || undefined,
-        fb_page_id: page.id || null, // Ensure Page ID is persisted
-        fb_page_access_token: pageInfo.access_token || null, // Persist Page Token
-        ig_business_id: igJson?.instagram_business_account?.id || null,
-        instagram_actor_id: instagramActorId,
-        business_name: pageInfo.name || null,
-        business_phone: pageInfo.phone || null,
-        business_website: pageInfo.website || null,
-        business_about: pageInfo.about || null,
-        business_category: pageInfo.category || null,
-        instagram_bio: instagram?.biography || null,
-        instagram_website: instagram?.website || null,
+        fb_ad_account_id: primaryAd?.id || undefined,
+        fb_business_id: primaryBiz?.id || businessId || undefined,
+        fb_page_id: primaryPage.id || null,
+        fb_page_access_token: primaryPage.access_token || null,
+        ig_business_id: primaryPage.instagram_business_account?.id || null,
+        business_name: primaryPage.name || null,
+        business_phone: primaryPage.phone || null,
+        business_website: primaryPage.website || null,
+        business_about: primaryPage.about || null,
+        business_category: primaryPage.category || null,
         business_info_synced: true,
-        account_currency: accountCurrency || undefined,
-        fb_pixel_id: pixelId || undefined,
-        fb_catalog_id: catalogId || undefined,
-        catalog_last_synced_at: catalogId ? new Date().toISOString() : undefined,
+        account_currency: primaryAd?.currency || "INR",
+        updated_at: new Date().toISOString(),
       })
-      .eq("email", session.user.email);
+      .ilike("email", normEmail);
 
     return res.json({
       ok: true,
-      message: "Business info synced successfully",
-      fb_business_id: businessId,
-      fb_page_id: page.id,
-      fb_ad_account_id: adAccountId,
-      fb_catalog_id: catalogId,
-      fb_pixel_id: pixelId,
+      message: `Successfully synchronized ${allPages.length} Facebook Page(s), ${allAdAccounts.length} Ad Account(s), and ${allBusinesses.length} Business profile(s).`,
+      connectedBrands,
+      allMetaConnections,
+      totalPages: allPages.length,
+      totalAdAccounts: allAdAccounts.length,
     });
-
   } catch (err) {
+    console.error("[Sync Meta Error]", err);
     return res.status(500).json({
       ok: false,
       error: err.message,
     });
   }
 }
-

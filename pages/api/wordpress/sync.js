@@ -81,8 +81,15 @@ export default async function handler(req, res) {
         } catch (e) {}
       });
 
-      // Also support single target business lookup
-      const activeConn = connections[normalizedBusiness] || connections["default"] || Object.values(connections)[0] || null;
+      // Support single target business lookup strictly without accidental fallbacks
+      let activeConn = null;
+      if (normalizedBusiness === "custom") {
+        activeConn = null;
+      } else if (body.businessName && normalizedBusiness !== "default") {
+        activeConn = connections[normalizedBusiness] || null;
+      } else {
+        activeConn = connections["default"] || Object.values(connections)[0] || null;
+      }
 
       return res.status(200).json({
         ok: true,

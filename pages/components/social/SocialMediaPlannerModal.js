@@ -42,6 +42,7 @@ export default function SocialMediaPlannerModal({ onClose }) {
 
   const [availableBrands, setAvailableBrands] = useState([]);
   const [selectedBrand, setSelectedBrand] = useState("");
+  const [syncingMeta, setSyncingMeta] = useState(false);
 
   // Load initial config
   useEffect(() => {
@@ -67,7 +68,9 @@ export default function SocialMediaPlannerModal({ onClose }) {
         setFbPageName(data.fbPageName);
         setIgUsername(data.igUsername);
         setAvailableBrands(data.availableBrands || []);
-        if (data.activeBrand && !selectedBrand) {
+        if (targetBiz) {
+          setSelectedBrand(targetBiz);
+        } else if (data.activeBrand && !selectedBrand) {
           setSelectedBrand(data.activeBrand);
         }
       }
@@ -77,6 +80,28 @@ export default function SocialMediaPlannerModal({ onClose }) {
       setLoading(false);
     }
   }
+
+  const handleBrandChange = (newBizKey) => {
+    setSelectedBrand(newBizKey);
+    fetchConfig(newBizKey);
+  };
+
+  const handleSyncPages = async () => {
+    setSyncingMeta(true);
+    try {
+      const res = await fetch("/api/meta/sync-business-info", { method: "POST" });
+      const data = await res.json();
+      if (data.ok) {
+        await fetchConfig(selectedBrand || data.connectedBrands?.[0]);
+      } else {
+        alert("Sync warning: " + (data.error || data.message));
+      }
+    } catch (e) {
+      console.warn("Failed to sync pages:", e);
+    } finally {
+      setSyncingMeta(false);
+    }
+  };
 
   async function saveConfig(updated = {}, targetBiz = selectedBrand) {
     setSaving(true);
@@ -481,7 +506,53 @@ export default function SocialMediaPlannerModal({ onClose }) {
             </div>
 
             {/* Controls pinned safely on top right */}
-            <div style={{ display: "flex", alignItems: "center", gap: 8, flexShrink: 0 }}>
+            <div style={{ display: "flex", alignItems: "center", gap: 8, flexShrink: 0, flexWrap: "wrap" }}>
+              {/* Active Brand Selector in Header */}
+              {availableBrands.length > 0 && (
+                <div style={{ display: "flex", alignItems: "center", gap: 6, background: "rgba(255, 255, 255, 0.05)", padding: "4px 8px", borderRadius: 8, border: "1px solid rgba(255, 255, 255, 0.12)" }}>
+                  <span style={{ fontSize: 11, fontWeight: 700, color: "#94a3b8" }}>Brand:</span>
+                  <select
+                    value={selectedBrand}
+                    onChange={(e) => handleBrandChange(e.target.value)}
+                    style={{
+                      background: "transparent",
+                      border: "none",
+                      color: "#38bdf8",
+                      fontWeight: 700,
+                      fontSize: 12,
+                      cursor: "pointer",
+                      outline: "none",
+                      maxWidth: 160,
+                    }}
+                  >
+                    {availableBrands.map((b) => (
+                      <option key={b.key} value={b.key} style={{ background: "#0d111c", color: "#38bdf8" }}>
+                        ✓ {b.businessName || b.pageName}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              )}
+
+              <button
+                type="button"
+                onClick={handleSyncPages}
+                disabled={syncingMeta}
+                title="Refresh connected Facebook Pages & Instagram Accounts"
+                style={{
+                  padding: "6px 10px",
+                  borderRadius: 8,
+                  fontSize: 11,
+                  fontWeight: 700,
+                  cursor: syncingMeta ? "not-allowed" : "pointer",
+                  border: "1px solid rgba(56, 189, 248, 0.3)",
+                  background: "rgba(56, 189, 248, 0.1)",
+                  color: "#38bdf8",
+                }}
+              >
+                {syncingMeta ? "Syncing..." : "🔄 Refresh Pages"}
+              </button>
+
               <button
                 onClick={handleToggleEnabled}
                 style={{
@@ -884,11 +955,44 @@ export default function SocialMediaPlannerModal({ onClose }) {
                   boxSizing: "border-box",
                 }}
               >
+                {/* Brand Switcher inside Settings */}
+                <div style={{ marginBottom: 16, padding: "12px 16px", background: "rgba(56, 189, 248, 0.06)", border: "1px solid rgba(56, 189, 248, 0.2)", borderRadius: 12, display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: 10 }}>
+                  <div>
+                    <span style={{ fontSize: 11, fontWeight: 700, color: "#94a3b8", textTransform: "uppercase", display: "block" }}>Currently Configuring Brand:</span>
+                    <strong style={{ fontSize: 15, color: "#38bdf8" }}>{config.businessName || selectedBrand}</strong>
+                  </div>
+                  {availableBrands.length > 0 && (
+                    <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                      <span style={{ fontSize: 12, color: "#cbd5e1" }}>Switch Brand:</span>
+                      <select
+                        value={selectedBrand}
+                        onChange={(e) => handleBrandChange(e.target.value)}
+                        style={{
+                          padding: "6px 12px",
+                          borderRadius: 8,
+                          background: "#0d111c",
+                          border: "1px solid rgba(255, 255, 255, 0.16)",
+                          color: "#38bdf8",
+                          fontWeight: 700,
+                          fontSize: 12,
+                          cursor: "pointer",
+                        }}
+                      >
+                        {availableBrands.map((b) => (
+                          <option key={b.key} value={b.key}>
+                            ✓ {b.businessName || b.pageName} ({b.igUsername ? `@${b.igUsername}` : "FB Only"})
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+                  )}
+                </div>
+
                 <h3 style={{ margin: "0 0 6px 0", fontSize: 15, fontWeight: 800 }}>
                   1. Posting Destination Channel
                 </h3>
                 <p style={{ margin: "0 0 14px 0", fontSize: 13, color: "#94a3b8" }}>
-                  Choose where your autonomous graphics and captions will be published:
+                  Choose where your autonomous graphics and captions will be published for <strong>{config.businessName || selectedBrand}</strong>:
                 </p>
 
                 <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(140px, 1fr))", gap: 10 }}>
