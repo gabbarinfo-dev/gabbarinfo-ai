@@ -240,6 +240,7 @@ export default function SeoHubPage() {
     setEditingArticle(null);
     setPublishedResult(null);
     setSocialShareStatus(null);
+    setAutopilotTargetLocations("");
     if (typeof window !== "undefined") {
       localStorage.setItem("gabbar_active_business", newBiz);
     }
@@ -316,6 +317,8 @@ export default function SeoHubPage() {
         }
         if (data.config.targetLocations || data.config.targetMarket) {
           setAutopilotTargetLocations(data.config.targetLocations || data.config.targetMarket);
+        } else {
+          setAutopilotTargetLocations("");
         }
       }
     } catch (e) {
@@ -1095,7 +1098,7 @@ export default function SeoHubPage() {
         {(() => {
           const liveBlogsCount = contentList.filter((i) => (i.type || i.post_type) === "post").length;
           const livePagesCount = contentList.filter((i) => (i.type || i.post_type) === "page").length;
-          const displayBlogCount = liveBlogsCount > 0 ? liveBlogsCount : contentList.length;
+          const displayBlogCount = liveBlogsCount;
 
           return (
             <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))", gap: 12, marginBottom: 24 }}>
@@ -1113,7 +1116,7 @@ export default function SeoHubPage() {
                 <div style={{ fontSize: 11, color: "#34d399", fontWeight: 700, textTransform: "uppercase" }}>📚 Published Blogs</div>
                 <div style={{ fontSize: 24, fontWeight: 800, color: "#ffffff", marginTop: 4 }}>{displayBlogCount}</div>
                 <div style={{ fontSize: 12, color: "#94a3b8", marginTop: 2 }}>
-                  {livePagesCount > 0 ? `Live Posts (+${livePagesCount} Pages)` : "Live WordPress Posts"}
+                  {livePagesCount > 0 ? `${liveBlogsCount} Posts (+${livePagesCount} Pages)` : `${liveBlogsCount} Live Posts`}
                 </div>
               </div>
 
@@ -1179,7 +1182,7 @@ export default function SeoHubPage() {
               flexShrink: 0,
             }}
           >
-            📑 Articles & Website Pages ({contentList.length})
+            📑 Articles & Website Pages ({contentList.length === 0 ? 0 : `${contentList.filter((i) => (i.type || i.post_type) === "post").length} Posts · ${contentList.filter((i) => (i.type || i.post_type) === "page").length} Pages`})
           </button>
 
           <button
@@ -2863,9 +2866,13 @@ export default function SeoHubPage() {
                 <div style={{ background: "rgba(255, 255, 255, 0.03)", border: "1px solid rgba(255, 255, 255, 0.06)", borderRadius: 10, padding: "12px 16px" }}>
                   <div style={{ fontSize: 11, color: "#94a3b8", fontWeight: 700, textTransform: "uppercase" }}>📚 Live Published Blogs</div>
                   <div style={{ fontSize: 20, fontWeight: 800, color: "#34d399", marginTop: 4 }}>
-                    {contentList.filter((i) => (i.type || i.post_type) === "post").length || contentList.length} Articles
+                    {contentList.filter((i) => (i.type || i.post_type) === "post").length} {contentList.filter((i) => (i.type || i.post_type) === "post").length === 1 ? "Article" : "Articles"}
                   </div>
-                  <div style={{ fontSize: 11, color: "#64748b", marginTop: 2 }}>Synced live on WordPress</div>
+                  <div style={{ fontSize: 11, color: "#64748b", marginTop: 2 }}>
+                    {contentList.filter((i) => (i.type || i.post_type) === "page").length > 0
+                      ? `Synced live on WordPress (+${contentList.filter((i) => (i.type || i.post_type) === "page").length} Pages)`
+                      : "Synced live on WordPress"}
+                  </div>
                 </div>
 
                 <div style={{ background: "rgba(255, 255, 255, 0.03)", border: "1px solid rgba(255, 255, 255, 0.06)", borderRadius: 10, padding: "12px 16px" }}>

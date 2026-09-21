@@ -658,11 +658,11 @@ export default async function handler(req, res) {
         return res.status(500).json({ ok: false, error: upsertErr.message });
       }
 
-      // Cross-sync targetLocations to Social Autopilot memory so social posts share the same geo-targeting
-      if (configPayload.targetLocations) {
+      // Cross-sync targetLocations strictly to this business's scoped Social Autopilot memory
+      if (configPayload.targetLocations && targetBiz && targetBiz !== "default") {
         try {
           const normEmail = userEmail.toLowerCase().trim();
-          const socialMemoryKey = `social_autopilot_${normEmail}`;
+          const socialMemoryKey = `social_autopilot_${normEmail}_${targetBiz}`;
           const { data: socialMem } = await supabase
             .from("agent_memory")
             .select("content")
@@ -685,7 +685,7 @@ export default async function handler(req, res) {
             { onConflict: "email,memory_type" }
           );
         } catch (syncErr) {
-          console.warn("Could not cross-sync targetLocations to social autopilot:", syncErr.message);
+          console.warn("Could not cross-sync targetLocations to scoped social autopilot:", syncErr.message);
         }
       }
 
