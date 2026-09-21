@@ -216,15 +216,14 @@ export default function SeoHubPage() {
       const data = await res.json();
       if (data.connected && data.brandMeta) {
         setBrandMeta(data.brandMeta);
+        return data.brandMeta;
       } else {
         setBrandMeta(null);
-        setAutoShareFb(false);
-        setAutoShareIg(false);
+        return null;
       }
     } catch (_) {
       setBrandMeta(null);
-      setAutoShareFb(false);
-      setAutoShareIg(false);
+      return null;
     }
   };
 
@@ -260,18 +259,18 @@ export default function SeoHubPage() {
           setConnection(data.connection);
           const bName = data.connection.businessName || activeBusiness;
           if (!activeBusiness && bName) setActiveBusiness(bName);
-          fetchBrandMeta(bName || activeBusiness, data.connection.siteUrl);
+          await fetchBrandMeta(bName || activeBusiness, data.connection.siteUrl);
           fetchContent(data.connection);
           fetchAutopilotConfig(bName || activeBusiness);
           fetchDiscoveredTopics(bName || activeBusiness, data.connection.siteUrl, false);
         } else {
           setConnection(null);
-          fetchBrandMeta(activeBusiness, null);
+          await fetchBrandMeta(activeBusiness, null);
           setContentList([]);
         }
       } else {
         setConnection(null);
-        fetchBrandMeta(activeBusiness, null);
+        await fetchBrandMeta(activeBusiness, null);
         setContentList([]);
       }
     } catch (e) {
@@ -299,8 +298,8 @@ export default function SeoHubPage() {
         setMode(isEnabled ? "autopilot" : "manual");
         setCadence(data.config.cadence || "daily");
         setCustomDaysPerWeek(Number(data.config.customDaysPerWeek) || 3);
-        setAutoShareFb(brandMeta?.pageId ? (data.config.autoShareFacebook === true) : false);
-        setAutoShareIg((brandMeta?.igUsername || brandMeta?.igId) ? (data.config.autoShareInstagram === true) : false);
+        setAutoShareFb(data.config.autoShareFacebook === true);
+        setAutoShareIg(data.config.autoShareInstagram === true);
         setAutopilotPublishedCount(Number(data.config.publishedCount) || 0);
         setLastPublishedAt(data.config.lastPublishedAt || null);
         if (Array.isArray(data.config.suggestedTopics) && data.config.suggestedTopics.length > 0) {
@@ -344,8 +343,8 @@ export default function SeoHubPage() {
             enabled: isEnabled,
             cadence,
             customDaysPerWeek,
-            autoShareFacebook: brandMeta ? autoShareFb : false,
-            autoShareInstagram: (brandMeta?.igUsername || brandMeta?.igId) ? autoShareIg : false,
+            autoShareFacebook: autoShareFb,
+            autoShareInstagram: autoShareIg,
             targetKeywords: keywords,
             targetLocations: autopilotTargetLocations.trim(),
             targetMarket: autopilotTargetLocations.trim(),

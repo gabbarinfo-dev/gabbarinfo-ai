@@ -297,6 +297,7 @@ export default async function handler(req, res) {
   const normalizedEmail = userEmail.toLowerCase().trim();
   const rawBusiness = req.query?.businessName || req.body?.businessName || req.body?.config?.businessName || "";
   const normBusiness = rawBusiness ? rawBusiness.toLowerCase().trim().replace(/[^a-z0-9]/g, "_") : null;
+  const autoMemoryKey = normBusiness ? `social_autopilot_${normalizedEmail}_${normBusiness}` : `social_autopilot_${normalizedEmail}`;
   const isOwner = normalizedEmail === "ndantare@gmail.com" || session?.user?.role === "owner" || session?.user?.role === "admin";
 
   // ================================================================
