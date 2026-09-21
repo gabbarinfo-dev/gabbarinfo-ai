@@ -13,19 +13,41 @@ export default async function handler(req, res) {
             return res.status(401).json({ ok: false, message: "Not authenticated" });
         }
 
-        // 1. Get Meta connection details (fb_page_id and tokens)
+        // 1. Get Meta connection details (fb_page_id and tokens) for specific brand or active
+        const targetBusiness = req.body?.businessName;
+        let pageId = req.body?.pageId;
+        let accessToken = null;
+
+        if (targetBusiness) {
+            const normBiz = String(targetBusiness).toLowerCase().trim().replace(/[^a-z0-9]/g, '_');
+            const { data: brandMem } = await supabaseServer
+                .from("agent_memory")
+                .select("content")
+                .eq("email", session.user.email.toLowerCase())
+                .eq("memory_type", `meta_conn_${normBiz}`)
+                .maybeSingle();
+
+            if (brandMem?.content) {
+                try {
+                    const parsed = JSON.parse(brandMem.content);
+                    pageId = pageId || parsed.pageId;
+                    accessToken = parsed.pageToken || parsed.userToken;
+                } catch (_) {}
+            }
+        }
+
         const { data: meta, error } = await supabaseServer
             .from("meta_connections")
             .select("fb_page_id, fb_page_access_token") // 👈 Must use Page Access Token
             .eq("email", session.user.email.toLowerCase())
             .maybeSingle();
 
-        if (error || !meta?.fb_page_id) {
-            return res.status(404).json({ ok: false, message: "Meta connection or Facebook Page not found." });
-        }
+        pageId = pageId || meta?.fb_page_id;
+        accessToken = accessToken || meta?.fb_page_access_token;
 
-        const pageId = meta.fb_page_id;
-        const accessToken = meta.fb_page_access_token; // 👈 STRICT: Use Page Token only
+        if (!pageId) {
+            return res.status(404).json({ ok: false, message: "Meta connection or Facebook Page not found for this profile." });
+        }
 
         if (!accessToken) {
             return res.status(400).json({ ok: false, message: "Facebook Page access token not found. Please re-sync your business info." });

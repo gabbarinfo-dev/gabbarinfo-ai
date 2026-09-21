@@ -347,20 +347,57 @@ Include 3-4 bullet benefits, a strong call to action, and 6-8 relevant hashtags$
       const publicImageUrl = pubUrlData.publicUrl;
       logger(`[Social Autopilot] Public image URL ready: ${publicImageUrl}`);
 
-      // 6. Fetch User's Live Meta Connection
-      const { data: metaConn, error: metaErr } = await supabase
-        .from("meta_connections")
-        .select("fb_page_id, fb_page_access_token, fb_user_access_token, ig_business_id, instagram_actor_id")
-        .ilike("email", item.email.trim())
-        .order("updated_at", { ascending: false })
-        .limit(1)
-        .maybeSingle();
+      // 6. Fetch User's Live Meta Connection for this specific brand profile
+      const rawBizKey = item.memory_type.replace(/^social_autopilot_/, "");
+      const cleanBizKey = rawBizKey.replace(new RegExp(`^${item.email.toLowerCase().replace(/[^a-z0-9]/g, "_")}_?`, "i"), "");
+      const normalizedBiz = (config.businessName || cleanBizKey || "default")
+        .toLowerCase()
+        .trim()
+        .replace(/[^a-z0-9]/g, "_");
+      const targetMetaKey = `meta_conn_${normalizedBiz}`;
 
-      if (metaErr) {
-        logger(`[Social Autopilot] Error fetching meta_connections for ${item.email}: ${metaErr.message}`);
+      let activeMeta = null;
+      if (normalizedBiz && normalizedBiz !== "default") {
+        const { data: brandMetaMem } = await supabase
+          .from("agent_memory")
+          .select("content")
+          .eq("email", item.email.trim().toLowerCase())
+          .eq("memory_type", targetMetaKey)
+          .maybeSingle();
+
+        if (brandMetaMem?.content) {
+          try {
+            const parsed = JSON.parse(brandMetaMem.content);
+            if (parsed.pageId || parsed.igId) {
+              activeMeta = {
+                fb_page_id: parsed.pageId,
+                fb_page_access_token: parsed.pageToken,
+                fb_user_access_token: parsed.userToken,
+                ig_business_id: parsed.igId,
+                instagram_actor_id: parsed.igId,
+              };
+            }
+          } catch (_) {}
+        }
+      }
+
+      if (!activeMeta) {
+        const { data: metaConn, error: metaErr } = await supabase
+          .from("meta_connections")
+          .select("fb_page_id, fb_page_access_token, fb_user_access_token, ig_business_id, instagram_actor_id")
+          .ilike("email", item.email.trim())
+          .order("updated_at", { ascending: false })
+          .limit(1)
+          .maybeSingle();
+
+        if (metaErr) {
+          logger(`[Social Autopilot] Error fetching meta_connections for ${item.email}: ${metaErr.message}`);
+        }
+        activeMeta = metaConn;
       }
 
       const published = {};
+      const metaConn = activeMeta;
 
       if (metaConn) {
         let pageToken = metaConn.fb_page_access_token;

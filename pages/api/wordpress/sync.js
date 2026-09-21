@@ -532,8 +532,8 @@ export default async function handler(req, res) {
         .eq("memory_type", autoMemoryKey)
         .maybeSingle();
 
-      // If not found by specific normalized key, check for ANY wp_autopilot config for this user
-      if (!autoMem?.content) {
+      // Only fallback if no specific business was provided
+      if (!autoMem?.content && (!businessName || normalizedBusiness === "default")) {
         const { data: anyAutoMem } = await supabase
           .from("agent_memory")
           .select("content")

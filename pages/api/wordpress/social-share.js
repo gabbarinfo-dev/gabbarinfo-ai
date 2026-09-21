@@ -23,6 +23,8 @@ export default async function handler(req, res) {
 
   const {
     platform = "facebook", // "facebook" | "instagram" | "both"
+    businessName,
+    pageId: explicitPageId,
     title,
     postUrl,
     featuredImageUrl,
@@ -35,25 +37,41 @@ export default async function handler(req, res) {
   }
 
   try {
-    // 1. Check Meta Connection
-    const { data: meta, error: metaErr } = await supabase
+    // 1. Resolve Brand-Specific or Active Meta Connection
+    let brandMeta = null;
+    if (businessName) {
+      const normBiz = String(businessName).toLowerCase().trim().replace(/[^a-z0-9]/g, "_");
+      const { data: mem } = await supabase
+        .from("agent_memory")
+        .select("content")
+        .eq("email", userEmail.toLowerCase())
+        .eq("memory_type", `meta_conn_${normBiz}`)
+        .maybeSingle();
+      if (mem?.content) {
+        try { brandMeta = JSON.parse(mem.content); } catch (_) {}
+      }
+    }
+
+    const { data: defaultMeta } = await supabase
       .from("meta_connections")
       .select("fb_page_id, fb_page_access_token, fb_user_access_token, instagram_actor_id, ig_business_id")
       .eq("email", userEmail.toLowerCase())
-      .single();
+      .maybeSingle();
 
-    if (!meta || (!meta.fb_user_access_token && !meta.fb_page_access_token)) {
+    const pageId = explicitPageId || brandMeta?.pageId || (defaultMeta?.fb_page_id ? defaultMeta.fb_page_id.split(",")[0].trim() : null);
+    const pageToken = brandMeta?.pageToken || defaultMeta?.fb_page_access_token || defaultMeta?.fb_user_access_token;
+    const igId = brandMeta?.igId || defaultMeta?.instagram_actor_id || defaultMeta?.ig_business_id;
+
+    if (!pageId || !pageToken) {
       return res.status(200).json({
         ok: false,
         require_connect: true,
-        message: "Your Facebook account is not connected yet. Please connect Facebook to share this post.",
+        message: "No connected Facebook Page found for this business. Please connect Facebook in Social Pilot.",
       });
     }
 
     const results = {};
     const API_VERSION = "v21.0";
-    const pageId = meta.fb_page_id ? meta.fb_page_id.split(",")[0].trim() : null;
-    const pageToken = meta.fb_page_access_token || meta.fb_user_access_token;
 
     // 2. Share to Facebook Page (Link Preview Post)
     if (platform === "facebook" || platform === "both") {
@@ -95,7 +113,6 @@ export default async function handler(req, res) {
 
     // 3. Share to Instagram (Image Post with Status Polling)
     if (platform === "instagram" || platform === "both") {
-      const igId = meta.instagram_actor_id || meta.ig_business_id;
       if (!igId) {
         results.instagram = { ok: false, error: "No connected Instagram business account found. Ensure your Instagram account is linked to your Facebook Page in Meta Business Suite." };
       } else if (!featuredImageUrl) {
@@ -173,6 +190,12 @@ export default async function handler(req, res) {
     return res.status(platformSuccess ? 200 : 400).json({
       ok: platformSuccess,
       results,
+      target: {
+        pageName: brandMeta?.pageName || "Facebook Page",
+        pageId,
+        igUsername: brandMeta?.igUsername || null,
+        igId,
+      },
       error: errorMessage,
     });
   } catch (err) {

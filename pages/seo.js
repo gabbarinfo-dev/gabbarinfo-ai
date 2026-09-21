@@ -2,14 +2,17 @@
 
 import { useEffect, useState } from "react";
 import { useSession } from "next-auth/react";
+import { useRouter } from "next/router";
 import Head from "next/head";
 
 export default function SeoHubPage() {
   const { data: session, status } = useSession();
+  const router = useRouter();
 
   // State
   const [activeBusiness, setActiveBusiness] = useState("");
   const [allConnections, setAllConnections] = useState({});
+  const [brandMeta, setBrandMeta] = useState(null);
   const [mode, setMode] = useState("manual"); // "manual" | "autopilot"
   const [activeTab, setActiveTab] = useState("content"); // "content" | "topics" | "autopilot" | "integrations"
   const [connection, setConnection] = useState(null);
@@ -149,18 +152,72 @@ export default function SeoHubPage() {
 
   const connectedProfiles = Object.keys(allConnections || {}).filter(k => allConnections[k]?.siteUrl);
 
-  // Auto-switch to first connected profile if available and current has no site
+  // 1. Initial Load: Read from URL query or localStorage
+  useEffect(() => {
+    if (router?.isReady) {
+      const qBiz = router.query?.business;
+      if (qBiz) {
+        setActiveBusiness(String(qBiz));
+        if (typeof window !== "undefined") localStorage.setItem("gabbar_active_business", String(qBiz));
+      } else if (typeof window !== "undefined") {
+        const saved = localStorage.getItem("gabbar_active_business");
+        if (saved && (!activeBusiness || activeBusiness === "default")) {
+          setActiveBusiness(saved);
+        }
+      }
+    }
+  }, [router?.isReady, router?.query?.business]);
+
+  // 2. Auto-switch to first connected profile if current has no site
   useEffect(() => {
     if (connectedProfiles.length > 0 && (!activeBusiness || !connectedProfiles.includes(activeBusiness))) {
-      setActiveBusiness(connectedProfiles[0]);
+      const target = (typeof window !== "undefined" && localStorage.getItem("gabbar_active_business") && connectedProfiles.includes(localStorage.getItem("gabbar_active_business")))
+        ? localStorage.getItem("gabbar_active_business")
+        : connectedProfiles[0];
+      setActiveBusiness(target);
     }
   }, [allConnections]);
 
-  // Load connection info when business changes
+  // 3. Load connection info and matching Brand Meta whenever business changes
   useEffect(() => {
     if (!session) return;
     fetchConnection();
+    fetchBrandMeta(activeBusiness);
   }, [session, activeBusiness]);
+
+  const fetchBrandMeta = async (bizName) => {
+    try {
+      const res = await fetch("/api/meta/status");
+      const data = await res.json();
+      if (data.connected) {
+        const norm = (bizName || "").toLowerCase().trim().replace(/[^a-z0-9]/g, "_");
+        const matched = data.allMetaConnections?.[norm] || data.meta || null;
+        setBrandMeta(matched);
+      } else {
+        setBrandMeta(null);
+      }
+    } catch (_) {
+      setBrandMeta(null);
+    }
+  };
+
+  const handleSelectBusiness = (newBiz) => {
+    if (newBiz === "__add_new__") {
+      setActiveTab("integrations");
+      return;
+    }
+    setActiveBusiness(newBiz);
+    setContentList([]);
+    setEditingArticle(null);
+    setPublishedResult(null);
+    setSocialShareStatus(null);
+    if (typeof window !== "undefined") {
+      localStorage.setItem("gabbar_active_business", newBiz);
+    }
+    if (router?.isReady) {
+      router.replace({ query: { ...router.query, business: newBiz } }, undefined, { shallow: true });
+    }
+  };
 
   const fetchConnection = async () => {
     setLoadingConn(true);
@@ -175,7 +232,8 @@ export default function SeoHubPage() {
           if (!activeBusiness && bName) setActiveBusiness(bName);
           fetchContent(data.connection);
           fetchAutopilotConfig(bName || activeBusiness);
-          setSuggestedTopics((prev) => (prev.length === 0 && bName ? getThirtyDefaultTopics(bName) : prev));
+          // Reactively generate 30 topics for the active business
+          setSuggestedTopics(getThirtyDefaultTopics(bName));
         } else {
           setConnection(null);
           setContentList([]);
@@ -707,6 +765,8 @@ export default function SeoHubPage() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           platform,
+          businessName: activeBusiness,
+          pageId: brandMeta?.pageId,
           title: publishedResult.title,
           postUrl: publishedResult.post_url,
           featuredImageUrl: publishedResult.featured_image,
@@ -829,7 +889,7 @@ export default function SeoHubPage() {
             <span style={{ fontSize: 12, color: "#94a3b8", fontWeight: 700, flexShrink: 0 }}>Project:</span>
             <select
               value={activeBusiness}
-              onChange={(e) => setActiveBusiness(e.target.value)}
+              onChange={(e) => handleSelectBusiness(e.target.value)}
               style={{
                 background: "transparent",
                 border: "none",
@@ -855,27 +915,29 @@ export default function SeoHubPage() {
                   [ No Website Connected Yet ]
                 </option>
               )}
+              <option value="__add_new__" style={{ background: "#0d111c", color: "#10b981", fontWeight: "bold" }}>
+                + Connect Another Website ↗
+              </option>
             </select>
-            {connectedProfiles.length === 0 && (
-              <button
-                type="button"
-                onClick={() => setActiveTab("integrations")}
-                style={{
-                  fontSize: 12,
-                  color: "#38bdf8",
-                  fontWeight: 700,
-                  textDecoration: "underline",
-                  marginLeft: 4,
-                  background: "none",
-                  border: "none",
-                  cursor: "pointer",
-                  padding: 0,
-                  flexShrink: 0,
-                }}
-              >
-                + Connect Website
-              </button>
-            )}
+            <button
+              type="button"
+              onClick={() => setActiveTab("integrations")}
+              title="Connect another WordPress website"
+              style={{
+                fontSize: 11,
+                color: "#38bdf8",
+                fontWeight: 700,
+                textDecoration: "underline",
+                marginLeft: 4,
+                background: "none",
+                border: "none",
+                cursor: "pointer",
+                padding: 0,
+                flexShrink: 0,
+              }}
+            >
+              + Add Site
+            </button>
           </div>
 
           {/* Mode Switcher */}
@@ -3101,12 +3163,15 @@ export default function SeoHubPage() {
                     </div>
                     <div>
                       <div style={{ fontSize: 15, fontWeight: 700, color: "#fff", display: "flex", alignItems: "center", gap: 8 }}>
-                        Facebook Business Page Syndication
+                        📘 Facebook Page: {brandMeta?.pageName || activeBusiness || "Connected Page"}
                         {autoShareFb && (
                           <span style={{ fontSize: 10, padding: "2px 6px", borderRadius: 4, background: "rgba(16, 185, 129, 0.2)", color: "#34d399", fontWeight: 700 }}>
                             ACTIVE
                           </span>
                         )}
+                      </div>
+                      <div style={{ fontSize: 12, color: "#38bdf8", marginTop: 2 }}>
+                        Target ID: {brandMeta?.pageId || "Bound to active profile"}
                       </div>
                       <p style={{ margin: "4px 0 0 0", color: "#94a3b8", fontSize: 12, lineHeight: 1.4 }}>
                         Automatically broadcasts a high-CTR interactive preview card with article synopsis, featured artwork, and direct site link.
@@ -3167,12 +3232,15 @@ export default function SeoHubPage() {
                     </div>
                     <div>
                       <div style={{ fontSize: 15, fontWeight: 700, color: "#fff", display: "flex", alignItems: "center", gap: 8 }}>
-                        Instagram Visual Feed Drop
+                        📸 Instagram: {brandMeta?.igUsername ? `@${brandMeta.igUsername}` : (brandMeta?.igId ? `ID: ${brandMeta.igId}` : activeBusiness)}
                         {autoShareIg && (
                           <span style={{ fontSize: 10, padding: "2px 6px", borderRadius: 4, background: "rgba(16, 185, 129, 0.2)", color: "#34d399", fontWeight: 700 }}>
                             ACTIVE
                           </span>
                         )}
+                      </div>
+                      <div style={{ fontSize: 12, color: "#e879f9", marginTop: 2 }}>
+                        {brandMeta?.igUsername ? `Account: @${brandMeta.igUsername}` : "Bound to active profile"}
                       </div>
                       <p style={{ margin: "4px 0 0 0", color: "#94a3b8", fontSize: 12, lineHeight: 1.4 }}>
                         Auto-formats your article's visual graphics with an AI-crafted caption, high-ranking hashtags, and bio call-to-action.
@@ -3646,10 +3714,33 @@ export default function SeoHubPage() {
 
                 {/* 1-Click Social Sharing Buttons */}
                 <div style={{ background: "#131b2e", padding: 18, borderRadius: 10, border: "1px solid #1e293b" }}>
-                  <h4 style={{ margin: "0 0 6px 0", fontSize: 14, color: "#fff" }}>📢 Cross-Promote to Social Channels</h4>
-                  <p style={{ margin: "0 0 14px 0", fontSize: 12, color: "#94a3b8" }}>
-                    Instantly share this new article to your connected Meta assets with rich link preview or photo card:
+                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 8, flexWrap: "wrap", gap: 8 }}>
+                    <h4 style={{ margin: 0, fontSize: 14, color: "#fff" }}>📢 Cross-Promote to Social Channels</h4>
+                    <span style={{ fontSize: 11, padding: "2px 8px", borderRadius: 4, background: "rgba(56, 189, 248, 0.15)", color: "#38bdf8", fontWeight: 700 }}>
+                      Active Profile: {activeBusiness || "Selected Business"}
+                    </span>
+                  </div>
+                  <p style={{ margin: "0 0 12px 0", fontSize: 12, color: "#94a3b8" }}>
+                    Instantly share this new article to your verified Meta assets with interactive click-through card:
                   </p>
+
+                  {/* Explicit Target Account Display */}
+                  <div style={{ background: "rgba(10, 14, 23, 0.6)", borderRadius: 8, padding: "10px 14px", marginBottom: 14, border: "1px solid rgba(255, 255, 255, 0.08)", fontSize: 12 }}>
+                    <div style={{ display: "flex", alignItems: "center", gap: 8, color: "#e2e8f0", marginBottom: 6 }}>
+                      <span>📘</span>
+                      <strong>Facebook Target:</strong>
+                      <span style={{ color: brandMeta?.pageName ? "#38bdf8" : "#94a3b8" }}>
+                        {brandMeta?.pageName ? `${brandMeta.pageName} (ID: ${brandMeta.pageId || "Active"})` : `Auto-linked to ${activeBusiness}`}
+                      </span>
+                    </div>
+                    <div style={{ display: "flex", alignItems: "center", gap: 8, color: "#e2e8f0" }}>
+                      <span>📸</span>
+                      <strong>Instagram Target:</strong>
+                      <span style={{ color: brandMeta?.igUsername ? "#e879f9" : "#94a3b8" }}>
+                        {brandMeta?.igUsername ? `@${brandMeta.igUsername}` : (brandMeta?.igId ? `ID: ${brandMeta.igId}` : `Auto-linked to ${activeBusiness}`)}
+                      </span>
+                    </div>
+                  </div>
 
                   <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
                     <button
@@ -3669,7 +3760,7 @@ export default function SeoHubPage() {
                         gap: 6,
                       }}
                     >
-                      <span>📘</span> Share to Facebook Page
+                      <span>📘</span> Share to {brandMeta?.pageName || activeBusiness || "Facebook Page"}
                     </button>
 
                     <button
@@ -3689,7 +3780,7 @@ export default function SeoHubPage() {
                         gap: 6,
                       }}
                     >
-                      <span>📸</span> Share to Instagram
+                      <span>📸</span> Share to {brandMeta?.igUsername ? `@${brandMeta.igUsername}` : "Instagram"}
                     </button>
                   </div>
 

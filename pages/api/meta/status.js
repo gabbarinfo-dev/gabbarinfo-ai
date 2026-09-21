@@ -10,18 +10,34 @@ export default async function handler(req, res) {
     return res.json({ connected: false });
   }
 
-  const { data, error } = await supabaseServer
-    .from("meta_connections")
-    .select("*")
-    .eq("email", userEmail)
-    .maybeSingle(); // 👈 IMPORTANT
+  const [metaRes, brandMemRes] = await Promise.all([
+    supabaseServer
+      .from("meta_connections")
+      .select("*")
+      .eq("email", userEmail)
+      .maybeSingle(),
+    supabaseServer
+      .from("agent_memory")
+      .select("memory_type, content, updated_at")
+      .eq("email", userEmail)
+      .like("memory_type", "meta_conn_%"),
+  ]);
 
-  if (error) {
-    return res.json({ connected: false });
-  }
+  const allMetaConnections = {};
+  (brandMemRes.data || []).forEach((m) => {
+    try {
+      const parsed = JSON.parse(m.content);
+      const bKey = m.memory_type.replace("meta_conn_", "");
+      allMetaConnections[bKey] = parsed;
+    } catch (_) {}
+  });
+
+  const connectedBrands = Object.keys(allMetaConnections);
 
   return res.json({
-    connected: !!data,
-    meta: data,
+    connected: !!metaRes.data || connectedBrands.length > 0,
+    meta: metaRes.data || Object.values(allMetaConnections)[0] || null,
+    allMetaConnections,
+    connectedBrands,
   });
 }

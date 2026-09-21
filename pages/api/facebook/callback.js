@@ -56,40 +56,76 @@ export default async function handler(req, res) {
     }
 
     // -----------------------------
-    // 3. Fetch business assets
+    // 3. Fetch comprehensive business assets
     // -----------------------------
-    const businessesRes = await axios.get(
-      "https://graph.facebook.com/v19.0/me/businesses",
-      { params: { access_token: fb_user_access_token } }
-    );
-    const fb_business_id = businessesRes.data?.data?.[0]?.id || null;
+    const [businessesRes, adAccountsRes, pagesRes] = await Promise.all([
+      axios.get("https://graph.facebook.com/v19.0/me/businesses", {
+        params: { fields: "id,name", access_token: fb_user_access_token },
+      }).catch(() => ({ data: { data: [] } })),
+      axios.get("https://graph.facebook.com/v19.0/me/adaccounts", {
+        params: { fields: "id,name,account_id,currency,business{id,name}", access_token: fb_user_access_token },
+      }).catch(() => ({ data: { data: [] } })),
+      axios.get("https://graph.facebook.com/v19.0/me/accounts", {
+        params: {
+          fields: "id,name,access_token,category,instagram_business_account{id,username}",
+          access_token: fb_user_access_token,
+        },
+      }).catch(() => ({ data: { data: [] } })),
+    ]);
 
-    const adAccountsRes = await axios.get(
-      "https://graph.facebook.com/v19.0/me/adaccounts",
-      { params: { access_token: fb_user_access_token } }
-    );
-    const fb_ad_account_id =
-      adAccountsRes.data?.data?.[0]?.id || null;
+    const allBusinesses = businessesRes.data?.data || [];
+    const allAdAccounts = adAccountsRes.data?.data || [];
+    const allPages = pagesRes.data?.data || [];
 
-    const pagesRes = await axios.get(
-      "https://graph.facebook.com/v19.0/me/accounts",
-      { params: { access_token: fb_user_access_token } }
-    );
-    const fb_page_id = pagesRes.data?.data?.[0]?.id || null;
+    // Fallback single-asset resolution
+    const fb_business_id = allBusinesses[0]?.id || null;
+    const fb_ad_account_id = allAdAccounts[0]?.id || null;
+    const fb_page_id = allPages[0]?.id || null;
+    const fb_page_token = allPages[0]?.access_token || null;
+    const ig_business_id = allPages[0]?.instagram_business_account?.id || null;
 
-    let ig_business_id = null;
-    if (fb_page_id) {
-      const igRes = await axios.get(
-        `https://graph.facebook.com/v19.0/${fb_page_id}`,
+    // -------------------------------------------------------------
+    // 3.2. MULTI-BRAND ISOLATION: Save each distinct Page/Brand Bundle
+    // -------------------------------------------------------------
+    for (let i = 0; i < allPages.length; i++) {
+      const page = allPages[i];
+      const pageName = page.name || `Brand_${page.id}`;
+      const normName = pageName.toLowerCase().trim().replace(/[^a-z0-9]/g, "_");
+
+      // Match closest Ad Account (by business or index)
+      const matchingAd = allAdAccounts.find((a) =>
+        a.business?.name && pageName.toLowerCase().includes(a.business.name.toLowerCase())
+      ) || allAdAccounts[i] || allAdAccounts[0] || null;
+
+      // Match closest Business Manager
+      const matchingBiz = allBusinesses.find((b) =>
+        pageName.toLowerCase().includes(b.name.toLowerCase())
+      ) || allBusinesses[i] || allBusinesses[0] || null;
+
+      const brandPayload = {
+        businessName: pageName,
+        pageId: page.id,
+        pageName: pageName,
+        pageToken: page.access_token,
+        igId: page.instagram_business_account?.id || null,
+        igUsername: page.instagram_business_account?.username || null,
+        businessId: matchingBiz?.id || fb_business_id,
+        businessTitle: matchingBiz?.name || pageName,
+        adAccountId: matchingAd?.id || fb_ad_account_id,
+        adAccountName: matchingAd?.name || null,
+        userToken: fb_user_access_token,
+        connectedAt: new Date().toISOString(),
+      };
+
+      await supabase.from("agent_memory").upsert(
         {
-          params: {
-            fields: "instagram_business_account",
-            access_token: fb_user_access_token,
-          },
-        }
+          email,
+          memory_type: `meta_conn_${normName}`,
+          content: JSON.stringify(brandPayload),
+          updated_at: new Date().toISOString(),
+        },
+        { onConflict: "email,memory_type" }
       );
-      ig_business_id =
-        igRes.data?.instagram_business_account?.id || null;
     }
 
     // -----------------------------
@@ -116,14 +152,15 @@ export default async function handler(req, res) {
     }
 
     // -----------------------------
-    // 4. UPSERT (FAIL-LOUD)
+    // 4. UPSERT PRIMARY (FAIL-LOUD)
     // -----------------------------
     const { error: upsertError } = await supabase
       .from("meta_connections")
       .upsert(
         {
           email,
-          fb_user_access_token,       // used ONCE for sync
+          fb_user_access_token,
+          fb_page_access_token: fb_page_token,
           fb_business_id,
           fb_page_id,
           ig_business_id,

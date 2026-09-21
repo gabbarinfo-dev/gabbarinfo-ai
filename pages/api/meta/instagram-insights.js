@@ -13,20 +13,41 @@ export default async function handler(req, res) {
             return res.status(401).json({ ok: false, message: "Not authenticated" });
         }
 
-        // 1. Get Meta connection details (ig_business_id)
+        // 1. Get Meta connection details (ig_business_id) for specific brand or active
+        const targetBusiness = req.body?.businessName;
+        let igBusinessId = req.body?.igBusinessId;
+        let accessToken = null;
+
+        if (targetBusiness) {
+            const normBiz = String(targetBusiness).toLowerCase().trim().replace(/[^a-z0-9]/g, '_');
+            const { data: brandMem } = await supabaseServer
+                .from("agent_memory")
+                .select("content")
+                .eq("email", session.user.email.toLowerCase())
+                .eq("memory_type", `meta_conn_${normBiz}`)
+                .maybeSingle();
+
+            if (brandMem?.content) {
+                try {
+                    const parsed = JSON.parse(brandMem.content);
+                    igBusinessId = igBusinessId || parsed.igId;
+                    accessToken = parsed.userToken || parsed.pageToken;
+                } catch (_) {}
+            }
+        }
+
         const { data: meta, error } = await supabaseServer
             .from("meta_connections")
             .select("ig_business_id, fb_user_access_token")
             .eq("email", session.user.email.toLowerCase())
             .maybeSingle();
 
-        if (error || !meta?.ig_business_id) {
-            return res.status(404).json({ ok: false, message: "Meta connection or Instagram Business ID not found." });
-        }
+        igBusinessId = igBusinessId || meta?.ig_business_id;
+        accessToken = accessToken || meta?.fb_user_access_token;
 
-        const igBusinessId = meta.ig_business_id;
-        // Existing project token pattern: Use system token if available, else user token
-        const accessToken = meta.fb_user_access_token;
+        if (!igBusinessId) {
+            return res.status(404).json({ ok: false, message: "Meta connection or Instagram Business ID not found for this profile." });
+        }
 
         if (!accessToken) {
             return res.status(400).json({ ok: false, message: "Meta access token not found." });

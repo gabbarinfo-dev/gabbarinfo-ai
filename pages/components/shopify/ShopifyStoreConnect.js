@@ -3757,6 +3757,24 @@ export default function ShopifyStoreConnect({ onConnectionChange }) {
                 </div>
               </div>
 
+              {/* Explicit Target Account Card */}
+              <div style={{ background: "rgba(10, 14, 23, 0.6)", borderRadius: 8, padding: "10px 14px", border: "1px solid rgba(255, 255, 255, 0.08)", fontSize: 12 }}>
+                <div style={{ display: "flex", alignItems: "center", gap: 8, color: "#e2e8f0", marginBottom: 6 }}>
+                  <span>📘</span>
+                  <strong>Facebook Target:</strong>
+                  <span style={{ color: "#38bdf8" }}>
+                    {brandSecurity?.meta?.pageName || brandSecurity?.meta?.display || "Connected Facebook Page"}
+                  </span>
+                </div>
+                <div style={{ display: "flex", alignItems: "center", gap: 8, color: "#e2e8f0" }}>
+                  <span>📸</span>
+                  <strong>Instagram Target:</strong>
+                  <span style={{ color: "#e879f9" }}>
+                    {brandSecurity?.meta?.igUsername ? `@${brandSecurity.meta.igUsername}` : "Connected Instagram Account"}
+                  </span>
+                </div>
+              </div>
+
               {/* Target Platform Select */}
               <div>
                 <label style={{ display: "block", fontSize: 12, fontWeight: 700, color: "#cbd5e1", marginBottom: 8 }}>

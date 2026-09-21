@@ -37,13 +37,33 @@ export default async function handler(req, res) {
 
   try {
     // 1. Check Meta Connection for this user
-    const { data: meta, error: metaErr } = await supabase
+    // 1. Check Brand-Specific or Default Meta Connection
+    const targetBrand = req.body?.businessName || req.body?.brandName;
+    let brandMeta = null;
+    if (targetBrand) {
+      const normBiz = String(targetBrand).toLowerCase().trim().replace(/[^a-z0-9]/g, "_");
+      const { data: mem } = await supabase
+        .from("agent_memory")
+        .select("content")
+        .eq("email", userEmail.toLowerCase())
+        .eq("memory_type", `meta_conn_${normBiz}`)
+        .maybeSingle();
+      if (mem?.content) {
+        try { brandMeta = JSON.parse(mem.content); } catch (_) {}
+      }
+    }
+
+    const { data: defaultMeta } = await supabase
       .from("meta_connections")
       .select("fb_page_id, fb_page_access_token, fb_user_access_token, instagram_actor_id, ig_business_id")
       .eq("email", userEmail.toLowerCase())
-      .single();
+      .maybeSingle();
 
-    if (!meta || (!meta.fb_user_access_token && !meta.fb_page_access_token)) {
+    const pageId = brandMeta?.pageId || (defaultMeta?.fb_page_id ? defaultMeta.fb_page_id.split(",")[0].trim() : null);
+    const pageToken = brandMeta?.pageToken || defaultMeta?.fb_page_access_token || defaultMeta?.fb_user_access_token;
+    const igId = brandMeta?.igId || defaultMeta?.instagram_actor_id || defaultMeta?.ig_business_id;
+
+    if (!pageId || !pageToken) {
       return res.status(200).json({
         ok: false,
         require_connect: true,
@@ -66,27 +86,27 @@ export default async function handler(req, res) {
       } catch (_) {}
     }
 
-    const metaIdentity = await getMetaIdentity(meta);
-    const brandCheck = checkBrandMatch({
-      storeName: shopData.name || "Shopify Store",
-      storeDomain: shopData.domain || shopData.shop,
-      shopHandle: shopData.shop,
-      metaIdentity,
-    });
-
-    if (!brandCheck.isMatched) {
-      return res.status(403).json({
-        ok: false,
-        brandMismatch: true,
-        brandSecurity: brandCheck,
-        error: brandCheck.reason || "Anti-Exploitation Block: The connected social channel belongs to a different business. Cross-brand posting is prohibited to preserve audience trust and prevent multi-tenant abuse.",
+    if (!brandMeta) {
+      const metaIdentity = await getMetaIdentity(defaultMeta || {});
+      const brandCheck = checkBrandMatch({
+        storeName: shopData.name || "Shopify Store",
+        storeDomain: shopData.domain || shopData.shop,
+        shopHandle: shopData.shop,
+        metaIdentity,
       });
+
+      if (!brandCheck.isMatched) {
+        return res.status(403).json({
+          ok: false,
+          brandMismatch: true,
+          brandSecurity: brandCheck,
+          error: brandCheck.reason || "Anti-Exploitation Block: The connected social channel belongs to a different business. Cross-brand posting is prohibited to preserve audience trust and prevent multi-tenant abuse.",
+        });
+      }
     }
 
     const results = {};
     const API_VERSION = "v21.0";
-    const pageId = meta.fb_page_id ? meta.fb_page_id.split(",")[0].trim() : null;
-    const pageToken = meta.fb_page_access_token || meta.fb_user_access_token;
 
     // 2. Share to Facebook Page (Interactive Link Preview Post or Photo)
     if (platform === "facebook" || platform === "both") {
@@ -126,7 +146,6 @@ export default async function handler(req, res) {
 
     // 3. Share to Instagram (Image Post with Status Polling)
     if (platform === "instagram" || platform === "both") {
-      const igId = meta.instagram_actor_id || meta.ig_business_id;
       if (!igId) {
         results.instagram = {
           ok: false,
@@ -210,6 +229,12 @@ export default async function handler(req, res) {
     return res.status(platformSuccess ? 200 : 400).json({
       ok: platformSuccess,
       results,
+      target: {
+        pageName: brandMeta?.pageName || "Facebook Page",
+        pageId,
+        igUsername: brandMeta?.igUsername || null,
+        igId,
+      },
       error: errorMessage,
     });
   } catch (err) {

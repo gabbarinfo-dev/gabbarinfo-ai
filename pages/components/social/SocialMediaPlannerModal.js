@@ -40,15 +40,21 @@ export default function SocialMediaPlannerModal({ onClose }) {
   const [targetLocationsInput, setTargetLocationsInput] = useState("");
   const [savingLocations, setSavingLocations] = useState(false);
 
+  const [availableBrands, setAvailableBrands] = useState([]);
+  const [selectedBrand, setSelectedBrand] = useState("");
+
   // Load initial config
   useEffect(() => {
     fetchConfig();
   }, []);
 
-  async function fetchConfig() {
+  async function fetchConfig(targetBiz = selectedBrand) {
     setLoading(true);
     try {
-      const res = await fetch("/api/social/autopilot-config");
+      const url = targetBiz
+        ? `/api/social/autopilot-config?businessName=${encodeURIComponent(targetBiz)}`
+        : "/api/social/autopilot-config";
+      const res = await fetch(url);
       const data = await res.json();
       if (data.ok) {
         setConfig(data.config);
@@ -60,6 +66,10 @@ export default function SocialMediaPlannerModal({ onClose }) {
         setHasInstagram(data.hasInstagram);
         setFbPageName(data.fbPageName);
         setIgUsername(data.igUsername);
+        setAvailableBrands(data.availableBrands || []);
+        if (data.activeBrand && !selectedBrand) {
+          setSelectedBrand(data.activeBrand);
+        }
       }
     } catch (e) {
       console.error("Failed to load social config:", e);
@@ -68,14 +78,15 @@ export default function SocialMediaPlannerModal({ onClose }) {
     }
   }
 
-  async function saveConfig(updated = {}) {
+  async function saveConfig(updated = {}, targetBiz = selectedBrand) {
     setSaving(true);
     try {
-      const payload = { ...config, ...updated };
+      const bizToUse = targetBiz || selectedBrand || config.businessName;
+      const payload = { ...config, ...updated, businessName: bizToUse };
       const res = await fetch("/api/social/autopilot-config", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ action: "save", config: payload }),
+        body: JSON.stringify({ action: "save", businessName: bizToUse, config: payload }),
       });
       const data = await res.json().catch(() => null);
       if (res.ok && data?.ok) {
@@ -397,6 +408,39 @@ export default function SocialMediaPlannerModal({ onClose }) {
                 <h2 style={{ margin: 0, fontSize: "clamp(15px, 3.5vw, 19px)", fontWeight: 800, letterSpacing: "-0.02em", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
                   Social Media Planner
                 </h2>
+
+                {/* Multi-Brand Profile Dropdown Selector */}
+                {availableBrands.length > 0 && (
+                  <div style={{ display: "inline-flex", alignItems: "center", gap: 6, background: "rgba(13, 20, 35, 0.8)", padding: "4px 10px", borderRadius: 8, border: "1px solid rgba(255, 255, 255, 0.14)" }}>
+                    <span style={{ fontSize: 11, color: "#94a3b8", fontWeight: 700 }}>Brand:</span>
+                    <select
+                      value={selectedBrand}
+                      onChange={(e) => {
+                        setSelectedBrand(e.target.value);
+                        fetchConfig(e.target.value);
+                      }}
+                      style={{
+                        background: "transparent",
+                        border: "none",
+                        color: "#38bdf8",
+                        fontWeight: 700,
+                        fontSize: 12,
+                        cursor: "pointer",
+                        outline: "none",
+                        maxWidth: 220,
+                        textOverflow: "ellipsis",
+                        overflow: "hidden",
+                      }}
+                    >
+                      {availableBrands.map((b) => (
+                        <option key={b.key} value={b.key} style={{ background: "#0d111c", color: "#38bdf8" }}>
+                          ✓ {b.businessName || b.pageName} ({b.igUsername ? `@${b.igUsername}` : `Page: ${b.pageId}`})
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                )}
+
                 <span
                   style={{
                     display: "inline-flex",

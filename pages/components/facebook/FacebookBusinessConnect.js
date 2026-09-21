@@ -2,13 +2,18 @@
 
 import { useEffect, useState } from "react";
 import BoostModal from "./meta/BoostModal";
+import BrandAssetPairingModal from "../brands/BrandAssetPairingModal";
 
 export default function FacebookBusinessConnect({ onOpenSocialPlanner }) {
   const [status, setStatus] = useState("idle"); // idle | connected | loading
   const [meta, setMeta] = useState(null);
+  const [allMetaConnections, setAllMetaConnections] = useState({});
+  const [selectedBrand, setSelectedBrand] = useState("");
   const [showBoostModal, setShowBoostModal] = useState(false);
   const [showConnectWarningModal, setShowConnectWarningModal] = useState(false);
+  const [showPairingModal, setShowPairingModal] = useState(false);
   const isLocked = status === "connected";
+
   useEffect(() => {
     const interval = setInterval(() => {
       fetch("/api/meta/status")
@@ -17,13 +22,17 @@ export default function FacebookBusinessConnect({ onOpenSocialPlanner }) {
           if (data.connected) {
             setStatus("connected");
             setMeta(data.meta);
+            setAllMetaConnections(data.allMetaConnections || {});
+            if (data.connectedBrands?.length > 0 && !selectedBrand) {
+              setSelectedBrand(data.connectedBrands[0]);
+            }
             clearInterval(interval);
           }
         });
     }, 1000);
 
     return () => clearInterval(interval);
-  }, []);
+  }, [selectedBrand]);
 
   const handleConnect = () => {
     setStatus("loading");
@@ -99,9 +108,15 @@ export default function FacebookBusinessConnect({ onOpenSocialPlanner }) {
     setShowConsentModal(false);
     setShowEngagementModal(true);
     setEngagementLoading(true);
+    const activeProfile = allMetaConnections[selectedBrand] || meta;
     try {
       const res = await fetch("/api/meta/page-engagement", {
         method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          businessName: activeProfile?.businessName || activeProfile?.pageName,
+          pageId: activeProfile?.pageId,
+        }),
       });
       const data = await res.json();
       if (data.ok) {
@@ -136,9 +151,15 @@ export default function FacebookBusinessConnect({ onOpenSocialPlanner }) {
     setShowIgConsentModal(false);
     setShowIgInsightsModal(true);
     setIgLoading(true);
+    const activeProfile = allMetaConnections[selectedBrand] || meta;
     try {
       const res = await fetch("/api/meta/instagram-insights", {
         method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          businessName: activeProfile?.businessName || activeProfile?.pageName,
+          igBusinessId: activeProfile?.igId,
+        }),
       });
       const data = await res.json();
       if (data.ok) {
@@ -173,15 +194,21 @@ export default function FacebookBusinessConnect({ onOpenSocialPlanner }) {
     setShowAdConsentModal(false);
     setShowAdInsightsModal(true);
     setAdLoading(true);
+    const activeProfile = allMetaConnections[selectedBrand] || meta;
     try {
       const res = await fetch("/api/meta/ad-insights", {
         method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          businessName: activeProfile?.businessName,
+          adAccountId: activeProfile?.adAccountId,
+        }),
       });
       const data = await res.json();
       if (data.ok) {
         setAdData(data.data);
       } else {
-        alert("Failed to fetch Ad insights: " + (data.message || "Unknown error"));
+        alert("Ad Insights note: " + (data.message || "Permissions pending on ad account"));
         setShowAdInsightsModal(false);
       }
     } catch (e) {
@@ -227,40 +254,113 @@ export default function FacebookBusinessConnect({ onOpenSocialPlanner }) {
             <span>✅</span> <span>Facebook Business Connected</span>
           </p>
 
-          {meta?.business_info_synced === true && (
-            <ul style={{ fontSize: 13, paddingLeft: 0, listStyleType: "none", margin: "10px 0 14px", color: "#94a3b8" }}>
-              {meta?.fb_business_id && (
-                <li style={{ marginBottom: 6 }}>
-                  <span style={{ fontWeight: 600, color: "#cbd5e1" }}>Business ID:</span>{" "}
-                  <code style={{ background: "rgba(255, 255, 255, 0.06)", padding: "3px 6px", borderRadius: 6, color: "#60a5fa" }}>{meta.fb_business_id}</code>
-                </li>
-              )}
-              {meta?.fb_page_id && (
-                <li style={{ marginBottom: 6 }}>
-                  <span style={{ fontWeight: 600, color: "#cbd5e1" }}>Page ID:</span>{" "}
-                  <code style={{ background: "rgba(255, 255, 255, 0.06)", padding: "3px 6px", borderRadius: 6, color: "#60a5fa" }}>{meta.fb_page_id}</code>
-                </li>
-              )}
-              {meta?.fb_ad_account_id && (
-                <li style={{ marginBottom: 6 }}>
-                  <span style={{ fontWeight: 600, color: "#cbd5e1" }}>Ad Account ID:</span>{" "}
-                  <code style={{ background: "rgba(255, 255, 255, 0.06)", padding: "3px 6px", borderRadius: 6, color: "#60a5fa" }}>{meta.fb_ad_account_id}</code>
-                </li>
-              )}
-              {meta?.fb_catalog_id && (
-                <li style={{ marginBottom: 6 }}>
-                  <span style={{ fontWeight: 600, color: "#cbd5e1" }}>Catalog ID:</span>{" "}
-                  <code style={{ background: "rgba(255, 255, 255, 0.06)", padding: "3px 6px", borderRadius: 6, color: "#38bdf8" }}>{meta.fb_catalog_id}</code>
-                </li>
-              )}
-              {meta?.fb_pixel_id && (
-                <li style={{ marginBottom: 6 }}>
-                  <span style={{ fontWeight: 600, color: "#cbd5e1" }}>Pixel ID:</span>{" "}
-                  <code style={{ background: "rgba(255, 255, 255, 0.06)", padding: "3px 6px", borderRadius: 6, color: "#34d399" }}>{meta.fb_pixel_id}</code>
-                </li>
-              )}
-            </ul>
+          {/* Dynamic Brand Profile Switcher */}
+          {Object.keys(allMetaConnections).length > 0 && (
+            <div style={{ marginBottom: "14px" }}>
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "4px" }}>
+                <label style={{ fontSize: "11px", fontWeight: 700, color: "#94a3b8" }}>
+                  Active Brand Profile:
+                </label>
+                <button
+                  type="button"
+                  onClick={() => setShowPairingModal(true)}
+                  style={{
+                    background: "none",
+                    border: "none",
+                    color: "#38bdf8",
+                    fontSize: "11px",
+                    fontWeight: 700,
+                    cursor: "pointer",
+                    padding: 0,
+                    textDecoration: "underline",
+                  }}
+                >
+                  ⚙️ Pair / Bundle Assets ↗
+                </button>
+              </div>
+              <select
+                value={selectedBrand}
+                onChange={(e) => setSelectedBrand(e.target.value)}
+                style={{
+                  width: "100%",
+                  padding: "8px 12px",
+                  borderRadius: "8px",
+                  background: "#0d111c",
+                  border: "1px solid rgba(255, 255, 255, 0.16)",
+                  color: "#38bdf8",
+                  fontWeight: 700,
+                  fontSize: "13px",
+                  cursor: "pointer",
+                  outline: "none",
+                }}
+              >
+                {Object.keys(allMetaConnections).map((bKey) => {
+                  const b = allMetaConnections[bKey];
+                  return (
+                    <option key={bKey} value={bKey}>
+                      ✓ {b.businessName || b.pageName} ({b.igUsername ? `@${b.igUsername}` : `Page ID: ${b.pageId}`})
+                    </option>
+                  );
+                })}
+              </select>
+            </div>
           )}
+
+          {(() => {
+            const activeProfile = allMetaConnections[selectedBrand] || meta;
+            const bId = activeProfile?.businessId || meta?.fb_business_id;
+            const pId = activeProfile?.pageId || meta?.fb_page_id;
+            const pName = activeProfile?.pageName || activeProfile?.businessName;
+            const igUser = activeProfile?.igUsername;
+            const adAcc = activeProfile?.adAccountId || meta?.fb_ad_account_id;
+
+            return (
+              <ul style={{ fontSize: 13, paddingLeft: 0, listStyleType: "none", margin: "10px 0 14px", color: "#94a3b8" }}>
+                {pName && (
+                  <li style={{ marginBottom: 6 }}>
+                    <span style={{ fontWeight: 600, color: "#cbd5e1" }}>Page Name:</span>{" "}
+                    <strong style={{ color: "#38bdf8" }}>{pName}</strong>
+                  </li>
+                )}
+                {bId && (
+                  <li style={{ marginBottom: 6 }}>
+                    <span style={{ fontWeight: 600, color: "#cbd5e1" }}>Business ID:</span>{" "}
+                    <code style={{ background: "rgba(255, 255, 255, 0.06)", padding: "3px 6px", borderRadius: 6, color: "#60a5fa" }}>{bId}</code>
+                  </li>
+                )}
+                {pId && (
+                  <li style={{ marginBottom: 6 }}>
+                    <span style={{ fontWeight: 600, color: "#cbd5e1" }}>Page ID:</span>{" "}
+                    <code style={{ background: "rgba(255, 255, 255, 0.06)", padding: "3px 6px", borderRadius: 6, color: "#60a5fa" }}>{pId}</code>
+                  </li>
+                )}
+                {igUser && (
+                  <li style={{ marginBottom: 6 }}>
+                    <span style={{ fontWeight: 600, color: "#cbd5e1" }}>Instagram:</span>{" "}
+                    <code style={{ background: "rgba(255, 255, 255, 0.06)", padding: "3px 6px", borderRadius: 6, color: "#e879f9" }}>@{igUser}</code>
+                  </li>
+                )}
+                {adAcc && (
+                  <li style={{ marginBottom: 6 }}>
+                    <span style={{ fontWeight: 600, color: "#cbd5e1" }}>Ad Account ID:</span>{" "}
+                    <code style={{ background: "rgba(255, 255, 255, 0.06)", padding: "3px 6px", borderRadius: 6, color: "#60a5fa" }}>{adAcc}</code>
+                  </li>
+                )}
+                {meta?.fb_catalog_id && (
+                  <li style={{ marginBottom: 6 }}>
+                    <span style={{ fontWeight: 600, color: "#cbd5e1" }}>Catalog ID:</span>{" "}
+                    <code style={{ background: "rgba(255, 255, 255, 0.06)", padding: "3px 6px", borderRadius: 6, color: "#38bdf8" }}>{meta.fb_catalog_id}</code>
+                  </li>
+                )}
+                {meta?.fb_pixel_id && (
+                  <li style={{ marginBottom: 6 }}>
+                    <span style={{ fontWeight: 600, color: "#cbd5e1" }}>Pixel ID:</span>{" "}
+                    <code style={{ background: "rgba(255, 255, 255, 0.06)", padding: "3px 6px", borderRadius: 6, color: "#34d399" }}>{meta.fb_pixel_id}</code>
+                  </li>
+                )}
+              </ul>
+            );
+          })()}
           <div style={{ display: "flex", gap: "8px", flexWrap: "wrap", marginTop: "12px" }}>
             <button
               onClick={handleSyncBusinessInfo}
@@ -612,6 +712,22 @@ export default function FacebookBusinessConnect({ onOpenSocialPlanner }) {
                 </div>
               </div>
             </div>
+          )}
+
+          {showPairingModal && (
+            <BrandAssetPairingModal
+              onClose={() => setShowPairingModal(false)}
+              onSaved={() => {
+                fetch("/api/meta/status")
+                  .then(r => r.json())
+                  .then(d => {
+                    if (d.connected) {
+                      setMeta(d.meta);
+                      setAllMetaConnections(d.allMetaConnections || {});
+                    }
+                  });
+              }}
+            />
           )}
         </>
       )}

@@ -257,7 +257,12 @@ export default function WordPressSiteConnect({ onConnectionChange }) {
 
             <div style={{ display: "flex", gap: 10, flexWrap: "wrap", width: "auto" }}>
               <a
-                href="/seo"
+                href={`/seo?business=${encodeURIComponent(activeBusiness || "")}`}
+                onClick={() => {
+                  if (activeBusiness && typeof window !== "undefined") {
+                    localStorage.setItem("gabbar_active_business", activeBusiness);
+                  }
+                }}
                 className="btn-gabbar-primary"
                 style={{
                   padding: "9px 18px",

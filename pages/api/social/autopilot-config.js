@@ -130,7 +130,9 @@ export default async function handler(req, res) {
   }
 
   const normalizedEmail = userEmail.toLowerCase().trim();
-  const autoMemoryKey = `social_autopilot_${normalizedEmail}`;
+  const rawBusiness = req.query?.businessName || req.body?.businessName || req.body?.config?.businessName || "";
+  const normBusiness = rawBusiness ? rawBusiness.toLowerCase().trim().replace(/[^a-z0-9]/g, "_") : null;
+  const autoMemoryKey = normBusiness ? `social_autopilot_${normalizedEmail}_${normBusiness}` : `social_autopilot_${normalizedEmail}`;
   const isOwner = normalizedEmail === "ndantare@gmail.com" || session?.user?.role === "owner" || session?.user?.role === "admin";
 
   // ================================================================
@@ -138,21 +140,37 @@ export default async function handler(req, res) {
   // ================================================================
   if (req.method === "GET") {
     try {
-      // 1. Check Meta Connection using exact robust query matching status.js
-      const { data: meta, error: metaErr } = await supabase
-        .from("meta_connections")
-        .select("*")
-        .ilike("email", normalizedEmail)
-        .maybeSingle();
+      // 1. Fetch all connected brand profiles from agent_memory
+      const [{ data: meta }, { data: brandMems }] = await Promise.all([
+        supabase
+          .from("meta_connections")
+          .select("*")
+          .ilike("email", normalizedEmail)
+          .maybeSingle(),
+        supabase
+          .from("agent_memory")
+          .select("memory_type, content")
+          .eq("email", normalizedEmail)
+          .like("memory_type", "meta_conn_%"),
+      ]);
 
-      if (metaErr) {
-        console.warn("[Social Autopilot] meta_connections query warning:", metaErr.message);
-      }
+      const availableBrands = (brandMems || []).map((m) => {
+        try {
+          const parsed = JSON.parse(m.content);
+          const key = m.memory_type.replace("meta_conn_", "");
+          return { key, ...parsed };
+        } catch (_) {
+          return null;
+        }
+      }).filter(Boolean);
 
-      // Check Facebook connection (page ID or business ID present)
-      const hasFacebook = Boolean(meta?.fb_page_id || meta?.fb_business_id);
-      // Check Instagram connection (ig_business_id or instagram_actor_id present)
-      const hasInstagram = Boolean(meta?.ig_business_id || meta?.instagram_actor_id);
+      // Match target brand or default to first
+      const matchedBrand = normBusiness
+        ? availableBrands.find((b) => b.key === normBusiness || b.businessName?.toLowerCase().replace(/[^a-z0-9]/g, "_") === normBusiness)
+        : (availableBrands[0] || null);
+
+      const hasFacebook = Boolean(matchedBrand?.pageId || meta?.fb_page_id || meta?.fb_business_id);
+      const hasInstagram = Boolean(matchedBrand?.igId || meta?.ig_business_id || meta?.instagram_actor_id);
 
       // 2. Fetch Autopilot Config and Client Profile Memory from agent_memory
       const [{ data: mem }, { data: clientMem }] = await Promise.all([
@@ -188,11 +206,13 @@ export default async function handler(req, res) {
         enabled: false,
         destination: hasFacebook && !hasInstagram ? "FACEBOOK_ONLY" : "BOTH", // sensible default based on connection
         cadence: "daily", // "daily" | "weekly_4" | "alternate" | "weekly"
-        businessName: bAnswers.business_name || meta?.business_name || "My Business",
+        businessName: matchedBrand?.businessName || bAnswers.business_name || meta?.business_name || "My Business",
         industry: bAnswers.industry || bAnswers.business_type || meta?.business_category || "Professional Services & Solutions",
         services: clientServicesList.length > 0 ? clientServicesList : ["Core Offerings", "Client Solutions", "Customer Support"],
         brandVoice: bAnswers.brand_voice || "Bold, authoritative, and consultative",
         targetAudience: bAnswers.target_market || "Clients, customers, and industry partners",
+        targetMarket: bAnswers.target_market || "",
+        targetLocations: bAnswers.target_market || "",
         queue: [],
         publishedCount: 0,
         testPostsUsed: 0,
@@ -215,8 +235,8 @@ export default async function handler(req, res) {
       }
 
       // Resolve Instagram username via Graph API (matching Instagram Insights)
-      let igUsername = null;
-      if (hasInstagram && meta?.ig_business_id) {
+      let igUsername = matchedBrand?.igUsername || null;
+      if (!igUsername && hasInstagram && meta?.ig_business_id) {
         const token = meta.fb_user_access_token || process.env.META_SYSTEM_USER_TOKEN;
         if (token) {
           try {
@@ -233,8 +253,10 @@ export default async function handler(req, res) {
         }
       }
       if (!igUsername && hasInstagram) {
-        igUsername = meta?.business_name ? meta.business_name.toLowerCase().replace(/[^a-z0-9_.]/g, "") : `ID: ${meta?.ig_business_id || meta?.instagram_actor_id}`;
+        igUsername = matchedBrand?.igUsername || (meta?.business_name ? meta.business_name.toLowerCase().replace(/[^a-z0-9_.]/g, "") : `ID: ${meta?.ig_business_id || meta?.instagram_actor_id}`);
       }
+
+      const fbPageName = matchedBrand?.pageName || meta?.business_name || (meta?.fb_page_id ? `Page ID: ${meta.fb_page_id}` : null);
 
       // Entitlement check for Social Media feature
       const ent = await verifyEntitlement(session, config.businessId || meta?.fb_business_id, FEATURES.SOCIAL);
@@ -245,15 +267,19 @@ export default async function handler(req, res) {
         isOwner,
         isRestricted: !ent.allowed,
         restrictionReason: ent.error || null,
+        availableBrands,
+        activeBrand: normBusiness || matchedBrand?.key || null,
         hasFacebook,
         hasInstagram,
-        fbPageName: meta?.business_name || (meta?.fb_page_id ? `Page ID: ${meta.fb_page_id}` : null),
+        fbPageName,
         igUsername,
+        targetPageId: matchedBrand?.pageId || meta?.fb_page_id || null,
+        targetIgId: matchedBrand?.igId || meta?.ig_business_id || null,
         metaInfo: {
-          businessId: meta?.fb_business_id || null,
-          pageId: meta?.fb_page_id || null,
-          adAccountId: meta?.fb_ad_account_id || null,
-          igBusinessId: meta?.ig_business_id || null,
+          businessId: matchedBrand?.businessId || meta?.fb_business_id || null,
+          pageId: matchedBrand?.pageId || meta?.fb_page_id || null,
+          adAccountId: matchedBrand?.adAccountId || meta?.fb_ad_account_id || null,
+          igBusinessId: matchedBrand?.igId || meta?.ig_business_id || null,
         },
         contentPillars: CONTENT_PILLARS
       });

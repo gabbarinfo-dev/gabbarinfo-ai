@@ -590,20 +590,33 @@ Respond ONLY with a valid JSON object matching this schema:
       const socialShares = {};
       if (!config.isDraft) {
         try {
+          const normShopBiz = String(brandName || shop || "").toLowerCase().trim().replace(/[^a-z0-9]/g, "_");
+          const { data: shopBrandMem } = await supabase
+            .from("agent_memory")
+            .select("content")
+            .eq("email", userEmail.toLowerCase())
+            .eq("memory_type", `meta_conn_${normShopBiz}`)
+            .maybeSingle();
+
+          let brandMeta = null;
+          if (shopBrandMem?.content) {
+            try { brandMeta = JSON.parse(shopBrandMem.content); } catch (_) {}
+          }
+
           const { data: meta } = await supabase
             .from("meta_connections")
             .select("fb_page_id, fb_page_access_token, fb_user_access_token, instagram_actor_id, ig_business_id")
             .eq("email", userEmail.toLowerCase())
             .maybeSingle();
 
-          if (meta) {
-            const pageId = meta.fb_page_id ? meta.fb_page_id.split(",")[0].trim() : null;
-            const effectiveToken = meta.fb_page_access_token || meta.fb_user_access_token;
-            const igId = meta.instagram_actor_id || meta.ig_business_id;
+          const pageId = brandMeta?.pageId || (meta?.fb_page_id ? meta.fb_page_id.split(",")[0].trim() : null);
+          const effectiveToken = brandMeta?.pageToken || meta?.fb_page_access_token || meta?.fb_user_access_token;
+          const igId = brandMeta?.igId || meta?.instagram_actor_id || meta?.ig_business_id;
 
+          if (pageId && effectiveToken) {
             // 11.5.1 Brand Integrity & Anti-Exploitation Cross-Check
-            let isBrandMatched = false;
-            let metaAssetTitle = "";
+            let isBrandMatched = Boolean(brandMeta); // Paired explicitly in Brand Wizard
+            let metaAssetTitle = brandMeta?.pageName || "";
             try {
               if (pageId && effectiveToken) {
                 const checkRes = await fetch(`https://graph.facebook.com/v21.0/${pageId}?fields=name,website&access_token=${effectiveToken}`);

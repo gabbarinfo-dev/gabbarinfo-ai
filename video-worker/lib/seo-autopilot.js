@@ -137,27 +137,51 @@ async function runSeoAutopilotCycle({ supabase, openai, force = false, logger = 
         continue;
       }
 
-      // 3. Find connected WordPress credentials from agent_memory
+      // 3. Find connected WordPress credentials strictly for this specific business profile
+      const targetBizKey = item.memory_type.replace(/^wp_autopilot_/, "");
+      const normalizedBiz = (config.businessName || targetBizKey || "default")
+        .toLowerCase()
+        .trim()
+        .replace(/[^a-z0-9]/g, "_");
+      const targetConnKey = `wp_conn_${normalizedBiz}`;
+      const altConnKey = `wp_conn_${targetBizKey}`;
+
       const { data: wpMemList } = await supabase
         .from("agent_memory")
-        .select("content")
+        .select("memory_type, content")
         .eq("email", item.email)
-        .or("memory_type.like.wp_conn_%,memory_type.like.wp_connection_%");
+        .or(`memory_type.eq.${targetConnKey},memory_type.eq.${altConnKey},memory_type.like.wp_conn_%,memory_type.eq.wordpress_connection`);
 
       let wpConn = null;
-      for (const m of wpMemList || []) {
+      // 1. Try exact business match first (Zero cross-site contamination)
+      const exactMatch = (wpMemList || []).find(
+        (m) => m.memory_type === targetConnKey || m.memory_type === altConnKey
+      );
+      if (exactMatch?.content) {
         try {
-          const parsed = JSON.parse(m.content);
+          const parsed = JSON.parse(exactMatch.content);
           if (parsed.siteUrl && (parsed.apiKey || parsed.applicationPassword)) {
             wpConn = parsed;
-            break;
           }
         } catch (_) {}
       }
 
+      // 2. If no exact match and default/single-profile account, fallback safely
+      if (!wpConn && (!targetBizKey || targetBizKey === "default")) {
+        for (const m of wpMemList || []) {
+          try {
+            const parsed = JSON.parse(m.content);
+            if (parsed.siteUrl && (parsed.apiKey || parsed.applicationPassword)) {
+              wpConn = parsed;
+              break;
+            }
+          } catch (_) {}
+        }
+      }
+
       if (!wpConn) {
-        logger(`[SEO Autopilot] No active WordPress connection for ${item.email}. Skipping.`);
-        results.push({ email: item.email, status: "skipped", reason: "no_wp_connection" });
+        logger(`[SEO Autopilot] No active WordPress connection found for ${item.email} profile "${businessName}" (Key: ${targetConnKey}). Skipping.`);
+        results.push({ email: item.email, status: "skipped", reason: "no_wp_connection", business: businessName });
         continue;
       }
 
@@ -510,19 +534,52 @@ Format output as valid JSON:
       const publishedPostUrl = wpResult.post_url || `${siteUrl}/${parsedArticle.slug}/`;
       logger(`[SEO Autopilot] Post published successfully to WordPress! ID: ${publishedPostId}, URL: ${publishedPostUrl}`);
 
-      // 8. In-Process Social Media Syndication (Guaranteed Facebook & Instagram Posting)
+      // 8. In-Process Social Media Syndication (Strict Brand Isolation for Facebook & Instagram)
       const socialShares = {};
-      const { data: metaConn, error: metaErr } = await supabase
-        .from("meta_connections")
-        .select("fb_page_id, fb_page_access_token, fb_user_access_token, ig_business_id, instagram_actor_id")
-        .ilike("email", item.email.trim())
-        .order("updated_at", { ascending: false })
-        .limit(1)
+      const targetMetaKey = `meta_conn_${normalizedBiz}`;
+      const altMetaKey = `meta_conn_${targetBizKey}`;
+
+      let activeMeta = null;
+      // 1. Try brand-specific Meta connection from agent_memory
+      const { data: brandMetaMem } = await supabase
+        .from("agent_memory")
+        .select("content")
+        .eq("email", item.email.trim())
+        .or(`memory_type.eq.${targetMetaKey},memory_type.eq.${altMetaKey}`)
         .maybeSingle();
 
-      if (metaErr) {
-        logger(`[SEO Autopilot] Error querying meta_connections for ${item.email}: ${metaErr.message}`);
+      if (brandMetaMem?.content) {
+        try {
+          const parsed = JSON.parse(brandMetaMem.content);
+          if (parsed.pageId || parsed.igId) {
+            activeMeta = {
+              fb_page_id: parsed.pageId,
+              fb_page_access_token: parsed.pageToken || parsed.fb_page_access_token,
+              fb_user_access_token: parsed.userToken || parsed.fb_user_access_token,
+              ig_business_id: parsed.igId || parsed.ig_business_id,
+              instagram_actor_id: parsed.igId || parsed.instagram_actor_id,
+            };
+          }
+        } catch (_) {}
       }
+
+      // 2. Fallback to default meta_connections table
+      if (!activeMeta) {
+        const { data: metaConn, error: metaErr } = await supabase
+          .from("meta_connections")
+          .select("fb_page_id, fb_page_access_token, fb_user_access_token, ig_business_id, instagram_actor_id")
+          .ilike("email", item.email.trim())
+          .order("updated_at", { ascending: false })
+          .limit(1)
+          .maybeSingle();
+
+        if (metaErr) {
+          logger(`[SEO Autopilot] Error querying meta_connections for ${item.email}: ${metaErr.message}`);
+        }
+        activeMeta = metaConn;
+      }
+
+      const metaConn = activeMeta;
 
       if (metaConn) {
         let pageToken = metaConn.fb_page_access_token;
