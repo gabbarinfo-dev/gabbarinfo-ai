@@ -1,12 +1,14 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import BrandAssetPairingModal from "../brands/BrandAssetPairingModal";
 
 export default function ShopifyStoreConnect({ onConnectionChange }) {
   const [loading, setLoading] = useState(true);
   const [connection, setConnection] = useState(null);
   const [allConnections, setAllConnections] = useState([]);
   const [selectedShop, setSelectedShop] = useState("");
+  const [showPairingModal, setShowPairingModal] = useState(false);
   const [showAddStoreModal, setShowAddStoreModal] = useState(false);
   const [modalShopInput, setModalShopInput] = useState("");
   const [modalToken, setModalToken] = useState("");
@@ -3184,11 +3186,32 @@ export default function ShopifyStoreConnect({ onConnectionChange }) {
                   <span>⚡</span> Syndication Protocol
                 </div>
 
-                {brandSecurity && !brandSecurity.isMatched && (
-                  <span style={{ fontSize: 11, padding: "3px 10px", borderRadius: 20, background: "rgba(239, 68, 68, 0.2)", border: "1px solid rgba(239, 68, 68, 0.4)", color: "#fca5a5", fontWeight: 700, display: "inline-flex", alignItems: "center", gap: 5 }}>
-                    <span>🛡️</span> Cross-Brand Exploitation Shield Active
-                  </span>
-                )}
+                <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                  <button
+                    type="button"
+                    onClick={() => setShowPairingModal(true)}
+                    style={{
+                      display: "inline-flex",
+                      alignItems: "center",
+                      gap: 6,
+                      padding: "5px 12px",
+                      borderRadius: 8,
+                      background: "rgba(168, 85, 247, 0.15)",
+                      border: "1px solid rgba(168, 85, 247, 0.35)",
+                      color: "#c084fc",
+                      fontSize: 12,
+                      fontWeight: 700,
+                      cursor: "pointer",
+                    }}
+                  >
+                    <span>⚙️</span> Pair / Switch Social Assets ↗
+                  </button>
+                  {brandSecurity && !brandSecurity.isMatched && (
+                    <span style={{ fontSize: 11, padding: "3px 10px", borderRadius: 20, background: "rgba(239, 68, 68, 0.2)", border: "1px solid rgba(239, 68, 68, 0.4)", color: "#fca5a5", fontWeight: 700, display: "inline-flex", alignItems: "center", gap: 5 }}>
+                      <span>🛡️</span> Cross-Brand Shield Active
+                    </span>
+                  )}
+                </div>
               </div>
 
               <h3 style={{ margin: "0 0 6px 0", fontSize: 18, color: "#fff", fontWeight: 800 }}>
@@ -3251,8 +3274,9 @@ export default function ShopifyStoreConnect({ onConnectionChange }) {
                     </div>
 
                     <div style={{ marginTop: 12, display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap" }}>
-                      <a
-                        href="/social-pilot"
+                      <button
+                        type="button"
+                        onClick={() => setShowPairingModal(true)}
                         style={{
                           display: "inline-flex",
                           alignItems: "center",
@@ -3264,11 +3288,11 @@ export default function ShopifyStoreConnect({ onConnectionChange }) {
                           color: "#38bdf8",
                           fontSize: 12,
                           fontWeight: 700,
-                          textDecoration: "none",
+                          cursor: "pointer",
                         }}
                       >
-                        <span>🔗</span> Connect {connection?.name || "Store"}'s Social Media in Social Pilot ↗
-                      </a>
+                        <span>⚙️</span> Pair {connection?.name || "Store"}'s Social Media in Pairing Wizard ↗
+                      </button>
                     </div>
                   </div>
                 </div>
@@ -3310,8 +3334,11 @@ export default function ShopifyStoreConnect({ onConnectionChange }) {
                     </svg>
                   </div>
                   <div>
-                    <div style={{ fontSize: 14, fontWeight: 700, color: "#fff", display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
-                      📘 Facebook Page: {brandSecurity?.meta?.pageName || "Facebook Business Page"}
+                    <div style={{ fontSize: 14.5, fontWeight: 700, color: "#fff", display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+                      📘 Facebook Page:
+                      <span style={{ color: "#38bdf8", background: "rgba(56, 189, 248, 0.12)", padding: "2px 8px", borderRadius: 6, border: "1px solid rgba(56, 189, 248, 0.25)" }}>
+                        {brandSecurity?.meta?.pageName || "No Page Linked"}
+                      </span>
                       {brandSecurity && !brandSecurity.isMatched ? (
                         <span style={{ fontSize: 9.5, padding: "1px 6px", borderRadius: 4, background: "rgba(239, 68, 68, 0.25)", color: "#f87171", fontWeight: 700 }}>
                           UNPAIRED
@@ -3320,15 +3347,19 @@ export default function ShopifyStoreConnect({ onConnectionChange }) {
                         <span style={{ fontSize: 9.5, padding: "1px 6px", borderRadius: 4, background: "rgba(16, 185, 129, 0.2)", color: "#34d399", fontWeight: 700 }}>
                           ACTIVE
                         </span>
-                      ) : null}
+                      ) : (
+                        <span style={{ fontSize: 9.5, padding: "1px 6px", borderRadius: 4, background: "rgba(148, 163, 184, 0.2)", color: "#94a3b8", fontWeight: 700 }}>
+                          MUTED
+                        </span>
+                      )}
                     </div>
-                    <div style={{ fontSize: 11.5, color: "#38bdf8", marginTop: 2 }}>
-                      {brandSecurity?.meta?.pageId ? `Bound Page ID: ${brandSecurity.meta.pageId}` : "Unpaired with Social Pilot"}
+                    <div style={{ fontSize: 12, color: brandSecurity?.meta?.pageId ? "#38bdf8" : "#94a3b8", marginTop: 4, fontWeight: 600 }}>
+                      {brandSecurity?.meta?.pageId ? `✓ Target ID: ${brandSecurity.meta.pageId}` : "Unpaired with Social Pilot"}
                     </div>
                     <p style={{ margin: "4px 0 0 0", color: (brandSecurity && !brandSecurity.isMatched) ? "#f87171" : "#94a3b8", fontSize: 11.5, lineHeight: 1.4 }}>
                       {brandSecurity && !brandSecurity.isMatched
-                        ? `Locked: No matching Facebook Page paired with ${connection?.name || "this store"}.`
-                        : "Automatically broadcasts a high-CTR interactive preview card with article synopsis, featured artwork, and direct site link."}
+                        ? `Locked: No matching Facebook Page paired with ${connection?.name || "this store"}. Click 'Pair Assets' to link.`
+                        : `Broadcasts an interactive preview card with article synopsis, artwork, and store link to ${brandSecurity?.meta?.pageName || "your page"}.`}
                     </p>
                   </div>
                 </div>
@@ -3401,8 +3432,11 @@ export default function ShopifyStoreConnect({ onConnectionChange }) {
                     </svg>
                   </div>
                   <div>
-                    <div style={{ fontSize: 14, fontWeight: 700, color: "#fff", display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
-                      📸 Instagram: {brandSecurity?.meta?.igUsername ? `@${brandSecurity.meta.igUsername}` : "Instagram Visual Feed Drop"}
+                    <div style={{ fontSize: 14.5, fontWeight: 700, color: "#fff", display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+                      📸 Instagram:
+                      <span style={{ color: "#f472b6", background: "rgba(244, 114, 182, 0.12)", padding: "2px 8px", borderRadius: 6, border: "1px solid rgba(244, 114, 182, 0.25)" }}>
+                        {brandSecurity?.meta?.igUsername ? `@${brandSecurity.meta.igUsername}` : (brandSecurity?.meta?.igId ? `ID: ${brandSecurity.meta.igId}` : "No Account Linked")}
+                      </span>
                       {brandSecurity && !brandSecurity.isMatched ? (
                         <span style={{ fontSize: 9.5, padding: "1px 6px", borderRadius: 4, background: "rgba(239, 68, 68, 0.25)", color: "#f87171", fontWeight: 700 }}>
                           UNPAIRED
@@ -3411,15 +3445,19 @@ export default function ShopifyStoreConnect({ onConnectionChange }) {
                         <span style={{ fontSize: 9.5, padding: "1px 6px", borderRadius: 4, background: "rgba(16, 185, 129, 0.2)", color: "#34d399", fontWeight: 700 }}>
                           ACTIVE
                         </span>
-                      ) : null}
+                      ) : (
+                        <span style={{ fontSize: 9.5, padding: "1px 6px", borderRadius: 4, background: "rgba(148, 163, 184, 0.2)", color: "#94a3b8", fontWeight: 700 }}>
+                          MUTED
+                        </span>
+                      )}
                     </div>
-                    <div style={{ fontSize: 11.5, color: "#e879f9", marginTop: 2 }}>
-                      {brandSecurity?.meta?.igUsername ? `Account: @${brandSecurity.meta.igUsername}` : "Unpaired with Social Pilot"}
+                    <div style={{ fontSize: 12, color: brandSecurity?.meta?.igUsername ? "#e879f9" : "#94a3b8", marginTop: 4, fontWeight: 600 }}>
+                      {brandSecurity?.meta?.igUsername ? `✓ Target Account: @${brandSecurity.meta.igUsername}` : "Unpaired with Social Pilot"}
                     </div>
                     <p style={{ margin: "4px 0 0 0", color: (brandSecurity && !brandSecurity.isMatched) ? "#f87171" : "#94a3b8", fontSize: 11.5, lineHeight: 1.4 }}>
                       {brandSecurity && !brandSecurity.isMatched
-                        ? `Locked: No matching Instagram account paired with ${connection?.name || "this store"}.`
-                        : "Auto-formats your article's featured hero image with an AI-crafted caption, high-ranking hashtags, and store link."}
+                        ? `Locked: No matching Instagram account paired with ${connection?.name || "this store"}. Click 'Pair Assets' to link.`
+                        : `Auto-formats your article's featured hero image with an AI-crafted caption and posts to @${brandSecurity?.meta?.igUsername || "Instagram"}.`}
                     </p>
                   </div>
                 </div>
@@ -4424,6 +4462,13 @@ export default function ShopifyStoreConnect({ onConnectionChange }) {
             </div>
           </div>
         </div>
+      )}
+
+      {showPairingModal && (
+        <BrandAssetPairingModal
+          onClose={() => setShowPairingModal(false)}
+          onSaved={() => fetchAutopilotConfig(selectedShop)}
+        />
       )}
     </div>
   );

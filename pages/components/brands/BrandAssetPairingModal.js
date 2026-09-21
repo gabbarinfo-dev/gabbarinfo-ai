@@ -1,8 +1,10 @@
 "use client";
 
 import { useState, useEffect } from "react";
+import { createPortal } from "react-dom";
 
 export default function BrandAssetPairingModal({ onClose, onSaved }) {
+  const [mounted, setMounted] = useState(false);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [metaStatus, setMetaStatus] = useState(null);
@@ -10,6 +12,7 @@ export default function BrandAssetPairingModal({ onClose, onSaved }) {
   const [pairings, setPairings] = useState([]);
 
   useEffect(() => {
+    setMounted(true);
     loadAssets();
   }, []);
 
@@ -94,7 +97,7 @@ export default function BrandAssetPairingModal({ onClose, onSaved }) {
             const b = existing[key];
             const nameToMatch = b.businessName || b.pageName || key;
             const autoSite = findBestSiteMatch(nameToMatch);
-            const chosenUrl = b.websiteUrl || autoSite?.url || "";
+            const chosenUrl = b.websiteUrl || b.website || autoSite?.url || "";
             const chosenType = b.websiteType || autoSite?.type || "wordpress";
             return {
               brandKey: key,
@@ -167,12 +170,12 @@ export default function BrandAssetPairingModal({ onClose, onSaved }) {
     }
   };
 
-  return (
+  const modalNode = (
     <div
       style={{
         position: "fixed",
         inset: 0,
-        zIndex: 10000,
+        zIndex: 999999,
         background: "rgba(3, 7, 18, 0.88)",
         backdropFilter: "blur(16px)",
         WebkitBackdropFilter: "blur(16px)",
@@ -488,4 +491,9 @@ export default function BrandAssetPairingModal({ onClose, onSaved }) {
       </div>
     </div>
   );
+
+  if (mounted && typeof document !== "undefined") {
+    return createPortal(modalNode, document.body);
+  }
+  return modalNode;
 }

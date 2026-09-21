@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import { useSession } from "next-auth/react";
 import { useRouter } from "next/router";
 import Head from "next/head";
+import BrandAssetPairingModal from "./components/brands/BrandAssetPairingModal";
 
 export default function SeoHubPage() {
   const { data: session, status } = useSession();
@@ -13,6 +14,7 @@ export default function SeoHubPage() {
   const [activeBusiness, setActiveBusiness] = useState("");
   const [allConnections, setAllConnections] = useState({});
   const [brandMeta, setBrandMeta] = useState(null);
+  const [showPairingModal, setShowPairingModal] = useState(false);
   const [mode, setMode] = useState("manual"); // "manual" | "autopilot"
   const [activeTab, setActiveTab] = useState("content"); // "content" | "topics" | "autopilot" | "integrations"
   const [connection, setConnection] = useState(null);
@@ -3162,8 +3164,30 @@ export default function SeoHubPage() {
             {/* ── SECTION 3: INSTANT SOCIAL BROADCAST & AMPLIFICATION ── */}
             <div style={{ background: "rgba(16, 22, 34, 0.78)", border: "1px solid rgba(255, 255, 255, 0.12)", borderRadius: 14, padding: 28, boxShadow: "0 10px 30px rgba(0,0,0,0.4)" }}>
               <div style={{ marginBottom: 20 }}>
-                <div style={{ display: "inline-flex", alignItems: "center", gap: 6, padding: "4px 10px", borderRadius: 20, background: "rgba(56, 189, 248, 0.15)", border: "1px solid rgba(56, 189, 248, 0.3)", color: "#38bdf8", fontSize: 11, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.5px", marginBottom: 8 }}>
-                  <span>⚡</span> Syndication Protocol
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: 10, marginBottom: 8 }}>
+                  <div style={{ display: "inline-flex", alignItems: "center", gap: 6, padding: "4px 10px", borderRadius: 20, background: "rgba(56, 189, 248, 0.15)", border: "1px solid rgba(56, 189, 248, 0.3)", color: "#38bdf8", fontSize: 11, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.5px" }}>
+                    <span>⚡</span> Syndication Protocol
+                  </div>
+
+                  <button
+                    type="button"
+                    onClick={() => setShowPairingModal(true)}
+                    style={{
+                      display: "inline-flex",
+                      alignItems: "center",
+                      gap: 6,
+                      padding: "5px 12px",
+                      borderRadius: 8,
+                      background: "rgba(168, 85, 247, 0.15)",
+                      border: "1px solid rgba(168, 85, 247, 0.35)",
+                      color: "#c084fc",
+                      fontSize: 12,
+                      fontWeight: 700,
+                      cursor: "pointer",
+                    }}
+                  >
+                    <span>⚙️</span> Pair / Switch Social Assets ↗
+                  </button>
                 </div>
                 <h3 style={{ margin: "0 0 6px 0", fontSize: 18, color: "#fff", fontWeight: 800 }}>
                   3. Instant Multichannel Social Syndication
@@ -4122,6 +4146,15 @@ export default function SeoHubPage() {
             </div>
           </div>
         </div>
+      )}
+
+      {showPairingModal && (
+        <BrandAssetPairingModal
+          onClose={() => setShowPairingModal(false)}
+          onSaved={() => {
+            fetchConnection(activeBusiness);
+          }}
+        />
       )}
     </div>
   );
