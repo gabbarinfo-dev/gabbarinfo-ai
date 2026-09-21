@@ -167,38 +167,73 @@ export default async function handler(req, res) {
 
   try {
     // ---------------------------------------------------------
+    // ---------------------------------------------------------
     // 1. GET CONNECTION
     // ---------------------------------------------------------
     if (action === "get-connection") {
-      const { data: mem, error } = await supabase
+      const { data: rows, error } = await supabase
         .from("agent_memory")
-        .select("content, updated_at")
+        .select("memory_type, content, updated_at")
         .eq("email", userEmail)
-        .eq("memory_type", "shopify_connection")
-        .maybeSingle();
+        .or("memory_type.like.shopify_conn_%,memory_type.eq.shopify_connection");
 
       if (error) {
-        console.error("Error fetching shopify connection:", error);
+        console.error("Error fetching shopify connections:", error);
         return res.status(500).json({ ok: false, error: error.message });
       }
 
-      if (!mem?.content) {
-        return res.status(200).json({ ok: true, connected: false });
+      if (!rows || rows.length === 0) {
+        return res.status(200).json({ ok: true, connected: false, allConnections: [] });
       }
 
-      const parsed = typeof mem.content === "string" ? JSON.parse(mem.content) : mem.content;
+      const storesMap = new Map();
+      let defaultConn = null;
+
+      for (const row of rows) {
+        try {
+          const parsed = typeof row.content === "string" ? JSON.parse(row.content) : row.content;
+          if (parsed && parsed.shop) {
+            const key = parsed.shop.toLowerCase();
+            const connObj = {
+              shop: parsed.shop,
+              myshopify_domain: parsed.myshopify_domain || parsed.shop,
+              domain: parsed.domain || parsed.shop,
+              shopName: parsed.shopName || parsed.shop.replace(".myshopify.com", ""),
+              currency: parsed.currency || "USD",
+              country: parsed.country || "",
+              connected_at: parsed.connected_at || row.updated_at,
+            };
+            if (!storesMap.has(key) || row.memory_type.startsWith("shopify_conn_")) {
+              storesMap.set(key, connObj);
+            }
+            if (row.memory_type === "shopify_connection") {
+              defaultConn = connObj;
+            }
+          }
+        } catch (_) {}
+      }
+
+      if (storesMap.size === 0) {
+        return res.status(200).json({ ok: true, connected: false, allConnections: [] });
+      }
+
+      const allConnections = Array.from(storesMap.values());
+      const reqShop = (payload.shop || payload.targetShop || "").trim().toLowerCase();
+      let activeConn = null;
+
+      if (reqShop && storesMap.has(reqShop)) {
+        activeConn = storesMap.get(reqShop);
+      } else if (defaultConn && storesMap.has(defaultConn.shop.toLowerCase())) {
+        activeConn = defaultConn;
+      } else {
+        activeConn = allConnections[0];
+      }
+
       return res.status(200).json({
         ok: true,
         connected: true,
-        connection: {
-          shop: parsed.shop,
-          myshopify_domain: parsed.myshopify_domain,
-          domain: parsed.domain,
-          shopName: parsed.shopName,
-          currency: parsed.currency,
-          country: parsed.country,
-          connected_at: parsed.connected_at || mem.updated_at,
-        },
+        connection: activeConn,
+        allConnections,
       });
     }
 
@@ -206,14 +241,62 @@ export default async function handler(req, res) {
     // 2. DISCONNECT
     // ---------------------------------------------------------
     if (action === "disconnect") {
-      const { error: delErr } = await supabase
-        .from("agent_memory")
-        .delete()
-        .eq("email", userEmail)
-        .eq("memory_type", "shopify_connection");
+      const reqShop = (payload.shop || payload.targetShop || "").trim().toLowerCase();
+      if (reqShop) {
+        const normShop = reqShop.replace(/[^a-z0-9]/g, "_");
+        // Delete specific store
+        await supabase
+          .from("agent_memory")
+          .delete()
+          .eq("email", userEmail)
+          .eq("memory_type", `shopify_conn_${normShop}`);
 
-      if (delErr) {
-        return res.status(500).json({ ok: false, error: delErr.message });
+        // Check legacy connection
+        const { data: legacyRow } = await supabase
+          .from("agent_memory")
+          .select("content")
+          .eq("email", userEmail)
+          .eq("memory_type", "shopify_connection")
+          .maybeSingle();
+
+        if (legacyRow?.content) {
+          try {
+            const parsed = typeof legacyRow.content === "string" ? JSON.parse(legacyRow.content) : legacyRow.content;
+            if (parsed?.shop?.toLowerCase() === reqShop) {
+              const { data: remainRows } = await supabase
+                .from("agent_memory")
+                .select("content")
+                .eq("email", userEmail)
+                .like("memory_type", "shopify_conn_%")
+                .limit(1);
+
+              if (remainRows && remainRows.length > 0) {
+                await supabase.from("agent_memory").upsert(
+                  {
+                    email: userEmail,
+                    memory_type: "shopify_connection",
+                    content: remainRows[0].content,
+                    updated_at: new Date().toISOString(),
+                  },
+                  { onConflict: "email,memory_type" }
+                );
+              } else {
+                await supabase
+                  .from("agent_memory")
+                  .delete()
+                  .eq("email", userEmail)
+                  .eq("memory_type", "shopify_connection");
+              }
+            }
+          } catch (_) {}
+        }
+      } else {
+        // Disconnect all
+        await supabase
+          .from("agent_memory")
+          .delete()
+          .eq("email", userEmail)
+          .or("memory_type.like.shopify_conn_%,memory_type.eq.shopify_connection");
       }
 
       return res.status(200).json({ ok: true, message: "Shopify store disconnected successfully." });
@@ -280,10 +363,13 @@ export default async function handler(req, res) {
         connection_type: "custom_app_token",
       };
 
+      const normShop = shop.toLowerCase().trim().replace(/[^a-z0-9]/g, "_");
+
+      // Save to isolated multi-store key
       const { error: dbErr } = await supabase.from("agent_memory").upsert(
         {
           email: userEmail,
-          memory_type: "shopify_connection",
+          memory_type: `shopify_conn_${normShop}`,
           content: JSON.stringify(connectionPayload),
           updated_at: new Date().toISOString(),
         },
@@ -294,26 +380,108 @@ export default async function handler(req, res) {
         return res.status(500).json({ ok: false, error: "Database error: " + dbErr.message });
       }
 
+      // Also mirror to shopify_connection for backward compatibility
+      await supabase.from("agent_memory").upsert(
+        {
+          email: userEmail,
+          memory_type: "shopify_connection",
+          content: JSON.stringify(connectionPayload),
+          updated_at: new Date().toISOString(),
+        },
+        { onConflict: "email,memory_type" }
+      );
+
+      // Fetch all connections to return to client
+      const { data: allRows } = await supabase
+        .from("agent_memory")
+        .select("memory_type, content, updated_at")
+        .eq("email", userEmail)
+        .or("memory_type.like.shopify_conn_%,memory_type.eq.shopify_connection");
+
+      const storesMap = new Map();
+      if (allRows) {
+        for (const row of allRows) {
+          try {
+            const p = typeof row.content === "string" ? JSON.parse(row.content) : row.content;
+            if (p && p.shop) {
+              const k = p.shop.toLowerCase();
+              storesMap.set(k, {
+                shop: p.shop,
+                myshopify_domain: p.myshopify_domain || p.shop,
+                domain: p.domain || p.shop,
+                shopName: p.shopName || p.shop.replace(".myshopify.com", ""),
+                currency: p.currency || "USD",
+                country: p.country || "",
+                connected_at: p.connected_at || row.updated_at,
+              });
+            }
+          } catch (_) {}
+        }
+      }
+
       return res.status(200).json({
         ok: true,
         message: "Shopify store paired successfully!",
         connection: connectionPayload,
+        allConnections: Array.from(storesMap.values()),
       });
     }
 
     // Retrieve active connection for authenticated actions below
-    const { data: mem } = await supabase
-      .from("agent_memory")
-      .select("content")
-      .eq("email", userEmail)
-      .eq("memory_type", "shopify_connection")
-      .maybeSingle();
+    const reqShop = (payload.shop || payload.targetShop || "").trim().toLowerCase();
+    let conn = null;
 
-    if (!mem?.content) {
+    if (reqShop) {
+      const normShop = reqShop.replace(/[^a-z0-9]/g, "_");
+      const { data: specificMem } = await supabase
+        .from("agent_memory")
+        .select("content")
+        .eq("email", userEmail)
+        .eq("memory_type", `shopify_conn_${normShop}`)
+        .maybeSingle();
+
+      if (specificMem?.content) {
+        try {
+          conn = typeof specificMem.content === "string" ? JSON.parse(specificMem.content) : specificMem.content;
+        } catch (_) {}
+      }
+    }
+
+    if (!conn) {
+      const { data: mem } = await supabase
+        .from("agent_memory")
+        .select("content")
+        .eq("email", userEmail)
+        .eq("memory_type", "shopify_connection")
+        .maybeSingle();
+
+      if (mem?.content) {
+        try {
+          conn = typeof mem.content === "string" ? JSON.parse(mem.content) : mem.content;
+        } catch (_) {}
+      }
+    }
+
+    if (!conn) {
+      const { data: anyMem } = await supabase
+        .from("agent_memory")
+        .select("content")
+        .eq("email", userEmail)
+        .like("memory_type", "shopify_conn_%")
+        .limit(1)
+        .maybeSingle();
+
+      if (anyMem?.content) {
+        try {
+          conn = typeof anyMem.content === "string" ? JSON.parse(anyMem.content) : anyMem.content;
+        } catch (_) {}
+      }
+    }
+
+    if (!conn) {
       return res.status(400).json({ ok: false, error: "No Shopify store connected." });
     }
 
-    const conn = typeof mem.content === "string" ? JSON.parse(mem.content) : mem.content;
     const { shop } = conn;
     const accessToken = await getValidShopifyAccessToken(conn, userEmail, supabase);
 

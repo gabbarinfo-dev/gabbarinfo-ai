@@ -47,6 +47,18 @@ async function getValidShopifyAccessToken(connection, email, supabase, logger = 
       };
 
       if (supabase && email) {
+        if (connection.shop) {
+          const normShop = connection.shop.toLowerCase().trim().replace(/[^a-z0-9]/g, "_");
+          await supabase.from("agent_memory").upsert(
+            {
+              email,
+              memory_type: `shopify_conn_${normShop}`,
+              content: JSON.stringify(updatedConnection),
+              updated_at: new Date().toISOString(),
+            },
+            { onConflict: "email,memory_type" }
+          );
+        }
         await supabase.from("agent_memory").upsert(
           {
             email,
@@ -185,20 +197,40 @@ async function runShopifyAutopilotCycle({ supabase, openai, force = false, email
   let connQuery = supabase
     .from("agent_memory")
     .select("email, memory_type, content, updated_at")
-    .eq("memory_type", "shopify_connection");
+    .or("memory_type.like.shopify_conn_%,memory_type.eq.shopify_connection");
 
   if (email) {
     connQuery = connQuery.eq("email", email.trim().toLowerCase());
   }
 
-  const { data: storeConns, error: connErr } = await connQuery;
+  const { data: rawStoreConns, error: connErr } = await connQuery;
   if (connErr) {
     logger(`[Shopify Autopilot] Failed to fetch Shopify connections: ${connErr.message}`);
     throw connErr;
   }
 
-  if (!storeConns || storeConns.length === 0) {
+  if (!rawStoreConns || rawStoreConns.length === 0) {
     logger("[Shopify Autopilot] No connected Shopify stores found.");
+    return [];
+  }
+
+  // Deduplicate stores by userEmail and shop domain
+  const uniqueStoreMap = new Map();
+  for (const item of rawStoreConns) {
+    try {
+      const parsed = typeof item.content === "string" ? JSON.parse(item.content) : item.content;
+      if (parsed && parsed.shop) {
+        const key = `${item.email.toLowerCase()}_${parsed.shop.toLowerCase()}`;
+        if (!uniqueStoreMap.has(key) || item.memory_type.startsWith("shopify_conn_")) {
+          uniqueStoreMap.set(key, { email: item.email, content: parsed });
+        }
+      }
+    } catch (_) {}
+  }
+
+  const storeConns = Array.from(uniqueStoreMap.values());
+  if (storeConns.length === 0) {
+    logger("[Shopify Autopilot] No valid Shopify stores found.");
     return [];
   }
 
@@ -206,12 +238,7 @@ async function runShopifyAutopilotCycle({ supabase, openai, force = false, email
 
   for (const connRow of storeConns) {
     const userEmail = connRow.email;
-    let conn = null;
-    try {
-      conn = typeof connRow.content === "string" ? JSON.parse(connRow.content) : connRow.content;
-    } catch (_) {
-      continue;
-    }
+    const conn = connRow.content;
 
     if (!conn || !conn.shop) continue;
     const shop = conn.shop;

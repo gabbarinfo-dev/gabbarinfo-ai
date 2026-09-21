@@ -163,6 +163,20 @@ export default async function handler(req, res) {
   };
 
   try {
+    const normShop = shop.toLowerCase().trim().replace(/[^a-z0-9]/g, "_");
+
+    // Upsert isolated multi-store connection
+    await supabase.from("agent_memory").upsert(
+      {
+        email: userEmail,
+        memory_type: `shopify_conn_${normShop}`,
+        content: JSON.stringify(connectionPayload),
+        updated_at: new Date().toISOString(),
+      },
+      { onConflict: "email,memory_type" }
+    );
+
+    // Also mirror to legacy shopify_connection for backward compatibility
     const { error: dbError } = await supabase.from("agent_memory").upsert(
       {
         email: userEmail,

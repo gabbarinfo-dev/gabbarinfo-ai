@@ -5,6 +5,14 @@ import { useEffect, useState } from "react";
 export default function ShopifyStoreConnect({ onConnectionChange }) {
   const [loading, setLoading] = useState(true);
   const [connection, setConnection] = useState(null);
+  const [allConnections, setAllConnections] = useState([]);
+  const [selectedShop, setSelectedShop] = useState("");
+  const [showAddStoreModal, setShowAddStoreModal] = useState(false);
+  const [modalShopInput, setModalShopInput] = useState("");
+  const [modalToken, setModalToken] = useState("");
+  const [modalMode, setModalMode] = useState("token"); // "token" | "oauth"
+  const [modalConnecting, setModalConnecting] = useState(false);
+  const [modalError, setModalError] = useState("");
   const [shopInput, setShopInput] = useState("");
   const [connecting, setConnecting] = useState(false);
   const [errorMsg, setErrorMsg] = useState("");
@@ -99,10 +107,12 @@ export default function ShopifyStoreConnect({ onConnectionChange }) {
     fetchConnection();
   }, []);
 
-  const fetchAutopilotConfig = async () => {
+  const fetchAutopilotConfig = async (targetShop = null) => {
+    const shopToUse = targetShop || selectedShop || connection?.shop;
     setAutopilotLoading(true);
     try {
-      const res = await fetch("/api/shopify/sync?action=get-autopilot-config");
+      const q = shopToUse ? `&shop=${encodeURIComponent(shopToUse)}` : "";
+      const res = await fetch(`/api/shopify/sync?action=get-autopilot-config${q}`);
       const data = await res.json();
       if (data.ok && data.config) {
         if (data.brandSecurity) {
@@ -120,7 +130,7 @@ export default function ShopifyStoreConnect({ onConnectionChange }) {
 
         // If no topics suggested yet, automatically trigger topic generation
         if (!data.config.suggestedTopics || data.config.suggestedTopics.length === 0) {
-          handleAutoSuggestTopics();
+          handleAutoSuggestTopics(shopToUse);
         }
       }
     } catch (e) {
@@ -130,7 +140,8 @@ export default function ShopifyStoreConnect({ onConnectionChange }) {
     }
   };
 
-  const handleAutoSuggestTopics = async () => {
+  const handleAutoSuggestTopics = async (targetShop = null) => {
+    const shopToUse = targetShop || selectedShop || connection?.shop;
     setLoadingTopics(true);
     try {
       const res = await fetch("/api/shopify/sync", {
@@ -138,6 +149,7 @@ export default function ShopifyStoreConnect({ onConnectionChange }) {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           action: "suggest-topics",
+          shop: shopToUse,
           targetKeywords: autopilotConfig.targetKeywords,
           targetLocations: autopilotConfig.targetLocations,
           nicheFocus: autopilotConfig.nicheFocus,
@@ -309,6 +321,7 @@ export default function ShopifyStoreConnect({ onConnectionChange }) {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           action: "save-autopilot-config",
+          shop: selectedShop || connection?.shop,
           config: toSave,
         }),
       });
@@ -316,7 +329,7 @@ export default function ShopifyStoreConnect({ onConnectionChange }) {
       if (data.ok) {
         setAutopilotConfig(data.config || toSave);
         setAutopilotNotice(
-          `✅ Autopilot schedule saved (${isEnabled ? "Active" : "Paused"}, ${
+          `✅ Autopilot schedule saved for ${connection?.shopName || selectedShop} (${isEnabled ? "Active" : "Paused"}, ${
             toSave.cadence === "daily" ? "Daily" : toSave.cadence === "3x_week" ? "3x / Week" : "Weekly"
           }). ${toSave.topicQueue?.length || 0} topics in queue. Background routine updated on Railway.`
         );
@@ -340,13 +353,14 @@ export default function ShopifyStoreConnect({ onConnectionChange }) {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           action: "trigger-autopilot",
+          shop: selectedShop || connection?.shop,
         }),
       });
       const data = await res.json();
       if (data.ok) {
         setAutopilotNotice(`✅ ${data.message || "Autopilot cycle completed successfully!"}`);
-        fetchAutopilotConfig();
-        fetchLiveArticles();
+        fetchAutopilotConfig(selectedShop);
+        fetchArticles(selectedShop);
         setTimeout(() => setAutopilotNotice(""), 10000);
       } else {
         setAutopilotNotice("❌ Cycle trigger failed: " + (data.error || "Unknown"));
@@ -358,21 +372,30 @@ export default function ShopifyStoreConnect({ onConnectionChange }) {
     }
   };
 
-  const fetchConnection = async () => {
+  const fetchConnection = async (targetShop = null) => {
     setLoading(true);
     try {
-      const res = await fetch("/api/shopify/sync?action=get-connection");
+      const q = targetShop ? `&shop=${encodeURIComponent(targetShop)}` : "";
+      const res = await fetch(`/api/shopify/sync?action=get-connection${q}`);
       const data = await res.json();
       if (data.ok && data.connected) {
         setConnection(data.connection);
+        const stores = data.allConnections && data.allConnections.length > 0
+          ? data.allConnections
+          : [data.connection];
+        setAllConnections(stores);
+        const activeShop = data.connection?.shop || "";
+        setSelectedShop(activeShop);
         if (onConnectionChange) onConnectionChange(true);
-        // Pre-fetch products, blogs, live articles, and autopilot
-        fetchProducts();
-        fetchBlogs();
-        fetchArticles();
-        fetchAutopilotConfig();
+        // Pre-fetch products, blogs, live articles, and autopilot for active store
+        fetchProducts(activeShop);
+        fetchBlogs(activeShop);
+        fetchArticles(activeShop);
+        fetchAutopilotConfig(activeShop);
       } else {
         setConnection(null);
+        setAllConnections([]);
+        setSelectedShop("");
         if (onConnectionChange) onConnectionChange(false);
       }
     } catch (e) {
@@ -380,6 +403,17 @@ export default function ShopifyStoreConnect({ onConnectionChange }) {
     } finally {
       setLoading(false);
     }
+  };
+
+  const handleSelectStore = (newShop) => {
+    if (!newShop || newShop === selectedShop) return;
+    setSelectedShop(newShop);
+    setSelectedProduct(null);
+    setOptimizedData(null);
+    setPreviewArticle(null);
+    setSelectedArticle(null);
+    setOptimizedArticleData(null);
+    fetchConnection(newShop);
   };
 
   const handleConnect = (e) => {
@@ -438,9 +472,16 @@ export default function ShopifyStoreConnect({ onConnectionChange }) {
       const data = await res.json();
       if (data.ok && data.connection) {
         setConnection(data.connection);
+        const stores = data.allConnections && data.allConnections.length > 0
+          ? data.allConnections
+          : [data.connection];
+        setAllConnections(stores);
+        setSelectedShop(data.connection.shop);
         if (onConnectionChange) onConnectionChange(true);
-        fetchProducts();
-        fetchBlogs();
+        fetchProducts(data.connection.shop);
+        fetchBlogs(data.connection.shop);
+        fetchArticles(data.connection.shop);
+        fetchAutopilotConfig(data.connection.shop);
       } else {
         setErrorMsg(data.error || "Failed to pair store with access token.");
       }
@@ -451,20 +492,114 @@ export default function ShopifyStoreConnect({ onConnectionChange }) {
     }
   };
 
-  const handleDisconnect = async () => {
-    if (!confirm("Are you sure you want to disconnect this Shopify store?")) return;
+  const handleModalAddStoreToken = async (e) => {
+    e.preventDefault();
+    if (!modalShopInput.trim()) {
+      setModalError("Please enter the Shopify store domain.");
+      return;
+    }
+    if (!modalToken.trim()) {
+      setModalError("Please enter the Shopify Admin API Access Token (shpat_...).");
+      return;
+    }
+
+    setModalConnecting(true);
+    setModalError("");
+
     try {
       const res = await fetch("/api/shopify/sync", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ action: "disconnect" }),
+        body: JSON.stringify({
+          action: "connect-token",
+          shop: modalShopInput.trim(),
+          accessToken: modalToken.trim(),
+        }),
+      });
+
+      const data = await res.json();
+      if (data.ok && data.connection) {
+        setConnection(data.connection);
+        const stores = data.allConnections && data.allConnections.length > 0
+          ? data.allConnections
+          : [data.connection];
+        setAllConnections(stores);
+        setSelectedShop(data.connection.shop);
+        setShowAddStoreModal(false);
+        setModalShopInput("");
+        setModalToken("");
+        if (onConnectionChange) onConnectionChange(true);
+        fetchProducts(data.connection.shop);
+        fetchBlogs(data.connection.shop);
+        fetchArticles(data.connection.shop);
+        fetchAutopilotConfig(data.connection.shop);
+      } else {
+        setModalError(data.error || "Failed to pair store with access token.");
+      }
+    } catch (err) {
+      setModalError("Error pairing store: " + err.message);
+    } finally {
+      setModalConnecting(false);
+    }
+  };
+
+  const handleModalAddStoreOAuth = (e) => {
+    e.preventDefault();
+    if (!modalShopInput.trim()) {
+      setModalError("Please enter your Shopify store domain.");
+      return;
+    }
+
+    setModalConnecting(true);
+    let normalized = modalShopInput.trim().toLowerCase();
+    if (normalized.includes("admin.shopify.com/store/")) {
+      const match = normalized.match(/admin\.shopify\.com\/store\/([a-zA-Z0-9\-]+)/);
+      if (match && match[1]) {
+        normalized = `${match[1]}.myshopify.com`;
+      }
+    } else {
+      normalized = normalized.replace(/^https?:\/\//, "").replace(/\/+$/, "");
+      if (normalized.includes("/")) {
+        normalized = normalized.split("/")[0];
+      }
+      if (!normalized.includes(".")) {
+        normalized = `${normalized}.myshopify.com`;
+      }
+    }
+
+    window.location.href = `/api/shopify/connect?shop=${encodeURIComponent(normalized)}`;
+  };
+
+  const handleDisconnect = async () => {
+    const currentName = connection?.shopName || connection?.shop || "this store";
+    if (!confirm(`Are you sure you want to disconnect "${currentName}"?`)) return;
+    try {
+      const targetDisconnectShop = selectedShop || connection?.shop;
+      const res = await fetch("/api/shopify/sync", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          action: "disconnect",
+          shop: targetDisconnectShop,
+        }),
       });
       const data = await res.json();
       if (data.ok) {
-        setConnection(null);
-        setProducts([]);
-        setBlogs([]);
-        if (onConnectionChange) onConnectionChange(false);
+        const remaining = allConnections.filter(
+          (c) => c.shop.toLowerCase() !== (targetDisconnectShop || "").toLowerCase()
+        );
+        if (remaining.length > 0) {
+          setAllConnections(remaining);
+          handleSelectStore(remaining[0].shop);
+        } else {
+          setConnection(null);
+          setAllConnections([]);
+          setSelectedShop("");
+          setProducts([]);
+          setBlogs([]);
+          setStoreArticles([]);
+          if (onConnectionChange) onConnectionChange(false);
+        }
       } else {
         alert(data.error || "Failed to disconnect");
       }
@@ -473,10 +608,12 @@ export default function ShopifyStoreConnect({ onConnectionChange }) {
     }
   };
 
-  const fetchProducts = async () => {
+  const fetchProducts = async (targetShop = null) => {
+    const shopToUse = targetShop || selectedShop || connection?.shop;
     setProductsLoading(true);
     try {
-      const res = await fetch("/api/shopify/sync?action=list-products&limit=250");
+      const q = shopToUse ? `&shop=${encodeURIComponent(shopToUse)}` : "";
+      const res = await fetch(`/api/shopify/sync?action=list-products&limit=250${q}`);
       const data = await res.json();
       if (data.ok) {
         setProducts(data.products || []);
@@ -488,11 +625,13 @@ export default function ShopifyStoreConnect({ onConnectionChange }) {
     }
   };
 
-  const fetchBlogs = async () => {
+  const fetchBlogs = async (targetShop = null) => {
+    const shopToUse = targetShop || selectedShop || connection?.shop;
     setBlogsLoading(true);
     setBlogsError("");
     try {
-      const res = await fetch("/api/shopify/sync?action=list-blogs");
+      const q = shopToUse ? `&shop=${encodeURIComponent(shopToUse)}` : "";
+      const res = await fetch(`/api/shopify/sync?action=list-blogs${q}`);
       const data = await res.json();
       if (data.ok && data.blogs?.length > 0) {
         setBlogs(data.blogs);
@@ -510,11 +649,13 @@ export default function ShopifyStoreConnect({ onConnectionChange }) {
     }
   };
 
-  const fetchArticles = async () => {
+  const fetchArticles = async (targetShop = null) => {
+    const shopToUse = targetShop || selectedShop || connection?.shop;
     setArticlesLoading(true);
     setArticlesError("");
     try {
-      const res = await fetch("/api/shopify/sync?action=list-articles");
+      const q = shopToUse ? `&shop=${encodeURIComponent(shopToUse)}` : "";
+      const res = await fetch(`/api/shopify/sync?action=list-articles${q}`);
       const data = await res.json();
       if (data.ok) {
         setStoreArticles(data.articles || []);
@@ -523,7 +664,7 @@ export default function ShopifyStoreConnect({ onConnectionChange }) {
       }
     } catch (err) {
       console.error("Failed to load Shopify articles:", err);
-      setArticlesError(err.message || "Network error loading articles.");
+      setArticlesError(err.message);
     } finally {
       setArticlesLoading(false);
     }
@@ -546,6 +687,7 @@ export default function ShopifyStoreConnect({ onConnectionChange }) {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           action: "generate-product-description",
+          shop: selectedShop || connection?.shop,
           productId: selectedProduct.id,
           title: selectedProduct.title,
           currentDescription: selectedProduct.body_html || "",
@@ -579,6 +721,7 @@ export default function ShopifyStoreConnect({ onConnectionChange }) {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           action: "update-product",
+          shop: selectedShop || connection?.shop,
           productId: selectedProduct.id,
           bodyHtml: optimizedData.bodyHtml,
           tags: optimizedData.suggestedTags,
@@ -626,6 +769,7 @@ export default function ShopifyStoreConnect({ onConnectionChange }) {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           action: "optimize-article",
+          shop: selectedShop || connection?.shop,
           articleId: selectedArticle.id,
           blogId: selectedArticle.blog_id,
           title: selectedArticle.title,
@@ -659,6 +803,7 @@ export default function ShopifyStoreConnect({ onConnectionChange }) {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           action: "update-article",
+          shop: selectedShop || connection?.shop,
           articleId: selectedArticle.id,
           blogId: selectedArticle.blog_id,
           title: optimizedArticleData.optimizedTitle || selectedArticle.title,
@@ -717,6 +862,7 @@ export default function ShopifyStoreConnect({ onConnectionChange }) {
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
             action: "generate-blog",
+            shop: selectedShop || connection?.shop,
             topic: blogTopic,
             keywords: blogKeywords,
             targetLocations: blogTargetLocations,
@@ -777,6 +923,7 @@ export default function ShopifyStoreConnect({ onConnectionChange }) {
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
             action: "generate-blog",
+            shop: selectedShop || connection?.shop,
             topic: blogTopic,
             keywords: blogKeywords,
             targetLocations: blogTargetLocations,
@@ -809,6 +956,7 @@ export default function ShopifyStoreConnect({ onConnectionChange }) {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           action: "publish-blog",
+          shop: selectedShop || connection?.shop,
           blogId: selectedBlogId,
           blogHandle: blogHandle,
           title: articleTitle,
@@ -1163,7 +1311,7 @@ export default function ShopifyStoreConnect({ onConnectionChange }) {
             🛍️
           </div>
           <div>
-            <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+            <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
               <h3 style={{ margin: 0, fontSize: 18, fontWeight: 800, color: "#fff" }}>
                 {connection.shopName || connection.shop}
               </h3>
@@ -1190,10 +1338,64 @@ export default function ShopifyStoreConnect({ onConnectionChange }) {
               <span>Currency: <strong style={{ color: "#e2e8f0" }}>{connection.currency}</strong></span>
               {connection.country && <span>Market: <strong style={{ color: "#e2e8f0" }}>{connection.country}</strong></span>}
             </div>
+
+            {/* Multi-Store Switcher Dropdown */}
+            {allConnections.length > 1 && (
+              <div style={{ marginTop: 8, display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+                <span style={{ fontSize: 12, color: "#94a3b8", fontWeight: 700 }}>Switch Store:</span>
+                <select
+                  value={selectedShop || connection.shop}
+                  onChange={(e) => handleSelectStore(e.target.value)}
+                  style={{
+                    padding: "5px 10px",
+                    borderRadius: 8,
+                    background: "#0d131f",
+                    border: "1px solid rgba(149, 191, 71, 0.4)",
+                    color: "#95bf47",
+                    fontSize: 12,
+                    fontWeight: 700,
+                    cursor: "pointer",
+                    outline: "none",
+                  }}
+                >
+                  {allConnections.map((c) => (
+                    <option key={c.shop} value={c.shop} style={{ background: "#0d131f", color: "#f8fafc" }}>
+                      {c.shopName || c.shop} ({c.shop})
+                    </option>
+                  ))}
+                </select>
+                <span style={{ fontSize: 11, color: "#64748b" }}>
+                  ({allConnections.length} connected)
+                </span>
+              </div>
+            )}
           </div>
         </div>
 
-        <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
+          <button
+            onClick={() => {
+              setModalError("");
+              setModalShopInput("");
+              setModalToken("");
+              setShowAddStoreModal(true);
+            }}
+            style={{
+              padding: "8px 14px",
+              borderRadius: 8,
+              background: "linear-gradient(135deg, rgba(149, 191, 71, 0.2) 0%, rgba(94, 142, 62, 0.25) 100%)",
+              border: "1px solid rgba(149, 191, 71, 0.45)",
+              color: "#95bf47",
+              fontSize: 12,
+              fontWeight: 700,
+              cursor: "pointer",
+              display: "flex",
+              alignItems: "center",
+              gap: 6,
+            }}
+          >
+            <span>➕</span> Connect Another Store
+          </button>
           <a
             href={`https://${connection.domain || connection.shop}`}
             target="_blank"
@@ -1224,10 +1426,264 @@ export default function ShopifyStoreConnect({ onConnectionChange }) {
               cursor: "pointer",
             }}
           >
-            Disconnect
+            Disconnect {allConnections.length > 1 ? "This Store" : ""}
           </button>
         </div>
       </div>
+
+      {/* ADD STORE MODAL */}
+      {showAddStoreModal && (
+        <div
+          style={{
+            position: "fixed",
+            inset: 0,
+            background: "rgba(0, 0, 0, 0.8)",
+            backdropFilter: "blur(8px)",
+            zIndex: 99999,
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            padding: 16,
+          }}
+        >
+          <div
+            style={{
+              width: "100%",
+              maxWidth: 540,
+              background: "linear-gradient(135deg, #0d131f 0%, #080d16 100%)",
+              border: "1px solid rgba(149, 191, 71, 0.4)",
+              borderRadius: 20,
+              padding: 24,
+              boxShadow: "0 20px 60px rgba(0, 0, 0, 0.8)",
+            }}
+          >
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 16 }}>
+              <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+                <span style={{ fontSize: 24 }}>🛍️</span>
+                <div>
+                  <h3 style={{ margin: 0, fontSize: 17, fontWeight: 800, color: "#fff" }}>
+                    Connect Another Shopify Store
+                  </h3>
+                  <p style={{ margin: "2px 0 0", fontSize: 12, color: "#94a3b8" }}>
+                    Manage multiple stores with isolated SEO, Autopilot, and catalogues.
+                  </p>
+                </div>
+              </div>
+              <button
+                onClick={() => setShowAddStoreModal(false)}
+                style={{
+                  background: "transparent",
+                  border: "none",
+                  color: "#94a3b8",
+                  fontSize: 18,
+                  cursor: "pointer",
+                }}
+              >
+                ✕
+              </button>
+            </div>
+
+            {/* Method Tabs */}
+            <div style={{ display: "flex", gap: 8, marginBottom: 16 }}>
+              <button
+                type="button"
+                onClick={() => { setModalMode("token"); setModalError(""); }}
+                style={{
+                  flex: 1,
+                  padding: "8px 12px",
+                  borderRadius: 8,
+                  border: modalMode === "token" ? "1px solid #95bf47" : "1px solid rgba(255,255,255,0.1)",
+                  background: modalMode === "token" ? "rgba(149, 191, 71, 0.15)" : "rgba(255,255,255,0.03)",
+                  color: modalMode === "token" ? "#95bf47" : "#94a3b8",
+                  fontWeight: 700,
+                  fontSize: 12,
+                  cursor: "pointer",
+                }}
+              >
+                🔑 Admin API Token (Instant)
+              </button>
+              <button
+                type="button"
+                onClick={() => { setModalMode("oauth"); setModalError(""); }}
+                style={{
+                  flex: 1,
+                  padding: "8px 12px",
+                  borderRadius: 8,
+                  border: modalMode === "oauth" ? "1px solid #95bf47" : "1px solid rgba(255,255,255,0.1)",
+                  background: modalMode === "oauth" ? "rgba(149, 191, 71, 0.15)" : "rgba(255,255,255,0.03)",
+                  color: modalMode === "oauth" ? "#95bf47" : "#94a3b8",
+                  fontWeight: 700,
+                  fontSize: 12,
+                  cursor: "pointer",
+                }}
+              >
+                ⚡ 1-Click OAuth
+              </button>
+            </div>
+
+            {modalMode === "token" ? (
+              <form onSubmit={handleModalAddStoreToken}>
+                <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+                  <div>
+                    <label style={{ display: "block", fontSize: 12, fontWeight: 700, color: "#cbd5e1", marginBottom: 6 }}>
+                      Store Domain / myshopify URL:
+                    </label>
+                    <input
+                      type="text"
+                      placeholder="e.g. second-store.myshopify.com or secondstore.com"
+                      value={modalShopInput}
+                      onChange={(e) => setModalShopInput(e.target.value)}
+                      style={{
+                        width: "100%",
+                        boxSizing: "border-box",
+                        padding: "10px 14px",
+                        borderRadius: 8,
+                        background: "rgba(0,0,0,0.4)",
+                        border: "1px solid rgba(255,255,255,0.15)",
+                        color: "#fff",
+                        fontSize: 13,
+                        outline: "none",
+                      }}
+                    />
+                  </div>
+                  <div>
+                    <label style={{ display: "block", fontSize: 12, fontWeight: 700, color: "#cbd5e1", marginBottom: 6 }}>
+                      Admin API Access Token:
+                    </label>
+                    <input
+                      type="password"
+                      placeholder="shpat_xxxxxxxxxxxxxxxxxxxxxxxx"
+                      value={modalToken}
+                      onChange={(e) => setModalToken(e.target.value)}
+                      style={{
+                        width: "100%",
+                        boxSizing: "border-box",
+                        padding: "10px 14px",
+                        borderRadius: 8,
+                        background: "rgba(0,0,0,0.4)",
+                        border: "1px solid rgba(255,255,255,0.15)",
+                        color: "#fff",
+                        fontSize: 13,
+                        outline: "none",
+                      }}
+                    />
+                    <div style={{ fontSize: 11, color: "#94a3b8", marginTop: 4 }}>
+                      Create in Shopify Admin &gt; Settings &gt; Apps &gt; Develop apps. Requires <strong>read/write products and blogs</strong> permissions.
+                    </div>
+                  </div>
+
+                  {modalError && (
+                    <div style={{ padding: "8px 12px", borderRadius: 8, background: "rgba(239, 68, 68, 0.15)", border: "1px solid rgba(239, 68, 68, 0.3)", color: "#fca5a5", fontSize: 12 }}>
+                      {modalError}
+                    </div>
+                  )}
+
+                  <div style={{ display: "flex", justifyContent: "flex-end", gap: 10, marginTop: 12 }}>
+                    <button
+                      type="button"
+                      onClick={() => setShowAddStoreModal(false)}
+                      style={{
+                        padding: "8px 16px",
+                        borderRadius: 8,
+                        background: "transparent",
+                        border: "1px solid rgba(255,255,255,0.15)",
+                        color: "#94a3b8",
+                        fontSize: 13,
+                        fontWeight: 600,
+                        cursor: "pointer",
+                      }}
+                    >
+                      Cancel
+                    </button>
+                    <button
+                      type="submit"
+                      disabled={modalConnecting}
+                      style={{
+                        padding: "8px 18px",
+                        borderRadius: 8,
+                        background: "linear-gradient(135deg, #95bf47 0%, #5e8e3e 100%)",
+                        border: "none",
+                        color: "#0f172a",
+                        fontSize: 13,
+                        fontWeight: 800,
+                        cursor: modalConnecting ? "not-allowed" : "pointer",
+                      }}
+                    >
+                      {modalConnecting ? "Connecting…" : "Pair Store"}
+                    </button>
+                  </div>
+                </div>
+              </form>
+            ) : (
+              <form onSubmit={handleModalAddStoreOAuth}>
+                <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+                  <div>
+                    <label style={{ display: "block", fontSize: 12, fontWeight: 700, color: "#cbd5e1", marginBottom: 6 }}>
+                      Store Domain:
+                    </label>
+                    <input
+                      type="text"
+                      placeholder="e.g. yourstore.myshopify.com"
+                      value={modalShopInput}
+                      onChange={(e) => setModalShopInput(e.target.value)}
+                      style={{
+                        width: "100%",
+                        boxSizing: "border-box",
+                        padding: "10px 14px",
+                        borderRadius: 8,
+                        background: "rgba(0,0,0,0.4)",
+                        border: "1px solid rgba(255,255,255,0.15)",
+                        color: "#fff",
+                        fontSize: 13,
+                        outline: "none",
+                      }}
+                    />
+                  </div>
+                  {modalError && (
+                    <div style={{ padding: "8px 12px", borderRadius: 8, background: "rgba(239, 68, 68, 0.15)", border: "1px solid rgba(239, 68, 68, 0.3)", color: "#fca5a5", fontSize: 12 }}>
+                      {modalError}
+                    </div>
+                  )}
+                  <div style={{ display: "flex", justifyContent: "flex-end", gap: 10, marginTop: 12 }}>
+                    <button
+                      type="button"
+                      onClick={() => setShowAddStoreModal(false)}
+                      style={{
+                        padding: "8px 16px",
+                        borderRadius: 8,
+                        background: "transparent",
+                        border: "1px solid rgba(255,255,255,0.15)",
+                        color: "#94a3b8",
+                        fontSize: 13,
+                        fontWeight: 600,
+                        cursor: "pointer",
+                      }}
+                    >
+                      Cancel
+                    </button>
+                    <button
+                      type="submit"
+                      disabled={modalConnecting}
+                      style={{
+                        padding: "8px 18px",
+                        borderRadius: 8,
+                        background: "linear-gradient(135deg, #95bf47 0%, #5e8e3e 100%)",
+                        border: "none",
+                        color: "#0f172a",
+                        fontSize: 13,
+                        fontWeight: 800,
+                        cursor: modalConnecting ? "not-allowed" : "pointer",
+                      }}
+                    >
+                      {modalConnecting ? "Redirecting…" : "Continue with OAuth ➔"}
+                    </button>
+                  </div>
+                </div>
+              </form>
+            )}
+          </div>
+        </div>
+      )}
 
       {/* Sub-Tabs Switcher */}
       <div style={{ display: "flex", gap: 10, borderBottom: "1px solid rgba(255, 255, 255, 0.08)", paddingBottom: 12, flexWrap: "wrap" }}>
