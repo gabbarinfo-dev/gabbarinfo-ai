@@ -1752,7 +1752,7 @@ export default function ShopifyStoreConnect({ onConnectionChange }) {
         <button
           onClick={() => {
             setActiveSubTab("autopilot");
-            fetchAutopilotConfig();
+            fetchAutopilotConfig(selectedShop || connection?.shop);
           }}
           style={{
             padding: "8px 18px",
@@ -2702,6 +2702,116 @@ export default function ShopifyStoreConnect({ onConnectionChange }) {
               </div>
             )}
           </div>
+
+          {/* Social Asset Pairing Prompt / Verification Banner */}
+          {brandSecurity && brandSecurity.isMatched ? (
+            <div
+              style={{
+                marginBottom: 20,
+                padding: "14px 18px",
+                borderRadius: 12,
+                background: "rgba(16, 185, 129, 0.12)",
+                border: "1px solid rgba(16, 185, 129, 0.35)",
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "space-between",
+                gap: 12,
+                flexWrap: "wrap",
+              }}
+            >
+              <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+                <span style={{ fontSize: 20 }}>✅</span>
+                <div>
+                  <div style={{ fontSize: 13, fontWeight: 800, color: "#34d399" }}>
+                    Social Syndication Linked: {brandSecurity.meta?.pageName || "Facebook"} &amp; {brandSecurity.meta?.igUsername ? `@${brandSecurity.meta.igUsername}` : "Instagram"}
+                  </div>
+                  <div style={{ fontSize: 11.5, color: "#94a3b8", marginTop: 2 }}>
+                    New articles published to this Shopify store will automatically cross-post to your verified Meta channels.
+                  </div>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setShowPairingModal(true)}
+                style={{
+                  padding: "6px 14px",
+                  borderRadius: 8,
+                  background: "rgba(56, 189, 248, 0.15)",
+                  border: "1px solid rgba(56, 189, 248, 0.35)",
+                  color: "#38bdf8",
+                  fontSize: 12,
+                  fontWeight: 700,
+                  cursor: "pointer",
+                }}
+              >
+                ⚙️ Switch / Manage Pairing ↗
+              </button>
+            </div>
+          ) : (
+            <div
+              style={{
+                marginBottom: 20,
+                padding: "16px 20px",
+                borderRadius: 14,
+                background: "linear-gradient(135deg, rgba(168, 85, 247, 0.18) 0%, rgba(56, 189, 248, 0.12) 100%)",
+                border: "1.5px solid rgba(168, 85, 247, 0.45)",
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "space-between",
+                gap: 16,
+                flexWrap: "wrap",
+                boxShadow: "0 8px 30px rgba(168, 85, 247, 0.15)",
+              }}
+            >
+              <div style={{ display: "flex", alignItems: "center", gap: 14 }}>
+                <div
+                  style={{
+                    width: 42,
+                    height: 42,
+                    borderRadius: 12,
+                    background: "rgba(168, 85, 247, 0.25)",
+                    border: "1px solid rgba(168, 85, 247, 0.5)",
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "center",
+                    fontSize: 22,
+                    flexShrink: 0,
+                  }}
+                >
+                  ⚡
+                </div>
+                <div>
+                  <h4 style={{ margin: "0 0 3px", fontSize: 14.5, fontWeight: 800, color: "#fff" }}>
+                    Action Recommended: Pair Social Channels for 1-Click Blog Syndication
+                  </h4>
+                  <p style={{ margin: 0, fontSize: 12.5, color: "#cbd5e1", lineHeight: 1.4 }}>
+                    Link <strong>{connection?.name || "this store"}</strong> with its official Facebook Page &amp; Instagram account so newly generated blogs cross-post autonomously.
+                  </p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setShowPairingModal(true)}
+                style={{
+                  padding: "9px 18px",
+                  borderRadius: 10,
+                  background: "linear-gradient(135deg, #a855f7 0%, #38bdf8 100%)",
+                  border: "none",
+                  color: "#080c14",
+                  fontSize: 12.5,
+                  fontWeight: 800,
+                  cursor: "pointer",
+                  boxShadow: "0 4px 15px rgba(168, 85, 247, 0.35)",
+                  display: "inline-flex",
+                  alignItems: "center",
+                  gap: 6,
+                  flexShrink: 0,
+                }}
+              >
+                <span>⚙️</span> Pair Social Assets Now ↗
+              </button>
+            </div>
+          )}
 
           {/* Autopilot Settings Grid */}
           <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(300px, 1fr))", gap: 16 }}>

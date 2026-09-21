@@ -1592,9 +1592,10 @@ Respond ONLY with a valid JSON object matching this schema:
         recentArticles: [],
       };
 
+      let parsed = {};
       if (memRow?.content) {
         try {
-          const parsed = typeof memRow.content === "string" ? JSON.parse(memRow.content) : memRow.content;
+          parsed = typeof memRow.content === "string" ? JSON.parse(memRow.content) : (memRow.content || {});
           config = { ...config, ...parsed };
           config.targetLocations = config.targetLocations || config.targetMarket || conn.country || "";
           config.targetMarket = config.targetLocations;
@@ -1611,8 +1612,8 @@ Respond ONLY with a valid JSON object matching this schema:
 
       // If brand matched, allow autoShare settings according to saved config; otherwise strictly false
       if (brandSecurity.isMatched) {
-        config.autoShareFacebook = parsed?.autoShareFacebook === true;
-        config.autoShareInstagram = parsed?.autoShareInstagram === true;
+        config.autoShareFacebook = parsed?.autoShareFacebook !== false;
+        config.autoShareInstagram = parsed?.autoShareInstagram !== false;
       } else {
         config.autoShareFacebook = false;
         config.autoShareInstagram = false;

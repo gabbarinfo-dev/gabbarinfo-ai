@@ -157,7 +157,7 @@ export default function BrandAssetPairingModal({ onClose, onSaved }) {
       });
       const data = await res.json();
       if (data.ok) {
-        alert("✅ Brand asset bundles saved successfully! SEO Suite and Social Pilot are now synchronized.");
+        alert("✅ Brand asset bundles saved successfully! Shopify Stores, WordPress Sites & Social Channels are now 100% synchronized for Facebook & Instagram cross-posting.");
         if (onSaved) onSaved(data.savedProfiles);
         onClose();
       } else {
@@ -236,7 +236,7 @@ export default function BrandAssetPairingModal({ onClose, onSaved }) {
                 Brand Profile & Asset Bundling Wizard
               </h3>
               <p style={{ margin: "2px 0 0", fontSize: 12, color: "#94a3b8" }}>
-                Bind Facebook Pages, Instagram Accounts, Ad Accounts, and Websites together without cross-contamination.
+                Bind Facebook Pages, Instagram Accounts, Shopify Stores, and WordPress Websites together without cross-contamination.
               </p>
             </div>
           </div>
