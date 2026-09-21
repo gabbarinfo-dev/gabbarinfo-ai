@@ -347,41 +347,73 @@ Include 3-4 bullet benefits, a strong call to action, and 6-8 relevant hashtags$
       const publicImageUrl = pubUrlData.publicUrl;
       logger(`[Social Autopilot] Public image URL ready: ${publicImageUrl}`);
 
-      // 6. Fetch User's Live Meta Connection for this specific brand profile
+      // 6. Fetch User's Live Meta Connection strictly for this specific brand profile
       const rawBizKey = item.memory_type.replace(/^social_autopilot_/, "");
       const cleanBizKey = rawBizKey.replace(new RegExp(`^${item.email.toLowerCase().replace(/[^a-z0-9]/g, "_")}_?`, "i"), "");
       const normalizedBiz = (config.businessName || cleanBizKey || "default")
         .toLowerCase()
         .trim()
         .replace(/[^a-z0-9]/g, "_");
-      const targetMetaKey = `meta_conn_${normalizedBiz}`;
 
-      let activeMeta = null;
-      if (normalizedBiz && normalizedBiz !== "default") {
-        const { data: brandMetaMem } = await supabase
+      const [brandMemsRes, bundlePairRes] = await Promise.all([
+        supabase
+          .from("agent_memory")
+          .select("memory_type, content")
+          .eq("email", item.email.trim().toLowerCase())
+          .like("memory_type", "meta_conn_%"),
+        supabase
           .from("agent_memory")
           .select("content")
           .eq("email", item.email.trim().toLowerCase())
-          .eq("memory_type", targetMetaKey)
-          .maybeSingle();
+          .in("memory_type", ["bundle_pairings", "brand_asset_pairings"])
+          .maybeSingle(),
+      ]);
 
-        if (brandMetaMem?.content) {
-          try {
-            const parsed = JSON.parse(brandMetaMem.content);
-            if (parsed.pageId || parsed.igId) {
-              activeMeta = {
-                fb_page_id: parsed.pageId,
-                fb_page_access_token: parsed.pageToken,
-                fb_user_access_token: parsed.userToken,
-                ig_business_id: parsed.igId,
-                instagram_actor_id: parsed.igId,
-              };
-            }
-          } catch (_) {}
-        }
+      const brandProfiles = [];
+      (brandMemsRes.data || []).forEach((m) => {
+        try {
+          const parsed = JSON.parse(m.content);
+          brandProfiles.push({ key: m.memory_type.replace("meta_conn_", ""), ...parsed });
+        } catch (_) {}
+      });
+
+      if (bundlePairRes.data?.content) {
+        try {
+          const pairList = JSON.parse(bundlePairRes.data.content);
+          if (Array.isArray(pairList)) {
+            pairList.forEach((p) => {
+              if (p.pageId && !brandProfiles.some((b) => b.pageId === p.pageId)) {
+                brandProfiles.push(p);
+              }
+            });
+          }
+        } catch (_) {}
       }
 
-      if (!activeMeta) {
+      // Match target brand strictly
+      let activeMeta = null;
+      const matchedBrand = brandProfiles.find((b) => {
+        const bKey = String(b.key || "").toLowerCase();
+        const bName = String(b.businessName || b.pageName || "").toLowerCase().replace(/[^a-z0-9]/g, "");
+        const targetName = String(config.businessName || cleanBizKey || "").toLowerCase().replace(/[^a-z0-9]/g, "");
+        const targetKey = String(cleanBizKey || "").toLowerCase();
+        const normKey = String(normalizedBiz || "").toLowerCase();
+        return (bKey && (bKey === targetKey || bKey === normKey || bKey.includes(targetKey) || targetKey.includes(bKey))) ||
+               (bName && targetName && (bName === targetName || bName.includes(targetName) || targetName.includes(bName)));
+      });
+
+      if (matchedBrand && (matchedBrand.pageId || matchedBrand.igId)) {
+        activeMeta = {
+          fb_page_id: matchedBrand.pageId,
+          fb_page_access_token: matchedBrand.pageToken || matchedBrand.fb_page_access_token,
+          fb_user_access_token: matchedBrand.userToken || matchedBrand.fb_user_access_token,
+          ig_business_id: matchedBrand.igId || matchedBrand.ig_business_id,
+          instagram_actor_id: matchedBrand.igId || matchedBrand.instagram_actor_id,
+        };
+      }
+
+      // Strict Isolation: Fallback to meta_connections ONLY if user has 0 custom brand profiles
+      if (!activeMeta && brandProfiles.length === 0) {
         const { data: metaConn, error: metaErr } = await supabase
           .from("meta_connections")
           .select("fb_page_id, fb_page_access_token, fb_user_access_token, ig_business_id, instagram_actor_id")
@@ -394,6 +426,10 @@ Include 3-4 bullet benefits, a strong call to action, and 6-8 relevant hashtags$
           logger(`[Social Autopilot] Error fetching meta_connections for ${item.email}: ${metaErr.message}`);
         }
         activeMeta = metaConn;
+      }
+
+      if (!activeMeta) {
+        logger(`[Social Autopilot] Social syndication skipped: Brand "${businessName || cleanBizKey}" has no verified paired Meta assets.`);
       }
 
       const published = {};
@@ -469,23 +505,41 @@ Include 3-4 bullet benefits, a strong call to action, and 6-8 relevant hashtags$
             const containerData = await igContainerRes.json();
 
             if (containerData.id) {
-              // Wait 5 seconds for Instagram CDN processing
-              await new Promise((resolve) => setTimeout(resolve, 5000));
+              const creationId = containerData.id;
+              let isReady = false;
+              for (let attempt = 0; attempt < 12; attempt++) {
+                await new Promise((resolve) => setTimeout(resolve, 2500));
+                const statusRes = await fetch(`https://graph.facebook.com/v21.0/${creationId}?fields=status_code,status&access_token=${effectiveToken}`);
+                const statusJson = await statusRes.json().catch(() => ({}));
+                if (statusJson.status_code === "FINISHED") {
+                  isReady = true;
+                  break;
+                }
+                if (statusJson.status_code === "ERROR") {
+                  logger(`[Social Autopilot] Instagram media processing error: ${statusJson.status || "Unknown"}`);
+                  break;
+                }
+              }
 
-              const pubParams = new URLSearchParams();
-              pubParams.append("creation_id", containerData.id);
-              pubParams.append("access_token", effectiveToken);
+              if (isReady) {
+                const pubParams = new URLSearchParams();
+                pubParams.append("creation_id", creationId);
+                pubParams.append("access_token", effectiveToken);
 
-              const igPubRes = await fetch(`https://graph.facebook.com/v21.0/${igId}/media_publish`, {
-                method: "POST",
-                body: pubParams,
-              });
-              const pubData = await igPubRes.json();
-              if (pubData.id) {
-                published.instagram = { ok: true, id: pubData.id };
-                logger(`[Social Autopilot] Instagram post published: ${pubData.id}`);
+                const igPubRes = await fetch(`https://graph.facebook.com/v21.0/${igId}/media_publish`, {
+                  method: "POST",
+                  body: pubParams,
+                });
+                const pubData = await igPubRes.json();
+                if (pubData.id) {
+                  published.instagram = { ok: true, id: pubData.id };
+                  logger(`[Social Autopilot] Instagram post published: ${pubData.id}`);
+                } else {
+                  published.instagram = { ok: false, error: pubData.error?.message };
+                }
               } else {
-                published.instagram = { ok: false, error: pubData.error?.message };
+                published.instagram = { ok: false, error: "Instagram media container was not ready in time." };
+                logger("[Social Autopilot] Instagram container timed out or errored before publish.");
               }
             } else {
               published.instagram = { ok: false, error: containerData.error?.message };

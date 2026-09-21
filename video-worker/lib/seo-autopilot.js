@@ -748,15 +748,35 @@ Format output as valid JSON:
             const containerData = await igContainerRes.json();
 
             if (containerData.id) {
-              await new Promise((resolve) => setTimeout(resolve, 5000));
-              const pubParams = new URLSearchParams();
-              pubParams.append("creation_id", containerData.id);
-              pubParams.append("access_token", effectiveToken);
+              const creationId = containerData.id;
+              let isReady = false;
+              for (let attempt = 0; attempt < 12; attempt++) {
+                await new Promise((resolve) => setTimeout(resolve, 2500));
+                const statusRes = await fetch(`https://graph.facebook.com/v21.0/${creationId}?fields=status_code,status&access_token=${effectiveToken}`);
+                const statusJson = await statusRes.json().catch(() => ({}));
+                if (statusJson.status_code === "FINISHED") {
+                  isReady = true;
+                  break;
+                }
+                if (statusJson.status_code === "ERROR") {
+                  logger(`[SEO Autopilot] Instagram media processing error: ${statusJson.status || "Unknown"}`);
+                  break;
+                }
+              }
 
-              const igPubRes = await fetch(`https://graph.facebook.com/v21.0/${igId}/media_publish`, { method: "POST", body: pubParams });
-              const pubData = await igPubRes.json();
-              socialShares.instagram = { ok: !!pubData.id, id: pubData.id || null };
-              logger(`[SEO Autopilot] Instagram post published: ${pubData.id}`);
+              if (isReady) {
+                const pubParams = new URLSearchParams();
+                pubParams.append("creation_id", creationId);
+                pubParams.append("access_token", effectiveToken);
+
+                const igPubRes = await fetch(`https://graph.facebook.com/v21.0/${igId}/media_publish`, { method: "POST", body: pubParams });
+                const pubData = await igPubRes.json();
+                socialShares.instagram = { ok: !!pubData.id, id: pubData.id || null };
+                logger(`[SEO Autopilot] Instagram post published: ${pubData.id}`);
+              } else {
+                socialShares.instagram = { ok: false, error: "Instagram media container was not ready in time." };
+                logger("[SEO Autopilot] Instagram container timed out or errored before publish.");
+              }
             }
           } catch (igErr) {
             socialShares.instagram = { ok: false, error: igErr.message };

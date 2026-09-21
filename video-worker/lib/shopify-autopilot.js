@@ -706,12 +706,10 @@ Respond ONLY with a valid JSON object matching this schema:
               if (config.autoShareFacebook === true && pageId && effectiveToken) {
                 try {
                   logger(`[Shopify Autopilot] Syndicating article to Facebook Page (${pageId})...`);
+                  const fullMessage = `📢 ${articleData.title}\n\n${articleData.seoDescription || ""}\n\nRead full article & explore pieces 👇\n${publicUrl}\n\n#Shopify #OnlineShopping #TrendingStyles`;
                   const feedParams = new URLSearchParams();
                   feedParams.append("link", publicUrl);
-                  feedParams.append(
-                    "message",
-                    `📢 ${articleData.title}\n\n${articleData.seoDescription || ""}\n\nRead full article & explore pieces 👇\n${publicUrl}\n\n#Shopify #OnlineShopping #TrendingStyles`
-                  );
+                  feedParams.append("message", fullMessage);
                   feedParams.append("access_token", effectiveToken);
                   const fbRes = await fetch(`https://graph.facebook.com/v21.0/${pageId}/feed`, {
                     method: "POST",
@@ -719,11 +717,34 @@ Respond ONLY with a valid JSON object matching this schema:
                   });
                   const fbData = await fbRes.json();
                   if (fbData.id) {
-                    socialShares.facebook = { ok: true, id: fbData.id };
-                    logger(`[Shopify Autopilot] Facebook post published: ${fbData.id}`);
+                    socialShares.facebook = { ok: true, id: fbData.id, type: "link_preview" };
+                    logger(`[Shopify Autopilot] Facebook Link Card published: ${fbData.id}`);
+                  } else {
+                    logger(`[Shopify Autopilot] Facebook Feed link post failed (${fbData.error?.message}), attempting photo post fallback...`);
+                    const shareImg = imageData.imageUrl;
+                    if (shareImg) {
+                      const photoParams = new URLSearchParams();
+                      photoParams.append("url", shareImg);
+                      photoParams.append("caption", fullMessage);
+                      photoParams.append("access_token", effectiveToken);
+                      const photoRes = await fetch(`https://graph.facebook.com/v21.0/${pageId}/photos`, {
+                        method: "POST",
+                        body: photoParams,
+                      });
+                      const photoData = await photoRes.json();
+                      if (photoData.id || photoData.post_id) {
+                        socialShares.facebook = { ok: true, id: photoData.id || photoData.post_id, type: "photo" };
+                        logger(`[Shopify Autopilot] Facebook fallback Photo published: ${photoData.id || photoData.post_id}`);
+                      } else {
+                        socialShares.facebook = { ok: false, error: photoData.error?.message || fbData.error?.message };
+                      }
+                    } else {
+                      socialShares.facebook = { ok: false, error: fbData.error?.message };
+                    }
                   }
                 } catch (fbErr) {
                   logger(`[Shopify Autopilot] Facebook syndication error: ${fbErr.message}`);
+                  socialShares.facebook = { ok: false, error: fbErr.message };
                 }
               }
 
@@ -745,21 +766,25 @@ Respond ONLY with a valid JSON object matching this schema:
                   const cData = await cRes.json();
 
                   if (cData.id) {
-                    // Poll container status then publish
+                    const creationId = cData.id;
                     let ready = false;
-                    for (let attempt = 0; attempt < 5; attempt++) {
-                      await new Promise((r) => setTimeout(r, 3000));
-                      const sRes = await fetch(`https://graph.facebook.com/v21.0/${cData.id}?fields=status_code&access_token=${effectiveToken}`);
-                      const sData = await sRes.json();
+                    for (let attempt = 0; attempt < 12; attempt++) {
+                      await new Promise((r) => setTimeout(r, 2500));
+                      const sRes = await fetch(`https://graph.facebook.com/v21.0/${creationId}?fields=status_code,status&access_token=${effectiveToken}`);
+                      const sData = await sRes.json().catch(() => ({}));
                       if (sData.status_code === "FINISHED") {
                         ready = true;
+                        break;
+                      }
+                      if (sData.status_code === "ERROR") {
+                        logger(`[Shopify Autopilot] Instagram media processing error: ${sData.status || "Unknown"}`);
                         break;
                       }
                     }
 
                     if (ready) {
                       const pubParams = new URLSearchParams();
-                      pubParams.append("creation_id", cData.id);
+                      pubParams.append("creation_id", creationId);
                       pubParams.append("access_token", effectiveToken);
                       const pubRes = await fetch(`https://graph.facebook.com/v21.0/${igId}/media_publish`, {
                         method: "POST",
@@ -769,11 +794,19 @@ Respond ONLY with a valid JSON object matching this schema:
                       if (pubData.id) {
                         socialShares.instagram = { ok: true, id: pubData.id };
                         logger(`[Shopify Autopilot] Instagram post published: ${pubData.id}`);
+                      } else {
+                        socialShares.instagram = { ok: false, error: pubData.error?.message };
                       }
+                    } else {
+                      socialShares.instagram = { ok: false, error: "Instagram media container was not ready in time." };
+                      logger("[Shopify Autopilot] Instagram container timed out or errored before publish.");
                     }
+                  } else {
+                    socialShares.instagram = { ok: false, error: cData.error?.message };
                   }
                 } catch (igErr) {
                   logger(`[Shopify Autopilot] Instagram syndication error: ${igErr.message}`);
+                  socialShares.instagram = { ok: false, error: igErr.message };
                 }
               }
             }

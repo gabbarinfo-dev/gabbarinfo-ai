@@ -268,6 +268,8 @@ export default function ShopifyStoreConnect({ onConnectionChange }) {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           platform: socialPlatform,
+          shop: connection?.shop || selectedShop,
+          businessName: connection?.shopName || connection?.name,
           title: socialShareData.title,
           postUrl: socialShareData.postUrl,
           featuredImageUrl: socialShareData.featuredImageUrl,
