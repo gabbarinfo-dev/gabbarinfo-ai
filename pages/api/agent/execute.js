@@ -6291,7 +6291,7 @@ Respond with ONLY the JSON object, wrapped in \`\`\`json \`\`\`.
     // Pre-populate mergedIntake from connected Shopify store if matching or available
     if (connectedShopify?.shop) {
       if (!mergedIntake.business_name) {
-        mergedIntake.business_name = connectedShopify.shopName || "Bella & Diva";
+        mergedIntake.business_name = connectedShopify.shopName || connectedShopify.name || "Store";
       }
       if (!mergedIntake.landing_page_url) {
         const storeDomain = connectedShopify.primary_domain || connectedShopify.domain || connectedShopify.shop;
@@ -6300,8 +6300,10 @@ Respond with ONLY the JSON object, wrapped in \`\`\`json \`\`\`.
       if (!mergedIntake.location && (connectedShopify.targetLocations || connectedShopify.country)) {
         mergedIntake.location = connectedShopify.targetLocations || connectedShopify.country;
       }
-      if (!mergedIntake.services) {
-        mergedIntake.services = "Designer Jewellery, Kundan Jewellery, American Diamond Jewellery";
+      if (!mergedIntake.services && connectedShopify.productTypes) {
+        mergedIntake.services = Array.isArray(connectedShopify.productTypes)
+          ? connectedShopify.productTypes.join(", ")
+          : String(connectedShopify.productTypes);
       }
       mergedIntake.is_ecommerce = true;
       mergedIntake.store_platform = "shopify";

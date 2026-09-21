@@ -140,12 +140,18 @@ async function checkShopifyBrandSecurity(userEmail, conn) {
     return { isMatched: false, status: "NO_STORE", reason: "Store connection not found", meta: null };
   }
 
-  const [brandMemRes, metaRowRes] = await Promise.all([
+  const [brandMemRes, bundlePairRes, metaRowRes] = await Promise.all([
     supabase
       .from("agent_memory")
       .select("memory_type, content")
       .eq("email", userEmail.toLowerCase())
       .like("memory_type", "meta_conn_%"),
+    supabase
+      .from("agent_memory")
+      .select("content")
+      .eq("email", userEmail.toLowerCase())
+      .in("memory_type", ["bundle_pairings", "brand_asset_pairings"])
+      .maybeSingle(),
     supabase
       .from("meta_connections")
       .select("fb_page_id, fb_page_access_token, fb_user_access_token, ig_business_id")
@@ -160,6 +166,19 @@ async function checkShopifyBrandSecurity(userEmail, conn) {
       brandProfiles.push(parsed);
     } catch (_) {}
   });
+
+  if (bundlePairRes.data?.content) {
+    try {
+      const pairList = JSON.parse(bundlePairRes.data.content);
+      if (Array.isArray(pairList)) {
+        pairList.forEach((p) => {
+          if (p.pageId && !brandProfiles.some((b) => b.pageId === p.pageId)) {
+            brandProfiles.push(p);
+          }
+        });
+      }
+    } catch (_) {}
+  }
 
   const normStoreDomain = normalizeBrand(conn.domain || conn.shop || "");
   const normStoreName = normalizeBrand(conn.name || conn.shopName || "");
@@ -1309,7 +1328,7 @@ Respond ONLY with a valid JSON object matching this structure:
         blogId,
         title,
         bodyHtml,
-        author = "Bella & Diva",
+        author = conn.name || conn.shopName || "Store Team",
         tags = "",
         isDraft = false,
         imageUrl = null,

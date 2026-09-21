@@ -218,9 +218,13 @@ export default function SeoHubPage() {
         setBrandMeta(data.brandMeta);
       } else {
         setBrandMeta(null);
+        setAutoShareFb(false);
+        setAutoShareIg(false);
       }
     } catch (_) {
       setBrandMeta(null);
+      setAutoShareFb(false);
+      setAutoShareIg(false);
     }
   };
 
@@ -295,8 +299,8 @@ export default function SeoHubPage() {
         setMode(isEnabled ? "autopilot" : "manual");
         setCadence(data.config.cadence || "daily");
         setCustomDaysPerWeek(Number(data.config.customDaysPerWeek) || 3);
-        setAutoShareFb(data.config.autoShareFacebook === true);
-        setAutoShareIg(data.config.autoShareInstagram === true);
+        setAutoShareFb(brandMeta?.pageId ? (data.config.autoShareFacebook === true) : false);
+        setAutoShareIg((brandMeta?.igUsername || brandMeta?.igId) ? (data.config.autoShareInstagram === true) : false);
         setAutopilotPublishedCount(Number(data.config.publishedCount) || 0);
         setLastPublishedAt(data.config.lastPublishedAt || null);
         if (Array.isArray(data.config.suggestedTopics) && data.config.suggestedTopics.length > 0) {

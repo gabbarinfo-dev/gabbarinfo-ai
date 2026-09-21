@@ -574,14 +574,31 @@ export default async function handler(req, res) {
         } catch (e) {}
       }
 
+      // Check if paired Meta account exists before enabling social sharing by default
+      let hasPairedMeta = false;
+      try {
+        const { data: pairMems } = await supabase
+          .from("agent_memory")
+          .select("content")
+          .eq("email", userEmail)
+          .in("memory_type", ["bundle_pairings", "brand_asset_pairings"])
+          .maybeSingle();
+        if (pairMems?.content) {
+          const list = JSON.parse(pairMems.content);
+          if (Array.isArray(list) && list.some((p) => p.pageId)) {
+            hasPairedMeta = true;
+          }
+        }
+      } catch (_) {}
+
       return res.status(200).json({
         ok: true,
         config: {
           enabled: false,
           cadence: "daily",
           customDaysPerWeek: 3,
-          autoShareFacebook: true,
-          autoShareInstagram: true,
+          autoShareFacebook: hasPairedMeta,
+          autoShareInstagram: hasPairedMeta,
           targetLocations: "",
           targetMarket: "",
         },

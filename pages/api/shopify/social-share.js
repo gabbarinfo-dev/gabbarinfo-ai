@@ -39,41 +39,83 @@ export default async function handler(req, res) {
     // 1. Check Meta Connection for this user
     // 1. Resolve Brand-Specific Meta Connection strictly
     const targetBrand = req.body?.businessName || req.body?.brandName;
-    const { data: allBrandMems } = await supabase
-      .from("agent_memory")
-      .select("memory_type, content")
-      .eq("email", userEmail.toLowerCase())
-      .like("memory_type", "meta_conn_%");
+    const [allBrandMemsRes, bundlePairMemRes] = await Promise.all([
+      supabase
+        .from("agent_memory")
+        .select("memory_type, content")
+        .eq("email", userEmail.toLowerCase())
+        .like("memory_type", "meta_conn_%"),
+      supabase
+        .from("agent_memory")
+        .select("content")
+        .eq("email", userEmail.toLowerCase())
+        .in("memory_type", ["bundle_pairings", "brand_asset_pairings"])
+        .maybeSingle(),
+    ]);
 
     const allBrands = [];
-    (allBrandMems || []).forEach((m) => {
+    (allBrandMemsRes.data || []).forEach((m) => {
       try {
         const parsed = JSON.parse(m.content);
         allBrands.push(parsed);
       } catch (_) {}
     });
 
-    const { data: shopMem } = await supabase
-      .from("agent_memory")
-      .select("content")
-      .eq("email", userEmail.toLowerCase())
-      .eq("memory_type", "shopify_connection")
-      .maybeSingle();
-
-    let shopData = {};
-    if (shopMem?.content) {
+    // Also include explicit pairings from bundle_pairings if present
+    if (bundlePairMemRes.data?.content) {
       try {
-        shopData = typeof shopMem.content === "string" ? JSON.parse(shopMem.content) : shopMem.content;
+        const pairList = JSON.parse(bundlePairMemRes.data.content);
+        if (Array.isArray(pairList)) {
+          pairList.forEach((p) => {
+            if (p.pageId && !allBrands.some((b) => b.pageId === p.pageId)) {
+              allBrands.push(p);
+            }
+          });
+        }
       } catch (_) {}
     }
 
-    const normStoreName = String(targetBrand || shopData.name || "Bella & Diva").toLowerCase().replace(/[^a-z0-9]/g, "");
+    // Try finding specific shopify connection
+    let shopData = {};
+    const reqShop = req.body?.shop || req.body?.shopHandle || req.body?.storeDomain;
+    if (reqShop) {
+      const normReqShop = String(reqShop).toLowerCase().replace(/[^a-z0-9]/g, "_");
+      const { data: specificShopMem } = await supabase
+        .from("agent_memory")
+        .select("content")
+        .eq("email", userEmail.toLowerCase())
+        .eq("memory_type", `shopify_conn_${normReqShop}`)
+        .maybeSingle();
+      if (specificShopMem?.content) {
+        try {
+          shopData = typeof specificShopMem.content === "string" ? JSON.parse(specificShopMem.content) : specificShopMem.content;
+        } catch (_) {}
+      }
+    }
+
+    if (!shopData.shop && !shopData.domain) {
+      const { data: shopMem } = await supabase
+        .from("agent_memory")
+        .select("content")
+        .eq("email", userEmail.toLowerCase())
+        .eq("memory_type", "shopify_connection")
+        .maybeSingle();
+
+      if (shopMem?.content) {
+        try {
+          shopData = typeof shopMem.content === "string" ? JSON.parse(shopMem.content) : shopMem.content;
+        } catch (_) {}
+      }
+    }
+
+    const storeDisplayName = shopData.name || shopData.shopName || targetBrand || "Shopify Store";
+    const normStoreName = String(targetBrand || shopData.name || shopData.shopName || shopData.shop || "").toLowerCase().replace(/[^a-z0-9]/g, "");
     const normPostUrl = String(postUrl || "").toLowerCase().replace(/^https?:\/\//, "").replace(/\/$/, "");
-    const normStoreDomain = String(shopData.domain || shopData.shop || "").toLowerCase().replace(/^https?:\/\//, "").replace(/\/$/, "");
+    const normStoreDomain = String(shopData.domain || shopData.primary_domain || shopData.shop || "").toLowerCase().replace(/^https?:\/\//, "").replace(/\/$/, "");
 
     let brandMeta = allBrands.find((b) => {
       const bName = String(b.businessName || b.pageName || "").toLowerCase().replace(/[^a-z0-9]/g, "");
-      const bUrl = String(b.websiteUrl || "").toLowerCase().replace(/^https?:\/\//, "").replace(/\/$/, "");
+      const bUrl = String(b.websiteUrl || b.website || "").toLowerCase().replace(/^https?:\/\//, "").replace(/\/$/, "");
       const bIg = String(b.igUsername || "").toLowerCase().replace(/[^a-z0-9]/g, "");
 
       const urlMatches = bUrl && (normPostUrl.includes(bUrl) || normStoreDomain.includes(bUrl) || bUrl.includes(normStoreDomain));
@@ -97,7 +139,7 @@ export default async function handler(req, res) {
       return res.status(200).json({
         ok: false,
         require_connect: true,
-        message: `No connected Facebook Page found for ${shopData.name || targetBrand || "this store"}. Please connect or pair Meta in Social Pilot.`,
+        message: `No connected Facebook Page found for ${storeDisplayName}. Please connect or pair Meta in Social Pilot.`,
       });
     }
 

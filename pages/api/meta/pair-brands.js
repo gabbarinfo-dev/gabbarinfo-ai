@@ -60,6 +60,17 @@ export default async function handler(req, res) {
       }
     }
 
+    // Persist full bundle pairings in agent_memory for instant cross-module lookup
+    await supabaseServer.from("agent_memory").upsert(
+      {
+        email,
+        memory_type: "bundle_pairings",
+        content: JSON.stringify(pairings),
+        updated_at: new Date().toISOString(),
+      },
+      { onConflict: "email,memory_type" }
+    );
+
     // Also update primary meta_connections with first pairing for backward compatibility
     if (savedProfiles.length > 0) {
       const primary = savedProfiles[0];

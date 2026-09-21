@@ -21,8 +21,7 @@ const BLACKLISTED_TERMS = [
   "checkout",
   "cookie",
   "test",
-  "discreet",
-  "horoscope"
+  "discreet"
 ];
 
 function decodeHtmlEntities(str) {
@@ -51,7 +50,7 @@ function enforceSpatialLinkDistribution(contentHtml, catalogPosts = [], activeSe
 
   // 1. Clean Section 10 / Final Paragraph from dumped links
   clean = clean.replace(/<p>[^<]*partner with\s*<a[^>]*href=["'][^"']*services[^"']*["'][^>]*>[\s\S]*?<\/p>/gi, () => {
-    return `<p>To stay ahead of the competition in 2026, building an agile, multi-channel growth engine is no longer optional—it is the foundation of sustainable enterprise scale. By pairing disciplined data analytics with high-converting creative execution, modern businesses can unlock predictable revenue streams and outpace market disruption.</p>`;
+    return `<p>Achieving lasting authority and real-world impact requires continuous adaptation, domain expertise, and dedicated execution. By staying aligned with trusted standards and genuine quality, modern organizations can build enduring trust and sustainable success.</p>`;
   });
 
   const lastSectionRegex = /<h2>10\.\s*Strategic Conclusion[\s\S]*$/i;
@@ -549,7 +548,9 @@ Format output as valid JSON:
         meta_title: parsedArticle.meta_title,
         meta_description: parsedArticle.meta_description,
         focus_keyword: parsedArticle.focus_keyword,
-        tags: parsedArticle.tags || ["SEO Optimization", "Digital Marketing", "Business Growth"],
+        tags: (Array.isArray(parsedArticle.tags) && parsedArticle.tags.length > 0)
+          ? parsedArticle.tags
+          : [parsedArticle.focus_keyword, targetBizKey].filter(Boolean),
       };
 
       const wpResp = await fetch(`${siteUrl}/wp-json/gabbarinfo/v1/create-post`, {
@@ -572,47 +573,87 @@ Format output as valid JSON:
 
       // 8. In-Process Social Media Syndication (Strict Brand Isolation for Facebook & Instagram)
       const socialShares = {};
-      const targetMetaKey = `meta_conn_${normalizedBiz}`;
-      const altMetaKey = `meta_conn_${targetBizKey}`;
-
       let activeMeta = null;
-      // 1. Try brand-specific Meta connection from agent_memory
-      const { data: brandMetaMem } = await supabase
-        .from("agent_memory")
-        .select("content")
-        .eq("email", item.email.trim())
-        .or(`memory_type.eq.${targetMetaKey},memory_type.eq.${altMetaKey}`)
-        .maybeSingle();
 
-      if (brandMetaMem?.content) {
+      // 1. Fetch all meta connections and pairings for this user
+      const [brandMemsRes, bundlePairRes] = await Promise.all([
+        supabase
+          .from("agent_memory")
+          .select("content")
+          .eq("email", item.email.trim())
+          .like("memory_type", "meta_conn_%"),
+        supabase
+          .from("agent_memory")
+          .select("content")
+          .eq("email", item.email.trim())
+          .in("memory_type", ["bundle_pairings", "brand_asset_pairings"])
+          .maybeSingle(),
+      ]);
+
+      const brandProfiles = [];
+      (brandMemsRes.data || []).forEach((m) => {
+        try { brandProfiles.push(JSON.parse(m.content)); } catch (_) {}
+      });
+
+      if (bundlePairRes.data?.content) {
         try {
-          const parsed = JSON.parse(brandMetaMem.content);
-          if (parsed.pageId || parsed.igId) {
-            activeMeta = {
-              fb_page_id: parsed.pageId,
-              fb_page_access_token: parsed.pageToken || parsed.fb_page_access_token,
-              fb_user_access_token: parsed.userToken || parsed.fb_user_access_token,
-              ig_business_id: parsed.igId || parsed.ig_business_id,
-              instagram_actor_id: parsed.igId || parsed.instagram_actor_id,
-            };
+          const pairList = JSON.parse(bundlePairRes.data.content);
+          if (Array.isArray(pairList)) {
+            pairList.forEach((p) => {
+              if (p.pageId && !brandProfiles.some((b) => b.pageId === p.pageId)) {
+                brandProfiles.push(p);
+              }
+            });
           }
         } catch (_) {}
       }
 
-      // 2. Fallback to default meta_connections table
-      if (!activeMeta) {
-        const { data: metaConn, error: metaErr } = await supabase
-          .from("meta_connections")
-          .select("fb_page_id, fb_page_access_token, fb_user_access_token, ig_business_id, instagram_actor_id")
-          .ilike("email", item.email.trim())
-          .order("updated_at", { ascending: false })
-          .limit(1)
-          .maybeSingle();
+      const cleanSite = siteUrl.toLowerCase().replace(/^https?:\/\//, "").replace(/\/$/, "");
+      const normBiz = (targetBizKey || normalizedBiz || "").toLowerCase().replace(/[^a-z0-9]/g, "");
 
-        if (metaErr) {
-          logger(`[SEO Autopilot] Error querying meta_connections for ${item.email}: ${metaErr.message}`);
+      const matchedBrand = brandProfiles.find((b) => {
+        const bUrl = String(b.websiteUrl || b.website || "").toLowerCase().replace(/^https?:\/\//, "").replace(/\/$/, "");
+        const bName = String(b.businessName || b.pageName || "").toLowerCase().replace(/[^a-z0-9]/g, "");
+        return (cleanSite && bUrl && (cleanSite === bUrl || cleanSite.includes(bUrl) || bUrl.includes(cleanSite))) ||
+               (normBiz && bName && (normBiz === bName || normBiz.includes(bName) || bName.includes(normBiz)));
+      });
+
+      if (matchedBrand && (matchedBrand.pageId || matchedBrand.igId)) {
+        activeMeta = {
+          fb_page_id: matchedBrand.pageId,
+          fb_page_access_token: matchedBrand.pageToken || matchedBrand.fb_page_access_token,
+          fb_user_access_token: matchedBrand.userToken || matchedBrand.fb_user_access_token,
+          ig_business_id: matchedBrand.igId || matchedBrand.ig_business_id,
+          instagram_actor_id: matchedBrand.igId || matchedBrand.instagram_actor_id,
+        };
+      }
+
+      // 2. Fallback to default meta_connections ONLY if user has only 1 website and 0 custom brand profiles
+      if (!activeMeta && brandProfiles.length === 0) {
+        const { data: allWpSites } = await supabase
+          .from("agent_memory")
+          .select("memory_type")
+          .eq("email", item.email.trim())
+          .like("memory_type", "wp_conn_%");
+
+        if (!allWpSites || allWpSites.length <= 1) {
+          const { data: metaConn, error: metaErr } = await supabase
+            .from("meta_connections")
+            .select("fb_page_id, fb_page_access_token, fb_user_access_token, ig_business_id, instagram_actor_id")
+            .ilike("email", item.email.trim())
+            .order("updated_at", { ascending: false })
+            .limit(1)
+            .maybeSingle();
+
+          if (metaErr) {
+            logger(`[SEO Autopilot] Error querying meta_connections for ${item.email}: ${metaErr.message}`);
+          }
+          activeMeta = metaConn;
         }
-        activeMeta = metaConn;
+      }
+
+      if (!activeMeta) {
+        logger(`[SEO Autopilot] Social syndication skipped: Website "${siteUrl}" has no verified paired Meta assets.`);
       }
 
       const metaConn = activeMeta;

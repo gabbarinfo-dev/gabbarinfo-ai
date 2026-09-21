@@ -29,8 +29,11 @@ export default async function handler(req, res) {
     postUrl,
     featuredImageUrl,
     caption,
-    hashtags = "#DigitalMarketing #SEO #BusinessGrowth #GABBARinfo",
+    hashtags,
   } = req.body;
+
+  const cleanBizTag = (businessName || "").replace(/[^a-zA-Z0-9]/g, "");
+  const effectiveHashtags = hashtags || `#${cleanBizTag || "Business"} #Blog #Insights #Trending`;
 
   if (!postUrl) {
     return res.status(400).json({ ok: false, error: "Blog post URL is required" });
@@ -39,32 +42,53 @@ export default async function handler(req, res) {
   try {
     // 1. Resolve Brand-Specific Meta Connection strictly
     let brandMeta = null;
-    const { data: allBrandMems } = await supabase
-      .from("agent_memory")
-      .select("memory_type, content")
-      .eq("email", userEmail.toLowerCase())
-      .like("memory_type", "meta_conn_%");
+    const [allBrandMemsRes, bundlePairRes] = await Promise.all([
+      supabase
+        .from("agent_memory")
+        .select("memory_type, content")
+        .eq("email", userEmail.toLowerCase())
+        .like("memory_type", "meta_conn_%"),
+      supabase
+        .from("agent_memory")
+        .select("content")
+        .eq("email", userEmail.toLowerCase())
+        .in("memory_type", ["bundle_pairings", "brand_asset_pairings"])
+        .maybeSingle(),
+    ]);
 
     const allBrands = [];
-    (allBrandMems || []).forEach((m) => {
+    (allBrandMemsRes.data || []).forEach((m) => {
       try {
         const parsed = JSON.parse(m.content);
         allBrands.push(parsed);
       } catch (_) {}
     });
 
+    if (bundlePairRes.data?.content) {
+      try {
+        const pairList = JSON.parse(bundlePairRes.data.content);
+        if (Array.isArray(pairList)) {
+          pairList.forEach((p) => {
+            if (p.pageId && !allBrands.some((b) => b.pageId === p.pageId)) {
+              allBrands.push(p);
+            }
+          });
+        }
+      } catch (_) {}
+    }
+
     if (businessName) {
       const normBiz = String(businessName).toLowerCase().trim().replace(/[^a-z0-9]/g, "");
       // Match by exact websiteUrl or by business name
       brandMeta = allBrands.find((b) => {
         const bName = String(b.businessName || b.pageName || "").toLowerCase().replace(/[^a-z0-9]/g, "");
-        const bUrl = String(b.websiteUrl || "").toLowerCase().replace(/^https?:\/\//, "").replace(/\/$/, "");
+        const bUrl = String(b.websiteUrl || b.website || "").toLowerCase().replace(/^https?:\/\//, "").replace(/\/$/, "");
         return (normBiz && bName && (normBiz === bName || normBiz.includes(bName) || bName.includes(normBiz))) ||
                (postUrl && bUrl && postUrl.toLowerCase().includes(bUrl));
       });
     } else if (postUrl) {
       brandMeta = allBrands.find((b) => {
-        const bUrl = String(b.websiteUrl || "").toLowerCase().replace(/^https?:\/\//, "").replace(/\/$/, "");
+        const bUrl = String(b.websiteUrl || b.website || "").toLowerCase().replace(/^https?:\/\//, "").replace(/\/$/, "");
         return bUrl && postUrl.toLowerCase().includes(bUrl);
       });
     }
@@ -111,7 +135,7 @@ export default async function handler(req, res) {
           throw new Error("No Facebook Page linked to your account.");
         }
 
-        const fullMessage = `${title ? `📢 ${title}\n\n` : ""}${caption ? `${caption}\n\n` : ""}Read full article here 👇\n${postUrl}\n\n${hashtags}`;
+        const fullMessage = `${title ? `📢 ${title}\n\n` : ""}${caption ? `${caption}\n\n` : ""}Read full article here 👇\n${postUrl}\n\n${effectiveHashtags}`;
 
         // Attempt official Link Post to /{page_id}/feed for interactive click-through card
         const feedUrl = `https://graph.facebook.com/${API_VERSION}/${pageId}/feed`;

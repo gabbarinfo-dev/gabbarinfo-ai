@@ -569,7 +569,7 @@ Respond ONLY with a valid JSON object matching this schema:
       const articlePayload = {
         title: articleData.title,
         body_html: sanitizedBodyHtml,
-        author: brandName || "Bella & Diva",
+        author: brandName || "Editorial Staff",
         tags: Array.isArray(articleData.tags) ? articleData.tags.join(", ") : (articleData.tags || strategicTopic.primaryKeyword),
         published: !config.isDraft,
       };
@@ -617,18 +617,49 @@ Respond ONLY with a valid JSON object matching this schema:
       const socialShares = {};
       if (!config.isDraft) {
         try {
-          const normShopBiz = String(brandName || shop || "").toLowerCase().trim().replace(/[^a-z0-9]/g, "_");
-          const { data: shopBrandMem } = await supabase
-            .from("agent_memory")
-            .select("content")
-            .eq("email", userEmail.toLowerCase())
-            .eq("memory_type", `meta_conn_${normShopBiz}`)
-            .maybeSingle();
+          const [brandMemsRes, bundlePairRes] = await Promise.all([
+            supabase
+              .from("agent_memory")
+              .select("content")
+              .eq("email", userEmail.toLowerCase())
+              .like("memory_type", "meta_conn_%"),
+            supabase
+              .from("agent_memory")
+              .select("content")
+              .eq("email", userEmail.toLowerCase())
+              .in("memory_type", ["bundle_pairings", "brand_asset_pairings"])
+              .maybeSingle(),
+          ]);
 
-          let brandMeta = null;
-          if (shopBrandMem?.content) {
-            try { brandMeta = JSON.parse(shopBrandMem.content); } catch (_) {}
+          const brandProfiles = [];
+          (brandMemsRes.data || []).forEach((m) => {
+            try { brandProfiles.push(JSON.parse(m.content)); } catch (_) {}
+          });
+
+          if (bundlePairRes.data?.content) {
+            try {
+              const pairList = JSON.parse(bundlePairRes.data.content);
+              if (Array.isArray(pairList)) {
+                pairList.forEach((p) => {
+                  if (p.pageId && !brandProfiles.some((b) => b.pageId === p.pageId)) {
+                    brandProfiles.push(p);
+                  }
+                });
+              }
+            } catch (_) {}
           }
+
+          const normStoreDomain = String(primaryDomain || shop || "").toLowerCase().replace(/^https?:\/\//, "").replace(/\/$/, "");
+          const normStoreName = String(brandName || conn.name || "").toLowerCase().replace(/[^a-z0-9]/g, "");
+
+          let brandMeta = brandProfiles.find((b) => {
+            const bUrl = String(b.websiteUrl || b.website || "").toLowerCase().replace(/^https?:\/\//, "").replace(/\/$/, "");
+            const bName = String(b.businessName || b.pageName || "").toLowerCase().replace(/[^a-z0-9]/g, "");
+            const bIg = String(b.igUsername || "").toLowerCase().replace(/[^a-z0-9]/g, "");
+            return (bUrl && (normStoreDomain.includes(bUrl) || bUrl.includes(normStoreDomain))) ||
+                   (bName && normStoreName && (bName.includes(normStoreName) || normStoreName.includes(bName))) ||
+                   (bIg && normStoreName && (bIg.includes(normStoreName) || normStoreName.includes(bIg)));
+          });
 
           const { data: meta } = await supabase
             .from("meta_connections")
@@ -636,9 +667,9 @@ Respond ONLY with a valid JSON object matching this schema:
             .eq("email", userEmail.toLowerCase())
             .maybeSingle();
 
-          const pageId = brandMeta?.pageId || (meta?.fb_page_id ? meta.fb_page_id.split(",")[0].trim() : null);
-          const effectiveToken = brandMeta?.pageToken || meta?.fb_page_access_token || meta?.fb_user_access_token;
-          const igId = brandMeta?.igId || meta?.instagram_actor_id || meta?.ig_business_id;
+          const pageId = brandMeta?.pageId || (brandProfiles.length === 0 && meta?.fb_page_id ? meta.fb_page_id.split(",")[0].trim() : null);
+          const effectiveToken = brandMeta?.pageToken || (brandProfiles.length === 0 ? (meta?.fb_page_access_token || meta?.fb_user_access_token) : null);
+          const igId = brandMeta?.igId || (brandProfiles.length === 0 ? (meta?.instagram_actor_id || meta?.ig_business_id) : null);
 
           if (pageId && effectiveToken) {
             // 11.5.1 Brand Integrity & Anti-Exploitation Cross-Check

@@ -3372,15 +3372,15 @@ export default function ShopifyStoreConnect({ onConnectionChange }) {
                         <div style={{ padding: "8px 12px", borderRadius: 8, background: "rgba(0, 0, 0, 0.3)", border: "1px solid rgba(255, 255, 255, 0.1)" }}>
                           <div style={{ fontSize: 11, color: "#94a3b8", fontWeight: 700 }}>Current Shopify Store:</div>
                           <div style={{ fontSize: 13, color: "#34d399", fontWeight: 800, marginTop: 2 }}>
-                            {connection?.name || "Bella & Diva"}
+                            {connection?.name || connection?.shopName || "This Store"}
                           </div>
-                          <div style={{ fontSize: 11, color: "#64748b" }}>{connection?.domain || "www.bellandiva.com"}</div>
+                          <div style={{ fontSize: 11, color: "#64748b" }}>{connection?.domain || connection?.shop || ""}</div>
                         </div>
                       </div>
                     </div>
 
                     <div style={{ padding: "8px 12px", borderRadius: 8, background: "rgba(0, 0, 0, 0.4)", border: "1px solid rgba(239, 68, 68, 0.3)", fontSize: 11.8, color: "#fca5a5", lineHeight: 1.5 }}>
-                      ⛔ <strong>Cross-Business Syndication Blocked:</strong> To protect your brand authority and prevent unauthorized multi-business account exploitation, jewellery blogs from <strong>{connection?.name || "Bella & Diva"}</strong> cannot be broadcast onto <strong>{brandSecurity.meta?.display || "GABBARinfo"}</strong>.
+                      ⛔ <strong>Cross-Business Syndication Blocked:</strong> To protect your brand authority and prevent unauthorized multi-business account exploitation, blogs from <strong>{connection?.name || connection?.shopName || "this store"}</strong> cannot be broadcast onto <strong>{brandSecurity.meta?.display || "another business profile"}</strong>.
                     </div>
 
                     <div style={{ marginTop: 12, display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap" }}>
@@ -3401,7 +3401,7 @@ export default function ShopifyStoreConnect({ onConnectionChange }) {
                           cursor: "pointer",
                         }}
                       >
-                        <span>⚙️</span> Pair {connection?.name || "Store"}'s Social Media in Pairing Wizard ↗
+                        <span>⚙️</span> Pair {connection?.name || connection?.shopName || "Store"}'s Social Media in Pairing Wizard ↗
                       </button>
                     </div>
                   </div>
@@ -3414,7 +3414,7 @@ export default function ShopifyStoreConnect({ onConnectionChange }) {
               <div
                 onClick={() => {
                   if (brandSecurity && !brandSecurity.isMatched) {
-                    alert(`Brand Mismatch: Connected Meta profile belongs to ${brandSecurity.meta?.display || "another business"}, not ${connection?.name || "Bella & Diva"}. Cross-business syndication is locked.`);
+                    alert(`Brand Mismatch: Connected Meta profile belongs to ${brandSecurity.meta?.display || "another business"}, not ${connection?.name || connection?.shopName || "this store"}. Cross-business syndication is locked.`);
                     return;
                   }
                   setAutopilotConfig({ ...autopilotConfig, autoShareFacebook: !autopilotConfig.autoShareFacebook });
@@ -3512,7 +3512,7 @@ export default function ShopifyStoreConnect({ onConnectionChange }) {
               <div
                 onClick={() => {
                   if (brandSecurity && !brandSecurity.isMatched) {
-                    alert(`Brand Mismatch: Connected Meta profile belongs to ${brandSecurity.meta?.display || "another business"}, not ${connection?.name || "Bella & Diva"}. Cross-business syndication is locked.`);
+                    alert(`Brand Mismatch: Connected Meta profile belongs to ${brandSecurity.meta?.display || "another business"}, not ${connection?.name || connection?.shopName || "this store"}. Cross-business syndication is locked.`);
                     return;
                   }
                   setAutopilotConfig({ ...autopilotConfig, autoShareInstagram: !autopilotConfig.autoShareInstagram });
@@ -4474,7 +4474,7 @@ export default function ShopifyStoreConnect({ onConnectionChange }) {
                   <div style={{ fontWeight: 800, color: "#fee2e2", display: "flex", alignItems: "center", gap: 6, marginBottom: 4 }}>
                     <span>🛡️</span> Brand Mismatch Guard Active
                   </div>
-                  Connected Meta profile belongs to <strong>{brandSecurity.meta?.display || "GABBARinfo"}</strong>, whereas this article belongs to <strong>{connection?.name || "Bella & Diva"}</strong>.
+                  Connected Meta profile belongs to <strong>{brandSecurity.meta?.display || "another business profile"}</strong>, whereas this article belongs to <strong>{connection?.name || connection?.shopName || "this store"}</strong>.
                   <div style={{ marginTop: 4, fontSize: 11.5, color: "#f87171" }}>
                     Social publishing is locked to prevent brand contamination and unauthorized multi-business asset sharing.
                   </div>
