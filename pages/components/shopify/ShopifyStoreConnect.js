@@ -3630,6 +3630,121 @@ export default function ShopifyStoreConnect({ onConnectionChange }) {
             </button>
           </div>
 
+          {/* ── UPCOMING 7-DAY AUTONOMOUS DISPATCH CADENCE ── */}
+          <div
+            style={{
+              background: "rgba(16, 22, 34, 0.78)",
+              border: "1px solid rgba(255, 255, 255, 0.12)",
+              borderRadius: 14,
+              padding: 24,
+              boxShadow: "0 10px 30px rgba(0,0,0,0.4)",
+            }}
+          >
+            <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 18 }}>
+              <div
+                style={{
+                  width: 32,
+                  height: 32,
+                  borderRadius: 8,
+                  background: "rgba(56, 189, 248, 0.15)",
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  color: "#38bdf8",
+                  fontSize: 16,
+                }}
+              >
+                📅
+              </div>
+              <div>
+                <h4 style={{ fontSize: 16, color: "#fff", margin: 0, fontWeight: 700 }}>
+                  Upcoming 7-Day Velocity Cadence (Projected Dispatch Schedule)
+                </h4>
+                <div style={{ fontSize: 12, color: "#94a3b8", marginTop: 2 }}>
+                  Preview of automated publishing days based on your chosen velocity (
+                  {autopilotConfig.cadence === "daily"
+                    ? "Daily Rollout"
+                    : autopilotConfig.cadence === "weekly"
+                    ? "Weekly Rollout"
+                    : autopilotConfig.cadence === "monthly"
+                    ? "Monthly Rollout"
+                    : "Paced Rollout"}
+                  ). Articles are generated and published autonomously on active dates.
+                </div>
+              </div>
+            </div>
+
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(130px, 1fr))", gap: 12 }}>
+              {[0, 1, 2, 3, 4, 5, 6].map((offset) => {
+                const d = new Date();
+                d.setDate(d.getDate() + offset);
+                const isToday = offset === 0;
+
+                // Determine if this day is scheduled based on cadence
+                let isScheduled = false;
+                if (autopilotConfig.enabled) {
+                  if (autopilotConfig.cadence === "daily") {
+                    isScheduled = true;
+                  } else if (autopilotConfig.cadence === "weekly" || autopilotConfig.cadence === "monthly") {
+                    isScheduled = offset === 0;
+                  } else if (autopilotConfig.cadence === "alternate") {
+                    isScheduled = offset % 2 === 0;
+                  } else {
+                    isScheduled = true;
+                  }
+                }
+
+                return (
+                  <div
+                    key={offset}
+                    style={{
+                      background: isToday ? "rgba(30, 41, 59, 0.9)" : "rgba(19, 27, 46, 0.7)",
+                      border: isToday ? "1.5px solid #38bdf8" : "1px solid rgba(255, 255, 255, 0.08)",
+                      borderRadius: 10,
+                      padding: 16,
+                      textAlign: "center",
+                      display: "flex",
+                      flexDirection: "column",
+                      justifyContent: "space-between",
+                      minHeight: 110,
+                    }}
+                  >
+                    <div>
+                      <div
+                        style={{
+                          fontSize: 11,
+                          color: isToday ? "#38bdf8" : "#94a3b8",
+                          fontWeight: 800,
+                          textTransform: "uppercase",
+                          letterSpacing: "0.5px",
+                        }}
+                      >
+                        {isToday ? "TODAY" : d.toLocaleDateString("en-US", { weekday: "short" })}
+                      </div>
+                      <div style={{ fontSize: 15, fontWeight: 700, color: "#fff", marginTop: 4 }}>
+                        {d.toLocaleDateString("en-US", { month: "short", day: "numeric" })}
+                      </div>
+                    </div>
+                    <div
+                      style={{
+                        fontSize: 11,
+                        marginTop: 10,
+                        fontWeight: 600,
+                        padding: "4px 8px",
+                        borderRadius: 6,
+                        background: isScheduled ? "rgba(16, 185, 129, 0.15)" : "rgba(255, 255, 255, 0.04)",
+                        color: isScheduled ? "#34d399" : "#64748b",
+                        border: isScheduled ? "1px solid rgba(16, 185, 129, 0.25)" : "1px solid transparent",
+                      }}
+                    >
+                      {isScheduled ? "🟢 Active Dispatch Day" : "⚪ Rest / Buffer Day"}
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+
           {/* Recent Production History Card */}
           <div
             style={{

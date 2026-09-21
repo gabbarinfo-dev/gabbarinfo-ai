@@ -89,19 +89,49 @@ const CONTENT_PILLARS = [
   { id: "interactive_poll", name: "Interactive & Engagement Hook", badge: "💬 Community Question" }
 ];
 
-function buildFallbackQueue(services = [], businessName = "Our Business", count = 30) {
-  const cleanServices = services.length > 0 ? services : ["Core Services", "Client Solutions", "Premium Offerings", "Customer Care"];
+function buildFallbackQueue(services = [], businessName = "Our Business", count = 30, suggestedTopics = []) {
+  const cleanServices = services.length > 0 ? services : ["Featured Offerings", "Customer Favorites", "New Highlights", "Community Support"];
   const queue = [];
+  const now = new Date();
 
+  // If real domain topics are available (from crawled Shopify products or WordPress intel), prioritize them
+  if (Array.isArray(suggestedTopics) && suggestedTopics.length > 0) {
+    const pillars = [
+      { pillar: "educational_tips", hook: "Essential Guide & Insider Tips" },
+      { pillar: "service_spotlight", hook: "Spotlight On Quality" },
+      { pillar: "myth_busting", hook: "Common Misconceptions Debunked" },
+      { pillar: "problem_solution", hook: "Style, Care & Best Practices" },
+      { pillar: "interactive_poll", hook: "We'd Love Your Opinion" }
+    ];
+
+    for (let i = 0; i < count; i++) {
+      const topicText = suggestedTopics[i % suggestedTopics.length];
+      const p = pillars[i % pillars.length];
+      const s = cleanServices[i % cleanServices.length];
+      const scheduled = new Date(now.getTime() + (i + 1) * 24 * 60 * 60 * 1000);
+
+      queue.push({
+        day: i + 1,
+        pillar: p.pillar,
+        service: s,
+        hook: p.hook,
+        topic: topicText,
+        status: "pending",
+        scheduledDate: scheduled.toISOString()
+      });
+    }
+    return queue;
+  }
+
+  // Universal domain-adaptive templates (suits retail, ecommerce, fashion, local businesses, services)
   const baseTemplates = [
-    { pillar: "educational_tips", hook: "3 Essential Strategies Most Businesses Miss", template: "How to Optimize Your {service} for Maximum ROI" },
-    { pillar: "service_spotlight", hook: "Ready to Scale Your Growth?", template: "Why Our {service} Delivers 3x Better Results for Clients" },
-    { pillar: "myth_busting", hook: "The Biggest Lie in the Industry", template: "Myth vs Reality: What Really Drives Success in {service}" },
-    { pillar: "problem_solution", hook: "Stop Losing Inquiries to Competitors", template: "How We Solved Common Bottlenecks in {service} for Growth" },
-    { pillar: "interactive_poll", hook: "We Want to Hear From You", template: "What Is Your #1 Biggest Hurdle in {service} Right Now?" }
+    { pillar: "educational_tips", hook: "Essential Guide & Insider Tips", template: "5 Key Things You Need to Know About {service}" },
+    { pillar: "service_spotlight", hook: "Spotlight On Quality", template: "Discover What Makes Our {service} Exceptional" },
+    { pillar: "myth_busting", hook: "Debunking Common Misconceptions", template: "Myth vs Reality: Finding the Best Approach to {service}" },
+    { pillar: "problem_solution", hook: "Style, Care & Best Practices", template: "How to Get the Absolute Best Value & Longevity From Your {service}" },
+    { pillar: "interactive_poll", hook: "We'd Love Your Opinion", template: "What Matters Most to You When Choosing {service}?" }
   ];
 
-  const now = new Date();
   for (let i = 0; i < count; i++) {
     const s = cleanServices[i % cleanServices.length];
     const t = baseTemplates[i % baseTemplates.length];
@@ -121,6 +151,141 @@ function buildFallbackQueue(services = [], businessName = "Our Business", count 
   return queue;
 }
 
+export async function resolveBrandIntelligence({ email, normBusiness, matchedBrand, supabase }) {
+  const isAgencyRoot = normBusiness === "gabbarinfo" || normBusiness === "gabbarinfo_digital_solutions";
+
+  // 1. Check if linked to Shopify store
+  try {
+    const { data: shopConns } = await supabase
+      .from("agent_memory")
+      .select("memory_type, content")
+      .eq("email", email)
+      .eq("memory_type", "shopify_connection");
+
+    let matchedShop = null;
+    for (const sc of shopConns || []) {
+      try {
+        const parsed = JSON.parse(sc.content);
+        const siteUrl = (matchedBrand?.websiteUrl || "").toLowerCase();
+        const brandName = (matchedBrand?.businessName || "").toLowerCase();
+        if (
+          matchedBrand?.websiteType === "shopify" ||
+          (parsed.domain && siteUrl.includes(parsed.domain.toLowerCase())) ||
+          (parsed.shop && siteUrl.includes(parsed.shop.toLowerCase())) ||
+          (brandName && parsed.shopName && (brandName.includes(parsed.shopName.toLowerCase()) || parsed.shopName.toLowerCase().includes(brandName))) ||
+          (normBusiness && normBusiness.includes("bella")) ||
+          (normBusiness && normBusiness.includes("shopify"))
+        ) {
+          matchedShop = parsed;
+          break;
+        }
+      } catch (_) {}
+    }
+
+    if (matchedShop) {
+      const { data: shopAuto } = await supabase
+        .from("agent_memory")
+        .select("content")
+        .eq("email", email)
+        .eq("memory_type", `shopify_autopilot_${matchedShop.shop}`)
+        .maybeSingle();
+
+      let autoContent = null;
+      if (shopAuto?.content) {
+        try {
+          autoContent = JSON.parse(shopAuto.content);
+        } catch (_) {}
+      }
+
+      const shopTopics = autoContent?.suggestedTopics || autoContent?.topicQueue || [];
+      const isJewellery = (matchedShop.shopName || matchedBrand?.businessName || "").toLowerCase().includes("bella") ||
+        (matchedShop.domain || "").toLowerCase().includes("bella");
+      const services = isJewellery
+        ? ["Designer Jewellery", "Bridal Accessories", "Earrings & Rings", "Anti-Tarnish Jewellery", "Statement Necklaces"]
+        : ["Featured Products", "Best Sellers", "Seasonal Collection", "Customer Favorites", "Special Offers"];
+
+      return {
+        type: "shopify",
+        businessName: matchedBrand?.businessName || matchedShop.shopName || "Shopify Store",
+        industry: isJewellery ? "Designer Jewellery & Fashion Accessories" : "E-Commerce & Retail Products",
+        services,
+        suggestedTopics: shopTopics,
+        brandVoice: "Chic, premium, inspiring, and customer-centric",
+        targetAudience: autoContent?.targetMarket || "Shoppers and fashion enthusiasts",
+        targetLocations: autoContent?.targetLocations || autoContent?.targetMarket || "United Kingdom"
+      };
+    }
+  } catch (err) {
+    console.warn("[Social Autopilot] Error resolving Shopify intel:", err.message);
+  }
+
+  // 2. Check if linked to WordPress site intelligence
+  try {
+    const { data: wpIntels } = await supabase
+      .from("agent_memory")
+      .select("memory_type, content")
+      .eq("email", email)
+      .like("memory_type", "wp_intel_%");
+
+    for (const row of wpIntels || []) {
+      try {
+        const parsed = JSON.parse(row.content);
+        const intelKey = row.memory_type.replace("wp_intel_", "");
+        const siteUrl = (matchedBrand?.websiteUrl || "").toLowerCase();
+        if (
+          (normBusiness && (intelKey.includes(normBusiness) || normBusiness.includes(intelKey))) ||
+          (siteUrl && parsed.siteUrl && siteUrl.includes(parsed.siteUrl.toLowerCase().replace(/https?:\/\//, "")))
+        ) {
+          const coreServices = (parsed.coreOfferings && parsed.coreOfferings.length > 0)
+            ? parsed.coreOfferings.slice(0, 5)
+            : (parsed.targetKeywords && parsed.targetKeywords.length > 0)
+            ? parsed.targetKeywords.slice(0, 5)
+            : ["Core Offerings", "Consultation", "Solutions"];
+
+          return {
+            type: "wordpress",
+            businessName: parsed.brandName || matchedBrand?.businessName || "WordPress Site",
+            industry: parsed.industry || "Professional Services",
+            services: coreServices,
+            suggestedTopics: parsed.suggestedTopics || [],
+            brandVoice: "Authoritative, insightful, and customer-centric",
+            targetAudience: "Customers and community",
+            targetLocations: "Global"
+          };
+        }
+      } catch (_) {}
+    }
+  } catch (err) {
+    console.warn("[Social Autopilot] Error resolving WordPress intel:", err.message);
+  }
+
+  // 3. Gabbarinfo agency
+  if (isAgencyRoot) {
+    return {
+      type: "agency",
+      businessName: "GABBARinfo",
+      industry: "Digital Marketing & Growth",
+      services: ["SEO Optimization", "Google Ads Management", "Meta Social Ads", "Website Design"],
+      suggestedTopics: [],
+      brandVoice: "Bold, authoritative, and consultative",
+      targetAudience: "Business owners and founders",
+      targetLocations: "Global"
+    };
+  }
+
+  // 4. Standalone generic / Meta page fallback
+  return {
+    type: "generic",
+    businessName: matchedBrand?.businessName || "My Business",
+    industry: matchedBrand?.businessCategory || "Retail & Consumer Brand",
+    services: ["Featured Products", "Customer Favorites", "New Arrivals", "Special Offers"],
+    suggestedTopics: [],
+    brandVoice: "Engaging, friendly, and authentic",
+    targetAudience: "Valued customers and community",
+    targetLocations: "Global"
+  };
+}
+
 export default async function handler(req, res) {
   const session = await getServerSession(req, res, authOptions);
   const userEmail = session?.user?.email || req.body?.userEmail || req.query?.userEmail;
@@ -132,7 +297,6 @@ export default async function handler(req, res) {
   const normalizedEmail = userEmail.toLowerCase().trim();
   const rawBusiness = req.query?.businessName || req.body?.businessName || req.body?.config?.businessName || "";
   const normBusiness = rawBusiness ? rawBusiness.toLowerCase().trim().replace(/[^a-z0-9]/g, "_") : null;
-  const autoMemoryKey = normBusiness ? `social_autopilot_${normalizedEmail}_${normBusiness}` : `social_autopilot_${normalizedEmail}`;
   const isOwner = normalizedEmail === "ndantare@gmail.com" || session?.user?.role === "owner" || session?.user?.role === "admin";
 
   // ================================================================
@@ -169,70 +333,69 @@ export default async function handler(req, res) {
         ? availableBrands.find((b) => b.key === normBusiness || b.businessName?.toLowerCase().replace(/[^a-z0-9]/g, "_") === normBusiness)
         : (availableBrands[0] || null);
 
+      const effectiveNormBiz = normBusiness || matchedBrand?.key || null;
+      const targetMemoryKey = effectiveNormBiz ? `social_autopilot_${normalizedEmail}_${effectiveNormBiz}` : `social_autopilot_${normalizedEmail}`;
+
       const hasFacebook = Boolean(matchedBrand?.pageId || meta?.fb_page_id || meta?.fb_business_id);
       const hasInstagram = Boolean(matchedBrand?.igId || meta?.ig_business_id || meta?.instagram_actor_id);
 
-      // 2. Fetch Autopilot Config and Client Profile Memory from agent_memory
-      const [{ data: mem }, { data: clientMem }] = await Promise.all([
+      // Resolve intelligent brand context (Shopify store products, WordPress crawled intel, or generic)
+      const intel = await resolveBrandIntelligence({
+        email: normalizedEmail,
+        normBusiness: effectiveNormBiz,
+        matchedBrand,
         supabase
-          .from("agent_memory")
-          .select("content")
-          .eq("email", normalizedEmail)
-          .eq("memory_type", autoMemoryKey)
-          .maybeSingle(),
-        supabase
-          .from("agent_memory")
-          .select("content")
-          .eq("email", normalizedEmail)
-          .eq("memory_type", "client")
-          .maybeSingle(),
-      ]);
+      });
 
-      let parsedClient = null;
-      let bAnswers = {};
-      if (clientMem?.content) {
+      // Fetch saved memory for this specific brand
+      const { data: mem } = await supabase
+        .from("agent_memory")
+        .select("content")
+        .eq("email", normalizedEmail)
+        .eq("memory_type", targetMemoryKey)
+        .maybeSingle();
+
+      let saved = null;
+      if (mem?.content) {
         try {
-          parsedClient = typeof clientMem.content === "string" ? JSON.parse(clientMem.content) : clientMem.content;
-          const bKeys = Object.keys(parsedClient?.business_answers || {});
-          bAnswers = (bKeys.length > 0 && parsedClient.business_answers[bKeys[0]]) || parsedClient?.business_answers?.["default_business"] || parsedClient || {};
+          saved = JSON.parse(mem.content);
         } catch (_) {}
       }
 
-      const clientServicesList = (bAnswers.services || bAnswers.service || bAnswers.products || "")
-        ? String(bAnswers.services || bAnswers.service || bAnswers.products).split(/[,;\n|]/).map(s => s.trim()).filter(Boolean)
-        : [];
+      // Sanitize: If saved services/queue contain digital marketing agency terms but this brand is NOT Gabbarinfo, discard the wrong agency topics!
+      const isAgency = effectiveNormBiz === "gabbarinfo" || effectiveNormBiz === "gabbarinfo_digital_solutions";
+      const hasDirtyAgencyServices = !isAgency && saved?.services && saved.services.some(s => /seo|google ads|meta social ads|website design/i.test(s));
+      const hasDirtyAgencyQueue = !isAgency && saved?.queue && saved.queue.some(q => /google ads|seo optimization|meta social ads|website design for growth/i.test(q.topic || "") || /google ads|seo optimization/i.test(q.service || ""));
+
+      const finalServices = (!hasDirtyAgencyServices && saved?.services && saved.services.length > 0)
+        ? saved.services
+        : intel.services;
+
+      const finalIndustry = (!hasDirtyAgencyServices && saved?.industry && !saved.industry.toLowerCase().includes("digital marketing"))
+        ? saved.industry
+        : intel.industry;
+
+      let finalQueue = (!hasDirtyAgencyQueue && saved?.queue && saved.queue.length > 0)
+        ? saved.queue
+        : buildFallbackQueue(finalServices, matchedBrand?.businessName || intel.businessName, 30, intel.suggestedTopics);
 
       let config = {
-        enabled: false,
-        destination: hasFacebook && !hasInstagram ? "FACEBOOK_ONLY" : "BOTH", // sensible default based on connection
-        cadence: "daily", // "daily" | "weekly_4" | "alternate" | "weekly"
-        businessName: matchedBrand?.businessName || bAnswers.business_name || meta?.business_name || "My Business",
-        industry: bAnswers.industry || bAnswers.business_type || meta?.business_category || "Professional Services & Solutions",
-        services: clientServicesList.length > 0 ? clientServicesList : ["Core Offerings", "Client Solutions", "Customer Support"],
-        brandVoice: bAnswers.brand_voice || "Bold, authoritative, and consultative",
-        targetAudience: bAnswers.target_market || "Clients, customers, and industry partners",
-        targetMarket: bAnswers.target_market || "",
-        targetLocations: bAnswers.target_market || "",
-        queue: [],
-        publishedCount: 0,
-        testPostsUsed: 0,
-        lastPublishedAt: null,
-        history: []
+        enabled: saved?.enabled || false,
+        destination: saved?.destination || (hasFacebook && !hasInstagram ? "FACEBOOK_ONLY" : "BOTH"),
+        cadence: saved?.cadence || "daily",
+        businessName: matchedBrand?.businessName || saved?.businessName || intel.businessName,
+        industry: finalIndustry,
+        services: finalServices,
+        brandVoice: saved?.brandVoice || intel.brandVoice,
+        targetAudience: saved?.targetAudience || intel.targetAudience,
+        targetMarket: saved?.targetMarket || intel.targetLocations || "",
+        targetLocations: saved?.targetLocations || intel.targetLocations || "",
+        queue: finalQueue,
+        publishedCount: saved?.publishedCount || 0,
+        testPostsUsed: saved?.testPostsUsed || 0,
+        lastPublishedAt: saved?.lastPublishedAt || null,
+        history: saved?.history || []
       };
-
-      if (mem?.content) {
-        try {
-          const parsed = JSON.parse(mem.content);
-          config = { ...config, ...parsed };
-        } catch (e) {
-          console.warn("[Social Autopilot] Failed to parse existing memory:", e.message);
-        }
-      }
-
-      // If queue is empty, initialize fallback queue
-      if (!config.queue || config.queue.length === 0) {
-        config.queue = buildFallbackQueue(config.services, config.businessName, 30);
-      }
 
       // Resolve Instagram username via Graph API (matching Instagram Insights)
       let igUsername = matchedBrand?.igUsername || null;
@@ -407,9 +570,26 @@ export default async function handler(req, res) {
           return res.status(402).json({ ok: false, error: resCred.error });
         }
 
-        const businessName = updatedConfig?.businessName || current.businessName || "Our Business";
-        const industry = updatedConfig?.industry || current.industry || "Professional Business";
-        const services = updatedConfig?.services || current.services || ["Core Services", "Client Solutions"];
+        const effectiveNormBiz = normBusiness || updatedConfig?.businessName?.toLowerCase().replace(/[^a-z0-9]/g, "_") || null;
+        const intel = await resolveBrandIntelligence({
+          email: normalizedEmail,
+          normBusiness: effectiveNormBiz,
+          matchedBrand: { businessName: updatedConfig?.businessName || current.businessName },
+          supabase
+        });
+
+        const isAgency = effectiveNormBiz === "gabbarinfo" || effectiveNormBiz === "gabbarinfo_digital_solutions";
+        let services = updatedConfig?.services || current.services || intel.services;
+        if (!isAgency && services.some(s => /seo|google ads|meta social ads|website design/i.test(s))) {
+          services = intel.services;
+        }
+
+        let industry = updatedConfig?.industry || current.industry || intel.industry;
+        if (!isAgency && industry.toLowerCase().includes("digital marketing")) {
+          industry = intel.industry;
+        }
+
+        const businessName = updatedConfig?.businessName || current.businessName || intel.businessName;
         const count = updatedConfig?.cadence === "weekly" ? 4 : updatedConfig?.cadence === "alternate" ? 15 : updatedConfig?.cadence === "weekly_4" ? 16 : 30;
 
         let aiQueue = null;
@@ -423,16 +603,18 @@ export default async function handler(req, res) {
 BUSINESS CONTEXT:
 - Name: "${businessName}"
 - Industry: "${industry}"
-- Core Services: ${services.join(", ")}
+- Core Products / Offerings: ${services.join(", ")}
+${intel.suggestedTopics && intel.suggestedTopics.length > 0 ? `- Relevant Domain Topics & Catalog Items:\n${intel.suggestedTopics.slice(0, 15).map(t => `  * ${t}`).join("\n")}` : ""}
 
 CONTENT PILLARS TO CYCLE (Rotate through these 5 pillars strictly):
-1. "educational_tips": High-value, actionable "How-To" tip or secret that saves/shares.
-2. "service_spotlight": Compelling benefit-driven spotlight on one specific service with a clear CTA/offer.
-3. "myth_busting": Bold myth vs reality breaking industry misconceptions.
-4. "problem_solution": Real problem clients face and the smart solution framework.
-5. "interactive_poll": Engaging question or debate prompt that drives comments.
+1. "educational_tips": High-value, actionable "How-To" tip, styling advice, or usage secret that saves/shares.
+2. "service_spotlight": Compelling spotlight on one specific product or offering with an authentic value proposition.
+3. "myth_busting": Breaking common consumer myths or misconceptions in ${industry}.
+4. "problem_solution": Real problem/desire customers face and how to choose the ideal solution.
+5. "interactive_poll": Engaging question or debate prompt that drives comments and community interaction.
 
-RULES:
+STRICT RULES:
+- All topics MUST be 100% relevant to ${industry} and "${businessName}". Never suggest digital marketing, SEO, or Google Ads unless the business is explicitly a digital marketing agency!
 - Zero repetition! Every topic must have a distinct angle and hook.
 - Create exactly ${count} posts.
 - Output ONLY valid JSON array matching this schema:
@@ -440,7 +622,7 @@ RULES:
   {
     "day": 1,
     "pillar": "educational_tips",
-    "service": "Service Name",
+    "service": "Service or Product Name",
     "hook": "Punchy 4-7 word attention-grabbing headline",
     "topic": "Specific topic and angle for the graphic and caption"
   }
@@ -463,8 +645,8 @@ RULES:
                   day: idx + 1,
                   pillar: item.pillar || "educational_tips",
                   service: item.service || services[idx % services.length],
-                  hook: item.hook || "Growth Insights",
-                  topic: item.topic || "Practical strategies for scale",
+                  hook: item.hook || "Pro Tips & Guide",
+                  topic: item.topic || "Practical insights and styling advice",
                   status: "pending",
                   scheduledDate: new Date(now.getTime() + (idx + 1) * 24 * 60 * 60 * 1000).toISOString()
                 }));
@@ -476,7 +658,7 @@ RULES:
         }
 
         if (!aiQueue || aiQueue.length === 0) {
-          aiQueue = buildFallbackQueue(services, businessName, count);
+          aiQueue = buildFallbackQueue(services, businessName, count, intel.suggestedTopics);
         }
 
         const merged = {
@@ -514,20 +696,21 @@ RULES:
         }
 
         const target = queue[index];
-        const services = current.services || ["Digital Solutions"];
+        const services = current.services || ["Featured Offerings"];
         const s = target.service || services[Math.floor(Math.random() * services.length)];
         const pillar = target.pillar || "educational_tips";
 
-        let newTopic = `Fresh strategies and masterclass insights for ${s} that drive results`;
-        let newHook = `Proven Tips for ${s}`;
+        let newTopic = `Essential guide and best practices for ${s}`;
+        let newHook = `Expert Guide: ${s}`;
 
         const apiKey = process.env.OPENAI_API_KEY;
         if (apiKey) {
           try {
             const openai = new OpenAI({ apiKey });
-            const prompt = `Generate 1 fresh, highly viral social media topic for "${current.businessName || "Our Business"}".
-Service: "${s}"
+            const prompt = `Generate 1 fresh, highly viral social media topic for "${current.businessName || "Our Business"}" (${current.industry || "Business"}).
+Service/Product: "${s}"
 Pillar: "${pillar}"
+STRICT: Tailor specifically to ${current.industry || "this industry"}. NEVER mention digital marketing, SEO, or Google Ads unless it is explicitly a digital marketing agency.
 Respond ONLY in JSON: { "hook": "short catchy hook (4-7 words)", "topic": "specific topic angle" }`;
 
             const resp = await openai.chat.completions.create({
@@ -538,7 +721,9 @@ Respond ONLY in JSON: { "hook": "short catchy hook (4-7 words)", "topic": "speci
             const p = JSON.parse(resp.choices[0]?.message?.content || "{}");
             if (p.topic) newTopic = p.topic;
             if (p.hook) newHook = p.hook;
-          } catch (e) {}
+          } catch (aiErr) {
+            console.warn("[Social Autopilot] AI regenerate-topic error:", aiErr.message);
+          }
         }
 
         queue[index] = {
@@ -636,44 +821,52 @@ Respond ONLY in JSON: { "hook": "short catchy hook (4-7 words)", "topic": "speci
           }
         }
 
-        // Check Meta Connection & Client Memory
-        const [{ data: meta }, { data: clientMem }] = await Promise.all([
-          supabase
-            .from("meta_connections")
-            .select("*")
-            .ilike("email", normalizedEmail)
-            .order("updated_at", { ascending: false })
-            .limit(1)
-            .maybeSingle(),
-          supabase
+        // Check Meta Connection & Brand Intelligence
+        const effectiveNormBiz = normBusiness || current.businessName?.toLowerCase().replace(/[^a-z0-9]/g, "_") || null;
+        let matchedBrand = null;
+        if (effectiveNormBiz) {
+          const { data: brandMetaMem } = await supabase
             .from("agent_memory")
             .select("content")
             .eq("email", normalizedEmail)
-            .eq("memory_type", "client")
-            .maybeSingle(),
-        ]);
-
-        let bAnswers = {};
-        if (clientMem?.content) {
-          try {
-            const parsedClient = typeof clientMem.content === "string" ? JSON.parse(clientMem.content) : clientMem.content;
-            const bKeys = Object.keys(parsedClient?.business_answers || {});
-            bAnswers = (bKeys.length > 0 && parsedClient.business_answers[bKeys[0]]) || parsedClient?.business_answers?.["default_business"] || parsedClient || {};
-          } catch (_) {}
+            .eq("memory_type", `meta_conn_${effectiveNormBiz}`)
+            .maybeSingle();
+          if (brandMetaMem?.content) {
+            try { matchedBrand = JSON.parse(brandMetaMem.content); } catch (_) {}
+          }
         }
 
-        const hasFacebook = Boolean(meta?.fb_page_id || meta?.fb_business_id || process.env.FB_PAGE_ID);
-        const hasInstagram = Boolean(meta?.ig_business_id || meta?.instagram_actor_id);
+        const intel = await resolveBrandIntelligence({
+          email: normalizedEmail,
+          normBusiness: effectiveNormBiz,
+          matchedBrand,
+          supabase
+        });
 
-        const businessName = current.businessName || bAnswers.business_name || meta?.business_name || "My Business";
-        const businessCategory = current.industry || bAnswers.industry || bAnswers.business_type || meta?.business_category || "Commercial Solutions";
-        const clientWebsite = meta?.business_website || bAnswers.website || "";
-        const clientPhone = meta?.business_phone || bAnswers.phone || "";
+        const isAgency = effectiveNormBiz === "gabbarinfo" || effectiveNormBiz === "gabbarinfo_digital_solutions";
+        const businessName = matchedBrand?.businessName || current.businessName || intel.businessName;
+        const businessCategory = (!isAgency && current.industry && !current.industry.includes("Digital Marketing"))
+          ? current.industry
+          : intel.industry;
+
+        const { data: meta } = await supabase
+          .from("meta_connections")
+          .select("*")
+          .ilike("email", normalizedEmail)
+          .order("updated_at", { ascending: false })
+          .limit(1)
+          .maybeSingle();
+
+        const hasFacebook = Boolean(matchedBrand?.pageId || meta?.fb_page_id || meta?.fb_business_id || process.env.FB_PAGE_ID);
+        const hasInstagram = Boolean(matchedBrand?.igId || meta?.ig_business_id || meta?.instagram_actor_id);
+
+        const clientWebsite = matchedBrand?.websiteUrl || meta?.business_website || "";
+        const clientPhone = meta?.business_phone || "";
 
         // Ensure queue exists
         let queue = Array.isArray(current.queue) && current.queue.length > 0
           ? current.queue
-          : buildFallbackQueue(current.services || ["Core Services"], businessName, 30);
+          : buildFallbackQueue(current.services || intel.services, businessName, 30, intel.suggestedTopics);
 
         // Pick next pending item or first item
         let nextIndex = queue.findIndex(q => q.status === "pending");
@@ -755,6 +948,7 @@ Respond ONLY in JSON: { "hook": "short catchy hook (4-7 words)", "topic": "speci
               userEmail: normalizedEmail,
               imageUrl,
               caption,
+              targetPageId: matchedBrand?.pageId || null,
             });
             publishedTo.facebook = {
               ok: true,

@@ -19,10 +19,10 @@ export default function SocialMediaPlannerModal({ onClose }) {
     enabled: false,
     destination: "BOTH", // "BOTH" | "FACEBOOK_ONLY" | "INSTAGRAM_ONLY"
     cadence: "daily",
-    businessName: "GabbarInfo",
-    industry: "Digital Marketing & Growth",
-    services: ["SEO Optimization", "Google Ads Management", "Meta Social Ads", "Website Design"],
-    brandVoice: "Bold, authoritative, and consultative",
+    businessName: "",
+    industry: "",
+    services: [],
+    brandVoice: "",
     queue: [],
     history: [],
     publishedCount: 0,
@@ -83,6 +83,7 @@ export default function SocialMediaPlannerModal({ onClose }) {
 
   const handleBrandChange = (newBizKey) => {
     setSelectedBrand(newBizKey);
+    setConfig((prev) => ({ ...prev, queue: [], services: [] }));
     fetchConfig(newBizKey);
   };
 
@@ -151,10 +152,15 @@ export default function SocialMediaPlannerModal({ onClose }) {
   async function handleGenerateFullQueue() {
     setGeneratingQueue(true);
     try {
+      const targetBiz = selectedBrand || config.businessName;
       const res = await fetch("/api/social/autopilot-config", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ action: "generate-queue", config }),
+        body: JSON.stringify({
+          action: "generate-queue",
+          businessName: targetBiz,
+          config: { ...config, businessName: targetBiz }
+        }),
       });
       const data = await res.json();
       if (data.ok) {
@@ -170,10 +176,15 @@ export default function SocialMediaPlannerModal({ onClose }) {
   async function handleRegenerateTopic(index) {
     setRegeneratingIdx(index);
     try {
+      const targetBiz = selectedBrand || config.businessName;
       const res = await fetch("/api/social/autopilot-config", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ action: "regenerate-topic", dayIndex: index }),
+        body: JSON.stringify({
+          action: "regenerate-topic",
+          businessName: targetBiz,
+          dayIndex: index
+        }),
       });
       const data = await res.json();
       if (data.ok) {
@@ -195,11 +206,13 @@ export default function SocialMediaPlannerModal({ onClose }) {
   async function handleSaveEdit() {
     if (editingIndex === null) return;
     try {
+      const targetBiz = selectedBrand || config.businessName;
       const res = await fetch("/api/social/autopilot-config", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           action: "update-topic",
+          businessName: targetBiz,
           dayIndex: editingIndex,
           customTopic: editTopicText,
           customHook: editHookText,
@@ -257,10 +270,11 @@ export default function SocialMediaPlannerModal({ onClose }) {
     const postStartTime = Date.now();
 
     try {
+      const targetBiz = selectedBrand || config.businessName;
       const res = await fetch("/api/social/autopilot-config", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ action: "test-post" }),
+        body: JSON.stringify({ action: "test-post", businessName: targetBiz }),
       });
       const rawText = await res.text();
       let data = null;
