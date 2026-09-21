@@ -22,6 +22,7 @@ import { creativeEntry } from "../../../lib/instagram/creative-entry";
 import { clearCreativeState } from "../../../lib/instagram/creative-memory";
 import { processMetaAdImage } from "../../../lib/meta/process-meta-image";
 import { createOrResolveProductSet } from "../../../lib/meta/product-sets";
+import { generatePlatformGraphic } from "../../../lib/services/image-service";
 import {
   cleanCustomerId,
   getAccountHierarchy,
@@ -112,20 +113,28 @@ async function saveAnswerMemory(baseUrl, business_id, answers, emailOverride = n
     const existingAnswers = content.business_answers[business_id] || {};
     let finalAnswers = { ...existingAnswers, ...answers, updated_at: new Date().toISOString() };
 
-    if (answers.campaign_state && existingAnswers.campaign_state) {
-      console.log(`🧠 [Deep Merge] Merging campaign_state for ${business_id}...`);
+    if (answers.campaign_state) {
+      if (answers.campaign_state.is_reset || answers.campaign_state.plan === null) {
+        console.log(`🧹 [Clean State] Resetting plan state for ${business_id}...`);
+        finalAnswers.campaign_state = {
+          ...answers.campaign_state,
+          plan: answers.campaign_state.plan || null,
+        };
+      } else if (existingAnswers.campaign_state) {
+        console.log(`🧠 [Deep Merge] Merging campaign_state for ${business_id}...`);
+        const newPlan = answers.campaign_state.plan;
+        const oldPlan = existingAnswers.campaign_state.plan;
+        const finalPlan = newPlan !== undefined ? newPlan : oldPlan;
 
-      // 🛡️ CRITICAL FIX: Ensure PLAN is never lost during merge
-      const newPlan = answers.campaign_state.plan;
-      const oldPlan = existingAnswers.campaign_state.plan;
-      const finalPlan = newPlan || oldPlan;
-
-      finalAnswers.campaign_state = {
-        ...existingAnswers.campaign_state,
-        ...answers.campaign_state,
-        plan: finalPlan,
-        stage: answers.campaign_state.stage || existingAnswers.campaign_state.stage
-      };
+        finalAnswers.campaign_state = {
+          ...existingAnswers.campaign_state,
+          ...answers.campaign_state,
+          plan: finalPlan,
+          stage: answers.campaign_state.stage !== undefined ? answers.campaign_state.stage : existingAnswers.campaign_state.stage
+        };
+      } else {
+        finalAnswers.campaign_state = answers.campaign_state;
+      }
     }
 
     content.business_answers[business_id] = finalAnswers;
@@ -352,26 +361,31 @@ export default async function handler(req, res) {
     // Rule: If instruction intent matches “create / run / start ads campaign”
     // Then: Ignore any existing campaign_state, Force a fresh state, Do NOT load old plans
 
+    const isExplicitMetaCreationPrompt =
+      lowerInstruction.includes("create a meta ads campaign") ||
+      lowerInstruction.includes("create meta ads campaign") ||
+      lowerInstruction.includes("create an ad campaign") ||
+      lowerInstruction.includes("create an ads campaign") ||
+      lowerInstruction.includes("create a campaign for my business") ||
+      lowerInstruction.includes("create a meta campaign") ||
+      lowerInstruction.includes("run an ad") ||
+      lowerInstruction.includes("run ads for my business") ||
+      lowerInstruction.includes("ad run") ||
+      lowerInstruction.includes("start ads campaign") ||
+      lowerInstruction.includes("start a new campaign") ||
+      lowerInstruction.includes("start new campaign") ||
+      lowerInstruction.includes("start over") ||
+      lowerInstruction.includes("reset campaign") ||
+      lowerInstruction.includes("restart campaign") ||
+      lowerInstruction.includes("create a meta whatsapp campaign") ||
+      lowerInstruction.includes("create a meta call ads") ||
+      lowerInstruction.includes("create an advantage+") ||
+      lowerInstruction.includes("create a meta traffic campaign") ||
+      lowerInstruction.includes("create a meta campaign to get instagram profile") ||
+      lowerInstruction.includes("create a meta lead generation campaign");
+
     const isNewMetaCampaignRequest =
-      (mode === "meta_ads_plan" || mode === "generic") &&
-      (
-        lowerInstruction.includes("create a meta ads campaign") ||
-        lowerInstruction.includes("create meta ads campaign") ||
-        lowerInstruction.includes("create an ad campaign") ||
-        lowerInstruction.includes("create an ads campaign") ||
-        lowerInstruction.includes("create a campaign for my business") ||
-        lowerInstruction.includes("create a meta campaign") ||
-        lowerInstruction.includes("run an ad") ||
-        lowerInstruction.includes("run ads for my business") ||
-        lowerInstruction.includes("ad run") ||
-        lowerInstruction.includes("start ads campaign") ||
-        originalMetaMode === "meta_ads_call" ||
-        originalMetaMode === "meta_ads_shopping" ||
-        originalMetaMode === "meta_ads_whatsapp" ||
-        originalMetaMode === "meta_ads_traffic" ||
-        originalMetaMode === "meta_ads_profile" ||
-        originalMetaMode === "meta_ads_leads"
-      );
+      (mode === "meta_ads_plan" || mode === "generic") && isExplicitMetaCreationPrompt;
 
     let lockedCampaignState = null;
 
@@ -379,6 +393,7 @@ export default async function handler(req, res) {
       console.log("TRACE: HARD RESET TRIGGERED - IGNORING MEMORY");
       const baseUrl = process.env.NEXT_PUBLIC_BASE_URL;
       const resetState = {
+        is_reset: true,
         objective: null,
         destination: null,
         performance_goal: null,
@@ -446,12 +461,33 @@ export default async function handler(req, res) {
       lockedCampaignState = resetState;
       currentState = resetState;
 
-      // 💾 Save reset state to BOTH current ID and default_business to purge old plans
+      // 💾 Save reset state and clean up all business buckets in client memory
       if (session.user.email) {
-        const resetPayload = { campaign_state: resetState };
-        await saveAnswerMemory(process.env.NEXT_PUBLIC_BASE_URL, effectiveBusinessId, resetPayload, session.user.email.toLowerCase());
-        if (effectiveBusinessId !== "default_business") {
-          await saveAnswerMemory(process.env.NEXT_PUBLIC_BASE_URL, "default_business", resetPayload, session.user.email.toLowerCase());
+        try {
+          const { data: clientMem } = await supabase
+            .from("agent_memory")
+            .select("content")
+            .eq("email", session.user.email.toLowerCase())
+            .eq("memory_type", "client")
+            .maybeSingle();
+
+          if (clientMem?.content) {
+            const parsed = JSON.parse(clientMem.content);
+            if (parsed.business_answers) {
+              for (const bKey of Object.keys(parsed.business_answers)) {
+                delete parsed.business_answers[bKey].campaign_state;
+              }
+              parsed.business_answers[effectiveBusinessId] = { campaign_state: resetState };
+              parsed.business_answers["default_business"] = { campaign_state: resetState };
+              await supabase
+                .from("agent_memory")
+                .update({ content: JSON.stringify(parsed), updated_at: new Date().toISOString() })
+                .eq("email", session.user.email.toLowerCase())
+                .eq("memory_type", "client");
+            }
+          }
+        } catch (purgeErr) {
+          console.warn("Purge campaign_state warning:", purgeErr.message);
         }
       }
     }
@@ -464,17 +500,76 @@ export default async function handler(req, res) {
     console.log("TRACE: META ADS LOGIC ENTRY");
     let verifiedMetaAssets = null;
 
-    // 1️⃣ Check cache first
-    const { data: cachedAssets } = await supabase
-      .from("agent_meta_assets")
-      .select("*")
-      .eq("email", session.user.email.toLowerCase())
-      .maybeSingle();
+    // 1️⃣ Check for requested brand or active profile in agent_memory
+    const requestedBrand = body.selectedMetaBrand || null;
+    let targetBrandKey = requestedBrand;
 
-    if (cachedAssets) {
-      verifiedMetaAssets = cachedAssets;
-    } else {
-      // 2️⃣ No cache → verify using Meta Graph API
+    if (!targetBrandKey) {
+      try {
+        const { data: actMem } = await supabase
+          .from("agent_memory")
+          .select("content")
+          .eq("email", session.user.email.toLowerCase())
+          .eq("memory_type", "meta_active_profile")
+          .maybeSingle();
+
+        if (actMem?.content) {
+          const parsedAct = JSON.parse(actMem.content);
+          if (parsedAct.activeBrandKey) targetBrandKey = parsedAct.activeBrandKey;
+        }
+      } catch (_) {}
+    }
+
+    if (targetBrandKey) {
+      try {
+        const { data: brandMem } = await supabase
+          .from("agent_memory")
+          .select("content")
+          .eq("email", session.user.email.toLowerCase())
+          .eq("memory_type", `meta_conn_${targetBrandKey}`)
+          .maybeSingle();
+
+        if (brandMem?.content) {
+          const bp = JSON.parse(brandMem.content);
+          const bpAdId = (bp.adAccountId || "").toString().replace(/^act_/, "");
+          const effectiveAdAccountId = bp.adAccountId ? (bp.adAccountId.startsWith("act_") ? bp.adAccountId : `act_${bp.adAccountId}`) : `act_${bpAdId}`;
+
+          verifiedMetaAssets = {
+            email: session.user.email.toLowerCase(),
+            brand_key: targetBrandKey,
+            fb_page: { id: bp.pageId, name: bp.businessName || bp.pageName },
+            ig_account: bp.igId ? { id: bp.igId, username: bp.igUsername } : null,
+            ad_account: {
+              id: bpAdId,
+              account_id: effectiveAdAccountId,
+              name: bp.adAccountName || bp.businessName || bp.pageName,
+              currency: bp.currency || "INR",
+              account_status: 1,
+            },
+            verified_at: new Date().toISOString(),
+          };
+
+          if (!metaRow) metaRow = {};
+          metaRow.fb_page_id = bp.pageId;
+          if (bp.pageToken) metaRow.fb_page_access_token = bp.pageToken;
+          if (bp.businessId) metaRow.fb_business_id = bp.businessId;
+          if (bp.igId) metaRow.ig_business_id = bp.igId;
+          metaRow.fb_ad_account_id = effectiveAdAccountId;
+          metaRow.business_name = bp.businessName || bp.pageName;
+          metaRow.account_currency = bp.currency || metaRow.account_currency || "INR";
+          if (bp.phone) metaRow.business_phone = bp.phone;
+          if (bp.website) metaRow.business_website = bp.website;
+          if (bp.category) metaRow.business_category = bp.category;
+          if (bp.userToken) metaRow.fb_user_access_token = bp.userToken;
+          console.log(`✅ [Meta Assets] Bound dynamically to active brand profile: ${bp.businessName || targetBrandKey} (Ad Account: ${effectiveAdAccountId})`);
+        }
+      } catch (brandErr) {
+        console.warn("[Meta Assets] Error resolving active brand profile:", brandErr.message);
+      }
+    }
+
+    // 2️⃣ Fallback to standard verification if brand profile wasn't loaded
+    if (!verifiedMetaAssets) {
       console.log("TRACE: FETCHING META CONNECTION FROM SUPABASE");
       const { data: meta } = await supabase
         .from("meta_connections")
@@ -484,7 +579,6 @@ export default async function handler(req, res) {
 
       console.log("TRACE: META CONNECTION RESULT =", meta);
       console.log("TRACE: RESOLVED AD ACCOUNT ID =", meta?.fb_ad_account_id);
-      console.log("DEBUG META ROW:", meta);
       if (!meta?.fb_ad_account_id || (!meta?.fb_user_access_token)) {
         console.log("TRACE: RETURNING RESPONSE — STAGE =", currentState?.stage);
         return res.json({
@@ -515,7 +609,7 @@ export default async function handler(req, res) {
       // Ad Account (normalize id to numeric for 'act_<id>' pattern)
       const normalizedAdId = (meta.fb_ad_account_id || "").toString().replace(/^act_/, "");
       const adRes = await fetch(
-        `https://graph.facebook.com/v19.0/act_${normalizedAdId}?fields=account_status,currency,timezone_name&access_token=${token}`
+        `https://graph.facebook.com/v19.0/act_${normalizedAdId}?fields=name,account_status,currency,timezone_name&access_token=${token}`
       );
       const adAccount = await adRes.json();
 
@@ -523,12 +617,9 @@ export default async function handler(req, res) {
         email: session.user.email.toLowerCase(),
         fb_page: fbPage,
         ig_account: igAccount,
-        ad_account: { ...adAccount, id: normalizedAdId },
+        ad_account: { ...adAccount, id: normalizedAdId, account_id: `act_${normalizedAdId}` },
         verified_at: new Date().toISOString(),
       };
-
-      // 3️⃣ Save to cache
-      await supabase.from("agent_meta_assets").upsert(verifiedMetaAssets);
     }
 
     const activeCurrency = verifiedMetaAssets?.ad_account?.currency || metaRow?.account_currency || "USD";
@@ -1024,10 +1115,9 @@ export default async function handler(req, res) {
     // ============================================================
     if (
       isNewMetaCampaignRequest &&
-      lockedCampaignState?.stage &&
-      lockedCampaignState.stage !== "PLAN_CONFIRMED"
+      lockedCampaignState
     ) {
-      lockedCampaignState = null;
+      lockedCampaignState.plan = null;
     }
 
     // ---------- MODE-SPECIFIC FOCUS ----------
@@ -3850,19 +3940,21 @@ Otherwise, respond with a full, clear explanation, and include example JSON only
             creativeResult.image_generation_prompt ||
             `${state.service} professional ad for ${state.location}. Style: clean, high-conversion, marketing photography.`;
           try {
-            const imgRes = await fetch(`${process.env.NEXT_PUBLIC_BASE_URL}/api/images/generate`, {
-              method: "POST",
-              headers: { "Content-Type": "application/json" },
-              body: JSON.stringify({ prompt: imagePrompt }),
+            console.log("🎨 Calling generatePlatformGraphic directly with prompt:", imagePrompt.substring(0, 80));
+            const imgResult = await generatePlatformGraphic({
+              prompt: imagePrompt,
+              businessId: effectiveBusinessId,
+              userEmail: __currentEmail,
+              aspectRatio: "1:1",
+              meterCredits: false,
             });
-            const imgJson = await parseResponseSafe(imgRes);
 
-            if (imgJson.imageBase64) {
-              // 🎨 APPLY OVERLAY: service name + tagline + offer on top of DALL-E image
-              let processedBase64 = imgJson.imageBase64;
+            if (imgResult.ok && imgResult.imageBase64) {
+              // 🎨 APPLY OVERLAY: service name + tagline + offer on top of generated image
+              let processedBase64 = imgResult.imageBase64;
               try {
                 processedBase64 = await processMetaAdImage({
-                  imageBase64: imgJson.imageBase64,
+                  imageBase64: imgResult.imageBase64,
                   service: state.service || "",
                   offer: state.offer || "",
                   tagline: state.tagline || state.plan?.ad_sets?.[0]?.ad_creative?.tagline || "",
@@ -3878,7 +3970,7 @@ Otherwise, respond with a full, clear explanation, and include example JSON only
               const newCreative = {
                 ...creativeResult,
                 imageBase64: processedBase64,
-                imageUrl: `data:image/jpeg;base64,${processedBase64}`
+                imageUrl: imgResult.imageUrl || `data:image/jpeg;base64,${processedBase64}`
               };
 
               // 🔒 UPDATE STATE
@@ -4538,10 +4630,14 @@ Otherwise, respond with a full, clear explanation, and include example JSON only
               ? `\n**Suggestions**: ${planJson.targeting.targeting_suggestions.interests?.join(", ") || ""} (${planJson.targeting.targeting_suggestions.demographics?.join(", ") || ""})`
               : "";
 
+            const adAccName = verifiedMetaAssets?.ad_account?.name || metaRow?.business_name || "";
+            const adAccId = (verifiedMetaAssets?.ad_account && (verifiedMetaAssets.ad_account.account_id || verifiedMetaAssets.ad_account.id)) || metaRow?.fb_ad_account_id || "N/A";
+            const adAccDisplay = adAccName ? `${adAccName} (\`${adAccId}\`)` : `\`${adAccId}\``;
+
             text = `
 **Plan Proposed: ${planJson.campaign_name}**
 
-**Ad Account ID**: \`${(verifiedMetaAssets?.ad_account && (verifiedMetaAssets.ad_account.id || verifiedMetaAssets.ad_account.account_id)) || metaRow?.fb_ad_account_id || "N/A"}\`
+**Ad Account**: ${adAccDisplay}
 
 **Targeting**: ${lockedCampaignState?.location || planJson.targeting?.universal_locations?.join(", ") || "Not set"} | ${(lockedCampaignState?.target_gender || planJson.targeting?.genders || "all").toString().charAt(0).toUpperCase() + (lockedCampaignState?.target_gender || planJson.targeting?.genders || "all").toString().slice(1)} | Age: ${planJson.targeting?.age_min || 18}-${planJson.targeting?.age_max || 65}${tStr}
 **Budget**: ${bAmount} ${bCurrency} (${bType})
@@ -5310,7 +5406,7 @@ async function handleGoogleAdsCampaignFlow(req, res, session, body) {
     // 2. Load existing Google Ads state from Supabase FIRST
     const { data: memData } = await supabase
       .from("agent_memory")
-      .select("content")
+      .select("content, updated_at")
       .eq("email", userEmail)
       .eq("memory_type", "google_ads_state")
       .maybeSingle();
@@ -5318,7 +5414,21 @@ async function handleGoogleAdsCampaignFlow(req, res, session, body) {
     let gAdsState = null;
     if (memData?.content) {
       try {
-        gAdsState = JSON.parse(memData.content);
+        gAdsState = typeof memData.content === "string" ? JSON.parse(memData.content) : memData.content;
+
+        // SELF-CLEANING RULE 1: Stale draft TTL (2 hours) or Stage COMPLETED
+        // Any draft older than 2 hours or marked COMPLETED is instantly purged so stale data never lingers!
+        const lastUpdated = memData.updated_at ? new Date(memData.updated_at).getTime() : 0;
+        const isStale = lastUpdated > 0 && Date.now() - lastUpdated > 2 * 60 * 60 * 1000;
+        if (isStale || gAdsState?.stage === "COMPLETED") {
+          console.log("[Self-Clean] Purging stale (>2h) or completed Google Ads draft memory");
+          gAdsState = {
+            stage: "INTAKE_PENDING",
+            customerId: gAdsState?.customerId || null,
+            managerId: gAdsState?.managerId || null,
+            intake: {},
+          };
+        }
       } catch (_) {}
     }
 
@@ -5505,15 +5615,28 @@ async function handleGoogleAdsCampaignFlow(req, res, session, body) {
       }
     }
 
+    // SELF-CLEANING RULE 2: Strict Account-Level Isolation
+    // If the active target account differs from the stored draft account, immediately discard draft intake!
+    if (selectedCustomerId && gAdsState?.customerId && cleanCustomerId(gAdsState.customerId) !== cleanCustomerId(selectedCustomerId)) {
+      console.log(`[Self-Clean] Account mismatch: current ${selectedCustomerId} vs draft ${gAdsState.customerId}. Wiping cross-account draft intake!`);
+      gAdsState.intake = {};
+      gAdsState.targetKeywords = [];
+      gAdsState.negativeKeywords = [];
+      gAdsState.stage = "INTAKE_PENDING";
+      gAdsState.customerId = selectedCustomerId;
+      gAdsState.managerId = selectedManagerId;
+    }
+
     // Save selected account across agent_memory and google_connections
-    if (justSelectedAccountId || !gAdsState?.customerId) {
+    if (justSelectedAccountId || !gAdsState?.customerId || (selectedCustomerId && gAdsState?.customerId !== selectedCustomerId)) {
+      const isSwitchingAccount = gAdsState?.customerId && gAdsState.customerId !== selectedCustomerId;
       const retainedType = gAdsState?.intake?.campaign_type || detectedCampaignType || null;
       gAdsState = {
         stage: "INTAKE_PENDING",
         customerId: selectedCustomerId,
         managerId: selectedManagerId,
         intake: {
-          ...(gAdsState?.intake || {}),
+          ...(isSwitchingAccount ? {} : (gAdsState?.intake || {})),
           ...(retainedType ? { campaign_type: retainedType } : {}),
         },
       };
@@ -5970,7 +6093,8 @@ async function handleGoogleAdsCampaignFlow(req, res, session, body) {
           await commitQuota({ reservationId: gReservation.reservationId });
         }
 
-        // Mark completed in memory
+        // SELF-CLEANING RULE 3: Instant Post-Publication Purge
+        // Clear intake completely so the published campaign's data never lingers into subsequent chats!
         await supabase
           .from("agent_memory")
           .upsert({
@@ -5978,6 +6102,9 @@ async function handleGoogleAdsCampaignFlow(req, res, session, body) {
             memory_type: "google_ads_state",
             content: JSON.stringify({
               stage: "COMPLETED",
+              customerId: selectedCustomerId,
+              managerId: selectedManagerId,
+              intake: {},
               lastCampaign: createRes,
               plan: plan,
               completed_at: new Date().toISOString()
@@ -6212,7 +6339,7 @@ Respond with ONLY the JSON object, wrapped in \`\`\`json \`\`\`.
 
     const urlMatch = instruction.match(/(?:store website url|store url|website url|landing page)\s*:\s*<?(https?:\/\/[^\s>]+)/i);
     if (urlMatch && urlMatch[1].trim()) {
-      intakeData.landing_page_url = urlMatch[1].trim();
+      intakeData.landing_page_url = urlMatch[1].trim().replace(/^(https?:\/\/)+/i, "https://");
     }
 
     // Extract individual product URLs if user pasted specific product links
@@ -6288,8 +6415,16 @@ Respond with ONLY the JSON object, wrapped in \`\`\`json \`\`\`.
       }
     } catch (_) {}
 
-    // Pre-populate mergedIntake from connected Shopify store if matching or available
-    if (connectedShopify?.shop) {
+    // Determine if this Google Ads account is actually paired/associated with the connected Shopify store
+    const accNameLower = (activeAccountObj.descriptiveName || "").toLowerCase();
+    const shopNameLower = (connectedShopify?.shopName || "").toLowerCase();
+    const isStoreAccountMatch =
+      Boolean(linkedGmc?.merchantId) ||
+      (shopNameLower && (accNameLower.includes(shopNameLower) || (accNameLower === "b&d" && shopNameLower.includes("bella")))) ||
+      (activeAccountObj.currencyCode && connectedShopify?.currency && activeAccountObj.currencyCode === connectedShopify.currency && (accNameLower.includes("store") || accNameLower.includes("shop")));
+
+    // ONLY pre-populate mergedIntake from connected Shopify store IF this account is actually paired with that store!
+    if (connectedShopify?.shop && isStoreAccountMatch) {
       if (!mergedIntake.business_name) {
         mergedIntake.business_name = connectedShopify.shopName || connectedShopify.name || "Store";
       }
@@ -6316,7 +6451,7 @@ Respond with ONLY the JSON object, wrapped in \`\`\`json \`\`\`.
         refreshToken,
         customerId: selectedCustomerId,
         businessName: mergedIntake.business_name || activeAccountObj.descriptiveName,
-        storeName: connectedShopify?.shopName || null,
+        storeName: isStoreAccountMatch ? (connectedShopify?.shopName || null) : null,
         services: mergedIntake.services,
         loginCustomerId: activeAccountObj.managerId || null,
       });
@@ -6573,6 +6708,7 @@ Respond with ONLY the JSON object, wrapped in \`\`\`json \`\`\`.
     const targetLocation = mergedIntake.location || "India";
     const businessLabel = mergedIntake.business_name || mergedIntake.services || "Business";
     let landingUrl = mergedIntake.landing_page_url || "https://example.com";
+    landingUrl = landingUrl.replace(/^(https?:\/\/)+/i, "https://");
     if (landingUrl && !landingUrl.startsWith("http://") && !landingUrl.startsWith("https://")) {
       landingUrl = `https://${landingUrl}`;
     }
@@ -6672,12 +6808,15 @@ Respond with ONLY the JSON object, wrapped in \`\`\`json \`\`\`.
             updated_at: new Date().toISOString(),
           }, { onConflict: "email,memory_type" });
 
+        const shoppingCategoryName = (mergedIntake.services || "").trim();
+        const partitionDisplay = shoppingCategoryName ? `${shoppingCategoryName} (Ad Group Category Scoped)` : "All Products (Unit)";
+
         const reviewMessage =
           `🛍️ **Phase 2: Standard Shopping Campaign & Product Feed Architecture**\n\n` +
           `Standard Shopping campaigns use your Google Merchant Center product catalog rather than search keywords to automatically display rich product cards when shoppers search for items you sell.\n\n` +
           `• **Target Store / Merchant Center ID:** \`${mergedIntake.merchant_id || "Connected Store"}\`\n` +
           `• **Country of Sale / Feed Label:** ${countryIso ? `${countryIso} (${mergedIntake.location || "United Kingdom"})` : (mergedIntake.location || "India")}\n` +
-          `• **Product Partition:** All Products (Unit)\n` +
+          `• **Product Partition / Ad Group Focus:** ${partitionDisplay}\n` +
           `• **Bidding Strategy:** ${mergedIntake.bidding_strategy || "Maximize Clicks (Highest Product Views)"}\n` +
           `• **Daily Budget:** ${accountCurrency === "INR" ? "₹" : ""}${mergedIntake.daily_budget}/day\n\n` +
           `### 🛡️ **Waste-Protection Negative Keywords (${initialNegatives.length}):**\n` +
@@ -6992,15 +7131,20 @@ ${JSON.stringify(candidateSitelinks, null, 2)}
     let formatSummaryBulletPoints = "";
 
     if (chosenCampaignType === "SHOPPING") {
+      const shoppingCatName = (mergedIntake.services || "").trim();
+      const shoppingAgName = shoppingCatName
+        ? `${businessLabel.slice(0, 15)} - ${shoppingCatName.slice(0, 20)}`
+        : `${businessLabel.slice(0, 25)} - All Products`;
+
       formatSpecificRules = `STRICT STANDARD SHOPPING RULES:
 1. Standard Shopping does NOT use text ads or search keywords. Google automatically builds Product Listing Ads directly from your Google Merchant Center product catalog!
-2. Ad Group: Create exactly 1 Ad Group with name "${businessLabel.slice(0, 25)} - All Products" and type "SHOPPING_PRODUCT_ADS".
+2. Ad Group: Create exactly 1 Ad Group with name "${shoppingAgName}" and type "SHOPPING_PRODUCT_ADS".
 3. Merchant Center Account: Linked to feed ID ${mergedIntake.merchant_id || "Active GMC Feed"}.
 4. Negative Keywords: Apply the finalized negative keywords (${finalizedNegatives.length} exclusions) to filter out irrelevant product search queries.`;
 
       formatJsonAdGroups = `"adGroups": [
     {
-      "name": "${businessLabel.slice(0, 25)} - All Products",
+      "name": "${shoppingAgName}",
       "type": "SHOPPING_PRODUCT_ADS",
       "cpcBidMicros": 15000000
     }
@@ -7021,7 +7165,7 @@ ${JSON.stringify(candidateSitelinks, null, 2)}
       formatSummaryBulletPoints = `- 📊 **Campaign Format:** ${formatDisplayLabel}
 - 🏬 **Merchant Center ID:** \`${mergedIntake.merchant_id || "Active GMC Feed"}\`
 - 🌍 **Sales Country / Feed Label:** ${countryIso || "IN"}
-- 📦 **Ad Group Setup:** 1 Ad Group targeting "All Products" (\`SHOPPING_PRODUCT_ADS\`)
+- 📦 **Ad Group Setup:** 1 Ad Group: "${shoppingAgName}" (\`SHOPPING_PRODUCT_ADS\`)
 - 📈 **Bidding Strategy:** ${biddingChoice}
 - 📍 **Target Location:** ${targetLocation}
 - 💰 **Daily Budget:** ${accountCurrency === "INR" ? "₹" : accountCurrency + " "}${mergedIntake.daily_budget}/day

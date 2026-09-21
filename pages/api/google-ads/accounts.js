@@ -314,6 +314,29 @@ export default async function handler(req, res) {
         });
       }
 
+      // Sync agent_memory so switching the account immediately clears any prior account's draft intake
+      try {
+        await supabase
+          .from("agent_memory")
+          .upsert(
+            {
+              email,
+              memory_type: "google_ads_state",
+              content: JSON.stringify({
+                stage: "INTAKE_PENDING",
+                customerId: cleanId,
+                managerId: cleanManagerId || null,
+                intake: {},
+                updated_at: new Date().toISOString(),
+              }),
+              updated_at: new Date().toISOString(),
+            },
+            { onConflict: "email,memory_type" }
+          );
+      } catch (memErr) {
+        console.warn("Failed to reset google_ads_state on account switch:", memErr.message);
+      }
+
       return res.status(200).json({
         ok: true,
         message: "Active Google Ads account updated successfully.",

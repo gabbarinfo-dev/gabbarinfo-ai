@@ -417,6 +417,15 @@ export default function ChatPage() {
   // Track how many agent steps have been charged in the current campaign session
   const [campaignStepCount, setCampaignStepCount] = useState(0);
 
+  // ── Multi-Account Management (Google Ads & Meta Ads) ──
+  const [googleAccounts, setGoogleAccounts] = useState([]);
+  const [selectedGoogleAccount, setSelectedGoogleAccount] = useState("");
+  const [googleLoading, setGoogleLoading] = useState(false);
+
+  const [metaBrands, setMetaBrands] = useState({});
+  const [selectedMetaBrand, setSelectedMetaBrand] = useState("");
+  const [metaLoading, setMetaLoading] = useState(false);
+
   // Auto-populate agent instructions based on mode (UI Enhancement)
   useEffect(() => {
     if (isAgentPanelOpen) {
@@ -554,6 +563,101 @@ export default function ChatPage() {
 
     fetchCredits();
   }, []);
+
+  // Multi-Account Data Loaders
+  useEffect(() => {
+    if (status !== "authenticated") return;
+
+    // 1. Fetch Google Ads accounts
+    async function loadGoogleAccounts() {
+      try {
+        setGoogleLoading(true);
+        const res = await fetch("/api/google-ads/accounts");
+        if (res.ok) {
+          const data = await res.json();
+          if (data.ok && Array.isArray(data.accounts)) {
+            setGoogleAccounts(data.accounts);
+            if (data.selectedCustomerId) {
+              setSelectedGoogleAccount(data.selectedCustomerId);
+            } else if (data.accounts.length > 0) {
+              setSelectedGoogleAccount(data.accounts[0].id);
+            }
+          }
+        }
+      } catch (err) {
+        console.error("Failed to load Google Ads accounts:", err);
+      } finally {
+        setGoogleLoading(false);
+      }
+    }
+
+    // 2. Fetch Meta Ads brands / accounts
+    async function loadMetaProfiles() {
+      try {
+        setMetaLoading(true);
+        const res = await fetch("/api/meta/status");
+        if (res.ok) {
+          const data = await res.json();
+          if (data.allMetaConnections && Object.keys(data.allMetaConnections).length > 0) {
+            setMetaBrands(data.allMetaConnections);
+            const brandKeys = Object.keys(data.allMetaConnections);
+            setSelectedMetaBrand(brandKeys[0]);
+          } else if (data.meta) {
+            const primaryKey = "primary_account";
+            setMetaBrands({
+              [primaryKey]: {
+                businessName: data.meta.business_name || "Meta Business",
+                adAccountId: data.meta.fb_ad_account_id,
+                adAccountName: data.meta.business_name,
+                pageName: data.meta.business_name,
+                currency: data.meta.account_currency || "INR",
+              },
+            });
+            setSelectedMetaBrand(primaryKey);
+          }
+        }
+      } catch (err) {
+        console.error("Failed to load Meta brand profiles:", err);
+      } finally {
+        setMetaLoading(false);
+      }
+    }
+
+    loadGoogleAccounts();
+    loadMetaProfiles();
+  }, [status]);
+
+  async function handleSwitchGoogleAccount(newCustomerId) {
+    setSelectedGoogleAccount(newCustomerId);
+    try {
+      const acc = googleAccounts.find((a) => a.id === newCustomerId);
+      await fetch("/api/google-ads/accounts", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          customerId: newCustomerId,
+          managerId: acc?.managerId || null,
+        }),
+      });
+      console.log(`[Chat] Switched active Google Ads account to ${newCustomerId}`);
+    } catch (e) {
+      console.error("Error switching Google Ads account:", e);
+    }
+  }
+
+  async function handleSwitchMetaBrand(newBrandKey) {
+    setSelectedMetaBrand(newBrandKey);
+    try {
+      await fetch("/api/meta/select-profile", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ brandKey: newBrandKey }),
+      });
+      console.log(`[Chat] Switched active Meta brand to ${newBrandKey}`);
+    } catch (e) {
+      console.error("Error switching Meta brand:", e);
+    }
+  }
 
   const activeChat =
     chats.find((c) => c.id === activeChatId) || null;
@@ -1008,6 +1112,8 @@ Now respond as GabbarInfo AI.
           mode: agentMode,
           includeJson: true,
           chatHistory,
+          selectedGoogleAccountId: selectedGoogleAccount || null,
+          selectedMetaBrand: selectedMetaBrand || null,
         }),
       });
 
@@ -1448,6 +1554,78 @@ Now respond as GabbarInfo AI.
             <span>+</span>
             <span>New Chat</span>
           </button>
+
+          {/* 🎯 Google Ads Account Switcher Dropdown */}
+          <div style={{ display: "flex", alignItems: "center", gap: 4 }}>
+            <select
+              value={selectedGoogleAccount}
+              onChange={(e) => handleSwitchGoogleAccount(e.target.value)}
+              title="Active Google Ads Account"
+              style={{
+                padding: "5px 10px",
+                borderRadius: 8,
+                border: "1px solid rgba(234, 67, 53, 0.4)",
+                background: "rgba(234, 67, 53, 0.12)",
+                color: "#fca5a5",
+                fontSize: 11,
+                fontWeight: 700,
+                cursor: "pointer",
+                outline: "none",
+                maxWidth: isMobile ? 130 : 210,
+                textOverflow: "ellipsis",
+              }}
+            >
+              {googleLoading ? (
+                <option value="" style={{ background: "#0f172a", color: "#f8fafc" }}>🎯 G-Ads: Loading...</option>
+              ) : googleAccounts.length > 0 ? (
+                googleAccounts.map((acc) => (
+                  <option key={acc.id} value={acc.id} style={{ background: "#0f172a", color: "#f8fafc" }}>
+                    🎯 G-Ads: {acc.descriptiveName || acc.id} ({acc.id})
+                  </option>
+                ))
+              ) : (
+                <option value="" style={{ background: "#0f172a", color: "#94a3b8" }}>🎯 G-Ads: Not Connected</option>
+              )}
+            </select>
+          </div>
+
+          {/* 📱 Meta Ads Account / Brand Switcher Dropdown */}
+          <div style={{ display: "flex", alignItems: "center", gap: 4 }}>
+            <select
+              value={selectedMetaBrand}
+              onChange={(e) => handleSwitchMetaBrand(e.target.value)}
+              title="Active Meta Ads Brand / Ad Account"
+              style={{
+                padding: "5px 10px",
+                borderRadius: 8,
+                border: "1px solid rgba(56, 189, 248, 0.4)",
+                background: "rgba(56, 189, 248, 0.12)",
+                color: "#38bdf8",
+                fontSize: 11,
+                fontWeight: 700,
+                cursor: "pointer",
+                outline: "none",
+                maxWidth: isMobile ? 140 : 230,
+                textOverflow: "ellipsis",
+              }}
+            >
+              {metaLoading ? (
+                <option value="" style={{ background: "#0f172a", color: "#f8fafc" }}>📱 Meta: Loading...</option>
+              ) : Object.keys(metaBrands).length > 0 ? (
+                Object.keys(metaBrands).map((bKey) => {
+                  const b = metaBrands[bKey];
+                  const accIdClean = (b.adAccountId || "").replace(/^act_/, "");
+                  return (
+                    <option key={bKey} value={bKey} style={{ background: "#0f172a", color: "#f8fafc" }}>
+                      📱 Meta: {b.businessName || b.pageName || bKey} {accIdClean ? `(${accIdClean})` : ""}
+                    </option>
+                  );
+                })
+              ) : (
+                <option value="" style={{ background: "#0f172a", color: "#94a3b8" }}>📱 Meta: Not Connected</option>
+              )}
+            </select>
+          </div>
         </div>
 
         {/* Right: Credits, User info, Sign out */}
