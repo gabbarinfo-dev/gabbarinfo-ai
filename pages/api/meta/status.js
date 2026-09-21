@@ -10,7 +10,7 @@ export default async function handler(req, res) {
     return res.json({ connected: false });
   }
 
-  const [metaRes, brandMemRes] = await Promise.all([
+  const [metaRes, brandMemRes, activeMemRes] = await Promise.all([
     supabaseServer
       .from("meta_connections")
       .select("*")
@@ -21,7 +21,22 @@ export default async function handler(req, res) {
       .select("memory_type, content, updated_at")
       .eq("email", userEmail)
       .like("memory_type", "meta_conn_%"),
+    supabaseServer
+      .from("agent_memory")
+      .select("content")
+      .eq("email", userEmail)
+      .eq("memory_type", "meta_active_profile")
+      .maybeSingle(),
   ]);
+
+  let activeBrandKey = null;
+  let activeProfile = null;
+  if (activeMemRes?.data?.content) {
+    try {
+      activeProfile = JSON.parse(activeMemRes.data.content);
+      activeBrandKey = activeProfile.activeBrandKey || null;
+    } catch (_) {}
+  }
 
   const allMetaConnections = {};
   (brandMemRes.data || []).forEach((m) => {
@@ -76,5 +91,7 @@ export default async function handler(req, res) {
     brandMeta: isTargeted ? matchedBrand : (metaRes.data || Object.values(allMetaConnections)[0] || null),
     allMetaConnections,
     connectedBrands,
+    activeBrandKey,
+    activeProfile,
   });
 }

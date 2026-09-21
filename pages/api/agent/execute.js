@@ -138,6 +138,11 @@ async function saveAnswerMemory(baseUrl, business_id, answers, emailOverride = n
     }
 
     content.business_answers[business_id] = finalAnswers;
+    if (finalAnswers.campaign_state) {
+      if (!content.business_answers["default_business"]) content.business_answers["default_business"] = {};
+      content.business_answers["default_business"].campaign_state = finalAnswers.campaign_state;
+      content.campaign_state = finalAnswers.campaign_state;
+    }
 
     const { error } = await supabase.from("agent_memory").upsert(
       {
@@ -477,8 +482,10 @@ export default async function handler(req, res) {
               for (const bKey of Object.keys(parsed.business_answers)) {
                 delete parsed.business_answers[bKey].campaign_state;
               }
+              delete parsed.campaign_state;
               parsed.business_answers[effectiveBusinessId] = { campaign_state: resetState };
               parsed.business_answers["default_business"] = { campaign_state: resetState };
+              parsed.campaign_state = resetState;
               await supabase
                 .from("agent_memory")
                 .update({ content: JSON.stringify(parsed), updated_at: new Date().toISOString() })
@@ -678,6 +685,11 @@ export default async function handler(req, res) {
                 sourceKey = key;
                 break; // Found the most specific state available
               }
+            }
+
+            if (!bestMatch && content.campaign_state) {
+              bestMatch = content.campaign_state;
+              sourceKey = "top_level";
             }
 
             lockedCampaignState = bestMatch;
@@ -1646,6 +1658,43 @@ You are in GENERIC DIGITAL MARKETING AGENT MODE.
       selectedPerformanceGoal = lockedCampaignState.performance_goal || null;
     }
 
+    // 🔒 ABSOLUTE IMMUTABLE LOCK: Preset Agent Engine Modes
+    // If user selected any specialized mode from the dropdown, objective, destination, and goal are FIXED FOREVER.
+    // The agent must NEVER ask for objective/goal again!
+    if (originalMetaMode === "meta_ads_whatsapp") {
+      selectedMetaObjective = "OUTCOME_ENGAGEMENT";
+      selectedDestination = "whatsapp";
+      selectedPerformanceGoal = "MAXIMIZE_CONVERSIONS";
+    } else if (originalMetaMode === "meta_ads_shopping") {
+      selectedMetaObjective = "OUTCOME_SALES";
+      selectedDestination = "catalogue";
+      selectedPerformanceGoal = "MAXIMIZE_CONVERSIONS";
+    } else if (originalMetaMode === "meta_ads_profile") {
+      selectedMetaObjective = "OUTCOME_TRAFFIC";
+      selectedDestination = "instagram_profile";
+      selectedPerformanceGoal = "VISIT_INSTAGRAM_PROFILE";
+    } else if (originalMetaMode === "meta_ads_call") {
+      selectedMetaObjective = "OUTCOME_TRAFFIC";
+      selectedDestination = "call";
+      selectedPerformanceGoal = "MAXIMIZE_CALLS";
+    } else if (originalMetaMode === "meta_ads_traffic") {
+      selectedMetaObjective = "OUTCOME_TRAFFIC";
+      selectedDestination = "website";
+      selectedPerformanceGoal = "MAXIMIZE_LINK_CLICKS";
+    } else if (originalMetaMode === "meta_ads_leads") {
+      selectedMetaObjective = "OUTCOME_LEADS";
+      selectedDestination = "instant_form";
+      selectedPerformanceGoal = "MAXIMIZE_LEADS";
+    }
+
+    if (selectedMetaObjective) {
+      if (!lockedCampaignState) lockedCampaignState = {};
+      lockedCampaignState.objective = selectedMetaObjective;
+      if (selectedDestination) lockedCampaignState.destination = selectedDestination;
+      if (selectedPerformanceGoal) lockedCampaignState.performance_goal = selectedPerformanceGoal;
+      if (selectedDestination === "whatsapp") lockedCampaignState.message_channel = "whatsapp";
+    }
+
     // 🧑‍💬 Interactive Sequence: Objective -> Destination -> Goal
 
     // Step 1: Objective
@@ -2174,13 +2223,24 @@ You are in GENERIC DIGITAL MARKETING AGENT MODE.
       }
 
       // Standard non-catalog flow
-      const input = instruction.trim();
+      const rawInput = instruction.trim();
+      const lower = rawInput.toLowerCase();
+      const isCampaignCreationPrompt =
+        lower.includes("create a meta") ||
+        lower.includes("create meta") ||
+        lower.includes("create campaign") ||
+        lower.includes("start campaign") ||
+        lower.includes("receive customer orders") ||
+        lower.includes("whatsapp campaign") ||
+        lower.includes("call ads") ||
+        lower.includes("run ads") ||
+        isNewMetaCampaignRequest;
 
-      // Check if input is a reasonable length and not just a single digit left over from previous step
-      if (input.length >= 2 && !/^\d$/.test(input)) {
+      // Check if input is a valid service name (and not a campaign creation trigger)
+      if (!isCampaignCreationPrompt && rawInput.length >= 2 && !/^\d+$/.test(rawInput)) {
         lockedCampaignState = {
           ...lockedCampaignState,
-          service: input,
+          service: rawInput,
           service_confirmed: true,
           stage: "service_selected"
         };
@@ -2197,14 +2257,21 @@ You are in GENERIC DIGITAL MARKETING AGENT MODE.
           ok: true,
           mode,
           gated: true,
-          text: `Got it. Promoting: **${input}**.\n\nNext, what is the **Target Location** (City, State, or Country) for these ads?`
+          text: `Got it. Promoting: **${rawInput}**.\n\nNext, what is the **Target Location** (City, State, or Country) for these ads?`
         });
       } else {
+        let modeGoalLabel = "Campaign destination and goal locked.";
+        if (selectedDestination === "whatsapp") modeGoalLabel = "Campaign destination and goal locked: **WhatsApp Direct (Chat & Receive Orders)**.";
+        else if (selectedDestination === "call") modeGoalLabel = "Campaign destination and goal locked: **Direct Phone Calls**.";
+        else if (selectedDestination === "instagram_profile") modeGoalLabel = "Campaign destination and goal locked: **Instagram Profile Visits**.";
+        else if (selectedDestination === "website") modeGoalLabel = "Campaign destination and goal locked: **Website Traffic**.";
+        else if (selectedDestination === "instant_form") modeGoalLabel = "Campaign destination and goal locked: **Lead Generation**.";
+
         return res.status(200).json({
           ok: true,
           mode,
           gated: true,
-          text: "What is the specific **Service** or **Product** you want to promote? (e.g., 'Real Estate Consulting' or 'iPhone Repairs')"
+          text: `${modeGoalLabel}\n\nNow, what is the specific **Service** or **Product** you want to promote with this campaign?`
         });
       }
     }

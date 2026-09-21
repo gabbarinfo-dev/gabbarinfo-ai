@@ -566,8 +566,6 @@ export default function ChatPage() {
 
   // Multi-Account Data Loaders
   useEffect(() => {
-    if (status !== "authenticated") return;
-
     // 1. Fetch Google Ads accounts
     async function loadGoogleAccounts() {
       try {
@@ -601,7 +599,8 @@ export default function ChatPage() {
           if (data.allMetaConnections && Object.keys(data.allMetaConnections).length > 0) {
             setMetaBrands(data.allMetaConnections);
             const brandKeys = Object.keys(data.allMetaConnections);
-            setSelectedMetaBrand(brandKeys[0]);
+            const activeKey = (data.activeBrandKey && brandKeys.includes(data.activeBrandKey)) ? data.activeBrandKey : brandKeys[0];
+            setSelectedMetaBrand(activeKey);
           } else if (data.meta) {
             const primaryKey = "primary_account";
             setMetaBrands({
@@ -1460,7 +1459,7 @@ Now respond as GabbarInfo AI.
         }}
       >
         {/* Left: Brand + Quick Nav */}
-        <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
           <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
             <div
               style={{
@@ -2235,6 +2234,103 @@ Now respond as GabbarInfo AI.
                     </optgroup>
                   </select>
                 </div>
+
+                {/* 🎯 / 📱 Contextual Ad Account Selector directly in Agent Execution Panel */}
+                {agentMode.startsWith("google_ads") ? (
+                  <div style={{ marginTop: 12 }}>
+                    <label
+                      style={{
+                        fontSize: 11,
+                        fontWeight: 700,
+                        textTransform: "uppercase",
+                        letterSpacing: "0.05em",
+                        color: "#fca5a5",
+                        display: "flex",
+                        alignItems: "center",
+                        gap: 5,
+                        marginBottom: 4,
+                      }}
+                    >
+                      <span>🎯 Target Google Ads Account</span>
+                    </label>
+                    <select
+                      value={selectedGoogleAccount}
+                      onChange={(e) => handleSwitchGoogleAccount(e.target.value)}
+                      style={{
+                        width: "100%",
+                        padding: "9px 12px",
+                        borderRadius: 10,
+                        border: "1px solid rgba(234, 67, 53, 0.4)",
+                        background: "#151c2c",
+                        color: "#fca5a5",
+                        fontSize: 12,
+                        fontWeight: 600,
+                        outline: "none",
+                      }}
+                    >
+                      {googleLoading ? (
+                        <option value="">🎯 Loading accounts...</option>
+                      ) : googleAccounts.length > 0 ? (
+                        googleAccounts.map((acc) => (
+                          <option key={acc.id} value={acc.id}>
+                            {acc.descriptiveName || acc.id} ({acc.id})
+                          </option>
+                        ))
+                      ) : (
+                        <option value="">No Google Ads account connected</option>
+                      )}
+                    </select>
+                  </div>
+                ) : (agentMode.startsWith("meta_ads") || agentMode === "generic") ? (
+                  <div style={{ marginTop: 12 }}>
+                    <label
+                      style={{
+                        fontSize: 11,
+                        fontWeight: 700,
+                        textTransform: "uppercase",
+                        letterSpacing: "0.05em",
+                        color: "#38bdf8",
+                        display: "flex",
+                        alignItems: "center",
+                        gap: 5,
+                        marginBottom: 4,
+                      }}
+                    >
+                      <span>📱 Target Meta Ads Brand / Ad Account</span>
+                    </label>
+                    <select
+                      value={selectedMetaBrand}
+                      onChange={(e) => handleSwitchMetaBrand(e.target.value)}
+                      style={{
+                        width: "100%",
+                        padding: "9px 12px",
+                        borderRadius: 10,
+                        border: "1px solid rgba(56, 189, 248, 0.4)",
+                        background: "#151c2c",
+                        color: "#38bdf8",
+                        fontSize: 12,
+                        fontWeight: 600,
+                        outline: "none",
+                      }}
+                    >
+                      {metaLoading ? (
+                        <option value="">📱 Loading brands...</option>
+                      ) : Object.keys(metaBrands).length > 0 ? (
+                        Object.keys(metaBrands).map((bKey) => {
+                          const b = metaBrands[bKey];
+                          const accIdClean = (b.adAccountId || "").replace(/^act_/, "");
+                          return (
+                            <option key={bKey} value={bKey}>
+                              {b.businessName || b.pageName || bKey} {accIdClean ? `(${accIdClean})` : ""}
+                            </option>
+                          );
+                        })
+                      ) : (
+                        <option value="">No Meta account connected</option>
+                      )}
+                    </select>
+                  </div>
+                ) : null}
 
                 {agentResponse && (
                   <div
