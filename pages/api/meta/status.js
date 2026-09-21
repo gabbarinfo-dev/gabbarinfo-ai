@@ -34,9 +34,46 @@ export default async function handler(req, res) {
 
   const connectedBrands = Object.keys(allMetaConnections);
 
+  const targetSiteUrl = (req.query?.siteUrl || "").toLowerCase().trim();
+  const targetBiz = (req.query?.businessName || "").toLowerCase().trim();
+  const targetShop = (req.query?.shop || "").toLowerCase().trim();
+
+  let matchedBrand = null;
+  const isTargeted = Boolean(targetSiteUrl || targetBiz || targetShop);
+
+  if (isTargeted) {
+    const cleanSite = targetSiteUrl.replace(/^https?:\/\//, "").replace(/\/$/, "");
+    const cleanShop = targetShop.replace(/^https?:\/\//, "").replace(/\/$/, "");
+    const normBiz = targetBiz.replace(/[^a-z0-9]/g, "");
+
+    for (const key of Object.keys(allMetaConnections)) {
+      const b = allMetaConnections[key];
+      const bUrl = (b.websiteUrl || "").toLowerCase().replace(/^https?:\/\//, "").replace(/\/$/, "");
+      const bName = (b.businessName || b.pageName || key || "").toLowerCase().replace(/[^a-z0-9]/g, "");
+
+      // 1. URL match
+      if (cleanSite && bUrl && (cleanSite === bUrl || cleanSite.includes(bUrl) || bUrl.includes(cleanSite))) {
+        matchedBrand = b;
+        break;
+      }
+      if (cleanShop && bUrl && (cleanShop === bUrl || cleanShop.includes(bUrl) || bUrl.includes(cleanShop))) {
+        matchedBrand = b;
+        break;
+      }
+      // 2. Name match (min 3 chars)
+      if (normBiz && normBiz.length >= 3 && bName && bName.length >= 3) {
+        if (normBiz === bName || normBiz.includes(bName) || bName.includes(normBiz)) {
+          matchedBrand = b;
+          break;
+        }
+      }
+    }
+  }
+
   return res.json({
     connected: !!metaRes.data || connectedBrands.length > 0,
     meta: metaRes.data || Object.values(allMetaConnections)[0] || null,
+    brandMeta: isTargeted ? matchedBrand : (metaRes.data || Object.values(allMetaConnections)[0] || null),
     allMetaConnections,
     connectedBrands,
   });

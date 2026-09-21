@@ -3311,10 +3311,10 @@ export default function ShopifyStoreConnect({ onConnectionChange }) {
                   </div>
                   <div>
                     <div style={{ fontSize: 14, fontWeight: 700, color: "#fff", display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
-                      Facebook Business Page
+                      📘 Facebook Page: {brandSecurity?.meta?.pageName || "Facebook Business Page"}
                       {brandSecurity && !brandSecurity.isMatched ? (
                         <span style={{ fontSize: 9.5, padding: "1px 6px", borderRadius: 4, background: "rgba(239, 68, 68, 0.25)", color: "#f87171", fontWeight: 700 }}>
-                          🔒 LOCKED (MISMATCH)
+                          UNPAIRED
                         </span>
                       ) : autopilotConfig.autoShareFacebook ? (
                         <span style={{ fontSize: 9.5, padding: "1px 6px", borderRadius: 4, background: "rgba(16, 185, 129, 0.2)", color: "#34d399", fontWeight: 700 }}>
@@ -3322,9 +3322,12 @@ export default function ShopifyStoreConnect({ onConnectionChange }) {
                         </span>
                       ) : null}
                     </div>
+                    <div style={{ fontSize: 11.5, color: "#38bdf8", marginTop: 2 }}>
+                      {brandSecurity?.meta?.pageId ? `Bound Page ID: ${brandSecurity.meta.pageId}` : "Unpaired with Social Pilot"}
+                    </div>
                     <p style={{ margin: "4px 0 0 0", color: (brandSecurity && !brandSecurity.isMatched) ? "#f87171" : "#94a3b8", fontSize: 11.5, lineHeight: 1.4 }}>
                       {brandSecurity && !brandSecurity.isMatched
-                        ? `Locked: Connected profile (${brandSecurity.meta?.display || "GABBARinfo"}) does not match this store.`
+                        ? `Locked: No matching Facebook Page paired with ${connection?.name || "this store"}.`
                         : "Automatically broadcasts a high-CTR interactive preview card with article synopsis, featured artwork, and direct site link."}
                     </p>
                   </div>
@@ -3399,10 +3402,10 @@ export default function ShopifyStoreConnect({ onConnectionChange }) {
                   </div>
                   <div>
                     <div style={{ fontSize: 14, fontWeight: 700, color: "#fff", display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
-                      Instagram Visual Feed Drop
+                      📸 Instagram: {brandSecurity?.meta?.igUsername ? `@${brandSecurity.meta.igUsername}` : "Instagram Visual Feed Drop"}
                       {brandSecurity && !brandSecurity.isMatched ? (
                         <span style={{ fontSize: 9.5, padding: "1px 6px", borderRadius: 4, background: "rgba(239, 68, 68, 0.25)", color: "#f87171", fontWeight: 700 }}>
-                          🔒 LOCKED (MISMATCH)
+                          UNPAIRED
                         </span>
                       ) : autopilotConfig.autoShareInstagram ? (
                         <span style={{ fontSize: 9.5, padding: "1px 6px", borderRadius: 4, background: "rgba(16, 185, 129, 0.2)", color: "#34d399", fontWeight: 700 }}>
@@ -3410,9 +3413,12 @@ export default function ShopifyStoreConnect({ onConnectionChange }) {
                         </span>
                       ) : null}
                     </div>
+                    <div style={{ fontSize: 11.5, color: "#e879f9", marginTop: 2 }}>
+                      {brandSecurity?.meta?.igUsername ? `Account: @${brandSecurity.meta.igUsername}` : "Unpaired with Social Pilot"}
+                    </div>
                     <p style={{ margin: "4px 0 0 0", color: (brandSecurity && !brandSecurity.isMatched) ? "#f87171" : "#94a3b8", fontSize: 11.5, lineHeight: 1.4 }}>
                       {brandSecurity && !brandSecurity.isMatched
-                        ? `Locked: Connected profile (${brandSecurity.meta?.display || "GABBARinfo"}) does not match this store.`
+                        ? `Locked: No matching Instagram account paired with ${connection?.name || "this store"}.`
                         : "Auto-formats your article's featured hero image with an AI-crafted caption, high-ranking hashtags, and store link."}
                     </p>
                   </div>

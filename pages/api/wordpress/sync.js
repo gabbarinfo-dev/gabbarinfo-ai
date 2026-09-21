@@ -222,6 +222,18 @@ export default async function handler(req, res) {
         isTrial,
       });
 
+      // Asynchronously trigger site discovery so topics, niche, and keywords are immediately ready
+      import("../../../lib/wordpress/site-intelligence.js")
+        .then((m) =>
+          m.getOrDiscoverSiteIntelligence({
+            userEmail,
+            businessName: connPayload.businessName,
+            siteUrl: cleanUrl,
+            forceRefresh: true,
+          })
+        )
+        .catch((e) => console.warn("[Auto-Crawl on Connect Error]:", e.message));
+
       return res.status(200).json({
         ok: true,
         message: "WordPress site paired successfully!",

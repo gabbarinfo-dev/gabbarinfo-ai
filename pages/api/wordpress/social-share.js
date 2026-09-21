@@ -37,19 +37,50 @@ export default async function handler(req, res) {
   }
 
   try {
-    // 1. Resolve Brand-Specific or Active Meta Connection
+    // 1. Resolve Brand-Specific Meta Connection strictly
     let brandMeta = null;
+    const { data: allBrandMems } = await supabase
+      .from("agent_memory")
+      .select("memory_type, content")
+      .eq("email", userEmail.toLowerCase())
+      .like("memory_type", "meta_conn_%");
+
+    const allBrands = [];
+    (allBrandMems || []).forEach((m) => {
+      try {
+        const parsed = JSON.parse(m.content);
+        allBrands.push(parsed);
+      } catch (_) {}
+    });
+
     if (businessName) {
-      const normBiz = String(businessName).toLowerCase().trim().replace(/[^a-z0-9]/g, "_");
-      const { data: mem } = await supabase
-        .from("agent_memory")
-        .select("content")
-        .eq("email", userEmail.toLowerCase())
-        .eq("memory_type", `meta_conn_${normBiz}`)
-        .maybeSingle();
-      if (mem?.content) {
-        try { brandMeta = JSON.parse(mem.content); } catch (_) {}
-      }
+      const normBiz = String(businessName).toLowerCase().trim().replace(/[^a-z0-9]/g, "");
+      // Match by exact websiteUrl or by business name
+      brandMeta = allBrands.find((b) => {
+        const bName = String(b.businessName || b.pageName || "").toLowerCase().replace(/[^a-z0-9]/g, "");
+        const bUrl = String(b.websiteUrl || "").toLowerCase().replace(/^https?:\/\//, "").replace(/\/$/, "");
+        return (normBiz && bName && (normBiz === bName || normBiz.includes(bName) || bName.includes(normBiz))) ||
+               (postUrl && bUrl && postUrl.toLowerCase().includes(bUrl));
+      });
+    } else if (postUrl) {
+      brandMeta = allBrands.find((b) => {
+        const bUrl = String(b.websiteUrl || "").toLowerCase().replace(/^https?:\/\//, "").replace(/\/$/, "");
+        return bUrl && postUrl.toLowerCase().includes(bUrl);
+      });
+    }
+
+    // If still not matched, check if explicitPageId was provided and find that page
+    if (!brandMeta && explicitPageId) {
+      brandMeta = allBrands.find((b) => String(b.pageId) === String(explicitPageId));
+    }
+
+    // Strict Isolation: If this website has no paired brand, DO NOT cross-post to an unrelated brand!
+    if (businessName && !brandMeta && !explicitPageId) {
+      return res.status(200).json({
+        ok: false,
+        require_connect: true,
+        message: `No connected Facebook Page is paired with ${businessName}. Please connect and pair social assets in Social Pilot.`,
+      });
     }
 
     const { data: defaultMeta } = await supabase
@@ -58,15 +89,15 @@ export default async function handler(req, res) {
       .eq("email", userEmail.toLowerCase())
       .maybeSingle();
 
-    const pageId = explicitPageId || brandMeta?.pageId || (defaultMeta?.fb_page_id ? defaultMeta.fb_page_id.split(",")[0].trim() : null);
-    const pageToken = brandMeta?.pageToken || defaultMeta?.fb_page_access_token || defaultMeta?.fb_user_access_token;
-    const igId = brandMeta?.igId || defaultMeta?.instagram_actor_id || defaultMeta?.ig_business_id;
+    const pageId = explicitPageId || brandMeta?.pageId || (allBrands.length === 0 ? defaultMeta?.fb_page_id?.split(",")[0]?.trim() : null);
+    const pageToken = brandMeta?.pageToken || (allBrands.length === 0 ? (defaultMeta?.fb_page_access_token || defaultMeta?.fb_user_access_token) : null);
+    const igId = brandMeta?.igId || (allBrands.length === 0 ? (defaultMeta?.instagram_actor_id || defaultMeta?.ig_business_id) : null);
 
     if (!pageId || !pageToken) {
       return res.status(200).json({
         ok: false,
         require_connect: true,
-        message: "No connected Facebook Page found for this business. Please connect Facebook in Social Pilot.",
+        message: `No connected Facebook Page found for ${businessName || "this website"}. Please connect Facebook in Social Pilot.`,
       });
     }
 

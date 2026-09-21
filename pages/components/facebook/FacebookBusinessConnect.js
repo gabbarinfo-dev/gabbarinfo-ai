@@ -854,22 +854,23 @@ export default function FacebookBusinessConnect({ onOpenSocialPlanner }) {
             </div>
           )}
 
-          {showPairingModal && (
-            <BrandAssetPairingModal
-              onClose={() => setShowPairingModal(false)}
-              onSaved={() => {
-                fetch("/api/meta/status")
-                  .then(r => r.json())
-                  .then(d => {
-                    if (d.connected) {
-                      setMeta(d.meta);
-                      setAllMetaConnections(d.allMetaConnections || {});
-                    }
-                  });
-              }}
-            />
-          )}
         </>
+      )}
+
+      {showPairingModal && (
+        <BrandAssetPairingModal
+          onClose={() => setShowPairingModal(false)}
+          onSaved={() => {
+            fetch("/api/meta/status")
+              .then(r => r.json())
+              .then(d => {
+                if (d.connected) {
+                  setMeta(d.meta);
+                  setAllMetaConnections(d.allMetaConnections || {});
+                }
+              });
+          }}
+        />
       )}
     </div>
   );

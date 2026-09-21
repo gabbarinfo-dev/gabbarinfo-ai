@@ -5,7 +5,7 @@ import { createClient } from "@supabase/supabase-js";
 import OpenAI from "openai";
 import { GoogleGenerativeAI } from "@google/generative-ai";
 import { getValidShopifyAccessToken } from "../../../lib/shopify/token-service";
-import { getMetaIdentity, checkBrandMatch } from "../../../lib/meta/brand-verifier";
+import { getMetaIdentity, checkBrandMatch, normalizeBrand } from "../../../lib/meta/brand-verifier";
 import { runShopifyAutopilotCycle } from "../../../lib/shopify/shopify-autopilot";
 
 const supabase = createClient(
@@ -100,54 +100,127 @@ function isProductInStock(p) {
 
 function getFallbackEcommerceTopics(brandName = "Our Store", targetLoc = "", niche = "") {
   const locSuffix = targetLoc ? ` in ${targetLoc}` : "";
-  const nicheName = niche || "Designer Jewellery & Accessories";
+  const nicheName = niche || `${brandName} Essentials`;
   return [
-    `The Ultimate Guide to Styling ${nicheName}${locSuffix}: 2026 Trends`,
-    `How to Choose the Perfect ${nicheName} for Special Occasions & Parties`,
-    `Everyday Elegance: Transitioning Your Signature Look from Day to Night`,
-    `The Complete Care and Maintenance Guide for Long-Lasting ${nicheName}`,
-    `Top 10 ${nicheName} Pieces Every Modern Wardrobe Needs This Season`,
-    `How to Pair Contemporary Outfits with Heritage & Traditional Pieces`,
-    `Bridal & Wedding Guest Styling: The Definitive ${nicheName} Checklist${locSuffix}`,
-    `Demystifying Metals & Stones: How to Identify Premium Quality Craftsmanship`,
-    `Minimalist vs Statement Styling: How to Balance Your Ensemble Flawlessly`,
-    `The Art of Layering: How to Stack Necklaces and Bracelets Like a Pro`,
-    `Hypoallergenic & Sensitive Skin: Choosing Safe, High-Quality ${nicheName}`,
-    `Gift Guide 2026: Meaningful & Memorable ${nicheName} for Every Loved One`,
-    `Red Carpet Glamour: How to Achieve Luxury Celebrity Looks on Any Budget`,
-    `Workplace Chic: Professional Yet Striking Accessories for the Office`,
-    `Festive Season Spotlight: Curated Styling Tips for Celebrations${locSuffix}`,
-    `Investment Pieces: Timeless Accessories That Retain Their Charm Over Decades`,
-    `How to Clean and Store Fine Pieces Without Damaging Delicate Finishes`,
-    `Color Psychology in Fashion: Choosing Pieces That Complement Your Skin Tone`,
-    `Bespoke vs Ready-to-Wear: Finding Your Signature Personal Aesthetic`,
-    `Weekend Casuals: Elevating T-Shirts and Denim with Strategic Accessories`,
-    `The Modern Bride's Guide to Choosing Ceremony and Reception Pieces`,
-    `Spring & Summer Style Forecast: The Hottest Trends Emerging in 2026`,
-    `Autumn & Winter Layering: Incorporating Rich Tones and Ornate Textures`,
-    `Behind the Craft: How Master Artisans Create Exquisite Handcrafted Designs`,
-    `Sustainable & Ethical Fashion: Caring for Pieces That Last a Lifetime`,
-    `Cocktail Hour Essentials: Standout Accessories That Spark Conversations`,
-    `Airport & Vacation Styling: Chic, Travel-Friendly Pieces That Won't Tangle`,
-    `How to Style Western Evening Gowns with Ethnic Statement Accents`,
-    `Subtle Glamour: The Power of Delicate Studs and Understated Chains`,
-    `The Definitive Guide to Anti-Tarnish Finishes and Plating Longevity`,
-    `Graduation, Milestones & Promotions: Marking Life's Achievements in Style`,
-    `Vintage Revival: How Classic Silhouettes are Dominating 2026 Runways`,
-    `How to Organize Your Dressing Table & Keep Chains from Tangling`,
-    `Neckline Masterclass: Matching Pendants and Chokers to Your Dress Cut`,
-    `Earring Guide: Selecting Shapes That Flatter Your Unique Face Structure`,
-    `Ring Stacking Secrets: Creating Harmonious Combinations Across Fingers`,
-    `The Power of Pearls and Gemstones: Symbolism, Energy, and Styling`,
-    `How to Avoid Over-Accessorizing: The Rule of Three in Modern Fashion`,
-    `Seasonal Transitions: Refreshing Your Look Between Warm and Cold Weather`,
-    `Mother's Day & Anniversary Gifts: Curated Highlights She Will Cherish`,
-    `Modern Bohemian Chic: How to Incorporate Earthy and Eclectic Textures`,
-    `Monochrome Dressing: Adding Depth with Contrasting Metallic Highlights`,
-    `Destination Wedding Survival Guide: Packing and Caring for Your Outfits`,
-    `The Evolution of London and Global Streetwear: Blending Luxury with Comfort`,
-    `Confidence Through Styling: How the Right Piece Transforms Your Presence`
+    `The Definitive Buyer's Guide to ${nicheName}${locSuffix}: 2026 Trends & Innovations`,
+    `How to Choose the Perfect ${nicheName} for Your Exact Needs & Budget`,
+    `Top 10 High-Performance ${nicheName} Every Modern Consumer Needs This Season`,
+    `The Complete Care, Storage, and Maintenance Guide for Long-Lasting Durability`,
+    `Demystifying Materials, Design, and Build Quality: How to Identify Premium Craftsmanship`,
+    `Beginner's Checklist: 5 Crucial Factors to Evaluate Before Buying ${nicheName}`,
+    `Gift Guide 2026: Meaningful & Highly Rated ${nicheName} for Every Milestone`,
+    `Premium vs Budget Comparison: When Is It Truly Worth Upgrading Your Setup?`,
+    `How to Maximize Efficiency, Longevity, and Daily Value from Your Purchase`,
+    `Eco-Conscious & Sustainable Living: Making Responsible Choices Without Compromise`,
+    `Top 7 Costly Mistakes Consumers Make When Selecting ${nicheName} & How to Avoid Them`,
+    `Seasonal Buyer's Forecast: Emerging Trends & Must-Have Essentials This Year`,
+    `Behind the Design: How Premium Engineering & Thoughtful Craftsmanship Elevate User Experience`,
+    `Curated Customer Highlights: Top-Rated Products Transforming Everyday Routines`,
+    `Expert Recommendations: How to Seamlessly Integrate ${nicheName} into Your Lifestyle`,
+    `Durability Testing & Quality Benchmarks: What Sets Market Leaders Apart`,
+    `How Smart Design and Ergonomics Directly Enhance Everyday Convenience`,
+    `10 Practical Tips to Get the Maximum Return on Value from Your Investment`,
+    `The Ultimate FAQ: Everything You Need to Know About ${nicheName} Answered`,
+    `The Future of High-Quality Products: Trends and Predictions for 2026 and Beyond`,
+    `Compact vs Full-Size: Selecting the Ideal Configuration for Your Available Space`,
+    `How to Spot Counterfeits and Low-Grade Imitations in Modern Online Marketplaces`,
+    `Step-by-Step Setup and Optimization Guide for First-Time Buyers`,
+    `Why Preventive Maintenance Saves Money and Extends Lifetime Performance`,
+    `Essential Accessories and Complementary Items to Pair with Your Favorite Pieces`,
+    `The Evolution of Design and Technology: How Modern Innovation Solves Traditional Pain Points`,
+    `Holiday and Festival Preparation: Ordering Timelines, Care Tips & Must-Haves`,
+    `Professional Grade vs Everyday Consumer Models: Breaking Down the Real Differences`,
+    `Customer Stories: How Real Users Overcame Everyday Challenges with Smart Solutions`,
+    `Ultimate 2026 Checklist: What to Look for Before Making Your Final Decision`
   ];
+}
+
+async function checkShopifyBrandSecurity(userEmail, conn) {
+  if (!conn) {
+    return { isMatched: false, status: "NO_STORE", reason: "Store connection not found", meta: null };
+  }
+
+  const [brandMemRes, metaRowRes] = await Promise.all([
+    supabase
+      .from("agent_memory")
+      .select("memory_type, content")
+      .eq("email", userEmail.toLowerCase())
+      .like("memory_type", "meta_conn_%"),
+    supabase
+      .from("meta_connections")
+      .select("fb_page_id, fb_page_access_token, fb_user_access_token, ig_business_id")
+      .eq("email", userEmail.toLowerCase())
+      .maybeSingle(),
+  ]);
+
+  const brandProfiles = [];
+  (brandMemRes.data || []).forEach((m) => {
+    try {
+      const parsed = JSON.parse(m.content);
+      brandProfiles.push(parsed);
+    } catch (_) {}
+  });
+
+  const normStoreDomain = normalizeBrand(conn.domain || conn.shop || "");
+  const normStoreName = normalizeBrand(conn.name || conn.shopName || "");
+  const normShop = normalizeBrand(conn.shop || "");
+
+  // 1. Check multi-brand profiles from pairing wizard
+  for (const b of brandProfiles) {
+    const normMetaUrl = normalizeBrand(b.websiteUrl || "");
+    const normMetaName = normalizeBrand(b.businessName || b.pageName || "");
+    const normMetaIg = normalizeBrand(b.igUsername || "");
+
+    const urlMatches = (normMetaUrl && normStoreDomain && (normMetaUrl === normStoreDomain || normMetaUrl.includes(normStoreDomain) || normStoreDomain.includes(normMetaUrl)));
+    const nameMatches = (normMetaName.length >= 3 && normStoreName.length >= 3 && (normMetaName === normStoreName || normMetaName.includes(normStoreName) || normStoreName.includes(normMetaName)));
+    const igMatches = (normMetaIg.length >= 3 && normStoreName.length >= 3 && (normMetaIg.includes(normStoreName) || normStoreName.includes(normMetaIg)));
+
+    if (urlMatches || nameMatches || igMatches) {
+      const display = `${b.businessName || b.pageName}${b.igUsername ? ` (@${b.igUsername})` : ""}`;
+      return {
+        isMatched: true,
+        status: "MATCHED",
+        matchDetail: urlMatches ? "Direct paired website match" : "Store brand name match",
+        reason: `Verified brand alignment between '${conn.name || conn.domain}' and '${display}'.`,
+        store: { name: conn.name, domain: conn.domain },
+        meta: {
+          display,
+          pageName: b.pageName || b.businessName,
+          pageId: b.pageId,
+          pageToken: b.pageToken,
+          igUsername: b.igUsername,
+          igId: b.igId,
+          adAccountId: b.adAccountId,
+        },
+      };
+    }
+  }
+
+  // 2. Check legacy default meta_connections row if no custom brand memory matched
+  if (metaRowRes.data) {
+    try {
+      const metaIdentity = await getMetaIdentity(metaRowRes.data);
+      if (metaIdentity) {
+        const legacyCheck = checkBrandMatch({
+          storeName: conn.name || "Shopify Store",
+          storeDomain: conn.domain || conn.shop,
+          shopHandle: conn.shop,
+          metaIdentity,
+        });
+        if (legacyCheck.isMatched) {
+          return legacyCheck;
+        }
+      }
+    } catch (_) {}
+  }
+
+  return {
+    isMatched: false,
+    status: brandProfiles.length > 0 || metaRowRes.data ? "MISMATCH" : "NO_SOCIAL_CONNECTED",
+    reason: `No connected Meta account matches '${conn.name || conn.domain}'. Please pair this store in Social Pilot.`,
+    store: { name: conn.name, domain: conn.domain },
+    meta: null,
+  };
 }
 
 export default async function handler(req, res) {
@@ -1533,39 +1606,16 @@ Respond ONLY with a valid JSON object matching this schema:
         } catch (_) {}
       }
 
-      // Brand Security & Anti-Exploitation Cross-Check
-      let brandSecurity = {
-        isMatched: false,
-        status: "NO_SOCIAL_CONNECTED",
-        reason: "No Meta account connected.",
-      };
+      // Brand Security & Anti-Exploitation Cross-Check with multi-brand support
+      const brandSecurity = await checkShopifyBrandSecurity(userEmail, conn);
 
-      try {
-        const { data: metaRow } = await supabase
-          .from("meta_connections")
-          .select("fb_page_id, fb_page_access_token, fb_user_access_token, ig_business_id")
-          .eq("email", userEmail)
-          .maybeSingle();
-
-        if (metaRow) {
-          const metaIdentity = await getMetaIdentity(metaRow);
-          if (metaIdentity) {
-            brandSecurity = checkBrandMatch({
-              storeName: conn.name || "Shopify Store",
-              storeDomain: conn.domain || conn.shop,
-              shopHandle: conn.shop,
-              metaIdentity,
-            });
-
-            // If brand mismatch detected, strictly disable social syndication
-            if (!brandSecurity.isMatched) {
-              config.autoShareFacebook = false;
-              config.autoShareInstagram = false;
-            }
-          }
-        }
-      } catch (secErr) {
-        console.warn("[BrandSecurity] Check error:", secErr.message);
+      // If brand matched, allow autoShare settings according to saved config; otherwise strictly false
+      if (brandSecurity.isMatched) {
+        config.autoShareFacebook = parsed?.autoShareFacebook === true;
+        config.autoShareInstagram = parsed?.autoShareInstagram === true;
+      } else {
+        config.autoShareFacebook = false;
+        config.autoShareInstagram = false;
       }
 
       return res.status(200).json({ ok: true, config, brandSecurity });
@@ -1593,33 +1643,8 @@ Respond ONLY with a valid JSON object matching this schema:
       const inputCfg = payload.config || {};
       const targetLoc = (inputCfg.targetLocations || inputCfg.targetMarket || "").trim();
 
-      // Anti-Exploitation Shield: Ensure user cannot force autoShare if brand mismatch exists
-      let brandSecurity = { isMatched: true };
-      try {
-        const { data: metaRow } = await supabase
-          .from("meta_connections")
-          .select("fb_page_id, fb_page_access_token, fb_user_access_token, ig_business_id")
-          .eq("email", userEmail)
-          .maybeSingle();
-
-        if (metaRow) {
-          const metaIdentity = await getMetaIdentity(metaRow);
-          if (metaIdentity) {
-            brandSecurity = checkBrandMatch({
-              storeName: conn.name || "Shopify Store",
-              storeDomain: conn.domain || conn.shop,
-              shopHandle: conn.shop,
-              metaIdentity,
-            });
-
-            if (!brandSecurity.isMatched) {
-              // Strictly force false to prevent multi-tenant cross-brand exploitation
-              inputCfg.autoShareFacebook = false;
-              inputCfg.autoShareInstagram = false;
-            }
-          }
-        }
-      } catch (_) {}
+      // Anti-Exploitation Shield: Multi-brand security verification
+      const brandSecurity = await checkShopifyBrandSecurity(userEmail, conn);
 
       const newConfig = {
         ...currentConfig,

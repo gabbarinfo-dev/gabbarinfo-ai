@@ -10,26 +10,34 @@ const supabase = createClient(
 );
 
 function generateSmartFallbackKeywords(topic = "", businessName = "", industry = "", marketScope = "") {
-  const cleanTopic = topic.replace(/[^a-zA-Z0-9\s]/g, "").trim();
+  const cleanTopic = topic.replace(/[^a-zA-Z0-9\s]/g, " ").trim();
+  const words = cleanTopic.split(/\s+/).filter((w) => w.length > 2);
   const basePhrases = [];
 
-  if (/seo|rankings?|serp/i.test(topic)) {
-    basePhrases.push("strategic seo services", "google search ranking optimization", "organic search lead generation", "roi driven seo strategy", "technical seo audit");
-  } else if (/web design|website|ux|ui/i.test(topic)) {
-    basePhrases.push("conversion rate optimization", "high converting business website", "modern web design trends", "responsive website development", "b2b website architecture");
-  } else if (/lead generation|growth|marketing|advertising/i.test(topic)) {
-    basePhrases.push("b2b lead generation strategies", "digital marketing roi optimization", "customer acquisition strategies", "performance marketing campaigns", "organic inbound marketing");
-  } else {
-    const words = cleanTopic.split(/\s+/).slice(0, 3).join(" ");
-    basePhrases.push(`${words} strategies`, "business growth optimization", "high intent search solutions", "enterprise digital strategy");
+  if (cleanTopic.length > 3) {
+    basePhrases.push(cleanTopic.toLowerCase());
   }
 
-  // If user provided a specific market or city, weave it in naturally
+  if (words.length >= 2) {
+    basePhrases.push(`${words.slice(0, 3).join(" ")} guide`.toLowerCase());
+    basePhrases.push(`best ${words.slice(0, 2).join(" ")} solutions`.toLowerCase());
+    basePhrases.push(`${words.slice(-2).join(" ")} tips`.toLowerCase());
+  }
+
+  if (industry && industry !== "Professional Services") {
+    basePhrases.push(`${industry.toLowerCase()} solutions`);
+    basePhrases.push(`${industry.toLowerCase()} guidance`);
+  }
+
+  if (businessName && businessName !== "GABBARinfo") {
+    basePhrases.push(`${businessName.toLowerCase()} services`);
+  }
+
   if (marketScope && marketScope !== "National & Global Commercial") {
-    basePhrases.unshift(`top solutions in ${marketScope}`);
+    basePhrases.unshift(`${words.slice(0, 2).join(" ")} in ${marketScope}`.toLowerCase());
   }
 
-  return basePhrases.slice(0, 6);
+  return Array.from(new Set(basePhrases)).filter(Boolean).slice(0, 6);
 }
 
 export default async function handler(req, res) {

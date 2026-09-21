@@ -37,41 +37,22 @@ export default async function handler(req, res) {
 
   try {
     // 1. Check Meta Connection for this user
-    // 1. Check Brand-Specific or Default Meta Connection
+    // 1. Resolve Brand-Specific Meta Connection strictly
     const targetBrand = req.body?.businessName || req.body?.brandName;
-    let brandMeta = null;
-    if (targetBrand) {
-      const normBiz = String(targetBrand).toLowerCase().trim().replace(/[^a-z0-9]/g, "_");
-      const { data: mem } = await supabase
-        .from("agent_memory")
-        .select("content")
-        .eq("email", userEmail.toLowerCase())
-        .eq("memory_type", `meta_conn_${normBiz}`)
-        .maybeSingle();
-      if (mem?.content) {
-        try { brandMeta = JSON.parse(mem.content); } catch (_) {}
-      }
-    }
-
-    const { data: defaultMeta } = await supabase
-      .from("meta_connections")
-      .select("fb_page_id, fb_page_access_token, fb_user_access_token, instagram_actor_id, ig_business_id")
+    const { data: allBrandMems } = await supabase
+      .from("agent_memory")
+      .select("memory_type, content")
       .eq("email", userEmail.toLowerCase())
-      .maybeSingle();
+      .like("memory_type", "meta_conn_%");
 
-    const pageId = brandMeta?.pageId || (defaultMeta?.fb_page_id ? defaultMeta.fb_page_id.split(",")[0].trim() : null);
-    const pageToken = brandMeta?.pageToken || defaultMeta?.fb_page_access_token || defaultMeta?.fb_user_access_token;
-    const igId = brandMeta?.igId || defaultMeta?.instagram_actor_id || defaultMeta?.ig_business_id;
+    const allBrands = [];
+    (allBrandMems || []).forEach((m) => {
+      try {
+        const parsed = JSON.parse(m.content);
+        allBrands.push(parsed);
+      } catch (_) {}
+    });
 
-    if (!pageId || !pageToken) {
-      return res.status(200).json({
-        ok: false,
-        require_connect: true,
-        message: "Your Meta (Facebook/Instagram) account is not connected yet. Please connect Meta in the Social Pilot tab to enable 1-click social sharing.",
-      });
-    }
-
-    // 1.5 Anti-Exploitation & Brand Identity Verification
     const { data: shopMem } = await supabase
       .from("agent_memory")
       .select("content")
@@ -86,23 +67,38 @@ export default async function handler(req, res) {
       } catch (_) {}
     }
 
-    if (!brandMeta) {
-      const metaIdentity = await getMetaIdentity(defaultMeta || {});
-      const brandCheck = checkBrandMatch({
-        storeName: shopData.name || "Shopify Store",
-        storeDomain: shopData.domain || shopData.shop,
-        shopHandle: shopData.shop,
-        metaIdentity,
-      });
+    const normStoreName = String(targetBrand || shopData.name || "Bella & Diva").toLowerCase().replace(/[^a-z0-9]/g, "");
+    const normPostUrl = String(postUrl || "").toLowerCase().replace(/^https?:\/\//, "").replace(/\/$/, "");
+    const normStoreDomain = String(shopData.domain || shopData.shop || "").toLowerCase().replace(/^https?:\/\//, "").replace(/\/$/, "");
 
-      if (!brandCheck.isMatched) {
-        return res.status(403).json({
-          ok: false,
-          brandMismatch: true,
-          brandSecurity: brandCheck,
-          error: brandCheck.reason || "Anti-Exploitation Block: The connected social channel belongs to a different business. Cross-brand posting is prohibited to preserve audience trust and prevent multi-tenant abuse.",
-        });
-      }
+    let brandMeta = allBrands.find((b) => {
+      const bName = String(b.businessName || b.pageName || "").toLowerCase().replace(/[^a-z0-9]/g, "");
+      const bUrl = String(b.websiteUrl || "").toLowerCase().replace(/^https?:\/\//, "").replace(/\/$/, "");
+      const bIg = String(b.igUsername || "").toLowerCase().replace(/[^a-z0-9]/g, "");
+
+      const urlMatches = bUrl && (normPostUrl.includes(bUrl) || normStoreDomain.includes(bUrl) || bUrl.includes(normStoreDomain));
+      const nameMatches = bName && normStoreName && (bName.includes(normStoreName) || normStoreName.includes(bName));
+      const igMatches = bIg && normStoreName && (bIg.includes(normStoreName) || normStoreName.includes(bIg));
+
+      return urlMatches || nameMatches || igMatches;
+    });
+
+    const { data: defaultMeta } = await supabase
+      .from("meta_connections")
+      .select("fb_page_id, fb_page_access_token, fb_user_access_token, instagram_actor_id, ig_business_id")
+      .eq("email", userEmail.toLowerCase())
+      .maybeSingle();
+
+    const pageId = brandMeta?.pageId || (allBrands.length === 0 ? defaultMeta?.fb_page_id?.split(",")[0]?.trim() : null);
+    const pageToken = brandMeta?.pageToken || (allBrands.length === 0 ? (defaultMeta?.fb_page_access_token || defaultMeta?.fb_user_access_token) : null);
+    const igId = brandMeta?.igId || (allBrands.length === 0 ? (defaultMeta?.instagram_actor_id || defaultMeta?.ig_business_id) : null);
+
+    if (!pageId || !pageToken) {
+      return res.status(200).json({
+        ok: false,
+        require_connect: true,
+        message: `No connected Facebook Page found for ${shopData.name || targetBrand || "this store"}. Please connect or pair Meta in Social Pilot.`,
+      });
     }
 
     const results = {};

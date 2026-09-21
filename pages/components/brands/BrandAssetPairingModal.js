@@ -16,14 +16,15 @@ export default function BrandAssetPairingModal({ onClose, onSaved }) {
   const loadAssets = async () => {
     setLoading(true);
     try {
-      const [metaRes, wpRes] = await Promise.all([
+      const [metaRes, wpRes, shopifyRes] = await Promise.all([
         fetch("/api/meta/status").then((r) => r.json()).catch(() => ({})),
         fetch("/api/wordpress/sync?action=get-connection").then((r) => r.json()).catch(() => ({})),
+        fetch("/api/shopify/sync?action=get-connection").then((r) => r.json()).catch(() => ({})),
       ]);
 
       setMetaStatus(metaRes);
 
-      // Collect available websites
+      // Collect available websites (WordPress and Shopify)
       const sites = [];
       if (wpRes.connection?.siteUrl) {
         sites.push({
@@ -44,7 +45,44 @@ export default function BrandAssetPairingModal({ onClose, onSaved }) {
           }
         });
       }
+
+      // Collect connected Shopify stores
+      if (shopifyRes.allConnections && Array.isArray(shopifyRes.allConnections)) {
+        shopifyRes.allConnections.forEach((s) => {
+          const rawUrl = s.domain || s.myshopify_domain || s.shop || "";
+          const fullUrl = rawUrl.startsWith("http") ? rawUrl : `https://${rawUrl}`;
+          if (!sites.find((item) => item.url === fullUrl)) {
+            sites.push({
+              type: "shopify",
+              name: s.shopName || s.shop || "Shopify Store",
+              url: fullUrl,
+            });
+          }
+        });
+      } else if (shopifyRes.connection) {
+        const s = shopifyRes.connection;
+        const rawUrl = s.domain || s.myshopify_domain || s.shop || "";
+        const fullUrl = rawUrl.startsWith("http") ? rawUrl : `https://${rawUrl}`;
+        if (!sites.find((item) => item.url === fullUrl)) {
+          sites.push({
+            type: "shopify",
+            name: s.shopName || s.name || "Shopify Store",
+            url: fullUrl,
+          });
+        }
+      }
+
       setConnectedWebsites(sites);
+
+      // Helper to find closest site match by name
+      const findBestSiteMatch = (name = "") => {
+        const clean = String(name).toLowerCase().replace(/[^a-z0-9]/g, "");
+        return sites.find((s) => {
+          const sClean = String(s.name).toLowerCase().replace(/[^a-z0-9]/g, "");
+          const uClean = String(s.url).toLowerCase().replace(/[^a-z0-9]/g, "");
+          return clean && (sClean.includes(clean) || clean.includes(sClean) || uClean.includes(clean));
+        });
+      };
 
       // Build initial pairings from allMetaConnections or detected assets
       const existing = metaRes.allMetaConnections || {};
@@ -54,9 +92,13 @@ export default function BrandAssetPairingModal({ onClose, onSaved }) {
         setPairings(
           brandKeys.map((key) => {
             const b = existing[key];
+            const nameToMatch = b.businessName || b.pageName || key;
+            const autoSite = findBestSiteMatch(nameToMatch);
+            const chosenUrl = b.websiteUrl || autoSite?.url || "";
+            const chosenType = b.websiteType || autoSite?.type || "wordpress";
             return {
               brandKey: key,
-              businessName: b.businessName || b.pageName || key,
+              businessName: nameToMatch,
               pageId: b.pageId,
               pageName: b.pageName || b.businessName,
               pageToken: b.pageToken,
@@ -64,12 +106,13 @@ export default function BrandAssetPairingModal({ onClose, onSaved }) {
               igUsername: b.igUsername || null,
               adAccountId: b.adAccountId || null,
               adAccountName: b.adAccountName || null,
-              websiteUrl: b.websiteUrl || (sites[0]?.url || ""),
-              websiteType: b.websiteType || (sites[0]?.type || "wordpress"),
+              websiteUrl: chosenUrl,
+              websiteType: chosenType,
             };
           })
         );
       } else if (metaRes.meta) {
+        const autoSite = findBestSiteMatch(metaRes.meta.business_name);
         setPairings([
           {
             brandKey: "default",
@@ -81,8 +124,8 @@ export default function BrandAssetPairingModal({ onClose, onSaved }) {
             igUsername: null,
             adAccountId: metaRes.meta.fb_ad_account_id,
             adAccountName: null,
-            websiteUrl: sites[0]?.url || "",
-            websiteType: sites[0]?.type || "wordpress",
+            websiteUrl: autoSite?.url || "",
+            websiteType: autoSite?.type || "wordpress",
           },
         ]);
       }
@@ -334,7 +377,19 @@ export default function BrandAssetPairingModal({ onClose, onSaved }) {
                       {connectedWebsites.length > 0 ? (
                         <select
                           value={pairing.websiteUrl || ""}
-                          onChange={(e) => handleUpdatePairing(index, "websiteUrl", e.target.value)}
+                          onChange={(e) => {
+                            const chosenUrl = e.target.value;
+                            const siteObj = connectedWebsites.find((s) => s.url === chosenUrl);
+                            setPairings((prev) => {
+                              const copy = [...prev];
+                              copy[index] = {
+                                ...copy[index],
+                                websiteUrl: chosenUrl,
+                                websiteType: siteObj?.type || "wordpress",
+                              };
+                              return copy;
+                            });
+                          }}
                           style={{
                             width: "100%",
                             background: "#080c14",

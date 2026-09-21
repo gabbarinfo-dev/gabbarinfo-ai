@@ -232,20 +232,56 @@ async function runSeoAutopilotCycle({ supabase, openai, force = false, logger = 
         } catch (_) {}
       }
 
+      // If still empty, crawl homepage HTML to extract true brand identity and offerings
+      if (candidateServices.length === 0 && siteUrl) {
+        try {
+          const homeRes = await fetch(siteUrl, {
+            headers: { "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64)" },
+          });
+          if (homeRes.ok) {
+            const html = await homeRes.text();
+            const tMatch = html.match(/<title[^>]*>([^<]+)<\/title>/i);
+            if (tMatch) {
+              const tClean = tMatch[1].replace(/&#[0-9]+;|&[a-z]+;/gi, " ").trim();
+              if (tClean.length > 3) candidateServices.push(tClean);
+            }
+            const hMatches = html.matchAll(/<h[1-3][^>]*>([\s\S]*?)<\/h[1-3]>/gi);
+            for (const m of hMatches) {
+              const text = m[1].replace(/<[^>]+>/g, "").trim();
+              if (text.length > 5 && text.length < 80 && !/^(home|about|contact|privacy|terms)/i.test(text)) {
+                candidateServices.push(text);
+              }
+            }
+          }
+        } catch (_) {}
+      }
+
       // Dynamic fallback based on the user's specific business name & industry
       if (candidateServices.length === 0) {
-        const ind = config.industry || businessName || "Commercial Growth";
+        const ind = config.discoveredNiche || config.industry || businessName || "Specialized Solutions";
         candidateServices = [
-          `${ind} Core Services & Solutions`,
-          `High-ROI Strategic ${ind}`,
-          `Customer Acquisition & ${ind} Operations`,
-          `Quality Excellence & Delivery in ${ind}`
+          `${ind} Core Concepts & Guide`,
+          `Essential Best Practices in ${ind}`,
+          `Practical Approaches & Solutions in ${ind}`,
+          `Expert Analysis & Guidance for ${ind}`
         ];
       }
 
-      let nextIndex = (Number(config.lastServiceIndex) || 0) + 1;
-      if (nextIndex >= candidateServices.length) nextIndex = 0;
-      const activeService = candidateServices[nextIndex] || `${businessName} Core Services`;
+      // If topic queue or suggested topics exist, prioritize those
+      let activeService = "";
+      if (Array.isArray(config.topicQueue) && config.topicQueue.length > 0) {
+        activeService = config.topicQueue[0];
+      } else if (Array.isArray(config.suggestedTopics) && config.suggestedTopics.length > 0) {
+        let topicIdx = (Number(config.lastServiceIndex) || 0) + 1;
+        if (topicIdx >= config.suggestedTopics.length) topicIdx = 0;
+        activeService = config.suggestedTopics[topicIdx];
+      }
+
+      if (!activeService) {
+        let nextIndex = (Number(config.lastServiceIndex) || 0) + 1;
+        if (nextIndex >= candidateServices.length) nextIndex = 0;
+        activeService = candidateServices[nextIndex] || `${businessName} Solutions`;
+      }
       const targetLocations = (config.targetLocations || config.targetMarket || "").trim();
 
       // 4.5 Fetch Existing Published WordPress Posts & Pages for Authentic Internal Linking
@@ -289,7 +325,7 @@ async function runSeoAutopilotCycle({ supabase, openai, force = false, logger = 
 
       // 5. Generate Full SEO Article (STRICT 1,650+ words, 10 structured sections) via GPT-4o
       logger(`[SEO Autopilot] Generating exhaustive 1,650+ word SEO guide for "${activeService}" (${businessName})...`);
-      const systemPrompt = `You are an elite commercial director, subject matter expert, and enterprise journalist writing for ${businessName} (${siteUrl}).
+      const systemPrompt = `You are an elite subject matter expert and authoritative journalist writing for ${businessName} (${siteUrl}).
 Write an exhaustive, authoritative, 100% human-grade master guide focused specifically on "${activeService}".
 ${targetLocations ? `
 TARGET GEOGRAPHIC MARKET MANDATE:
@@ -299,17 +335,17 @@ The business is specifically targeting clients and audiences in: "${targetLocati
 ` : ""}
 CRITICAL LENGTH & DEPTH MANDATES:
 1. STRICT WORD COUNT: Body content MUST BE AT LEAST 1,650 WORDS (target: 1,700 to 2,200 words). Any shallow summaries under 1,500 words are strictly unacceptable.
-2. MANDATORY 10 SECTIONS (You MUST include ALL 10 of these exact <h2> sections with 2 to 3 detailed <h3> subsections each):
-   - <h2>1. The Strategic Evolution of ${activeService} in 2026</h2> (At least 170 words across 2 detailed paragraphs explaining the modern landscape, industry discovery, and market shifts)
-   - <h2>2. Core Foundations, Strategic Principles & Attribution Frameworks</h2> (At least 180 words detailing key methodologies, customer touchpoints, and operational mechanics)
-   - <h2>3. High-Converting Campaign Architecture & Execution Systems</h2> (At least 200 words with actionable structural frameworks, audience modeling, and operational formulas)
-   - <h2>4. Technology Infrastructure, Analytics & Conversion Mastery</h2> (At least 180 words detailing measurement, modern tooling, and service accuracy)
-   - <h2>5. Omnichannel Growth Funnels & Audience Monetization</h2> (At least 180 words on cross-channel synergy, client retention, and ROI scaling)
-   - <h2>6. In-Depth Real-World Case Study: 0 to 480% Revenue Acceleration</h2> (At least 220 words detailing baseline metrics, strategic interventions, and verified commercial gains)
-   - <h2>7. Step-by-Step 90-Day Execution Playbook for Hyper-Growth</h2> (At least 220 words with Month 1, Month 2, Month 3 actionable sprints)
-   - <h2>8. 5 Critical Pitfalls & Costly Strategic Mistakes to Avoid</h2> (At least 200 words detailing common misconceptions, operational errors, and actionable fixes)
+2. MANDATORY 10 SECTIONS (You MUST include ALL 10 of these exact <h2> sections with 2 to 3 detailed <h3> subsections each, tailored 100% to the subject matter of "${activeService}"):
+   - <h2>1. Evolution, Background & Modern Context of ${activeService}</h2> (At least 170 words across 2 detailed paragraphs explaining the fundamentals, history/modern development, and significance)
+   - <h2>2. Core Foundations, Essential Principles & Methodologies</h2> (At least 180 words detailing key foundations, terminology, and mechanisms)
+   - <h2>3. Comprehensive In-Depth Guide to ${activeService}</h2> (At least 200 words with actionable frameworks, methods, or detailed step-by-step procedures)
+   - <h2>4. Specialized Nuances, Techniques & Advanced Considerations</h2> (At least 180 words detailing specific scenarios, nuances, and technical/practical depth)
+   - <h2>5. Practical Benefits, Value & Tangible Outcomes</h2> (At least 180 words on real advantages, customer/seeker benefits, and outcomes)
+   - <h2>6. Real-World Applications & Practical Case Study</h2> (At least 220 words detailing a real or representative scenario, practical application, and results)
+   - <h2>7. Step-by-Step Actionable Checklist & Practical Playbook</h2> (At least 220 words with structured practical guidance for immediate action)
+   - <h2>8. Common Mistakes, Misconceptions & Critical Pitfalls to Avoid</h2> (At least 200 words detailing common errors, myths, and how to fix or avoid them)
    - <h2>9. Frequently Asked Questions (FAQ)</h2> (Provide 5 detailed, high-impact questions specifically about ${activeService}, each answered with comprehensive multi-paragraph explanations of 100+ words, totaling 500+ words for this FAQ section)
-   - <h2>10. Strategic Conclusion and Actionable Roadmap for 2026</h2> (At least 150 words summary with a clear commercial call to action to partner with ${businessName})
+   - <h2>10. Conclusion and Expert Recommendations</h2> (At least 150 words summary with clear guidance and invitation to learn more at ${businessName})
 
 3. MANDATORY 8 TO 12 TARGET KEYWORD CLUSTER & ORGANIC DENSITY:
    - Generate and target a rich semantic keyword cluster of 8 to 12 distinct keywords directly relevant to "${activeService}":

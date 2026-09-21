@@ -48,38 +48,8 @@ export default function SeoHubPage() {
   const [keywords, setKeywords] = useState([]);
   const [newKeywordInput, setNewKeywordInput] = useState("");
 
-  const getThirtyDefaultTopics = (bName = "Your Business") => [
-    `How ${bName} Drives 300% ROI With Strategic Solutions in 2026`,
-    `Top 7 Mistakes Businesses Make in ${bName} & How to Fix Them`,
-    `The Ultimate 2026 Guide to Dominating Local Search Rankings in Your City`,
-    `Conversion Rate Optimization: Proven Frameworks That Turn Traffic Into Leads`,
-    `Why Speed & Technical Architecture Are Crucial for High-Performance Websites`,
-    `How to Build Topical Authority in Your Niche Step-by-Step`,
-    `The Complete Checklist for Launching a High-Converting Online Presence`,
-    `Strategic Investment Guide: Where Should You Allocate Your Budget First?`,
-    `How Customer Experience Directly Impacts Your Bottom Line in 2026`,
-    `10 High-Impact Strategies to Outrank Your Local Competitors`,
-    `The Blueprint for Generating Consistent Quality Leads on Autopilot`,
-    `How to Craft Attention-Grabbing Headlines That Boost Engagement by 40%`,
-    `Why Your Visitor Drop-Off Is High and 5 Data-Backed Ways to Fix It`,
-    `Preparing Your Business for the Next Wave of Customer Search Behavior`,
-    `How AI-Driven Innovation Is Redefining Brand Authority in 2026`,
-    `The Essential Operational Checklist Every Business Manager Needs`,
-    `Structured Data & Visibility: How to Stand Out in Modern Search`,
-    `Internal Linking Strategies That Skyrocket Discovery & Authority`,
-    `How to Conduct a Comprehensive Competitor Audit in Under 30 Minutes`,
-    `Building Trust and Authority That Modern Clients Reward`,
-    `From Clicks to Customers: Crafting Pages That Double Conversion Rates`,
-    `The Power of Evergreen Content: How One Asset Drives Value for Years`,
-    `Winning Featured Spots: How to Dominate Search Intent`,
-    `Mobile-First Best Practices: Key Rules for Growing Businesses`,
-    `How to Target High-Intent Customers Without Overspending`,
-    `Repurposing Content: Turn One Post Into 10 Lead Magnets`,
-    `Customer Retention vs Acquisition: Why Your Strategy Must Balance Both`,
-    `The Anatomy of a Perfect Landing Page That Converts Cold Traffic`,
-    `Why Local Presence and Consistency Are Crucial for Market Dominance`,
-    `The Future of Autonomous Business Growth: Predictions & Strategies for 2026`,
-  ];
+  const [discoveredNiche, setDiscoveredNiche] = useState("");
+  const [nicheSummary, setNicheSummary] = useState("");
 
   const [suggestedTopics, setSuggestedTopics] = useState([]);
   const [loadingTopics, setLoadingTopics] = useState(false);
@@ -97,6 +67,7 @@ export default function SeoHubPage() {
         body: JSON.stringify({
           topic: topicTitle,
           businessName: activeBusiness,
+          industry: discoveredNiche || "",
           targetMarket: market || "",
         }),
       });
@@ -104,11 +75,13 @@ export default function SeoHubPage() {
       if (data.ok && Array.isArray(data.keywords) && data.keywords.length > 0) {
         setNewKeywords(data.keywords.join(", "));
       } else {
-        setNewKeywords("high intent search solutions, strategic growth optimization, market authority analysis");
+        const words = topicTitle.toLowerCase().replace(/[^a-z0-9\s]/g, " ").split(/\s+/).filter((w) => w.length > 3);
+        const derived = words.slice(0, 4).join(" ");
+        setNewKeywords(derived ? `${derived}, ${topicTitle.toLowerCase()}` : topicTitle);
       }
     } catch (e) {
       console.error("Keyword research error:", e);
-      setNewKeywords("high intent search solutions, strategic growth optimization, market authority analysis");
+      setNewKeywords(topicTitle);
     } finally {
       setLoadingKeywords(false);
     }
@@ -130,8 +103,8 @@ export default function SeoHubPage() {
   const [autopilotEnabled, setAutopilotEnabled] = useState(false);
   const [cadence, setCadence] = useState("daily"); // 'daily' | 'weekly' | 'monthly' | 'custom'
   const [customDaysPerWeek, setCustomDaysPerWeek] = useState(3);
-  const [autoShareFb, setAutoShareFb] = useState(true);
-  const [autoShareIg, setAutoShareIg] = useState(true);
+  const [autoShareFb, setAutoShareFb] = useState(false);
+  const [autoShareIg, setAutoShareIg] = useState(false);
   const [autopilotTargetLocations, setAutopilotTargetLocations] = useState("");
   const [savingAutopilotConfig, setSavingAutopilotConfig] = useState(false);
   const [runningCycle, setRunningCycle] = useState(false);
@@ -231,17 +204,16 @@ export default function SeoHubPage() {
   useEffect(() => {
     if (!session) return;
     fetchConnection();
-    fetchBrandMeta(activeBusiness);
   }, [session, activeBusiness]);
 
-  const fetchBrandMeta = async (bizName) => {
+  const fetchBrandMeta = async (bizName, siteUrl = null) => {
     try {
-      const res = await fetch("/api/meta/status");
+      const uParam = siteUrl ? `&siteUrl=${encodeURIComponent(siteUrl)}` : "";
+      const bParam = bizName ? `&businessName=${encodeURIComponent(bizName)}` : "";
+      const res = await fetch(`/api/meta/status?${uParam}${bParam}`);
       const data = await res.json();
-      if (data.connected) {
-        const norm = (bizName || "").toLowerCase().trim().replace(/[^a-z0-9]/g, "_");
-        const matched = data.allMetaConnections?.[norm] || data.meta || null;
-        setBrandMeta(matched);
+      if (data.connected && data.brandMeta) {
+        setBrandMeta(data.brandMeta);
       } else {
         setBrandMeta(null);
       }
@@ -256,6 +228,9 @@ export default function SeoHubPage() {
       return;
     }
     setActiveBusiness(newBiz);
+    setBrandMeta(null);
+    setAutoShareFb(false);
+    setAutoShareIg(false);
     setContentList([]);
     setEditingArticle(null);
     setPublishedResult(null);
@@ -279,16 +254,18 @@ export default function SeoHubPage() {
           setConnection(data.connection);
           const bName = data.connection.businessName || activeBusiness;
           if (!activeBusiness && bName) setActiveBusiness(bName);
+          fetchBrandMeta(bName || activeBusiness, data.connection.siteUrl);
           fetchContent(data.connection);
           fetchAutopilotConfig(bName || activeBusiness);
-          // Reactively generate 30 topics for the active business
-          setSuggestedTopics(getThirtyDefaultTopics(bName));
+          fetchDiscoveredTopics(bName || activeBusiness, data.connection.siteUrl, false);
         } else {
           setConnection(null);
+          fetchBrandMeta(activeBusiness, null);
           setContentList([]);
         }
       } else {
         setConnection(null);
+        fetchBrandMeta(activeBusiness, null);
         setContentList([]);
       }
     } catch (e) {
@@ -316,10 +293,19 @@ export default function SeoHubPage() {
         setMode(isEnabled ? "autopilot" : "manual");
         setCadence(data.config.cadence || "daily");
         setCustomDaysPerWeek(Number(data.config.customDaysPerWeek) || 3);
-        setAutoShareFb(data.config.autoShareFacebook !== false);
-        setAutoShareIg(data.config.autoShareInstagram !== false);
+        setAutoShareFb(data.config.autoShareFacebook === true);
+        setAutoShareIg(data.config.autoShareInstagram === true);
         setAutopilotPublishedCount(Number(data.config.publishedCount) || 0);
         setLastPublishedAt(data.config.lastPublishedAt || null);
+        if (Array.isArray(data.config.suggestedTopics) && data.config.suggestedTopics.length > 0) {
+          setSuggestedTopics(data.config.suggestedTopics);
+        }
+        if (data.config.discoveredNiche) {
+          setDiscoveredNiche(data.config.discoveredNiche);
+        }
+        if (data.config.nicheSummary) {
+          setNicheSummary(data.config.nicheSummary);
+        }
         if (Array.isArray(data.config.targetKeywords) && data.config.targetKeywords.length > 0) {
           setKeywords(data.config.targetKeywords);
         }
@@ -352,8 +338,8 @@ export default function SeoHubPage() {
             enabled: isEnabled,
             cadence,
             customDaysPerWeek,
-            autoShareFacebook: autoShareFb,
-            autoShareInstagram: autoShareIg,
+            autoShareFacebook: brandMeta ? autoShareFb : false,
+            autoShareInstagram: (brandMeta?.igUsername || brandMeta?.igId) ? autoShareIg : false,
             targetKeywords: keywords,
             targetLocations: autopilotTargetLocations.trim(),
             targetMarket: autopilotTargetLocations.trim(),
@@ -844,43 +830,56 @@ export default function SeoHubPage() {
     }
   };
 
-  // AI SERP Topic Generator with Anti-Duplication (30 Topics)
-  const handleAutoSuggestTopics = async (overrideBusiness) => {
-    const targetBiz = (overrideBusiness || activeBusiness || connection?.businessName || connection?.siteName || "").trim();
-    if (!targetBiz && !connection?.siteUrl) {
-      alert("⚠️ Please connect your WordPress website or enter your business name first to generate topics.");
-      return;
-    }
+  // Real Website Discovery & SERP Topic Generator (Any Website & Any Industry)
+  const fetchDiscoveredTopics = async (targetBiz, siteUrl, refresh = false) => {
+    const bizToUse = (targetBiz || activeBusiness || connection?.businessName || "").trim();
+    const urlToUse = (siteUrl || connection?.siteUrl || "").trim();
+    if (!bizToUse && !urlToUse) return;
+
     setLoadingTopics(true);
     try {
       const existingTitles = contentList.map((c) => c.title).slice(0, 30);
-      const kwList = keywords.length > 0 ? keywords.join(", ") : targetBiz;
-      const res = await fetch("/api/agent/execute", {
+      const res = await fetch("/api/wordpress/suggest-topics", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          mode: "seo_blog",
-          instruction: `Generate 30 high-ranking, non-duplicating SEO blog topic titles for ${targetBiz || "our business"}. Include commercial buyer-intent, local search guides, city targeting, technical authority pillars, and problem-solving topics. Target keywords: ${kwList}. Do NOT duplicate any of these existing titles: ${existingTitles.join(", ")}. Return ONLY a JSON array of 30 title strings: ["Title 1", "Title 2", ...].`,
+          businessName: bizToUse,
+          siteUrl: urlToUse,
+          targetMarket: autopilotTargetLocations || targetMarket || "",
+          keywords,
+          existingTitles,
+          refresh,
         }),
       });
 
       const data = await res.json();
-      let topics = [];
-      try {
-        const match = data.text?.match(/\[[\s\S]*\]/);
-        if (match) topics = JSON.parse(match[0]);
-      } catch (e) {}
-
-      if (!topics || topics.length < 5) {
-        topics = getThirtyDefaultTopics(targetBiz || "Your Business");
+      if (data.ok && Array.isArray(data.topics) && data.topics.length > 0) {
+        setSuggestedTopics(data.topics);
+        if (data.industry) setDiscoveredNiche(data.industry);
+        if (data.nicheSummary) setNicheSummary(data.nicheSummary);
+        if (Array.isArray(data.targetKeywords) && data.targetKeywords.length > 0) {
+          setKeywords((prev) => {
+            if (!prev || prev.length === 0) return data.targetKeywords;
+            return Array.from(new Set([...prev, ...data.targetKeywords]));
+          });
+        }
       }
-      setSuggestedTopics(topics);
     } catch (e) {
-      console.error(e);
-      setSuggestedTopics(getThirtyDefaultTopics(targetBiz || "Your Business"));
+      console.error("Failed to discover topics:", e);
     } finally {
       setLoadingTopics(false);
     }
+  };
+
+  // AI SERP Topic Generator with Anti-Duplication (30 Topics)
+  const handleAutoSuggestTopics = async (overrideBusiness) => {
+    const targetBiz = (overrideBusiness || activeBusiness || connection?.businessName || connection?.siteName || "").trim();
+    const targetUrl = (connection?.siteUrl || "").trim();
+    if (!targetBiz && !targetUrl) {
+      alert("⚠️ Please connect your WordPress website or enter your business name first to generate topics.");
+      return;
+    }
+    await fetchDiscoveredTopics(targetBiz, targetUrl, true);
   };
 
   // Filtered Content
@@ -2629,12 +2628,40 @@ export default function SeoHubPage() {
                     cursor: "pointer",
                   }}
                 >
-                  {loadingTopics ? "Analyzing SERP…" : `⚡ Re-Generate 30 Topics ↗ (${suggestedTopics.length})`}
+                  {loadingTopics ? "Crawling & Analyzing Site…" : `⚡ Re-Generate 30 Topics ↗ (${suggestedTopics.length})`}
                 </button>
               </div>
               <p style={{ color: "#94a3b8", fontSize: 13, margin: "0 0 16px 0" }}>
                 Cross-references live content to guarantee 0% duplication. Includes 30 full days of strategic authority topics.
               </p>
+
+                {/* Verified Niche Intelligence Badge */}
+                {discoveredNiche && (
+                  <div
+                    style={{
+                      marginBottom: 16,
+                      padding: "12px 16px",
+                      borderRadius: 10,
+                      background: "linear-gradient(135deg, rgba(56, 189, 248, 0.1) 0%, rgba(14, 165, 233, 0.05) 100%)",
+                      border: "1px solid rgba(56, 189, 248, 0.3)",
+                      boxShadow: "0 4px 16px rgba(0, 0, 0, 0.2)",
+                    }}
+                  >
+                    <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap", marginBottom: nicheSummary ? 4 : 0 }}>
+                      <span style={{ fontSize: 10, padding: "2px 8px", borderRadius: 12, background: "rgba(56, 189, 248, 0.2)", color: "#38bdf8", fontWeight: 800, textTransform: "uppercase", letterSpacing: "0.5px" }}>
+                        🎯 Verified Niche Intelligence
+                      </span>
+                      <span style={{ fontSize: 13, fontWeight: 700, color: "#fff" }}>
+                        {discoveredNiche}
+                      </span>
+                    </div>
+                    {nicheSummary && (
+                      <div style={{ fontSize: 12, color: "#94a3b8", lineHeight: 1.5, marginTop: 4 }}>
+                        {nicheSummary}
+                      </div>
+                    )}
+                  </div>
+                )}
 
               <div style={{ maxHeight: 580, overflowY: "auto", paddingRight: 6, display: "flex", flexDirection: "column", gap: 10 }}>
                 {!connection?.siteUrl && !activeBusiness ? (
@@ -2651,58 +2678,17 @@ export default function SeoHubPage() {
                     >
                       <span>🔗</span> Connect WordPress Website ↗
                     </button>
-
-                    <div style={{ margin: "26px 0 18px 0", borderTop: "1px solid rgba(255,255,255,0.08)", position: "relative" }}>
-                      <span style={{ position: "absolute", top: -10, left: "50%", transform: "translateX(-50%)", background: "#0d111c", padding: "0 12px", fontSize: 11, color: "#64748b", fontWeight: 700, letterSpacing: "0.5px" }}>
-                        OR QUICK BRAINSTORM TOPICS
-                      </span>
-                    </div>
-
-                    <div style={{ display: "flex", flexDirection: "column", gap: 8, maxWidth: 400, margin: "0 auto", textAlign: "left" }}>
-                      <label style={{ fontSize: 12, color: "#94a3b8" }}>Enter your business name or niche:</label>
-                      <div style={{ display: "flex", gap: 8 }}>
-                        <input
-                          type="text"
-                          id="quick-brainstorm-biz"
-                          placeholder="e.g. Acme Dental, FitGym, CloudSaaS..."
-                          style={{
-                            flex: 1,
-                            padding: "9px 12px",
-                            borderRadius: 6,
-                            border: "1px solid rgba(255,255,255,0.15)",
-                            background: "#080b11",
-                            color: "#fff",
-                            fontSize: 13,
-                          }}
-                          onKeyDown={(e) => {
-                            if (e.key === "Enter") {
-                              const val = e.currentTarget.value.trim();
-                              if (val) {
-                                setActiveBusiness(val);
-                                handleAutoSuggestTopics(val);
-                              }
-                            }
-                          }}
-                        />
-                        <button
-                          onClick={() => {
-                            const val = document.getElementById("quick-brainstorm-biz")?.value?.trim();
-                            if (!val) return alert("Please enter your business or niche name.");
-                            setActiveBusiness(val);
-                            handleAutoSuggestTopics(val);
-                          }}
-                          className="btn-gabbar-secondary"
-                          style={{ padding: "8px 14px", fontSize: 12, cursor: "pointer", whiteSpace: "nowrap" }}
-                        >
-                          ⚡ Brainstorm
-                        </button>
-                      </div>
-                    </div>
+                  </div>
+                ) : loadingTopics && suggestedTopics.length === 0 ? (
+                  <div style={{ padding: 36, textAlign: "center", color: "#38bdf8", fontSize: 13, background: "#0d111c", borderRadius: 8, border: "1px dashed rgba(56, 189, 248, 0.3)" }}>
+                    <div style={{ fontSize: 28, marginBottom: 10 }}>🤖</div>
+                    <div style={{ fontWeight: 700, marginBottom: 4 }}>Crawling & Analyzing Live Website...</div>
+                    <div style={{ fontSize: 12, color: "#94a3b8" }}>Extracting your site's true services, products, and shastras to build 30 tailored authority topics.</div>
                   </div>
                 ) : suggestedTopics.length === 0 ? (
                   <div style={{ padding: 32, textAlign: "center", color: "#64748b", fontSize: 13, background: "#0d111c", borderRadius: 8 }}>
                     <div style={{ fontSize: 24, marginBottom: 8 }}>⚡</div>
-                    <div>Click "Re-Generate 30 Topics" to ideate SERP-ranking articles for {activeBusiness || "your website"}.</div>
+                    <div>Click "Re-Generate 30 Topics" to crawl {connection?.siteUrl || activeBusiness || "your website"} and generate tailored topics.</div>
                   </div>
                 ) : (
                   suggestedTopics.map((top, idx) => (
@@ -3190,13 +3176,20 @@ export default function SeoHubPage() {
               <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(280px, 1fr))", gap: 16 }}>
                 {/* Facebook Option Card */}
                 <div
-                  onClick={() => setAutoShareFb(!autoShareFb)}
+                  onClick={() => {
+                    if (!brandMeta?.pageId) {
+                      alert(`⚠️ No Facebook Page is paired for ${connection?.siteUrl || activeBusiness}. Please connect or pair your social assets in Social Pilot.`);
+                      return;
+                    }
+                    setAutoShareFb(!autoShareFb);
+                  }}
                   style={{
-                    background: autoShareFb ? "rgba(24, 119, 242, 0.1)" : "rgba(13, 20, 35, 0.7)",
-                    border: autoShareFb ? "1.5px solid #1877f2" : "1px solid rgba(255, 255, 255, 0.1)",
+                    background: brandMeta?.pageId && autoShareFb ? "rgba(24, 119, 242, 0.1)" : "rgba(13, 20, 35, 0.7)",
+                    border: brandMeta?.pageId && autoShareFb ? "1.5px solid #1877f2" : "1px solid rgba(255, 255, 255, 0.1)",
                     borderRadius: 12,
                     padding: 20,
-                    cursor: "pointer",
+                    cursor: brandMeta?.pageId ? "pointer" : "not-allowed",
+                    opacity: brandMeta?.pageId ? 1 : 0.8,
                     display: "flex",
                     justifyContent: "space-between",
                     alignItems: "center",
@@ -3205,25 +3198,31 @@ export default function SeoHubPage() {
                   }}
                 >
                   <div style={{ display: "flex", gap: 14, alignItems: "flex-start" }}>
-                    <div style={{ width: 40, height: 40, borderRadius: 10, background: "#1877f2", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
-                      <svg width="22" height="22" viewBox="0 0 24 24" fill="#ffffff">
+                    <div style={{ width: 40, height: 40, borderRadius: 10, background: brandMeta?.pageId ? "#1877f2" : "rgba(148, 163, 184, 0.15)", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
+                      <svg width="22" height="22" viewBox="0 0 24 24" fill={brandMeta?.pageId ? "#ffffff" : "#94a3b8"}>
                         <path d="M24 12.073c0-6.627-5.373-12-12-12s-12 5.373-12 12c0 5.99 4.388 10.954 10.125 11.854v-8.385H7.078v-3.47h3.047V9.43c0-3.007 1.792-4.669 4.533-4.669 1.312 0 2.686.235 2.686.235v2.953H15.83c-1.491 0-1.956.925-1.956 1.874v2.25h3.328l-.532 3.47h-2.796v8.385C19.612 23.027 24 18.062 24 12.073z"/>
                       </svg>
                     </div>
                     <div>
                       <div style={{ fontSize: 15, fontWeight: 700, color: "#fff", display: "flex", alignItems: "center", gap: 8 }}>
-                        📘 Facebook Page: {brandMeta?.pageName || activeBusiness || "Connected Page"}
-                        {autoShareFb && (
+                        📘 Facebook Page: {brandMeta?.pageName || "No Page Linked"}
+                        {brandMeta?.pageId && autoShareFb ? (
                           <span style={{ fontSize: 10, padding: "2px 6px", borderRadius: 4, background: "rgba(16, 185, 129, 0.2)", color: "#34d399", fontWeight: 700 }}>
                             ACTIVE
                           </span>
+                        ) : (
+                          <span style={{ fontSize: 10, padding: "2px 6px", borderRadius: 4, background: "rgba(148, 163, 184, 0.15)", color: "#94a3b8", fontWeight: 700 }}>
+                            {brandMeta?.pageId ? "DISABLED" : "NOT CONNECTED"}
+                          </span>
                         )}
                       </div>
-                      <div style={{ fontSize: 12, color: "#38bdf8", marginTop: 2 }}>
-                        Target ID: {brandMeta?.pageId || "Bound to active profile"}
+                      <div style={{ fontSize: 12, color: brandMeta?.pageId ? "#38bdf8" : "#94a3b8", marginTop: 2 }}>
+                        {brandMeta?.pageId ? `Target ID: ${brandMeta.pageId}` : `Unpaired: No Facebook asset bound to ${connection?.siteUrl ? connection.siteUrl.replace(/^https?:\/\//, '') : (activeBusiness || "this site")}`}
                       </div>
                       <p style={{ margin: "4px 0 0 0", color: "#94a3b8", fontSize: 12, lineHeight: 1.4 }}>
-                        Automatically broadcasts a high-CTR interactive preview card with article synopsis, featured artwork, and direct site link.
+                        {brandMeta?.pageId
+                          ? "Automatically broadcasts a high-CTR interactive preview card with article synopsis, featured artwork, and direct site link."
+                          : "Connect and pair a Facebook Page in Social Pilot to enable automated syndication for this website."}
                       </p>
                     </div>
                   </div>
@@ -3234,11 +3233,11 @@ export default function SeoHubPage() {
                       width: 44,
                       height: 24,
                       borderRadius: 14,
-                      background: autoShareFb ? "#10b981" : "#334155",
+                      background: brandMeta?.pageId && autoShareFb ? "#10b981" : "#334155",
                       position: "relative",
                       flexShrink: 0,
                       transition: "background 0.2s ease",
-                      cursor: "pointer",
+                      cursor: brandMeta?.pageId ? "pointer" : "not-allowed",
                     }}
                   >
                     <div
@@ -3249,7 +3248,7 @@ export default function SeoHubPage() {
                         background: "#fff",
                         position: "absolute",
                         top: 3,
-                        left: autoShareFb ? 23 : 3,
+                        left: brandMeta?.pageId && autoShareFb ? 23 : 3,
                         transition: "left 0.2s ease",
                         boxShadow: "0 2px 4px rgba(0,0,0,0.3)",
                       }}
@@ -3259,13 +3258,20 @@ export default function SeoHubPage() {
 
                 {/* Instagram Option Card */}
                 <div
-                  onClick={() => setAutoShareIg(!autoShareIg)}
+                  onClick={() => {
+                    if (!brandMeta?.igUsername && !brandMeta?.igId) {
+                      alert(`⚠️ No Instagram account is paired for ${connection?.siteUrl || activeBusiness}. Please connect or pair in Social Pilot.`);
+                      return;
+                    }
+                    setAutoShareIg(!autoShareIg);
+                  }}
                   style={{
-                    background: autoShareIg ? "rgba(225, 48, 108, 0.1)" : "rgba(13, 20, 35, 0.7)",
-                    border: autoShareIg ? "1.5px solid #e1306c" : "1px solid rgba(255, 255, 255, 0.1)",
+                    background: (brandMeta?.igUsername || brandMeta?.igId) && autoShareIg ? "rgba(225, 48, 108, 0.1)" : "rgba(13, 20, 35, 0.7)",
+                    border: (brandMeta?.igUsername || brandMeta?.igId) && autoShareIg ? "1.5px solid #e1306c" : "1px solid rgba(255, 255, 255, 0.1)",
                     borderRadius: 12,
                     padding: 20,
-                    cursor: "pointer",
+                    cursor: (brandMeta?.igUsername || brandMeta?.igId) ? "pointer" : "not-allowed",
+                    opacity: (brandMeta?.igUsername || brandMeta?.igId) ? 1 : 0.8,
                     display: "flex",
                     justifyContent: "space-between",
                     alignItems: "center",
@@ -3274,25 +3280,31 @@ export default function SeoHubPage() {
                   }}
                 >
                   <div style={{ display: "flex", gap: 14, alignItems: "flex-start" }}>
-                    <div style={{ width: 40, height: 40, borderRadius: 10, background: "linear-gradient(45deg, #f09433 0%, #e6683c 25%, #dc2743 50%, #cc2366 75%, #bc1888 100%)", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
-                      <svg width="22" height="22" viewBox="0 0 24 24" fill="#ffffff">
+                    <div style={{ width: 40, height: 40, borderRadius: 10, background: (brandMeta?.igUsername || brandMeta?.igId) ? "linear-gradient(45deg, #f09433 0%, #e6683c 25%, #dc2743 50%, #cc2366 75%, #bc1888 100%)" : "rgba(148, 163, 184, 0.15)", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
+                      <svg width="22" height="22" viewBox="0 0 24 24" fill={(brandMeta?.igUsername || brandMeta?.igId) ? "#ffffff" : "#94a3b8"}>
                         <path d="M12 2.163c3.204 0 3.584.012 4.85.07 3.252.148 4.771 1.691 4.919 4.919.058 1.265.069 1.645.069 4.849 0 3.205-.012 3.584-.069 4.849-.149 3.225-1.664 4.771-4.919 4.919-1.266.058-1.644.07-4.85.07-3.204 0-3.584-.012-4.849-.07-3.26-.149-4.771-1.699-4.919-4.92-.058-1.265-.07-1.644-.07-4.849 0-3.204.013-3.583.07-4.849.149-3.227 1.664-4.771 4.919-4.919 1.266-.057 1.645-.069 4.849-.069zm0-2.163c-3.259 0-3.667.014-4.947.072-4.358.2-6.78 2.618-6.98 6.98-.059 1.281-.073 1.689-.073 4.948 0 3.259.014 3.668.072 4.948.2 4.358 2.618 6.78 6.98 6.98 1.281.058 1.689.072 4.948.072 3.259 0 3.668-.014 4.948-.072 4.354-.2 6.782-2.618 6.979-6.98.059-1.28.073-1.689.073-4.948 0-3.259-.014-3.667-.072-4.947-.196-4.354-2.617-6.78-6.979-6.98-1.281-.059-1.69-.073-4.949-.073zm0 5.838c-3.403 0-6.162 2.759-6.162 6.162s2.759 6.163 6.162 6.163 6.162-2.759 6.162-6.163c0-3.403-2.759-6.162-6.162-6.162zm0 10.162c-2.209 0-4-1.79-4-4 0-2.209 1.791-4 4-4s4 1.791 4 4c0 2.21-1.791 4-4 4zm6.406-11.845c-.796 0-1.441.645-1.441 1.44s.645 1.44 1.441 1.44c.795 0 1.439-.645 1.439-1.44s-.644-1.44-1.439-1.44z"/>
                       </svg>
                     </div>
                     <div>
                       <div style={{ fontSize: 15, fontWeight: 700, color: "#fff", display: "flex", alignItems: "center", gap: 8 }}>
-                        📸 Instagram: {brandMeta?.igUsername ? `@${brandMeta.igUsername}` : (brandMeta?.igId ? `ID: ${brandMeta.igId}` : activeBusiness)}
-                        {autoShareIg && (
+                        📸 Instagram: {brandMeta?.igUsername ? `@${brandMeta.igUsername}` : (brandMeta?.igId ? `ID: ${brandMeta.igId}` : "No Account Linked")}
+                        {(brandMeta?.igUsername || brandMeta?.igId) && autoShareIg ? (
                           <span style={{ fontSize: 10, padding: "2px 6px", borderRadius: 4, background: "rgba(16, 185, 129, 0.2)", color: "#34d399", fontWeight: 700 }}>
                             ACTIVE
                           </span>
+                        ) : (
+                          <span style={{ fontSize: 10, padding: "2px 6px", borderRadius: 4, background: "rgba(148, 163, 184, 0.15)", color: "#94a3b8", fontWeight: 700 }}>
+                            {(brandMeta?.igUsername || brandMeta?.igId) ? "DISABLED" : "NOT CONNECTED"}
+                          </span>
                         )}
                       </div>
-                      <div style={{ fontSize: 12, color: "#e879f9", marginTop: 2 }}>
-                        {brandMeta?.igUsername ? `Account: @${brandMeta.igUsername}` : "Bound to active profile"}
+                      <div style={{ fontSize: 12, color: (brandMeta?.igUsername || brandMeta?.igId) ? "#e879f9" : "#94a3b8", marginTop: 2 }}>
+                        {brandMeta?.igUsername ? `Account: @${brandMeta.igUsername}` : (brandMeta?.igId ? `Account ID: ${brandMeta.igId}` : "Unpaired: No Instagram connected for this site")}
                       </div>
                       <p style={{ margin: "4px 0 0 0", color: "#94a3b8", fontSize: 12, lineHeight: 1.4 }}>
-                        Auto-formats your article's visual graphics with an AI-crafted caption, high-ranking hashtags, and bio call-to-action.
+                        {(brandMeta?.igUsername || brandMeta?.igId)
+                          ? "Auto-formats your article's visual graphics with an AI-crafted caption, high-ranking hashtags, and bio call-to-action."
+                          : "Connect and pair an Instagram Business account in Social Pilot to syndicate visuals for this website."}
                       </p>
                     </div>
                   </div>
@@ -3303,11 +3315,11 @@ export default function SeoHubPage() {
                       width: 44,
                       height: 24,
                       borderRadius: 14,
-                      background: autoShareIg ? "#10b981" : "#334155",
+                      background: (brandMeta?.igUsername || brandMeta?.igId) && autoShareIg ? "#10b981" : "#334155",
                       position: "relative",
                       flexShrink: 0,
                       transition: "background 0.2s ease",
-                      cursor: "pointer",
+                      cursor: (brandMeta?.igUsername || brandMeta?.igId) ? "pointer" : "not-allowed",
                     }}
                   >
                     <div
@@ -3318,7 +3330,7 @@ export default function SeoHubPage() {
                         background: "#fff",
                         position: "absolute",
                         top: 3,
-                        left: autoShareIg ? 23 : 3,
+                        left: (brandMeta?.igUsername || brandMeta?.igId) && autoShareIg ? 23 : 3,
                         transition: "left 0.2s ease",
                         boxShadow: "0 2px 4px rgba(0,0,0,0.3)",
                       }}
@@ -3326,6 +3338,23 @@ export default function SeoHubPage() {
                   </div>
                 </div>
               </div>
+
+              {!brandMeta?.pageId && (
+                <div style={{ marginTop: 14, padding: "12px 18px", borderRadius: 10, background: "rgba(245, 158, 11, 0.08)", border: "1px solid rgba(245, 158, 11, 0.25)", display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: 10 }}>
+                  <div style={{ fontSize: 12.5, color: "#fbbf24", display: "flex", alignItems: "center", gap: 8 }}>
+                    <span>🛡️</span>
+                    <span>
+                      <strong>Strict Brand Isolation:</strong> No social channels are paired for <strong>{connection?.siteUrl ? connection.siteUrl.replace(/^https?:\/\//, '') : activeBusiness}</strong>. Articles will NOT be syndicated to other client channels.
+                    </span>
+                  </div>
+                  <a
+                    href="/#_=_"
+                    style={{ fontSize: 12, fontWeight: 700, color: "#38bdf8", textDecoration: "underline", display: "inline-flex", alignItems: "center", gap: 4 }}
+                  >
+                    ⚙️ Pair Social Assets in Social Pilot ↗
+                  </a>
+                </div>
+              )}
 
               {/* Save Settings Bar */}
               <div style={{ marginTop: 24, display: "flex", justifyContent: "flex-end" }}>
@@ -3816,14 +3845,14 @@ export default function SeoHubPage() {
                       <span>📘</span>
                       <strong>Facebook Target:</strong>
                       <span style={{ color: brandMeta?.pageName ? "#38bdf8" : "#94a3b8" }}>
-                        {brandMeta?.pageName ? `${brandMeta.pageName} (ID: ${brandMeta.pageId || "Active"})` : `Auto-linked to ${activeBusiness}`}
+                        {brandMeta?.pageName ? `${brandMeta.pageName} (ID: ${brandMeta.pageId || "Active"})` : `Unpaired: No Facebook Page bound to ${connection?.siteUrl ? connection.siteUrl.replace(/^https?:\/\//, '') : (activeBusiness || "this site")}`}
                       </span>
                     </div>
                     <div style={{ display: "flex", alignItems: "center", gap: 8, color: "#e2e8f0" }}>
                       <span>📸</span>
                       <strong>Instagram Target:</strong>
-                      <span style={{ color: brandMeta?.igUsername ? "#e879f9" : "#94a3b8" }}>
-                        {brandMeta?.igUsername ? `@${brandMeta.igUsername}` : (brandMeta?.igId ? `ID: ${brandMeta.igId}` : `Auto-linked to ${activeBusiness}`)}
+                      <span style={{ color: (brandMeta?.igUsername || brandMeta?.igId) ? "#e879f9" : "#94a3b8" }}>
+                        {brandMeta?.igUsername ? `@${brandMeta.igUsername}` : (brandMeta?.igId ? `ID: ${brandMeta.igId}` : `Unpaired: No Instagram bound to this site`)}
                       </span>
                     </div>
                   </div>
@@ -3831,42 +3860,44 @@ export default function SeoHubPage() {
                   <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
                     <button
                       onClick={() => handleSocialShare("facebook")}
-                      disabled={socialSharing}
+                      disabled={socialSharing || !brandMeta?.pageId}
                       style={{
                         padding: "9px 16px",
                         borderRadius: 6,
                         border: "none",
-                        background: "#1877f2",
+                        background: brandMeta?.pageId ? "#1877f2" : "#334155",
                         color: "#fff",
                         fontWeight: 600,
                         fontSize: 13,
-                        cursor: "pointer",
+                        cursor: brandMeta?.pageId ? "pointer" : "not-allowed",
+                        opacity: brandMeta?.pageId ? 1 : 0.6,
                         display: "flex",
                         alignItems: "center",
                         gap: 6,
                       }}
                     >
-                      <span>📘</span> Share to {brandMeta?.pageName || activeBusiness || "Facebook Page"}
+                      <span>📘</span> {brandMeta?.pageName ? `Share to ${brandMeta.pageName}` : "No Facebook Page Linked"}
                     </button>
 
                     <button
                       onClick={() => handleSocialShare("instagram")}
-                      disabled={socialSharing}
+                      disabled={socialSharing || !(brandMeta?.igUsername || brandMeta?.igId)}
                       style={{
                         padding: "9px 16px",
                         borderRadius: 6,
                         border: "none",
-                        background: "linear-gradient(45deg, #f09433 0%, #e6683c 25%, #dc2743 50%, #cc2366 75%, #bc1888 100%)",
+                        background: (brandMeta?.igUsername || brandMeta?.igId) ? "linear-gradient(45deg, #f09433 0%, #e6683c 25%, #dc2743 50%, #cc2366 75%, #bc1888 100%)" : "#334155",
                         color: "#fff",
                         fontWeight: 600,
                         fontSize: 13,
-                        cursor: "pointer",
+                        cursor: (brandMeta?.igUsername || brandMeta?.igId) ? "pointer" : "not-allowed",
+                        opacity: (brandMeta?.igUsername || brandMeta?.igId) ? 1 : 0.6,
                         display: "flex",
                         alignItems: "center",
                         gap: 6,
                       }}
                     >
-                      <span>📸</span> Share to {brandMeta?.igUsername ? `@${brandMeta.igUsername}` : "Instagram"}
+                      <span>📸</span> {(brandMeta?.igUsername || brandMeta?.igId) ? `Share to @${brandMeta.igUsername || brandMeta.igId}` : "No Instagram Linked"}
                     </button>
                   </div>
 
