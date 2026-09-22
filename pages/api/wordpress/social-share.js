@@ -3,6 +3,7 @@ import { getServerSession } from "next-auth/next";
 import { authOptions } from "../auth/[...nextauth]";
 import { createClient } from "@supabase/supabase-js";
 import { executeFacebookPost } from "../../../lib/execute-facebook-post";
+import { ensureInstagramCompatibleJpeg } from "../../../lib/instagram-image-helper";
 
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL,
@@ -174,12 +175,20 @@ export default async function handler(req, res) {
         results.instagram = { ok: false, error: "Instagram requires an image to publish a post." };
       } else {
         try {
+          // Guarantee 100% standard JPEG format without alpha transparency for Instagram
+          const cleanIgImageUrl = await ensureInstagramCompatibleJpeg({
+            imageUrl: featuredImageUrl,
+            supabase,
+            bucket: "instagram-creatives",
+            logger: (msg) => console.log(`[WordPress Social Share] ${msg}`),
+          });
+
           const igCaption = `${title ? `✨ ${title}\n\n` : ""}${caption ? `${caption}\n\n` : ""}🔗 Read the complete guide on our website: ${postUrl}\n\n${hashtags}`;
 
           // Step A: Create container
           const containerUrl = `https://graph.facebook.com/${API_VERSION}/${igId}/media`;
           const cParams = new URLSearchParams();
-          cParams.append("image_url", featuredImageUrl);
+          cParams.append("image_url", cleanIgImageUrl);
           cParams.append("caption", igCaption);
           cParams.append("access_token", pageToken);
 

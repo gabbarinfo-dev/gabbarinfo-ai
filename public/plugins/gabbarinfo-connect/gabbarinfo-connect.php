@@ -34,6 +34,9 @@ class GabbarInfo_Connect {
         // REST API Endpoints for Autonomous Agent Control & Universal Media Bridge
         add_action( 'rest_api_init', array( $this, 'register_rest_routes' ) );
 
+        // Single Post Template Fallback (Guarantees full blog rendering on landing themes lacking single.php)
+        add_filter( 'template_include', array( $this, 'filter_single_post_template' ), 99 );
+
         // Hourly Media Bridge Ephemeral Cleanup Cron (Purge draft/abandoned files older than 60 minutes)
         add_action( 'gabbarinfo_media_bridge_cleanup_cron', array( $this, 'run_media_bridge_cleanup' ) );
         if ( ! wp_next_scheduled( 'gabbarinfo_media_bridge_cleanup_cron' ) ) {
@@ -1198,6 +1201,23 @@ document.addEventListener('DOMContentLoaded', function() {
             'message' => 'Pairing key regenerated successfully.',
             'new_key' => $new_key,
         ) );
+    }
+
+    /**
+     * Guarantees that single post articles are ALWAYS rendered with full content and clean styling
+     * even if the active theme only has index.php and forgot to implement single.php.
+     */
+    public function filter_single_post_template( $template ) {
+        if ( is_singular( 'post' ) ) {
+            $has_theme_single = locate_template( array( 'single.php', 'singular.php' ) );
+            if ( empty( $has_theme_single ) || basename( $template ) === 'index.php' ) {
+                $fallback = plugin_dir_path( __FILE__ ) . 'templates/single-post.php';
+                if ( file_exists( $fallback ) ) {
+                    return $fallback;
+                }
+            }
+        }
+        return $template;
     }
 }
 
