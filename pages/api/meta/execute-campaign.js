@@ -618,6 +618,128 @@ I will try to automatically correct this to "Maximize Conversations" or switch t
       // 4. Create Creative with Fallbacks
       const creative = adSet.ad_creative || {};
 
+      // 🖼️ AUTO-RESOLVE IMAGE HASH IF MISSING (Self-Healing Asset Pipeline)
+      const isCatalogue = creative._isCatalogue || finalObjective === "OUTCOME_SALES" || creative.destination_type === "CATALOGUE";
+      if (!isCatalogue && !creative.image_hash) {
+        console.log("🔍 [Creative] image_hash is missing. Auto-resolving and uploading image to Meta act_" + AD_ACCOUNT_ID);
+        
+        // 1. Check if candidate URL is available in payload or creative
+        let candidateUrl =
+          creative.imageUrl ||
+          creative.image_url ||
+          creative.userProvidedImageUrl ||
+          creative.user_provided_image_url ||
+          payload.imageUrl ||
+          payload.userProvidedImageUrl ||
+          payload.user_provided_image_url;
+
+        // 2. If not found in payload, check Supabase memory for clientEmail
+        if (!candidateUrl && clientEmail) {
+          try {
+            const { data: memData } = await supabase
+              .from("answer_memory")
+              .select("memory")
+              .eq("email", clientEmail)
+              .order("updated_at", { ascending: false })
+              .limit(1);
+
+            const stateFromMem = memData?.[0]?.memory?.campaign_state;
+            if (stateFromMem) {
+              candidateUrl =
+                stateFromMem.user_provided_image_url ||
+                stateFromMem.creative?.imageUrl ||
+                stateFromMem.creative?.userProvidedImageUrl;
+              if (stateFromMem.image_hash) {
+                creative.image_hash = stateFromMem.image_hash;
+                console.log(`✅ [Creative] Restored image_hash from memory: ${creative.image_hash}`);
+              }
+            }
+          } catch (mErr) {
+            console.warn("⚠️ [Creative] Memory check failed:", mErr.message);
+          }
+        }
+
+        // 3. If we found a candidate URL and still don't have a hash, upload to Meta!
+        if (!creative.image_hash && candidateUrl) {
+          try {
+            console.log(`🖼️ [Creative] Uploading image from URL to act_${AD_ACCOUNT_ID}: ${candidateUrl}`);
+            const fRes = await fetch(candidateUrl);
+            if (fRes.ok) {
+              const arrayBuf = await fRes.arrayBuffer();
+              const imgBuf = Buffer.from(arrayBuf);
+              if (imgBuf && imgBuf.length > 500) {
+                const blob = new Blob([imgBuf], { type: "image/jpeg" });
+                const form = new FormData();
+                form.append("source", blob, "ad_creative.jpg");
+                form.append("access_token", ACCESS_TOKEN);
+
+                const upRes = await fetch(`https://graph.facebook.com/${API_VERSION}/act_${AD_ACCOUNT_ID}/adimages`, {
+                  method: "POST",
+                  body: form,
+                });
+                const upJson = await upRes.json();
+                const images = upJson?.images || {};
+                const firstK = Object.keys(images)[0];
+                const resolvedHash = images[firstK]?.hash;
+                if (resolvedHash) {
+                  creative.image_hash = resolvedHash;
+                  console.log(`✅ [Creative] Image uploaded successfully! Hash: ${resolvedHash}`);
+                } else {
+                  console.warn("⚠️ [Creative] Meta adimages response did not contain hash:", JSON.stringify(upJson));
+                }
+              }
+            }
+          } catch (upErr) {
+            console.warn("⚠️ [Creative] Failed to upload candidate image:", upErr.message);
+          }
+        }
+
+        // 4. Fallback: If still no image_hash, generate and upload a clean branded ad banner
+        if (!creative.image_hash) {
+          try {
+            console.log("🎨 [Creative] Creating fallback ad banner...");
+            const sharpModule = await import("sharp");
+            const sharp = sharpModule.default || sharpModule;
+            const headlineText = (creative.headline || payload.campaign_name || "Special Offer").slice(0, 50);
+            const brandText = "GABBARINFO AI";
+            const svgFallback = `
+              <svg width="1080" height="1080" viewBox="0 0 1080 1080" xmlns="http://www.w3.org/2000/svg">
+                <defs>
+                  <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
+                    <stop offset="0%" stop-color="#0f172a"/>
+                    <stop offset="50%" stop-color="#1e1b4b"/>
+                    <stop offset="100%" stop-color="#311042"/>
+                  </linearGradient>
+                </defs>
+                <rect width="1080" height="1080" fill="url(#bg)"/>
+                <circle cx="540" cy="400" r="160" fill="rgba(99, 102, 241, 0.15)"/>
+                <text x="540" y="320" text-anchor="middle" font-family="system-ui, sans-serif" font-size="28" font-weight="700" fill="#818CF8" letter-spacing="4">${brandText}</text>
+                <text x="540" y="520" text-anchor="middle" font-family="system-ui, sans-serif" font-size="52" font-weight="900" fill="#FFFFFF">${headlineText}</text>
+                <rect x="340" y="650" width="400" height="70" rx="35" fill="#6366F1"/>
+                <text x="540" y="696" text-anchor="middle" font-family="system-ui, sans-serif" font-size="26" font-weight="700" fill="#FFFFFF">LEARN MORE</text>
+              </svg>
+            `;
+            const fallbackBuf = await sharp(Buffer.from(svgFallback)).jpeg({ quality: 85 }).toBuffer();
+            const blob = new Blob([fallbackBuf], { type: "image/jpeg" });
+            const form = new FormData();
+            form.append("source", blob, "fallback_creative.jpg");
+            form.append("access_token", ACCESS_TOKEN);
+
+            const fbRes = await fetch(`https://graph.facebook.com/${API_VERSION}/act_${AD_ACCOUNT_ID}/adimages`, {
+              method: "POST",
+              body: form,
+            });
+            const fbJson = await fbRes.json();
+            const fbImages = fbJson?.images || {};
+            const fbFirstK = Object.keys(fbImages)[0];
+            creative.image_hash = fbImages[fbFirstK]?.hash || null;
+            console.log(`✅ [Creative] Fallback image uploaded! Hash: ${creative.image_hash}`);
+          } catch (fbErr) {
+            console.error("❌ [Creative] Fallback image generation failed:", fbErr.message);
+          }
+        }
+      }
+
       // Website Destination URL Resolution (Strict - Website Only)
       const isWebsiteConversion = adSet.destination_type === "WEBSITE"
         || payload.conversion_location === "WEBSITE";

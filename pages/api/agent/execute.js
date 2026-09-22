@@ -4011,13 +4011,9 @@ Otherwise, respond with a full, clear explanation, and include example JSON only
       // 🔒 SINGLE SOURCE OF TRUTH — waterfall must ONLY use currentState (mutated as state)
       let state = currentState;
 
-      // 🛡️ SANITY CHECK: Detect Internal MD5 hashes masquerading as Meta Hashes (MUST RUN FIRST)
-      if (typeof state.image_hash === "string" && state.image_hash.length === 32) {
-        console.log("⚠️ Internal MD5 detected in image_hash. Clearing to force re-upload.");
-        state.image_hash = null;
-        currentState.image_hash = null;
-        if (state.meta) state.meta.uploadedImageHash = null;
-        if (currentState.meta) currentState.meta.uploadedImageHash = null;
+      // 🛡️ Ensure valid state synchronization
+      if (state.image_hash) {
+        currentState.image_hash = state.image_hash;
       }
 
       if (!state.plan || !state.plan.campaign_name) {
@@ -4056,10 +4052,10 @@ Otherwise, respond with a full, clear explanation, and include example JSON only
 
         const repairedState = {
           ...state,
-          stage: "PLAN_PROPOSED",
           plan: regeneratedPlan,
-          plan_visible: true,
-          locked_at: new Date().toISOString()
+          stage: "PLAN_PROPOSED",
+          auto_run: false,
+          locked_at: new Date().toISOString(),
         };
 
         console.log("TRACE: PLAN PROPOSED");
@@ -4110,11 +4106,8 @@ Otherwise, respond with a full, clear explanation, and include example JSON only
       console.log("📍 Waterfall Check - Stage:", stage);
       console.log("📍 Waterfall Check - Plan Name:", state.plan.campaign_name);
 
-      // 🛡️ SANITY CHECK: Detect Internal MD5 hashes masquerading as Meta Hashes
-      if (typeof state.image_hash === "string" && state.image_hash.length === 32) {
-        console.log("⚠️ Internal MD5 detected in image_hash. Clearing to force re-upload.");
-        state.image_hash = null;
-        if (state.meta) state.meta.uploadedImageHash = null;
+      if (state.image_hash && state.meta) {
+        state.meta.uploadedImageHash = state.image_hash;
       }
 
       const isImageGenerated = !!state.creative?.imageBase64 || !!state.creative?.imageUrl;
@@ -4199,15 +4192,15 @@ Otherwise, respond with a full, clear explanation, and include example JSON only
       // --- STEP 10: IMAGE UPLOAD ---
       if (!errorOcurred && lockedCampaignState.destination !== "catalogue") {
         // 🖼️ Determine upload source: user's URL OR AI-generated base64
-        const hasUserImageUrl = !!state.creative?.userProvidedImageUrl;
+        const candidateImageUrl = state.user_provided_image_url || state.creative?.imageUrl || state.creative?.userProvidedImageUrl;
         const hasAiImageBase64 = !!state.creative?.imageBase64;
-        const needsUpload = (hasUserImageUrl || hasAiImageBase64) && !isImageUploaded;
+        const needsUpload = !state.image_hash && (candidateImageUrl || hasAiImageBase64);
 
         if (needsUpload) {
           console.log("TRACE: IMAGE UPLOAD ATTEMPT");
-          console.log("TRACE: IMAGE HASH =", state.meta?.uploadedImageHash);
+          console.log("TRACE: CANDIDATE IMAGE URL =", candidateImageUrl);
           console.log("🚀 Waterfall: Uploading Image to Meta...");
-          console.log(hasUserImageUrl ? "🖼️ Upload source: User-Provided URL" : "🤖 Upload source: AI-Generated Base64");
+          console.log(candidateImageUrl ? "🖼️ Upload source: Image URL" : "🤖 Upload source: AI-Generated Base64");
 
           try {
             const targetAdAccountId = verifiedMetaAssets?.ad_account?.id || metaRow?.fb_ad_account_id || null;
@@ -4316,8 +4309,12 @@ Otherwise, respond with a full, clear explanation, and include example JSON only
               conversion_location: conversionLocation,
               message_channel: state.message_channel
             }));
+            const candidateImg = state.user_provided_image_url || state.creative?.imageUrl || state.creative?.userProvidedImageUrl || null;
             const finalPayload = {
               ...plan,
+              imageUrl: candidateImg,
+              user_provided_image_url: candidateImg,
+              userProvidedImageUrl: candidateImg,
 
               targeting: {
                 ...plan.targeting,
@@ -4333,7 +4330,9 @@ Otherwise, respond with a full, clear explanation, and include example JSON only
                 ...adset,
                 ad_creative: {
                   ...adset.ad_creative,
-                  image_hash: state.image_hash
+                  image_hash: state.image_hash || null,
+                  imageUrl: candidateImg,
+                  userProvidedImageUrl: candidateImg
                 }
               }))
             };
@@ -5075,11 +5074,8 @@ Reply **YES** to confirm this plan and proceed.
 
         let currentState = { ...lockedCampaignState, locked_at: new Date().toISOString() };
 
-        // 🛡️ SANITY CHECK: Detect Internal MD5 hashes masquerading as Meta Hashes (MUST RUN FIRST)
-        if (typeof currentState.image_hash === "string" && currentState.image_hash.length === 32) {
-          console.log("⚠️ Internal MD5 detected in image_hash. Clearing to force re-upload.");
-          currentState.image_hash = null;
-          if (currentState.meta) currentState.meta.uploadedImageHash = null;
+        if (currentState.image_hash && currentState.meta) {
+          currentState.meta.uploadedImageHash = currentState.image_hash;
         }
 
         // 🛡️ DEFENSIVE: Ensure plan exists before proceeding
@@ -5104,13 +5100,6 @@ Reply **YES** to confirm this plan and proceed.
         let waterfallLog = [];
         let errorOcurred = false;
         let stopReason = null;
-
-        // 🛡️ SANITY CHECK: Detect Internal MD5 hashes masquerading as Meta Hashes
-        if (typeof currentState.image_hash === "string" && currentState.image_hash.length === 32) {
-          console.log("⚠️ Internal MD5 detected in image_hash. Clearing to force re-upload.");
-          currentState.image_hash = null;
-          if (currentState.meta) currentState.meta.uploadedImageHash = null;
-        }
 
         // ===============================
         // AGENT MODE IMAGE GENERATION + UPLOAD
@@ -5195,8 +5184,12 @@ Reply **YES** to confirm this plan and proceed.
                 console.log("📍 Prepared Universal Locations for Executor:", plan.targeting.universal_locations);
               }
               // 🌍 UNIVERSAL LOCATION HANDLER (Ends here)
+              const candidateImg2 = currentState.user_provided_image_url || currentState.creative?.imageUrl || currentState.creative?.userProvidedImageUrl || null;
               const finalPayload = {
                 ...plan,
+                imageUrl: candidateImg2,
+                user_provided_image_url: candidateImg2,
+                userProvidedImageUrl: candidateImg2,
                 // 🛡️ SYNC HOOK: Force state-based values to prevent Gemini "context leaks" (e.g. WhatsApp for Instagram)
                 objective: currentState.objective || plan.objective || "OUTCOME_TRAFFIC",
                 conversion_location: currentState.destination === "catalogue" ? "CATALOGUE" : (currentState.conversion_location || plan.conversion_location || currentState.destination || null),
@@ -5214,7 +5207,12 @@ Reply **YES** to confirm this plan and proceed.
 
                 ad_sets: plan.ad_sets.map(adset => {
                   // Sanitize destination_url — Gemini sometimes outputs "N/A"
-                  const adCreative = { ...adset.ad_creative, image_hash: currentState.image_hash || null };
+                  const adCreative = {
+                    ...adset.ad_creative,
+                    image_hash: currentState.image_hash || null,
+                    imageUrl: candidateImg2,
+                    userProvidedImageUrl: candidateImg2
+                  };
                   if (adCreative.destination_url && (adCreative.destination_url === "N/A" || adCreative.destination_url === "n/a" || !adCreative.destination_url.startsWith("http"))) {
                     adCreative.destination_url = null;
                   }

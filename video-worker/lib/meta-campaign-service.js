@@ -246,7 +246,8 @@ async function executeMetaCampaign({
     name: payload.campaign_name || `AI Campaign - ${new Date().toISOString().slice(0, 10)}`,
     objective: payload.objective || "OUTCOME_TRAFFIC",
     status: "PAUSED",
-    special_ad_categories: "NONE",
+    buying_type: "AUCTION",
+    special_ad_categories: "[]",
     access_token: accessToken,
   });
 
