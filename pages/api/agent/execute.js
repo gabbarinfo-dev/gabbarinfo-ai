@@ -4118,25 +4118,23 @@ Otherwise, respond with a full, clear explanation, and include example JSON only
             let finalStorageFile = null;
             let processedBase64 = null;
 
-            // 🚀 Try Railway offloaded visual generation first (avoids serverless limits completely)
-            if (process.env.RAILWAY_WORKER_URL) {
-              try {
-                console.log("🚀 [Railway] Offloading visual generation to Railway worker...");
-                const rwVisual = await dispatchMetaVisualToRailway({
-                  prompt: imagePrompt,
-                  service: state.service || "",
-                  offer: state.offer || "",
-                  tagline: state.tagline || state.plan?.ad_sets?.[0]?.ad_creative?.tagline || "",
-                  businessName: autoBusinessContext?.business_name || verifiedMetaAssets?.fb_page?.name || "",
-                });
-                if (rwVisual.ok && rwVisual.imageUrl) {
-                  console.log("✅ [Railway] Visual generated successfully:", rwVisual.imageUrl);
-                  finalImageUrl = rwVisual.imageUrl;
-                  finalStorageFile = rwVisual.storageFileName || null;
-                }
-              } catch (rwErr) {
-                console.warn("⚠️ [Railway] Visual dispatch error, falling back locally:", rwErr.message);
+            // 🚀 Always offload visual generation to Railway worker first (avoids Vercel serverless limits)
+            try {
+              console.log("🚀 [Railway] Offloading visual generation to Railway worker...");
+              const rwVisual = await dispatchMetaVisualToRailway({
+                prompt: imagePrompt,
+                service: state.service || "",
+                offer: state.offer || "",
+                tagline: state.tagline || state.plan?.ad_sets?.[0]?.ad_creative?.tagline || "",
+                businessName: autoBusinessContext?.business_name || verifiedMetaAssets?.fb_page?.name || "",
+              });
+              if (rwVisual.ok && rwVisual.imageUrl) {
+                console.log("✅ [Railway] Visual generated successfully:", rwVisual.imageUrl);
+                finalImageUrl = rwVisual.imageUrl;
+                finalStorageFile = rwVisual.storageFileName || null;
               }
+            } catch (rwErr) {
+              console.warn("⚠️ [Railway] Visual dispatch error, falling back locally:", rwErr.message);
             }
 
             // Fallback to local serverless generation if Railway is unconfigured or failed
@@ -4262,6 +4260,7 @@ Otherwise, respond with a full, clear explanation, and include example JSON only
           console.log("🚀 Waterfall: Uploading Image to Meta...");
           console.log(hasUserImageUrl ? "🖼️ Upload source: User-Provided URL" : "🤖 Upload source: AI-Generated Base64");
 
+          try {
             const targetAdAccountId = verifiedMetaAssets?.ad_account?.id || metaRow?.fb_ad_account_id || null;
             const targetAccessToken = metaRow?.fb_user_access_token || null;
 
@@ -4417,12 +4416,11 @@ Otherwise, respond with a full, clear explanation, and include example JSON only
 
             console.log("🧪 FINAL PAYLOAD PATH 1:", JSON.stringify(finalPayload, null, 2));
 
-            // 🚂 RAILWAY WORKER INTEGRATION: Offload heavy Meta campaign execution to Railway if configured
+            // 🚂 RAILWAY WORKER INTEGRATION: Offload heavy Meta campaign execution to Railway
             let execJson = null;
-            if (process.env.RAILWAY_WORKER_URL) {
+            try {
               console.log("🚂 Attempting Meta campaign execution via Railway Worker...");
-              try {
-                const railwayRes = await dispatchMetaCampaignToRailway({
+              const railwayRes = await dispatchMetaCampaignToRailway({
                   userEmail,
                   businessId: effectiveBusinessId,
                   adAccountId: targetAdAccountId,
@@ -4453,7 +4451,6 @@ Otherwise, respond with a full, clear explanation, and include example JSON only
               } catch (railwayErr) {
                 console.warn("⚠️ Railway worker call error, falling back to local execution:", railwayErr.message);
               }
-            }
 
             if (!execJson) {
               const execRes = await fetch(
