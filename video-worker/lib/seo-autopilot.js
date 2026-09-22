@@ -1,6 +1,7 @@
 // video-worker/lib/seo-autopilot.js
 const { createClient } = require("@supabase/supabase-js");
 const OpenAI = require("openai");
+const { ensureInstagramCompatibleJpeg } = require("./instagram-image-helper");
 
 const BLACKLISTED_TERMS = [
   "shipping",
@@ -532,14 +533,16 @@ Format output as valid JSON:
         }
       }
 
-      // Inject Hero Featured Image into top of article HTML content if not already present
-      if (featuredImageUrl && !finalContentHtml.includes(featuredImageUrl)) {
-        const heroFigureHtml = `<figure class="gabbarinfo-hero-image" style="margin: 0 0 32px 0; text-align: center;">\n  <img src="${featuredImageUrl}" alt="${parsedArticle.title}" style="max-width: 100%; height: auto; border-radius: 12px; box-shadow: 0 8px 32px rgba(0,0,0,0.4);" />\n</figure>\n`;
-        finalContentHtml = heroFigureHtml + finalContentHtml;
-      }
-
       // Enforce spatial internal link distribution & remove any final-paragraph link dumps
       finalContentHtml = enforceSpatialLinkDistribution(finalContentHtml, selectedInternalPosts, activeService);
+
+      // Strict Content Sanity Check: Never publish an empty or truncated article
+      const plainTextContent = finalContentHtml.replace(/<[^>]+>/g, "").trim();
+      if (!plainTextContent || plainTextContent.length < 500 || (finalContentHtml.match(/<p/g) || []).length < 3) {
+        logger(`[SEO Autopilot] CRITICAL: Generated article for "${activeService}" has insufficient text content (${plainTextContent.length} chars). Aborting publish to prevent corrupt empty blog.`);
+        results.push({ email: item.email, status: "skipped", reason: "insufficient_content_length" });
+        continue;
+      }
 
       // 7. Publish Post to WordPress via Official Plugin Endpoint
       logger(`[SEO Autopilot] Publishing live post to ${siteUrl}/wp-json/gabbarinfo/v1/create-post...`);
@@ -750,8 +753,15 @@ Format output as valid JSON:
               `#${activeService.replace(/[^a-zA-Z0-9]/g, "").toLowerCase()} #SEO #ContentMarketing #BusinessGrowth #DigitalStrategy${geoHashtags}`
             ].filter(Boolean).join("\n");
 
+            const verifiedIgUrl = await ensureInstagramCompatibleJpeg({
+              imageUrl: featuredImageUrl,
+              imageBuffer: featuredBuffer,
+              supabase,
+              logger,
+            });
+
             const containerParams = new URLSearchParams();
-            containerParams.append("image_url", featuredImageUrl);
+            containerParams.append("image_url", verifiedIgUrl);
             containerParams.append("caption", igCaption);
             containerParams.append("access_token", effectiveToken);
 

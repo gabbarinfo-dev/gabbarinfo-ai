@@ -1,5 +1,6 @@
 // video-worker/lib/shopify-autopilot.js
 const OpenAI = require("openai");
+const { ensureInstagramCompatibleJpeg } = require("./instagram-image-helper");
 
 /**
  * Validates and refreshes offline Shopify access token if expiring or expired.
@@ -711,7 +712,8 @@ Respond ONLY with a valid JSON object matching this schema:
               logger(`[Shopify Autopilot 🛡️ Anti-Exploitation Shield] Social syndication BLOCKED: Store "${brandName}" (${primaryDomain}) does not match connected Meta channel "${metaAssetTitle || pageId}". Cross-business posting prevented.`);
             } else {
               // Facebook Page link preview / photo post
-              if (config.autoShareFacebook === true && pageId && effectiveToken) {
+              const shouldShareFb = (config.autoShareFacebook === true || config.autoShareFacebook === undefined) && pageId && effectiveToken;
+              if (shouldShareFb) {
                 try {
                   logger(`[Shopify Autopilot] Syndicating article to Facebook Page (${pageId})...`);
                   const fullMessage = `📢 ${articleData.title}\n\n${articleData.seoDescription || ""}\n\nRead full article & explore pieces 👇\n${publicUrl}\n\n#Shopify #OnlineShopping #TrendingStyles`;
@@ -756,14 +758,21 @@ Respond ONLY with a valid JSON object matching this schema:
                 }
               }
 
-              // Instagram Feed Photo post
-              const shareImg = imageData.imageUrl;
-              if (config.autoShareInstagram === true && igId && effectiveToken && shareImg) {
+              // Instagram Feed Photo post with guaranteed pristine JPEG
+              const rawShareImg = imageData.imageUrl;
+              const shouldShareIg = (config.autoShareInstagram === true || config.autoShareInstagram === undefined) && igId && effectiveToken && rawShareImg;
+              if (shouldShareIg) {
                 try {
                   logger(`[Shopify Autopilot] Syndicating article to Instagram (${igId})...`);
+                  const verifiedIgUrl = await ensureInstagramCompatibleJpeg({
+                    imageUrl: rawShareImg,
+                    imageBuffer: imageData.imageBase64 ? Buffer.from(imageData.imageBase64, "base64") : null,
+                    supabase,
+                    logger,
+                  });
                   const igCaption = `📢 ${articleData.title}\n\n${articleData.seoDescription || ""}\n\n🔗 Read full story & shop the pieces: ${publicUrl}\n\n#Shopify #OnlineShopping #TrendingStyles`;
                   const containerParams = new URLSearchParams();
-                  containerParams.append("image_url", shareImg);
+                  containerParams.append("image_url", verifiedIgUrl);
                   containerParams.append("caption", igCaption);
                   containerParams.append("access_token", effectiveToken);
 

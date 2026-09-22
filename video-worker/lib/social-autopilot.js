@@ -1,6 +1,7 @@
 // video-worker/lib/social-autopilot.js
 const { createClient } = require("@supabase/supabase-js");
 const OpenAI = require("openai");
+const { ensureInstagramCompatibleJpeg } = require("./instagram-image-helper");
 
 const BLACKLISTED_TERMS = [
   "shipping",
@@ -500,8 +501,14 @@ Include 3-4 bullet benefits, a strong call to action, and 6-8 relevant hashtags$
         if ((destination === "BOTH" || destination === "INSTAGRAM_ONLY") && igId && effectiveToken) {
           try {
             logger(`[Social Autopilot] Publishing container to Instagram Profile (${igId})...`);
+            const verifiedIgUrl = await ensureInstagramCompatibleJpeg({
+              imageUrl: publicImageUrl,
+              imageBuffer,
+              supabase,
+              logger,
+            });
             const containerParams = new URLSearchParams();
-            containerParams.append("image_url", publicImageUrl);
+            containerParams.append("image_url", verifiedIgUrl);
             containerParams.append("caption", captionText);
             containerParams.append("access_token", effectiveToken);
 
