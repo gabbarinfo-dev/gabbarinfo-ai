@@ -4410,8 +4410,9 @@ Otherwise, respond with a full, clear explanation, and include example JSON only
               }
 
             if (!execJson) {
+              const effectiveBaseUrl = process.env.NEXT_PUBLIC_BASE_URL || (process.env.VERCEL_URL ? `https://${process.env.VERCEL_URL}` : "http://localhost:3000");
               const execRes = await fetch(
-                `${process.env.NEXT_PUBLIC_BASE_URL}/api/meta/execute-campaign`,
+                `${effectiveBaseUrl}/api/meta/execute-campaign`,
                 {
                   method: "POST",
                   headers: {
@@ -5258,12 +5259,57 @@ Reply **YES** to confirm this plan and proceed.
               }
 
               console.log("🧪 FINAL PAYLOAD PATH 2:", JSON.stringify(finalPayload, null, 2));
-              const execRes = await fetch(`${process.env.NEXT_PUBLIC_BASE_URL}/api/meta/execute-campaign`, {
-                method: "POST",
-                headers: { "Content-Type": "application/json", "x-client-email": session.user.email.toLowerCase() },
-                body: JSON.stringify({ platform: resolvedPlatforms, payload: finalPayload })
-              });
-              const execJson = await execRes.json();
+
+              // 🚂 RAILWAY WORKER INTEGRATION: Offload heavy Meta campaign execution to Railway
+              let execJson = null;
+              try {
+                console.log("🚂 [Path 2] Attempting Meta campaign execution via Railway Worker...");
+                const railwayRes = await dispatchMetaCampaignToRailway({
+                  userEmail: session.user.email.toLowerCase(),
+                  businessId: effectiveBusinessId,
+                  adAccountId: finalPayload.adAccountId,
+                  accessToken: finalPayload.accessToken,
+                  pageId: finalPayload.pageId,
+                  payload: finalPayload,
+                  imagePrompt:
+                    currentState.creative?.imagePrompt ||
+                    currentState.creative?.image_prompt ||
+                    currentState.plan?.ad_sets?.[0]?.ad_creative?.imagePrompt ||
+                    currentState.plan?.ad_sets?.[0]?.ad_creative?.image_prompt ||
+                    `${currentState.service || "Professional"} ad for ${currentState.location || "target audience"}.`,
+                  service: currentState.service || "",
+                  offer: currentState.offer || "",
+                  tagline: currentState.tagline || "",
+                  businessName: verifiedMetaAssets?.fb_page?.name || "",
+                  userProvidedImageUrl: currentState.user_provided_image_url || currentState.creative?.imageUrl || null,
+                  imageHash: currentState.image_hash || finalPayload.ad_sets?.[0]?.ad_creative?.image_hash || null,
+                });
+
+                if (railwayRes && railwayRes.ok && (railwayRes.campaignId || railwayRes.id)) {
+                  console.log("✅ [Path 2] Meta Campaign successfully created via Railway Worker!");
+                  execJson = {
+                    ok: true,
+                    id: railwayRes.campaignId || railwayRes.id,
+                    ad_set_id: railwayRes.adSetId || railwayRes.details?.ad_sets?.[0],
+                    ad_id: railwayRes.adId || railwayRes.details?.ads?.[0],
+                    ...railwayRes,
+                  };
+                } else {
+                  console.warn("⚠️ [Path 2] Railway execution returned non-ok, falling back to local gateway:", railwayRes?.error);
+                }
+              } catch (railwayErr) {
+                console.warn("⚠️ [Path 2] Railway worker call error, falling back to local gateway:", railwayErr.message);
+              }
+
+              if (!execJson) {
+                const effectiveBaseUrl = process.env.NEXT_PUBLIC_BASE_URL || (process.env.VERCEL_URL ? `https://${process.env.VERCEL_URL}` : "http://localhost:3000");
+                const execRes = await fetch(`${effectiveBaseUrl}/api/meta/execute-campaign`, {
+                  method: "POST",
+                  headers: { "Content-Type": "application/json", "x-client-email": session.user.email.toLowerCase() },
+                  body: JSON.stringify({ platform: resolvedPlatforms, payload: finalPayload })
+                });
+                execJson = await execRes.json();
+              }
 
               if (execJson.ok) {
                 currentState.stage = "COMPLETED";
