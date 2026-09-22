@@ -382,6 +382,15 @@ function renderFormattedMessage(text) {
   return parts.length > 0 ? parts : decodedText;
 }
 
+function formatGoogleCustomerId(id) {
+  if (!id) return "";
+  const cleaned = String(id).replace(/\D/g, "");
+  if (cleaned.length === 10) {
+    return `${cleaned.slice(0, 3)}-${cleaned.slice(3, 6)}-${cleaned.slice(6)}`;
+  }
+  return String(id);
+}
+
 export default function ChatPage() {
   const router = useRouter();
   const { data: session, status } = useSession();
@@ -578,7 +587,8 @@ export default function ChatPage() {
             if (data.selectedCustomerId) {
               setSelectedGoogleAccount(data.selectedCustomerId);
             } else if (data.accounts.length > 0) {
-              setSelectedGoogleAccount(data.accounts[0].id);
+              const firstId = data.accounts[0].customerId || data.accounts[0].id;
+              setSelectedGoogleAccount(firstId);
             }
           }
         }
@@ -629,7 +639,7 @@ export default function ChatPage() {
   async function handleSwitchGoogleAccount(newCustomerId) {
     setSelectedGoogleAccount(newCustomerId);
     try {
-      const acc = googleAccounts.find((a) => a.id === newCustomerId);
+      const acc = googleAccounts.find((a) => (a.customerId || a.id) === newCustomerId);
       await fetch("/api/google-ads/accounts", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -1577,11 +1587,15 @@ Now respond as GabbarInfo AI.
               {googleLoading ? (
                 <option value="" style={{ background: "#0f172a", color: "#f8fafc" }}>🎯 G-Ads: Loading...</option>
               ) : googleAccounts.length > 0 ? (
-                googleAccounts.map((acc) => (
-                  <option key={acc.id} value={acc.id} style={{ background: "#0f172a", color: "#f8fafc" }}>
-                    🎯 G-Ads: {acc.descriptiveName || acc.id} ({acc.id})
-                  </option>
-                ))
+                googleAccounts.map((acc) => {
+                  const accId = acc.customerId || acc.id;
+                  const formatted = formatGoogleCustomerId(accId);
+                  return (
+                    <option key={accId} value={accId} style={{ background: "#0f172a", color: "#f8fafc" }}>
+                      🎯 G-Ads: {acc.descriptiveName || accId} {formatted ? `(${formatted})` : ""}
+                    </option>
+                  );
+                })
               ) : (
                 <option value="" style={{ background: "#0f172a", color: "#94a3b8" }}>🎯 G-Ads: Not Connected</option>
               )}
@@ -2271,11 +2285,15 @@ Now respond as GabbarInfo AI.
                       {googleLoading ? (
                         <option value="">🎯 Loading accounts...</option>
                       ) : googleAccounts.length > 0 ? (
-                        googleAccounts.map((acc) => (
-                          <option key={acc.id} value={acc.id}>
-                            {acc.descriptiveName || acc.id} ({acc.id})
-                          </option>
-                        ))
+                        googleAccounts.map((acc) => {
+                          const accId = acc.customerId || acc.id;
+                          const formatted = formatGoogleCustomerId(accId);
+                          return (
+                            <option key={accId} value={accId}>
+                              {acc.descriptiveName || accId} {formatted ? `(${formatted})` : ""}
+                            </option>
+                          );
+                        })
                       ) : (
                         <option value="">No Google Ads account connected</option>
                       )}

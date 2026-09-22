@@ -5456,7 +5456,7 @@ async function handleGoogleAdsCampaignFlow(req, res, session, body) {
     // 1. Fetch user's Google connection from Supabase
     const { data: googleConn } = await supabase
       .from("google_connections")
-      .select("refresh_token, customer_id, manager_id, updated_at")
+      .select("*")
       .eq("email", userEmail)
       .maybeSingle();
 
@@ -5567,16 +5567,40 @@ async function handleGoogleAdsCampaignFlow(req, res, session, body) {
       lowerInstruction === "reset campaign";
 
     if (isFreshStartPrompt) {
+      const activeCustomerId = cleanCustomerId(
+        body.selectedGoogleAccountId ||
+        googleConn?.customer_id ||
+        gAdsState?.customerId ||
+        ""
+      );
+      const activeManagerId = cleanCustomerId(
+        googleConn?.manager_id ||
+        gAdsState?.managerId ||
+        ""
+      );
       gAdsState = {
         stage: "INTAKE_PENDING",
+        customerId: activeCustomerId || null,
+        managerId: activeManagerId || null,
         intake: detectedCampaignType ? { campaign_type: detectedCampaignType } : {},
       };
       try {
-        await supabase
-          .from("agent_memory")
-          .delete()
-          .eq("email", userEmail)
-          .eq("memory_type", "google_ads_state");
+        if (activeCustomerId) {
+          await supabase
+            .from("agent_memory")
+            .upsert({
+              email: userEmail,
+              memory_type: "google_ads_state",
+              content: JSON.stringify(gAdsState),
+              updated_at: new Date().toISOString(),
+            }, { onConflict: "email,memory_type" });
+        } else {
+          await supabase
+            .from("agent_memory")
+            .delete()
+            .eq("email", userEmail)
+            .eq("memory_type", "google_ads_state");
+        }
       } catch (_) {}
     }
 
@@ -5603,15 +5627,27 @@ async function handleGoogleAdsCampaignFlow(req, res, session, body) {
     let selectedCustomerId = null;
     let selectedManagerId = null;
 
-    // Check if user is typing/selecting an account ID explicitly
-    const matchId = instruction.match(/\b\d{3}[-\s]?\d{3}[-\s]?\d{4}\b|\b\d{10}\b/);
-    if (matchId) {
-      const candidateId = cleanCustomerId(matchId[0]);
-      const foundAcc = accessibleAccounts.find(a => a.customerId === candidateId);
-      if (foundAcc) {
-        selectedCustomerId = candidateId;
-        selectedManagerId = foundAcc.managerId || null;
-        justSelectedAccountId = true;
+    // Priority 0: Account passed directly from Chat UI selector (body.selectedGoogleAccountId)
+    if (body.selectedGoogleAccountId) {
+      const chatAccId = cleanCustomerId(body.selectedGoogleAccountId);
+      if (chatAccId) {
+        selectedCustomerId = chatAccId;
+        const found = accessibleAccounts.find(a => cleanCustomerId(a.customerId) === chatAccId);
+        if (found?.managerId) selectedManagerId = cleanCustomerId(found.managerId);
+      }
+    }
+
+    // Check if user is typing/selecting an account ID explicitly in instruction text
+    if (!selectedCustomerId) {
+      const matchId = instruction.match(/\b\d{3}[-\s]?\d{3}[-\s]?\d{4}\b|\b\d{10}\b/);
+      if (matchId) {
+        const candidateId = cleanCustomerId(matchId[0]);
+        const foundAcc = accessibleAccounts.find(a => cleanCustomerId(a.customerId) === candidateId);
+        if (foundAcc) {
+          selectedCustomerId = candidateId;
+          selectedManagerId = foundAcc.managerId ? cleanCustomerId(foundAcc.managerId) : null;
+          justSelectedAccountId = true;
+        }
       }
     }
 
@@ -5624,15 +5660,25 @@ async function handleGoogleAdsCampaignFlow(req, res, session, body) {
       selectedManagerId = dashboardManagerId;
       // If managerId wasn't stored in google_connections, lookup from hierarchy
       if (!selectedManagerId) {
-        const found = accessibleAccounts.find(a => a.customerId === dashboardCustomerId);
-        if (found?.managerId) selectedManagerId = found.managerId;
+        const found = accessibleAccounts.find(a => cleanCustomerId(a.customerId) === dashboardCustomerId);
+        if (found?.managerId) selectedManagerId = cleanCustomerId(found.managerId);
       }
     }
 
     // Priority 2: Stored state from previous session in agent_memory
-    if (!selectedCustomerId) {
-      selectedCustomerId = gAdsState?.customerId ? cleanCustomerId(gAdsState.customerId) : null;
-      selectedManagerId = gAdsState?.managerId ? cleanCustomerId(gAdsState.managerId) : null;
+    if (!selectedCustomerId && gAdsState?.customerId) {
+      selectedCustomerId = cleanCustomerId(gAdsState.customerId);
+      if (!selectedManagerId) {
+        const found = accessibleAccounts.find(a => cleanCustomerId(a.customerId) === selectedCustomerId);
+        if (found?.managerId) selectedManagerId = cleanCustomerId(found.managerId);
+        else if (gAdsState.managerId) selectedManagerId = cleanCustomerId(gAdsState.managerId);
+      }
+    }
+
+    // Priority 3: If still no account selected, check if only 1 account exists
+    if (!selectedCustomerId && accessibleAccounts.length === 1) {
+      selectedCustomerId = cleanCustomerId(accessibleAccounts[0].customerId);
+      selectedManagerId = accessibleAccounts[0].managerId ? cleanCustomerId(accessibleAccounts[0].managerId) : null;
     }
 
     // Priority 3: If still no account selected, check if only 1 account exists or prompt
@@ -5724,15 +5770,9 @@ async function handleGoogleAdsCampaignFlow(req, res, session, body) {
           .upsert({
             email: userEmail,
             customer_id: selectedCustomerId,
-            manager_id: selectedManagerId,
             updated_at: new Date().toISOString(),
           }, { onConflict: "email" });
-      } catch (saveErr) {
-        try {
-          await supabase.from("google_connections")
-            .upsert({ email: userEmail, customer_id: selectedCustomerId, updated_at: new Date().toISOString() }, { onConflict: "email" });
-        } catch (_) {}
-      }
+      } catch (_) {}
     }
 
     const activeAccountObj = accessibleAccounts.find(a => a.customerId === selectedCustomerId) || {
