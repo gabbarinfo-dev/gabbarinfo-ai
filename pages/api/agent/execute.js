@@ -22,6 +22,7 @@ import { creativeEntry } from "../../../lib/instagram/creative-entry";
 import { processMetaAdImage } from "../../../lib/meta/process-meta-image";
 import { generatePlatformGraphic, cleanupEphemeralImage } from "../../../lib/services/image-service";
 import { dispatchMetaCampaignToRailway, dispatchMetaVisualToRailway } from "../../../lib/railway/dispatch-meta-campaign";
+import { generateFastBrandedAdVisual } from "../../../lib/meta/fast-ad-generator";
 import {
   cleanCustomerId,
   getAccountHierarchy,
@@ -1130,8 +1131,8 @@ export default async function handler(req, res) {
             `👉 Reply **LAUNCH** or **YES** to upload this creative and publish the campaign live to your Meta Ad Account!`
         });
       } else if (isSkipping) {
-        // ✅ User is skipping — generate visual preview via Railway worker and return preview!
-        console.log("🖼️ [User Image] User skipped. Generating AI visual preview via Railway worker...");
+        // ✅ User is skipping — generate instant branded visual preview in <1s (Zero Vercel Timeout!)
+        console.log("🖼️ [User Image] User skipped. Generating instant branded visual preview...");
         let previewUrl = null;
         let storageFile = null;
 
@@ -1140,29 +1141,23 @@ export default async function handler(req, res) {
           const adSet0 = Array.isArray(plan.ad_sets) ? plan.ad_sets[0] : (plan.ad_sets || {});
           const creativeResult = adSet0.ad_creative || adSet0.creative || adSet0.ads?.[0]?.creative || {};
 
-          const imagePrompt =
-            lockedCampaignState.creative?.imagePrompt ||
-            lockedCampaignState.creative?.image_prompt ||
-            creativeResult.imagePrompt ||
-            creativeResult.image_prompt ||
-            creativeResult.image_generation_prompt ||
-            `${lockedCampaignState.service} professional ad for ${lockedCampaignState.location}. Style: clean, high-conversion, marketing photography.`;
-
-          const rwVisual = await dispatchMetaVisualToRailway({
-            prompt: imagePrompt,
-            service: lockedCampaignState.service || "",
-            offer: lockedCampaignState.offer || "",
-            tagline: lockedCampaignState.tagline || creativeResult.tagline || "",
-            businessName: autoBusinessContext?.business_name || verifiedMetaAssets?.fb_page?.name || "",
+          const fastVisual = await generateFastBrandedAdVisual({
+            supabaseClient: supabase,
+            service: lockedCampaignState.service || "Digital Marketing",
+            location: lockedCampaignState.location || "India",
+            offer: lockedCampaignState.offer || creativeResult.tagline || "",
+            tagline: lockedCampaignState.tagline || creativeResult.headline || "",
+            businessName: autoBusinessContext?.business_name || verifiedMetaAssets?.fb_page?.name || "GABBARINFO AI",
+            cta: creativeResult.call_to_action || "LEARN_MORE",
           });
 
-          if (rwVisual.ok && rwVisual.imageUrl) {
-            console.log("✅ [Railway] Visual preview generated successfully:", rwVisual.imageUrl);
-            previewUrl = rwVisual.imageUrl;
-            storageFile = rwVisual.storageFileName || null;
+          if (fastVisual.ok && fastVisual.imageUrl) {
+            console.log("✅ [Fast Visual] Generated in milliseconds:", fastVisual.imageUrl);
+            previewUrl = fastVisual.imageUrl;
+            storageFile = fastVisual.storageFileName || null;
           }
-        } catch (rwErr) {
-          console.warn("⚠️ Railway visual preview warning:", rwErr.message);
+        } catch (visErr) {
+          console.warn("⚠️ Fast visual generation warning:", visErr.message);
         }
 
         const confirmedState = {
