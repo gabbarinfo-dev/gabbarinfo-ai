@@ -135,7 +135,76 @@ export default async function handler(req, res) {
     .single();
 
   if (error || !meta) {
+    if (reservation?.reservationId) {
+      await releaseQuota({
+        reservationId: reservation.reservationId,
+        reason: "Meta connection not found",
+      });
+    }
     return res.status(400).json({ ok: false, message: "Meta connection not found" });
+  }
+
+  // 🚂 RAILWAY WORKER OFFLOAD: Delegate heavy Meta campaign creation to Railway background worker
+  // Eliminates Vercel 60s FUNCTION_INVOCATION_TIMEOUT completely.
+  const workerUrl = process.env.RAILWAY_WORKER_URL || "https://video-worker-production-96d4.up.railway.app";
+  const workerSecret = process.env.WORKER_SECRET_KEY || "gabbar_worker_secret_2026";
+  const railwayEndpoint = `${workerUrl.replace(/\/+$/, "")}/meta/execute-campaign`;
+
+  try {
+    console.log(`🚂 [Vercel Gateway] Forwarding Meta campaign execution to Railway: ${railwayEndpoint}`);
+    const railwayController = new AbortController();
+    const railwayTimeoutId = setTimeout(() => railwayController.abort(), 52000);
+
+    const railwayRes = await fetch(railwayEndpoint, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${workerSecret}`,
+      },
+      signal: railwayController.signal,
+      body: JSON.stringify({
+        clientEmail,
+        platform: placements,
+        payload,
+        metaConnection: meta,
+      }),
+    });
+
+    clearTimeout(railwayTimeoutId);
+
+    const railwayJson = await railwayRes.json().catch(() => null);
+
+    if (railwayRes.ok && railwayJson && (railwayJson.ok || railwayJson.id)) {
+      console.log(`✅ [Vercel Gateway] Railway execution successful! Campaign ID: ${railwayJson.id}`);
+      if (reservation?.reservationId) {
+        await commitQuota({ reservationId: reservation.reservationId });
+      }
+      return res.status(200).json({
+        ok: true,
+        id: railwayJson.id,
+        status: railwayJson.status || "ACTIVE",
+        details: railwayJson.details || {},
+        ...railwayJson,
+      });
+    } else {
+      const errMsg = railwayJson?.message || railwayJson?.error || `Railway responded with status ${railwayRes.status}`;
+      console.warn(`⚠️ [Vercel Gateway] Railway worker error: ${errMsg}. Attempting local fallback...`);
+      if (railwayRes.status === 400 || railwayRes.status === 403) {
+        if (reservation?.reservationId) {
+          await releaseQuota({
+            reservationId: reservation.reservationId,
+            reason: errMsg,
+          });
+        }
+        return res.status(railwayRes.status).json({
+          ok: false,
+          message: errMsg,
+          error: railwayJson?.error || errMsg,
+        });
+      }
+    }
+  } catch (railwayErr) {
+    console.warn(`⚠️ [Vercel Gateway] Railway network/dispatch error: ${railwayErr.message}. Executing local fallback.`);
   }
 
   const AD_ACCOUNT_ID = (payload?.adAccountId || meta.fb_ad_account_id ||

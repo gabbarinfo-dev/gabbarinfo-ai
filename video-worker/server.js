@@ -17,6 +17,7 @@ const {
   generateAdGraphic,
   uploadImageToMeta,
   executeMetaCampaign,
+  executeFullMetaCampaign,
 } = require("./lib/meta-campaign-service");
 
 const app = express();
@@ -2180,9 +2181,36 @@ app.post("/meta/generate-visual", requireAuth, async (req, res) => {
   }
 });
 
+app.post("/meta/execute-campaign", requireAuth, async (req, res) => {
+  try {
+    const { clientEmail, platform, payload, metaConnection } = req.body || {};
+    if (!payload || !payload.campaign_name) {
+      return res.status(400).json({ ok: false, message: "Valid payload with campaign_name is required" });
+    }
+
+    log("META_CAMPAIGN", `[ExecuteCampaign] Request for ${clientEmail || "unknown"} - Campaign: "${payload.campaign_name}"`);
+
+    const result = await executeFullMetaCampaign({
+      clientEmail,
+      platform,
+      payload,
+      metaConnection,
+      supabaseClient: supabase,
+      logger: (msg) => log("META_CAMPAIGN", msg),
+    });
+
+    return res.status(200).json(result);
+  } catch (err) {
+    log("META_CAMPAIGN", `[ExecuteCampaign] Error: ${err.message}`);
+    return res.status(500).json({ ok: false, message: err.message });
+  }
+});
+
 app.post("/meta/create-campaign", requireAuth, async (req, res) => {
   try {
     const {
+      clientEmail,
+      userEmail,
       adAccountId,
       accessToken,
       pageId,
@@ -2194,16 +2222,20 @@ app.post("/meta/create-campaign", requireAuth, async (req, res) => {
       businessName,
       userProvidedImageUrl,
       imageHash: existingImageHash,
+      platform,
+      metaConnection,
     } = req.body || {};
 
-    if (!adAccountId || !accessToken || !pageId) {
-      return res.status(400).json({ ok: false, error: "adAccountId, accessToken, and pageId are required" });
-    }
+    const targetEmail = clientEmail || userEmail;
     if (!payload || !payload.campaign_name) {
       return res.status(400).json({ ok: false, error: "Valid campaign payload with campaign_name is required" });
     }
 
-    log("META_CAMPAIGN", `Executing campaign "${payload.campaign_name}" on act_${adAccountId}...`);
+    if (adAccountId) payload.adAccountId = adAccountId;
+    if (accessToken) payload.accessToken = accessToken;
+    if (pageId) payload.pageId = pageId;
+
+    log("META_CAMPAIGN", `[CreateCampaign] Executing campaign "${payload.campaign_name}" for ${targetEmail || "direct"}...`);
 
     let finalImageHash = existingImageHash || null;
     let finalImageUrl = userProvidedImageUrl || null;
@@ -2214,8 +2246,8 @@ app.post("/meta/create-campaign", requireAuth, async (req, res) => {
       if (userProvidedImageUrl) {
         log("META_CAMPAIGN", `Uploading user-provided image: ${userProvidedImageUrl}`);
         finalImageHash = await uploadImageToMeta({
-          adAccountId,
-          accessToken,
+          adAccountId: adAccountId || payload.adAccountId,
+          accessToken: accessToken || payload.accessToken,
           imageUrl: userProvidedImageUrl,
           logger: (msg) => log("META_CAMPAIGN", msg),
         });
@@ -2236,8 +2268,8 @@ app.post("/meta/create-campaign", requireAuth, async (req, res) => {
         ephemeralFile = graphic.storageFileName;
 
         finalImageHash = await uploadImageToMeta({
-          adAccountId,
-          accessToken,
+          adAccountId: adAccountId || payload.adAccountId,
+          accessToken: accessToken || payload.accessToken,
           imageBuffer: graphic.imageBuffer,
           imageUrl: graphic.imageUrl,
           logger: (msg) => log("META_CAMPAIGN", msg),
@@ -2245,13 +2277,20 @@ app.post("/meta/create-campaign", requireAuth, async (req, res) => {
       }
     }
 
-    // 2. Publish Campaign to Meta Graph API
-    const campaignResult = await executeMetaCampaign({
-      adAccountId,
-      accessToken,
-      pageId,
+    if (finalImageHash) {
+      if (!payload.ad_sets) payload.ad_sets = [{}];
+      if (!payload.ad_sets[0].ad_creative) payload.ad_sets[0].ad_creative = {};
+      payload.ad_sets[0].ad_creative.image_hash = finalImageHash;
+      if (finalImageUrl) payload.ad_sets[0].ad_creative.imageUrl = finalImageUrl;
+    }
+
+    // 2. Publish Campaign using the full production engine
+    const campaignResult = await executeFullMetaCampaign({
+      clientEmail: targetEmail,
+      platform: platform || ["facebook", "instagram"],
       payload,
-      imageHash: finalImageHash,
+      metaConnection,
+      supabaseClient: supabase,
       logger: (msg) => log("META_CAMPAIGN", msg),
     });
 
@@ -2266,12 +2305,13 @@ app.post("/meta/create-campaign", requireAuth, async (req, res) => {
     res.json({
       ok: true,
       ...campaignResult,
+      campaignId: campaignResult.id,
       imageHash: finalImageHash,
       imageUrl: finalImageUrl,
     });
   } catch (err) {
     log("META_CAMPAIGN", `Campaign execution error: ${err.message}`);
-    res.status(500).json({ ok: false, error: err.message });
+    res.status(500).json({ ok: false, error: err.message, message: err.message });
   }
 });
 
