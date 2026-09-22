@@ -13,6 +13,95 @@ const supabase = createClient(
   process.env.SUPABASE_SERVICE_ROLE_KEY
 );
 
+function detectBusinessIndustry(businessName = "", topic = "", services = "", industry = "") {
+  const combined = `${businessName} ${topic} ${services} ${industry}`.toLowerCase();
+  if (/astrolog|jyotish|vedic|horoscope|palmistry|tarot|kundali|spiritual|vastu|zodiac|numerolog/i.test(combined)) {
+    return "ASTROLOGY_SPIRITUALITY";
+  }
+  if (/health|clinic|doctor|dental|dentist|medic|therap|hospital|pharma|wellness|fitness|physio/i.test(combined)) {
+    return "HEALTHCARE_MEDICAL";
+  }
+  if (/cloth|apparel|dress|fashion|jewelry|jewel|boutique|wear|accessories|saree|ethnic|style/i.test(combined)) {
+    return "FASHION_RETAIL";
+  }
+  if (/law|legal|attorney|lawyer|court|litigat|estate planning|divorce/i.test(combined)) {
+    return "LEGAL_PROFESSIONAL";
+  }
+  if (/roof|plumb|contractor|construct|hvac|electric|paint|renovat|home improv|interior design/i.test(combined)) {
+    return "HOME_SERVICES_TRADES";
+  }
+  if (/seo|digital marketing|google ads|meta ads|web design|software|saas|app develop|b2b tech/i.test(combined)) {
+    return "DIGITAL_TECH_MARKETING";
+  }
+  return "GENERAL_BUSINESS";
+}
+
+function sanitizeBlogHtmlAndLinks(contentHtml, catalogPosts = [], activeService = "Our Services", siteUrl = "") {
+  if (!contentHtml) return contentHtml;
+  let clean = contentHtml;
+
+  // 0. Remove any duplicate hero image figures injected into content
+  clean = clean.replace(/<figure[^>]*class=["'][^"']*featured-hero[^"']*["'][^>]*>[\s\S]*?<\/figure>/gi, "");
+
+  // 1. Clean Section 10 / Final Paragraph from dumped links
+  clean = clean.replace(/<p>[^<]*partner with\s*<a[^>]*href=["'][^"']*services[^"']*["'][^>]*>[\s\S]*?<\/p>/gi, () => {
+    return `<p>Achieving lasting authority and real-world impact requires continuous adaptation, domain expertise, and dedicated execution.</p>`;
+  });
+
+  const lastSectionRegex = /<h2>10\.\s*Strategic Conclusion[\s\S]*$/i;
+  const matchSection10 = clean.match(lastSectionRegex);
+  if (matchSection10) {
+    let section10Html = matchSection10[0];
+    const strippedSection10 = section10Html.replace(/<a\s+[^>]*href=["'][^"']*(?:services|contact-us|packages)[^"']*["'][^>]*>(.*?)<\/a>/gi, '$1');
+    clean = clean.replace(section10Html, strippedSection10);
+  }
+
+  // 2. Strict Cross-Domain & Hallucinated Link Sanitization:
+  const approvedInternalUrls = new Set(
+    (catalogPosts || [])
+      .map(p => (p.link || "").toLowerCase().replace(/\/$/, ""))
+      .filter(Boolean)
+  );
+
+  const cleanSiteUrl = (siteUrl || "").toLowerCase().replace(/^https?:\/\//, "").replace(/\/$/, "");
+  const isAstrologyOrGeneral = /astrolog|vedic|jyotish|palmistry|horoscope|spirit|jewel|apparel|dent|clinic/i.test(activeService);
+
+  // Inspect all <a ... href="URL">ANCHOR</a>
+  clean = clean.replace(/<a\s+([^>]*?)href=["']([^"']+)["']([^>]*)>([\s\S]*?)<\/a>/gi, (fullMatch, preHref, href, postHref, anchorText) => {
+    const rawHref = href.trim();
+    const lowerHref = rawHref.toLowerCase();
+
+    // RULE 1: Never leak gabbarinfo.com on a site that is NOT gabbarinfo.com!
+    if (lowerHref.includes("gabbarinfo.com") && (!cleanSiteUrl || !cleanSiteUrl.includes("gabbarinfo.com"))) {
+      return anchorText; // Strip the <a> tag, keep anchor text
+    }
+
+    // RULE 2: If the link is an internal link (points to this siteUrl or is relative path)
+    const isInternal = cleanSiteUrl && (lowerHref.includes(cleanSiteUrl) || rawHref.startsWith("/"));
+    if (isInternal) {
+      const normalizedHref = lowerHref.replace(/\/$/, "");
+      const isApproved = Array.from(approvedInternalUrls).some(u => normalizedHref === u || normalizedHref.endsWith(u.replace(/^https?:\/\/[^\/]+/, "")));
+      if (!isApproved && approvedInternalUrls.size > 0) {
+        return anchorText;
+      }
+      if (approvedInternalUrls.size === 0) {
+        return anchorText;
+      }
+    }
+
+    // RULE 3: Strip known digital marketing / tech publications from non-marketing sites
+    if (isAstrologyOrGeneral) {
+      if (/searchenginejournal\.com|hubspot\.com|contentmarketinginstitute\.com|forbes\.com|w3\.org|gartner\.com|mckinsey\.com|bain\.com/i.test(lowerHref)) {
+        return anchorText; // Strip marketing publications from non-marketing sites
+      }
+    }
+
+    return fullMatch;
+  });
+
+  return clean;
+}
+
 /**
  * High-performance, atomic blog generation and WordPress publishing function.
  * Designed for both interactive dashboard usage and in-process autonomous autopilot execution.
@@ -223,9 +312,70 @@ export async function executeBlogGeneration({
     // 6. Generate High-Ranking Blog Content & SEO Payload with GPT
     console.log(`[SEO Engine] Generating full ${wordCount}-word authority guide on "${topic}" for ${effectiveBusiness}...`);
 
-    const isTopicSeo = /seo|search engine/i.test(topic);
-    const systemPrompt = `You are a world-class commercial strategist and elite enterprise copywriter specializing in ${topic}.
-Generate an exhaustive, authoritative, 100% human-grade pillar guide focused specifically on "${topic}" for ${effectiveBusiness} (${siteUrl}), optimized for maximum reader dwell-time, deep operational insight, and commercial conversion.
+    const industryType = detectBusinessIndustry(effectiveBusiness, topic, businessServices, industry);
+    const isAstrology = industryType === "ASTROLOGY_SPIRITUALITY";
+
+    let sectionOutline = "";
+    if (isAstrology) {
+      sectionOutline = `   - <h2>1. Evolution, Background & Sacred Foundations of ${topic}</h2> (At least 170 words explaining historical roots, philosophical context, and relevance in 2026)
+   - <h2>2. Core Foundations, Sacred Principles & Classical Texts</h2> (At least 180 words on fundamental concepts, energetic mechanics, and classical Shastras)
+   - <h2>3. Comprehensive In-Depth Guide to ${topic}</h2> (At least 200 words detailing practical methods, interpretive frameworks, and analytical procedures)
+   - <h2>4. Specialized Nuances, Planetary Influences & Subtle Considerations</h2> (At least 180 words exploring dimensional subtleties, Nakshatra/planetary dynamics, and individual chart variables)
+   - <h2>5. Practical Benefits, Spiritual Guidance & Life Impact</h2> (At least 180 words on real-world life alignment, psychological self-awareness, and transformative value)
+   - <h2>6. Real-World Case Study & Transformational Journey</h2> (At least 220 words detailing an individual consultation scenario, karmic challenges faced, remedial approaches, and life transformation)
+   - <h2>7. Step-by-Step Actionable Daily Guidance & Remedial Playbook</h2> (At least 220 words with structured practical disciplines, mantras/mindfulness, and conscious daily actions)
+   - <h2>8. Common Mistakes, Misconceptions & Critical Pitfalls to Avoid</h2> (At least 200 words on fatalism, superstitions, common interpretive errors, and ethical precautions)
+   - <h2>9. Frequently Asked Questions (FAQ)</h2> (Provide 5 detailed, high-impact questions specifically about ${topic}, each answered with comprehensive multi-paragraph explanations of 100+ words, totaling 500+ words for this section)
+   - <h2>10. Conclusion and Spiritual Roadmap for 2026</h2> (At least 150 words summary with clear, empowering guidance for seekers at ${effectiveBusiness})`;
+    } else {
+      sectionOutline = `   - <h2>1. The Strategic Evolution of ${topic} in 2026</h2> (At least 160 words across 2 detailed paragraphs exploring the modern landscape)
+   - <h2>2. Core Foundations, Strategic Principles & Key Frameworks</h2> (At least 180 words detailing key methodologies, audience targeting, and fundamental mechanics)
+   - <h2>3. Comprehensive Guide & Practical Procedures</h2> (At least 180 words with actionable structural frameworks and optimization formulas)
+   - <h2>4. Technical Infrastructure & Operational Mastery</h2> (At least 160 words detailing measurement, best practices, and accuracy)
+   - <h2>5. Practical Benefits, Growth & Customer Value</h2> (At least 180 words on synergy and real-world outcomes)
+   - <h2>6. In-Depth Real-World Case Study & Application</h2> (At least 220 words detailing baseline metrics, implementation timeline, and gains)
+   - <h2>7. Step-by-Step 90-Day Execution Playbook</h2> (At least 200 words with Month 1, Month 2, Month 3 actionable milestones)
+   - <h2>8. 5 Critical Pitfalls & Costly Mistakes to Avoid</h2> (At least 180 words detailing common misconceptions and operational fixes in ${topic})
+   - <h2>9. Frequently Asked Questions (FAQ)</h2> (Provide 5 high-impact questions specifically about ${topic}, each answered with comprehensive multi-paragraph explanations of 100+ words, totaling 500+ words for this section)
+   - <h2>10. Strategic Conclusion and Actionable Roadmap for 2026</h2> (At least 140 words summary with a clear commercial call to action for ${effectiveBusiness})`;
+    }
+
+    let internalLinkingPrompt = "";
+    if (selectedInternalPosts.length > 0) {
+      internalLinkingPrompt = `
+4. MANDATORY INTERNAL HYPERLINKS (STRICT SPATIAL DISTRIBUTION - ZERO LINK DUMPING):
+   CRITICAL MANDATE: You MUST embed 2 to 3 distinct internal hyperlinks to existing published blog articles from the catalog below, smoothly integrated into informative, explanatory sentences.
+
+   STRICT RULES:
+   - You may ONLY link to URLs explicitly in the APPROVED CATALOG below. NEVER invent a URL, and NEVER link to any external domain as an internal link.
+   - Anchor Text Mandate: Integrate into natural, flowing sentences describing the content. NEVER use generic anchors like "Click Here" or "Website".
+
+   APPROVED CATALOG OF EXISTING PUBLISHED ARTICLES (ONLY LINK TO THESE):
+${selectedInternalPosts.map((p) => `   * Title: "${p.title}" | Link: <a href="${p.link}" style="color: #f59e0b; font-weight: 700; text-decoration: underline;">${p.title}</a>`).join("\n")}`;
+    } else {
+      internalLinkingPrompt = `
+4. INTERNAL HYPERLINKS INSTRUCTION:
+   CRITICAL MANDATE: This website has NO prior published blog articles in its catalog yet.
+   It is STRICTLY FORBIDDEN to invent, fabricate, or embed ANY internal hyperlinks. Do NOT create links to non-existent articles. Zero internal links permitted.`;
+    }
+
+    let externalLinksPrompt = "";
+    if (isAstrology) {
+      externalLinksPrompt = `
+5. MANDATORY 3 TO 4 TOPIC-RELEVANT EXTERNAL AUTHORITY CITATIONS:
+   CRITICAL INDUSTRY RELEVANCE MANDATE: This website is in the VEDIC ASTROLOGY, HOROSCOPY & SPIRITUALITY domain.
+   - All external citations MUST be authentic cultural, encyclopedic, historical, or astronomical authorities (e.g., Encyclopaedia Britannica [https://www.britannica.com], Stanford Encyclopedia of Philosophy [https://plato.stanford.edu], Library of Congress [https://www.loc.gov], or academic research papers on classical Sanskrit and celestial studies).
+   - STRICTLY FORBIDDEN: NEVER cite Search Engine Journal, Forbes, HubSpot, McKinsey, Gartner, Bain, or any digital marketing / tech / business consulting publications! This is an astrology website, NOT a marketing agency.
+   - ZERO B2B MARKETING JARGON: NEVER mention "customer acquisition costs", "omnichannel funnels", "conversion tracking", "attribution modeling", or "ROI scaling". Write with deep reverence, philosophical depth, and classical astrological precision.`;
+    } else {
+      externalLinksPrompt = `
+5. MANDATORY 4+ SCATTERED EXTERNAL AUTHORITY LINKS (STRICT SPATIAL DISTRIBUTION & TOPIC RELEVANCE):
+   You MUST embed AT LEAST 4 authoritative, topic-relevant, non-competing external links.
+   CRITICAL RELEVANCE MANDATE: All 4 external links MUST be directly relevant to "${topic}" and the specific industry of ${effectiveBusiness} (e.g., for healthcare/medical: ADA, PubMed, WHO, WebMD; for real estate: NAR, Zillow Research; for legal/finance: ABA, Bloomberg, SEC; for eCommerce/retail: NRF, Statista). NEVER use generic tech/SEO links for a healthcare, retail, astrology, or real estate business.`;
+    }
+
+    const systemPrompt = `You are an elite subject matter expert and authoritative journalist writing for ${effectiveBusiness} (${siteUrl}).
+Write an exhaustive, authoritative, 100% human-grade master guide focused specifically on "${topic}".
 ${businessLocation && businessLocation !== "National & Global Commercial" ? `
 TARGET GEOGRAPHIC MARKET MANDATE:
 The business is specifically targeting clients and audiences in: "${businessLocation}".
@@ -239,16 +389,7 @@ ${!isTopicSeo ? `- DO NOT divert into generic SEO, search engine indexing, or Co
 CRITICAL LENGTH & DEPTH MANDATES:
 1. STRICT WORD COUNT: Body content MUST exceed 1600 words (target: 1650 to 2000 words). Writing less than 1500 words is strictly unacceptable.
 2. MANDATORY EXHAUSTIVE SECTIONS (You MUST include ALL 10 of these exact <h2> sections with 2 to 3 detailed <h3> subsections each):
-   - <h2>1. The Strategic Evolution of ${topic} in 2026</h2> (At least 160 words across 2 detailed paragraphs exploring the modern landscape)
-   - <h2>2. Core Foundations, Strategic Principles & Key Frameworks</h2> (At least 180 words detailing key methodologies, audience targeting, and fundamental mechanics)
-   - <h2>3. High-Converting Campaign Architecture & Execution Systems</h2> (At least 180 words with actionable structural frameworks and optimization formulas)
-   - <h2>4. Technology Infrastructure, Analytics & Conversion Mastery</h2> (At least 160 words detailing measurement, conversion tracking, modern tooling, and data accuracy)
-   - <h2>5. Omnichannel Growth Funnels & Audience Monetization</h2> (At least 180 words on cross-platform synergy, CAC reduction, and ROI scaling)
-   - <h2>6. In-Depth Real-World Case Study: 0 to 450% Revenue Acceleration</h2> (At least 220 words detailing baseline metrics, implementation timeline, and exact financial/performance gains)
-   - <h2>7. Step-by-Step 90-Day Execution Playbook</h2> (At least 200 words with Month 1, Month 2, Month 3 actionable milestones)
-   - <h2>8. 5 Critical Pitfalls & Costly Strategic Mistakes to Avoid</h2> (At least 180 words detailing common misconceptions and operational fixes in ${topic})
-   - <h2>9. Frequently Asked Questions (FAQ)</h2> (Provide 5 high-impact questions specifically about ${topic}, each answered with comprehensive multi-paragraph explanations of 100+ words, totaling 500+ words for this section)
-   - <h2>10. Strategic Conclusion and Actionable Roadmap for 2026</h2> (At least 140 words summary with a clear commercial call to action for ${effectiveBusiness})
+${sectionOutline}
 
 3. MANDATORY 8 TO 12 TARGET KEYWORD CLUSTER & ORGANIC DENSITY:
    - Generate and target a rich semantic keyword cluster of 8 to 12 distinct keywords directly relevant to "${topic}":
@@ -259,38 +400,14 @@ CRITICAL LENGTH & DEPTH MANDATES:
      * The Primary Keyword MUST appear in the title, in the first 100 words of the opening paragraph (bolded as <strong>primary keyword</strong>), in at least two <h2> or <h3> subheadings, and naturally 4 to 6 times across the body.
      * Each of the 7 to 11 Secondary and LSI keywords MUST be woven organically throughout the article sections (at least 2 to 4 times each).
      * NEVER stuff keywords robotically. Every keyword MUST be integrated in natural, fluent, syntactically correct English.
-
-4. MANDATORY INTERNAL HYPERLINKS (STRICT SPATIAL DISTRIBUTION - ZERO LINK DUMPING):
-   CRITICAL MANDATE: You MUST embed 3 to 4 distinct internal hyperlinks to existing published blog articles from the catalog below, smoothly integrated into informative, explanatory sentences.
-
-   STRICT SPATIAL DISTRIBUTION RULES:
-   - Early Body (Section 2 or Section 3): Embed 1 contextual link to an existing related published article from the catalog below.
-   - Mid Body (Section 4 or Section 5): Embed 1 contextual link to an existing related published article from the catalog below.
-   - Mid-Late Body (Section 6 or Section 7): Embed 1 contextual link to an existing related published article from the catalog below.
-   - Late Body (Section 8 or Section 9): Embed 1 contextual link to an existing related published article or solutions page.
-
-   STRICT FORBIDDEN RULES (NO LAST PARAGRAPH CLUSTERING):
-   - IT IS STRICTLY FORBIDDEN TO STUFF, CLUMP, OR DUMP INTERNAL LINKS INTO SECTION 10 (CONCLUSION) OR IN THE FINAL PARAGRAPH!
-   - NO MORE THAN ONE internal link may appear in any single section.
-   - NEVER dump multiple links next to each other.
-   - Anchor Text Mandate: EVERY internal link MUST be integrated into a natural, flowing sentence with descriptive semantic anchor text describing the content. (Example: "As detailed in our breakdown of <a href="..." style="color: #f59e0b; font-weight: 700; text-decoration: underline;">high-performance Google Ads management</a>, attribution modeling is essential..."). NEVER use generic anchors like "Click Here", "Official Website", or "Services".
-
-   CATALOG OF EXISTING PUBLISHED ARTICLES TO LINK TO:
-${selectedInternalPosts.map((p) => `   * Title: "${p.title}" | Link: <a href="${p.link}" style="color: #f59e0b; font-weight: 700; text-decoration: underline;">[Descriptive semantic anchor for "${p.title}"]</a>`).join("\n")}
-
-   - MANDATORY 4+ SCATTERED EXTERNAL AUTHORITY LINKS (STRICT SPATIAL DISTRIBUTION):
-     You MUST embed AT LEAST 4 authoritative, topic-relevant, non-competing external links.
-     CRITICAL SPATIAL DISTRIBUTION RULE: These links MUST BE SCATTERED across different parts of the article. It is STRICTLY FORBIDDEN to clump them together or put them only in the last 2 paragraphs or conclusion.
-     
-     Embed strictly across these sections:
-     - Early Body (Section 1 or Section 2): 1 external link citing recognized market statistics, economic analysis, or industry shifts (e.g., Gartner [https://www.gartner.com], McKinsey & Company [https://www.mckinsey.com], Harvard Business Review [https://hbr.org], Forrester [https://www.forrester.com], or Statista [https://www.statista.com]).
-     - Mid-First Half (Section 3 or Section 4): 1 external link to an authoritative publication or technical standard directly relevant to the topic (e.g., Search Engine Journal [https://www.searchenginejournal.com], HubSpot Research [https://www.hubspot.com], Content Marketing Institute [https://contentmarketinginstitute.com], W3C Standards [https://www.w3.org], Nielsen Norman Group [https://www.nngroup.com], or IEEE Computer Society [https://www.computer.org]).
-     - Mid-Second Half (Section 5 or Section 6): 1 external link to an authoritative commercial benchmark, conversion index, or analytics framework (e.g., Bain & Company [https://www.bain.com], Deloitte Insights [https://www2.deloitte.com], PwC Global [https://www.pwc.com], or eMarketer [https://www.emarketer.com]).
-     - Late Body (Section 7 or Section 8): 1 external link to a credible professional guideline, compliance standard, or recognized industry benchmark (e.g., FTC Consumer & Advertising Guidelines [https://www.ftc.gov], IAB Interactive Advertising Bureau [https://www.iab.com], or ISO Standards [https://www.iso.org]).
-     
-     External Link Styling:
-     Every external link MUST have target="_blank" rel="noopener noreferrer" and be styled in theme amber:
-     <a href="URL" target="_blank" rel="noopener noreferrer" style="color: #f59e0b; font-weight: 700; text-decoration: underline;">Descriptive Anchor Text</a>
+${internalLinkingPrompt}
+${externalLinksPrompt}
+   
+   CRITICAL SPATIAL DISTRIBUTION RULE: External links MUST BE SCATTERED across different parts of the article. It is STRICTLY FORBIDDEN to clump them together or put them only in the last 2 paragraphs or conclusion.
+   
+   External Link Styling:
+   Every external link MUST have target="_blank" rel="noopener noreferrer" and be styled in theme amber:
+   <a href="URL" target="_blank" rel="noopener noreferrer" style="color: #f59e0b; font-weight: 700; text-decoration: underline;">Descriptive Anchor Text</a>
 
 5. FORMATTING & BRAND THEME MANDATES:
    - Use semantic HTML: <h2>, <h3>, <p>, <ul>, <li>, <strong>, <em>.
@@ -508,69 +625,10 @@ MANDATORY MINIMUM WORD COUNT: Strictly 1600+ Words across all 10 detailed sectio
       }
     }
 
-    // Contextual Internal Linking Guarantee (Uses ONLY the client's actual connected website pages)
-    const hasLiveInternalLinks = (existingContent || []).some((item) => finalContent.includes(item.url));
-    if (!hasLiveInternalLinks && existingContent.length > 0) {
-      console.log("[SEO Engine] Contextual internal link check: injecting client website links...");
-      for (const item of existingContent.slice(0, 5)) {
-        if (item.url && item.title && !finalContent.includes(item.url)) {
-          const words = item.title.split(/\s+/).filter(w => w.length > 3).slice(0, 3).join(" ");
-          if (words) {
-            const regex = new RegExp(`\\b(${words})\\b`, "i");
-            if (regex.test(finalContent)) {
-              finalContent = finalContent.replace(regex, `<a href="${item.url}" style="color: #f59e0b; font-weight: 700; text-decoration: underline;">$1</a>`);
-            }
-          }
-        }
-      }
-    }
+    // 8. Sanitize HTML and links: zero cross-domain leakage, zero internal hallucination, industry-tailored links
+    finalContent = sanitizeBlogHtmlAndLinks(finalContent, selectedInternalPosts, topic, siteUrl);
 
-    // Enforce strict spatial link distribution & remove any final-paragraph link dumping
-    // 1. Clean Section 10 / Final Paragraph from dumped links
-    finalContent = finalContent.replace(/<p>[^<]*partner with\s*<a[^>]*href=["'][^"']*services[^"']*["'][^>]*>[\s\S]*?<\/p>/gi, () => {
-      return `<p>To stay ahead of the competition in 2026, building an agile, multi-channel growth engine is no longer optional—it is the foundation of sustainable enterprise scale. By pairing disciplined data analytics with high-converting creative execution, modern businesses can unlock predictable revenue streams and outpace market disruption.</p>`;
-    });
-
-    const lastSecRegex = /<h2>10\.\s*Strategic Conclusion[\s\S]*$/i;
-    const matchSec10 = finalContent.match(lastSecRegex);
-    if (matchSec10) {
-      let sec10Html = matchSec10[0];
-      const strippedSec10 = sec10Html.replace(/<a\s+[^>]*href=["'][^"']*(?:services|contact-us|packages)[^"']*["'][^>]*>(.*?)<\/a>/gi, '$1');
-      finalContent = finalContent.replace(sec10Html, strippedSec10);
-    }
-
-    // 2. Count internal links to real blog posts across the body
-    const intLinkRegex = /<a\s+[^>]*href=["']https?:\/\/[^"']+\/([^"']+)["'][^>]*>(.*?)<\/a>/gi;
-    const existingBlogLinks = [];
-    let bMatch;
-    while ((bMatch = intLinkRegex.exec(finalContent)) !== null) {
-      const path = bMatch[1];
-      if (!path.includes('services') && !path.includes('contact') && !path.includes('packages') && !path.includes('#')) {
-        existingBlogLinks.push({ url: bMatch[0], path });
-      }
-    }
-
-    // If fewer than 3 internal blog links exist in the body, inject them into sections 2, 4, 6
-    if (existingBlogLinks.length < 3 && Array.isArray(selectedInternalPosts) && selectedInternalPosts.length > 0) {
-      const usable = selectedInternalPosts.filter(p => p.link && !p.link.includes('santa') && !p.link.includes('christmas'));
-      if (usable[0] && !finalContent.includes(usable[0].link)) {
-        finalContent = finalContent.replace(/(2\.\s*Core Foundations[\s\S]*?<\/h2>\s*<p>)/i, (m) => {
-          return `${m}As detailed in our foundational analysis of <a href="${usable[0].link}" style="color: #f59e0b; font-weight: 700; text-decoration: underline;">${usable[0].title.toLowerCase()}</a>, establishing rigorous commercial foundations is essential. `;
-        });
-      }
-      if (usable[1] && !finalContent.includes(usable[1].link)) {
-        finalContent = finalContent.replace(/(4\.\s*Technology Infrastructure[\s\S]*?<\/h2>\s*<p>)/i, (m) => {
-          return `${m}Modern digital infrastructure requires strict attribution fidelity. For teams scaling campaigns, referencing our guide on <a href="${usable[1].link}" style="color: #f59e0b; font-weight: 700; text-decoration: underline;">${usable[1].title.toLowerCase()}</a> provides actionable technical frameworks. `;
-        });
-      }
-      if (usable[2] && !finalContent.includes(usable[2].link)) {
-        finalContent = finalContent.replace(/(6\.\s*In-Depth Real-World Case Study[\s\S]*?<\/h2>\s*<p>)/i, (m) => {
-          return `${m}Organic discovery remains a powerful compounding asset. As analyzed in our <a href="${usable[2].link}" style="color: #f59e0b; font-weight: 700; text-decoration: underline;">${usable[2].title.toLowerCase()}</a>, coupling organic authority with targeted outreach dramatically lowers customer acquisition costs. `;
-        });
-      }
-    }
-
-    // Final Sanitization Pass: Guarantee NO Duplicate TOC and NO Light Backgrounds
+    // Final TOC and Color Scheme Sanitization Pass
     finalContent = finalContent.replace(/<nav[\s\S]*?<\/nav>/gi, "");
     finalContent = finalContent.replace(/<div id="ez-toc-container"[\s\S]*?<\/div>/gi, "");
     finalContent = finalContent.replace(/<ul class="ez-toc-list[\s\S]*?<\/ul>/gi, "");
