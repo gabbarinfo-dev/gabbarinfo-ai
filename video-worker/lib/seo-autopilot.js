@@ -532,6 +532,12 @@ Format output as valid JSON:
         }
       }
 
+      // Inject Hero Featured Image into top of article HTML content if not already present
+      if (featuredImageUrl && !finalContentHtml.includes(featuredImageUrl)) {
+        const heroFigureHtml = `<figure class="gabbarinfo-hero-image" style="margin: 0 0 32px 0; text-align: center;">\n  <img src="${featuredImageUrl}" alt="${parsedArticle.title}" style="max-width: 100%; height: auto; border-radius: 12px; box-shadow: 0 8px 32px rgba(0,0,0,0.4);" />\n</figure>\n`;
+        finalContentHtml = heroFigureHtml + finalContentHtml;
+      }
+
       // Enforce spatial internal link distribution & remove any final-paragraph link dumps
       finalContentHtml = enforceSpatialLinkDistribution(finalContentHtml, selectedInternalPosts, activeService);
 
@@ -579,7 +585,7 @@ Format output as valid JSON:
       const [brandMemsRes, bundlePairRes] = await Promise.all([
         supabase
           .from("agent_memory")
-          .select("content")
+          .select("memory_type, content")
           .eq("email", item.email.trim())
           .like("memory_type", "meta_conn_%"),
         supabase
@@ -592,7 +598,10 @@ Format output as valid JSON:
 
       const brandProfiles = [];
       (brandMemsRes.data || []).forEach((m) => {
-        try { brandProfiles.push(JSON.parse(m.content)); } catch (_) {}
+        try {
+          const parsed = JSON.parse(m.content);
+          brandProfiles.push({ key: (m.memory_type || "").replace(/^meta_conn_/, ""), ...parsed });
+        } catch (_) {}
       });
 
       if (bundlePairRes.data?.content) {
@@ -612,9 +621,11 @@ Format output as valid JSON:
       const normBiz = (targetBizKey || normalizedBiz || "").toLowerCase().replace(/[^a-z0-9]/g, "");
 
       const matchedBrand = brandProfiles.find((b) => {
+        const bKey = String(b.key || "").toLowerCase().replace(/[^a-z0-9]/g, "");
         const bUrl = String(b.websiteUrl || b.website || "").toLowerCase().replace(/^https?:\/\//, "").replace(/\/$/, "");
         const bName = String(b.businessName || b.pageName || "").toLowerCase().replace(/[^a-z0-9]/g, "");
-        return (cleanSite && bUrl && (cleanSite === bUrl || cleanSite.includes(bUrl) || bUrl.includes(cleanSite))) ||
+        return (normBiz && bKey && (normBiz === bKey || normBiz.includes(bKey) || bKey.includes(normBiz))) ||
+               (cleanSite && bUrl && (cleanSite === bUrl || cleanSite.includes(bUrl) || bUrl.includes(cleanSite))) ||
                (normBiz && bName && (normBiz === bName || normBiz.includes(bName) || bName.includes(normBiz)));
       });
 

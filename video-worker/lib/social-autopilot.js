@@ -349,7 +349,14 @@ Include 3-4 bullet benefits, a strong call to action, and 6-8 relevant hashtags$
 
       // 6. Fetch User's Live Meta Connection strictly for this specific brand profile
       const rawBizKey = item.memory_type.replace(/^social_autopilot_/, "");
-      const cleanBizKey = rawBizKey.replace(new RegExp(`^${item.email.toLowerCase().replace(/[^a-z0-9]/g, "_")}_?`, "i"), "");
+      let cleanBizKey = rawBizKey;
+      if (cleanBizKey.toLowerCase().startsWith(item.email.toLowerCase())) {
+        cleanBizKey = cleanBizKey.slice(item.email.length).replace(/^[_:]/, "");
+      }
+      const sanitizedEmail = item.email.toLowerCase().replace(/[^a-z0-9]/g, "_");
+      if (cleanBizKey.toLowerCase().startsWith(sanitizedEmail)) {
+        cleanBizKey = cleanBizKey.slice(sanitizedEmail.length).replace(/^[_:]/, "");
+      }
       const normalizedBiz = (config.businessName || cleanBizKey || "default")
         .toLowerCase()
         .trim()

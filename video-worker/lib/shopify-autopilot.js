@@ -348,7 +348,10 @@ async function runShopifyAutopilotCycle({ supabase, openai, force = false, email
               matchedBlog = blogList.find((b) => String(b.id) === String(blogId));
             }
             if (!matchedBlog) {
-              matchedBlog = blogList[0];
+              // Prioritize 'news' blog handle which is Shopify's standard default, or a blog matching config.blogHandle
+              matchedBlog = blogList.find((b) => (b.handle || "").toLowerCase() === (config.blogHandle || "news").toLowerCase())
+                         || blogList.find((b) => (b.title || "").toLowerCase() === "news")
+                         || blogList[0];
             }
             blogId = matchedBlog.id;
             blogHandle = matchedBlog.handle || "news";
@@ -620,7 +623,7 @@ Respond ONLY with a valid JSON object matching this schema:
           const [brandMemsRes, bundlePairRes] = await Promise.all([
             supabase
               .from("agent_memory")
-              .select("content")
+              .select("memory_type, content")
               .eq("email", userEmail.toLowerCase())
               .like("memory_type", "meta_conn_%"),
             supabase
@@ -633,7 +636,10 @@ Respond ONLY with a valid JSON object matching this schema:
 
           const brandProfiles = [];
           (brandMemsRes.data || []).forEach((m) => {
-            try { brandProfiles.push(JSON.parse(m.content)); } catch (_) {}
+            try {
+              const parsed = JSON.parse(m.content);
+              brandProfiles.push({ key: (m.memory_type || "").replace(/^meta_conn_/, ""), ...parsed });
+            } catch (_) {}
           });
 
           if (bundlePairRes.data?.content) {
@@ -653,10 +659,12 @@ Respond ONLY with a valid JSON object matching this schema:
           const normStoreName = String(brandName || conn.name || "").toLowerCase().replace(/[^a-z0-9]/g, "");
 
           let brandMeta = brandProfiles.find((b) => {
+            const bKey = String(b.key || "").toLowerCase().replace(/[^a-z0-9]/g, "");
             const bUrl = String(b.websiteUrl || b.website || "").toLowerCase().replace(/^https?:\/\//, "").replace(/\/$/, "");
             const bName = String(b.businessName || b.pageName || "").toLowerCase().replace(/[^a-z0-9]/g, "");
             const bIg = String(b.igUsername || "").toLowerCase().replace(/[^a-z0-9]/g, "");
-            return (bUrl && (normStoreDomain.includes(bUrl) || bUrl.includes(normStoreDomain))) ||
+            return (bKey && normStoreName && (bKey.includes(normStoreName) || normStoreName.includes(bKey))) ||
+                   (bUrl && (normStoreDomain.includes(bUrl) || bUrl.includes(normStoreDomain))) ||
                    (bName && normStoreName && (bName.includes(normStoreName) || normStoreName.includes(bName))) ||
                    (bIg && normStoreName && (bIg.includes(normStoreName) || normStoreName.includes(bIg)));
           });
