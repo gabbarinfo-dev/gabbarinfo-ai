@@ -68,6 +68,52 @@ function detectBusinessIndustry(businessName = "", topic = "", services = "") {
   return "GENERAL_BUSINESS";
 }
 
+function getIndustryAdaptiveVisualPrompts(industry, title, serviceOrTopic) {
+  switch (industry) {
+    case "ASTROLOGY_SPIRITUALITY":
+      return {
+        heroPrompt: `Award-winning artistic editorial hero illustration for "${title}". Traditional Vedic astrological wisdom, cosmic planetary alignments, antique palmistry scrolls and sacred charts on dark teakwood desk, warm glowing brass diya oil lamp light, celestial constellations in the midnight sky, rich gold and deep navy indigo aesthetic, masterwork fine art composition, 4K quality, absolutely no modern digital gadgets, no watermarks.`,
+        midPrompt: `Stunning, museum-grade sacred geometric Vedic astrology cosmological diagram and traditional Kundli chart for "${title}". Intricate 12-house Vedic birth chart geometry, concentric celestial rings of the 27 lunar Nakshatras, glowing golden planetary orbits of the Navagrahas, ancient Indian astronomical motifs, deep cosmic midnight blue and warm radiating gold starlight, sacred geometry symmetry, fine art architectural detail, ultra-high resolution, absolutely NO modern tech, NO software architecture, NO marketing charts, NO flowcharts.`
+      };
+
+    case "HEALTHCARE_MEDICAL":
+      return {
+        heroPrompt: `Award-winning prestigious clinical medical editorial photography for "${title}". Subject: "${serviceOrTopic}". Compassionate healthcare setting, advanced clinical wellness, clean natural ambient lighting, medical professional, photorealistic 8K quality, crisp authentic composition, no watermarks.`,
+        midPrompt: `A clean, highly educational clinical wellness flowchart and medical anatomical infographic illustrating "${title}". Professional healthcare process pathway, diagnostic stages, biological wellness diagram, calm clinical cyan and soft white lighting, authoritative medical aesthetic, pristine high resolution, no marketing charts.`
+      };
+
+    case "FASHION_RETAIL":
+      return {
+        heroPrompt: `High-fashion luxury editorial magazine photography for "${title}". Subject: "${serviceOrTopic}". Exquisite handcrafted garments, artisanal jewellery textures, couture silhouettes, warm dramatic studio lighting, rich fabrics, photorealistic 8K quality, high-end runway aesthetic, no watermarks.`,
+        midPrompt: `A sophisticated, elegant visual styling and design palette framework for "${title}". Curated artisanal textile swatches, luxury craftsmanship steps, color theory palette, clean luxury boutique editorial layout, soft natural studio lighting, high resolution, no software or tech diagrams.`
+      };
+
+    case "LEGAL_PROFESSIONAL":
+      return {
+        heroPrompt: `Prestigious executive editorial photography for "${title}". Subject: "${serviceOrTopic}". High-end mahogany law library, balanced scales of justice, leather-bound legal tomes, warm architectural lighting, authoritative and dignified composition, 8K resolution, no watermarks.`,
+        midPrompt: `An authoritative, elegant legal framework and statutory compliance flowchart for "${title}". Clean corporate governance roadmap, structured procedural milestones, dark executive mahogany and slate styling, crisp clean lines, professional resolution, no marketing jargon.`
+      };
+
+    case "HOME_SERVICES_TRADES":
+      return {
+        heroPrompt: `Professional editorial craftsmanship photography for "${title}". Subject: "${serviceOrTopic}". Skilled artisan at work, precision tools, premium architectural materials, crisp natural lighting, authentic trade craftsmanship, 8K quality, no watermarks.`,
+        midPrompt: `A detailed architectural cross-section blueprint and craftsmanship inspection diagram for "${title}". Structural engineering cutaway, material layers, precision technical schematics, clean blueprint blue and white drafting lines, crisp professional detail.`
+      };
+
+    case "DIGITAL_TECH_MARKETING":
+      return {
+        heroPrompt: `Award-winning modern editorial hero illustration for blog article. Title: "${title}". Subject: "${serviceOrTopic}". Sleek modern studio lighting, 3D holographic digital accents, dark luxury slate aesthetics, high contrast, clean tech agency composition, pristine 4K quality, no text watermark.`,
+        midPrompt: `Award-winning commercial editorial diagram graphic showing modern technical architecture, workflow flowcharts, and systems framework for "${serviceOrTopic}". Sleek dark luxury slate aesthetic, glowing cyan and warm amber accent lighting, clean geometric flow lines, 3D holographic panels, high contrast, clean agency composition, pristine 4K quality, no text gibberish.`
+      };
+
+    default: // GENERAL_BUSINESS
+      return {
+        heroPrompt: `Award-winning editorial commercial photography for "${title}". Subject: "${serviceOrTopic}". Modern executive workspace, collaborative strategy session, elegant architectural lighting, sleek professional aesthetics, 8K resolution, no watermarks.`,
+        midPrompt: `An executive strategic framework and operational roadmap diagram for "${title}". Core organizational pillars, milestone progression timeline, clean business advisory layout, sleek dark slate and gold accents, crisp high resolution, no tech gibberish.`
+      };
+  }
+}
+
 function enforceSpatialLinkDistribution(contentHtml, catalogPosts = [], activeService = "Our Services", siteUrl = "") {
   if (!contentHtml) return contentHtml;
   let clean = contentHtml;
@@ -499,12 +545,14 @@ Format output as valid JSON:
 
       // Image 1: Hero Featured Image (Hierarchy: gpt-image-2 -> gpt-image-2-2026-04-21 -> gpt-image-1.5)
       const imageModels = ["gpt-image-2", "gpt-image-2-2026-04-21", "gpt-image-1.5"];
-      const heroPrompt = `Award-winning commercial editorial hero illustration for blog article. Title: "${parsedArticle.title}". Subject: "${activeService}". Sleek modern studio lighting, 3D holographic digital accents, dark luxury slate aesthetics, high contrast, clean agency composition, pristine 4K quality, no text watermark.`;
+      // Construct industry-tailored visual prompts (Sacred Vedic geometry for astrology, clinical for medical, couture for fashion, etc.)
+      const visualPrompts = getIndustryAdaptiveVisualPrompts(industryType, parsedArticle.title, activeService);
+      const heroPrompt = visualPrompts.heroPrompt;
 
       let heroBuffer = null;
       for (const modelName of imageModels) {
         try {
-          logger(`[SEO Autopilot] Generating hero visual with ${modelName}...`);
+          logger(`[SEO Autopilot] Generating hero visual (${industryType}) with ${modelName}...`);
           const heroRes = await openai.images.generate({
             model: modelName,
             prompt: heroPrompt,
@@ -541,7 +589,7 @@ Format output as valid JSON:
       }
 
       // Image 2: Secondary Mid-Article Architecture Diagram / Infographic
-      const midPrompt = `Award-winning commercial editorial diagram graphic showing modern technical architecture, workflow flowcharts, and multi-channel attribution model for "${activeService}". Sleek dark luxury slate aesthetic, glowing cyan and warm amber accent lighting, clean geometric flow lines, 3D holographic analytics panels, high contrast, clean agency composition, pristine 4K quality, no text gibberish.`;
+      const midPrompt = visualPrompts.midPrompt;
 
       let midBuffer = null;
       for (const modelName of imageModels) {
