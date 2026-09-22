@@ -80,6 +80,117 @@ async function parseResponseSafe(resp) {
   }
 }
 
+/**
+ * 📋 Formats a comprehensive, rich Meta Ads campaign preview containing:
+ * - Campaign Name & Goal
+ * - Linked Ad Account (Name & ID)
+ * - Complete Targeting (Location, Gender, Age Range, Audience Interests)
+ * - Budget & Duration
+ * - Creative Idea (Headline, Description/Primary Text)
+ * - Image Concept / Visual Embed
+ * - Call to Action
+ * - Clear action prompt (e.g. Reply YES / Reply LAUNCH)
+ */
+function buildRichMetaPreview({
+  state,
+  plan = null,
+  verifiedMetaAssets = null,
+  metaRow = null,
+  imageUrl = null,
+  header = "Campaign Strategy Locked & Ready",
+  actionText = "👉 Reply **LAUNCH** or **YES** to upload this ad creative to your Meta Ad Account and publish the campaign live!"
+}) {
+  const currentPlan = plan || state?.plan || {};
+  const adSet0 = Array.isArray(currentPlan.ad_sets) ? currentPlan.ad_sets[0] : (currentPlan.ad_sets || {});
+  const creative =
+    state?.creative ||
+    adSet0.ad_creative ||
+    adSet0.creative ||
+    adSet0.ads?.[0]?.creative ||
+    {};
+
+  const campaignName =
+    currentPlan.campaign_name ||
+    state?.campaign_name ||
+    `${state?.service || "Business Promotion"} – ${state?.location || "India"} – ${state?.objective || "OUTCOME_TRAFFIC"}`;
+
+  const adAccName = verifiedMetaAssets?.ad_account?.name || metaRow?.business_name || "";
+  const adAccId =
+    (verifiedMetaAssets?.ad_account && (verifiedMetaAssets.ad_account.account_id || verifiedMetaAssets.ad_account.id)) ||
+    metaRow?.fb_ad_account_id ||
+    "N/A";
+  const adAccDisplay = adAccName ? `${adAccName} (\`${adAccId}\`)` : `\`${adAccId}\``;
+
+  const bAmount = currentPlan.budget?.amount || currentPlan.budget_value || state?.budget_per_day || 200;
+  const bCurrency = currentPlan.budget?.currency || "INR";
+  const bType = currentPlan.budget?.type || currentPlan.budget_type || "DAILY";
+  const days = state?.total_days || 7;
+
+  const headline =
+    creative.headline ||
+    creative.title ||
+    state?.headline ||
+    `Top ${state?.service || "Professional Services"}`;
+
+  const primaryText =
+    creative.primary_text ||
+    creative.body ||
+    state?.primary_text ||
+    state?.offer ||
+    `Transform your growth with ${state?.service || "our services"} in ${state?.location || "your area"}. Contact us today!`;
+
+  const cta = creative.call_to_action || state?.call_to_action || "LEARN_MORE";
+
+  const genderRaw = (state?.target_gender || currentPlan.targeting?.genders || "all").toString();
+  const genderLabel = genderRaw === "women" ? "Women only" : genderRaw === "men" ? "Men only" : "All genders";
+  const ageMin = state?.target_age_min || adSet0.targeting?.age_min || currentPlan.targeting?.age_min || 18;
+  const ageMax = state?.target_age_max || adSet0.targeting?.age_max || currentPlan.targeting?.age_max || 65;
+  const location =
+    state?.location ||
+    (adSet0.targeting?.universal_locations && adSet0.targeting.universal_locations.join(", ")) ||
+    (currentPlan.targeting?.universal_locations && currentPlan.targeting.universal_locations.join(", ")) ||
+    "Ahmedabad";
+
+  const suggestions = adSet0.targeting?.targeting_suggestions || currentPlan.targeting?.targeting_suggestions || null;
+  const suggestionsText =
+    suggestions && ((suggestions.interests && suggestions.interests.length) || (suggestions.demographics && suggestions.demographics.length))
+      ? `\n**Target Demographics & Interests**: ${[...(suggestions.interests || []), ...(suggestions.demographics || [])].slice(0, 6).join(", ")}`
+      : "";
+
+  const offerLine = state?.offer ? `\n• **Special Offer**: "${state.offer}"` : "";
+
+  const imagePrompt =
+    creative.image_prompt ||
+    creative.imagePrompt ||
+    creative.image_generation_prompt ||
+    state?.image_prompt ||
+    `${state?.service || "Professional"} high-conversion marketing visual for ${location}. Style: modern, engaging, pristine commercial photography.`;
+
+  const rawUrl = imageUrl || state?.user_provided_image_url || state?.creative?.imageUrl || null;
+  const validImageUrl = (rawUrl && typeof rawUrl === "string" && rawUrl.startsWith("http")) ? rawUrl : null;
+  const imageMarkdown = validImageUrl ? `![Ad Creative](${validImageUrl})\n\n` : "";
+
+  return `
+✅ **${header}: ${campaignName}**
+
+${imageMarkdown}**Ad Account**: ${adAccDisplay}
+
+**Targeting**: ${location} | ${genderLabel} | Age: ${ageMin}–${ageMax}${suggestionsText}
+**Budget**: ${bAmount} ${bCurrency} (${bType}, ${days} days)${offerLine}
+
+**Creative Idea**:
+"${headline}"
+_${primaryText}_
+
+**Image Concept**:
+_${imagePrompt}_
+
+**Call to Action**: ${cta}
+
+${actionText}
+`.trim();
+}
+
 // 🧹 DATA MINIMIZATION: Strip multi-megabyte base64 image strings before saving to Supabase
 function sanitizeStateForMemory(obj) {
   if (!obj || typeof obj !== "object") return obj;
@@ -1044,13 +1155,13 @@ export default async function handler(req, res) {
           return res.status(200).json({
             ok: true,
             mode,
-            text: `✅ **Campaign Strategy Locked & Ready!**\n\n` +
-              `• **Service / Product**: ${nextState.service || "Promotional Ad"}\n` +
-              `• **Target Location**: ${nextState.location || "Ahmedabad"}\n` +
-              `• **Audience**: ${genderLabel} (Age: ${nextState.target_age_min || 18}-${nextState.target_age_max || 65})\n` +
-              `• **Daily Budget**: ${nextState.budget_per_day || 200} INR (${nextState.total_days || 7} days)${offerLine}\n` +
-              `• **Ad Creative**: High-converting visual with your branding & headline (rendered on publish)\n\n` +
-              `👉 Reply **LAUNCH** or **YES** to publish this campaign live to your Meta Ad Account!`
+            text: buildRichMetaPreview({
+              state: nextState,
+              verifiedMetaAssets,
+              metaRow,
+              header: "Campaign Strategy Locked & Ready",
+              actionText: "👉 Reply **LAUNCH** or **YES** to publish this campaign live to your Meta Ad Account!"
+            })
           });
         } else {
           // ✅ PURPOSE: allow Gemini to continue reasoning
@@ -1123,12 +1234,14 @@ export default async function handler(req, res) {
           ok: true,
           mode,
           imageUrl: providedImageUrl,
-          text: `✅ **Custom Ad Creative Linked!**\n\n` +
-            `![Ad Image](${providedImageUrl})\n\n` +
-            `• **Service/Product**: ${lockedCampaignState.service || "Promotional Ad"}\n` +
-            `• **Target Location**: ${lockedCampaignState.location || "Ahmedabad"}\n` +
-            `• **Daily Budget**: ${lockedCampaignState.budget_per_day || 200} INR (${lockedCampaignState.total_days || 7} days)\n\n` +
-            `👉 Reply **LAUNCH** or **YES** to upload this creative and publish the campaign live to your Meta Ad Account!`
+          text: buildRichMetaPreview({
+            state: confirmedState,
+            verifiedMetaAssets,
+            metaRow,
+            imageUrl: providedImageUrl,
+            header: "Custom Ad Creative Linked & Ready",
+            actionText: "👉 Reply **LAUNCH** or **YES** to upload this creative and publish the campaign live to your Meta Ad Account!"
+          })
         });
       } else if (isSkipping) {
         // ✅ User is skipping — generate instant branded visual preview in <1s (Zero Vercel Timeout!)
@@ -1151,7 +1264,7 @@ export default async function handler(req, res) {
             cta: creativeResult.call_to_action || "LEARN_MORE",
           });
 
-          if (fastVisual.ok && fastVisual.imageUrl) {
+          if (fastVisual.ok && fastVisual.imageUrl && typeof fastVisual.imageUrl === "string" && fastVisual.imageUrl.startsWith("http")) {
             console.log("✅ [Fast Visual] Generated in milliseconds:", fastVisual.imageUrl);
             previewUrl = fastVisual.imageUrl;
             storageFile = fastVisual.storageFileName || null;
@@ -1180,19 +1293,18 @@ export default async function handler(req, res) {
           session.user.email.toLowerCase()
         );
 
-        const genderLabel = lockedCampaignState.target_gender === "women" ? "Women only" : lockedCampaignState.target_gender === "men" ? "Men only" : "All genders";
-        const offerLine = lockedCampaignState.offer ? `\n• **Special Offer**: "${lockedCampaignState.offer}"` : "";
-
         return res.status(200).json({
           ok: true,
           mode,
           imageUrl: previewUrl || undefined,
-          text: (previewUrl ? `✅ **Ad Creative Ready!**\n\n![Ad Creative](${previewUrl})\n\n` : `✅ **Campaign Strategy Locked & Ready!**\n\n`) +
-            `• **Service / Product**: ${lockedCampaignState.service || "Promotional Ad"}\n` +
-            `• **Target Location**: ${lockedCampaignState.location || "Ahmedabad"}\n` +
-            `• **Audience**: ${genderLabel} (Age: ${lockedCampaignState.target_age_min || 18}-${lockedCampaignState.target_age_max || 65})\n` +
-            `• **Daily Budget**: ${lockedCampaignState.budget_per_day || 200} INR (${lockedCampaignState.total_days || 7} days)${offerLine}\n\n` +
-            `👉 Reply **LAUNCH** or **YES** to upload this ad creative to your Meta Ad Account and publish the campaign live!`
+          text: buildRichMetaPreview({
+            state: confirmedState,
+            verifiedMetaAssets,
+            metaRow,
+            imageUrl: previewUrl,
+            header: previewUrl ? "Ad Creative Ready" : "Campaign Strategy Locked & Ready",
+            actionText: "👉 Reply **LAUNCH** or **YES** to upload this ad creative to your Meta Ad Account and publish the campaign live!"
+          })
         });
       } else {
         // ❓ Unclear input — re-ask
@@ -4075,7 +4187,14 @@ Otherwise, respond with a full, clear explanation, and include example JSON only
         return res.status(200).json({
           ok: true,
           mode,
-          text: `**Plan Proposed: ${repairedState.plan.campaign_name}**\n**Ad Account ID**: \`${adAccountIdForPlan || "N/A"}\`\n\nReply **YES** to confirm and proceed.`
+          text: buildRichMetaPreview({
+            state: repairedState,
+            plan: repairedState.plan,
+            verifiedMetaAssets,
+            metaRow,
+            header: "Plan Proposed",
+            actionText: "Reply **YES** to confirm and proceed."
+          })
         });
       }
 
@@ -4154,22 +4273,18 @@ Otherwise, respond with a full, clear explanation, and include example JSON only
       if (!errorOcurred && state.stage === "IMAGE_GENERATED" && imageChoiceMadeThisTurn === true && !isResumeExecution) {
         console.log("🎨 Image ready this turn. Returning ad creative preview to user.");
         const previewUrl = state.creative?.imageUrl || "";
-        const offerText = state.offer ? `featuring your offer: **"${state.offer}"**` : "crafted for maximum conversions";
-        const feedbackText =
-          `✅ **Ad Creative Ready!**\n\n` +
-          (previewUrl ? `![Ad Creative](${previewUrl})\n\n` : "") +
-          `Your ad visual has been generated ${offerText}.\n\n` +
-          `**Campaign Summary**:\n` +
-          `- **Campaign**: ${state.plan?.campaign_name || "Meta Campaign"}\n` +
-          `- **Target Location**: ${state.location || "Ahmedabad"}\n` +
-          `- **Daily Budget**: ${state.budget_per_day || 200} INR (${state.total_days || 7} days)\n\n` +
-          `👉 Reply **LAUNCH** or **YES** to upload this ad creative to your Meta Ad Account and publish the campaign live!`;
-
         return res.status(200).json({
           ok: true,
           mode,
-          imageUrl: previewUrl,
-          text: feedbackText,
+          imageUrl: previewUrl || undefined,
+          text: buildRichMetaPreview({
+            state,
+            verifiedMetaAssets,
+            metaRow,
+            imageUrl: previewUrl,
+            header: "Ad Creative Ready",
+            actionText: "👉 Reply **LAUNCH** or **YES** to upload this ad creative to your Meta Ad Account and publish the campaign live!"
+          }),
         });
       }
 
@@ -4188,14 +4303,15 @@ Otherwise, respond with a full, clear explanation, and include example JSON only
       if (!errorOcurred && lockedCampaignState.destination !== "catalogue") {
         // 🖼️ Determine upload source: user's URL OR AI-generated base64
         const candidateImageUrl = state.user_provided_image_url || state.creative?.imageUrl || state.creative?.userProvidedImageUrl;
+        const hasUserImageUrl = !!candidateImageUrl && typeof candidateImageUrl === "string" && candidateImageUrl.startsWith("http");
         const hasAiImageBase64 = !!state.creative?.imageBase64;
-        const needsUpload = !state.image_hash && (candidateImageUrl || hasAiImageBase64);
+        const needsUpload = !state.image_hash && (hasUserImageUrl || hasAiImageBase64);
 
         if (needsUpload) {
           console.log("TRACE: IMAGE UPLOAD ATTEMPT");
           console.log("TRACE: CANDIDATE IMAGE URL =", candidateImageUrl);
           console.log("🚀 Waterfall: Uploading Image to Meta...");
-          console.log(candidateImageUrl ? "🖼️ Upload source: Image URL" : "🤖 Upload source: AI-Generated Base64");
+          console.log(hasUserImageUrl ? "🖼️ Upload source: Image URL" : "🤖 Upload source: AI-Generated Base64");
 
           try {
             const targetAdAccountId = verifiedMetaAssets?.ad_account?.id || metaRow?.fb_ad_account_id || null;
@@ -4204,8 +4320,8 @@ Otherwise, respond with a full, clear explanation, and include example JSON only
             // Build upload body: prefer user URL, fall back to base64
             const uploadBody = {
               ...(hasUserImageUrl
-                ? { imageUrl: state.creative.userProvidedImageUrl }
-                : { imageBase64: state.creative.imageBase64 }),
+                ? { imageUrl: candidateImageUrl }
+                : (hasAiImageBase64 ? { imageBase64: state.creative.imageBase64 } : {})),
               adAccountId: targetAdAccountId,
               accessToken: targetAccessToken
             };
@@ -4244,12 +4360,10 @@ Otherwise, respond with a full, clear explanation, and include example JSON only
               waterfallLog.push("✅ Step 10: Image Uploaded to Meta");
               imageUploadedThisTurn = true;
             } else {
-              errorOcurred = true;
-              stopReason = `Meta Upload Failed: ${uploadJson.message || "Unknown error"}`;
+              console.warn("⚠️ Step 10 pre-upload non-fatal notice (Railway execution engine will upload on publish):", uploadJson?.message || "Skipping pre-upload");
             }
           } catch (e) {
-            errorOcurred = true;
-            stopReason = `Meta Upload Error: ${e.message}`;
+            console.warn("⚠️ Step 10 pre-upload exception (Railway execution engine will upload on publish):", e.message);
           }
         }
       }
@@ -4865,25 +4979,14 @@ Otherwise, respond with a full, clear explanation, and include example JSON only
             const adAccId = (verifiedMetaAssets?.ad_account && (verifiedMetaAssets.ad_account.account_id || verifiedMetaAssets.ad_account.id)) || metaRow?.fb_ad_account_id || "N/A";
             const adAccDisplay = adAccName ? `${adAccName} (\`${adAccId}\`)` : `\`${adAccId}\``;
 
-            text = `
-**Plan Proposed: ${planJson.campaign_name}**
-
-**Ad Account**: ${adAccDisplay}
-
-**Targeting**: ${lockedCampaignState?.location || planJson.targeting?.universal_locations?.join(", ") || "Not set"} | ${(lockedCampaignState?.target_gender || planJson.targeting?.genders || "all").toString().charAt(0).toUpperCase() + (lockedCampaignState?.target_gender || planJson.targeting?.genders || "all").toString().slice(1)} | Age: ${planJson.targeting?.age_min || 18}-${planJson.targeting?.age_max || 65}${tStr}
-**Budget**: ${bAmount} ${bCurrency} (${bType})
-
-**Creative Idea**: 
-"${creativeTitle}"
-_${creativeBody}_
-
-**Image Concept**: 
-_${creative.image_prompt || creative.imagePrompt || "Standard ad creative based on service"}_
-
-**Call to Action**: ${creative.call_to_action || "Learn More"}
-
-Reply **YES** to confirm this plan and proceed.
-`.trim();
+            text = buildRichMetaPreview({
+              state: { ...lockedCampaignState, plan: planJson },
+              plan: planJson,
+              verifiedMetaAssets,
+              metaRow,
+              header: "Plan Proposed",
+              actionText: "Reply **YES** to confirm this plan and proceed."
+            });
 
             return res.status(200).json({ ok: true, mode, text });
           } else {
@@ -5033,7 +5136,14 @@ Reply **YES** to confirm this plan and proceed.
         return res.status(200).json({
           ok: true,
           mode,
-          text: `**Plan Proposed: ${newState.plan.campaign_name}**\nReply **YES** to confirm and proceed.`
+          text: buildRichMetaPreview({
+            state: newState,
+            plan: newState.plan,
+            verifiedMetaAssets,
+            metaRow,
+            header: "Plan Proposed",
+            actionText: "Reply **YES** to confirm this plan and proceed."
+          })
         });
       }
     }
@@ -5089,7 +5199,14 @@ Reply **YES** to confirm this plan and proceed.
           return res.status(200).json({
             ok: true,
             mode,
-            text: `**Plan Proposed: ${currentState.plan.campaign_name}**\n\nReply **YES** to confirm and proceed.`
+            text: buildRichMetaPreview({
+              state: currentState,
+              plan: currentState.plan,
+              verifiedMetaAssets,
+              metaRow,
+              header: "Plan Proposed",
+              actionText: "Reply **YES** to confirm and proceed."
+            })
           });
         }
 
