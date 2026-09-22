@@ -138,9 +138,9 @@ export default async function handler(req, res) {
     return res.status(400).json({ ok: false, message: "Meta connection not found" });
   }
 
-  const AD_ACCOUNT_ID = (meta.fb_ad_account_id ||
+  const AD_ACCOUNT_ID = (payload?.adAccountId || meta.fb_ad_account_id ||
     "").toString().replace(/^act_/, "");
-  const ACCESS_TOKEN = meta.fb_user_access_token;
+  const ACCESS_TOKEN = payload?.accessToken || meta.fb_user_access_token;
 
   if (!ACCESS_TOKEN) {
     return res.status(400).json({
@@ -148,7 +148,7 @@ export default async function handler(req, res) {
       message: "Missing Facebook user access token"
     });
   }
-  const PAGE_ID = meta.fb_page_id;
+  const PAGE_ID = payload?.pageId || meta.fb_page_id;
   const API_VERSION = "v21.0";
 
   // 1b. Identity Identification 

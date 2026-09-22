@@ -13,6 +13,11 @@ const { runSeoAutopilotCycle } = require("./lib/seo-autopilot");
 const { runShopifyAutopilotCycle, generateShopifyArticleOnDemand } = require("./lib/shopify-autopilot");
 const { generateStudioSpeech } = require("./lib/elevenlabs-service");
 const { generateSyncLabsLipSync } = require("./lib/synclabs-service");
+const {
+  generateAdGraphic,
+  uploadImageToMeta,
+  executeMetaCampaign,
+} = require("./lib/meta-campaign-service");
 
 const app = express();
 app.use(cors());
@@ -2144,6 +2149,128 @@ app.post("/autopilot/shopify/generate-article", requireAuth, async (req, res) =>
     res.json({ ok: true, generated });
   } catch (err) {
     log("AUTOPILOT", `Shopify On-Demand Generation Error: ${err.message}`);
+    res.status(500).json({ ok: false, error: err.message });
+  }
+});
+
+// -------------------------------------------------------------
+// Meta Ads Suite Offload Endpoints (Protected by WORKER_SECRET_KEY)
+// -------------------------------------------------------------
+app.post("/meta/generate-visual", requireAuth, async (req, res) => {
+  try {
+    const { prompt, service, offer, tagline, businessName } = req.body || {};
+    if (!prompt) return res.status(400).json({ ok: false, error: "Prompt is required" });
+
+    log("META_VISUAL", `Generating ad graphic for "${service || businessName}"...`);
+    const result = await generateAdGraphic({
+      openaiClient: openai,
+      supabaseClient: supabase,
+      prompt,
+      service,
+      offer,
+      tagline,
+      businessName,
+      logger: (msg) => log("META_VISUAL", msg),
+    });
+
+    res.json({ ok: true, imageUrl: result.imageUrl, storageFileName: result.storageFileName });
+  } catch (err) {
+    log("META_VISUAL", `Error generating visual: ${err.message}`);
+    res.status(500).json({ ok: false, error: err.message });
+  }
+});
+
+app.post("/meta/create-campaign", requireAuth, async (req, res) => {
+  try {
+    const {
+      adAccountId,
+      accessToken,
+      pageId,
+      payload,
+      imagePrompt,
+      service,
+      offer,
+      tagline,
+      businessName,
+      userProvidedImageUrl,
+      imageHash: existingImageHash,
+    } = req.body || {};
+
+    if (!adAccountId || !accessToken || !pageId) {
+      return res.status(400).json({ ok: false, error: "adAccountId, accessToken, and pageId are required" });
+    }
+    if (!payload || !payload.campaign_name) {
+      return res.status(400).json({ ok: false, error: "Valid campaign payload with campaign_name is required" });
+    }
+
+    log("META_CAMPAIGN", `Executing campaign "${payload.campaign_name}" on act_${adAccountId}...`);
+
+    let finalImageHash = existingImageHash || null;
+    let finalImageUrl = userProvidedImageUrl || null;
+    let ephemeralFile = null;
+
+    // 1. Resolve / Generate Image if hash not provided
+    if (!finalImageHash) {
+      if (userProvidedImageUrl) {
+        log("META_CAMPAIGN", `Uploading user-provided image: ${userProvidedImageUrl}`);
+        finalImageHash = await uploadImageToMeta({
+          adAccountId,
+          accessToken,
+          imageUrl: userProvidedImageUrl,
+          logger: (msg) => log("META_CAMPAIGN", msg),
+        });
+      } else if (imagePrompt) {
+        log("META_CAMPAIGN", `Generating visual with AI for campaign...`);
+        const graphic = await generateAdGraphic({
+          openaiClient: openai,
+          supabaseClient: supabase,
+          prompt: imagePrompt,
+          service,
+          offer,
+          tagline,
+          businessName,
+          logger: (msg) => log("META_CAMPAIGN", msg),
+        });
+
+        finalImageUrl = graphic.imageUrl;
+        ephemeralFile = graphic.storageFileName;
+
+        finalImageHash = await uploadImageToMeta({
+          adAccountId,
+          accessToken,
+          imageBuffer: graphic.imageBuffer,
+          imageUrl: graphic.imageUrl,
+          logger: (msg) => log("META_CAMPAIGN", msg),
+        });
+      }
+    }
+
+    // 2. Publish Campaign to Meta Graph API
+    const campaignResult = await executeMetaCampaign({
+      adAccountId,
+      accessToken,
+      pageId,
+      payload,
+      imageHash: finalImageHash,
+      logger: (msg) => log("META_CAMPAIGN", msg),
+    });
+
+    // 3. Ephemeral storage cleanup
+    if (ephemeralFile && supabase) {
+      try {
+        await supabase.storage.from("instagram-creatives").remove([ephemeralFile]);
+        log("META_CAMPAIGN", `Cleaned up ephemeral image: ${ephemeralFile}`);
+      } catch (_) {}
+    }
+
+    res.json({
+      ok: true,
+      ...campaignResult,
+      imageHash: finalImageHash,
+      imageUrl: finalImageUrl,
+    });
+  } catch (err) {
+    log("META_CAMPAIGN", `Campaign execution error: ${err.message}`);
     res.status(500).json({ ok: false, error: err.message });
   }
 });

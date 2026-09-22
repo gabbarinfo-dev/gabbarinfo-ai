@@ -46,14 +46,14 @@ export default async function handler(req, res) {
     });
   }
 
-  const AD_ACCOUNT_ID = (meta.fb_ad_account_id || "").toString().replace(/^act_/, "");
+  const { imageUrl, imageBase64, adAccountId: overrideAdAccountId, accessToken: overrideAccessToken } = req.body || {};
+
+  const AD_ACCOUNT_ID = (overrideAdAccountId || meta.fb_ad_account_id || "").toString().replace(/^act_/, "");
   // 🔑 FIX: Use the user's specific access token, not the system token
   // This ensures we have the correct permissions to access the specific ad account.
-  const ACCESS_TOKEN = meta.fb_user_access_token || process.env.META_SYSTEM_USER_TOKEN;
+  const ACCESS_TOKEN = overrideAccessToken || meta.fb_user_access_token || process.env.META_SYSTEM_USER_TOKEN;
 
   try {
-    const { imageUrl, imageBase64 } = req.body || {};
-
     if (!imageUrl && !imageBase64) {
       return res.status(400).json({
         ok: false,

@@ -19,10 +19,9 @@ import { executeInstagramPost } from "../../../lib/execute-instagram-post";
 import { executeFacebookPost } from "../../../lib/execute-facebook-post";
 import { normalizeImageUrl } from "../../../lib/normalize-image-url";
 import { creativeEntry } from "../../../lib/instagram/creative-entry";
-import { clearCreativeState } from "../../../lib/instagram/creative-memory";
 import { processMetaAdImage } from "../../../lib/meta/process-meta-image";
-import { createOrResolveProductSet } from "../../../lib/meta/product-sets";
-import { generatePlatformGraphic } from "../../../lib/services/image-service";
+import { generatePlatformGraphic, cleanupEphemeralImage } from "../../../lib/services/image-service";
+import { dispatchMetaCampaignToRailway, dispatchMetaVisualToRailway } from "../../../lib/railway/dispatch-meta-campaign";
 import {
   cleanCustomerId,
   getAccountHierarchy,
@@ -61,7 +60,6 @@ const GEMINI_API_KEY = process.env.GEMINI_API_KEY;
 const GEMINI_MODEL = process.env.GEMINI_MODEL || "gemini-1.5-flash";
 
 let genAI = null;
-let __currentEmail = null;
 if (GEMINI_API_KEY) {
   genAI = new GoogleGenerativeAI(GEMINI_API_KEY);
 } else {
@@ -81,13 +79,92 @@ async function parseResponseSafe(resp) {
   }
 }
 
+// 🧹 DATA MINIMIZATION: Strip multi-megabyte base64 image strings before saving to Supabase
+function sanitizeStateForMemory(obj) {
+  if (!obj || typeof obj !== "object") return obj;
+  try {
+    const copy = JSON.parse(JSON.stringify(obj));
+    if (copy.campaign_state?.creative) {
+      delete copy.campaign_state.creative.imageBase64;
+    }
+    if (copy.creative) {
+      delete copy.creative.imageBase64;
+    }
+    return copy;
+  } catch (_) {
+    return obj;
+  }
+}
+
+// 🧹 AUTO-PURGE: Delete incomplete or abandoned campaign state & ephemeral storage files
+async function purgeIncompleteCampaign(userEmail, businessId) {
+  if (!userEmail) return;
+  try {
+    const { data: existing } = await supabase
+      .from("agent_memory")
+      .select("content")
+      .eq("email", userEmail)
+      .eq("memory_type", "client")
+      .maybeSingle();
+
+    if (existing?.content) {
+      const content = typeof existing.content === "string" ? JSON.parse(existing.content) : existing.content;
+      const bAnswers = content.business_answers || {};
+      const targetState = bAnswers[businessId]?.campaign_state || bAnswers["default_business"]?.campaign_state || content.campaign_state;
+      
+      const storageFile = targetState?.storageFileName || targetState?.creative?.storageFileName;
+      if (storageFile) {
+        cleanupEphemeralImage(storageFile).catch(() => {});
+      }
+
+      if (content.business_answers) {
+        for (const k of Object.keys(content.business_answers)) {
+          if (content.business_answers[k]) {
+            delete content.business_answers[k].campaign_state;
+          }
+        }
+      }
+      delete content.campaign_state;
+
+      await supabase
+        .from("agent_memory")
+        .update({ content: JSON.stringify(content), updated_at: new Date().toISOString() })
+        .eq("email", userEmail)
+        .eq("memory_type", "client");
+      console.log(`🧹 [Auto-Purge] Incomplete campaign wiped cleanly from Supabase for ${userEmail}`);
+    }
+  } catch (err) {
+    console.warn("⚠️ purgeIncompleteCampaign warning:", err.message);
+  }
+}
+
+// 🎉 AUTO-DELETE: Remove campaign data and ephemeral image from Supabase on successful publish
+async function purgePublishedCampaign(userEmail, businessId, storageFile = null) {
+  if (!userEmail) return;
+  try {
+    if (storageFile) {
+      await cleanupEphemeralImage(storageFile);
+    }
+    await supabase
+      .from("agent_memory")
+      .delete()
+      .eq("email", userEmail)
+      .eq("memory_type", "client");
+    console.log(`🎉 [Auto-Delete] Published campaign completely removed from Supabase for ${userEmail}`);
+  } catch (err) {
+    console.warn("⚠️ purgePublishedCampaign warning:", err.message);
+  }
+}
+
 async function saveAnswerMemory(baseUrl, business_id, answers, emailOverride = null) {
-  const targetEmail = emailOverride || __currentEmail;
+  const targetEmail = emailOverride;
   if (!targetEmail) {
     console.error("❌ saveAnswerMemory: No target email available!");
     return;
   }
 
+  // Sanitize to strip massive base64 image strings (keeps Supabase rows lean < 2KB)
+  const cleanAnswers = sanitizeStateForMemory(answers);
   console.log(`💾 saveAnswerMemory: Saving for ${business_id} (Email: ${targetEmail})`);
 
   // Direct Supabase Write (Robust & Faster than internal fetch)
@@ -107,40 +184,38 @@ async function saveAnswerMemory(baseUrl, business_id, answers, emailOverride = n
     }
 
     content.business_answers = content.business_answers || {};
-    content.business_answers = content.business_answers || {};
 
     // 🔒 DEEP MERGE CAMPAIGN STATE (Prevent Data Loss)
     const existingAnswers = content.business_answers[business_id] || {};
-    let finalAnswers = { ...existingAnswers, ...answers, updated_at: new Date().toISOString() };
+    let finalAnswers = { ...existingAnswers, ...cleanAnswers, updated_at: new Date().toISOString() };
 
-    if (answers.campaign_state) {
-      if (answers.campaign_state.is_reset || answers.campaign_state.plan === null) {
+    if (cleanAnswers.campaign_state) {
+      if (cleanAnswers.campaign_state.is_reset || cleanAnswers.campaign_state.plan === null) {
         console.log(`🧹 [Clean State] Resetting plan state for ${business_id}...`);
         finalAnswers.campaign_state = {
-          ...answers.campaign_state,
-          plan: answers.campaign_state.plan || null,
+          ...cleanAnswers.campaign_state,
+          plan: cleanAnswers.campaign_state.plan || null,
         };
       } else if (existingAnswers.campaign_state) {
         console.log(`🧠 [Deep Merge] Merging campaign_state for ${business_id}...`);
-        const newPlan = answers.campaign_state.plan;
+        const newPlan = cleanAnswers.campaign_state.plan;
         const oldPlan = existingAnswers.campaign_state.plan;
         const finalPlan = newPlan !== undefined ? newPlan : oldPlan;
 
         finalAnswers.campaign_state = {
           ...existingAnswers.campaign_state,
-          ...answers.campaign_state,
+          ...cleanAnswers.campaign_state,
           plan: finalPlan,
-          stage: answers.campaign_state.stage !== undefined ? answers.campaign_state.stage : existingAnswers.campaign_state.stage
+          stage: cleanAnswers.campaign_state.stage !== undefined ? cleanAnswers.campaign_state.stage : existingAnswers.campaign_state.stage
         };
       } else {
-        finalAnswers.campaign_state = answers.campaign_state;
+        finalAnswers.campaign_state = cleanAnswers.campaign_state;
       }
     }
 
     content.business_answers[business_id] = finalAnswers;
-    if (finalAnswers.campaign_state) {
-      if (!content.business_answers["default_business"]) content.business_answers["default_business"] = {};
-      content.business_answers["default_business"].campaign_state = finalAnswers.campaign_state;
+    // Mirror to default_business / top-level ONLY if this is default_business
+    if (business_id === "default_business") {
       content.campaign_state = finalAnswers.campaign_state;
     }
 
@@ -238,10 +313,10 @@ export default async function handler(req, res) {
       return res.status(401).json({ ok: false, message: "Not authenticated" });
     }
 
-    __currentEmail = session.user.email.toLowerCase();
+    const userEmail = session.user.email.toLowerCase();
 
     // 1. Server-Side Rate Limiting Gate (Max 35 requests per minute)
-    const rateCheck = checkRateLimit(__currentEmail, "AGENT_EXECUTE", 35, 60000);
+    const rateCheck = checkRateLimit(userEmail, "AGENT_EXECUTE", 35, 60000);
     if (!rateCheck.allowed) {
       return res.status(429).json({
         ok: false,
@@ -342,7 +417,7 @@ export default async function handler(req, res) {
       const { data: row } = await supabase
         .from("meta_connections")
         .select("*")
-        .eq("email", __currentEmail)
+        .eq("email", userEmail)
         .maybeSingle();
 
       metaRow = row;
@@ -395,7 +470,8 @@ export default async function handler(req, res) {
     let lockedCampaignState = null;
 
     if (isNewMetaCampaignRequest) {
-      console.log("TRACE: HARD RESET TRIGGERED - IGNORING MEMORY");
+      console.log("TRACE: HARD RESET TRIGGERED - PURGING INCOMPLETE CAMPAIGN & IGNORING MEMORY");
+      await purgeIncompleteCampaign(userEmail, effectiveBusinessId);
       const baseUrl = process.env.NEXT_PUBLIC_BASE_URL;
       const resetState = {
         is_reset: true,
@@ -467,29 +543,30 @@ export default async function handler(req, res) {
       currentState = resetState;
 
       // 💾 Save reset state and clean up all business buckets in client memory
-      if (session.user.email) {
+      if (userEmail) {
         try {
           const { data: clientMem } = await supabase
             .from("agent_memory")
             .select("content")
-            .eq("email", session.user.email.toLowerCase())
+            .eq("email", userEmail)
             .eq("memory_type", "client")
             .maybeSingle();
 
           if (clientMem?.content) {
-            const parsed = JSON.parse(clientMem.content);
+            const parsed = typeof clientMem.content === "string" ? JSON.parse(clientMem.content) : clientMem.content;
             if (parsed.business_answers) {
               for (const bKey of Object.keys(parsed.business_answers)) {
                 delete parsed.business_answers[bKey].campaign_state;
               }
               delete parsed.campaign_state;
               parsed.business_answers[effectiveBusinessId] = { campaign_state: resetState };
-              parsed.business_answers["default_business"] = { campaign_state: resetState };
-              parsed.campaign_state = resetState;
+              if (effectiveBusinessId === "default_business") {
+                parsed.campaign_state = resetState;
+              }
               await supabase
                 .from("agent_memory")
                 .update({ content: JSON.stringify(parsed), updated_at: new Date().toISOString() })
-                .eq("email", session.user.email.toLowerCase())
+                .eq("email", userEmail)
                 .eq("memory_type", "client");
             }
           }
@@ -500,7 +577,7 @@ export default async function handler(req, res) {
     }
 
     console.log("🔥 REQUEST START");
-    console.log("EMAIL:", __currentEmail);
+    console.log("EMAIL:", userEmail);
     console.log("INSTRUCTION:", instruction.substring(0, 50));
     console.log("MODE:", mode);
     console.log("COOKIES:", req.headers.cookie ? "Present" : "Missing");
@@ -2329,15 +2406,33 @@ You are in GENERIC DIGITAL MARKETING AGENT MODE.
 
     // Step 5b: Gender Targeting
     if (!isPlanProposed && mode === "meta_ads_plan" && lockedCampaignState?.location_confirmed && !lockedCampaignState?.target_gender) {
-      const input = lowerInstruction.trim();
+      // Clean input: remove UI bracket tags like [Agent • Meta Ads – Website Traffic]
+      const cleanInput = lowerInstruction.replace(/^\[.*?\]\s*/, "").trim();
       let selectedGender = null;
 
-      if (input === "1" || input.includes("women") || input.includes("female") || input.includes("ladies")) {
-        selectedGender = "women";
-      } else if (input === "2" || input.includes("men") || input.includes("male") || input.includes("gents")) {
-        selectedGender = "men";
-      } else if (input === "3" || input.includes("all") || input.includes("both") || input.includes("everyone")) {
+      // Priority 1: Check "all" / Option 3 FIRST so words like "recommended" never match "men"
+      if (
+        cleanInput === "3" ||
+        cleanInput.startsWith("3.") ||
+        cleanInput.startsWith("3 ") ||
+        /\b(all|both|everyone|any)\b/i.test(cleanInput) ||
+        cleanInput.includes("all gender")
+      ) {
         selectedGender = "all";
+      } else if (
+        cleanInput === "1" ||
+        cleanInput.startsWith("1.") ||
+        cleanInput.startsWith("1 ") ||
+        /\b(women|woman|female|ladies)\b/i.test(cleanInput)
+      ) {
+        selectedGender = "women";
+      } else if (
+        cleanInput === "2" ||
+        cleanInput.startsWith("2.") ||
+        cleanInput.startsWith("2 ") ||
+        /\b(men|man|male|gents)\b/i.test(cleanInput)
+      ) {
+        selectedGender = "men";
       }
 
       if (selectedGender) {
@@ -2384,10 +2479,17 @@ You are in GENERIC DIGITAL MARKETING AGENT MODE.
 
     // Step 5c: Age Range
     if (!isPlanProposed && mode === "meta_ads_plan" && lockedCampaignState?.target_gender && !lockedCampaignState?.age_confirmed) {
-      const input = lowerInstruction.trim();
+      const cleanInput = lowerInstruction.replace(/^\[.*?\]\s*/, "").trim();
 
       // Check for "standard" or option 1
-      if (input === "1" || input.includes("standard") || input.includes("default") || input.includes("broad")) {
+      if (
+        cleanInput === "1" ||
+        cleanInput.startsWith("1.") ||
+        cleanInput.startsWith("1 ") ||
+        cleanInput.includes("standard") ||
+        cleanInput.includes("default") ||
+        cleanInput.includes("broad")
+      ) {
         lockedCampaignState = {
           ...lockedCampaignState,
           target_age_min: 18,
@@ -2433,7 +2535,12 @@ You are in GENERIC DIGITAL MARKETING AGENT MODE.
       }
 
       // Check for "custom" or option 2
-      if (input === "2" || input.includes("custom")) {
+      if (
+        cleanInput === "2" ||
+        cleanInput.startsWith("2.") ||
+        cleanInput.startsWith("2 ") ||
+        cleanInput.includes("custom")
+      ) {
         return res.status(200).json({
           ok: true,
           mode,
@@ -2443,7 +2550,7 @@ You are in GENERIC DIGITAL MARKETING AGENT MODE.
       }
 
       // Check for a range like "25-45" or "25 to 45"
-      const rangeMatch = input.match(/(\d+)\s*[-–to]+\s*(\d+)/);
+      const rangeMatch = cleanInput.match(/(\d+)\s*[-–to]+\s*(\d+)/);
       if (rangeMatch) {
         const ageMin = Math.max(13, Math.min(65, parseInt(rangeMatch[1], 10)));
         const ageMax = Math.max(ageMin, Math.min(65, parseInt(rangeMatch[2], 10)));
@@ -4007,49 +4114,86 @@ Otherwise, respond with a full, clear explanation, and include example JSON only
             creativeResult.image_generation_prompt ||
             `${state.service} professional ad for ${state.location}. Style: clean, high-conversion, marketing photography.`;
           try {
-            console.log("🎨 Calling generatePlatformGraphic directly with prompt:", imagePrompt.substring(0, 80));
-            const imgResult = await generatePlatformGraphic({
-              prompt: imagePrompt,
-              businessId: effectiveBusinessId,
-              userEmail: __currentEmail,
-              aspectRatio: "1:1",
-              meterCredits: false,
-            });
+            let finalImageUrl = null;
+            let finalStorageFile = null;
+            let processedBase64 = null;
 
-            if (imgResult.ok && imgResult.imageBase64) {
-              // 🎨 APPLY OVERLAY: service name + tagline + offer on top of generated image
-              let processedBase64 = imgResult.imageBase64;
+            // 🚀 Try Railway offloaded visual generation first (avoids serverless limits completely)
+            if (process.env.RAILWAY_WORKER_URL) {
               try {
-                processedBase64 = await processMetaAdImage({
-                  imageBase64: imgResult.imageBase64,
+                console.log("🚀 [Railway] Offloading visual generation to Railway worker...");
+                const rwVisual = await dispatchMetaVisualToRailway({
+                  prompt: imagePrompt,
                   service: state.service || "",
                   offer: state.offer || "",
                   tagline: state.tagline || state.plan?.ad_sets?.[0]?.ad_creative?.tagline || "",
-                  businessName: autoBusinessContext?.business_name ||
-                    verifiedMetaAssets?.fb_page?.name || "",
+                  businessName: autoBusinessContext?.business_name || verifiedMetaAssets?.fb_page?.name || "",
                 });
-                console.log("[Overlay] service=", state.service, "| offer=", state.offer, "| tagline=", state.tagline || state.plan?.ad_sets?.[0]?.ad_creative?.tagline);
-                console.log("✅ Overlay applied: service=", state.service, "offer=", state.offer);
-              } catch (overlayErr) {
-                console.error("⚠️ Overlay failed, using raw image:", overlayErr.message);
+                if (rwVisual.ok && rwVisual.imageUrl) {
+                  console.log("✅ [Railway] Visual generated successfully:", rwVisual.imageUrl);
+                  finalImageUrl = rwVisual.imageUrl;
+                  finalStorageFile = rwVisual.storageFileName || null;
+                }
+              } catch (rwErr) {
+                console.warn("⚠️ [Railway] Visual dispatch error, falling back locally:", rwErr.message);
               }
+            }
 
+            // Fallback to local serverless generation if Railway is unconfigured or failed
+            if (!finalImageUrl) {
+              console.log("🎨 Calling generatePlatformGraphic directly with prompt:", imagePrompt.substring(0, 80));
+              const imgResult = await generatePlatformGraphic({
+                prompt: imagePrompt,
+                businessId: effectiveBusinessId,
+                userEmail: userEmail,
+                aspectRatio: "1:1",
+                meterCredits: false,
+              });
+
+              if (imgResult.ok && (imgResult.imageBase64 || imgResult.imageUrl)) {
+                finalImageUrl = imgResult.imageUrl || null;
+                finalStorageFile = imgResult.storageFileName || null;
+                processedBase64 = imgResult.imageBase64 || null;
+
+                if (processedBase64) {
+                  try {
+                    processedBase64 = await processMetaAdImage({
+                      imageBase64: processedBase64,
+                      service: state.service || "",
+                      offer: state.offer || "",
+                      tagline: state.tagline || state.plan?.ad_sets?.[0]?.ad_creative?.tagline || "",
+                      businessName: autoBusinessContext?.business_name ||
+                        verifiedMetaAssets?.fb_page?.name || "",
+                    });
+                    console.log("[Overlay] service=", state.service, "| offer=", state.offer);
+                  } catch (overlayErr) {
+                    console.error("⚠️ Overlay failed, using raw image:", overlayErr.message);
+                  }
+                  if (!finalImageUrl) {
+                    finalImageUrl = `data:image/jpeg;base64,${processedBase64}`;
+                  }
+                }
+              }
+            }
+
+            if (finalImageUrl || processedBase64) {
               const newCreative = {
                 ...creativeResult,
                 imageBase64: processedBase64,
-                imageUrl: imgResult.imageUrl || `data:image/jpeg;base64,${processedBase64}`
+                imageUrl: finalImageUrl,
+                storageFileName: finalStorageFile
               };
 
               // 🔒 UPDATE STATE
               state = { ...state, stage: "IMAGE_GENERATED", creative: newCreative };
               currentState = state; // Sync
 
-              // 💾 PERSIST IMMEDIATELY
+              // 💾 PERSIST IMMEDIATELY (sanitizes base64 before writing to Supabase)
               await saveAnswerMemory(
                 process.env.NEXT_PUBLIC_BASE_URL,
                 effectiveBusinessId,
                 { campaign_state: state },
-                session.user.email.toLowerCase()
+                userEmail
               );
 
               console.log("TRACE: PIPELINE STEP REPORT");
@@ -4067,6 +4211,31 @@ Otherwise, respond with a full, clear explanation, and include example JSON only
             stopReason = `Image Generation Error: ${e.message}`;
           }
         }
+      }
+
+      // 🖼️ FAST PREVIEW RETURN: Return generated ad creative preview to user immediately!
+      // This prevents long-running synchronous execution timeouts (FUNCTION_INVOCATION_TIMEOUT)
+      // and lets the user inspect the ad visual before publishing live.
+      if (!errorOcurred && state.stage === "IMAGE_GENERATED" && imageChoiceMadeThisTurn === true && !isResumeExecution) {
+        console.log("🎨 Image ready this turn. Returning ad creative preview to user.");
+        const previewUrl = state.creative?.imageUrl || "";
+        const offerText = state.offer ? `featuring your offer: **"${state.offer}"**` : "crafted for maximum conversions";
+        const feedbackText =
+          `✅ **Ad Creative Ready!**\n\n` +
+          (previewUrl ? `![Ad Creative](${previewUrl})\n\n` : "") +
+          `Your ad visual has been generated ${offerText}.\n\n` +
+          `**Campaign Summary**:\n` +
+          `- **Campaign**: ${state.plan?.campaign_name || "Meta Campaign"}\n` +
+          `- **Target Location**: ${state.location || "Ahmedabad"}\n` +
+          `- **Daily Budget**: ${state.budget_per_day || 200} INR (${state.total_days || 7} days)\n\n` +
+          `👉 Reply **LAUNCH** or **YES** to upload this ad creative to your Meta Ad Account and publish the campaign live!`;
+
+        return res.status(200).json({
+          ok: true,
+          mode,
+          imageUrl: previewUrl,
+          text: feedbackText,
+        });
       }
 
       // --- AUTO-SKIP IMAGE GENERATION FOR CATALOGUE ---
@@ -4093,15 +4262,21 @@ Otherwise, respond with a full, clear explanation, and include example JSON only
           console.log("🚀 Waterfall: Uploading Image to Meta...");
           console.log(hasUserImageUrl ? "🖼️ Upload source: User-Provided URL" : "🤖 Upload source: AI-Generated Base64");
 
-          try {
+            const targetAdAccountId = verifiedMetaAssets?.ad_account?.id || metaRow?.fb_ad_account_id || null;
+            const targetAccessToken = metaRow?.fb_user_access_token || null;
+
             // Build upload body: prefer user URL, fall back to base64
-            const uploadBody = hasUserImageUrl
-              ? { imageUrl: state.creative.userProvidedImageUrl }
-              : { imageBase64: state.creative.imageBase64 };
+            const uploadBody = {
+              ...(hasUserImageUrl
+                ? { imageUrl: state.creative.userProvidedImageUrl }
+                : { imageBase64: state.creative.imageBase64 }),
+              adAccountId: targetAdAccountId,
+              accessToken: targetAccessToken
+            };
 
             const uploadRes = await fetch(`${process.env.NEXT_PUBLIC_BASE_URL}/api/meta/upload-image`, {
               method: "POST",
-              headers: { "Content-Type": "application/json", "x-client-email": session.user.email.toLowerCase() },
+              headers: { "Content-Type": "application/json", "x-client-email": userEmail },
               body: JSON.stringify(uploadBody)
             });
             const uploadJson = await parseResponseSafe(uploadRes);
@@ -4236,42 +4411,76 @@ Otherwise, respond with a full, clear explanation, and include example JSON only
               }
             }
 
-            console.log("🧪 FINAL PAYLOAD PATH 1:", JSON.stringify(finalPayload, null, 2));
-            const execRes = await fetch(
-              `${process.env.NEXT_PUBLIC_BASE_URL}/api/meta/execute-campaign`,
-              {
-                method: "POST",
-                headers: {
-                  "Content-Type": "application/json",
-                  "x-client-email": session.user.email.toLowerCase()
-                },
-                body: JSON.stringify({
-                  platform: resolvedPlatforms,
-                  payload: finalPayload
-                })
-              }
-            );
+            finalPayload.adAccountId = targetAdAccountId;
+            finalPayload.accessToken = targetAccessToken;
+            finalPayload.pageId = verifiedMetaAssets?.fb_page?.id || metaRow?.fb_page_id || null;
 
-            const execJson = await execRes.json();
+            console.log("🧪 FINAL PAYLOAD PATH 1:", JSON.stringify(finalPayload, null, 2));
+
+            // 🚂 RAILWAY WORKER INTEGRATION: Offload heavy Meta campaign execution to Railway if configured
+            let execJson = null;
+            if (process.env.RAILWAY_WORKER_URL) {
+              console.log("🚂 Attempting Meta campaign execution via Railway Worker...");
+              try {
+                const railwayRes = await dispatchMetaCampaignToRailway({
+                  userEmail,
+                  businessId: effectiveBusinessId,
+                  adAccountId: targetAdAccountId,
+                  accessToken: targetAccessToken,
+                  pageId: verifiedMetaAssets?.fb_page?.id || metaRow?.fb_page_id || null,
+                  payload: finalPayload,
+                  imagePrompt: null, // Image already generated in Turn 1
+                  service: state.service || "",
+                  offer: state.offer || "",
+                  tagline: state.tagline || "",
+                  businessName: autoBusinessContext?.business_name || verifiedMetaAssets?.fb_page?.name || "",
+                  userProvidedImageUrl: state.creative?.userProvidedImageUrl || null,
+                  imageHash: state.image_hash || null,
+                });
+
+                if (railwayRes && railwayRes.ok && railwayRes.campaignId) {
+                  console.log("✅ Meta Campaign successfully created via Railway Worker!");
+                  execJson = {
+                    ok: true,
+                    id: railwayRes.campaignId,
+                    ad_set_id: railwayRes.adSetId,
+                    ad_id: railwayRes.adId,
+                    ...railwayRes,
+                  };
+                } else {
+                  console.warn("⚠️ Railway execution returned non-ok, falling back to local execution:", railwayRes?.error);
+                }
+              } catch (railwayErr) {
+                console.warn("⚠️ Railway worker call error, falling back to local execution:", railwayErr.message);
+              }
+            }
+
+            if (!execJson) {
+              const execRes = await fetch(
+                `${process.env.NEXT_PUBLIC_BASE_URL}/api/meta/execute-campaign`,
+                {
+                  method: "POST",
+                  headers: {
+                    "Content-Type": "application/json",
+                    "x-client-email": userEmail
+                  },
+                  body: JSON.stringify({
+                    platform: resolvedPlatforms,
+                    payload: finalPayload
+                  })
+                }
+              );
+              execJson = await execRes.json();
+            }
 
             if (execJson.ok) {
               currentState.stage = "COMPLETED";
               currentState.final_result = execJson;
               campaignExecutedThisTurn = true;
 
-              await saveAnswerMemory(
-                process.env.NEXT_PUBLIC_BASE_URL,
-                effectiveBusinessId,
-                { campaign_state: currentState },
-                session.user.email.toLowerCase()
-              );
-
-              // 🔥 DELETE AGENT MEMORY ROW AFTER SUCCESS
-              await supabase
-                .from("agent_memory")
-                .delete()
-                .eq("email", session.user.email.toLowerCase())
-                .eq("memory_type", "client");
+              // 🔥 AUTO-DELETE PUBLISHED CAMPAIGN DATA AND STORAGE FILES FROM SUPABASE
+              const storageFileToClean = state.creative?.storageFileName || currentState.creative?.storageFileName;
+              await purgePublishedCampaign(userEmail, effectiveBusinessId, storageFileToClean);
 
               return res.status(200).json({
                 ok: true,
@@ -5108,19 +5317,9 @@ Reply **YES** to confirm this plan and proceed.
                 currentState.final_result = execJson;
                 campaignExecutedThisTurn = true;
 
-                await saveAnswerMemory(
-                  process.env.NEXT_PUBLIC_BASE_URL,
-                  effectiveBusinessId,
-                  { campaign_state: currentState },
-                  session.user.email.toLowerCase()
-                );
-
-                // 🔥 DELETE AGENT MEMORY ROW AFTER SUCCESS
-                await supabase
-                  .from("agent_memory")
-                  .delete()
-                  .eq("email", session.user.email.toLowerCase())
-                  .eq("memory_type", "client");
+                // 🔥 AUTO-DELETE PUBLISHED CAMPAIGN DATA AND STORAGE FILES FROM SUPABASE
+                const storageFileToClean = currentState?.creative?.storageFileName || currentState?.creative?.storageFileName;
+                await purgePublishedCampaign(userEmail, effectiveBusinessId, storageFileToClean);
 
                 return res.status(200).json({
                   ok: true,
