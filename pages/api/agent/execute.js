@@ -1141,7 +1141,9 @@ export default async function handler(req, res) {
           const creativeResult = adSet0.ad_creative || adSet0.creative || adSet0.ads?.[0]?.creative || {};
 
           const imagePrompt =
+            lockedCampaignState.creative?.imagePrompt ||
             lockedCampaignState.creative?.image_prompt ||
+            creativeResult.imagePrompt ||
             creativeResult.image_prompt ||
             creativeResult.image_generation_prompt ||
             `${lockedCampaignState.service} professional ad for ${lockedCampaignState.location}. Style: clean, high-conversion, marketing photography.`;
@@ -4383,8 +4385,10 @@ Otherwise, respond with a full, clear explanation, and include example JSON only
                   pageId: targetPageId,
                   payload: finalPayload,
                   imagePrompt:
+                    state.creative?.imagePrompt ||
                     state.creative?.image_prompt ||
                     state.creative?.image_generation_prompt ||
+                    state.plan?.ad_sets?.[0]?.ad_creative?.imagePrompt ||
                     state.plan?.ad_sets?.[0]?.ad_creative?.image_prompt ||
                     `${state.service || "Professional"} ad for ${state.location || "target audience"}. Style: clean, high-conversion, marketing photography.`,
                   service: state.service || "",
