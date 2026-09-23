@@ -46,6 +46,50 @@ function isLegitimateService(serviceName) {
   return true;
 }
 
+function sanitizeAndInterpolateSocialCaption(rawCaption, { website = "", phone = "", businessName = "" } = {}) {
+  if (!rawCaption) return "";
+  let text = rawCaption;
+
+  // 1. Replace website placeholders
+  const cleanWebsite = (website || "").trim().replace(/\/$/, "");
+  const websiteRegex = /\[(?:Insert\s+|Your\s+)?Website(?:\s+Link)?\]|\[(?:Insert\s+)?(?:Shop|Store|Product)\s+Link\]|\[(?:Insert\s+)?Link\]|\[Website\s+URL\]/gi;
+  if (cleanWebsite) {
+    text = text.replace(websiteRegex, cleanWebsite);
+  } else {
+    text = text.replace(websiteRegex, "our official website");
+  }
+
+  // 2. Replace contact info / phone placeholders
+  const cleanPhone = (phone || "").trim();
+  const phoneRegex = /\[(?:Insert\s+|Your\s+)?Contact(?:\s+Info)?\]|\[(?:Insert\s+|Your\s+)?Phone(?:\s+Number)?\]|\[Phone\]|\[Contact\]/gi;
+  if (cleanPhone) {
+    text = text.replace(phoneRegex, cleanPhone);
+  } else {
+    // If no phone available, replace "📞 [Your Contact Info]" or similar with a DM invitation
+    text = text.replace(/(?:📞|☎️|📱)\s*\[(?:Insert\s+|Your\s+)?(?:Contact|Phone)[^\]]*\]/gi, "💬 Send us a DM to connect!");
+    text = text.replace(phoneRegex, "DM us directly");
+  }
+
+  // 3. Replace business name / brand placeholders
+  text = text.replace(/\[(?:Business\s+Name|Brand\s+Name|Company\s+Name)\]/gi, businessName || "");
+
+  // 4. Final safety sweep: remove any lingering bracketed tokens [ ... ]
+  text = text.replace(/\[[A-Za-z0-9\s_–—\-:]{2,50}\]/g, "");
+
+  // 5. Clean up any trailing empty lines or dangling emojis left behind
+  text = text
+    .split("\n")
+    .map(line => line.trimEnd())
+    .filter((line) => {
+      // Don't keep a line that only has an emoji/colon with no content
+      if (/^(?:📞|☎️|🌐|🔗|👉)\s*[:\-–]?\s*$/.test(line.trim())) return false;
+      return true;
+    })
+    .join("\n");
+
+  return text.trim();
+}
+
 function getCreativeArchetypes(service, industry) {
   const s = service || "Professional Services";
   const ind = industry || "Commercial Solutions";
@@ -250,105 +294,7 @@ async function runSocialAutopilotCycle({ supabase, openai, force = false, logger
 
       const businessIndustry = config.industry || businessName || "Commercial Services";
 
-      // 3. Generate Caption & Topic Hook via OpenAI / LLM
-      const topicHooks = [
-        `Are you getting the full commercial return you deserve from your ${activeService}?`,
-        `How premier ${businessIndustry} standards unlock greater reliability and growth`,
-        `The difference between ordinary providers and industry leaders in ${activeService}`,
-        `3 proven principles that elevate ${activeService} to the highest professional standard`,
-        `Why excellence and consistency in ${activeService} create lasting customer loyalty`
-      ];
-      const selectedHook = topicHooks[Math.floor(Math.random() * topicHooks.length)];
-      const topicTitle = `${activeService}: Elevating Your Brand with Industry Excellence`;
-
-      logger(`[Social Autopilot] Generating caption for "${activeService}"...`);
-      const targetLocations = (config.targetLocations || config.targetMarket || "").trim();
-      let captionText = "";
-      try {
-        const chatRes = await openai.chat.completions.create({
-          model: "gpt-4o-mini",
-          messages: [
-            {
-              role: "system",
-              content: `You are an elite direct-response commercial copywriter representing "${businessName}", an industry leader in ${businessIndustry}. Write compelling, authoritative, high-converting social media copy with clean formatting and strategic hashtags.${targetLocations ? ` You are specifically targeting clients and decision-makers in: ${targetLocations}. Reflect the regional business tone, commercial context, and market speed of these locations.` : ""}`
-            },
-            {
-              role: "user",
-              content: `Write an engaging commercial social media post promoting "${activeService}" for "${businessName}".
-Industry: "${businessIndustry}"
-Hook: "${selectedHook}"
-${targetLocations ? `Target Geographic Markets: "${targetLocations}" (Tailor the hook and message to resonate strongly with customers and decision-makers in ${targetLocations})` : ""}
-Include 3-4 bullet benefits, a strong call to action, and 6-8 relevant hashtags${targetLocations ? ` (including geo-targeted hashtags for ${targetLocations})` : ""}.`
-            }
-          ],
-          temperature: 0.7,
-        });
-        captionText = chatRes.choices[0]?.message?.content?.trim();
-      } catch (chatErr) {
-        logger("[Social Autopilot] Caption generation fallback:", chatErr.message);
-        const geoHashtags = targetLocations
-          ? " " + targetLocations.split(",").map((l) => `#${l.trim().replace(/[^a-zA-Z0-9]/g, "")}`).filter(h => h.length > 2).slice(0, 3).join(" ")
-          : "";
-        captionText = `📢 ${selectedHook}\n\nAt ${businessName}, our ${activeService} solutions are built to deliver uncompromised quality, measurable outcomes, and lasting peace of mind.${targetLocations ? ` Proudly serving clients across ${targetLocations}.` : ""}\n\n👉 Send us a message or visit our website to get started!\n\n#${activeService.replace(/[^a-zA-Z0-9]/g, "")} #${businessIndustry.replace(/[^a-zA-Z0-9]/g, "")} #${businessName.replace(/[^a-zA-Z0-9]/g, "")}${geoHashtags}`;
-      }
-
-      // 4. Generate Bespoke 3D Poster via gpt-image-2 (ZERO STOCK PHOTOS)
-      logger(`[Social Autopilot] Generating commercial ad visual for "${activeService}"...`);
-      const graphicPrompt = buildGraphicPrompt(businessName, activeService, businessIndustry, selectedHook, topicTitle);
-
-      const candidateModels = ["gpt-image-2", "gpt-image-2-2026-04-21", "gpt-image-1.5"];
-      let imageBuffer = null;
-      let modelUsed = null;
-
-      for (const modelName of candidateModels) {
-        try {
-          logger(`[Social Autopilot] Attempting visual generation with ${modelName}...`);
-          const imgRes = await openai.images.generate({
-            model: modelName,
-            prompt: graphicPrompt,
-            size: "1024x1024",
-          });
-
-          if (imgRes.data?.[0]?.b64_json) {
-            imageBuffer = Buffer.from(imgRes.data[0].b64_json, "base64");
-          } else if (imgRes.data?.[0]?.url) {
-            const fetchRes = await fetch(imgRes.data[0].url);
-            imageBuffer = Buffer.from(await fetchRes.arrayBuffer());
-          }
-
-          if (imageBuffer && imageBuffer.length > 0) {
-            modelUsed = modelName;
-            logger(`[Social Autopilot] Successfully generated visual via ${modelName} (${imageBuffer.length} bytes)`);
-            break;
-          }
-        } catch (imgErr) {
-          logger(`[Social Autopilot] ${modelName} generation failed (${imgErr.message}), trying next approved model...`);
-        }
-      }
-
-      if (!imageBuffer) {
-        logger(`[Social Autopilot] CRITICAL: All approved gpt-image models failed. Aborting post for ${item.email} rather than using degraded models.`);
-        results.push({ email: item.email, status: "skipped", reason: "image_generation_failed" });
-        continue;
-      }
-
-      // 5. Upload image to Supabase storage ('instagram-creatives')
-      const fileName = `social_ai_${Date.now()}_${Math.random().toString(36).substring(7)}.png`;
-      const { data: uploadData, error: uploadErr } = await supabase.storage
-        .from("instagram-creatives")
-        .upload(fileName, imageBuffer, { contentType: "image/png", upsert: true });
-
-      if (uploadErr || !uploadData) {
-        throw new Error(`Failed to upload image to Supabase storage: ${uploadErr?.message}`);
-      }
-
-      const { data: pubUrlData } = supabase.storage
-        .from("instagram-creatives")
-        .getPublicUrl(fileName);
-      const publicImageUrl = pubUrlData.publicUrl;
-      logger(`[Social Autopilot] Public image URL ready: ${publicImageUrl}`);
-
-      // 6. Fetch User's Live Meta Connection strictly for this specific brand profile
+      // 3. Multi-Brand Meta Assets Discovery & Verification (RUN BEFORE CAPTION GENERATION)
       const rawBizKey = item.memory_type.replace(/^social_autopilot_/, "");
       let cleanBizKey = rawBizKey;
       if (cleanBizKey.toLowerCase().startsWith(item.email.toLowerCase())) {
@@ -424,7 +370,7 @@ Include 3-4 bullet benefits, a strong call to action, and 6-8 relevant hashtags$
       if (!activeMeta && brandProfiles.length === 0) {
         const { data: metaConn, error: metaErr } = await supabase
           .from("meta_connections")
-          .select("fb_page_id, fb_page_access_token, fb_user_access_token, ig_business_id, instagram_actor_id")
+          .select("fb_page_id, fb_page_access_token, fb_user_access_token, ig_business_id, instagram_actor_id, business_website, business_phone, website_url, email, business_name")
           .ilike("email", item.email.trim())
           .order("updated_at", { ascending: false })
           .limit(1)
@@ -436,8 +382,150 @@ Include 3-4 bullet benefits, a strong call to action, and 6-8 relevant hashtags$
         activeMeta = metaConn;
       }
 
+      // Resolve actual business details to avoid placeholder tokens
+      const resolvedWebsite = (
+        matchedBrand?.websiteUrl ||
+        matchedBrand?.website ||
+        config.websiteUrl ||
+        config.website ||
+        config.siteUrl ||
+        activeMeta?.business_website ||
+        activeMeta?.website_url ||
+        siteUrl ||
+        ""
+      ).replace(/\/$/, "");
+
+      const resolvedPhone = (
+        matchedBrand?.phone ||
+        matchedBrand?.business_phone ||
+        config.phone ||
+        config.contactNumber ||
+        activeMeta?.business_phone ||
+        ""
+      ).trim();
+
+      const resolvedBrandName = matchedBrand?.businessName || config.businessName || businessName || "GABBARinfo";
+
+      // 4. Generate Caption & Topic Hook via OpenAI / LLM
+      const topicHooks = [
+        `Are you getting the full commercial return you deserve from your ${activeService}?`,
+        `How premier ${businessIndustry} standards unlock greater reliability and growth`,
+        `The difference between ordinary providers and industry leaders in ${activeService}`,
+        `3 proven principles that elevate ${activeService} to the highest professional standard`,
+        `Why excellence and consistency in ${activeService} create lasting customer loyalty`
+      ];
+      const selectedHook = topicHooks[Math.floor(Math.random() * topicHooks.length)];
+      const topicTitle = `${activeService}: Elevating Your Brand with Industry Excellence`;
+
+      logger(`[Social Autopilot] Generating caption for "${activeService}" (${resolvedBrandName})...`);
+      const targetLocations = (config.targetLocations || config.targetMarket || "").trim();
+      let captionText = "";
+      try {
+        const ctaDirectives = [
+          resolvedWebsite ? `- Exact Business Website URL to include in the CTA: ${resolvedWebsite}` : "",
+          resolvedPhone ? `- Exact Phone / Contact number to include: ${resolvedPhone}` : "",
+          !resolvedPhone ? `- No phone number provided: Direct audience to "Send us a direct message", "DM us", or "Visit ${resolvedWebsite || 'our website'}" (NEVER ask them to call or invent phone placeholders).` : "",
+          `- STRICT ANTI-PLACEHOLDER INSTRUCTION: NEVER write bracketed placeholder tokens like [Your Contact Info], [Your Website Link], [Insert Website Link], [Insert Link], [Phone], [Website], etc. Under NO circumstance should any square brackets [] appear anywhere in the output!`,
+          resolvedWebsite ? `- When writing the call to action, provide the real URL: ${resolvedWebsite}` : `- When writing the call to action, invite them to send a direct message.`
+        ].filter(Boolean).join("\n");
+
+        const chatRes = await openai.chat.completions.create({
+          model: "gpt-4o-mini",
+          messages: [
+            {
+              role: "system",
+              content: `You are an elite direct-response commercial copywriter representing "${resolvedBrandName}", an industry leader in ${businessIndustry}. Write compelling, authoritative, high-converting social media copy with clean formatting and strategic hashtags.${targetLocations ? ` You are specifically targeting clients and decision-makers in: ${targetLocations}. Reflect the regional business tone, commercial context, and market speed of these locations.` : ""}`
+            },
+            {
+              role: "user",
+              content: `Write an engaging commercial social media post promoting "${activeService}" for "${resolvedBrandName}".
+Industry: "${businessIndustry}"
+Hook: "${selectedHook}"
+${targetLocations ? `Target Geographic Markets: "${targetLocations}" (Tailor the hook and message to resonate strongly with customers and decision-makers in ${targetLocations})` : ""}
+Include 3-4 bullet benefits, a strong call to action, and 6-8 relevant hashtags${targetLocations ? ` (including geo-targeted hashtags for ${targetLocations})` : ""}.
+
+CALL TO ACTION & CONTACT MANDATES:
+${ctaDirectives}`
+            }
+          ],
+          temperature: 0.7,
+        });
+        captionText = chatRes.choices[0]?.message?.content?.trim();
+      } catch (chatErr) {
+        logger("[Social Autopilot] Caption generation fallback:", chatErr.message);
+        const geoHashtags = targetLocations
+          ? " " + targetLocations.split(",").map((l) => `#${l.trim().replace(/[^a-zA-Z0-9]/g, "")}`).filter(h => h.length > 2).slice(0, 3).join(" ")
+          : "";
+        const fallbackCta = resolvedWebsite ? `Visit our website at ${resolvedWebsite} to get started!` : "Send us a direct message to get started!";
+        captionText = `📢 ${selectedHook}\n\nAt ${resolvedBrandName}, our ${activeService} solutions are built to deliver uncompromised quality, measurable outcomes, and lasting peace of mind.${targetLocations ? ` Proudly serving clients across ${targetLocations}.` : ""}\n\n👉 ${fallbackCta}\n\n#${activeService.replace(/[^a-zA-Z0-9]/g, "")} #${businessIndustry.replace(/[^a-zA-Z0-9]/g, "")} #${resolvedBrandName.replace(/[^a-zA-Z0-9]/g, "")}${geoHashtags}`;
+      }
+
+      // Guarantee ZERO bracket placeholders appear on live posts
+      captionText = sanitizeAndInterpolateSocialCaption(captionText, {
+        website: resolvedWebsite,
+        phone: resolvedPhone,
+        businessName: resolvedBrandName,
+      });
+
+      // 5. Generate Bespoke 3D Poster via gpt-image-2 (ZERO STOCK PHOTOS)
+      logger(`[Social Autopilot] Generating commercial ad visual for "${activeService}"...`);
+      const graphicPrompt = buildGraphicPrompt(resolvedBrandName, activeService, businessIndustry, selectedHook, topicTitle);
+
+      const candidateModels = ["gpt-image-2", "gpt-image-2-2026-04-21", "gpt-image-1.5"];
+      let imageBuffer = null;
+      let modelUsed = null;
+
+      for (const modelName of candidateModels) {
+        try {
+          logger(`[Social Autopilot] Attempting visual generation with ${modelName}...`);
+          const imgRes = await openai.images.generate({
+            model: modelName,
+            prompt: graphicPrompt,
+            size: "1024x1024",
+          });
+
+          if (imgRes.data?.[0]?.b64_json) {
+            imageBuffer = Buffer.from(imgRes.data[0].b64_json, "base64");
+          } else if (imgRes.data?.[0]?.url) {
+            const fetchRes = await fetch(imgRes.data[0].url);
+            imageBuffer = Buffer.from(await fetchRes.arrayBuffer());
+          }
+
+          if (imageBuffer && imageBuffer.length > 0) {
+            modelUsed = modelName;
+            logger(`[Social Autopilot] Successfully generated visual via ${modelName} (${imageBuffer.length} bytes)`);
+            break;
+          }
+        } catch (imgErr) {
+          logger(`[Social Autopilot] ${modelName} generation failed (${imgErr.message}), trying next approved model...`);
+        }
+      }
+
+      if (!imageBuffer) {
+        logger(`[Social Autopilot] CRITICAL: All approved gpt-image models failed. Aborting post for ${item.email} rather than using degraded models.`);
+        results.push({ email: item.email, status: "skipped", reason: "image_generation_failed" });
+        continue;
+      }
+
+      // 6. Upload image to Supabase storage ('instagram-creatives')
+      const fileName = `social_ai_${Date.now()}_${Math.random().toString(36).substring(7)}.png`;
+      const { data: uploadData, error: uploadErr } = await supabase.storage
+        .from("instagram-creatives")
+        .upload(fileName, imageBuffer, { contentType: "image/png", upsert: true });
+
+      if (uploadErr || !uploadData) {
+        throw new Error(`Failed to upload image to Supabase storage: ${uploadErr?.message}`);
+      }
+
+      const { data: pubUrlData } = supabase.storage
+        .from("instagram-creatives")
+        .getPublicUrl(fileName);
+      const publicImageUrl = pubUrlData.publicUrl;
+      logger(`[Social Autopilot] Public image URL ready: ${publicImageUrl}`);
+
+      // 7. Publish to Facebook and Instagram with Verified Meta Connection
       if (!activeMeta) {
-        logger(`[Social Autopilot] Social syndication skipped: Brand "${businessName || cleanBizKey}" has no verified paired Meta assets.`);
+        logger(`[Social Autopilot] Social syndication skipped: Brand "${resolvedBrandName || cleanBizKey}" has no verified paired Meta assets.`);
       }
 
       const published = {};
@@ -447,7 +535,7 @@ Include 3-4 bullet benefits, a strong call to action, and 6-8 relevant hashtags$
         let pageToken = metaConn.fb_page_access_token;
         const userToken = metaConn.fb_user_access_token;
         const pageId = metaConn.fb_page_id ? metaConn.fb_page_id.split(",")[0].trim() : null;
-        const igId = metaConn.ig_business_id || metaConn.instagram_actor_id;
+        let igId = metaConn.ig_business_id || metaConn.instagram_actor_id;
 
         // If pageToken is missing or needs refresh, exchange from userToken
         if (!pageToken && userToken && pageId) {
@@ -468,6 +556,18 @@ Include 3-4 bullet benefits, a strong call to action, and 6-8 relevant hashtags$
         }
 
         const effectiveToken = pageToken || userToken;
+
+        // Auto-resolve Instagram Business ID from Facebook Page if missing
+        if (!igId && pageId && effectiveToken) {
+          try {
+            const igLookupResp = await fetch(`https://graph.facebook.com/v21.0/${pageId}?fields=instagram_business_account&access_token=${encodeURIComponent(effectiveToken)}`);
+            const igLookupJson = await igLookupResp.json();
+            if (igLookupJson?.instagram_business_account?.id) {
+              igId = igLookupJson.instagram_business_account.id;
+              logger(`[Social Autopilot] Auto-resolved connected Instagram Business ID from Facebook Page: ${igId}`);
+            }
+          } catch (_) {}
+        }
 
         // Publish to Facebook Page
         const destination = config.destination || "BOTH";

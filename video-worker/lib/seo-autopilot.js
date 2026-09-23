@@ -158,11 +158,8 @@ function enforceSpatialLinkDistribution(contentHtml, catalogPosts = [], activeSe
     const isInternal = cleanSiteUrl && (lowerHref.includes(cleanSiteUrl) || rawHref.startsWith("/"));
     if (isInternal) {
       const normalizedHref = lowerHref.replace(/\/$/, "");
-      const isApproved = Array.from(approvedInternalUrls).some(u => normalizedHref === u || normalizedHref.endsWith(u.replace(/^https?:\/\/[^\/]+/, "")));
+      const isApproved = approvedInternalUrls.size === 0 || Array.from(approvedInternalUrls).some(u => normalizedHref === u || normalizedHref.endsWith(u.replace(/^https?:\/\/[^\/]+/, "")) || u.includes(normalizedHref));
       if (!isApproved && approvedInternalUrls.size > 0) {
-        return anchorText;
-      }
-      if (approvedInternalUrls.size === 0) {
         return anchorText;
       }
     }
@@ -178,6 +175,112 @@ function enforceSpatialLinkDistribution(contentHtml, catalogPosts = [], activeSe
   });
 
   return clean;
+}
+
+function ensureRichLinks(contentHtml, {
+  siteUrl = "",
+  catalogPosts = [],
+  industryType = "GENERAL_BUSINESS",
+  activeService = "Our Services",
+  businessName = "Our Company"
+} = {}) {
+  if (!contentHtml) return contentHtml;
+  let html = contentHtml;
+
+  const cleanSiteUrl = (siteUrl || "").toLowerCase().replace(/^https?:\/\//, "").replace(/\/$/, "");
+
+  // 1. Detect existing internal & external links
+  const linkMatches = html.match(/<a\s+[^>]*href=["'](?:https?:\/\/[^"']*|\/[^"']*)["'][^>]*>[\s\S]*?<\/a>/gi) || [];
+  let existingInternalCount = 0;
+  let existingExternalCount = 0;
+
+  linkMatches.forEach((tag) => {
+    const hrefMatch = tag.match(/href=["']([^"']+)["']/i);
+    if (hrefMatch && hrefMatch[1]) {
+      const href = hrefMatch[1].toLowerCase();
+      if ((cleanSiteUrl && href.includes(cleanSiteUrl)) || href.startsWith("/")) {
+        existingInternalCount++;
+      } else if (href.startsWith("http")) {
+        existingExternalCount++;
+      }
+    }
+  });
+
+  // 2. If fewer than 2 internal links, inject contextual internal links from catalogPosts
+  if (existingInternalCount < 2 && Array.isArray(catalogPosts) && catalogPosts.length > 0) {
+    const validTargets = catalogPosts.filter(p => p && p.link && p.title);
+    if (validTargets.length > 0) {
+      const pMatches = [...html.matchAll(/<p>([\s\S]*?)<\/p>/gi)];
+      let injected = existingInternalCount;
+      for (let i = 1; i < pMatches.length && injected < 2; i++) {
+        const fullP = pMatches[i][0];
+        const innerP = pMatches[i][1];
+        if (!innerP.includes("<a ") && innerP.length > 100 && !innerP.includes("Disclaimer")) {
+          const targetItem = validTargets[injected % validTargets.length];
+          const anchorPhrase = targetItem.title.replace(/<[^>]+>/g, "").trim();
+          const linkHtml = ` For an in-depth perspective on related execution, explore our comprehensive guide on <a href="${targetItem.link}" style="color: #f59e0b; font-weight: 700; text-decoration: underline;">${anchorPhrase}</a>.`;
+          html = html.replace(fullP, `<p>${innerP.trim()}${linkHtml}</p>`);
+          injected++;
+        }
+      }
+    }
+  }
+
+  // 3. Authority external link sources by industry
+  const authorityLibrary = {
+    DIGITAL_TECH_MARKETING: [
+      { name: "Google Search Central documentation", url: "https://developers.google.com/search/docs" },
+      { name: "Search Engine Journal best practices", url: "https://www.searchenginejournal.com" },
+      { name: "Moz SEO Learning Center", url: "https://moz.com/learn/seo" },
+      { name: "W3C Web Standards", url: "https://www.w3.org" }
+    ],
+    ASTROLOGY_SPIRITUALITY: [
+      { name: "Encyclopaedia Britannica historical research", url: "https://www.britannica.com" },
+      { name: "Stanford Encyclopedia of Philosophy", url: "https://plato.stanford.edu" },
+      { name: "Library of Congress archival collections", url: "https://www.loc.gov" }
+    ],
+    FASHION_RETAIL: [
+      { name: "National Retail Federation analysis", url: "https://nrf.com" },
+      { name: "Vogue luxury fashion industry reporting", url: "https://www.vogue.com" },
+      { name: "Brides editorial style guide", url: "https://www.brides.com" },
+      { name: "Statista consumer market insights", url: "https://www.statista.com" }
+    ],
+    HEALTHCARE_WELLNESS: [
+      { name: "World Health Organization standards", url: "https://www.who.int" },
+      { name: "PubMed Central scientific studies", url: "https://pubmed.ncbi.nlm.nih.gov" },
+      { name: "Mayo Clinic health and wellness guidance", url: "https://www.mayoclinic.org" }
+    ],
+    LEGAL_PROFESSIONAL: [
+      { name: "American Bar Association legal frameworks", url: "https://www.americanbar.org" },
+      { name: "Bloomberg Law business insights", url: "https://news.bloomberglaw.com" },
+      { name: "Harvard Law School legal commentary", url: "https://hls.harvard.edu" }
+    ],
+    GENERAL_BUSINESS: [
+      { name: "Harvard Business Review strategic analysis", url: "https://hbr.org" },
+      { name: "Statista commercial intelligence", url: "https://www.statista.com" },
+      { name: "Forbes leadership insights", url: "https://www.forbes.com" }
+    ]
+  };
+
+  const selectedAuthorities = authorityLibrary[industryType] || authorityLibrary.GENERAL_BUSINESS;
+
+  // 4. If fewer than 3 external links, inject authentic topic-relevant authority citations
+  if (existingExternalCount < 3) {
+    const pMatches = [...html.matchAll(/<p>([\s\S]*?)<\/p>/gi)];
+    let injected = existingExternalCount;
+    for (let i = 2; i < pMatches.length && injected < 3; i++) {
+      const fullP = pMatches[i][0];
+      const innerP = pMatches[i][1];
+      if (!innerP.includes('rel="noopener') && innerP.length > 120 && !innerP.includes("Disclaimer")) {
+        const auth = selectedAuthorities[injected % selectedAuthorities.length];
+        const citationHtml = ` Industry benchmark data and comparative frameworks from <a href="${auth.url}" target="_blank" rel="noopener noreferrer" style="color: #f59e0b; font-weight: 700; text-decoration: underline;">${auth.name}</a> reaffirm the critical value of systematic execution in modern environments.`;
+        html = html.replace(fullP, `<p>${innerP.trim()}${citationHtml}</p>`);
+        injected++;
+      }
+    }
+  }
+
+  return html;
 }
 
 async function runSeoAutopilotCycle({ supabase, openai, force = false, logger = console.log }) {
@@ -372,9 +475,17 @@ async function runSeoAutopilotCycle({ supabase, openai, force = false, logger = 
       let existingPublishedPosts = [];
       let existingPublishedPages = [];
       try {
+        const wpReqHeaders = {
+          Accept: "application/json",
+          "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36 GabbarInfo/1.0",
+        };
+        if (wpApiKey) {
+          wpReqHeaders.Authorization = `Bearer ${wpApiKey}`;
+        }
+
         const [postsResp, pagesResp] = await Promise.all([
-          fetch(`${siteUrl}/wp-json/wp/v2/posts?per_page=15&_fields=id,title,slug,link`, { headers: { Accept: "application/json" } }),
-          fetch(`${siteUrl}/wp-json/wp/v2/pages?per_page=10&_fields=id,title,slug,link`, { headers: { Accept: "application/json" } })
+          fetch(`${siteUrl}/wp-json/wp/v2/posts?per_page=20&_fields=id,title,slug,link`, { headers: wpReqHeaders }),
+          fetch(`${siteUrl}/wp-json/wp/v2/pages?per_page=15&_fields=id,title,slug,link`, { headers: wpReqHeaders })
         ]);
         if (postsResp.ok) {
           const rawPosts = await postsResp.json();
@@ -402,10 +513,21 @@ async function runSeoAutopilotCycle({ supabase, openai, force = false, logger = 
         logger(`[SEO Autopilot] Note: Could not fetch existing published content (${e.message}).`);
       }
 
-      // Filter out off-topic / junk articles if any
+      // Filter out off-topic / junk articles and utility pages
       const offTopicFilter = /santa|christmas|herbal-beauty/i;
       const relevantPublishedPosts = existingPublishedPosts.filter(p => !offTopicFilter.test(p.slug || p.title));
-      const selectedInternalPosts = relevantPublishedPosts.length > 0 ? relevantPublishedPosts.slice(0, 8) : existingPublishedPosts.slice(0, 8);
+      const relevantPublishedPages = existingPublishedPages.filter(p => !/sample-page|privacy|terms|cart|checkout|my-account/i.test(p.slug || p.title));
+
+      let candidateInternalLinks = [...relevantPublishedPosts, ...relevantPublishedPages];
+      if (candidateInternalLinks.length === 0 && siteUrl) {
+        candidateInternalLinks = [
+          { title: `${businessName} Core Services`, link: `${siteUrl}/services/`, slug: "services" },
+          { title: `${businessName} Official Homepage`, link: `${siteUrl}/`, slug: "" },
+          { title: `Contact ${businessName}`, link: `${siteUrl}/contact/`, slug: "contact" },
+          { title: `About ${businessName}`, link: `${siteUrl}/about/`, slug: "about" },
+        ];
+      }
+      const selectedInternalPosts = candidateInternalLinks.slice(0, 10);
 
       // 5. Generate Full SEO Article (STRICT 1,650+ words, 10 structured sections) via GPT-4o
       logger(`[SEO Autopilot] Generating exhaustive 1,650+ word SEO guide for "${activeService}" (${businessName})...`);
@@ -438,38 +560,52 @@ async function runSeoAutopilotCycle({ supabase, openai, force = false, logger = 
    - <h2>10. Conclusion and Expert Recommendations</h2> (At least 150 words summary with clear guidance and invitation to learn more at ${businessName})`;
       }
 
-      let internalLinkingPrompt = "";
-      if (selectedInternalPosts.length > 0) {
-        internalLinkingPrompt = `
+      let internalLinkingPrompt = `
 4. MANDATORY INTERNAL HYPERLINKS (STRICT SPATIAL DISTRIBUTION - ZERO LINK DUMPING):
-   CRITICAL MANDATE: You MUST embed 2 to 3 distinct internal hyperlinks to existing published blog articles from the catalog below, smoothly integrated into informative, explanatory sentences.
+   CRITICAL MANDATE: You MUST embed 2 to 3 distinct internal hyperlinks to existing published articles/pages from the approved catalog below, smoothly integrated into informative, explanatory sentences.
 
    STRICT RULES:
-   - You may ONLY link to URLs explicitly in the APPROVED CATALOG below. NEVER invent a URL, and NEVER link to any external domain as an internal link.
+   - You may ONLY link to URLs explicitly in the APPROVED CATALOG below.
    - Anchor Text Mandate: Integrate into natural, flowing sentences describing the content. NEVER use generic anchors like "Click Here" or "Website".
 
-   APPROVED CATALOG OF EXISTING PUBLISHED ARTICLES (ONLY LINK TO THESE):
+   APPROVED CATALOG OF INTERNAL PAGES & ARTICLES (LINK TO 2-3 OF THESE):
 ${selectedInternalPosts.map((p) => `   * Title: "${p.title}" | Link: <a href="${p.link}" style="color: #f59e0b; font-weight: 700; text-decoration: underline;">${p.title}</a>`).join("\n")}`;
-      } else {
-        internalLinkingPrompt = `
-4. INTERNAL HYPERLINKS INSTRUCTION:
-   CRITICAL MANDATE: This website has NO prior published blog articles in its catalog yet.
-   It is STRICTLY FORBIDDEN to invent, fabricate, or embed ANY internal hyperlinks. Do NOT create links to non-existent articles. Zero internal links permitted.`;
-      }
 
       let externalLinksPrompt = "";
       if (isAstrology) {
         externalLinksPrompt = `
 5. MANDATORY 3 TO 4 TOPIC-RELEVANT EXTERNAL AUTHORITY CITATIONS:
    CRITICAL INDUSTRY RELEVANCE MANDATE: This website is in the VEDIC ASTROLOGY, HOROSCOPY & SPIRITUALITY domain.
-   - All external citations MUST be authentic cultural, encyclopedic, historical, or astronomical authorities (e.g., Encyclopaedia Britannica [https://www.britannica.com], Stanford Encyclopedia of Philosophy [https://plato.stanford.edu], Library of Congress [https://www.loc.gov], or academic research papers on classical Sanskrit and celestial studies).
+   - All external citations MUST be authentic cultural, encyclopedic, historical, or astronomical authorities:
+     * Encyclopaedia Britannica (https://www.britannica.com)
+     * Stanford Encyclopedia of Philosophy (https://plato.stanford.edu)
+     * Library of Congress historical records (https://www.loc.gov)
    - STRICTLY FORBIDDEN: NEVER cite Search Engine Journal, Forbes, HubSpot, McKinsey, Gartner, Bain, or any digital marketing / tech / business consulting publications! This is an astrology website, NOT a marketing agency.
-   - ZERO B2B MARKETING JARGON: NEVER mention "customer acquisition costs", "omnichannel funnels", "conversion tracking", "attribution modeling", or "ROI scaling". Write with deep reverence, philosophical depth, and classical astrological precision.`;
+   - ZERO B2B MARKETING JARGON: Write with deep reverence, philosophical depth, and classical astrological precision.
+   - External Link Styling:
+     <a href="URL" target="_blank" rel="noopener noreferrer" style="color: #f59e0b; font-weight: 700; text-decoration: underline;">Descriptive Anchor Text</a>`;
       } else {
         externalLinksPrompt = `
-5. MANDATORY 4+ SCATTERED EXTERNAL AUTHORITY LINKS (STRICT SPATIAL DISTRIBUTION & TOPIC RELEVANCE):
-   You MUST embed AT LEAST 4 authoritative, topic-relevant, non-competing external links.
-   CRITICAL RELEVANCE MANDATE: All 4 external links MUST be directly relevant to "${activeService}" and the specific industry of ${businessName} (e.g., for healthcare/medical: ADA, PubMed, WHO, WebMD; for real estate: NAR, Zillow Research; for legal/finance: ABA, Bloomberg, SEC; for eCommerce/retail: NRF, Statista). NEVER use generic tech/SEO links for a healthcare, retail, astrology, or real estate business.`;
+5. MANDATORY 3 TO 4 SCATTERED EXTERNAL AUTHORITY LINKS (TOPIC RELEVANCE):
+   You MUST embed AT LEAST 3 to 4 authoritative, topic-relevant, non-competing external links into the body paragraphs.
+   Select from these trusted global authorities relevant to "${activeService}" and "${businessName}":
+   - Digital Marketing / SEO / Tech:
+     * Google Search Central (https://developers.google.com/search/docs)
+     * Search Engine Journal (https://www.searchenginejournal.com)
+     * Moz SEO Learning Center (https://moz.com/learn/seo)
+     * W3C Web Standards (https://www.w3.org)
+   - Fashion / Bridal / E-commerce / Retail:
+     * National Retail Federation (https://nrf.com)
+     * Vogue Fashion & Culture (https://www.vogue.com)
+     * Brides Magazine (https://www.brides.com)
+     * Statista Retail & Consumer Insights (https://www.statista.com)
+   - General Business / Strategy / Growth:
+     * Harvard Business Review (https://hbr.org)
+     * Statista Market Data (https://www.statista.com)
+     * Forbes Business Insights (https://www.forbes.com)
+
+   External Link Styling:
+   <a href="URL" target="_blank" rel="noopener noreferrer" style="color: #f59e0b; font-weight: 700; text-decoration: underline;">Descriptive Anchor Text</a>`;
       }
 
       const systemPrompt = `You are an elite subject matter expert and authoritative journalist writing for ${businessName} (${siteUrl}).
@@ -650,6 +786,15 @@ Format output as valid JSON:
       // Enforce spatial internal link distribution & remove any final-paragraph link dumps or hallucinated links
       finalContentHtml = enforceSpatialLinkDistribution(finalContentHtml, selectedInternalPosts, activeService, siteUrl);
 
+      // Guarantee presence of both authentic internal links and topic-relevant external authority citations
+      finalContentHtml = ensureRichLinks(finalContentHtml, {
+        siteUrl,
+        catalogPosts: selectedInternalPosts,
+        industryType,
+        activeService,
+        businessName,
+      });
+
       // Strict Content Sanity Check: Never publish an empty or truncated article
       const plainTextContent = finalContentHtml.replace(/<[^>]+>/g, "").trim();
       if (!plainTextContent || plainTextContent.length < 500 || (finalContentHtml.match(/<p/g) || []).length < 3) {
@@ -790,7 +935,7 @@ Format output as valid JSON:
         let pageToken = metaConn.fb_page_access_token;
         const userToken = metaConn.fb_user_access_token;
         const pageId = metaConn.fb_page_id ? metaConn.fb_page_id.split(",")[0].trim() : null;
-        const igId = metaConn.ig_business_id || metaConn.instagram_actor_id;
+        let igId = metaConn.ig_business_id || metaConn.instagram_actor_id;
 
         if (!pageToken && userToken && pageId) {
           try {
@@ -807,19 +952,31 @@ Format output as valid JSON:
           } catch (_) {}
         }
         const effectiveToken = pageToken || userToken;
-        const geoTagline = targetLocations ? `📍 Geo Target: ${targetLocations}\n\n` : "";
+
+        // Auto-resolve Instagram Business ID from Facebook Page if missing
+        if (!igId && pageId && effectiveToken) {
+          try {
+            const igLookupResp = await fetch(`https://graph.facebook.com/v21.0/${pageId}?fields=instagram_business_account&access_token=${encodeURIComponent(effectiveToken)}`);
+            const igLookupJson = await igLookupResp.json();
+            if (igLookupJson?.instagram_business_account?.id) {
+              igId = igLookupJson.instagram_business_account.id;
+              logger(`[SEO Autopilot] Auto-resolved connected Instagram Business ID from Facebook Page: ${igId}`);
+            }
+          } catch (_) {}
+        }
+
         const geoHashtags = targetLocations
           ? " " + targetLocations.split(",").map((l) => `#${l.trim().replace(/[^a-zA-Z0-9]/g, "")}`).filter((h) => h.length > 2).slice(0, 4).join(" ")
           : "";
 
-        // FACEBOOK: Interactive Clickable Link Card with Photo Fallback
+        // FACEBOOK: Interactive Clickable Link Card with Photo Fallback (NO internal Geo Target metadata in caption)
         const shouldShareFacebook = config.autoShareFacebook !== false && pageId && effectiveToken;
         if (shouldShareFacebook) {
           try {
             logger(`[SEO Autopilot] Syndicating Clickable Link Card to Facebook Page (${pageId})...`);
             const feedParams = new URLSearchParams();
             feedParams.append("link", publishedPostUrl);
-            feedParams.append("message", `📢 ${parsedArticle.title}\n\n${geoTagline}${parsedArticle.meta_description || ""}\n\nRead full article here 👇\n${publishedPostUrl}\n\n#${activeService.replace(/[^a-zA-Z0-9]/g, "")} #SEO #DigitalMarketing${geoHashtags}`);
+            feedParams.append("message", `📢 ${parsedArticle.title}\n\n${parsedArticle.meta_description || ""}\n\nRead full article here 👇\n${publishedPostUrl}\n\n#${activeService.replace(/[^a-zA-Z0-9]/g, "")} #SEO #DigitalMarketing${geoHashtags}`);
             feedParams.append("access_token", effectiveToken);
 
             const fbRes = await fetch(`https://graph.facebook.com/v21.0/${pageId}/feed`, {
@@ -836,7 +993,7 @@ Format output as valid JSON:
               if (shareImg) {
                 const photoParams = new URLSearchParams();
                 photoParams.append("url", shareImg);
-                photoParams.append("caption", `📢 ${parsedArticle.title}\n\n${geoTagline}${parsedArticle.meta_description || ""}\n\nRead full article here 👇\n${publishedPostUrl}\n\n#${activeService.replace(/[^a-zA-Z0-9]/g, "")} #SEO #DigitalMarketing${geoHashtags}`);
+                photoParams.append("caption", `📢 ${parsedArticle.title}\n\n${parsedArticle.meta_description || ""}\n\nRead full article here 👇\n${publishedPostUrl}\n\n#${activeService.replace(/[^a-zA-Z0-9]/g, "")} #SEO #DigitalMarketing${geoHashtags}`);
                 photoParams.append("access_token", effectiveToken);
                 const fbPhotoRes = await fetch(`https://graph.facebook.com/v21.0/${pageId}/photos`, { method: "POST", body: photoParams });
                 const fbPhotoData = await fbPhotoRes.json();
@@ -851,7 +1008,7 @@ Format output as valid JSON:
           }
         }
 
-        // INSTAGRAM: Featured image with title, description, link/bio, and hashtags
+        // INSTAGRAM: Featured image with title, description, link, and hashtags (FIX heroBuffer reference)
         const shouldShareInstagram = config.autoShareInstagram !== false && igId && effectiveToken && featuredImageUrl;
         if (shouldShareInstagram) {
           try {
@@ -859,17 +1016,16 @@ Format output as valid JSON:
             const igCaption = [
               `📢 ${parsedArticle.title}`,
               "",
-              geoTagline ? geoTagline.trim() : "",
               parsedArticle.meta_description || "",
               "",
-              `🔗 Full article: ${publishedPostUrl}`,
+              `🔗 Read full article here: ${publishedPostUrl}`,
               "",
               `#${activeService.replace(/[^a-zA-Z0-9]/g, "").toLowerCase()} #SEO #ContentMarketing #BusinessGrowth #DigitalStrategy${geoHashtags}`
             ].filter(Boolean).join("\n");
 
             const verifiedIgUrl = await ensureInstagramCompatibleJpeg({
               imageUrl: featuredImageUrl,
-              imageBuffer: featuredBuffer,
+              imageBuffer: heroBuffer,
               supabase,
               logger,
             });
