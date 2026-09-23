@@ -91,6 +91,7 @@ app.get("/jobs/status/:jobId", requireAuth, (req, res) => {
     progress: job.progress,
     stage: job.stage,
     videoUrl: job.videoUrl || null,
+    result: job.result || null,
     metadata: job.metadata || {},
     error: job.error || null,
     createdAt: job.createdAt,
@@ -2333,6 +2334,160 @@ app.post("/meta/create-campaign", requireAuth, async (req, res) => {
   } catch (err) {
     log("META_CAMPAIGN", `Campaign execution error: ${err.message}`);
     res.status(500).json({ ok: false, error: err.message, message: err.message });
+  }
+});
+
+// -------------------------------------------------------------
+// Asynchronous Background Meta Campaign Job Endpoint (Zero Vercel Timeout)
+// -------------------------------------------------------------
+app.post("/meta/jobs/create-campaign", requireAuth, async (req, res) => {
+  try {
+    const {
+      clientEmail,
+      userEmail,
+      adAccountId,
+      accessToken,
+      pageId,
+      payload,
+      imagePrompt,
+      service,
+      offer,
+      tagline,
+      businessName,
+      userProvidedImageUrl,
+      imageHash: existingImageHash,
+      platform,
+      metaConnection,
+    } = req.body || {};
+
+    const targetEmail = clientEmail || userEmail;
+    if (!payload || !payload.campaign_name) {
+      return res.status(400).json({ ok: false, error: "Valid campaign payload with campaign_name is required" });
+    }
+
+    const jobId = `meta_job_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`;
+    const job = {
+      id: jobId,
+      type: "meta_campaign",
+      userEmail: targetEmail,
+      status: "processing",
+      progress: 10,
+      stage: "Connecting to Meta Ads engine & verifying credentials...",
+      result: null,
+      error: null,
+      createdAt: new Date().toISOString(),
+    };
+    jobs.set(jobId, job);
+    log(jobId, `[AsyncMetaJob] Queued background Meta campaign job for "${payload.campaign_name}" (${targetEmail || "direct"})`);
+
+    // Respond immediately in <200ms so Vercel NEVER times out
+    res.json({ ok: true, jobId, status: "processing" });
+
+    // Execute the complete orchestration pipeline in the background on Railway
+    setImmediate(async () => {
+      try {
+        if (adAccountId) payload.adAccountId = adAccountId;
+        if (accessToken) payload.accessToken = accessToken;
+        if (pageId) payload.pageId = pageId;
+
+        let finalImageHash = existingImageHash || null;
+        let finalImageUrl = userProvidedImageUrl || null;
+        let ephemeralFile = null;
+
+        // 1. Resolve / Generate AI Image if hash not provided
+        if (!finalImageHash) {
+          if (userProvidedImageUrl) {
+            job.stage = "Uploading user image to Meta Ads...";
+            job.progress = 25;
+            log(jobId, `Uploading user image to Meta: ${userProvidedImageUrl}`);
+            finalImageHash = await uploadImageToMeta({
+              adAccountId: adAccountId || payload.adAccountId,
+              accessToken: accessToken || payload.accessToken,
+              imageUrl: userProvidedImageUrl,
+              logger: (msg) => log(jobId, msg),
+            });
+          } else if (imagePrompt) {
+            job.stage = "Generating photorealistic AI ad visual with gpt-image-2...";
+            job.progress = 30;
+            log(jobId, `Generating photorealistic ad visual for "${service || businessName}"...`);
+            const graphic = await generateAdGraphic({
+              openaiClient: openai,
+              supabaseClient: supabase,
+              prompt: imagePrompt,
+              service,
+              offer,
+              tagline,
+              businessName,
+              logger: (msg) => log(jobId, msg),
+            });
+
+            finalImageUrl = graphic.imageUrl;
+            ephemeralFile = graphic.storageFileName;
+
+            job.stage = "Applying typography overlays & uploading creative to Meta...";
+            job.progress = 60;
+            log(jobId, `Uploading generated graphic to Meta Graph API...`);
+            finalImageHash = await uploadImageToMeta({
+              adAccountId: adAccountId || payload.adAccountId,
+              accessToken: accessToken || payload.accessToken,
+              imageBuffer: graphic.imageBuffer,
+              imageUrl: graphic.imageUrl,
+              logger: (msg) => log(jobId, msg),
+            });
+          }
+        }
+
+        if (finalImageHash) {
+          if (!payload.ad_sets) payload.ad_sets = [{}];
+          if (!payload.ad_sets[0].ad_creative) payload.ad_sets[0].ad_creative = {};
+          payload.ad_sets[0].ad_creative.image_hash = finalImageHash;
+          if (finalImageUrl) payload.ad_sets[0].ad_creative.imageUrl = finalImageUrl;
+        }
+
+        // 2. Execute Campaign Creation
+        job.stage = "Configuring targeting, budget & publishing campaign live to Meta...";
+        job.progress = 80;
+        log(jobId, `Executing full Meta campaign publishing...`);
+
+        const campaignResult = await executeFullMetaCampaign({
+          clientEmail: targetEmail,
+          platform: platform || ["facebook", "instagram"],
+          payload,
+          metaConnection,
+          supabaseClient: supabase,
+          logger: (msg) => log(jobId, msg),
+        });
+
+        // 3. Ephemeral cleanup
+        if (ephemeralFile && supabase) {
+          try {
+            await supabase.storage.from("instagram-creatives").remove([ephemeralFile]);
+          } catch (_) {}
+        }
+
+        // 4. Mark job as complete
+        job.status = "completed";
+        job.progress = 100;
+        job.stage = "Campaign published successfully to Meta Ads!";
+        job.completedAt = new Date().toISOString();
+        job.result = {
+          ok: true,
+          ...campaignResult,
+          campaignId: campaignResult.id,
+          imageHash: finalImageHash,
+          imageUrl: finalImageUrl,
+        };
+        log(jobId, `Meta campaign background job successfully completed! Campaign ID: ${campaignResult.id}`);
+      } catch (err) {
+        log(jobId, `Meta campaign background job failed: ${err.message}`);
+        job.status = "failed";
+        job.error = err.message;
+        job.completedAt = new Date().toISOString();
+      }
+    });
+  } catch (err) {
+    log("META_CAMPAIGN", `Error queueing background campaign job: ${err.message}`);
+    res.status(500).json({ ok: false, error: err.message });
   }
 });
 

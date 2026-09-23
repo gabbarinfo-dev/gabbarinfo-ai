@@ -21,7 +21,7 @@ import { normalizeImageUrl } from "../../../lib/normalize-image-url";
 import { creativeEntry } from "../../../lib/instagram/creative-entry";
 import { processMetaAdImage } from "../../../lib/meta/process-meta-image";
 import { generatePlatformGraphic, cleanupEphemeralImage } from "../../../lib/services/image-service";
-import { dispatchMetaCampaignToRailway, dispatchMetaVisualToRailway } from "../../../lib/railway/dispatch-meta-campaign";
+import { dispatchMetaCampaignToRailway, dispatchMetaVisualToRailway, dispatchMetaCampaignJobToRailway } from "../../../lib/railway/dispatch-meta-campaign";
 import {
   cleanCustomerId,
   getAccountHierarchy,
@@ -4517,47 +4517,58 @@ Otherwise, respond with a full, clear explanation, and include example JSON only
 
             console.log("🧪 FINAL PAYLOAD PATH 1:", JSON.stringify(finalPayload, null, 2));
 
-            // 🚂 RAILWAY WORKER INTEGRATION: Offload heavy Meta campaign execution to Railway
-            let execJson = null;
+            // 🚂 RAILWAY WORKER INTEGRATION: Offload heavy Meta campaign execution to Railway background job (Zero Vercel Timeout!)
             try {
-              console.log("🚂 Attempting Meta campaign execution via Railway Worker...");
-              const railwayRes = await dispatchMetaCampaignToRailway({
-                  userEmail,
-                  businessId: effectiveBusinessId,
-                  adAccountId: targetAdAccountId,
-                  accessToken: targetAccessToken,
-                  pageId: targetPageId,
-                  payload: finalPayload,
-                  imagePrompt:
-                    state.creative?.imagePrompt ||
-                    state.creative?.image_prompt ||
-                    state.creative?.image_generation_prompt ||
-                    state.plan?.ad_sets?.[0]?.ad_creative?.imagePrompt ||
-                    state.plan?.ad_sets?.[0]?.ad_creative?.image_prompt ||
-                    `${state.service || "Professional"} ad for ${state.location || "target audience"}. Style: clean, high-conversion, marketing photography.`,
-                  service: state.service || "",
-                  offer: state.offer || "",
-                  tagline: state.tagline || state.plan?.ad_sets?.[0]?.ad_creative?.tagline || "",
-                  businessName: autoBusinessContext?.business_name || verifiedMetaAssets?.fb_page?.name || "",
-                  userProvidedImageUrl: state.user_provided_image_url || state.creative?.imageUrl || state.creative?.userProvidedImageUrl || null,
-                  imageHash: state.image_hash || null,
-                });
+              console.log("🚂 Dispatching Meta campaign to Railway background job engine...");
+              const railwayJob = await dispatchMetaCampaignJobToRailway({
+                userEmail,
+                businessId: effectiveBusinessId,
+                adAccountId: targetAdAccountId,
+                accessToken: targetAccessToken,
+                pageId: targetPageId,
+                payload: finalPayload,
+                imagePrompt:
+                  state.creative?.imagePrompt ||
+                  state.creative?.image_prompt ||
+                  state.creative?.image_generation_prompt ||
+                  state.plan?.ad_sets?.[0]?.ad_creative?.imagePrompt ||
+                  state.plan?.ad_sets?.[0]?.ad_creative?.image_prompt ||
+                  `${state.service || "Professional"} ad for ${state.location || "target audience"}. Style: clean, high-conversion, marketing photography.`,
+                service: state.service || "",
+                offer: state.offer || "",
+                tagline: state.tagline || state.plan?.ad_sets?.[0]?.ad_creative?.tagline || "",
+                businessName: autoBusinessContext?.business_name || verifiedMetaAssets?.fb_page?.name || "",
+                userProvidedImageUrl: state.user_provided_image_url || state.creative?.imageUrl || state.creative?.userProvidedImageUrl || null,
+                imageHash: state.image_hash || null,
+              });
 
-                if (railwayRes && railwayRes.ok && railwayRes.campaignId) {
-                  console.log("✅ Meta Campaign successfully created via Railway Worker!");
-                  execJson = {
-                    ok: true,
-                    id: railwayRes.campaignId,
-                    ad_set_id: railwayRes.adSetId,
-                    ad_id: railwayRes.adId,
-                    ...railwayRes,
-                  };
-                } else {
-                  console.warn("⚠️ Railway execution returned non-ok, falling back to local execution:", railwayRes?.error);
-                }
-              } catch (railwayErr) {
-                console.warn("⚠️ Railway worker call error, falling back to local execution:", railwayErr.message);
+              if (railwayJob && railwayJob.ok && railwayJob.jobId) {
+                console.log("🚀 [Path 1] Meta campaign job successfully queued on Railway:", railwayJob.jobId);
+                const launchedState = {
+                  ...state,
+                  stage: "COMPLETED",
+                  status: "ACTIVE",
+                  job_id: railwayJob.jobId,
+                  launched_at: new Date().toISOString(),
+                };
+                await saveAnswerMemory(
+                  process.env.NEXT_PUBLIC_BASE_URL,
+                  effectiveBusinessId,
+                  { campaign_state: launchedState },
+                  session.user.email.toLowerCase()
+                );
+
+                return res.status(200).json({
+                  ok: true,
+                  mode,
+                  metaJobId: railwayJob.jobId,
+                  campaignName: finalPayload.campaign_name || "Meta Campaign",
+                  text: `🚀 **Publishing Campaign Live to Meta Ads...**\n\nYour campaign blueprint has been dispatched to our dedicated Railway worker engine.\n\n⏳ *Creating ad creative, configuring targeting, and publishing live to your Meta Ad Account...*`,
+                });
               }
+            } catch (railwayErr) {
+              console.warn("⚠️ Railway worker job dispatch error:", railwayErr.message);
+            }
 
             if (!execJson) {
               const effectiveBaseUrl = process.env.NEXT_PUBLIC_BASE_URL || (process.env.VERCEL_URL ? `https://${process.env.VERCEL_URL}` : "http://localhost:3000");
@@ -5413,11 +5424,10 @@ Otherwise, respond with a full, clear explanation, and include example JSON only
 
               console.log("🧪 FINAL PAYLOAD PATH 2:", JSON.stringify(finalPayload, null, 2));
 
-              // 🚂 RAILWAY WORKER INTEGRATION: Offload heavy Meta campaign execution to Railway
-              let execJson = null;
+              // 🚂 RAILWAY WORKER INTEGRATION: Offload heavy Meta campaign execution to Railway background job (Zero Vercel Timeout!)
               try {
-                console.log("🚂 [Path 2] Attempting Meta campaign execution via Railway Worker...");
-                const railwayRes = await dispatchMetaCampaignToRailway({
+                console.log("🚂 [Path 2] Dispatching Meta campaign to Railway background job engine...");
+                const railwayJob = await dispatchMetaCampaignJobToRailway({
                   userEmail: session.user.email.toLowerCase(),
                   businessId: effectiveBusinessId,
                   adAccountId: finalPayload.adAccountId,
@@ -5438,20 +5448,32 @@ Otherwise, respond with a full, clear explanation, and include example JSON only
                   imageHash: currentState.image_hash || finalPayload.ad_sets?.[0]?.ad_creative?.image_hash || null,
                 });
 
-                if (railwayRes && railwayRes.ok && (railwayRes.campaignId || railwayRes.id)) {
-                  console.log("✅ [Path 2] Meta Campaign successfully created via Railway Worker!");
-                  execJson = {
-                    ok: true,
-                    id: railwayRes.campaignId || railwayRes.id,
-                    ad_set_id: railwayRes.adSetId || railwayRes.details?.ad_sets?.[0],
-                    ad_id: railwayRes.adId || railwayRes.details?.ads?.[0],
-                    ...railwayRes,
+                if (railwayJob && railwayJob.ok && railwayJob.jobId) {
+                  console.log("🚀 [Path 2] Meta campaign job successfully queued on Railway:", railwayJob.jobId);
+                  const launchedState = {
+                    ...currentState,
+                    stage: "COMPLETED",
+                    status: "ACTIVE",
+                    job_id: railwayJob.jobId,
+                    launched_at: new Date().toISOString(),
                   };
-                } else {
-                  console.warn("⚠️ [Path 2] Railway execution returned non-ok, falling back to local gateway:", railwayRes?.error);
+                  await saveAnswerMemory(
+                    process.env.NEXT_PUBLIC_BASE_URL,
+                    effectiveBusinessId,
+                    { campaign_state: launchedState },
+                    session.user.email.toLowerCase()
+                  );
+
+                  return res.status(200).json({
+                    ok: true,
+                    mode,
+                    metaJobId: railwayJob.jobId,
+                    campaignName: finalPayload.campaign_name || "Meta Campaign",
+                    text: `🚀 **Publishing Campaign Live to Meta Ads...**\n\nYour campaign blueprint has been dispatched to our dedicated Railway worker engine.\n\n⏳ *Creating ad creative, configuring targeting, and publishing live to your Meta Ad Account...*`,
+                  });
                 }
               } catch (railwayErr) {
-                console.warn("⚠️ [Path 2] Railway worker call error, falling back to local gateway:", railwayErr.message);
+                console.warn("⚠️ [Path 2] Railway worker job dispatch error:", railwayErr.message);
               }
 
               if (!execJson) {
