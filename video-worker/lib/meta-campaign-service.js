@@ -154,7 +154,7 @@ async function generateAdGraphic({
   logger = console.log,
 }) {
   logger(`[MetaCampaignService] Generating visual with prompt: "${prompt.slice(0, 70)}..."`);
-  const candidateModels = ["dall-e-3", "gpt-image-2-2026-04-21", "dall-e-2"];
+  const candidateModels = ["gpt-image-2", "gpt-image-1.5", "gpt-image-1"];
   let rawBuffer = null;
 
   for (const model of candidateModels) {
