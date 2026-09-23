@@ -67,7 +67,7 @@ export default async function handler(req, res) {
       }).catch(() => ({ data: { data: [] } })),
       axios.get("https://graph.facebook.com/v19.0/me/accounts", {
         params: {
-          fields: "id,name,access_token,category,instagram_business_account{id,username}",
+          fields: "id,name,access_token,category,instagram_business_account{id,username},connected_instagram_account{id,username}",
           access_token: fb_user_access_token,
         },
       }).catch(() => ({ data: { data: [] } })),
@@ -82,7 +82,9 @@ export default async function handler(req, res) {
     const fb_ad_account_id = allAdAccounts[0]?.id || null;
     const fb_page_id = allPages[0]?.id || null;
     const fb_page_token = allPages[0]?.access_token || null;
-    const ig_business_id = allPages[0]?.instagram_business_account?.id || null;
+    const primaryIg = allPages[0]?.instagram_business_account || allPages[0]?.connected_instagram_account || null;
+    const ig_business_id = primaryIg?.id || null;
+    const instagram_actor_id = ig_business_id;
 
     // -------------------------------------------------------------
     // 3.2. MULTI-BRAND ISOLATION: Save each distinct Page/Brand Bundle
@@ -102,13 +104,15 @@ export default async function handler(req, res) {
         pageName.toLowerCase().includes(b.name.toLowerCase())
       ) || allBusinesses[i] || allBusinesses[0] || null;
 
+      const pageIg = page.instagram_business_account || page.connected_instagram_account || null;
       const brandPayload = {
         businessName: pageName,
         pageId: page.id,
         pageName: pageName,
         pageToken: page.access_token,
-        igId: page.instagram_business_account?.id || null,
-        igUsername: page.instagram_business_account?.username || null,
+        igId: pageIg?.id || null,
+        igUsername: pageIg?.username || null,
+        instagramActorId: pageIg?.id || null,
         businessId: matchingBiz?.id || fb_business_id,
         businessTitle: matchingBiz?.name || pageName,
         adAccountId: matchingAd?.id || fb_ad_account_id,
@@ -164,6 +168,7 @@ export default async function handler(req, res) {
           fb_business_id,
           fb_page_id,
           ig_business_id,
+          instagram_actor_id,
           fb_ad_account_id,
           scopes: ["ads", "pages", "instagram"],
           updated_at: new Date().toISOString(),

@@ -50,12 +50,15 @@ export default async function handler(req, res) {
       ? (brandProfile.adAccountId.startsWith("act_") ? brandProfile.adAccountId : `act_${brandProfile.adAccountId}`)
       : null;
 
+    const resolvedIgId = brandProfile.igId || brandProfile.instagramActorId || null;
+
     const upsertPayload = {
       email,
       fb_page_id: brandProfile.pageId || null,
       fb_page_access_token: brandProfile.pageToken || null,
       fb_business_id: brandProfile.businessId || null,
-      ig_business_id: brandProfile.igId || null,
+      ig_business_id: resolvedIgId,
+      instagram_actor_id: resolvedIgId,
       fb_ad_account_id: normalizedAdId,
       business_name: brandProfile.businessName || brandProfile.pageName || null,
       account_currency: brandProfile.currency || "INR",

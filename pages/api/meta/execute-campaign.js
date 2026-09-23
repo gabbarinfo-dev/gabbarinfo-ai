@@ -1561,7 +1561,7 @@ function buildCreativePayload(creative, pageId, AD_ACCOUNT_ID, accessToken, plac
 
     const objectStorySpec = {
       page_id: pageId,
-      ...(instagramActorId ? { instagram_actor_id: instagramActorId } : {}),
+      ...(instagramActorId ? { instagram_user_id: instagramActorId } : {}),
       template_data: {
         multi_share_optimized: true,
         multi_share_end_card: true,

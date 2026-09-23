@@ -81,6 +81,7 @@ export default async function handler(req, res) {
           fb_page_access_token: primary.pageToken,
           fb_business_id: primary.businessId,
           ig_business_id: primary.igId,
+          instagram_actor_id: primary.igId,
           fb_ad_account_id: primary.adAccountId,
           updated_at: new Date().toISOString(),
         },

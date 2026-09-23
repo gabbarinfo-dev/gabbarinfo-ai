@@ -113,6 +113,8 @@ export default async function handler(req, res) {
     const primaryAd = allAdAccounts[0];
     const primaryBiz = allBusinesses[0];
 
+    const primaryPageIg = primaryPage.instagram_business_account?.id || primaryPage.connected_instagram_account?.id || null;
+
     await supabaseServer
       .from("meta_connections")
       .update({
@@ -120,7 +122,8 @@ export default async function handler(req, res) {
         fb_business_id: primaryBiz?.id || businessId || undefined,
         fb_page_id: primaryPage.id || null,
         fb_page_access_token: primaryPage.access_token || null,
-        ig_business_id: primaryPage.instagram_business_account?.id || null,
+        ig_business_id: primaryPageIg,
+        instagram_actor_id: primaryPageIg,
         business_name: primaryPage.name || null,
         business_phone: primaryPage.phone || null,
         business_website: primaryPage.website || null,

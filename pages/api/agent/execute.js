@@ -728,12 +728,50 @@ export default async function handler(req, res) {
           const bp = JSON.parse(brandMem.content);
           const bpAdId = (bp.adAccountId || "").toString().replace(/^act_/, "");
           const effectiveAdAccountId = bp.adAccountId ? (bp.adAccountId.startsWith("act_") ? bp.adAccountId : `act_${bp.adAccountId}`) : `act_${bpAdId}`;
+          let resolvedBrandIgId = bp.igId || bp.instagramActorId || bp.ig_business_id || null;
+          let resolvedBrandIgUsername = bp.igUsername || null;
+
+          if (!metaRow) metaRow = {};
+          metaRow.fb_page_id = bp.pageId;
+          if (bp.pageToken) metaRow.fb_page_access_token = bp.pageToken;
+          if (bp.businessId) metaRow.fb_business_id = bp.businessId;
+          metaRow.fb_ad_account_id = effectiveAdAccountId;
+          metaRow.business_name = bp.businessName || bp.pageName;
+          metaRow.account_currency = bp.currency || metaRow.account_currency || "INR";
+          if (bp.phone) metaRow.business_phone = bp.phone;
+          if (bp.website) metaRow.business_website = bp.website;
+          if (bp.category) metaRow.business_category = bp.category;
+          if (bp.userToken) metaRow.fb_user_access_token = bp.userToken;
+
+          // Auto-discover IG from Page if missing from brand memory
+          if (!resolvedBrandIgId && bp.pageId) {
+            try {
+              const pToken = bp.pageToken || bp.userToken || metaRow.fb_user_access_token;
+              if (pToken) {
+                const pageCheckRes = await fetch(`https://graph.facebook.com/v21.0/${bp.pageId}?fields=instagram_business_account{id,username},connected_instagram_account{id,username}&access_token=${pToken}`);
+                const pageCheckJson = await pageCheckRes.json();
+                const fetchedIg = pageCheckJson?.instagram_business_account || pageCheckJson?.connected_instagram_account;
+                if (fetchedIg?.id) {
+                  resolvedBrandIgId = fetchedIg.id;
+                  resolvedBrandIgUsername = fetchedIg.username;
+                  console.log(`📸 [Meta Assets] Auto-discovered connected Instagram @${fetchedIg.username} (${fetchedIg.id}) from Page ${bp.pageId}`);
+                }
+              }
+            } catch (pCheckErr) {
+              console.warn("Could not check Page for IG:", pCheckErr.message);
+            }
+          }
+
+          if (resolvedBrandIgId) {
+            metaRow.ig_business_id = resolvedBrandIgId;
+            metaRow.instagram_actor_id = resolvedBrandIgId;
+          }
 
           verifiedMetaAssets = {
             email: session.user.email.toLowerCase(),
             brand_key: targetBrandKey,
             fb_page: { id: bp.pageId, name: bp.businessName || bp.pageName },
-            ig_account: bp.igId ? { id: bp.igId, username: bp.igUsername } : null,
+            ig_account: resolvedBrandIgId ? { id: resolvedBrandIgId, username: resolvedBrandIgUsername } : null,
             ad_account: {
               id: bpAdId,
               account_id: effectiveAdAccountId,
@@ -744,19 +782,7 @@ export default async function handler(req, res) {
             verified_at: new Date().toISOString(),
           };
 
-          if (!metaRow) metaRow = {};
-          metaRow.fb_page_id = bp.pageId;
-          if (bp.pageToken) metaRow.fb_page_access_token = bp.pageToken;
-          if (bp.businessId) metaRow.fb_business_id = bp.businessId;
-          if (bp.igId) metaRow.ig_business_id = bp.igId;
-          metaRow.fb_ad_account_id = effectiveAdAccountId;
-          metaRow.business_name = bp.businessName || bp.pageName;
-          metaRow.account_currency = bp.currency || metaRow.account_currency || "INR";
-          if (bp.phone) metaRow.business_phone = bp.phone;
-          if (bp.website) metaRow.business_website = bp.website;
-          if (bp.category) metaRow.business_category = bp.category;
-          if (bp.userToken) metaRow.fb_user_access_token = bp.userToken;
-          console.log(`✅ [Meta Assets] Bound dynamically to active brand profile: ${bp.businessName || targetBrandKey} (Ad Account: ${effectiveAdAccountId})`);
+          console.log(`✅ [Meta Assets] Bound dynamically to active brand profile: ${bp.businessName || targetBrandKey} (Ad Account: ${effectiveAdAccountId}, IG: ${resolvedBrandIgId || "none"})`);
         }
       } catch (brandErr) {
         console.warn("[Meta Assets] Error resolving active brand profile:", brandErr.message);
@@ -788,17 +814,24 @@ export default async function handler(req, res) {
 
       // Facebook Page
       const fbPageRes = await fetch(
-        `https://graph.facebook.com/v19.0/${meta.fb_page_id}?fields=name,category,about&access_token=${token}`
+        `https://graph.facebook.com/v19.0/${meta.fb_page_id}?fields=name,category,about,instagram_business_account{id,username},connected_instagram_account{id,username}&access_token=${token}`
       );
       const fbPage = await fbPageRes.json();
 
-      // Instagram
+      // Instagram Multi-Source Discovery
       let igAccount = null;
-      if (meta.ig_business_id) {
-        const igRes = await fetch(
-          `https://graph.facebook.com/v19.0/${meta.ig_business_id}?fields=name,biography,category&access_token=${token}`
-        );
-        igAccount = await igRes.json();
+      let effectiveIgId = meta.instagram_actor_id || meta.ig_business_id || fbPage?.instagram_business_account?.id || fbPage?.connected_instagram_account?.id || null;
+
+      if (effectiveIgId) {
+        try {
+          const igRes = await fetch(
+            `https://graph.facebook.com/v19.0/${effectiveIgId}?fields=id,username,name,biography,category&access_token=${token}`
+          );
+          igAccount = await igRes.json();
+        } catch (_) {}
+        if (!metaRow) metaRow = {};
+        metaRow.ig_business_id = effectiveIgId;
+        metaRow.instagram_actor_id = effectiveIgId;
       }
 
       // Ad Account (normalize id to numeric for 'act_<id>' pattern)
