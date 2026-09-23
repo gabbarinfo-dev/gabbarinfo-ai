@@ -5314,66 +5314,9 @@ Otherwise, respond with a full, clear explanation, and include example JSON only
         let errorOcurred = false;
         let stopReason = null;
 
-        // ===============================
-        // AGENT MODE IMAGE GENERATION + UPLOAD
-        // ===============================
-        const isCatalogueMode = currentState.destination === "catalogue" || currentState.destination === "Catalogue Sales" || currentState.objective === "OUTCOME_SALES";
-
-        if (!imageUploadedThisTurn) {
-          if (isCatalogueMode) {
-            console.log("🚀 [Waterfall 2] Catalogue Mode: Skipping Image Generation and Upload");
-            currentState.image_hash = null;
-            currentState.stage = "READY_TO_LAUNCH";
-          } else {
-            console.log("🧪 IMAGE PROMPT VALUE:", lockedCampaignState?.plan?.image_concept);
-            const imagePrompt = lockedCampaignState?.plan?.ad_sets?.[0]?.ad_creative?.imagePrompt;
-            console.log("🧪 FINAL IMAGE PROMPT:", imagePrompt);
-
-            if (!imagePrompt && currentState.destination !== 'catalogue' && currentState.objective !== 'OUTCOME_SALES') {
-              throw new Error("Image prompt missing in campaign plan");
-            }
-            const imageResp = await fetch(`${process.env.NEXT_PUBLIC_BASE_URL}/api/images/generate`, {
-              method: "POST",
-              headers: { "Content-Type": "application/json", "x-client-email": session.user.email },
-              body: JSON.stringify({ prompt: imagePrompt }),
-            });
-
-            const imageJson = await imageResp.json();
-            if (!imageResp.ok || !imageJson?.imageBase64) {
-              throw new Error("Agent image generation failed");
-            }
-
-            // 2. Upload image to Meta using EXISTING uploader
-            console.log("UPLOAD IMAGE API HIT");
-            const uploadResp = await fetch(`${process.env.NEXT_PUBLIC_BASE_URL}/api/meta/upload-image`, {
-              method: "POST",
-              headers: { "Content-Type": "application/json", "x-client-email": session.user.email },
-              body: JSON.stringify({ imageBase64: imageJson.imageBase64 }),
-            });
-
-            const uploadJson = await uploadResp.json();
-            if (!uploadResp.ok || !uploadJson?.imageHash) {
-              throw new Error("Agent image upload to Meta failed");
-            }
-
-            // 3. Persist truth
-            lockedCampaignState.imageHash = uploadJson.imageHash;
-            imageUploadedThisTurn = true;
-            currentState.image_hash = uploadJson.imageHash;
-            currentState.stage = "READY_TO_LAUNCH";
-          }
-        }
-
-
-
-
-        // --- STEP 12: EXECUTION ---
-        if (!errorOcurred && currentState.stage === "READY_TO_LAUNCH" && (currentState.image_hash || currentState.destination === "catalogue")) {
-          const wantsLaunch = lowerInstruction.includes("launch") || lowerInstruction.includes("execute") || lowerInstruction.includes("run") || lowerInstruction.includes("publish") || lowerInstruction.includes("yes") || lowerInstruction.includes("confirm") || lowerInstruction.includes("proceed");
-
-          if (wantsLaunch) {
-            console.log("🚀 Waterfall: Executing Campaign on Meta...");
-            try {
+        // --- STEP 12: EXECUTION VIA RAILWAY BACKGROUND WORKER ---
+        console.log("🚀 Waterfall: Executing Campaign on Meta via Railway Worker...");
+        try {
               const plan = currentState.plan;
               console.log("🧪 PLAN BEFORE PAYLOAD:", JSON.stringify(plan, null, 2));
               // 🌍 UNIVERSAL LOCATION HANDLER (Starts here)
@@ -5612,8 +5555,6 @@ Otherwise, respond with a full, clear explanation, and include example JSON only
               errorOcurred = true;
               stopReason = `Meta Execution Error: ${e.message}`;
             }
-          }
-        }
 
         // Save progress reached in this turn
         if (effectiveBusinessId && currentState) {
