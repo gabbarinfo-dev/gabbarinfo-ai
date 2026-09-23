@@ -2157,13 +2157,29 @@ app.post("/autopilot/shopify/generate-article", requireAuth, async (req, res) =>
 // -------------------------------------------------------------
 // Meta Ads Suite Offload Endpoints (Protected by WORKER_SECRET_KEY)
 // -------------------------------------------------------------
+const visualJobCache = new Map();
+
 app.post("/meta/generate-visual", requireAuth, async (req, res) => {
   try {
-    const { prompt, service, offer, tagline, businessName } = req.body || {};
+    const { prompt, service, offer, tagline, businessName, cacheKey } = req.body || {};
     if (!prompt) return res.status(400).json({ ok: false, error: "Prompt is required" });
 
-    log("META_VISUAL", `Generating ad graphic for "${service || businessName}"...`);
-    const result = await generateAdGraphic({
+    const key = cacheKey || `${prompt}_${service || ""}_${offer || ""}_${tagline || ""}_${businessName || ""}`;
+    if (visualJobCache.has(key)) {
+      log("META_VISUAL", `Reusing in-flight or cached visual generation for key: ${key.slice(0, 60)}...`);
+      try {
+        const cached = await visualJobCache.get(key);
+        if (cached && cached.imageUrl) {
+          return res.json({ ok: true, imageUrl: cached.imageUrl, storageFileName: cached.storageFileName, fromCache: true });
+        }
+      } catch (cacheErr) {
+        log("META_VISUAL", `Cached job failed: ${cacheErr.message}, re-generating...`);
+        visualJobCache.delete(key);
+      }
+    }
+
+    log("META_VISUAL", `Generating ad graphic for "${service || businessName}" (key: ${key.slice(0, 45)})...`);
+    const promise = generateAdGraphic({
       openaiClient: openai,
       supabaseClient: supabase,
       prompt,
@@ -2174,8 +2190,13 @@ app.post("/meta/generate-visual", requireAuth, async (req, res) => {
       logger: (msg) => log("META_VISUAL", msg),
     });
 
+    visualJobCache.set(key, promise);
+    setTimeout(() => visualJobCache.delete(key), 15 * 60 * 1000);
+
+    const result = await promise;
     res.json({ ok: true, imageUrl: result.imageUrl, storageFileName: result.storageFileName });
   } catch (err) {
+    if (req.body?.cacheKey) visualJobCache.delete(req.body.cacheKey);
     log("META_VISUAL", `Error generating visual: ${err.message}`);
     res.status(500).json({ ok: false, error: err.message });
   }

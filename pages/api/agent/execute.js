@@ -1106,10 +1106,35 @@ export default async function handler(req, res) {
             lockedCampaignState.destination === "Catalogue Sales";
 
           if (!lockedCampaignState.user_image_asked && !isCatalogueCampaign) {
+            const plan = lockedCampaignState.plan || {};
+            const adSet0 = Array.isArray(plan.ad_sets) ? plan.ad_sets[0] : (plan.ad_sets || {});
+            const creativeResult = adSet0.ad_creative || adSet0.creative || adSet0.ads?.[0]?.creative || {};
+
+            const visualPrompt =
+              creativeResult.image_prompt ||
+              creativeResult.imagePrompt ||
+              creativeResult.image_generation_prompt ||
+              `${lockedCampaignState.service || "Digital Marketing"} high-conversion marketing visual for ${lockedCampaignState.location || "India"}. Style: modern, engaging, pristine commercial photography.`;
+
+            const cacheKey = `campaign_visual_${effectiveBusinessId}_${(lockedCampaignState.service || "ad").replace(/[^a-zA-Z0-9]/g, "_")}`;
+
+            // 🚀 ASYNC BACKGROUND PRE-WARM: Offload visual generation to Railway worker immediately
+            // While the user reads the image prompt and responds, Railway is already generating the visual!
+            console.log("🚂 [Railway Pre-warm] Triggering async visual generation in background...");
+            dispatchMetaVisualToRailway({
+              prompt: visualPrompt,
+              service: lockedCampaignState.service || "Digital Marketing",
+              offer: lockedCampaignState.offer || creativeResult.tagline || "",
+              tagline: lockedCampaignState.tagline || creativeResult.headline || "",
+              businessName: autoBusinessContext?.business_name || verifiedMetaAssets?.fb_page?.name || "GABBARINFO AI",
+              cacheKey,
+            }).catch(e => console.warn("Railway pre-warm warning:", e.message));
+
             const awaitingImageState = {
               ...lockedCampaignState,
               stage: "AWAITING_USER_IMAGE",
               user_image_asked: true,
+              visual_cache_key: cacheKey,
               locked_at: new Date().toISOString()
             };
 
@@ -1243,8 +1268,7 @@ export default async function handler(req, res) {
           })
         });
       } else if (isSkipping) {
-        // ✅ User is skipping — generate instant branded visual preview in <1s (Zero Vercel Timeout!)
-        console.log("🖼️ [User Image] User skipped. Generating instant branded visual preview...");
+        console.log("🖼️ [User Image] User skipped. Fetching branded visual preview from Railway...");
         let previewUrl = null;
         let storageFile = null;
 
@@ -1259,7 +1283,9 @@ export default async function handler(req, res) {
             creativeResult.image_generation_prompt ||
             `${lockedCampaignState.service || "Digital Marketing"} high-conversion marketing visual for ${lockedCampaignState.location || "India"}. Style: modern, engaging, pristine commercial photography.`;
 
-          console.log("🚂 [Railway Visual] Offloading visual preview generation to Railway Worker with prompt:", visualPrompt);
+          const cacheKey = lockedCampaignState.visual_cache_key || `campaign_visual_${effectiveBusinessId}_${(lockedCampaignState.service || "ad").replace(/[^a-zA-Z0-9]/g, "_")}`;
+
+          console.log("🚂 [Railway Visual] Fetching visual with cacheKey:", cacheKey);
 
           const visualRes = await dispatchMetaVisualToRailway({
             prompt: visualPrompt,
@@ -1267,12 +1293,15 @@ export default async function handler(req, res) {
             offer: lockedCampaignState.offer || creativeResult.tagline || "",
             tagline: lockedCampaignState.tagline || creativeResult.headline || "",
             businessName: autoBusinessContext?.business_name || verifiedMetaAssets?.fb_page?.name || "GABBARINFO AI",
+            cacheKey,
           });
 
           if (visualRes.ok && visualRes.imageUrl && typeof visualRes.imageUrl === "string" && visualRes.imageUrl.startsWith("http")) {
             console.log("✅ [Railway Visual] Generated via Railway worker:", visualRes.imageUrl);
             previewUrl = visualRes.imageUrl;
             storageFile = visualRes.storageFileName || null;
+          } else if (visualRes.timedOut) {
+            console.warn("⏳ [Railway Visual] Generation in progress in Railway worker background.");
           } else {
             console.warn("⚠️ [Railway Visual] Did not return valid image URL:", visualRes.error);
           }
