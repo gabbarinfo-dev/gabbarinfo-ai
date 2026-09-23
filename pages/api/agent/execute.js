@@ -4424,6 +4424,13 @@ Otherwise, respond with a full, clear explanation, and include example JSON only
               null;
             const targetAccessToken = metaRow?.fb_user_access_token || null;
             const targetPageId = verifiedMetaAssets?.fb_page?.id || metaRow?.fb_page_id || null;
+            const targetInstagramActorId =
+              state.instagram_actor_id ||
+              state.ig_business_id ||
+              verifiedMetaAssets?.ig_account?.id ||
+              metaRow?.instagram_actor_id ||
+              metaRow?.ig_business_id ||
+              null;
 
             // ============================================================
             // 🔄 CONVERSION LOCATION MAPPING (CRITICAL FIX)
@@ -4514,6 +4521,8 @@ Otherwise, respond with a full, clear explanation, and include example JSON only
             finalPayload.adAccountId = targetAdAccountId;
             finalPayload.accessToken = targetAccessToken;
             finalPayload.pageId = targetPageId;
+            finalPayload.instagramActorId = targetInstagramActorId;
+            finalPayload.instagram_actor_id = targetInstagramActorId;
 
             console.log("🧪 FINAL PAYLOAD PATH 1:", JSON.stringify(finalPayload, null, 2));
 
@@ -4528,6 +4537,7 @@ Otherwise, respond with a full, clear explanation, and include example JSON only
                 adAccountId: targetAdAccountId,
                 accessToken: targetAccessToken,
                 pageId: targetPageId,
+                instagramActorId: targetInstagramActorId,
                 payload: finalPayload,
                 imagePrompt:
                   state.creative?.imagePrompt ||
@@ -4587,6 +4597,7 @@ Otherwise, respond with a full, clear explanation, and include example JSON only
                 adAccountId: targetAdAccountId,
                 accessToken: targetAccessToken,
                 pageId: targetPageId,
+                instagramActorId: targetInstagramActorId,
                 payload: finalPayload,
                 imagePrompt:
                   state.creative?.imagePrompt ||
@@ -5418,6 +5429,26 @@ Otherwise, respond with a full, clear explanation, and include example JSON only
                 delete finalPayload.targeting.geo_locations;
               }
 
+              const targetAdAccountId =
+                (verifiedMetaAssets?.ad_account && (verifiedMetaAssets.ad_account.id || verifiedMetaAssets.ad_account.account_id)) ||
+                metaRow?.fb_ad_account_id ||
+                null;
+              const targetAccessToken = metaRow?.fb_user_access_token || null;
+              const targetPageId = verifiedMetaAssets?.fb_page?.id || metaRow?.fb_page_id || null;
+              const targetInstagramActorId =
+                currentState?.instagram_actor_id ||
+                currentState?.ig_business_id ||
+                verifiedMetaAssets?.ig_account?.id ||
+                metaRow?.instagram_actor_id ||
+                metaRow?.ig_business_id ||
+                null;
+
+              finalPayload.adAccountId = targetAdAccountId;
+              finalPayload.accessToken = targetAccessToken;
+              finalPayload.pageId = targetPageId;
+              finalPayload.instagramActorId = targetInstagramActorId;
+              finalPayload.instagram_actor_id = targetInstagramActorId;
+
               console.log("🧪 FINAL PAYLOAD PATH 2:", JSON.stringify(finalPayload, null, 2));
 
               // 🚂 RAILWAY ASYNC BACKGROUND JOB DISPATCH (Path 2):
@@ -5428,9 +5459,10 @@ Otherwise, respond with a full, clear explanation, and include example JSON only
                 const jobRes = await dispatchMetaCampaignJobToRailway({
                   userEmail: session.user.email.toLowerCase(),
                   businessId: effectiveBusinessId,
-                  adAccountId: finalPayload.adAccountId,
-                  accessToken: finalPayload.accessToken,
-                  pageId: finalPayload.pageId,
+                  adAccountId: targetAdAccountId,
+                  accessToken: targetAccessToken,
+                  pageId: targetPageId,
+                  instagramActorId: targetInstagramActorId,
                   payload: finalPayload,
                   imagePrompt:
                     currentState.creative?.imagePrompt ||
@@ -5486,9 +5518,10 @@ Otherwise, respond with a full, clear explanation, and include example JSON only
                 const railwayRes = await dispatchMetaCampaignToRailway({
                   userEmail: session.user.email.toLowerCase(),
                   businessId: effectiveBusinessId,
-                  adAccountId: finalPayload.adAccountId,
-                  accessToken: finalPayload.accessToken,
-                  pageId: finalPayload.pageId,
+                  adAccountId: targetAdAccountId,
+                  accessToken: targetAccessToken,
+                  pageId: targetPageId,
+                  instagramActorId: targetInstagramActorId,
                   payload: finalPayload,
                   imagePrompt:
                     currentState.creative?.imagePrompt ||

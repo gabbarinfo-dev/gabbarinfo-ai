@@ -220,58 +220,110 @@ export default async function handler(req, res) {
   const PAGE_ID = payload?.pageId || meta.fb_page_id;
   const API_VERSION = "v21.0";
 
-  // 1b. Identity Identification 
+  // 1b. Multi-Source Instagram Actor Resolution & Authorization
   let validatedInstagramActorId = null;
-  const storedActorId = meta.instagram_actor_id;
+  let instagramUsername = null;
 
-  if (storedActorId) {
+  let candidateIgId =
+    payload?.instagramActorId ||
+    payload?.instagram_actor_id ||
+    payload?.instagram_business_account_id ||
+    payload?.ig_business_id ||
+    meta?.instagram_actor_id ||
+    meta?.ig_business_id ||
+    meta?.instagram_business_account_id ||
+    null;
+
+  let adAccountIgAccounts = [];
+  try {
+    console.log(`🔎 [Meta API] Checking authorized Instagram accounts for act_${AD_ACCOUNT_ID}...`);
+    const igAuthRes = await fetch(`https://graph.facebook.com/${API_VERSION}/act_${AD_ACCOUNT_ID}/instagram_accounts?fields=id,username&access_token=${ACCESS_TOKEN}`);
+    const igAuthJson = await igAuthRes.json();
+    if (Array.isArray(igAuthJson?.data) && igAuthJson.data.length > 0) {
+      adAccountIgAccounts = igAuthJson.data;
+      console.log(`✅ [Meta API] Found ${adAccountIgAccounts.length} authorized Instagram account(s) on act_${AD_ACCOUNT_ID}: ${adAccountIgAccounts.map(a => `@${a.username} (${a.id})`).join(", ")}`);
+    }
+  } catch (e) {
+    console.warn(`⚠️ [Meta API] act_${AD_ACCOUNT_ID}/instagram_accounts check failed: ${e.message}`);
+  }
+
+  if (adAccountIgAccounts.length === 0) {
     try {
-      console.log(`
-🔎
- [Meta API] Checking if Ad Account 
-act_${AD_ACCOUNT_ID} is authorized for Instagram Actor 
-${storedActorId}...`);
-      const igAuthRes = await
-        fetch(`https://graph.facebook.com/${API_VERSION}/act_${AD_ACCOUNT_ID}/i
-nstagram_accounts?access_token=${ACCESS_TOKEN}`);
-      const igAuthJson = await igAuthRes.json();
-
-      const isAuthorized = igAuthJson?.data?.some(acc => acc.id ===
-        storedActorId);
-
-      if (isAuthorized) {
-        validatedInstagramActorId = storedActorId;
-        console.log(`
-✅
- [Meta API] Instagram Actor ${storedActorId} is 
-authorized for this Ad Account.`);
-      } else {
-        console.warn(`
-⚠
- [Meta API] Actor ${storedActorId} NOT 
-authorized for Ad Account act_${AD_ACCOUNT_ID}. Removing instagram from 
-placements.`);
-        // Remove instagram from placements if IG actor isn't authorized
-        placements = placements.filter(p => p !== "instagram");
-        if (placements.length === 0) placements = ["facebook"];
+      const igConnRes = await fetch(`https://graph.facebook.com/${API_VERSION}/act_${AD_ACCOUNT_ID}/connected_instagram_accounts?fields=id,username&access_token=${ACCESS_TOKEN}`);
+      const igConnJson = await igConnRes.json();
+      if (Array.isArray(igConnJson?.data) && igConnJson.data.length > 0) {
+        adAccountIgAccounts = igConnJson.data;
       }
-    } catch (e) {
-      console.error(`
-⚠
- [Meta API] Instagram Authorization check 
-failed: ${e.message}`);
+    } catch (_) {}
+  }
+
+  let pageLinkedIg = null;
+  try {
+    console.log(`🔎 [Meta API] Checking Page ${PAGE_ID} for connected Instagram account...`);
+    const pageIgRes = await fetch(`https://graph.facebook.com/${API_VERSION}/${PAGE_ID}?fields=id,name,instagram_business_account{id,username,name},connected_instagram_account{id,username,name}&access_token=${ACCESS_TOKEN}`);
+    const pageIgJson = await pageIgRes.json();
+    pageLinkedIg = pageIgJson?.instagram_business_account || pageIgJson?.connected_instagram_account || null;
+    if (pageLinkedIg && pageLinkedIg.id) {
+      console.log(`📸 [Meta API] Page ${PAGE_ID} (${pageIgJson?.name || "Page"}) is connected to Instagram: @${pageLinkedIg.username || "unknown"} (ID: ${pageLinkedIg.id})`);
+    }
+  } catch (e) {
+    console.warn(`⚠️ [Meta API] Page Instagram link check failed: ${e.message}`);
+  }
+
+  if (candidateIgId) {
+    const adAccMatch = adAccountIgAccounts.find(a => a.id === candidateIgId);
+    if (adAccMatch) {
+      validatedInstagramActorId = adAccMatch.id;
+      instagramUsername = adAccMatch.username;
+      console.log(`✅ [Meta API] Candidate IG ${candidateIgId} matched in Ad Account: @${instagramUsername}`);
+    } else if (pageLinkedIg && pageLinkedIg.id === candidateIgId) {
+      validatedInstagramActorId = pageLinkedIg.id;
+      instagramUsername = pageLinkedIg.username;
+      console.log(`✅ [Meta API] Candidate IG ${candidateIgId} verified via Page connection: @${instagramUsername}`);
+    } else if (adAccountIgAccounts.length > 0) {
+      validatedInstagramActorId = adAccountIgAccounts[0].id;
+      instagramUsername = adAccountIgAccounts[0].username;
+      console.log(`ℹ️ [Meta API] Candidate IG ${candidateIgId} not in ad account, adopting authorized @${instagramUsername} (${validatedInstagramActorId})`);
+    } else if (pageLinkedIg && pageLinkedIg.id) {
+      validatedInstagramActorId = pageLinkedIg.id;
+      instagramUsername = pageLinkedIg.username;
+      console.log(`ℹ️ [Meta API] Adopting Page-linked Instagram: @${instagramUsername} (${validatedInstagramActorId})`);
+    } else {
+      validatedInstagramActorId = candidateIgId;
+      console.log(`ℹ️ [Meta API] Using candidate Instagram Actor ID: ${validatedInstagramActorId}`);
+    }
+  } else {
+    if (adAccountIgAccounts.length > 0) {
+      validatedInstagramActorId = adAccountIgAccounts[0].id;
+      instagramUsername = adAccountIgAccounts[0].username;
+      console.log(`✅ [Meta API] Auto-detected Instagram Account from Ad Account: @${instagramUsername} (${validatedInstagramActorId})`);
+    } else if (pageLinkedIg && pageLinkedIg.id) {
+      validatedInstagramActorId = pageLinkedIg.id;
+      instagramUsername = pageLinkedIg.username;
+      console.log(`✅ [Meta API] Auto-detected Instagram Account from Page link: @${instagramUsername} (${validatedInstagramActorId})`);
     }
   }
 
-  // 1d. Fetch IG Username for Profile Links
+  if (destLocation === "INSTAGRAM_PROFILE") {
+    placements = ["instagram"];
+  } else if (!validatedInstagramActorId && placements.includes("instagram")) {
+    console.warn(`⚠️ [Meta API] No Instagram account found. Removing instagram from non-profile placements.`);
+    placements = placements.filter(p => p !== "instagram");
+    if (placements.length === 0) placements = ["facebook"];
+  }
+
   let instagramProfileUrl = null;
-  if (validatedInstagramActorId) {
+  if (instagramUsername) {
+    instagramProfileUrl = `https://www.instagram.com/${instagramUsername}/`;
+    console.log(`📸 [Meta API] Resolved Instagram Profile URL: ${instagramProfileUrl}`);
+  } else if (validatedInstagramActorId) {
     try {
       const igInfoRes = await fetch(`https://graph.facebook.com/${API_VERSION}/${validatedInstagramActorId}?fields=username&access_token=${ACCESS_TOKEN}`);
       const igInfo = await igInfoRes.json();
       if (igInfo.username) {
+        instagramUsername = igInfo.username;
         instagramProfileUrl = `https://www.instagram.com/${igInfo.username}/`;
-        console.log(`📸 [Meta API] Resolved Instagram Profile URL: ${instagramProfileUrl}`);
+        console.log(`📸 [Meta API] Fetched Instagram Profile URL: ${instagramProfileUrl}`);
       }
     } catch (e) {
       console.warn("⚠️ [Meta API] Failed to fetch IG username:", e.message);
@@ -279,9 +331,7 @@ failed: ${e.message}`);
   }
 
   // 2⃣ Compute final Instagram usage flag 
-  const shouldUseInstagramActor =
-    validatedInstagramActorId &&
-    placements.includes("instagram");
+  const shouldUseInstagramActor = Boolean(validatedInstagramActorId && placements.includes("instagram"));
 
   // 1c. PREFLIGHT SECURITY CHECK: Verify Ad Account Access 
   // This ensures the token actually has permissions for the target ad account ID. 
@@ -1178,7 +1228,8 @@ async function buildAdSetPayload(objective, adSet, campaignId, accessToken, plac
       }
 
       else if (conversionLocation === "INSTAGRAM_PROFILE") {
-        if (!instagramActorId) {
+        const effectiveIgActorId = instagramActorId || payload?.instagramActorId || payload?.instagram_actor_id || payload?.ig_business_id;
+        if (!effectiveIgActorId) {
           throw new Error("Instagram Profile Visits require a connected Instagram account. Please connect your Instagram profile to your Facebook Page first.");
         }
         destination_type = "INSTAGRAM_PROFILE";
@@ -1187,7 +1238,7 @@ async function buildAdSetPayload(objective, adSet, campaignId, accessToken, plac
         promoted_object = {
           page_id: pageId
         };
-        console.log("📍 [AdSet] Using INSTAGRAM_PROFILE destination and VISIT_INSTAGRAM_PROFILE goal.");
+        console.log(`📍 [AdSet] Using INSTAGRAM_PROFILE destination and VISIT_INSTAGRAM_PROFILE goal (Actor ID: ${effectiveIgActorId}).`);
       }
 
       else if (conversionLocation === "FACEBOOK_PAGE") {

@@ -2237,6 +2237,7 @@ app.post("/meta/create-campaign", requireAuth, async (req, res) => {
       adAccountId,
       accessToken,
       pageId,
+      instagramActorId,
       payload,
       imagePrompt,
       service,
@@ -2257,6 +2258,7 @@ app.post("/meta/create-campaign", requireAuth, async (req, res) => {
     if (adAccountId) payload.adAccountId = adAccountId;
     if (accessToken) payload.accessToken = accessToken;
     if (pageId) payload.pageId = pageId;
+    if (instagramActorId) payload.instagramActorId = instagramActorId;
 
     log("META_CAMPAIGN", `[CreateCampaign] Executing campaign "${payload.campaign_name}" for ${targetEmail || "direct"}...`);
 
@@ -2350,6 +2352,7 @@ app.post(["/meta/jobs/create-campaign", "/meta/jobs/create"], requireAuth, async
       adAccountId,
       accessToken,
       pageId,
+      instagramActorId,
       payload,
       imagePrompt,
       service,
@@ -2393,6 +2396,7 @@ app.post(["/meta/jobs/create-campaign", "/meta/jobs/create"], requireAuth, async
         if (adAccountId) payload.adAccountId = adAccountId;
         if (accessToken) payload.accessToken = accessToken;
         if (pageId) payload.pageId = pageId;
+        if (instagramActorId) payload.instagramActorId = instagramActorId;
 
         let finalImageHash = existingImageHash || null;
         let finalImageUrl = userProvidedImageUrl || null;
