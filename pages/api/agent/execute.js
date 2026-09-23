@@ -22,7 +22,6 @@ import { creativeEntry } from "../../../lib/instagram/creative-entry";
 import { processMetaAdImage } from "../../../lib/meta/process-meta-image";
 import { generatePlatformGraphic, cleanupEphemeralImage } from "../../../lib/services/image-service";
 import { dispatchMetaCampaignToRailway, dispatchMetaVisualToRailway } from "../../../lib/railway/dispatch-meta-campaign";
-import { generateFastBrandedAdVisual } from "../../../lib/meta/fast-ad-generator";
 import {
   cleanCustomerId,
   getAccountHierarchy,
@@ -1254,23 +1253,31 @@ export default async function handler(req, res) {
           const adSet0 = Array.isArray(plan.ad_sets) ? plan.ad_sets[0] : (plan.ad_sets || {});
           const creativeResult = adSet0.ad_creative || adSet0.creative || adSet0.ads?.[0]?.creative || {};
 
-          const fastVisual = await generateFastBrandedAdVisual({
-            supabaseClient: supabase,
+          const visualPrompt =
+            creativeResult.image_prompt ||
+            creativeResult.imagePrompt ||
+            creativeResult.image_generation_prompt ||
+            `${lockedCampaignState.service || "Digital Marketing"} high-conversion marketing visual for ${lockedCampaignState.location || "India"}. Style: modern, engaging, pristine commercial photography.`;
+
+          console.log("🚂 [Railway Visual] Offloading visual preview generation to Railway Worker with prompt:", visualPrompt);
+
+          const visualRes = await dispatchMetaVisualToRailway({
+            prompt: visualPrompt,
             service: lockedCampaignState.service || "Digital Marketing",
-            location: lockedCampaignState.location || "India",
             offer: lockedCampaignState.offer || creativeResult.tagline || "",
             tagline: lockedCampaignState.tagline || creativeResult.headline || "",
             businessName: autoBusinessContext?.business_name || verifiedMetaAssets?.fb_page?.name || "GABBARINFO AI",
-            cta: creativeResult.call_to_action || "LEARN_MORE",
           });
 
-          if (fastVisual.ok && fastVisual.imageUrl && typeof fastVisual.imageUrl === "string" && fastVisual.imageUrl.startsWith("http")) {
-            console.log("✅ [Fast Visual] Generated in milliseconds:", fastVisual.imageUrl);
-            previewUrl = fastVisual.imageUrl;
-            storageFile = fastVisual.storageFileName || null;
+          if (visualRes.ok && visualRes.imageUrl && typeof visualRes.imageUrl === "string" && visualRes.imageUrl.startsWith("http")) {
+            console.log("✅ [Railway Visual] Generated via Railway worker:", visualRes.imageUrl);
+            previewUrl = visualRes.imageUrl;
+            storageFile = visualRes.storageFileName || null;
+          } else {
+            console.warn("⚠️ [Railway Visual] Did not return valid image URL:", visualRes.error);
           }
         } catch (visErr) {
-          console.warn("⚠️ Fast visual generation warning:", visErr.message);
+          console.warn("⚠️ Railway visual generation exception:", visErr.message);
         }
 
         const confirmedState = {
