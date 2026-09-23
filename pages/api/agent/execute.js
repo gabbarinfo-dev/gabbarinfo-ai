@@ -5385,6 +5385,14 @@ Otherwise, respond with a full, clear explanation, and include example JSON only
               }
               // 🌍 UNIVERSAL LOCATION HANDLER (Ends here)
               const candidateImg2 = currentState.user_provided_image_url || currentState.creative?.imageUrl || currentState.creative?.userProvidedImageUrl || null;
+              const isCatalogueMode = Boolean(
+                currentState.destination === "catalogue" ||
+                currentState.destination === "Catalogue Sales" ||
+                currentState.conversion_location === "CATALOGUE" ||
+                currentState.objective === "OUTCOME_SALES" ||
+                plan?.objective === "OUTCOME_SALES" ||
+                plan?.conversion_location === "CATALOGUE"
+              );
               const finalPayload = {
                 ...plan,
                 imageUrl: candidateImg2,
