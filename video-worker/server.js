@@ -78,7 +78,7 @@ app.get("/health", (req, res) => {
 // -------------------------------------------------------------
 // Job Status Polling Endpoint
 // -------------------------------------------------------------
-app.get("/jobs/status/:jobId", requireAuth, (req, res) => {
+app.get(["/jobs/status/:jobId", "/meta/jobs/status/:jobId"], requireAuth, (req, res) => {
   const { jobId } = req.params;
   const job = jobs.get(jobId);
   if (!job) {
@@ -90,6 +90,7 @@ app.get("/jobs/status/:jobId", requireAuth, (req, res) => {
     status: job.status,
     progress: job.progress,
     stage: job.stage,
+    campaignName: job.campaignName || job.result?.campaignName || null,
     videoUrl: job.videoUrl || null,
     result: job.result || null,
     metadata: job.metadata || {},
@@ -2340,11 +2341,12 @@ app.post("/meta/create-campaign", requireAuth, async (req, res) => {
 // -------------------------------------------------------------
 // Asynchronous Background Meta Campaign Job Endpoint (Zero Vercel Timeout)
 // -------------------------------------------------------------
-app.post("/meta/jobs/create-campaign", requireAuth, async (req, res) => {
+app.post(["/meta/jobs/create-campaign", "/meta/jobs/create"], requireAuth, async (req, res) => {
   try {
     const {
       clientEmail,
       userEmail,
+      businessId,
       adAccountId,
       accessToken,
       pageId,
@@ -2370,6 +2372,8 @@ app.post("/meta/jobs/create-campaign", requireAuth, async (req, res) => {
       id: jobId,
       type: "meta_campaign",
       userEmail: targetEmail,
+      businessId: businessId || null,
+      campaignName: payload.campaign_name,
       status: "processing",
       progress: 10,
       stage: "Connecting to Meta Ads engine & verifying credentials...",
@@ -2381,7 +2385,7 @@ app.post("/meta/jobs/create-campaign", requireAuth, async (req, res) => {
     log(jobId, `[AsyncMetaJob] Queued background Meta campaign job for "${payload.campaign_name}" (${targetEmail || "direct"})`);
 
     // Respond immediately in <200ms so Vercel NEVER times out
-    res.json({ ok: true, jobId, status: "processing" });
+    res.json({ ok: true, jobId, status: "processing", campaignName: payload.campaign_name });
 
     // Execute the complete orchestration pipeline in the background on Railway
     setImmediate(async () => {
@@ -2465,7 +2469,35 @@ app.post("/meta/jobs/create-campaign", requireAuth, async (req, res) => {
           } catch (_) {}
         }
 
-        // 4. Mark job as complete
+        // 4. Update Supabase client memory so user state is persistent even across refreshes
+        if (supabase && targetEmail && businessId) {
+          try {
+            const { data: memData } = await supabase
+              .from("agent_memory")
+              .select("content")
+              .eq("email", targetEmail)
+              .eq("memory_type", "client")
+              .maybeSingle();
+
+            if (memData?.content) {
+              const parsed = typeof memData.content === "string" ? JSON.parse(memData.content) : memData.content;
+              if (parsed?.business_answers?.[businessId]?.campaign_state) {
+                parsed.business_answers[businessId].campaign_state.stage = "COMPLETED";
+                parsed.business_answers[businessId].campaign_state.final_result = campaignResult;
+                await supabase
+                  .from("agent_memory")
+                  .update({ content: JSON.stringify(parsed), updated_at: new Date().toISOString() })
+                  .eq("email", targetEmail)
+                  .eq("memory_type", "client");
+                log(jobId, `Updated agent_memory to COMPLETED for ${targetEmail}`);
+              }
+            }
+          } catch (memErr) {
+            log(jobId, `Failed to update agent_memory: ${memErr.message}`);
+          }
+        }
+
+        // 5. Mark job as complete
         job.status = "completed";
         job.progress = 100;
         job.stage = "Campaign published successfully to Meta Ads!";
@@ -2474,6 +2506,7 @@ app.post("/meta/jobs/create-campaign", requireAuth, async (req, res) => {
           ok: true,
           ...campaignResult,
           campaignId: campaignResult.id,
+          campaignName: payload.campaign_name,
           imageHash: finalImageHash,
           imageUrl: finalImageUrl,
         };

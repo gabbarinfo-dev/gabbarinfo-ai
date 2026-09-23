@@ -730,6 +730,26 @@ export default function ChatPage() {
     );
   }
 
+  // helper: update the last assistant message in active chat (for real-time background status)
+  function updateLastAssistantMessage(newText) {
+    setChats((prev) =>
+      prev.map((chat) => {
+        if (chat.id !== activeChatId) return chat;
+        const msgs = [...(chat.messages || [])];
+        if (msgs.length > 0 && msgs[msgs.length - 1].role === "assistant") {
+          msgs[msgs.length - 1] = {
+            ...msgs[msgs.length - 1],
+            text: newText,
+          };
+        }
+        return {
+          ...chat,
+          messages: msgs,
+        };
+      })
+    );
+  }
+
   // IMAGE MODAL submit handler – uses the same sendMessage logic with "/image" prefix
   async function handleImageModalSubmit(e) {
     e.preventDefault();
@@ -1134,7 +1154,92 @@ Now respond as GabbarInfo AI.
       }
 
       const data = await res.json();
-            const rawText = decodeUnicodeEscapes(data.text || data.response || JSON.stringify(data, null, 2));
+
+      // 🚂 ASYNCHRONOUS RAILWAY BACKGROUND CAMPAIGN POLLING LOOP
+      // Completely eliminates Vercel FUNCTION_INVOCATION_TIMEOUT forever!
+      if (data.pendingJob && data.jobId) {
+        const initialText = decodeUnicodeEscapes(data.text || "Deploying campaign in background...");
+        setAgentResponse(initialText);
+        const initialAssistantMsg = {
+          role: "assistant",
+          text: initialText,
+        };
+        updateChatWithAssistantMessage(pseudoUserText, updatedMessages, initialAssistantMsg);
+        setAgentInstruction("");
+        scrollChatToBottom();
+
+        const targetJobId = data.jobId;
+        const targetCampaignName = data.campaignName || "Meta Campaign";
+
+        let pollCount = 0;
+        const maxPolls = 80; // 80 * 2.5s = 200s safety window
+        const pollInterval = setInterval(async () => {
+          pollCount++;
+          try {
+            const pollRes = await fetch(`/api/meta/campaign-job-status?jobId=${encodeURIComponent(targetJobId)}`);
+            if (!pollRes.ok) return;
+            const jobData = await pollRes.json();
+
+            if (jobData.status === "completed") {
+              clearInterval(pollInterval);
+              const campaignId = jobData.result?.campaignId || jobData.result?.id || "N/A";
+              const creativeUrl = jobData.result?.imageUrl || "";
+              const finalSuccessText = `GabbarInfo Agent:\n\n🎉 **Campaign Published Successfully!**\n\n**Meta Details**:\n- **Campaign Name**: ${jobData.result?.campaignName || targetCampaignName}\n- **Campaign ID**: \`${campaignId}\`\n\n${creativeUrl ? `![Ad Creative](${creativeUrl})\n\n` : ""}🚀 Your campaign is now LIVE and active in Meta Ads Manager.`;
+              updateLastAssistantMessage(finalSuccessText);
+              setAgentResponse(finalSuccessText);
+              setAgentLoading(false);
+              setLoading(false);
+              scrollChatToBottom();
+
+              // Top-up credits accounting
+              if (role !== "owner" && !unlimited) {
+                try {
+                  const topUpRes = await fetch("/api/credits/campaign-top-up", {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    credentials: "include",
+                    body: JSON.stringify({ stepsSpent: campaignStepCount }),
+                  });
+                  if (topUpRes.ok) {
+                    const topUpData = await topUpRes.json().catch(() => ({}));
+                    if (typeof topUpData.creditsLeft === "number") {
+                      setCredits(topUpData.creditsLeft);
+                    }
+                  }
+                } catch (err) {
+                  console.error("Error calling /api/credits/campaign-top-up:", err);
+                }
+                setCampaignStepCount(0);
+              }
+              return;
+            } else if (jobData.status === "failed") {
+              clearInterval(pollInterval);
+              const finalErrText = `GabbarInfo Agent:\n\n❌ **Campaign Publication Failed**\n\n**Error**: ${jobData.error || "Meta rejected the campaign."}\n\nPlease check your ad account settings and reply to try again.`;
+              updateLastAssistantMessage(finalErrText);
+              setAgentError("Agent error: " + (jobData.error || "Campaign publication failed"));
+              setAgentLoading(false);
+              setLoading(false);
+              scrollChatToBottom();
+              return;
+            } else if (jobData.stage) {
+              updateLastAssistantMessage(`GabbarInfo Agent:\n\n⏳ **Publishing Meta Campaign...**\n\n${jobData.stage}`);
+              scrollChatToBottom();
+            }
+
+            if (pollCount >= maxPolls) {
+              clearInterval(pollInterval);
+              setAgentLoading(false);
+              setLoading(false);
+            }
+          } catch (pollErr) {
+            console.warn("Polling error:", pollErr);
+          }
+        }, 2500);
+
+        return;
+      }
+
+      const rawText = decodeUnicodeEscapes(data.text || data.response || JSON.stringify(data, null, 2));
       const assistantText = `GabbarInfo Agent:\n\n${rawText}`;
       setAgentResponse(rawText); // Save for the panel integrated view
 

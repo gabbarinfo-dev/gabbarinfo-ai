@@ -4517,10 +4517,70 @@ Otherwise, respond with a full, clear explanation, and include example JSON only
 
             console.log("🧪 FINAL PAYLOAD PATH 1:", JSON.stringify(finalPayload, null, 2));
 
-            // 🚂 RAILWAY WORKER INTEGRATION: Offload heavy Meta campaign execution to Railway
+            // 🚂 RAILWAY ASYNC BACKGROUND JOB DISPATCH (Path 1):
+            // Eliminates Vercel FUNCTION_INVOCATION_TIMEOUT forever! Responds in <1.5s.
             let execJson = null;
             try {
-              console.log("🚂 Attempting Meta campaign execution via Railway Worker...");
+              console.log("🚂 Attempting Meta campaign execution via Railway background job...");
+              const jobRes = await dispatchMetaCampaignJobToRailway({
+                userEmail,
+                businessId: effectiveBusinessId,
+                adAccountId: targetAdAccountId,
+                accessToken: targetAccessToken,
+                pageId: targetPageId,
+                payload: finalPayload,
+                imagePrompt:
+                  state.creative?.imagePrompt ||
+                  state.creative?.image_prompt ||
+                  state.creative?.image_generation_prompt ||
+                  state.plan?.ad_sets?.[0]?.ad_creative?.imagePrompt ||
+                  state.plan?.ad_sets?.[0]?.ad_creative?.image_prompt ||
+                  `${state.service || "Professional"} ad for ${state.location || "target audience"}. Style: clean, high-conversion, marketing photography.`,
+                service: state.service || "",
+                offer: state.offer || "",
+                tagline: state.tagline || state.plan?.ad_sets?.[0]?.ad_creative?.tagline || "",
+                businessName: autoBusinessContext?.business_name || verifiedMetaAssets?.fb_page?.name || "",
+                userProvidedImageUrl: state.user_provided_image_url || state.creative?.imageUrl || state.creative?.userProvidedImageUrl || null,
+                imageHash: state.image_hash || null,
+              });
+
+              if (jobRes && jobRes.ok && jobRes.jobId) {
+                console.log("✅ Meta Campaign successfully queued on Railway:", jobRes.jobId);
+
+                // Save launching state in Supabase memory
+                if (effectiveBusinessId) {
+                  const launchedState = {
+                    ...state,
+                    stage: "LAUNCHING",
+                    status: "ACTIVE",
+                    job_id: jobRes.jobId,
+                    launched_at: new Date().toISOString(),
+                  };
+                  await saveAnswerMemory(
+                    process.env.NEXT_PUBLIC_BASE_URL,
+                    effectiveBusinessId,
+                    { campaign_state: launchedState },
+                    session.user.email.toLowerCase()
+                  );
+                }
+
+                return res.status(200).json({
+                  ok: true,
+                  pendingJob: true,
+                  jobType: "meta_campaign",
+                  jobId: jobRes.jobId,
+                  campaignName: finalPayload.campaign_name || plan.campaign_name || "Meta Campaign",
+                  text: `🚀 **Initiating Meta Campaign Launch...**\n\nYour campaign blueprint has been dispatched to our dedicated Railway worker engine.\n\n⏳ *Creating ad creative, configuring targeting, and publishing live to your Meta Ad Account...*`
+                });
+              } else {
+                console.warn("⚠️ Railway background job queue returned non-ok, falling back:", jobRes?.error);
+              }
+            } catch (jobErr) {
+              console.warn("⚠️ Railway worker job dispatch error:", jobErr.message);
+            }
+
+            try {
+              console.log("🚂 Attempting fallback synchronous execution via Railway Worker...");
               const railwayRes = await dispatchMetaCampaignToRailway({
                 userEmail,
                 businessId: effectiveBusinessId,
@@ -5417,10 +5477,69 @@ Otherwise, respond with a full, clear explanation, and include example JSON only
 
               console.log("🧪 FINAL PAYLOAD PATH 2:", JSON.stringify(finalPayload, null, 2));
 
-              // 🚂 RAILWAY WORKER INTEGRATION: Offload heavy Meta campaign execution to Railway
+              // 🚂 RAILWAY ASYNC BACKGROUND JOB DISPATCH (Path 2):
+              // Eliminates Vercel FUNCTION_INVOCATION_TIMEOUT forever! Responds in <1.5s.
               let execJson = null;
               try {
-                console.log("🚂 [Path 2] Attempting Meta campaign execution via Railway Worker...");
+                console.log("🚂 [Path 2] Attempting Meta campaign execution via Railway background job...");
+                const jobRes = await dispatchMetaCampaignJobToRailway({
+                  userEmail: session.user.email.toLowerCase(),
+                  businessId: effectiveBusinessId,
+                  adAccountId: finalPayload.adAccountId,
+                  accessToken: finalPayload.accessToken,
+                  pageId: finalPayload.pageId,
+                  payload: finalPayload,
+                  imagePrompt:
+                    currentState.creative?.imagePrompt ||
+                    currentState.creative?.image_prompt ||
+                    currentState.plan?.ad_sets?.[0]?.ad_creative?.imagePrompt ||
+                    currentState.plan?.ad_sets?.[0]?.ad_creative?.image_prompt ||
+                    `${currentState.service || "Professional"} ad for ${currentState.location || "target audience"}.`,
+                  service: currentState.service || "",
+                  offer: currentState.offer || "",
+                  tagline: currentState.tagline || "",
+                  businessName: verifiedMetaAssets?.fb_page?.name || "",
+                  userProvidedImageUrl: currentState.user_provided_image_url || currentState.creative?.imageUrl || null,
+                  imageHash: currentState.image_hash || finalPayload.ad_sets?.[0]?.ad_creative?.image_hash || null,
+                });
+
+                if (jobRes && jobRes.ok && jobRes.jobId) {
+                  console.log("✅ [Path 2] Meta Campaign successfully queued on Railway:", jobRes.jobId);
+
+                  // Save launching state in Supabase memory
+                  if (effectiveBusinessId) {
+                    const launchedState = {
+                      ...currentState,
+                      stage: "LAUNCHING",
+                      status: "ACTIVE",
+                      job_id: jobRes.jobId,
+                      launched_at: new Date().toISOString(),
+                    };
+                    await saveAnswerMemory(
+                      process.env.NEXT_PUBLIC_BASE_URL,
+                      effectiveBusinessId,
+                      { campaign_state: launchedState },
+                      session.user.email.toLowerCase()
+                    );
+                  }
+
+                  return res.status(200).json({
+                    ok: true,
+                    pendingJob: true,
+                    jobType: "meta_campaign",
+                    jobId: jobRes.jobId,
+                    campaignName: finalPayload.campaign_name || currentState.plan?.campaign_name || "Meta Campaign",
+                    text: `🚀 **Initiating Meta Campaign Launch...**\n\nYour campaign blueprint has been dispatched to our dedicated Railway worker engine.\n\n⏳ *Creating ad creative, configuring targeting, and publishing live to your Meta Ad Account...*`
+                  });
+                } else {
+                  console.warn("⚠️ [Path 2] Railway background job queue returned non-ok, falling back:", jobRes?.error);
+                }
+              } catch (jobErr) {
+                console.warn("⚠️ [Path 2] Railway worker job dispatch error:", jobErr.message);
+              }
+
+              try {
+                console.log("🚂 [Path 2] Attempting fallback synchronous execution via Railway Worker...");
                 const railwayRes = await dispatchMetaCampaignToRailway({
                   userEmail: session.user.email.toLowerCase(),
                   businessId: effectiveBusinessId,
