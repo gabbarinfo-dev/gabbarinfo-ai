@@ -206,19 +206,59 @@ function ensureRichLinks(contentHtml, {
     }
   });
 
-  // 2. If fewer than 2 internal links, inject contextual internal links from catalogPosts
-  if (existingInternalCount < 2 && Array.isArray(catalogPosts) && catalogPosts.length > 0) {
-    const validTargets = catalogPosts.filter(p => p && p.link && p.title);
-    if (validTargets.length > 0) {
-      const pMatches = [...html.matchAll(/<p>([\s\S]*?)<\/p>/gi)];
-      let injected = existingInternalCount;
-      for (let i = 1; i < pMatches.length && injected < 2; i++) {
-        const fullP = pMatches[i][0];
-        const innerP = pMatches[i][1];
+  // 2. Target: 2-3 Internal Links
+  const targetInternal = 3;
+  let targets = (Array.isArray(catalogPosts) ? catalogPosts : []).filter(p => p && p.link && p.title);
+  if (targets.length === 0 && siteUrl) {
+    targets = [
+      { title: `${businessName} Homepage`, link: `${siteUrl}/`, slug: "" },
+      { title: `${businessName} Services & Guidance`, link: `${siteUrl}/services/`, slug: "services" },
+      { title: `Contact ${businessName}`, link: `${siteUrl}/contact/`, slug: "contact" }
+    ];
+  }
+
+  if (existingInternalCount < targetInternal && targets.length > 0) {
+    const pMatches = [...html.matchAll(/<p>([\s\S]*?)<\/p>/gi)];
+    let injected = existingInternalCount;
+
+    let internalTemplates;
+    if (industryType === "ASTROLOGY_SPIRITUALITY") {
+      internalTemplates = [
+        (url, title) => ` For deeper guidance and cosmic insights, explore our comprehensive reading on <a href="${url}" style="color: #f59e0b; font-weight: 700; text-decoration: underline;">${title}</a>.`,
+        (url, title) => ` Seekers exploring related energetic dynamics should also consult our detailed analysis on <a href="${url}" style="color: #f59e0b; font-weight: 700; text-decoration: underline;">${title}</a>.`,
+        (url, title) => ` To further understand your life path and classical planetary influences, review our guide on <a href="${url}" style="color: #f59e0b; font-weight: 700; text-decoration: underline;">${title}</a>.`
+      ];
+    } else if (industryType === "FASHION_RETAIL") {
+      internalTemplates = [
+        (url, title) => ` To discover complementary style recommendations and trend analysis, explore our feature on <a href="${url}" style="color: #f59e0b; font-weight: 700; text-decoration: underline;">${title}</a>.`,
+        (url, title) => ` Explore related design aesthetics and seasonal collections in our guide on <a href="${url}" style="color: #f59e0b; font-weight: 700; text-decoration: underline;">${title}</a>.`,
+        (url, title) => ` For complete bridal and wardrobe curation, review our spotlight on <a href="${url}" style="color: #f59e0b; font-weight: 700; text-decoration: underline;">${title}</a>.`
+      ];
+    } else if (industryType === "HEALTHCARE_WELLNESS") {
+      internalTemplates = [
+        (url, title) => ` For additional clinical context and patient wellness guidance, read our detailed overview on <a href="${url}" style="color: #f59e0b; font-weight: 700; text-decoration: underline;">${title}</a>.`,
+        (url, title) => ` Explore related health protocols and therapeutic approaches in our article on <a href="${url}" style="color: #f59e0b; font-weight: 700; text-decoration: underline;">${title}</a>.`,
+        (url, title) => ` Learn more about proactive treatment regimens by consulting our guide on <a href="${url}" style="color: #f59e0b; font-weight: 700; text-decoration: underline;">${title}</a>.`
+      ];
+    } else {
+      internalTemplates = [
+        (url, title) => ` For an in-depth perspective on related strategic execution, explore our comprehensive guide on <a href="${url}" style="color: #f59e0b; font-weight: 700; text-decoration: underline;">${title}</a>.`,
+        (url, title) => ` To discover complementary frameworks and practical approaches, review our analysis on <a href="${url}" style="color: #f59e0b; font-weight: 700; text-decoration: underline;">${title}</a>.`,
+        (url, title) => ` Organizations seeking sustained competitive performance should also examine our guide on <a href="${url}" style="color: #f59e0b; font-weight: 700; text-decoration: underline;">${title}</a>.`
+      ];
+    }
+
+    const candidatePIndexes = [2, 6, 11, 4, 8, 14];
+    for (const pIdx of candidatePIndexes) {
+      if (injected >= targetInternal) break;
+      if (pIdx < pMatches.length) {
+        const fullP = pMatches[pIdx][0];
+        const innerP = pMatches[pIdx][1];
         if (!innerP.includes("<a ") && innerP.length > 100 && !innerP.includes("Disclaimer")) {
-          const targetItem = validTargets[injected % validTargets.length];
-          const anchorPhrase = targetItem.title.replace(/<[^>]+>/g, "").trim();
-          const linkHtml = ` For an in-depth perspective on related execution, explore our comprehensive guide on <a href="${targetItem.link}" style="color: #f59e0b; font-weight: 700; text-decoration: underline;">${anchorPhrase}</a>.`;
+          const targetItem = targets[injected % targets.length];
+          const anchorPhrase = targetItem.title.replace(/<[^>]+>/g, "").replace(/&amp;/g, "&").trim();
+          const template = internalTemplates[injected % internalTemplates.length];
+          const linkHtml = template(targetItem.link, anchorPhrase);
           html = html.replace(fullP, `<p>${innerP.trim()}${linkHtml}</p>`);
           injected++;
         }
@@ -226,7 +266,8 @@ function ensureRichLinks(contentHtml, {
     }
   }
 
-  // 3. Authority external link sources by industry
+  // 3. Target: 3-4 External Authority Citations
+  const targetExternal = 4;
   const authorityLibrary = {
     DIGITAL_TECH_MARKETING: [
       { name: "Google Search Central documentation", url: "https://developers.google.com/search/docs" },
@@ -235,9 +276,10 @@ function ensureRichLinks(contentHtml, {
       { name: "W3C Web Standards", url: "https://www.w3.org" }
     ],
     ASTROLOGY_SPIRITUALITY: [
-      { name: "Encyclopaedia Britannica historical research", url: "https://www.britannica.com" },
+      { name: "Encyclopaedia Britannica historical research", url: "https://www.britannica.com/topic/astrology" },
       { name: "Stanford Encyclopedia of Philosophy", url: "https://plato.stanford.edu" },
-      { name: "Library of Congress archival collections", url: "https://www.loc.gov" }
+      { name: "Library of Congress archival collections", url: "https://www.loc.gov" },
+      { name: "Oxford Reference classical studies", url: "https://www.oxfordreference.com" }
     ],
     FASHION_RETAIL: [
       { name: "National Retail Federation analysis", url: "https://nrf.com" },
@@ -248,34 +290,59 @@ function ensureRichLinks(contentHtml, {
     HEALTHCARE_WELLNESS: [
       { name: "World Health Organization standards", url: "https://www.who.int" },
       { name: "PubMed Central scientific studies", url: "https://pubmed.ncbi.nlm.nih.gov" },
-      { name: "Mayo Clinic health and wellness guidance", url: "https://www.mayoclinic.org" }
+      { name: "Mayo Clinic health and wellness guidance", url: "https://www.mayoclinic.org" },
+      { name: "National Institutes of Health research", url: "https://www.nih.gov" }
     ],
     LEGAL_PROFESSIONAL: [
       { name: "American Bar Association legal frameworks", url: "https://www.americanbar.org" },
       { name: "Bloomberg Law business insights", url: "https://news.bloomberglaw.com" },
-      { name: "Harvard Law School legal commentary", url: "https://hls.harvard.edu" }
+      { name: "Harvard Law School legal commentary", url: "https://hls.harvard.edu" },
+      { name: "Legal Information Institute", url: "https://www.law.cornell.edu" }
     ],
     GENERAL_BUSINESS: [
       { name: "Harvard Business Review strategic analysis", url: "https://hbr.org" },
       { name: "Statista commercial intelligence", url: "https://www.statista.com" },
-      { name: "Forbes leadership insights", url: "https://www.forbes.com" }
+      { name: "MIT Sloan Management Review", url: "https://sloanreview.mit.edu" },
+      { name: "World Economic Forum research", url: "https://www.weforum.org" }
     ]
   };
 
   const selectedAuthorities = authorityLibrary[industryType] || authorityLibrary.GENERAL_BUSINESS;
 
-  // 4. If fewer than 3 external links, inject authentic topic-relevant authority citations
-  if (existingExternalCount < 3) {
+  if (existingExternalCount < targetExternal && selectedAuthorities.length > 0) {
     const pMatches = [...html.matchAll(/<p>([\s\S]*?)<\/p>/gi)];
-    let injected = existingExternalCount;
-    for (let i = 2; i < pMatches.length && injected < 3; i++) {
-      const fullP = pMatches[i][0];
-      const innerP = pMatches[i][1];
-      if (!innerP.includes('rel="noopener') && innerP.length > 120 && !innerP.includes("Disclaimer")) {
-        const auth = selectedAuthorities[injected % selectedAuthorities.length];
-        const citationHtml = ` Industry benchmark data and comparative frameworks from <a href="${auth.url}" target="_blank" rel="noopener noreferrer" style="color: #f59e0b; font-weight: 700; text-decoration: underline;">${auth.name}</a> reaffirm the critical value of systematic execution in modern environments.`;
-        html = html.replace(fullP, `<p>${innerP.trim()}${citationHtml}</p>`);
-        injected++;
+    let extInjected = existingExternalCount;
+
+    let externalTemplates;
+    if (industryType === "ASTROLOGY_SPIRITUALITY") {
+      externalTemplates = [
+        (url, name) => ` Scholarly research and documented classical archives on this tradition are cataloged by <a href="${url}" target="_blank" rel="noopener noreferrer" style="color: #3b82f6; text-decoration: underline;">${name}</a>.`,
+        (url, name) => ` Historical manuscripts and philosophical foundations are extensively referenced in <a href="${url}" target="_blank" rel="noopener noreferrer" style="color: #3b82f6; text-decoration: underline;">${name}</a>.`,
+        (url, name) => ` For academic perspectives and cross-cultural lineage documentation, consult <a href="${url}" target="_blank" rel="noopener noreferrer" style="color: #3b82f6; text-decoration: underline;">${name}</a>.`,
+        (url, name) => ` Comparative historical records and foundational treatises can be examined through <a href="${url}" target="_blank" rel="noopener noreferrer" style="color: #3b82f6; text-decoration: underline;">${name}</a>.`
+      ];
+    } else {
+      externalTemplates = [
+        (url, name) => ` Industry benchmark data and comparative frameworks from <a href="${url}" target="_blank" rel="noopener noreferrer" style="color: #3b82f6; text-decoration: underline;">${name}</a> reaffirm the critical value of systematic execution.`,
+        (url, name) => ` Empirical studies and authoritative industry methodologies are documented extensively by <a href="${url}" target="_blank" rel="noopener noreferrer" style="color: #3b82f6; text-decoration: underline;">${name}</a>.`,
+        (url, name) => ` For detailed global standards and foundational research, consult the comprehensive guidance published by <a href="${url}" target="_blank" rel="noopener noreferrer" style="color: #3b82f6; text-decoration: underline;">${name}</a>.`,
+        (url, name) => ` Analytical data and long-term sector trend analysis can be further evaluated through <a href="${url}" target="_blank" rel="noopener noreferrer" style="color: #3b82f6; text-decoration: underline;">${name}</a>.`
+      ];
+    }
+
+    const candidateExtIndexes = [1, 5, 9, 13, 3, 7];
+    for (const pIdx of candidateExtIndexes) {
+      if (extInjected >= targetExternal) break;
+      if (pIdx < pMatches.length) {
+        const fullP = pMatches[pIdx][0];
+        const innerP = pMatches[pIdx][1];
+        if (!innerP.includes("<a ") && innerP.length > 100 && !innerP.includes("Disclaimer")) {
+          const auth = selectedAuthorities[extInjected % selectedAuthorities.length];
+          const template = externalTemplates[extInjected % externalTemplates.length];
+          const citationHtml = template(auth.url, auth.name);
+          html = html.replace(fullP, `<p>${innerP.trim()}${citationHtml}</p>`);
+          extInjected++;
+        }
       }
     }
   }
