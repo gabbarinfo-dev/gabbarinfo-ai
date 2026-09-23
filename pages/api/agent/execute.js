@@ -4517,10 +4517,11 @@ Otherwise, respond with a full, clear explanation, and include example JSON only
 
             console.log("🧪 FINAL PAYLOAD PATH 1:", JSON.stringify(finalPayload, null, 2));
 
-            // 🚂 RAILWAY WORKER INTEGRATION: Offload heavy Meta campaign execution to Railway background job (Zero Vercel Timeout!)
+            // 🚂 RAILWAY WORKER INTEGRATION: Offload heavy Meta campaign execution to Railway
+            let execJson = null;
             try {
-              console.log("🚂 Dispatching Meta campaign to Railway background job engine...");
-              const railwayJob = await dispatchMetaCampaignJobToRailway({
+              console.log("🚂 Attempting Meta campaign execution via Railway Worker...");
+              const railwayRes = await dispatchMetaCampaignToRailway({
                 userEmail,
                 businessId: effectiveBusinessId,
                 adAccountId: targetAdAccountId,
@@ -4542,32 +4543,24 @@ Otherwise, respond with a full, clear explanation, and include example JSON only
                 imageHash: state.image_hash || null,
               });
 
-              if (railwayJob && railwayJob.ok && railwayJob.jobId) {
-                console.log("🚀 [Path 1] Meta campaign job successfully queued on Railway:", railwayJob.jobId);
-                const launchedState = {
-                  ...state,
-                  stage: "COMPLETED",
-                  status: "ACTIVE",
-                  job_id: railwayJob.jobId,
-                  launched_at: new Date().toISOString(),
-                };
-                await saveAnswerMemory(
-                  process.env.NEXT_PUBLIC_BASE_URL,
-                  effectiveBusinessId,
-                  { campaign_state: launchedState },
-                  session.user.email.toLowerCase()
-                );
-
-                return res.status(200).json({
+              if (railwayRes && railwayRes.ok && (railwayRes.campaignId || railwayRes.id)) {
+                console.log("✅ Meta Campaign successfully created via Railway Worker!");
+                execJson = {
                   ok: true,
-                  mode,
-                  metaJobId: railwayJob.jobId,
-                  campaignName: finalPayload.campaign_name || "Meta Campaign",
-                  text: `🚀 **Publishing Campaign Live to Meta Ads...**\n\nYour campaign blueprint has been dispatched to our dedicated Railway worker engine.\n\n⏳ *Creating ad creative, configuring targeting, and publishing live to your Meta Ad Account...*`,
-                });
+                  id: railwayRes.campaignId || railwayRes.id,
+                  ad_set_id: railwayRes.adSetId || railwayRes.details?.ad_sets?.[0],
+                  ad_id: railwayRes.adId || railwayRes.details?.ads?.[0],
+                  ...railwayRes,
+                };
+              } else {
+                console.warn("⚠️ Railway execution returned non-ok:", railwayRes?.error);
+                if (railwayRes && railwayRes.error) {
+                  execJson = { ok: false, message: railwayRes.error };
+                }
               }
             } catch (railwayErr) {
-              console.warn("⚠️ Railway worker job dispatch error:", railwayErr.message);
+              console.warn("⚠️ Railway worker call error:", railwayErr.message);
+              execJson = { ok: false, message: railwayErr.message };
             }
 
             if (!execJson) {
@@ -5424,10 +5417,11 @@ Otherwise, respond with a full, clear explanation, and include example JSON only
 
               console.log("🧪 FINAL PAYLOAD PATH 2:", JSON.stringify(finalPayload, null, 2));
 
-              // 🚂 RAILWAY WORKER INTEGRATION: Offload heavy Meta campaign execution to Railway background job (Zero Vercel Timeout!)
+              // 🚂 RAILWAY WORKER INTEGRATION: Offload heavy Meta campaign execution to Railway
+              let execJson = null;
               try {
-                console.log("🚂 [Path 2] Dispatching Meta campaign to Railway background job engine...");
-                const railwayJob = await dispatchMetaCampaignJobToRailway({
+                console.log("🚂 [Path 2] Attempting Meta campaign execution via Railway Worker...");
+                const railwayRes = await dispatchMetaCampaignToRailway({
                   userEmail: session.user.email.toLowerCase(),
                   businessId: effectiveBusinessId,
                   adAccountId: finalPayload.adAccountId,
@@ -5448,32 +5442,24 @@ Otherwise, respond with a full, clear explanation, and include example JSON only
                   imageHash: currentState.image_hash || finalPayload.ad_sets?.[0]?.ad_creative?.image_hash || null,
                 });
 
-                if (railwayJob && railwayJob.ok && railwayJob.jobId) {
-                  console.log("🚀 [Path 2] Meta campaign job successfully queued on Railway:", railwayJob.jobId);
-                  const launchedState = {
-                    ...currentState,
-                    stage: "COMPLETED",
-                    status: "ACTIVE",
-                    job_id: railwayJob.jobId,
-                    launched_at: new Date().toISOString(),
-                  };
-                  await saveAnswerMemory(
-                    process.env.NEXT_PUBLIC_BASE_URL,
-                    effectiveBusinessId,
-                    { campaign_state: launchedState },
-                    session.user.email.toLowerCase()
-                  );
-
-                  return res.status(200).json({
+                if (railwayRes && railwayRes.ok && (railwayRes.campaignId || railwayRes.id)) {
+                  console.log("✅ [Path 2] Meta Campaign successfully created via Railway Worker!");
+                  execJson = {
                     ok: true,
-                    mode,
-                    metaJobId: railwayJob.jobId,
-                    campaignName: finalPayload.campaign_name || "Meta Campaign",
-                    text: `🚀 **Publishing Campaign Live to Meta Ads...**\n\nYour campaign blueprint has been dispatched to our dedicated Railway worker engine.\n\n⏳ *Creating ad creative, configuring targeting, and publishing live to your Meta Ad Account...*`,
-                  });
+                    id: railwayRes.campaignId || railwayRes.id,
+                    ad_set_id: railwayRes.adSetId || railwayRes.details?.ad_sets?.[0],
+                    ad_id: railwayRes.adId || railwayRes.details?.ads?.[0],
+                    ...railwayRes,
+                  };
+                } else {
+                  console.warn("⚠️ [Path 2] Railway execution returned non-ok:", railwayRes?.error);
+                  if (railwayRes && railwayRes.error) {
+                    execJson = { ok: false, message: railwayRes.error };
+                  }
                 }
               } catch (railwayErr) {
-                console.warn("⚠️ [Path 2] Railway worker job dispatch error:", railwayErr.message);
+                console.warn("⚠️ [Path 2] Railway worker call error:", railwayErr.message);
+                execJson = { ok: false, message: railwayErr.message };
               }
 
               if (!execJson) {
