@@ -89,32 +89,62 @@ const CONTENT_PILLARS = [
   { id: "interactive_poll", name: "Interactive & Engagement Hook", badge: "💬 Community Question" }
 ];
 
+const THIRTY_DAY_ANGLES = [
+  { pillar: "educational_tips", hook: "The Step-by-Step Blueprint", template: "The Exact Roadmap to Get Maximum Value from {service}" },
+  { pillar: "service_spotlight", hook: "Spotlight On Quality", template: "Behind the Scenes: How We Deliver High-Impact {service}" },
+  { pillar: "myth_busting", hook: "Costly Misconception Exposed", template: "The #1 Lie People Believe About {service} (And the Reality)" },
+  { pillar: "problem_solution", hook: "Overcoming Major Roadblocks", template: "Struggling with Slow Results in {service}? Here is the Fix" },
+  { pillar: "interactive_poll", hook: "We Want Your Input", template: "Quick Question: What is Your Single Biggest Challenge in {service}?" },
+  { pillar: "educational_tips", hook: "Insider Strategy", template: "3 Critical Principles That Elevate {service} to Elite Standards" },
+  { pillar: "service_spotlight", hook: "Why Execution Matters", template: "Ordinary Providers vs. Agency-Grade Execution in {service}" },
+  { pillar: "myth_busting", hook: "Fact Check & Truth", template: "Myth vs Reality: What Really Drives Measurable Growth in {service}" },
+  { pillar: "problem_solution", hook: "Solving Common Bottlenecks", template: "How to Avoid the Costly Mistakes Most Businesses Make with {service}" },
+  { pillar: "interactive_poll", hook: "Community Debate", template: "Which Approach to {service} Aligns Best with Your Brand Goals?" },
+  { pillar: "educational_tips", hook: "5-Point Quality Audit", template: "The Essential Checklist Before You Invest in {service}" },
+  { pillar: "service_spotlight", hook: "Proven Client Wins", template: "How Strategic {service} Unlocks Predictable Customer Loyalty" },
+  { pillar: "myth_busting", hook: "The Hard Truth", template: "Why Cheap Shortcuts in {service} Always End Up Costing You 3x More" },
+  { pillar: "problem_solution", hook: "The Practical Fix", template: "How to Optimize Your Existing {service} Pipeline for 2026" },
+  { pillar: "interactive_poll", hook: "Tell Us Below", template: "What Feature or Quality Do You Value Most When Evaluating {service}?" },
+  { pillar: "educational_tips", hook: "High-ROI Playbook", template: "The 3 Fast Tweaks to Multiply Your Return on {service}" },
+  { pillar: "service_spotlight", hook: "Exclusive Standards", template: "What True Professional Craftsmanship in {service} Looks Like" },
+  { pillar: "myth_busting", hook: "Common Industry Fallacy", template: "Think {service} is One-Size-Fits-All? Here Is Why That Fails" },
+  { pillar: "problem_solution", hook: "Case Study Breakdown", template: "From Frustration to Clarity: A Real-World Breakthrough with {service}" },
+  { pillar: "interactive_poll", hook: "Audience Perspective", template: "If You Could Solve One Problem with Your {service} Today, What Would It Be?" },
+  { pillar: "educational_tips", hook: "Advanced Masterclass", template: "The Nuanced Strategy Behind Long-Term Success with {service}" },
+  { pillar: "service_spotlight", hook: "Core Competency", template: "Why Leading Brands Refuse to Settle for Basic {service}" },
+  { pillar: "myth_busting", hook: "Unmasking the Hype", template: "What Actually Moves the Needle in {service} vs. What Is Just Vanity" },
+  { pillar: "problem_solution", hook: "Diagnostic Checklist", template: "Is Your Current {service} Actually Generating Real Bottom-Line Impact?" },
+  { pillar: "interactive_poll", hook: "Your Thoughts", template: "What Has Been Your Personal Experience When Implementing {service}?" },
+  { pillar: "educational_tips", hook: "Actionable Efficiency", template: "How Automation and Modern Workflows Accelerate {service} Speed" },
+  { pillar: "service_spotlight", hook: "Brand Transformation", template: "The Direct Connection Between Premium {service} and Market Authority" },
+  { pillar: "myth_busting", hook: "Debunking Outdated Advice", template: "Old-School Myths About {service} That You Must Unlearn in 2026" },
+  { pillar: "problem_solution", hook: "Sustainable Scaling", template: "A Bulletproof Framework to Scale Your Operations with {service}" },
+  { pillar: "interactive_poll", hook: "The 2026 Vision", template: "Where Do You See {service} Heading Over the Next 12 Months?" }
+];
+
 function buildFallbackQueue(services = [], businessName = "Our Business", count = 30, suggestedTopics = []) {
-  const cleanServices = services.length > 0 ? services : ["Featured Offerings", "Customer Favorites", "New Highlights", "Community Support"];
+  const cleanServices = services.length > 0 ? services : [
+    "Core Capabilities",
+    "Customer Support",
+    "Specialized Execution",
+    "Quality Solutions"
+  ];
   const queue = [];
   const now = new Date();
 
-  // If real domain topics are available (from crawled Shopify products or WordPress intel), prioritize them
+  // If real pre-generated domain topics are available, prioritize them without duplication
   if (Array.isArray(suggestedTopics) && suggestedTopics.length > 0) {
-    const pillars = [
-      { pillar: "educational_tips", hook: "Essential Guide & Insider Tips" },
-      { pillar: "service_spotlight", hook: "Spotlight On Quality" },
-      { pillar: "myth_busting", hook: "Common Misconceptions Debunked" },
-      { pillar: "problem_solution", hook: "Style, Care & Best Practices" },
-      { pillar: "interactive_poll", hook: "We'd Love Your Opinion" }
-    ];
-
     for (let i = 0; i < count; i++) {
       const topicText = suggestedTopics[i % suggestedTopics.length];
-      const p = pillars[i % pillars.length];
+      const angle = THIRTY_DAY_ANGLES[i % THIRTY_DAY_ANGLES.length];
       const s = cleanServices[i % cleanServices.length];
       const scheduled = new Date(now.getTime() + (i + 1) * 24 * 60 * 60 * 1000);
 
       queue.push({
         day: i + 1,
-        pillar: p.pillar,
+        pillar: angle.pillar,
         service: s,
-        hook: p.hook,
+        hook: angle.hook,
         topic: topicText,
         status: "pending",
         scheduledDate: scheduled.toISOString()
@@ -123,26 +153,18 @@ function buildFallbackQueue(services = [], businessName = "Our Business", count 
     return queue;
   }
 
-  // Universal domain-adaptive templates (suits retail, ecommerce, fashion, local businesses, services)
-  const baseTemplates = [
-    { pillar: "educational_tips", hook: "Essential Guide & Insider Tips", template: "5 Key Things You Need to Know About {service}" },
-    { pillar: "service_spotlight", hook: "Spotlight On Quality", template: "Discover What Makes Our {service} Exceptional" },
-    { pillar: "myth_busting", hook: "Debunking Common Misconceptions", template: "Myth vs Reality: Finding the Best Approach to {service}" },
-    { pillar: "problem_solution", hook: "Style, Care & Best Practices", template: "How to Get the Absolute Best Value & Longevity From Your {service}" },
-    { pillar: "interactive_poll", hook: "We'd Love Your Opinion", template: "What Matters Most to You When Choosing {service}?" }
-  ];
-
+  // 30 Days = 30 Completely Unique Topics Across Available Services
   for (let i = 0; i < count; i++) {
     const s = cleanServices[i % cleanServices.length];
-    const t = baseTemplates[i % baseTemplates.length];
+    const angle = THIRTY_DAY_ANGLES[i % THIRTY_DAY_ANGLES.length];
     const scheduled = new Date(now.getTime() + (i + 1) * 24 * 60 * 60 * 1000);
 
     queue.push({
       day: i + 1,
-      pillar: t.pillar,
+      pillar: angle.pillar,
       service: s,
-      hook: t.hook,
-      topic: t.template.replace("{service}", s),
+      hook: angle.hook,
+      topic: angle.template.replace("{service}", s),
       status: "pending",
       scheduledDate: scheduled.toISOString()
     });
@@ -236,10 +258,11 @@ export async function resolveBrandIntelligence({ email, normBusiness, matchedBra
           (normBusiness && (intelKey.includes(normBusiness) || normBusiness.includes(intelKey))) ||
           (siteUrl && parsed.siteUrl && siteUrl.includes(parsed.siteUrl.toLowerCase().replace(/https?:\/\//, "")))
         ) {
+          // Provide ALL real offerings without slicing down to 5 items!
           const coreServices = (parsed.coreOfferings && parsed.coreOfferings.length > 0)
-            ? parsed.coreOfferings.slice(0, 5)
+            ? parsed.coreOfferings
             : (parsed.targetKeywords && parsed.targetKeywords.length > 0)
-            ? parsed.targetKeywords.slice(0, 5)
+            ? parsed.targetKeywords
             : ["Core Offerings", "Consultation", "Solutions"];
 
           return {
@@ -263,13 +286,26 @@ export async function resolveBrandIntelligence({ email, normBusiness, matchedBra
   if (isAgencyRoot) {
     return {
       type: "agency",
-      businessName: "GABBARinfo",
-      industry: "Digital Marketing & Growth",
-      services: ["SEO Optimization", "Google Ads Management", "Meta Social Ads", "Website Design"],
+      businessName: "GABBARinfo Digital Solutions",
+      industry: "Digital Marketing, Creative & AI Solutions",
+      services: [
+        "Video Editing",
+        "Graphic Designing",
+        "Website Design",
+        "Social Media Ads",
+        "Google Ads Strategy",
+        "E-Commerce Sales Acceleration",
+        "AI Automation",
+        "Performance-Driven Marketing",
+        "Brand Transformation",
+        "Lead Generation",
+        "SEO & Content Writing",
+        "Customized Packages"
+      ],
       suggestedTopics: [],
       brandVoice: "Bold, authoritative, and consultative",
-      targetAudience: "Business owners and founders",
-      targetLocations: "Global"
+      targetAudience: "Business owners, founders, and decision-makers",
+      targetLocations: "India, USA, United Kingdom"
     };
   }
 
@@ -591,22 +627,23 @@ CONTENT PILLARS TO CYCLE (Rotate through these 5 pillars strictly):
 2. "service_spotlight": Compelling spotlight on one specific product or offering with an authentic value proposition.
 3. "myth_busting": Breaking common consumer myths or misconceptions in ${industry}.
 4. "problem_solution": Real problem/desire customers face and how to choose the ideal solution.
-5. "interactive_poll": Engaging question or debate prompt that drives comments and community interaction.
-
-STRICT RULES:
-- All topics MUST be 100% relevant to ${industry} and "${businessName}". Never suggest digital marketing, SEO, or Google Ads unless the business is explicitly a digital marketing agency!
-- Zero repetition! Every topic must have a distinct angle and hook.
-- Create exactly ${count} posts.
-- Output ONLY valid JSON array matching this schema:
-[
-  {
-    "day": 1,
-    "pillar": "educational_tips",
-    "service": "Service or Product Name",
-    "hook": "Punchy 4-7 word attention-grabbing headline",
-    "topic": "Specific topic and angle for the graphic and caption"
-  }
-]`;
+STRICT 30-DAY ZERO REPETITION & ZERO SIMILARITY MANDATE:
+- All topics MUST be 100% relevant to ${industry} and "${businessName}".
+- Every single post in this ${count}-post calendar must be completely unique in angle, topic, and hook.
+- Evenly rotate across ALL available offerings: ${services.join(", ")}. Never repeat an offering until all other offerings have been covered!
+- Never generate repetitive templates or similar phrasing across the ${count} days!
+- Output valid JSON object with a "posts" array:
+{
+  "posts": [
+    {
+      "day": 1,
+      "pillar": "educational_tips",
+      "service": "Specific Offering Name",
+      "hook": "Punchy 4-7 word attention-grabbing headline",
+      "topic": "Distinct, non-repeating topic angle for the graphic and caption"
+    }
+  ]
+}`;
 
             const completion = await openai.chat.completions.create({
               model: process.env.OPENAI_MODEL || "gpt-4o-mini",
@@ -618,7 +655,7 @@ STRICT RULES:
             const content = completion.choices[0]?.message?.content;
             if (content) {
               const parsed = JSON.parse(content);
-              const items = Array.isArray(parsed) ? parsed : parsed.queue || parsed.posts || parsed.calendar || Object.values(parsed)[0];
+              const items = Array.isArray(parsed) ? parsed : parsed.posts || parsed.queue || parsed.calendar || Object.values(parsed)[0];
               if (Array.isArray(items) && items.length > 0) {
                 const now = new Date();
                 aiQueue = items.map((item, idx) => ({

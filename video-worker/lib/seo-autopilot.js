@@ -494,11 +494,12 @@ async function runSeoAutopilotCycle({ supabase, openai, force = false, logger = 
       let candidateServices = [];
 
       // A) Extract service offerings directly from WordPress Pages (e.g. video-editing, graphic-designing, etc.)
-      const utilitySlugs = /^(home|about|contact|privacy|terms|faq|cart|checkout|my-account|sample-page|disclaimer|shipping-delivery|refund-policy|test.*|blogs)$/i;
+      const utilitySlugs = /^(home.*|about.*|contact.*|privacy.*|terms.*|faq.*|cart.*|checkout.*|my-account.*|sample-page.*|disclaimer.*|shipping.*|refund.*|cancellation.*|test.*|blogs.*|services|shop|account)$/i;
+      const utilityTitles = /^(home|about(\s+us)?|contact(\s+us)?|privacy(\s+policy)?|terms(\s+(&|and|&#038;)\s+conditions)?|disclaimer|shipping.*|refund.*|cancellation.*|blogs?|services?|sample\s+page|my\s+account|cart|checkout|test.*)$/i;
       for (const p of existingPublishedPages) {
         const slug = (p.slug || "").toLowerCase();
-        const pageTitle = (p.title || "").replace(/<[^>]+>/g, "").trim();
-        if (pageTitle && pageTitle.length > 2 && !utilitySlugs.test(slug) && isLegitimateService(pageTitle)) {
+        const pageTitle = decodeHtmlEntities((p.title || "").replace(/<[^>]+>/g, "").trim());
+        if (pageTitle && pageTitle.length > 2 && !utilitySlugs.test(slug) && !utilityTitles.test(pageTitle) && isLegitimateService(pageTitle)) {
           candidateServices.push(pageTitle);
         }
       }
@@ -515,9 +516,6 @@ async function runSeoAutopilotCycle({ supabase, openai, force = false, logger = 
             const parsedIntel = typeof im.content === "string" ? JSON.parse(im.content) : im.content;
             if (Array.isArray(parsedIntel?.coreOfferings)) {
               candidateServices.push(...parsedIntel.coreOfferings.map(decodeHtmlEntities));
-            }
-            if (Array.isArray(parsedIntel?.suggestedTopics)) {
-              candidateServices.push(...parsedIntel.suggestedTopics.map(decodeHtmlEntities));
             }
           } catch (_) {}
         }
@@ -587,25 +585,39 @@ async function runSeoAutopilotCycle({ supabase, openai, force = false, logger = 
         }
       }
 
-      // Round-robin index with strict anti-repetition for services
+      // Round-robin index with strict anti-repetition for services across 30 days
       let nextServiceIndex = (Number(config.lastServiceIndex) || 0) + 1;
 
+      const past30Titles = allPreviousTitles.slice(0, 30);
+      const past30TitlesLower = past30Titles.map((t) => t.toLowerCase());
+
       if (!activeService) {
-        // Inspect recent published articles to find offerings NOT recently covered
-        const recentTitlesLower = allPreviousTitles.slice(0, 10).map((t) => t.toLowerCase());
-        const freshServices = candidateServices.filter((s) => {
+        // STRICT 30-DAY ANTI-REPETITION: Calculate usage frequency and recency across past 30 days
+        const serviceStats = candidateServices.map((s) => {
           const sLower = s.toLowerCase();
-          // Avoid if service name or significant substring appears in recent 10 post titles
-          return !recentTitlesLower.some((t) => t.includes(sLower) || (sLower.length > 5 && t.includes(sLower.slice(0, -2))));
+          const count = past30TitlesLower.filter((t) => t.includes(sLower) || (sLower.length > 5 && t.includes(sLower.slice(0, -2)))).length;
+          const recencyIndex = past30TitlesLower.findIndex((t) => t.includes(sLower) || (sLower.length > 5 && t.includes(sLower.slice(0, -2))));
+          return {
+            service: s,
+            count,
+            recency: recencyIndex === -1 ? 999 : recencyIndex, // 999 = never appeared in past 30 days
+          };
         });
 
-        const servicePool = freshServices.length > 0 ? freshServices : candidateServices;
-        if (nextServiceIndex >= servicePool.length) nextServiceIndex = 0;
-        activeService = servicePool[nextServiceIndex] || candidateServices[0] || `${businessName} Core Services`;
-        logger(`[SEO Autopilot] Selected active service: "${activeService}" from pool of ${servicePool.length} unrepeated offerings (catalog total: ${candidateServices.length}).`);
+        // Sort: lowest count first (0 times), then furthest recency (least recently used)
+        serviceStats.sort((a, b) => {
+          if (a.count !== b.count) return a.count - b.count;
+          return b.recency - a.recency;
+        });
+
+        const minCount = serviceStats[0]?.count ?? 0;
+        const eligibleServices = serviceStats.filter((ss) => ss.count === minCount).map((ss) => ss.service);
+        if (nextServiceIndex >= eligibleServices.length) nextServiceIndex = 0;
+        activeService = eligibleServices[nextServiceIndex] || candidateServices[0] || `${businessName} Core Services`;
+        logger(`[SEO Autopilot] 30-Day Anti-Duplication: Selected active service "${activeService}" (used ${minCount} times in last 30 posts; eligible pool: ${eligibleServices.length}).`);
       }
 
-      // 4.4 Dynamic Topic Strategist (Shopify-Parity LLM Anti-Duplication Planner)
+      // 4.4 Dynamic Topic Strategist (Shopify-Parity LLM Anti-Duplication & Anti-Similarity Planner)
       if (!strategicTopic) {
         const topicPlanningPrompt = `You are a chief SEO content strategist for "${businessName}" (${siteUrl}).
 All Business Offerings & Services:
@@ -614,14 +626,14 @@ ${candidateServices.join(", ")}
 Selected Core Service for this article: "${activeService}"
 ${targetLocations ? `Target Geographic Territory: "${targetLocations}"` : ""}
 
-PREVIOUS PUBLISHED TITLES (STRICT ZERO DUPLICATION RULE - DO NOT DUPLICATE ANY OF THESE TITLES, ANGLES, OR HOOKS):
-${allPreviousTitles.slice(0, 25).join("\n")}
+PREVIOUS 30 PUBLISHED BLOG TITLES (FULL MONTH HISTORY - STRICT ZERO REPETITION & ZERO SIMILARITY MANDATE):
+${past30Titles.map((t, idx) => `[Day ${idx + 1}] "${t}"`).join("\n")}
 
 CRITICAL INSTRUCTIONS:
 Generate 1 fresh, highly attractive, search-intent driven master guide topic for 2026 for "${activeService}".
-- The topic MUST be completely distinct in title, angle, and search intent from all previous titles listed above.
-- NEVER reuse "Mastering [Service] in 2026: A Comprehensive Guide" or "Mastering [Service]: Strategies for 2026".
-- Focus on a specific high-value client pain point, practical framework, ROI scaling strategy, or advanced 2026 tactical playbook (e.g. if Video Editing: short-form video retention tactics or commercial video production; if Graphic Design: high-converting visual identity & ad creatives; if Website Design: UX speed & conversion architecture; etc.).
+- STRICT ZERO REPETITION: The topic MUST be completely distinct in title, angle, and search intent from all 30 previous titles listed above.
+- STRICT ZERO SIMILARITY: NEVER reuse formulaic patterns or phrasing similar to any past title (e.g. if any title has "Mastering...", NEVER use "Mastering..."; if any title has "A Comprehensive Guide", NEVER use "A Comprehensive Guide").
+- Focus on a specific high-value client pain point, practical framework, ROI scaling strategy, or advanced 2026 tactical playbook for "${activeService}" (e.g. if Video Editing: short-form video retention tactics or commercial video production; if Graphic Design: high-converting visual identity & ad creatives; if Website Design: UX speed & conversion architecture; etc.).
 ${targetLocations ? `- Tailor the angle specifically to appeal to clients and decision-makers in ${targetLocations}.` : ""}
 
 Format response strictly as JSON:
@@ -653,6 +665,38 @@ Format response strictly as JSON:
             primaryKeyword: `${activeService} 2026`,
             secondaryKeywords: [`best ${activeService}`, `${activeService} strategy`, `professional ${activeService}`],
           };
+        }
+
+        // Strict 30-Day Anti-Similarity Guard: Verify Jaccard word-overlap and structural phrasing with all past 30 titles
+        const calculateSimilarity = (titleA, titleB) => {
+          const strA = String(titleA).toLowerCase();
+          const strB = String(titleB).toLowerCase();
+          // Check prefix repetition (e.g. both starting with "Mastering...", "The Comprehensive...", "Unlocking...")
+          const prefixA = strA.split(/\s+/).slice(0, 2).join(" ");
+          const prefixB = strB.split(/\s+/).slice(0, 2).join(" ");
+          if (prefixA && prefixA === prefixB) return 0.85;
+
+          const wordsA = new Set(strA.replace(/[^a-z0-9\s]/g, "").split(/\s+/).filter(w => w.length > 3));
+          const wordsB = new Set(strB.replace(/[^a-z0-9\s]/g, "").split(/\s+/).filter(w => w.length > 3));
+          if (wordsA.size === 0 || wordsB.size === 0) return 0;
+          let intersection = 0;
+          for (const w of wordsA) if (wordsB.has(w)) intersection++;
+          return intersection / new Set([...wordsA, ...wordsB]).size;
+        };
+
+        const conflictingTitle = past30Titles.find(prev => calculateSimilarity(strategicTopic.topic, prev) > 0.30);
+        if (conflictingTitle) {
+          logger(`[SEO Autopilot] Warning: Planned topic "${strategicTopic.topic}" is too similar to past title "${conflictingTitle}". Enforcing fresh unique angle.`);
+          const uniqueAngles = [
+            `2026 Strategic Blueprint: How Modern Businesses Scale with High-Performance ${activeService}`,
+            `The Hidden Cost of Subpar ${activeService}: Critical Pitfalls and How Market Leaders Avoid Them`,
+            `Tactical Architecture: A Deep-Dive Implementation Framework for ${activeService} in 2026`,
+            `From Baseline to High-ROI: Modernizing Your Approach to ${activeService} This Year`,
+            `Operational Excellence in ${activeService}: Data-Driven Methodology for Sustained Growth`,
+            `The Decision-Maker's Playbook: Evaluating, Deploying, and Maximizing ${activeService} in 2026`
+          ];
+          const angleIndex = Math.abs(nextServiceIndex) % uniqueAngles.length;
+          strategicTopic.topic = uniqueAngles[angleIndex];
         }
       }
 

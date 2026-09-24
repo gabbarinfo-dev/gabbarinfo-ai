@@ -250,16 +250,18 @@ async function runSocialAutopilotCycle({ supabase, openai, force = false, logger
         } catch (_) {}
       }
 
-      // If still empty, dynamically crawl their actual site's published pages
-      if (candidateServices.length === 0 && siteUrl) {
+      // Dynamically crawl their actual site's published pages to discover all genuine services and offerings
+      if (siteUrl) {
         try {
-          const pagesRes = await fetch(`${siteUrl}/wp-json/wp/v2/pages?per_page=20&_fields=title,slug`);
+          const pagesRes = await fetch(`${siteUrl}/wp-json/wp/v2/pages?per_page=50&_fields=title,slug`);
           if (pagesRes.ok) {
             const pages = await pagesRes.json();
-            const skipSlugs = /^(home|about|contact|privacy|terms|faq|cart|checkout|my-account|sample-page)$/i;
+            const utilitySlugs = /^(home.*|about.*|contact.*|privacy.*|terms.*|faq.*|cart.*|checkout.*|my-account.*|sample-page.*|disclaimer.*|shipping.*|refund.*|cancellation.*|test.*|blogs.*|services|shop|account)$/i;
+            const utilityTitles = /^(home|about(\s+us)?|contact(\s+us)?|privacy(\s+policy)?|terms(\s+(&|and|&#038;)\s+conditions)?|disclaimer|shipping.*|refund.*|cancellation.*|blogs?|services?|sample\s+page|my\s+account|cart|checkout|test.*)$/i;
             for (const p of pages || []) {
-              const title = (p?.title?.rendered || p?.slug || "").replace(/<[^>]+>/g, "").trim();
-              if (title && title.length > 2 && !skipSlugs.test((p.slug || "").toLowerCase())) {
+              const slug = (p.slug || "").toLowerCase();
+              const title = decodeHtmlEntities((p?.title?.rendered || p?.slug || "").replace(/<[^>]+>/g, "").trim());
+              if (title && title.length > 2 && !utilitySlugs.test(slug) && !utilityTitles.test(title) && isLegitimateService(title)) {
                 candidateServices.push(title);
               }
             }
@@ -296,21 +298,69 @@ async function runSocialAutopilotCycle({ supabase, openai, force = false, logger
         ];
       }
 
+      // 30-Day Social History & Anti-Repetition Ranking
+      const past30SocialPosts = [
+        ...(Array.isArray(config.history) ? config.history : []),
+        ...(Array.isArray(config.publishedTopics) ? config.publishedTopics.map(t => ({ topic: t, hook: t, service: "" })) : [])
+      ].slice(0, 30);
+
+      const serviceStats = candidateServices.map((s) => {
+        const sLower = s.toLowerCase();
+        const count = past30SocialPosts.filter((p) => {
+          const pServ = (p.service || "").toLowerCase();
+          const pHook = (p.hook || "").toLowerCase();
+          const pTopic = (p.topic || "").toLowerCase();
+          return pServ === sLower || (sLower.length > 4 && pServ.includes(sLower)) || pHook.includes(sLower) || pTopic.includes(sLower);
+        }).length;
+        const recencyIndex = past30SocialPosts.findIndex((p) => {
+          const pServ = (p.service || "").toLowerCase();
+          const pHook = (p.hook || "").toLowerCase();
+          const pTopic = (p.topic || "").toLowerCase();
+          return pServ === sLower || (sLower.length > 4 && pServ.includes(sLower)) || pHook.includes(sLower) || pTopic.includes(sLower);
+        });
+        return {
+          service: s,
+          count,
+          recency: recencyIndex === -1 ? 999 : recencyIndex,
+        };
+      });
+
+      // Sort: lowest count first, then furthest recency
+      serviceStats.sort((a, b) => {
+        if (a.count !== b.count) return a.count - b.count;
+        return b.recency - a.recency;
+      });
+
+      const minCount = serviceStats[0]?.count ?? 0;
+      const eligibleServices = serviceStats.filter((ss) => ss.count === minCount).map((ss) => ss.service);
+
       // Check if queue has a pending item for today
       let activeService = null;
       let activeQueueItem = null;
       if (Array.isArray(config.queue)) {
         activeQueueItem = config.queue.find(q => q.status === "pending" && isLegitimateService(q.service));
         if (activeQueueItem) {
-          activeService = decodeHtmlEntities(activeQueueItem.service);
+          const queueServ = decodeHtmlEntities(activeQueueItem.service);
+          const queueServStat = serviceStats.find(s => s.service.toLowerCase() === queueServ.toLowerCase());
+          // If this queued service was already posted recently and we have fresh unserved services
+          if (queueServStat && queueServStat.count > minCount && eligibleServices.length > 0) {
+            logger(`[Social Autopilot] Queue item service "${queueServ}" was already posted ${queueServStat.count} times recently. Enforcing 30-day anti-repetition rotation to fresh service.`);
+            let nextIndex = (Number(config.lastServiceIndex) || 0) + 1;
+            if (nextIndex >= eligibleServices.length) nextIndex = 0;
+            activeService = eligibleServices[nextIndex];
+            activeQueueItem.service = activeService;
+          } else {
+            activeService = queueServ;
+          }
         }
       }
 
-      // If no pending queue item or no queue, use round-robin rotation
+      // If no pending queue item or no queue, use round-robin rotation over eligible pool
       let nextIndex = (Number(config.lastServiceIndex) || 0) + 1;
-      if (nextIndex >= candidateServices.length) nextIndex = 0;
+      if (nextIndex >= eligibleServices.length) nextIndex = 0;
       if (!activeService) {
-        activeService = candidateServices[nextIndex] || `${businessName} Core Services`;
+        activeService = eligibleServices[nextIndex] || candidateServices[0] || `${businessName} Core Services`;
+        logger(`[Social Autopilot] 30-Day Anti-Duplication: Selected active service "${activeService}" (used ${minCount} times in last 30 posts; eligible pool: ${eligibleServices.length}).`);
       }
 
       // DECONFLICTION: Check if WordPress SEO blog published an article in the last 24 hours
@@ -463,18 +513,60 @@ async function runSocialAutopilotCycle({ supabase, openai, force = false, logger
       let selectedHook = activeQueueItem?.hook || "";
       let topicTitle = activeQueueItem?.topic || "";
 
+      // Check if selectedHook is missing, repetitive, or from the old generic 5-template pool
+      const pastHooks = past30SocialPosts.map(p => p.hook || p.topic).filter(Boolean);
+      const isGenericOrRepeated = !selectedHook || 
+        selectedHook.includes("Are you getting the full commercial return") ||
+        selectedHook.includes("How premier") ||
+        selectedHook.includes("The difference between ordinary providers") ||
+        selectedHook.includes("3 proven principles that elevate") ||
+        selectedHook.includes("Why excellence and consistency") ||
+        pastHooks.some(ph => ph.toLowerCase() === selectedHook.toLowerCase() || (selectedHook.length > 15 && ph.toLowerCase().includes(selectedHook.toLowerCase())));
+
+      if (isGenericOrRepeated || !topicTitle) {
+        try {
+          const hookRes = await openai.chat.completions.create({
+            model: "gpt-4o-mini",
+            messages: [
+              {
+                role: "system",
+                content: `You are an elite viral commercial copywriter and creative director for "${resolvedBrandName}" (${businessIndustry}). You create high-converting, attention-grabbing hooks and topics that stop scrollers in their tracks.`
+              },
+              {
+                role: "user",
+                content: `Create 1 completely unique, high-converting social media hook and topic title promoting "${activeService}" for "${resolvedBrandName}".
+Core Offering: "${activeService}"
+Industry: "${businessIndustry}"
+${targetLocations ? `Target Markets: "${targetLocations}"` : ""}
+
+PREVIOUS 30 SOCIAL HOOKS (DO NOT REPEAT ANY OF THESE HOOKS, PATTERNS, OR PHRASING):
+${pastHooks.slice(0, 30).map((h, i) => `[Post ${i + 1}] "${h}"`).join("\n")}
+
+STRICT INSTRUCTIONS:
+- The hook must be completely original, punchy, curiosity-inducing, and commercially compelling.
+- NEVER reuse any phrasing, sentence structure, or angle from the past 30 posts above.
+- Select a fresh framework (e.g., provocative contrarian insight, costly mistake diagnostic, high-ROI transformation, insider secret, client outcome spotlight, or direct challenge).
+- Format response strictly as JSON:
+{
+  "hook": "Punchy 1-sentence viral hook (under 12 words)",
+  "topic": "Strategic topic title"
+}`
+              }
+            ],
+            response_format: { type: "json_object" },
+            temperature: 0.85,
+          });
+          const parsedHook = JSON.parse(hookRes.choices[0]?.message?.content || "{}");
+          if (parsedHook.hook) selectedHook = parsedHook.hook;
+          if (parsedHook.topic) topicTitle = parsedHook.topic;
+        } catch (_) {}
+      }
+
       if (!topicTitle) {
         topicTitle = `${activeService}: 2026 High-Impact Strategies & Execution`;
       }
       if (!selectedHook) {
-        const topicHooks = [
-          `Are you getting the full commercial return you deserve from your ${activeService}?`,
-          `How premier ${businessIndustry} standards unlock greater reliability and growth`,
-          `The difference between ordinary providers and industry leaders in ${activeService}`,
-          `3 proven principles that elevate ${activeService} to the highest professional standard`,
-          `Why excellence and consistency in ${activeService} create lasting customer loyalty`
-        ];
-        selectedHook = topicHooks[Math.floor(Math.random() * topicHooks.length)];
+        selectedHook = `Transform your business with high-performance ${activeService}`;
       }
 
       logger(`[Social Autopilot] Generating caption for "${activeService}" (${resolvedBrandName})...`);
@@ -739,6 +831,7 @@ ${ctaDirectives}`
           date: now.toISOString(),
           service: activeService,
           hook: selectedHook,
+          topic: topicTitle || activeService,
           imageUrl: publicImageUrl,
           publishedTo: published,
         });
