@@ -135,6 +135,22 @@ export default function GoogleBusinessConnect({ onConnectionChange }) {
     } finally {
       setCreating(false);
     }
+  const handleDisconnectGmb = async () => {
+    if (!confirm("Are you sure you want to disconnect your Google Business Profile? This will pause automated review responses and unlink local map extensions.")) return;
+    try {
+      const res = await fetch("/api/gmb/disconnect", { method: "POST" });
+      const data = await res.json();
+      if (data.ok) {
+        setSelectedLocation(null);
+        setMessage("Google Business Profile disconnected.");
+        if (onConnectionChange) onConnectionChange(false);
+        fetchGmbStatus();
+      } else {
+        setError(data.message || "Failed to disconnect GMB.");
+      }
+    } catch (err) {
+      setError("Error disconnecting GMB: " + err.message);
+    }
   };
 
   if (loading) {
@@ -256,6 +272,21 @@ export default function GoogleBusinessConnect({ onConnectionChange }) {
             }}
           >
             🔄 Refresh
+          </button>
+          <button
+            onClick={handleDisconnectGmb}
+            style={{
+              padding: "7px 14px",
+              fontSize: "12px",
+              cursor: "pointer",
+              background: "rgba(239, 68, 68, 0.15)",
+              border: "1px solid rgba(239, 68, 68, 0.35)",
+              color: "#fca5a5",
+              borderRadius: "8px",
+              fontWeight: 600,
+            }}
+          >
+            🔌 Disconnect
           </button>
         </div>
       </div>

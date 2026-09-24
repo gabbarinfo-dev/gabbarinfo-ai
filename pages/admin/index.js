@@ -13,6 +13,7 @@ const ALL_SERVICES = [
   { key: "GOOGLE_ADS", label: "Google Ads", icon: "📈" },
   { key: "IMAGE_GENERATION", label: "AI Images", icon: "🎨" },
   { key: "AI_CHAT", label: "AI Chat", icon: "💬" },
+  { key: "GMB_AUTOPILOT", label: "Local Maps (GMB)", icon: "📍" },
 ];
 
 export default function AdminPage() {
@@ -290,6 +291,37 @@ export default function AdminPage() {
       console.error("Assign plan error:", err);
       alert("Failed to assign plan.");
       loadTenants();
+    }
+  }
+
+  // ---------------- ADMIN DISCONNECT GMB ----------------
+  async function handleAdminDisconnectGmb(userEmail) {
+    if (!confirm(`Disconnect Google Business Profile (GMB) for ${userEmail}?`)) return;
+    try {
+      const res = await fetch("/api/admin/manage-tenant", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          action: "disconnect_gmb",
+          userEmail,
+        }),
+      });
+      const data = await res.json();
+      if (data.success) {
+        setTenants((prev) =>
+          prev.map((t) => (t.email === userEmail ? { ...t, gmbLocation: null } : t))
+        );
+        setTenantActionMessage({
+          type: "success",
+          text: `GMB disconnected for ${userEmail}.`,
+        });
+        setTimeout(() => setTenantActionMessage(null), 3500);
+      } else {
+        alert(data.error || "Failed to disconnect GMB");
+      }
+    } catch (err) {
+      console.error("Disconnect GMB error:", err);
+      alert("Failed to disconnect GMB.");
     }
   }
 
@@ -881,6 +913,31 @@ export default function AdminPage() {
                           <div className="workspace-id">
                             ID: {primaryBiz.id ? `${primaryBiz.id.slice(0, 16)}...` : "System-Assigned"}
                           </div>
+                          {t.gmbLocation ? (
+                            <div style={{ marginTop: 6, display: "flex", alignItems: "center", justifyContent: "space-between", gap: 6, fontSize: 11, color: "#34d399", background: "rgba(16, 185, 129, 0.1)", padding: "3px 7px", borderRadius: 5, border: "1px solid rgba(16, 185, 129, 0.25)" }}>
+                              <span title={t.gmbLocation.name || ""}>📍 {t.gmbLocation.title || "GMB Connected"}</span>
+                              <button
+                                onClick={() => handleAdminDisconnectGmb(t.email)}
+                                title="Disconnect GMB for this tenant"
+                                style={{
+                                  background: "rgba(239, 68, 68, 0.2)",
+                                  border: "1px solid rgba(239, 68, 68, 0.4)",
+                                  color: "#fca5a5",
+                                  cursor: "pointer",
+                                  fontWeight: 700,
+                                  fontSize: 10,
+                                  padding: "1px 5px",
+                                  borderRadius: 3
+                                }}
+                              >
+                                ✕ DC
+                              </button>
+                            </div>
+                          ) : (
+                            <div style={{ marginTop: 4, fontSize: 10.5, color: "#64748b" }}>
+                              📍 GMB: Not connected
+                            </div>
+                          )}
                         </td>
 
                         {/* Assigned Subscription Plan */}

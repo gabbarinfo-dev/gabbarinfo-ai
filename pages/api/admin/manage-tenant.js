@@ -61,6 +61,19 @@ export default async function handler(req, res) {
         if (c.email) creditMap[c.email.toLowerCase()] = c.credits_left;
       });
 
+      // 2b. Fetch active GMB locations from agent_memory
+      const { data: gmbMemories } = await supabaseServer
+        .from("agent_memory")
+        .select("email, content")
+        .eq("memory_type", "selected_gmb_location");
+
+      const gmbMap = {};
+      (gmbMemories || []).forEach((m) => {
+        try {
+          gmbMap[m.email.toLowerCase()] = typeof m.content === "string" ? JSON.parse(m.content) : m.content;
+        } catch (_) {}
+      });
+
       // 3. Fetch persistent registry from Supabase
       const registry = await getTenantRegistry();
       let registryModified = false;
@@ -89,6 +102,7 @@ export default async function handler(req, res) {
           credits: creditMap[emailNorm] ?? 1000,
           isSuspended: Boolean(config.isSuspended),
           maxBusinesses: config.maxBusinesses || 1,
+          gmbLocation: gmbMap[emailNorm] || null,
           subscription: config.subscription || {
             status: currentPlan === "none" ? "inactive" : "active",
             plan: currentPlan,
@@ -117,7 +131,32 @@ export default async function handler(req, res) {
     }
 
     // -------------------------------------------------------------
-    // 2. UPDATE CREDITS
+    // 2. DISCONNECT GMB (ADMIN)
+    // -------------------------------------------------------------
+    if (action === "disconnect_gmb") {
+      const { userEmail: targetEmail } = req.body;
+      if (!targetEmail) return res.status(400).json({ error: "targetEmail is required" });
+      const normEmail = targetEmail.toLowerCase().trim();
+
+      await supabaseServer
+        .from("agent_memory")
+        .delete()
+        .eq("email", normEmail)
+        .eq("memory_type", "selected_gmb_location");
+
+      try {
+        await supabaseServer
+          .from("asset_claims")
+          .delete()
+          .eq("user_email", normEmail)
+          .eq("asset_type", "gmb_location");
+      } catch (_) {}
+
+      return res.status(200).json({ success: true, message: `GMB disconnected for ${normEmail}` });
+    }
+
+    // -------------------------------------------------------------
+    // 3. UPDATE CREDITS
     // -------------------------------------------------------------
     if (action === "update_credits") {
       const { userEmail: targetEmail, businessId, mode, amount } = req.body;
