@@ -23,7 +23,9 @@ const BLACKLISTED_TERMS = [
   "cookie",
   "test",
   "discreet",
-  "horoscope"
+  "horoscope",
+  "home",
+  "blogs"
 ];
 
 function decodeHtmlEntities(str) {
@@ -40,6 +42,7 @@ function isLegitimateService(serviceName) {
   if (!serviceName || typeof serviceName !== "string") return false;
   const decoded = decodeHtmlEntities(serviceName).toLowerCase().trim();
   if (decoded.length < 3) return false;
+  if (decoded === "services" || decoded === "our services") return false;
   for (const term of BLACKLISTED_TERMS) {
     if (decoded.includes(term)) return false;
   }
@@ -264,6 +267,24 @@ async function runSocialAutopilotCycle({ supabase, openai, force = false, logger
         } catch (_) {}
       }
 
+      // Also load intelligence from Supabase agent_memory (wp_intel_%) if available
+      try {
+        const { data: intelMems } = await supabase
+          .from("agent_memory")
+          .select("content")
+          .eq("email", item.email.trim().toLowerCase())
+          .like("memory_type", "wp_intel_%");
+        for (const im of intelMems || []) {
+          try {
+            const parsedIntel = typeof im.content === "string" ? JSON.parse(im.content) : im.content;
+            if (Array.isArray(parsedIntel?.coreOfferings)) {
+              candidateServices.push(...parsedIntel.coreOfferings.map(decodeHtmlEntities));
+            }
+          } catch (_) {}
+        }
+      } catch (_) {}
+      candidateServices = [...new Set(candidateServices)].filter(isLegitimateService);
+
       // Dynamic fallback based on the user's specific business name & industry
       if (candidateServices.length === 0) {
         const ind = config.industry || businessName || "Commercial Services";
@@ -290,6 +311,38 @@ async function runSocialAutopilotCycle({ supabase, openai, force = false, logger
       if (nextIndex >= candidateServices.length) nextIndex = 0;
       if (!activeService) {
         activeService = candidateServices[nextIndex] || `${businessName} Core Services`;
+      }
+
+      // DECONFLICTION: Check if WordPress SEO blog published an article in the last 24 hours
+      let recentBlogTitleOrTopic = "";
+      try {
+        const { data: blogMemList } = await supabase
+          .from("agent_memory")
+          .select("content")
+          .eq("email", item.email.trim().toLowerCase())
+          .like("memory_type", "wp_autopilot_%");
+        for (const bm of blogMemList || []) {
+          try {
+            const parsedBlog = JSON.parse(bm.content);
+            if (parsedBlog.lastPublishedAt) {
+              const blogDate = new Date(parsedBlog.lastPublishedAt);
+              if (now - blogDate < 24 * 60 * 60 * 1000) {
+                recentBlogTitleOrTopic = (parsedBlog.lastPublishedTitle || "").toLowerCase();
+                break;
+              }
+            }
+          } catch (_) {}
+        }
+      } catch (_) {}
+
+      if (recentBlogTitleOrTopic && activeService && candidateServices.length > 1) {
+        const actLower = activeService.toLowerCase();
+        if (recentBlogTitleOrTopic.includes(actLower) || (actLower.length > 5 && recentBlogTitleOrTopic.includes(actLower.slice(0, -2)))) {
+          logger(`[Social Autopilot] Deconfliction: Blog recently published on "${activeService}". Rotating social post to avoid same-day duplication.`);
+          nextIndex = (nextIndex + 1) % candidateServices.length;
+          activeService = candidateServices[nextIndex] || activeService;
+          activeQueueItem = null; // Do not consume conflicting queue item today
+        }
       }
 
       const businessIndustry = config.industry || businessName || "Commercial Services";
@@ -407,15 +460,22 @@ async function runSocialAutopilotCycle({ supabase, openai, force = false, logger
       const resolvedBrandName = matchedBrand?.businessName || config.businessName || businessName || "GABBARinfo";
 
       // 4. Generate Caption & Topic Hook via OpenAI / LLM
-      const topicHooks = [
-        `Are you getting the full commercial return you deserve from your ${activeService}?`,
-        `How premier ${businessIndustry} standards unlock greater reliability and growth`,
-        `The difference between ordinary providers and industry leaders in ${activeService}`,
-        `3 proven principles that elevate ${activeService} to the highest professional standard`,
-        `Why excellence and consistency in ${activeService} create lasting customer loyalty`
-      ];
-      const selectedHook = topicHooks[Math.floor(Math.random() * topicHooks.length)];
-      const topicTitle = `${activeService}: Elevating Your Brand with Industry Excellence`;
+      let selectedHook = activeQueueItem?.hook || "";
+      let topicTitle = activeQueueItem?.topic || "";
+
+      if (!topicTitle) {
+        topicTitle = `${activeService}: 2026 High-Impact Strategies & Execution`;
+      }
+      if (!selectedHook) {
+        const topicHooks = [
+          `Are you getting the full commercial return you deserve from your ${activeService}?`,
+          `How premier ${businessIndustry} standards unlock greater reliability and growth`,
+          `The difference between ordinary providers and industry leaders in ${activeService}`,
+          `3 proven principles that elevate ${activeService} to the highest professional standard`,
+          `Why excellence and consistency in ${activeService} create lasting customer loyalty`
+        ];
+        selectedHook = topicHooks[Math.floor(Math.random() * topicHooks.length)];
+      }
 
       logger(`[Social Autopilot] Generating caption for "${activeService}" (${resolvedBrandName})...`);
       const targetLocations = (config.targetLocations || config.targetMarket || "").trim();

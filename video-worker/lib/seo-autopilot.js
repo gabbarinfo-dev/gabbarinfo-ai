@@ -22,7 +22,9 @@ const BLACKLISTED_TERMS = [
   "checkout",
   "cookie",
   "test",
-  "discreet"
+  "discreet",
+  "home",
+  "blogs"
 ];
 
 function decodeHtmlEntities(str) {
@@ -39,6 +41,7 @@ function isLegitimateService(serviceName) {
   if (!serviceName || typeof serviceName !== "string") return false;
   const decoded = decodeHtmlEntities(serviceName).toLowerCase().trim();
   if (decoded.length < 3) return false;
+  if (decoded === "services" || decoded === "our services") return false;
   for (const term of BLACKLISTED_TERMS) {
     if (decoded.includes(term)) return false;
   }
@@ -442,13 +445,89 @@ async function runSeoAutopilotCycle({ supabase, openai, force = false, logger = 
       const siteUrl = wpConn.siteUrl.replace(/\/$/, "");
       const wpApiKey = wpConn.apiKey;
 
-      // 4. Select Legitimate Service Topic for ANY Business Type
+      // 4. Discover All Authentic Offerings, Services, and Pages
+      const targetLocations = (config.targetLocations || config.targetMarket || "").trim();
+
+      // 4.1 Fetch Existing Published WordPress Posts (to strictly avoid topic duplication) & Pages (to discover real services & for internal linking)
+      let existingPublishedPosts = [];
+      let existingPublishedPages = [];
+      try {
+        const wpReqHeaders = {
+          Accept: "application/json",
+          "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36 GabbarInfo/1.0",
+        };
+        if (wpApiKey) {
+          wpReqHeaders.Authorization = `Bearer ${wpApiKey}`;
+        }
+
+        const [postsResp, pagesResp] = await Promise.all([
+          fetch(`${siteUrl}/wp-json/wp/v2/posts?per_page=50&_fields=id,title,slug,link`, { headers: wpReqHeaders }),
+          fetch(`${siteUrl}/wp-json/wp/v2/pages?per_page=50&_fields=id,title,slug,link`, { headers: wpReqHeaders })
+        ]);
+        if (postsResp.ok) {
+          const rawPosts = await postsResp.json();
+          if (Array.isArray(rawPosts)) {
+            existingPublishedPosts = rawPosts.map((p) => ({
+              id: p.id,
+              title: decodeHtmlEntities(typeof p.title === "object" ? p.title.rendered : p.title),
+              link: p.link,
+              slug: p.slug,
+            })).filter((p) => p.link && p.title);
+          }
+        }
+        if (pagesResp.ok) {
+          const rawPages = await pagesResp.json();
+          if (Array.isArray(rawPages)) {
+            existingPublishedPages = rawPages.map((p) => ({
+              id: p.id,
+              title: decodeHtmlEntities(typeof p.title === "object" ? p.title.rendered : p.title),
+              link: p.link,
+              slug: p.slug,
+            })).filter((p) => p.link && p.title);
+          }
+        }
+      } catch (e) {
+        logger(`[SEO Autopilot] Note: Could not fetch existing published content (${e.message}).`);
+      }
+
+      // 4.2 Build Comprehensive Services & Offerings Catalog
       let candidateServices = [];
+
+      // A) Extract service offerings directly from WordPress Pages (e.g. video-editing, graphic-designing, etc.)
+      const utilitySlugs = /^(home|about|contact|privacy|terms|faq|cart|checkout|my-account|sample-page|disclaimer|shipping-delivery|refund-policy|test.*|blogs)$/i;
+      for (const p of existingPublishedPages) {
+        const slug = (p.slug || "").toLowerCase();
+        const pageTitle = (p.title || "").replace(/<[^>]+>/g, "").trim();
+        if (pageTitle && pageTitle.length > 2 && !utilitySlugs.test(slug) && isLegitimateService(pageTitle)) {
+          candidateServices.push(pageTitle);
+        }
+      }
+
+      // B) Load intelligence from Supabase agent_memory (wp_intel_%, client onboarding, etc.)
+      try {
+        const { data: intelMems } = await supabase
+          .from("agent_memory")
+          .select("content")
+          .eq("email", item.email)
+          .like("memory_type", "wp_intel_%");
+        for (const im of intelMems || []) {
+          try {
+            const parsedIntel = typeof im.content === "string" ? JSON.parse(im.content) : im.content;
+            if (Array.isArray(parsedIntel?.coreOfferings)) {
+              candidateServices.push(...parsedIntel.coreOfferings.map(decodeHtmlEntities));
+            }
+            if (Array.isArray(parsedIntel?.suggestedTopics)) {
+              candidateServices.push(...parsedIntel.suggestedTopics.map(decodeHtmlEntities));
+            }
+          } catch (_) {}
+        }
+      } catch (_) {}
+
+      // C) Add configured discoveredServices and targetKeywords
       if (Array.isArray(config.discoveredServices)) candidateServices.push(...config.discoveredServices.map(decodeHtmlEntities));
       if (Array.isArray(config.targetKeywords)) candidateServices.push(...config.targetKeywords.map(decodeHtmlEntities));
-      candidateServices = [...new Set(candidateServices)].filter(isLegitimateService);
 
-      // If not yet discovered, check client onboarding memory for their exact business services
+      // D) Check client memory if still needed
       if (candidateServices.length === 0) {
         try {
           const { data: clientMem } = await supabase
@@ -469,48 +548,8 @@ async function runSeoAutopilotCycle({ supabase, openai, force = false, logger = 
         } catch (_) {}
       }
 
-      // If still empty, dynamically crawl their actual site's published pages
-      if (candidateServices.length === 0 && siteUrl) {
-        try {
-          const pagesRes = await fetch(`${siteUrl}/wp-json/wp/v2/pages?per_page=20&_fields=title,slug`);
-          if (pagesRes.ok) {
-            const pages = await pagesRes.json();
-            const skipSlugs = /^(home|about|contact|privacy|terms|faq|cart|checkout|my-account|sample-page)$/i;
-            for (const p of pages || []) {
-              const title = (p?.title?.rendered || p?.slug || "").replace(/<[^>]+>/g, "").trim();
-              if (title && title.length > 2 && !skipSlugs.test((p.slug || "").toLowerCase())) {
-                candidateServices.push(title);
-              }
-            }
-          }
-        } catch (_) {}
-      }
-
-      // If still empty, crawl homepage HTML to extract true brand identity and offerings
-      if (candidateServices.length === 0 && siteUrl) {
-        try {
-          const homeRes = await fetch(siteUrl, {
-            headers: { "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64)" },
-          });
-          if (homeRes.ok) {
-            const html = await homeRes.text();
-            const tMatch = html.match(/<title[^>]*>([^<]+)<\/title>/i);
-            if (tMatch) {
-              const tClean = tMatch[1].replace(/&#[0-9]+;|&[a-z]+;/gi, " ").trim();
-              if (tClean.length > 3) candidateServices.push(tClean);
-            }
-            const hMatches = html.matchAll(/<h[1-3][^>]*>([\s\S]*?)<\/h[1-3]>/gi);
-            for (const m of hMatches) {
-              const text = m[1].replace(/<[^>]+>/g, "").trim();
-              if (text.length > 5 && text.length < 80 && !/^(home|about|contact|privacy|terms)/i.test(text)) {
-                candidateServices.push(text);
-              }
-            }
-          }
-        } catch (_) {}
-      }
-
-      // Dynamic fallback based on the user's specific business name & industry
+      // Fallback if empty
+      candidateServices = [...new Set(candidateServices)].filter(isLegitimateService);
       if (candidateServices.length === 0) {
         const ind = config.discoveredNiche || config.industry || businessName || "Specialized Solutions";
         candidateServices = [
@@ -521,66 +560,103 @@ async function runSeoAutopilotCycle({ supabase, openai, force = false, logger = 
         ];
       }
 
-      // If topic queue or suggested topics exist, prioritize those
+      // 4.3 Anti-Duplication History & Strategic Topic Selection
+      const existingTitles = existingPublishedPosts.map((p) => p.title).filter(Boolean);
+      const allPreviousTitles = [
+        ...new Set([
+          ...existingTitles,
+          ...(Array.isArray(config.publishedTopics) ? config.publishedTopics : []),
+          config.lastPublishedTitle,
+        ].filter(Boolean))
+      ];
+
+      let strategicTopic = null;
       let activeService = "";
+
+      // Check User Topic Queue first (Priority 1)
       if (Array.isArray(config.topicQueue) && config.topicQueue.length > 0) {
-        activeService = config.topicQueue[0];
-      } else if (Array.isArray(config.suggestedTopics) && config.suggestedTopics.length > 0) {
-        let topicIdx = (Number(config.lastServiceIndex) || 0) + 1;
-        if (topicIdx >= config.suggestedTopics.length) topicIdx = 0;
-        activeService = config.suggestedTopics[topicIdx];
+        const nextQueued = config.topicQueue.shift();
+        if (nextQueued && typeof nextQueued === "string" && nextQueued.trim()) {
+          activeService = nextQueued.trim();
+          strategicTopic = {
+            topic: activeService,
+            primaryKeyword: activeService,
+            secondaryKeywords: Array.isArray(config.targetKeywords) ? config.targetKeywords.slice(0, 4) : [],
+          };
+          logger(`[SEO Autopilot] Consuming topic from user topic lineup queue: "${activeService}". Remaining: ${config.topicQueue.length}`);
+        }
       }
+
+      // Round-robin index with strict anti-repetition for services
+      let nextServiceIndex = (Number(config.lastServiceIndex) || 0) + 1;
 
       if (!activeService) {
-        let nextIndex = (Number(config.lastServiceIndex) || 0) + 1;
-        if (nextIndex >= candidateServices.length) nextIndex = 0;
-        activeService = candidateServices[nextIndex] || `${businessName} Solutions`;
-      }
-      const targetLocations = (config.targetLocations || config.targetMarket || "").trim();
+        // Inspect recent published articles to find offerings NOT recently covered
+        const recentTitlesLower = allPreviousTitles.slice(0, 10).map((t) => t.toLowerCase());
+        const freshServices = candidateServices.filter((s) => {
+          const sLower = s.toLowerCase();
+          // Avoid if service name or significant substring appears in recent 10 post titles
+          return !recentTitlesLower.some((t) => t.includes(sLower) || (sLower.length > 5 && t.includes(sLower.slice(0, -2))));
+        });
 
-      // 4.5 Fetch Existing Published WordPress Posts & Pages for Authentic Internal Linking
-      let existingPublishedPosts = [];
-      let existingPublishedPages = [];
-      try {
-        const wpReqHeaders = {
-          Accept: "application/json",
-          "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36 GabbarInfo/1.0",
-        };
-        if (wpApiKey) {
-          wpReqHeaders.Authorization = `Bearer ${wpApiKey}`;
-        }
-
-        const [postsResp, pagesResp] = await Promise.all([
-          fetch(`${siteUrl}/wp-json/wp/v2/posts?per_page=20&_fields=id,title,slug,link`, { headers: wpReqHeaders }),
-          fetch(`${siteUrl}/wp-json/wp/v2/pages?per_page=15&_fields=id,title,slug,link`, { headers: wpReqHeaders })
-        ]);
-        if (postsResp.ok) {
-          const rawPosts = await postsResp.json();
-          if (Array.isArray(rawPosts)) {
-            existingPublishedPosts = rawPosts.map((p) => ({
-              id: p.id,
-              title: typeof p.title === "object" ? p.title.rendered : p.title,
-              link: p.link,
-              slug: p.slug,
-            })).filter((p) => p.link && p.title);
-          }
-        }
-        if (pagesResp.ok) {
-          const rawPages = await pagesResp.json();
-          if (Array.isArray(rawPages)) {
-            existingPublishedPages = rawPages.map((p) => ({
-              id: p.id,
-              title: typeof p.title === "object" ? p.title.rendered : p.title,
-              link: p.link,
-              slug: p.slug,
-            })).filter((p) => p.link && p.title);
-          }
-        }
-      } catch (e) {
-        logger(`[SEO Autopilot] Note: Could not fetch existing published content (${e.message}).`);
+        const servicePool = freshServices.length > 0 ? freshServices : candidateServices;
+        if (nextServiceIndex >= servicePool.length) nextServiceIndex = 0;
+        activeService = servicePool[nextServiceIndex] || candidateServices[0] || `${businessName} Core Services`;
+        logger(`[SEO Autopilot] Selected active service: "${activeService}" from pool of ${servicePool.length} unrepeated offerings (catalog total: ${candidateServices.length}).`);
       }
 
-      // Filter out off-topic / junk articles and utility pages
+      // 4.4 Dynamic Topic Strategist (Shopify-Parity LLM Anti-Duplication Planner)
+      if (!strategicTopic) {
+        const topicPlanningPrompt = `You are a chief SEO content strategist for "${businessName}" (${siteUrl}).
+All Business Offerings & Services:
+${candidateServices.join(", ")}
+
+Selected Core Service for this article: "${activeService}"
+${targetLocations ? `Target Geographic Territory: "${targetLocations}"` : ""}
+
+PREVIOUS PUBLISHED TITLES (STRICT ZERO DUPLICATION RULE - DO NOT DUPLICATE ANY OF THESE TITLES, ANGLES, OR HOOKS):
+${allPreviousTitles.slice(0, 25).join("\n")}
+
+CRITICAL INSTRUCTIONS:
+Generate 1 fresh, highly attractive, search-intent driven master guide topic for 2026 for "${activeService}".
+- The topic MUST be completely distinct in title, angle, and search intent from all previous titles listed above.
+- NEVER reuse "Mastering [Service] in 2026: A Comprehensive Guide" or "Mastering [Service]: Strategies for 2026".
+- Focus on a specific high-value client pain point, practical framework, ROI scaling strategy, or advanced 2026 tactical playbook (e.g. if Video Editing: short-form video retention tactics or commercial video production; if Graphic Design: high-converting visual identity & ad creatives; if Website Design: UX speed & conversion architecture; etc.).
+${targetLocations ? `- Tailor the angle specifically to appeal to clients and decision-makers in ${targetLocations}.` : ""}
+
+Format response strictly as JSON:
+{
+  "topic": "Compelling Master Guide Title with Primary Keyword for 2026",
+  "primaryKeyword": "Primary Keyword",
+  "secondaryKeywords": ["keyword 1", "keyword 2", "keyword 3", "keyword 4"]
+}`;
+
+        try {
+          const topicComp = await openai.chat.completions.create({
+            model: "gpt-4o-mini",
+            messages: [{ role: "user", content: topicPlanningPrompt }],
+            response_format: { type: "json_object" },
+            temperature: 0.8,
+          });
+          const parsed = JSON.parse(topicComp.choices[0]?.message?.content || "{}");
+          if (parsed.topic) {
+            strategicTopic = parsed;
+            logger(`[SEO Autopilot] Strategic topic planned: "${strategicTopic.topic}" (Focus: "${strategicTopic.primaryKeyword}")`);
+          }
+        } catch (tErr) {
+          logger(`[SEO Autopilot] Note: Topic planner fallback: ${tErr.message}`);
+        }
+
+        if (!strategicTopic) {
+          strategicTopic = {
+            topic: `${activeService} in 2026: Strategic Playbook for Measurable Growth`,
+            primaryKeyword: `${activeService} 2026`,
+            secondaryKeywords: [`best ${activeService}`, `${activeService} strategy`, `professional ${activeService}`],
+          };
+        }
+      }
+
+      // Filter out off-topic / junk articles and utility pages for internal linking
       const offTopicFilter = /santa|christmas|herbal-beauty/i;
       const relevantPublishedPosts = existingPublishedPosts.filter(p => !offTopicFilter.test(p.slug || p.title));
       const relevantPublishedPages = existingPublishedPages.filter(p => !/sample-page|privacy|terms|cart|checkout|my-account/i.test(p.slug || p.title));
@@ -597,7 +673,7 @@ async function runSeoAutopilotCycle({ supabase, openai, force = false, logger = 
       const selectedInternalPosts = candidateInternalLinks.slice(0, 10);
 
       // 5. Generate Full SEO Article (STRICT 1,650+ words, 10 structured sections) via GPT-4o
-      logger(`[SEO Autopilot] Generating exhaustive 1,650+ word SEO guide for "${activeService}" (${businessName})...`);
+      logger(`[SEO Autopilot] Generating exhaustive 1,650+ word SEO guide for "${strategicTopic.topic}" (${businessName})...`);
 
       const industryType = detectBusinessIndustry(businessName, activeService, candidateServices.join(" "));
       const isAstrology = industryType === "ASTROLOGY_SPIRITUALITY";
@@ -729,7 +805,7 @@ Format output as valid JSON:
         model: "gpt-4o",
         messages: [
           { role: "system", content: systemPrompt },
-          { role: "user", content: `Write the complete 1,650+ word deep-dive guide focused specifically on "${activeService}" for ${businessName} in 2026.` }
+          { role: "user", content: `Write the complete 1,650+ word deep-dive guide for the topic "${strategicTopic.topic}" focused on "${activeService}" for ${businessName} in 2026. Primary focus keyword to target throughout: "${strategicTopic.primaryKeyword}". Secondary keywords to include organically: ${(strategicTopic.secondaryKeywords || []).join(", ")}.` }
         ],
         response_format: { type: "json_object" },
         temperature: 0.7,
@@ -1148,22 +1224,30 @@ Format output as valid JSON:
       config.lastPublishedTitle = parsedArticle.title;
       config.lastPublishedUrl = publishedPostUrl;
       config.lastPublishedPostId = publishedPostId;
-      config.lastServiceIndex = nextIndex;
+      config.lastServiceIndex = nextServiceIndex;
       config.publishedCount = (Number(config.publishedCount) || 0) + 1;
       config.publishedTopics = config.publishedTopics || [];
       config.publishedTopics.push(parsedArticle.title);
-      if (config.publishedTopics.length > 30) config.publishedTopics.shift();
+      if (config.publishedTopics.length > 50) config.publishedTopics.shift();
 
-      await supabase
-        .from("agent_memory")
-        .update({
-          content: JSON.stringify(config),
-          updated_at: now.toISOString(),
-        })
-        .eq("email", item.email)
-        .eq("memory_type", item.memory_type);
+      try {
+        const { error: saveErr } = await supabase
+          .from("agent_memory")
+          .update({
+            content: JSON.stringify(config),
+            updated_at: now.toISOString(),
+          })
+          .eq("email", item.email)
+          .eq("memory_type", item.memory_type);
 
-      logger(`[SEO Autopilot] Memory updated for ${item.email}. Published count: ${config.publishedCount}`);
+        if (saveErr) {
+          logger(`[SEO Autopilot] Error saving memory for ${item.email}: ${saveErr.message}`);
+        } else {
+          logger(`[SEO Autopilot] Memory updated successfully for ${item.email}. Published count: ${config.publishedCount}, lastServiceIndex: ${config.lastServiceIndex}`);
+        }
+      } catch (memErr) {
+        logger(`[SEO Autopilot] Exception updating memory for ${item.email}: ${memErr.message}`);
+      }
 
       results.push({
         email: item.email,
@@ -1187,4 +1271,5 @@ Format output as valid JSON:
 module.exports = {
   runSeoAutopilotCycle,
   isLegitimateService,
+  decodeHtmlEntities,
 };
