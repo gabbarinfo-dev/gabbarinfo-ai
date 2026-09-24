@@ -2415,7 +2415,7 @@ app.post(["/meta/jobs/create-campaign", "/meta/jobs/create"], requireAuth, async
               logger: (msg) => log(jobId, msg),
             });
           } else if (imagePrompt) {
-            job.stage = "Generating photorealistic AI ad visual with gpt-image-2...";
+            job.stage = "Generating photorealistic AI ad visual with GabbarInfo AI...";
             job.progress = 30;
             log(jobId, `Generating photorealistic ad visual for "${service || businessName}"...`);
             const graphic = await generateAdGraphic({

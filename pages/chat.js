@@ -452,6 +452,8 @@ export default function ChatPage() {
         setAgentInstruction("Create a Meta campaign to get Instagram profile visits and followers");
       } else if (agentMode === "meta_ads_leads") {
         setAgentInstruction("Create a Meta Lead Generation campaign to collect customer inquiries");
+      } else if (agentMode === "meta_ads_app_promo") {
+        setAgentInstruction("Create a Meta App Promotion campaign to drive app installs");
       } else if (agentMode === "google_ads_search") {
         setAgentInstruction("Create a Google Search Ads campaign");
       } else if (agentMode === "google_ads_pmax") {
@@ -1028,6 +1030,7 @@ Now respond as GabbarInfo AI.
       meta_ads_traffic: "Meta Ads – Website Traffic",
       meta_ads_profile: "Meta Ads – Instagram Profile Visits",
       meta_ads_leads: "Meta Ads – Lead Generation",
+      meta_ads_app_promo: "Meta Ads – App Promotion",
       google_ads_search: "Google Ads – Search Campaign",
       google_ads_pmax: "Google Ads – Performance Max",
       google_ads_pmax_shopping: "Google Ads – PMax Retail Shopping",
@@ -1319,7 +1322,27 @@ Now respond as GabbarInfo AI.
         setCampaignStepCount(0);
       }
 
-      setAgentInstruction("");
+      if (data?.fillInTemplate) {
+        setAgentInstruction(data.fillInTemplate);
+        setInput(data.fillInTemplate);
+      } else if (agentMode && agentMode.startsWith("google_ads")) {
+        let tpl = "";
+        if (agentMode === "google_ads_search") {
+          tpl = `Business name: \nServices: \nCampaign Goal: \nPhone Number: \nTarget Location: \nTarget Language: \nDaily Budget: \nBidding Strategy: \nLanding Page: \n\nSite link1: \nSite link2: \nSite link3: \nSite link4: \n`;
+        } else if (agentMode === "google_ads_pmax") {
+          tpl = `Business name: \nServices: \nCampaign Goal: \nPhone Number: \nTarget Location: \nTarget Language: \nDaily Budget: \nBidding Strategy: \nLanding Page: \n`;
+        } else if (agentMode === "google_ads_pmax_shopping" || agentMode === "google_ads_shopping") {
+          tpl = `Target Products or Category: \nCountry of Sale & Location: \nDaily Budget: \nBidding Strategy: \nStore Website URL: \nMerchant Center ID: \n`;
+        } else if (agentMode === "google_ads_display") {
+          tpl = `Business name: \nSpecial Offer / Service: \nCampaign Goal: \nTarget Location: \nTarget Language: \nTarget Audience / Topics: \nDaily Budget: \nBidding Strategy: \nLanding Page: \n`;
+        } else {
+          tpl = `Business name: \nServices: \nCampaign Goal: \nTarget Location: \nDaily Budget: \nLanding Page: \n`;
+        }
+        setAgentInstruction(tpl);
+        setInput(tpl);
+      } else {
+        setAgentInstruction("");
+      }
       scrollChatToBottom();
     } catch (err) {
       console.error("Agent execution error:", err);
@@ -2342,7 +2365,10 @@ Now respond as GabbarInfo AI.
                       <option value="meta_ads_traffic">Meta Ads – Website Traffic & Landing Page Visits</option>
                       <option value="meta_ads_profile">Meta Ads – Instagram Profile Visits & Growth</option>
                       <option value="meta_ads_leads">Meta Ads – Lead Generation & Enquiries</option>
+                      <option value="meta_ads_app_promo">Meta Ads – App Installs & App Promotion</option>
+                      {/* Hidden for now:
                       <option value="meta_ads_plan">Meta Ads – Smart Campaign Planner (Auto-Detect Format)</option>
+                      */}
                       <option value="generic">Meta Ads – General Campaign Creator</option>
                     </optgroup>
                     <optgroup label="Social & Organic Marketing">

@@ -573,7 +573,9 @@ export default async function handler(req, res) {
       lowerInstruction.includes("create an advantage+") ||
       lowerInstruction.includes("create a meta traffic campaign") ||
       lowerInstruction.includes("create a meta campaign to get instagram profile") ||
-      lowerInstruction.includes("create a meta lead generation campaign");
+      lowerInstruction.includes("create a meta lead generation campaign") ||
+      lowerInstruction.includes("create a meta app promotion campaign") ||
+      lowerInstruction.includes("app promotion");
 
     const isNewMetaCampaignRequest =
       (mode === "meta_ads_plan" || mode === "generic") && isExplicitMetaCreationPrompt;
@@ -617,8 +619,43 @@ export default async function handler(req, res) {
         resetState.objective = "OUTCOME_SALES";
         resetState.destination = "catalogue";
         resetState.performance_goal = "MAXIMIZE_CONVERSIONS";
-        resetState.catalog_id = metaRow?.fb_catalog_id || null;
         resetState.stage = "catalog_product_selection";
+
+        // 🛍️ AUTO-DISCOVER CATALOG: If fb_catalog_id not yet in Supabase, fetch it from Meta API now
+        let resolvedCatalogId = metaRow?.fb_catalog_id || null;
+        if (!resolvedCatalogId && (metaRow?.fb_ad_account_id || metaRow?.fb_business_id) && metaRow?.fb_user_access_token) {
+          try {
+            const adAccountIdRaw = (metaRow.fb_ad_account_id || "").replace("act_", "");
+            const catalogToken = metaRow.fb_user_access_token;
+            // Try ad account catalogs first
+            const catRes = await fetch(`https://graph.facebook.com/v21.0/act_${adAccountIdRaw}/product_catalogs?fields=id,name&access_token=${catalogToken}`);
+            const catJson = await catRes.json();
+            if (catJson?.data?.length) {
+              resolvedCatalogId = catJson.data[0].id;
+              console.log(`✅ [Shopping Init] Auto-discovered catalog from ad account: ${resolvedCatalogId}`);
+            } else if (metaRow.fb_business_id) {
+              // Try business-level catalogs
+              const bizCatRes = await fetch(`https://graph.facebook.com/v21.0/${metaRow.fb_business_id}/owned_product_catalogs?fields=id,name&access_token=${catalogToken}`);
+              const bizCatJson = await bizCatRes.json();
+              if (bizCatJson?.data?.length) {
+                resolvedCatalogId = bizCatJson.data[0].id;
+                console.log(`✅ [Shopping Init] Auto-discovered catalog from business: ${resolvedCatalogId}`);
+              }
+            }
+            // Persist to Supabase for future calls
+            if (resolvedCatalogId) {
+              await supabase
+                .from("meta_connections")
+                .update({ fb_catalog_id: resolvedCatalogId, catalog_last_synced_at: new Date().toISOString() })
+                .eq("email", userEmail);
+              if (metaRow) metaRow.fb_catalog_id = resolvedCatalogId;
+            }
+          } catch (catDiscErr) {
+            console.warn("⚠️ [Shopping Init] Catalog auto-discovery failed:", catDiscErr.message);
+          }
+        }
+        resetState.catalog_id = resolvedCatalogId;
+
       } else if (originalMetaMode === "meta_ads_whatsapp") {
         resetState.objective = "OUTCOME_ENGAGEMENT";
         resetState.destination = "whatsapp";
@@ -646,6 +683,11 @@ export default async function handler(req, res) {
         resetState.objective = "OUTCOME_LEADS";
         resetState.destination = "instant_form";
         resetState.performance_goal = "MAXIMIZE_LEADS";
+        resetState.stage = "goal_selected";
+      } else if (originalMetaMode === "meta_ads_app_promo") {
+        resetState.objective = "OUTCOME_APP_PROMOTION";
+        resetState.destination = "app";
+        resetState.performance_goal = "APP_INSTALLS";
         resetState.stage = "goal_selected";
       }
 
@@ -1999,6 +2041,10 @@ You are in GENERIC DIGITAL MARKETING AGENT MODE.
       selectedMetaObjective = "OUTCOME_LEADS";
       selectedDestination = "instant_form";
       selectedPerformanceGoal = "MAXIMIZE_LEADS";
+    } else if (originalMetaMode === "meta_ads_app_promo") {
+      selectedMetaObjective = "OUTCOME_APP_PROMOTION";
+      selectedDestination = "app";
+      selectedPerformanceGoal = "APP_INSTALLS";
     }
 
     if (selectedMetaObjective) {
@@ -2127,6 +2173,20 @@ You are in GENERIC DIGITAL MARKETING AGENT MODE.
                 `Please reply with your **Business Phone Number** (with country code, e.g. +44 7123 456789 or +91 98765 43210):`,
             });
           }
+        }
+
+        if (selectedDestination === "app") {
+          return res.status(200).json({
+            ok: true,
+            mode,
+            gated: true,
+            text:
+              `📱 **Meta App Promotion Campaign Configured**\n\n` +
+              `This campaign is dedicated to driving **high-intent mobile app installs & app engagement** across Instagram, Facebook, and Audience Network.\n\n` +
+              `To get started, please tell me:\n` +
+              `1. What is the **name** and **main purpose** of your app?\n` +
+              `2. Share your **App Store or Google Play Store link** (e.g., https://play.google.com/store/apps/details?id=... or https://apps.apple.com/app/...)`,
+          });
         }
 
         if (selectedDestination && selectedPerformanceGoal) {
@@ -2920,9 +2980,13 @@ You are in GENERIC DIGITAL MARKETING AGENT MODE.
           session.user.email.toLowerCase()
         );
 
+        const isCatalogueFlow = lockedCampaignState?.destination === "catalogue" || lockedCampaignState?.destination === "Catalogue Sales";
+        const offerQuestion = isCatalogueFlow
+          ? `Duration: **${days} days**.\n\n🎁 Do you have a **special offer or promotion** to highlight in your ad copy? (e.g., *Free Shipping Above £25*, *20% OFF Today*)\n\nType your offer, or type **NONE** to skip.`
+          : `Duration: **${days} days**.\n\n🎯 One last thing! Do you have a **special offer or promotion** to feature on your ad image?\n\nExamples:\n• *20% OFF This Weekend*\n• *Free Consultation – Book Today*\n• *Buy 1 Get 1 Free*\n\nType your offer, or type **NONE** to skip.`;
         return res.status(200).json({
           ok: true, mode, gated: true,
-          text: `Duration: **${days} days**.\n\n🎯 One last thing! Do you have a **special offer or promotion** to feature on your ad image?\n\nExamples:\n• *20% OFF This Weekend*\n• *Free Consultation – Book Today*\n• *Buy 1 Get 1 Free*\n\nType your offer, or type **NONE** to skip.`
+          text: offerQuestion
         });
       } else {
         return res.status(200).json({
@@ -3733,11 +3797,15 @@ You are in GENERIC DIGITAL MARKETING AGENT MODE.
                 "TRACE: RETURNING RESPONSE — STAGE =",
                 currentState?.stage
               );
+              const isCatalogueFlowAlt = lockedCampaignState?.destination === "catalogue" || lockedCampaignState?.destination === "Catalogue Sales";
+              const offerQuestionAlt = isCatalogueFlowAlt
+                ? `Campaign duration locked for **${numericDays} days**.\n\n🎁 Do you have a **special offer or promotion** to highlight in your ad copy? (e.g., *Free Shipping Above £25*, *20% OFF Today*)\n\nType your offer, or type **NONE** to skip.`
+                : `Campaign duration locked for **${numericDays} days**.\n\n🎯 One last thing! Do you have a **special offer or promotion** to feature on your ad image?\n\nExamples:\n• *20% OFF This Weekend*\n• *Free Consultation – Book Today*\n• *Buy 1 Get 1 Free*\n\nType your offer, or type **NONE** to skip.`;
               return res.status(200).json({
                 ok: true,
                 mode,
                 gated: true,
-                text: `Campaign duration locked for **${numericDays} days**.\n\n🎯 One last thing! Do you have a **special offer or promotion** to feature on your ad image?\n\nExamples:\n• *20% OFF This Weekend*\n• *Free Consultation – Book Today*\n• *Buy 1 Get 1 Free*\n\nType your offer, or type **NONE** to skip.`,
+                text: offerQuestionAlt,
               });
             }
           }
@@ -4526,16 +4594,18 @@ Otherwise, respond with a full, clear explanation, and include example JSON only
               delete finalPayload.targeting.geo_locations;
             }
 
-            // 🛡️ WATERFALL BYPASS: Force Catalogue Settings for Sales
+            // 🛡️ WATERFALL BYPASS: Force Catalogue Settings for Dynamic Shopping
             const isCatCampaign = lockedCampaignState?.destination === "Catalogue Sales" || 
-              lockedCampaignState?.destination === "catalogue" || 
-              (lockedCampaignState?.objective === "OUTCOME_SALES" && (lockedCampaignState?.product_set_id || metaRow?.fb_catalog_id));
+              lockedCampaignState?.destination === "catalogue";
 
             if (isCatCampaign) {
-              console.log("🚀 [Bypass] Forcing Catalogue Payload for Sales Advantage+...");
+              console.log("🚀 [Bypass] Forcing Catalogue Payload for Dynamic Shopping Advantage+...");
               if (finalPayload.ad_sets && finalPayload.ad_sets[0]) {
                 const targetCatalogId = lockedCampaignState?.catalog_id || metaRow?.fb_catalog_id || null;
-                const targetProductSetId = lockedCampaignState?.product_set_id || "default";
+                // Only use a real product set ID — never send "default" or null directly to Meta.
+                // execute-campaign.js will auto-resolve a product set from the catalogue if this is null.
+                const rawProductSetId = lockedCampaignState?.product_set_id;
+                const targetProductSetId = (rawProductSetId && rawProductSetId !== "default") ? rawProductSetId : null;
                 finalPayload.ad_sets[0]._catalogInfo = { 
                   catalogId: targetCatalogId,
                   productSetId: targetProductSetId 
@@ -4544,9 +4614,10 @@ Otherwise, respond with a full, clear explanation, and include example JSON only
                 finalPayload.ad_sets[0].productSetId = targetProductSetId;
                 finalPayload.ad_sets[0].conversion_location = "CATALOGUE";
                 finalPayload.budget.currency = activeCurrency;
-                // Force delete the image hash to prevent single-image fallback
+                // Force delete the image hash — Dynamic Shopping ads pull images from the catalogue
                 if (finalPayload.ad_sets[0].ad_creative) {
                   delete finalPayload.ad_sets[0].ad_creative.image_hash;
+                  delete finalPayload.ad_sets[0].ad_creative.imagePrompt;
                 }
               }
             }
@@ -7196,6 +7267,7 @@ Respond with ONLY the JSON object, wrapped in \`\`\`json \`\`\`.
             ok: true,
             text: noGmcGuidance,
             status: "AWAITING_GMC_CONNECTION",
+            fillInTemplate: "Merchant Center ID: ",
           });
         }
 
@@ -7298,9 +7370,72 @@ Respond with ONLY the JSON object, wrapped in \`\`\`json \`\`\`.
         missingList.join("\n\n") +
         `\n\n*(You can reply with all details in one message, e.g.: "${mergedIntake.business_name || "GabbarInfo"} in ${mergedIntake.location || "Ahmedabad"}, ₹${mergedIntake.daily_budget || "1,000"}/day, Maximize Conversions, ${mergedIntake.landing_page_url || "https://gabbarinfo.com"}")*`;
 
+      let fillInTemplate = "";
+      if (activeCampaignType === "SEARCH") {
+        fillInTemplate =
+`Business name: 
+Services: 
+Campaign Goal: 
+Phone Number: 
+Target Location: 
+Target Language: 
+Daily Budget: 
+Bidding Strategy: 
+Landing Page: 
+
+Site link1: 
+Site link2: 
+Site link3: 
+Site link4: 
+`;
+      } else if (activeCampaignType === "PERFORMANCE_MAX") {
+        fillInTemplate =
+`Business name: 
+Services: 
+Campaign Goal: 
+Phone Number: 
+Target Location: 
+Target Language: 
+Daily Budget: 
+Bidding Strategy: 
+Landing Page: 
+`;
+      } else if (activeCampaignType === "PERFORMANCE_MAX_SHOPPING" || activeCampaignType === "SHOPPING") {
+        fillInTemplate =
+`Target Products or Category: 
+Country of Sale & Location: 
+Daily Budget: 
+Bidding Strategy: 
+Store Website URL: 
+Merchant Center ID: 
+`;
+      } else if (activeCampaignType === "DISPLAY") {
+        fillInTemplate =
+`Business name: 
+Special Offer / Service: 
+Campaign Goal: 
+Target Location: 
+Target Language: 
+Target Audience / Topics: 
+Daily Budget: 
+Bidding Strategy: 
+Landing Page: 
+`;
+      } else {
+        fillInTemplate =
+`Business name: 
+Services: 
+Campaign Goal: 
+Target Location: 
+Daily Budget: 
+Landing Page: 
+`;
+      }
+
       return res.status(200).json({
         ok: true,
         text: questionResponse,
+        fillInTemplate,
       });
     }
 
