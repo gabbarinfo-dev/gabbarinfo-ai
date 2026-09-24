@@ -11,14 +11,13 @@
       "maxDuration": 60
     },
     "pages/api/gmb/auto-reply.js": {
-      "maxDuration": 300
+      "maxDuration": 60
     }
   },
   "crons": [
     {
       "path": "/api/gmb/auto-reply",
-      "schedule": "0 */6 * * *"
+      "schedule": "0 0 * * *"
     }
   ]
 }
-
