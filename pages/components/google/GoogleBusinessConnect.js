@@ -135,6 +135,8 @@ export default function GoogleBusinessConnect({ onConnectionChange }) {
     } finally {
       setCreating(false);
     }
+  };
+
   const handleDisconnectGmb = async () => {
     if (!confirm("Are you sure you want to disconnect your Google Business Profile? This will pause automated review responses and unlink local map extensions.")) return;
     try {
