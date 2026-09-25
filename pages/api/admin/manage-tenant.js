@@ -268,6 +268,27 @@ export default async function handler(req, res) {
             status: "inactive",
             updated_at: new Date().toISOString(),
           }, { onConflict: "business_id" });
+
+          const { data: memBiz } = await supabaseServer
+            .from("agent_memory")
+            .select("content")
+            .eq("email", normEmail)
+            .eq("memory_type", "tenant_primary_business")
+            .maybeSingle();
+
+          if (memBiz?.content) {
+            try {
+              const parsed = JSON.parse(memBiz.content);
+              if (parsed.businessId && parsed.businessId !== bizId) {
+                await supabaseServer.from("subscriptions").upsert({
+                  business_id: parsed.businessId,
+                  plan_id: "none",
+                  status: "inactive",
+                  updated_at: new Date().toISOString(),
+                }, { onConflict: "business_id" });
+              }
+            } catch (_) {}
+          }
         } catch (_) {}
 
         return res.status(200).json({
@@ -310,6 +331,30 @@ export default async function handler(req, res) {
           current_period_end: expiresAt.toISOString(),
           updated_at: now.toISOString(),
         }, { onConflict: "business_id" });
+
+        const { data: memBiz } = await supabaseServer
+          .from("agent_memory")
+          .select("content")
+          .eq("email", normEmail)
+          .eq("memory_type", "tenant_primary_business")
+          .maybeSingle();
+
+        if (memBiz?.content) {
+          try {
+            const parsed = JSON.parse(memBiz.content);
+            if (parsed.businessId && parsed.businessId !== bizId) {
+              await supabaseServer.from("subscriptions").upsert({
+                business_id: parsed.businessId,
+                plan_id: plan.id,
+                status: "active",
+                cycle_start: now.toISOString(),
+                cycle_end: expiresAt.toISOString(),
+                current_period_end: expiresAt.toISOString(),
+                updated_at: now.toISOString(),
+              }, { onConflict: "business_id" });
+            }
+          } catch (_) {}
+        }
       } catch (dbErr) {
         console.warn("Supabase subscriptions sync note:", dbErr.message);
       }
