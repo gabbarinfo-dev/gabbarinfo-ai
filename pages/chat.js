@@ -1323,25 +1323,34 @@ Now respond as GabbarInfo AI.
       }
 
       if (data?.fillInTemplate) {
+        // Step 1: Agent specifically requests missing intake info / questionnaire
         setAgentInstruction(data.fillInTemplate);
         setInput(data.fillInTemplate);
-      } else if (agentMode && agentMode.startsWith("google_ads")) {
-        let tpl = "";
-        if (agentMode === "google_ads_search") {
-          tpl = `Business name: \nServices: \nCampaign Goal: \nPhone Number: \nTarget Location: \nTarget Language: \nDaily Budget: \nBidding Strategy: \nLanding Page: \n\nSite link1: \nSite link2: \nSite link3: \nSite link4: \n`;
-        } else if (agentMode === "google_ads_pmax") {
-          tpl = `Business name: \nServices: \nCampaign Goal: \nPhone Number: \nTarget Location: \nTarget Language: \nDaily Budget: \nBidding Strategy: \nLanding Page: \n`;
-        } else if (agentMode === "google_ads_pmax_shopping" || agentMode === "google_ads_shopping") {
-          tpl = `Target Products or Category: \nCountry of Sale & Location: \nDaily Budget: \nBidding Strategy: \nStore Website URL: \nMerchant Center ID: \n`;
-        } else if (agentMode === "google_ads_display") {
-          tpl = `Business name: \nSpecial Offer / Service: \nCampaign Goal: \nTarget Location: \nTarget Language: \nTarget Audience / Topics: \nDaily Budget: \nBidding Strategy: \nLanding Page: \n`;
-        } else {
-          tpl = `Business name: \nServices: \nCampaign Goal: \nTarget Location: \nDaily Budget: \nLanding Page: \n`;
-        }
-        setAgentInstruction(tpl);
-        setInput(tpl);
+      } else if (
+        rawText &&
+        (rawText.includes('Reply **"Proceed"**') ||
+          rawText.includes('Reply "Proceed"') ||
+          rawText.toLowerCase().includes('reply "proceed"') ||
+          rawText.toLowerCase().includes('reply **"proceed"**') ||
+          (rawText.toLowerCase().includes("reply") && rawText.toLowerCase().includes("proceed")))
+      ) {
+        // Phase 2: Agent asks to reply "Proceed" or "Looks good"
+        setAgentInstruction("Proceed");
+        setInput("Proceed");
+      } else if (
+        rawText &&
+        (rawText.includes('Reply **"Publish"**') ||
+          rawText.includes('Reply "Publish"') ||
+          rawText.toLowerCase().includes("publish now") ||
+          (rawText.toLowerCase().includes("reply") && rawText.toLowerCase().includes("publish")))
+      ) {
+        // Phase 3: Agent asks to reply "Publish"
+        setAgentInstruction("Publish");
+        setInput("Publish");
       } else {
+        // Subsequent steps or general responses: clear the boxes
         setAgentInstruction("");
+        setInput("");
       }
       scrollChatToBottom();
     } catch (err) {
