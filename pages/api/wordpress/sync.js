@@ -202,16 +202,31 @@ export default async function handler(req, res) {
         { onConflict: "email,memory_type" }
       );
 
-      // If no default exists, also write default
-      await supabase.from("agent_memory").upsert(
-        {
-          email: userEmail,
-          memory_type: "wordpress_connection",
-          content: JSON.stringify(connPayload),
-          updated_at: new Date().toISOString(),
-        },
-        { onConflict: "email,memory_type" }
-      );
+      // Only set generic wordpress_connection if user has no other connections yet
+      const { data: existingConns } = await supabase
+        .from("agent_memory")
+        .select("memory_type")
+        .eq("email", userEmail)
+        .like("memory_type", "wp_conn_%");
+
+      if (!existingConns || existingConns.length <= 1) {
+        await supabase.from("agent_memory").upsert(
+          {
+            email: userEmail,
+            memory_type: "wordpress_connection",
+            content: JSON.stringify(connPayload),
+            updated_at: new Date().toISOString(),
+          },
+          { onConflict: "email,memory_type" }
+        );
+      } else {
+        // Multi-site user: delete un-namespaced wordpress_connection to prevent cross-site bleeding
+        await supabase
+          .from("agent_memory")
+          .delete()
+          .eq("email", userEmail)
+          .eq("memory_type", "wordpress_connection");
+      }
 
       // Global Anti-Abuse Registry: Lock asset claim
       await registerAssetClaim({
@@ -261,21 +276,38 @@ export default async function handler(req, res) {
     let activeKey = apiKey ? String(apiKey).trim() : null;
 
     if (!activeUrl || !activeKey) {
-      const { data: mem } = await supabase
-        .from("agent_memory")
-        .select("content")
-        .eq("email", userEmail)
-        .in("memory_type", [memoryKey, "wordpress_connection"])
-        .order("updated_at", { ascending: false })
-        .limit(1)
-        .single();
+      if (memoryKey) {
+        const { data: exactMem } = await supabase
+          .from("agent_memory")
+          .select("content")
+          .eq("email", userEmail)
+          .eq("memory_type", memoryKey)
+          .maybeSingle();
 
-      if (mem?.content) {
-        try {
-          const parsed = JSON.parse(mem.content);
-          if (!activeUrl) activeUrl = parsed.siteUrl;
-          if (!activeKey) activeKey = parsed.apiKey;
-        } catch (e) {}
+        if (exactMem?.content) {
+          try {
+            const parsed = JSON.parse(exactMem.content);
+            if (!activeUrl) activeUrl = parsed.siteUrl;
+            if (!activeKey) activeKey = parsed.apiKey;
+          } catch (e) {}
+        }
+      }
+
+      // Fallback only if no specific business was provided and user has exactly ONE connection
+      if (!activeUrl || !activeKey) {
+        const { data: allWp } = await supabase
+          .from("agent_memory")
+          .select("content")
+          .eq("email", userEmail)
+          .like("memory_type", "wp_conn_%");
+
+        if (allWp && allWp.length === 1) {
+          try {
+            const parsed = JSON.parse(allWp[0].content);
+            if (!activeUrl) activeUrl = parsed.siteUrl;
+            if (!activeKey) activeKey = parsed.apiKey;
+          } catch (e) {}
+        }
       }
     }
 

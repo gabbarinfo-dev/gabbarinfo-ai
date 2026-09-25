@@ -2,6 +2,12 @@
 const { createClient } = require("@supabase/supabase-js");
 const OpenAI = require("openai");
 const { ensureInstagramCompatibleJpeg } = require("./instagram-image-helper");
+const {
+  buildCrossBrandNegativeList,
+  filterCleanCandidateServices,
+  validateTopicRelevance,
+  getVisualGuardDirectives,
+} = require("./brand-integrity-guard");
 
 const BLACKLISTED_TERMS = [
   "shipping",
@@ -218,6 +224,17 @@ async function runSocialAutopilotCycle({ supabase, openai, force = false, logger
         } catch (_) {}
       }
 
+      // 1.5 Strict Multi-Tenant Brand Isolation: Map all foreign brands into negative blacklist
+      const { forbiddenTerms: crossBrandForbidden, foreignBrands } = await buildCrossBrandNegativeList({
+        supabase,
+        userEmail: item.email,
+        currentBusinessKey: brandKey || businessName,
+        currentSiteUrl: siteUrl,
+      });
+      if (crossBrandForbidden.length > 0) {
+        logger(`[Social Autopilot] Brand Integrity Guard: Activated ${crossBrandForbidden.length} negative exclusion terms from ${foreignBrands.length} foreign brands under ${item.email}.`);
+      }
+
       // 2. Discover / Filter legitimate services
       let candidateServices = [];
       if (Array.isArray(config.services)) candidateServices.push(...config.services.map(decodeHtmlEntities));
@@ -315,6 +332,11 @@ async function runSocialAutopilotCycle({ supabase, openai, force = false, logger
         }
       } catch (_) {}
       candidateServices = [...new Set(candidateServices)].filter(isLegitimateService);
+      candidateServices = filterCleanCandidateServices({
+        candidateServices,
+        forbiddenTerms: crossBrandForbidden,
+        logger,
+      });
 
       // Dynamic fallback based on the user's specific business name & industry
       if (candidateServices.length === 0) {
@@ -648,9 +670,14 @@ ${ctaDirectives}`
         businessName: resolvedBrandName,
       });
 
-      // 5. Generate Bespoke 3D Poster via gpt-image-2 (ZERO STOCK PHOTOS)
+      // 5. Generate Bespoke 3D Poster via gpt-image-2 (ZERO STOCK PHOTOS, Hardened with Brand Integrity Guard)
       logger(`[Social Autopilot] Generating commercial ad visual for "${activeService}"...`);
-      const graphicPrompt = buildGraphicPrompt(resolvedBrandName, activeService, businessIndustry, selectedHook, topicTitle);
+      const visualGuard = getVisualGuardDirectives({
+        businessName: resolvedBrandName,
+        industry: businessIndustry,
+        currentSiteUrl: siteUrl,
+      });
+      const graphicPrompt = `${buildGraphicPrompt(resolvedBrandName, activeService, businessIndustry, selectedHook, topicTitle)}. ${visualGuard.negativeConstraints}`;
 
       const candidateModels = ["gpt-image-2", "gpt-image-2-2026-04-21", "gpt-image-1.5"];
       let imageBuffer = null;

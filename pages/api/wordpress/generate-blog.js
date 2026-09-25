@@ -372,23 +372,46 @@ export async function executeBlogGeneration({
         .from("agent_memory")
         .select("content")
         .eq("email", userEmail)
-        .in("memory_type", [memoryKey, "wordpress_connection"])
-        .order("updated_at", { ascending: false })
-        .limit(1)
+        .eq("memory_type", memoryKey)
         .maybeSingle();
       targetMem = mem;
+
+      // If exact memoryKey didn't match, check for partial match within wp_conn_ rows
+      if (!targetMem?.content) {
+        const { data: allWp } = await supabase
+          .from("agent_memory")
+          .select("memory_type, content")
+          .eq("email", userEmail)
+          .like("memory_type", "wp_conn_%");
+
+        for (const row of allWp || []) {
+          try {
+            const p = JSON.parse(row.content);
+            const mKey = row.memory_type.replace("wp_conn_", "");
+            if (
+              mKey.includes(normalizedBusiness) ||
+              normalizedBusiness.includes(mKey) ||
+              (p.siteUrl && p.siteUrl.toLowerCase().includes(normalizedBusiness))
+            ) {
+              targetMem = row;
+              break;
+            }
+          } catch (_) {}
+        }
+      }
     }
 
-    if (!targetMem?.content) {
-      const { data: fallbackMem } = await supabase
+    // Only fallback if NO specific business was asked for AND user has exactly ONE site connected
+    if (!targetMem?.content && (!businessName || normalizedBusiness === "default")) {
+      const { data: fallbackMems } = await supabase
         .from("agent_memory")
         .select("content")
         .eq("email", userEmail)
-        .or("memory_type.like.wp_conn_%,memory_type.eq.wordpress_connection")
-        .order("updated_at", { ascending: false })
-        .limit(1)
-        .maybeSingle();
-      targetMem = fallbackMem;
+        .like("memory_type", "wp_conn_%");
+
+      if (fallbackMems && fallbackMems.length === 1) {
+        targetMem = fallbackMems[0];
+      }
     }
 
     if (!targetMem?.content) {

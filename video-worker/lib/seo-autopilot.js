@@ -2,6 +2,12 @@
 const { createClient } = require("@supabase/supabase-js");
 const OpenAI = require("openai");
 const { ensureInstagramCompatibleJpeg } = require("./instagram-image-helper");
+const {
+  buildCrossBrandNegativeList,
+  filterCleanCandidateServices,
+  validateTopicRelevance,
+  getVisualGuardDirectives,
+} = require("./brand-integrity-guard");
 
 const BLACKLISTED_TERMS = [
   "shipping",
@@ -48,7 +54,25 @@ function isLegitimateService(serviceName) {
   return true;
 }
 
-function detectBusinessIndustry(businessName = "", topic = "", services = "") {
+function detectBusinessIndustry(businessName = "", topic = "", services = "", configuredIndustry = "") {
+  const configInd = String(configuredIndustry || "").toLowerCase();
+  if (configInd.includes("astrolog") || configInd.includes("palm") || configInd.includes("vedic")) return "ASTROLOGY_SPIRITUALITY";
+  if (configInd.includes("health") || configInd.includes("clinic") || configInd.includes("doctor")) return "HEALTHCARE_MEDICAL";
+  if (configInd.includes("jewel") || configInd.includes("fashion") || configInd.includes("apparel")) return "FASHION_RETAIL";
+  if (configInd.includes("law") || configInd.includes("legal") || configInd.includes("attorney")) return "LEGAL_PROFESSIONAL";
+  if (configInd.includes("market") || configInd.includes("seo") || configInd.includes("design") || configInd.includes("digital")) return "DIGITAL_TECH_MARKETING";
+
+  const bLower = String(businessName || "").toLowerCase();
+  if (bLower.includes("gabbar") || bLower.includes("digital") || bLower.includes("seo") || bLower.includes("agency")) {
+    return "DIGITAL_TECH_MARKETING";
+  }
+  if (bLower.includes("rekha") || bLower.includes("gyan") || bLower.includes("astrolog") || bLower.includes("vedic")) {
+    return "ASTROLOGY_SPIRITUALITY";
+  }
+  if (bLower.includes("bella") || bLower.includes("diva") || bLower.includes("jewel")) {
+    return "FASHION_RETAIL";
+  }
+
   const combined = `${businessName} ${topic} ${services}`.toLowerCase();
   if (/astrolog|jyotish|vedic|horoscope|palmistry|tarot|kundali|spiritual|vastu|zodiac|numerolog/i.test(combined)) {
     return "ASTROLOGY_SPIRITUALITY";
@@ -407,7 +431,7 @@ async function runSeoAutopilotCycle({ supabase, openai, force = false, logger = 
         .from("agent_memory")
         .select("memory_type, content")
         .eq("email", item.email)
-        .or(`memory_type.eq.${targetConnKey},memory_type.eq.${altConnKey},memory_type.like.wp_conn_%,memory_type.eq.wordpress_connection`);
+        .like("memory_type", "wp_conn_%");
 
       let wpConn = null;
       // 1. Try exact business match first (Zero cross-site contamination)
@@ -423,17 +447,15 @@ async function runSeoAutopilotCycle({ supabase, openai, force = false, logger = 
         } catch (_) {}
       }
 
-      // 2. If no exact match and default/single-profile account, fallback safely
-      if (!wpConn && (!targetBizKey || targetBizKey === "default")) {
-        for (const m of wpMemList || []) {
-          try {
-            const parsed = JSON.parse(m.content);
-            if (parsed.siteUrl && (parsed.apiKey || parsed.applicationPassword)) {
-              wpConn = parsed;
-              break;
-            }
-          } catch (_) {}
-        }
+      // 2. Fallback ONLY if single connection exists and no specific business was targeted
+      if (!wpConn && (!targetBizKey || targetBizKey === "default") && wpMemList?.length === 1) {
+        try {
+          const parsed = JSON.parse(wpMemList[0].content);
+          if (parsed.siteUrl && (parsed.apiKey || parsed.applicationPassword)) {
+            wpConn = parsed;
+          }
+        } catch (_) {}
+      }
       }
 
       if (!wpConn) {
@@ -447,6 +469,17 @@ async function runSeoAutopilotCycle({ supabase, openai, force = false, logger = 
 
       // 4. Discover All Authentic Offerings, Services, and Pages
       const targetLocations = (config.targetLocations || config.targetMarket || "").trim();
+
+      // 4.0 Strict Multi-Tenant Brand Isolation: Map all foreign brands of this user into negative blacklist
+      const { forbiddenTerms: crossBrandForbidden, foreignBrands } = await buildCrossBrandNegativeList({
+        supabase,
+        userEmail: item.email,
+        currentBusinessKey: targetBizKey,
+        currentSiteUrl: siteUrl,
+      });
+      if (crossBrandForbidden.length > 0) {
+        logger(`[SEO Autopilot] Brand Integrity Guard: Activated ${crossBrandForbidden.length} negative exclusion terms from ${foreignBrands.length} foreign brands under ${item.email}.`);
+      }
 
       // 4.1 Fetch Existing Published WordPress Posts (to strictly avoid topic duplication) & Pages (to discover real services & for internal linking)
       let existingPublishedPosts = [];
@@ -575,8 +608,14 @@ async function runSeoAutopilotCycle({ supabase, openai, force = false, logger = 
         } catch (_) {}
       }
 
-      // Fallback if empty
+      // Fallback if empty and apply Strict Brand Integrity Guard Filter (Checkpoint 1)
       candidateServices = [...new Set(candidateServices)].filter(isLegitimateService);
+      candidateServices = filterCleanCandidateServices({
+        candidateServices,
+        forbiddenTerms: crossBrandForbidden,
+        logger,
+      });
+
       if (candidateServices.length === 0) {
         const ind = config.discoveredNiche || config.industry || businessName || "Specialized Solutions";
         candidateServices = [
@@ -664,6 +703,7 @@ Generate 1 fresh, highly attractive, search-intent driven master guide topic for
 - STRICT ZERO SIMILARITY: NEVER reuse formulaic patterns or phrasing similar to any past title (e.g. if any title has "Mastering...", NEVER use "Mastering..."; if any title has "A Comprehensive Guide", NEVER use "A Comprehensive Guide").
 - Focus on a specific high-value client pain point, practical framework, ROI scaling strategy, or advanced 2026 tactical playbook for "${activeService}" (e.g. if Video Editing: short-form video retention tactics or commercial video production; if Graphic Design: high-converting visual identity & ad creatives; if Website Design: UX speed & conversion architecture; etc.).
 ${targetLocations ? `- Tailor the angle specifically to appeal to clients and decision-makers in ${targetLocations}.` : ""}
+${crossBrandForbidden.length > 0 ? `- STRICT ZERO CROSS-BRAND LEAK: ABSOLUTELY NEVER use, mention, or borrow words, concepts, services, or motifs related to: ${crossBrandForbidden.slice(0, 15).join(", ")}. The topic MUST strictly be 100% about "${businessName}" (${siteUrl}).` : ""}
 
 Format response strictly as JSON:
 {
@@ -681,18 +721,31 @@ Format response strictly as JSON:
           });
           const parsed = JSON.parse(topicComp.choices[0]?.message?.content || "{}");
           if (parsed.topic) {
-            strategicTopic = parsed;
-            logger(`[SEO Autopilot] Strategic topic planned: "${strategicTopic.topic}" (Focus: "${strategicTopic.primaryKeyword}")`);
+            const relCheck = validateTopicRelevance({
+              topic: parsed.topic,
+              primaryKeyword: parsed.primaryKeyword,
+              secondaryKeywords: parsed.secondaryKeywords,
+              forbiddenTerms: crossBrandForbidden,
+              logger,
+            });
+            if (!relCheck.ok) {
+              logger(`[SEO Autopilot] Discarding topic due to foreign brand violation ("${relCheck.violation}"). Fallback to safe verified service topic.`);
+              strategicTopic = null;
+            } else {
+              strategicTopic = parsed;
+              logger(`[SEO Autopilot] Strategic topic planned & verified: "${strategicTopic.topic}" (Focus: "${strategicTopic.primaryKeyword}")`);
+            }
           }
         } catch (tErr) {
           logger(`[SEO Autopilot] Note: Topic planner fallback: ${tErr.message}`);
         }
 
         if (!strategicTopic) {
+          const safeService = candidateServices[0] || `${businessName} Core Services`;
           strategicTopic = {
-            topic: `${activeService} in 2026: Strategic Playbook for Measurable Growth`,
-            primaryKeyword: `${activeService} 2026`,
-            secondaryKeywords: [`best ${activeService}`, `${activeService} strategy`, `professional ${activeService}`],
+            topic: `${safeService} in 2026: Strategic Playbook for Measurable Growth`,
+            primaryKeyword: `${safeService} 2026`,
+            secondaryKeywords: [`best ${safeService}`, `${safeService} strategy`, `professional ${safeService}`],
           };
         }
 
@@ -748,7 +801,12 @@ Format response strictly as JSON:
       // 5. Generate Full SEO Article (STRICT 1,650+ words, 10 structured sections) via GPT-4o
       logger(`[SEO Autopilot] Generating exhaustive 1,650+ word SEO guide for "${strategicTopic.topic}" (${businessName})...`);
 
-      const industryType = detectBusinessIndustry(businessName, activeService, candidateServices.join(" "));
+      const industryType = detectBusinessIndustry(
+        businessName,
+        activeService,
+        candidateServices.join(" "),
+        config.industry || config.discoveredNiche || ""
+      );
       const isAstrology = industryType === "ASTROLOGY_SPIRITUALITY";
 
       let sectionOutline = "";
@@ -897,9 +955,14 @@ Format output as valid JSON:
 
       // Image 1: Hero Featured Image (Hierarchy: gpt-image-2 -> gpt-image-2-2026-04-21 -> gpt-image-1.5)
       const imageModels = ["gpt-image-2", "gpt-image-2-2026-04-21", "gpt-image-1.5"];
-      // Construct industry-tailored visual prompts (Sacred Vedic geometry for astrology, clinical for medical, couture for fashion, etc.)
+      // Construct industry-tailored visual prompts hardened with Brand Integrity Guard negative constraints
+      const visualGuard = getVisualGuardDirectives({
+        businessName,
+        industry: industryType,
+        currentSiteUrl: siteUrl,
+      });
       const visualPrompts = getIndustryAdaptiveVisualPrompts(industryType, parsedArticle.title, activeService);
-      const heroPrompt = visualPrompts.heroPrompt;
+      const heroPrompt = `${visualPrompts.heroPrompt}. ${visualGuard.negativeConstraints}`;
 
       let heroBuffer = null;
       for (const modelName of imageModels) {
@@ -941,7 +1004,7 @@ Format output as valid JSON:
       }
 
       // Image 2: Secondary Mid-Article Architecture Diagram / Infographic
-      const midPrompt = visualPrompts.midPrompt;
+      const midPrompt = `${visualPrompts.midPrompt}. ${visualGuard.negativeConstraints}`;
 
       let midBuffer = null;
       for (const modelName of imageModels) {
