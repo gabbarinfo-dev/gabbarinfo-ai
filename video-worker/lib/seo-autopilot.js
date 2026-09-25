@@ -504,18 +504,47 @@ async function runSeoAutopilotCycle({ supabase, openai, force = false, logger = 
         }
       }
 
-      // B) Load intelligence from Supabase agent_memory (wp_intel_%, client onboarding, etc.)
+      // B) Load intelligence from Supabase agent_memory strictly for this specific business profile (Zero Cross-Site Contamination)
       try {
         const { data: intelMems } = await supabase
           .from("agent_memory")
-          .select("content")
+          .select("memory_type, content")
           .eq("email", item.email)
           .like("memory_type", "wp_intel_%");
+
+        const targetIntelKey = `wp_intel_${normalizedBiz}`;
+        const altIntelKey = `wp_intel_${targetBizKey}`;
+        let cleanSiteHost = "";
+        try { cleanSiteHost = new URL(siteUrl).hostname.replace(/^www\./i, "").toLowerCase(); } catch (_) {}
+
         for (const im of intelMems || []) {
           try {
+            const mType = im.memory_type || "";
             const parsedIntel = typeof im.content === "string" ? JSON.parse(im.content) : im.content;
+
+            let intelHost = "";
+            if (parsedIntel?.siteUrl) {
+              try { intelHost = new URL(parsedIntel.siteUrl).hostname.replace(/^www\./i, "").toLowerCase(); } catch (_) {}
+            }
+
+            const isExactKey = mType === targetIntelKey || mType === altIntelKey;
+            const isHostMatch = Boolean(cleanSiteHost && intelHost && cleanSiteHost === intelHost);
+            const isBizMatch = Boolean(
+              parsedIntel?.businessName && (
+                parsedIntel.businessName.toLowerCase().replace(/[^a-z0-9]/g, "_") === normalizedBiz ||
+                parsedIntel.businessName.toLowerCase().replace(/[^a-z0-9]/g, "_") === targetBizKey
+              )
+            );
+
+            // Strict Anti-Cross-Contamination: If intelligence does not belong to this website/brand, ignore it!
+            if (!isExactKey && !isHostMatch && !isBizMatch) {
+              logger(`[SEO Autopilot] Strict brand isolation: Ignoring foreign intel profile "${mType}" (host: ${intelHost || "unknown"}) for target site "${cleanSiteHost || normalizedBiz}".`);
+              continue;
+            }
+
             if (Array.isArray(parsedIntel?.coreOfferings)) {
               candidateServices.push(...parsedIntel.coreOfferings.map(decodeHtmlEntities));
+              logger(`[SEO Autopilot] Loaded ${parsedIntel.coreOfferings.length} authentic offerings from matched profile "${mType}".`);
             }
           } catch (_) {}
         }

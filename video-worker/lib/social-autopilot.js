@@ -269,16 +269,45 @@ async function runSocialAutopilotCycle({ supabase, openai, force = false, logger
         } catch (_) {}
       }
 
-      // Also load intelligence from Supabase agent_memory (wp_intel_%) if available
+      // Also load intelligence from Supabase agent_memory strictly for this business profile (Zero Cross-Site Contamination)
       try {
         const { data: intelMems } = await supabase
           .from("agent_memory")
-          .select("content")
+          .select("memory_type, content")
           .eq("email", item.email.trim().toLowerCase())
           .like("memory_type", "wp_intel_%");
+
+        const normalizedBiz = (businessName || "").toLowerCase().trim().replace(/[^a-z0-9]/g, "_");
+        let cleanSiteHost = "";
+        if (siteUrl) {
+          try { cleanSiteHost = new URL(siteUrl).hostname.replace(/^www\./i, "").toLowerCase(); } catch (_) {}
+        }
+
         for (const im of intelMems || []) {
           try {
+            const mType = im.memory_type || "";
+            const intelKey = mType.replace("wp_intel_", "");
             const parsedIntel = typeof im.content === "string" ? JSON.parse(im.content) : im.content;
+
+            let intelHost = "";
+            if (parsedIntel?.siteUrl) {
+              try { intelHost = new URL(parsedIntel.siteUrl).hostname.replace(/^www\./i, "").toLowerCase(); } catch (_) {}
+            }
+
+            const isExactKey = Boolean(
+              normalizedBiz && (intelKey.includes(normalizedBiz) || normalizedBiz.includes(intelKey))
+            );
+            const isHostMatch = Boolean(cleanSiteHost && intelHost && cleanSiteHost === intelHost);
+            const isBizMatch = Boolean(
+              parsedIntel?.businessName &&
+              parsedIntel.businessName.toLowerCase().replace(/[^a-z0-9]/g, "_") === normalizedBiz
+            );
+
+            // Strict Anti-Cross-Contamination: If intel does not belong to this business, reject!
+            if (!isExactKey && !isHostMatch && !isBizMatch) {
+              continue;
+            }
+
             if (Array.isArray(parsedIntel?.coreOfferings)) {
               candidateServices.push(...parsedIntel.coreOfferings.map(decodeHtmlEntities));
             }
