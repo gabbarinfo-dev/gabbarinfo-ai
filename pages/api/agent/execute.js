@@ -6113,19 +6113,44 @@ async function handleGoogleAdsCampaignFlow(req, res, session, body) {
       }
     }
 
+    // 2c. FORMAT MISMATCH SELF-CLEAN:
+    // If the user previously had a draft for a different campaign format (e.g. SHOPPING vs SEARCH),
+    // immediately purge the old campaign draft completely!
+    const previousFormat = gAdsState?.intake?.campaign_type;
+    const isFormatMismatch = Boolean(detectedCampaignType && previousFormat && detectedCampaignType !== previousFormat);
+
+    if (isFormatMismatch) {
+      console.log(`[Self-Clean] Campaign format changed from ${previousFormat} to ${detectedCampaignType}. Purging old campaign cache completely!`);
+      gAdsState = {
+        stage: "INTAKE_PENDING",
+        customerId: gAdsState?.customerId || null,
+        managerId: gAdsState?.managerId || null,
+        intake: { campaign_type: detectedCampaignType },
+      };
+      try {
+        await supabase
+          .from("agent_memory")
+          .delete()
+          .eq("email", userEmail)
+          .eq("memory_type", "google_ads_state");
+      } catch (_) {}
+    }
+
     // 3. Check for fresh restart intent
     const isFreshStartPrompt =
+      isFormatMismatch ||
       lowerInstruction === "create a google search ads campaign" ||
+      lowerInstruction.includes("create a google search") ||
+      lowerInstruction.includes("create google search") ||
       lowerInstruction === "create google ads campaign" ||
       lowerInstruction === "create a google ads campaign" ||
-      lowerInstruction === "create a performance max campaign" ||
-      lowerInstruction.startsWith("create a performance max") ||
-      lowerInstruction.startsWith("create performance max") ||
-      lowerInstruction.startsWith("create standard shopping") ||
-      lowerInstruction.startsWith("create a standard shopping") ||
-      lowerInstruction.startsWith("create a display campaign") ||
-      lowerInstruction.startsWith("create display campaign") ||
-      lowerInstruction.startsWith("create a google display") ||
+      lowerInstruction.includes("create a performance max") ||
+      lowerInstruction.includes("create performance max") ||
+      lowerInstruction.includes("create standard shopping") ||
+      lowerInstruction.includes("create a standard shopping") ||
+      lowerInstruction.includes("create a display campaign") ||
+      lowerInstruction.includes("create display campaign") ||
+      lowerInstruction.includes("create a google display") ||
       lowerInstruction === "start over" ||
       lowerInstruction === "new campaign" ||
       lowerInstruction === "reset campaign";
@@ -6149,22 +6174,11 @@ async function handleGoogleAdsCampaignFlow(req, res, session, body) {
         intake: detectedCampaignType ? { campaign_type: detectedCampaignType } : {},
       };
       try {
-        if (activeCustomerId) {
-          await supabase
-            .from("agent_memory")
-            .upsert({
-              email: userEmail,
-              memory_type: "google_ads_state",
-              content: JSON.stringify(gAdsState),
-              updated_at: new Date().toISOString(),
-            }, { onConflict: "email,memory_type" });
-        } else {
-          await supabase
-            .from("agent_memory")
-            .delete()
-            .eq("email", userEmail)
-            .eq("memory_type", "google_ads_state");
-        }
+        await supabase
+          .from("agent_memory")
+          .delete()
+          .eq("email", userEmail)
+          .eq("memory_type", "google_ads_state");
       } catch (_) {}
     }
 
@@ -6294,14 +6308,28 @@ async function handleGoogleAdsCampaignFlow(req, res, session, body) {
 
     // SELF-CLEANING RULE 2: Strict Account-Level Isolation
     // If the active target account differs from the stored draft account, immediately discard draft intake!
-    if (selectedCustomerId && gAdsState?.customerId && cleanCustomerId(gAdsState.customerId) !== cleanCustomerId(selectedCustomerId)) {
+    const isAccountMismatch = Boolean(
+      selectedCustomerId &&
+      gAdsState?.customerId &&
+      cleanCustomerId(gAdsState.customerId) !== cleanCustomerId(selectedCustomerId)
+    );
+    if (isAccountMismatch) {
       console.log(`[Self-Clean] Account mismatch: current ${selectedCustomerId} vs draft ${gAdsState.customerId}. Wiping cross-account draft intake!`);
-      gAdsState.intake = {};
-      gAdsState.targetKeywords = [];
-      gAdsState.negativeKeywords = [];
-      gAdsState.stage = "INTAKE_PENDING";
-      gAdsState.customerId = selectedCustomerId;
-      gAdsState.managerId = selectedManagerId;
+      gAdsState = {
+        stage: "INTAKE_PENDING",
+        customerId: selectedCustomerId,
+        managerId: selectedManagerId,
+        intake: detectedCampaignType ? { campaign_type: detectedCampaignType } : {},
+        targetKeywords: [],
+        negativeKeywords: [],
+      };
+      try {
+        await supabase
+          .from("agent_memory")
+          .delete()
+          .eq("email", userEmail)
+          .eq("memory_type", "google_ads_state");
+      } catch (_) {}
     }
 
     // Save selected account across agent_memory and google_connections
@@ -6901,9 +6929,26 @@ async function handleGoogleAdsCampaignFlow(req, res, session, body) {
     };
 
     if (localGenAI && !justSelectedAccountId) {
-      const recentHistory = Array.isArray(chatHistory)
-        ? chatHistory.slice(-8).map(m => `${m.role === "user" ? "User" : "Agent"}: ${m.text}`).join("\n")
-        : "";
+      let recentHistory = "";
+      if (!isFreshStartPrompt && !isFormatMismatch && !isAccountMismatch && Array.isArray(chatHistory)) {
+        recentHistory = chatHistory
+          .slice(-8)
+          .filter(m => {
+            const txt = m?.text || "";
+            if (selectedCustomerId) {
+              const idMatches = txt.match(/\b\d{3}[-\s]?\d{3}[-\s]?\d{4}\b|\b\d{10}\b/g) || [];
+              for (const rawId of idMatches) {
+                const clean = cleanCustomerId(rawId);
+                if (clean && clean !== selectedCustomerId && clean.length === 10) {
+                  return false; // exclude messages from foreign accounts!
+                }
+              }
+            }
+            return true;
+          })
+          .map(m => `${m.role === "user" ? "User" : "Agent"}: ${m.text}`)
+          .join("\n");
+      }
 
       const extractionPrompt = `
 You are an intelligent Google Ads intake analyzer.
@@ -6911,14 +6956,14 @@ Analyze the user's latest instruction along with the conversation history to ext
 
 Target Google Ads Account: "${activeAccountObj.descriptiveName}" (${formattedAccId})
 Currency: ${accountCurrency}
-Current Stage: "${gAdsState?.stage || "INTAKE_PENDING"}"
+Current Stage: "${(isFreshStartPrompt || isFormatMismatch || isAccountMismatch) ? "INTAKE_PENDING" : (gAdsState?.stage || "INTAKE_PENDING")}"
 
 Conversation History:
 ${recentHistory}
 
 Latest User Input: "${instruction}"
 
-Existing Stored State (if any): ${JSON.stringify(gAdsState?.intake || {})}
+Existing Stored State (if any): ${JSON.stringify((isFreshStartPrompt || isFormatMismatch || isAccountMismatch) ? {} : (gAdsState?.intake || {}))}
 
 Your task is to extract the following fields in JSON format:
 {
@@ -7037,9 +7082,13 @@ Respond with ONLY the JSON object, wrapped in \`\`\`json \`\`\`.
       }
     }
 
-    // Merge with existing state intake if available
+    // Merge with existing state intake if available (or start completely clean on fresh start / format mismatch / account mismatch)
+    const baseIntake = (isFreshStartPrompt || isFormatMismatch || isAccountMismatch)
+      ? {}
+      : (gAdsState?.intake || {});
+
     const mergedIntake = {
-      ...(gAdsState?.intake || {}),
+      ...baseIntake,
       ...(intakeData.business_name ? { business_name: intakeData.business_name } : {}),
       ...(intakeData.services ? { services: intakeData.services } : {}),
       ...(intakeData.campaign_goal ? { campaign_goal: intakeData.campaign_goal } : {}),
@@ -7546,11 +7595,25 @@ Landing Page:
         const shoppingCategoryName = (mergedIntake.services || "").trim();
         const partitionDisplay = shoppingCategoryName ? `${shoppingCategoryName} (Ad Group Category Scoped)` : "All Products (Unit)";
 
+        const countryName = (countryIso === "GB" || (mergedIntake.location || "").toLowerCase().includes("uk") || (mergedIntake.location || "").toLowerCase().includes("london") || (mergedIntake.location || "").toLowerCase().includes("united kingdom"))
+          ? "United Kingdom"
+          : (countryIso === "IN" || (mergedIntake.location || "").toLowerCase().includes("india"))
+          ? "India"
+          : (countryIso === "US" || (mergedIntake.location || "").toLowerCase().includes("united states") || (mergedIntake.location || "").toLowerCase().includes("usa"))
+          ? "United States"
+          : countryIso ? `${countryIso} (${mergedIntake.location || "Global"})` : (mergedIntake.location || "United Kingdom");
+
+        const locationDetail = (mergedIntake.location && !countryName.toLowerCase().includes((mergedIntake.location || "").toLowerCase()))
+          ? ` (Target Region: ${mergedIntake.location})`
+          : "";
+        const countryDisplay = `${countryName}${locationDetail}`;
+
         const reviewMessage =
           `🛍️ **Phase 2: Standard Shopping Campaign & Product Feed Architecture**\n\n` +
+          `🎯 **Target Google Ads Account:** **${activeAccountObj.descriptiveName}** (\`${formattedAccId}\`)\n\n` +
           `Standard Shopping campaigns use your Google Merchant Center product catalog rather than search keywords to automatically display rich product cards when shoppers search for items you sell.\n\n` +
           `• **Target Store / Merchant Center ID:** \`${mergedIntake.merchant_id || "Connected Store"}\`\n` +
-          `• **Country of Sale / Feed Label:** ${countryIso ? `${countryIso} (${mergedIntake.location || "United Kingdom"})` : (mergedIntake.location || "India")}\n` +
+          `• **Country of Sale:** ${countryDisplay}\n` +
           `• **Product Partition / Ad Group Focus:** ${partitionDisplay}\n` +
           `• **Bidding Strategy:** ${mergedIntake.bidding_strategy || "Maximize Clicks (Highest Product Views)"}\n` +
           `• **Daily Budget:** ${accountCurrency === "INR" ? "₹" : ""}${mergedIntake.daily_budget}/day\n\n` +
@@ -7668,6 +7731,7 @@ JSON wrapped in \`\`\`json \`\`\`:
 
       const reviewMessage =
         `🎯 **Phase 2: ${phaseTitle}**\n\n` +
+        `🎯 **Target Google Ads Account:** **${activeAccountObj.descriptiveName}** (\`${formattedAccId}\`)\n\n` +
         `I have analyzed **${businessLabel}** for **${targetLocation}** and curated the highest-converting targeting blueprint:\n\n` +
         `### 📌 **${listTitle} (${initialKeywords.length}):**\n` +
         initialKeywords.map(k => `• \`${k}\``).join("\n") +
@@ -7897,9 +7961,18 @@ ${JSON.stringify(candidateSitelinks, null, 2)}
             : "");
       }
 
-      formatSummaryBulletPoints = `- 📊 **Campaign Format:** ${formatDisplayLabel}
+      const shoppingCountryName = (countryIso === "GB" || (mergedIntake.location || "").toLowerCase().includes("uk") || (mergedIntake.location || "").toLowerCase().includes("london") || (mergedIntake.location || "").toLowerCase().includes("united kingdom"))
+        ? "United Kingdom"
+        : (countryIso === "IN" || (mergedIntake.location || "").toLowerCase().includes("india"))
+        ? "India"
+        : (countryIso === "US" || (mergedIntake.location || "").toLowerCase().includes("united states") || (mergedIntake.location || "").toLowerCase().includes("usa"))
+        ? "United States"
+        : countryIso || "United Kingdom";
+
+      formatSummaryBulletPoints = `- 🎯 **Target Google Ads Account:** **${activeAccountObj.descriptiveName}** (\`${formattedAccId}\`)
+- 📊 **Campaign Format:** ${formatDisplayLabel}
 - 🏬 **Merchant Center ID:** \`${mergedIntake.merchant_id || "Active GMC Feed"}\`
-- 🌍 **Sales Country / Feed Label:** ${countryIso || "IN"}
+- 🌍 **Country of Sale:** ${shoppingCountryName} (${targetLocation})
 - 📦 **Ad Group Setup:** 1 Ad Group: "${shoppingAgName}" (\`SHOPPING_PRODUCT_ADS\`)
 - 📈 **Bidding Strategy:** ${biddingChoice}
 - 📍 **Target Location:** ${targetLocation}
@@ -7945,7 +8018,8 @@ ${JSON.stringify(candidateSitelinks, null, 2)}
     }
   ]`;
 
-      formatSummaryBulletPoints = `- 📊 **Campaign Format:** ${formatDisplayLabel}
+      formatSummaryBulletPoints = `- 🎯 **Target Google Ads Account:** **${activeAccountObj.descriptiveName}** (\`${formattedAccId}\`)
+- 📊 **Campaign Format:** ${formatDisplayLabel}
 - 🌐 **Placements:** Google Display Network (Partner Websites, YouTube placements, Apps)
 - 📍 **Targeting & Location:** ${targetLocation}
 - 💰 **Daily Budget:** ${accountCurrency === "INR" ? "₹" : accountCurrency + " "}${mergedIntake.daily_budget}/day
@@ -8046,7 +8120,8 @@ ${chosenCampaignType === "PERFORMANCE_MAX_SHOPPING" ? `9. Merchant Center: Conne
           `  • 📸 **Authentic Visual Assets:** We will use authentic high-res product photos from these items directly for your visual ad banners!\n`;
       }
 
-      formatSummaryBulletPoints = `- 📊 **Campaign Format:** ${formatDisplayLabel}
+      formatSummaryBulletPoints = `- 🎯 **Target Google Ads Account:** **${activeAccountObj.descriptiveName}** (\`${formattedAccId}\`)
+- 📊 **Campaign Format:** ${formatDisplayLabel}
 - 🌐 **Omnichannel Reach:** Google Search, YouTube, Google Maps, Gmail, Discover, & Display Network
 ${chosenCampaignType === "PERFORMANCE_MAX_SHOPPING" ? `- 🏬 **Merchant Center Catalog:** Linked feed ID \`${mergedIntake.merchant_id || "Active GMC Feed"}\`\n` : ""}- 🎯 **Primary Campaign Goal:** ${isCallGoal ? "Direct Phone Calls / Inbound Leads 📞" : "Maximizing Omnichannel Conversion Value 🌐"}
 - 📈 **Bidding Strategy:** ${biddingChoice}
@@ -8130,7 +8205,8 @@ ${sitelinkPromptRule}
     }
   ]`;
 
-      formatSummaryBulletPoints = `- 📊 **Campaign Format:** ${formatDisplayLabel}
+      formatSummaryBulletPoints = `- 🎯 **Target Google Ads Account:** **${activeAccountObj.descriptiveName}** (\`${formattedAccId}\`)
+- 📊 **Campaign Format:** ${formatDisplayLabel}
 - 🌐 **Network Placements:** ${chosenNetPref === "DISPLAY_EXPANSION" ? "Google Search + Search Partners + Display Expansion" : (chosenNetPref === "SEARCH_PARTNERS" ? "Google Search + Search Partners" : "Google Search Only (High Intent, Zero Display Waste)")}
 - 🎯 **Primary Campaign Goal:** ${isCallGoal ? "Direct Phone Calls / Inbound Call Leads 📞" : "Website Traffic & Online Leads 🌐"}
 - 📈 **Bidding Strategy:** ${biddingChoice === "MAXIMIZE_CLICKS" ? "Maximize Clicks (Traffic Focus)" : "Maximize Conversions (Lead/Call Focus)"}

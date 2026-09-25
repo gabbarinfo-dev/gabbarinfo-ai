@@ -640,6 +640,9 @@ export default function ChatPage() {
 
   async function handleSwitchGoogleAccount(newCustomerId) {
     setSelectedGoogleAccount(newCustomerId);
+    setAgentResponse("");
+    setAgentError("");
+    setInput("");
     try {
       const acc = googleAccounts.find((a) => (a.customerId || a.id) === newCustomerId);
       await fetch("/api/google-ads/accounts", {
@@ -658,6 +661,9 @@ export default function ChatPage() {
 
   async function handleSwitchMetaBrand(newBrandKey) {
     setSelectedMetaBrand(newBrandKey);
+    setAgentResponse("");
+    setAgentError("");
+    setInput("");
     try {
       await fetch("/api/meta/select-profile", {
         method: "POST",
@@ -668,6 +674,59 @@ export default function ChatPage() {
     } catch (e) {
       console.error("Error switching Meta brand:", e);
     }
+  }
+
+  async function handleAgentModeChange(newMode) {
+    setAgentMode(newMode);
+    setAgentResponse("");
+    setAgentError("");
+    setInput("");
+
+    if (newMode === "generic") {
+      setAgentInstruction("Create A Meta Ads Campaign");
+    } else if (newMode === "meta_ads_call") {
+      setAgentInstruction("Create a Meta Call Ads campaign to get phone calls for my business");
+    } else if (newMode === "meta_ads_shopping") {
+      setAgentInstruction("Create an Advantage+ Dynamic Shopping Catalog campaign");
+    } else if (newMode === "meta_ads_whatsapp") {
+      setAgentInstruction("Create a Meta WhatsApp campaign to receive customer orders");
+    } else if (newMode === "meta_ads_traffic") {
+      setAgentInstruction("Create a Meta Traffic campaign to drive website visits");
+    } else if (newMode === "meta_ads_profile") {
+      setAgentInstruction("Create a Meta campaign to get Instagram profile visits and followers");
+    } else if (newMode === "meta_ads_leads") {
+      setAgentInstruction("Create a Meta Lead Generation campaign to collect customer inquiries");
+    } else if (newMode === "meta_ads_app_promo") {
+      setAgentInstruction("Create a Meta App Promotion campaign to drive app installs");
+    } else if (newMode === "google_ads_search") {
+      setAgentInstruction("Create a Google Search Ads campaign");
+    } else if (newMode === "google_ads_pmax") {
+      setAgentInstruction("Create a Performance Max campaign");
+    } else if (newMode === "google_ads_pmax_shopping") {
+      setAgentInstruction("Create a Performance Max Shopping campaign with Merchant Center feed");
+    } else if (newMode === "google_ads_shopping") {
+      setAgentInstruction("Create a Standard Shopping campaign with Google Merchant Center");
+    } else if (newMode === "google_ads_display") {
+      setAgentInstruction("Create a Google Display Network campaign");
+    } else if (newMode === "google_ads_plan") {
+      setAgentInstruction("Create a Google Ads campaign");
+    } else if (newMode === "instagram_post") {
+      setAgentInstruction("Publish an Instagram Post");
+    } else if (newMode === "facebook_post") {
+      setAgentInstruction("Publish a Facebook Post");
+    } else if (newMode === "seo_blog") {
+      setAgentInstruction("Publish an SEO Blog");
+    } else {
+      setAgentInstruction("");
+    }
+
+    try {
+      fetch("/api/agent/reset", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ mode: newMode }),
+      }).catch(() => {});
+    } catch (_) {}
   }
 
   const activeChat =
@@ -2347,7 +2406,7 @@ Now respond as GabbarInfo AI.
                   </label>
                   <select
                     value={agentMode}
-                    onChange={(e) => setAgentMode(e.target.value)}
+                    onChange={(e) => handleAgentModeChange(e.target.value)}
                     style={{
                       width: "100%",
                       padding: "10px 12px",

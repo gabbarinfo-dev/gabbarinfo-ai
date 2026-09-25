@@ -314,25 +314,14 @@ export default async function handler(req, res) {
         });
       }
 
-      // Sync agent_memory so switching the account immediately clears any prior account's draft intake
+      // Wipe agent_memory completely so switching the account immediately purges any prior account's draft intake and stage
       try {
         await supabase
           .from("agent_memory")
-          .upsert(
-            {
-              email,
-              memory_type: "google_ads_state",
-              content: JSON.stringify({
-                stage: "INTAKE_PENDING",
-                customerId: cleanId,
-                managerId: cleanManagerId || null,
-                intake: {},
-                updated_at: new Date().toISOString(),
-              }),
-              updated_at: new Date().toISOString(),
-            },
-            { onConflict: "email,memory_type" }
-          );
+          .delete()
+          .eq("email", email)
+          .eq("memory_type", "google_ads_state");
+        console.log(`[GoogleAds Accounts] Completely purged draft campaign state for ${email} on switch to ${cleanId}`);
       } catch (memErr) {
         console.warn("Failed to reset google_ads_state on account switch:", memErr.message);
       }
