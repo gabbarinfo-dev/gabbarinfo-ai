@@ -456,7 +456,6 @@ async function runSeoAutopilotCycle({ supabase, openai, force = false, logger = 
           }
         } catch (_) {}
       }
-      }
 
       if (!wpConn) {
         logger(`[SEO Autopilot] No active WordPress connection found for ${item.email} profile "${businessName}" (Key: ${targetConnKey}). Skipping.`);

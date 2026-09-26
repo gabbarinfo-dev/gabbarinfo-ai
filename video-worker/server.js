@@ -2122,7 +2122,12 @@ app.post("/autopilot/seo/trigger", requireAuth, async (req, res) => {
   try {
     const force = Boolean(req.body?.force || req.query?.force);
     log("AUTOPILOT", `Manual trigger: SEO Suite Autopilot (force: ${force})`);
-    const results = await runSeoAutopilotCycle({ supabase, openai, force, logger: (msg) => log("SEO_AP", msg) });
+    try {
+      delete require.cache[require.resolve("./lib/brand-integrity-guard")];
+      delete require.cache[require.resolve("./lib/seo-autopilot")];
+    } catch (_) {}
+    const { runSeoAutopilotCycle: freshRunSeo } = require("./lib/seo-autopilot");
+    const results = await freshRunSeo({ supabase, openai, force, logger: (msg) => log("SEO_AP", msg) });
     res.json({ ok: true, count: results.length, results });
   } catch (err) {
     log("AUTOPILOT", `SEO Autopilot Error: ${err.message}`);
@@ -2539,6 +2544,33 @@ app.get("/autopilot/status", requireAuth, (req, res) => {
   });
 });
 
+app.post("/system/reload", requireAuth, (req, res) => {
+  try {
+    const modules = [
+      "./lib/brand-integrity-guard",
+      "./lib/seo-autopilot",
+      "./lib/social-autopilot",
+      "./lib/shopify-autopilot",
+      "./lib/meta-campaign-service",
+    ];
+    const reloaded = [];
+    for (const mod of modules) {
+      try {
+        const resolved = require.resolve(mod);
+        delete require.cache[resolved];
+        require(mod);
+        reloaded.push(mod);
+      } catch (e) {
+        log("SYS", `Failed to reload ${mod}: ${e.message}`);
+      }
+    }
+    log("SYS", `Successfully reloaded modules: ${reloaded.join(", ")}`);
+    res.json({ ok: true, reloaded, timestamp: new Date().toISOString() });
+  } catch (err) {
+    res.status(500).json({ ok: false, error: err.message });
+  }
+});
+
 // -------------------------------------------------------------
 // Scheduled Native Cron Jobs (Reliable Background Execution in Asia/Kolkata)
 // -------------------------------------------------------------
@@ -2546,7 +2578,12 @@ app.get("/autopilot/status", requireAuth, (req, res) => {
 cron.schedule("0 9 * * *", async () => {
   log("CRON_SEO", "Executing scheduled SEO Suite Autopilot cycle (09:00 AM IST)...");
   try {
-    await runSeoAutopilotCycle({ supabase, openai, force: false, logger: (msg) => log("CRON_SEO", msg) });
+    try {
+      delete require.cache[require.resolve("./lib/brand-integrity-guard")];
+      delete require.cache[require.resolve("./lib/seo-autopilot")];
+    } catch (_) {}
+    const { runSeoAutopilotCycle: freshRunSeo } = require("./lib/seo-autopilot");
+    await freshRunSeo({ supabase, openai, force: false, logger: (msg) => log("CRON_SEO", msg) });
   } catch (e) {
     log("CRON_SEO", `Scheduled SEO cycle error: ${e.message}`);
   }

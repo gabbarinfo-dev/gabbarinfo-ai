@@ -5371,9 +5371,18 @@ Otherwise, respond with a full, clear explanation, and include example JSON only
     // 🛡️ GUARD: If user says YES (or force_continue) but we have no state, warn them.
     // This prevents the "Generic Agent Response" fallback which confuses the user.
     const isConfirmation =
-      instruction.toLowerCase().includes("yes") ||
-      instruction.toLowerCase().includes("approve") ||
-      instruction.toLowerCase().includes("confirm") ||
+      lowerInstruction.includes("yes") ||
+      lowerInstruction.includes("approve") ||
+      lowerInstruction.includes("confirm") ||
+      lowerInstruction.includes("proceed") ||
+      lowerInstruction.includes("publish") ||
+      lowerInstruction.includes("launch") ||
+      lowerInstruction.includes("run") ||
+      lowerInstruction.includes("start") ||
+      lowerInstruction.includes("ok") ||
+      lowerInstruction.includes("sure") ||
+      lowerInstruction.includes("go ahead") ||
+      lowerInstruction.includes("looks good") ||
       body.force_continue;
 
     if (!lockedCampaignState && isConfirmation && mode === "meta_ads_plan") {
@@ -5386,7 +5395,19 @@ Otherwise, respond with a full, clear explanation, and include example JSON only
 
     if (lockedCampaignState && mode === "meta_ads_plan") {
       const stage = lockedCampaignState.stage || "PLANNING";
-      const userSaysYes = lowerInstruction.includes("yes") || lowerInstruction.includes("approve") || lowerInstruction.includes("launch") || lowerInstruction.includes("ok");
+      const userSaysYes =
+        lowerInstruction.includes("yes") ||
+        lowerInstruction.includes("approve") ||
+        lowerInstruction.includes("launch") ||
+        lowerInstruction.includes("publish") ||
+        lowerInstruction.includes("proceed") ||
+        lowerInstruction.includes("confirm") ||
+        lowerInstruction.includes("run") ||
+        lowerInstruction.includes("start") ||
+        lowerInstruction.includes("ok") ||
+        lowerInstruction.includes("sure") ||
+        lowerInstruction.includes("go ahead") ||
+        lowerInstruction.includes("looks good");
 
       // 🔒 HARD GATE: Memory plans are READ-ONLY (Mandatory Fix 1 & 3)
       if (stage !== "COMPLETED" && userSaysYes) {
