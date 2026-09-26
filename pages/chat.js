@@ -759,6 +759,15 @@ export default function ChatPage() {
     setInput("");
     setAgentResponse("");
     setCampaignStepCount(0); // reset campaign step counter on new chat
+
+    // Instantly wipe any half-left Meta or Google Ads campaign draft & creative from backend & storage
+    try {
+      fetch("/api/agent/reset", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ mode: agentMode }),
+      }).catch(() => {});
+    } catch (_) {}
   }
 
   function scrollChatToBottom() {

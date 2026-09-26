@@ -238,8 +238,9 @@ function sanitizeStateForMemory(obj) {
 async function purgeIncompleteCampaign(userEmail, businessId) {
   if (!userEmail) return;
   try {
-    // Purge visual and draft caches from agent_memory
+    // Purge visual, draft caches, and google_ads_state from agent_memory
     await Promise.allSettled([
+      supabase.from("agent_memory").delete().eq("email", userEmail).eq("memory_type", "google_ads_state"),
       supabase.from("agent_memory").delete().eq("email", userEmail).like("memory_type", "campaign_visual_%"),
       supabase.from("agent_memory").delete().eq("email", userEmail).like("memory_type", "meta_draft_%"),
       supabase.from("agent_memory").delete().eq("email", userEmail).like("memory_type", "social_draft_%"),
@@ -258,7 +259,7 @@ async function purgeIncompleteCampaign(userEmail, businessId) {
       const bAnswers = content.business_answers || {};
       const targetState = bAnswers[businessId]?.campaign_state || bAnswers["default_business"]?.campaign_state || content.campaign_state;
       
-      const storageFile = targetState?.storageFileName || targetState?.creative?.storageFileName;
+      const storageFile = targetState?.storageFileName || targetState?.creative?.storageFileName || targetState?.creative?.imageUrl || targetState?.user_provided_image_url;
       if (storageFile) {
         cleanupEphemeralImage(storageFile).catch(() => {});
       }
@@ -289,13 +290,9 @@ async function purgePublishedCampaign(userEmail, businessId, storageFile = null)
   if (!userEmail) return;
   try {
     if (storageFile) {
-      await cleanupEphemeralImage(storageFile);
+      await cleanupEphemeralImage(storageFile).catch(() => {});
     }
-    await supabase
-      .from("agent_memory")
-      .delete()
-      .eq("email", userEmail)
-      .eq("memory_type", "client");
+    await purgeIncompleteCampaign(userEmail, businessId);
     console.log(`🎉 [Auto-Delete] Published campaign completely removed from Supabase for ${userEmail}`);
   } catch (err) {
     console.warn("⚠️ purgePublishedCampaign warning:", err.message);
@@ -594,12 +591,17 @@ export default async function handler(req, res) {
       lowerInstruction.includes("create an ads campaign") ||
       lowerInstruction.includes("create a campaign for my business") ||
       lowerInstruction.includes("create a meta campaign") ||
+      lowerInstruction.includes("create a campaign") ||
+      lowerInstruction.includes("create campaign") ||
       lowerInstruction.includes("run an ad") ||
       lowerInstruction.includes("run ads for my business") ||
+      lowerInstruction.includes("run ads") ||
       lowerInstruction.includes("ad run") ||
       lowerInstruction.includes("start ads campaign") ||
       lowerInstruction.includes("start a new campaign") ||
       lowerInstruction.includes("start new campaign") ||
+      lowerInstruction.includes("start a campaign") ||
+      lowerInstruction.includes("new campaign") ||
       lowerInstruction.includes("start over") ||
       lowerInstruction.includes("reset campaign") ||
       lowerInstruction.includes("restart campaign") ||
@@ -949,7 +951,7 @@ export default async function handler(req, res) {
         try {
           const { data: memData } = await supabase
             .from("agent_memory")
-            .select("content")
+            .select("content, updated_at")
             .eq("email", session.user.email.toLowerCase())
             .eq("memory_type", "client")
             .maybeSingle();
@@ -992,7 +994,19 @@ export default async function handler(req, res) {
 
             lockedCampaignState = bestMatch;
             if (lockedCampaignState) {
-              console.log(`✅ Loaded lockedCampaignState from key: ${sourceKey} ${lockedCampaignState.plan ? "(Plan FOUND)" : "(No Plan)"}`);
+              // ⏱️ 1-HOUR EXPIRATION & STAGE COMPLETED PURGE
+              // If a campaign was left halfway for > 1 hour, or is already marked COMPLETED, instantly clean it up!
+              const stateUpdated = lockedCampaignState.updated_at || lockedCampaignState.locked_at || lockedCampaignState.created_at || answers[sourceKey]?.updated_at || memData.updated_at || 0;
+              const lockedTime = new Date(stateUpdated).getTime();
+              const isExpired = lockedTime > 0 && (Date.now() - lockedTime > 60 * 60 * 1000);
+              const isCompleted = lockedCampaignState.stage === "COMPLETED" || lockedCampaignState.stage === "PUBLISHED";
+              if (isExpired || isCompleted) {
+                console.log(`🧹 [Auto-Clean] Meta campaign state is ${isCompleted ? 'COMPLETED' : 'EXPIRED (>1 hour)'}. Purging immediately.`);
+                await purgeIncompleteCampaign(userEmail, effectiveBusinessId);
+                lockedCampaignState = null;
+              } else {
+                console.log(`✅ Loaded lockedCampaignState from key: ${sourceKey} ${lockedCampaignState.plan ? "(Plan FOUND)" : "(No Plan)"}`);
+              }
             }
           }
         } catch (e) {
@@ -4813,7 +4827,7 @@ Otherwise, respond with a full, clear explanation, and include example JSON only
               campaignExecutedThisTurn = true;
 
               // 🔥 AUTO-DELETE PUBLISHED CAMPAIGN DATA AND STORAGE FILES FROM SUPABASE
-              const storageFileToClean = state.creative?.storageFileName || currentState.creative?.storageFileName;
+              const storageFileToClean = state.creative?.storageFileName || currentState.creative?.storageFileName || state.creative?.imageUrl || currentState.creative?.imageUrl || currentState.user_provided_image_url;
               await purgePublishedCampaign(userEmail, effectiveBusinessId, storageFileToClean);
 
               return res.status(200).json({
@@ -5756,7 +5770,7 @@ Otherwise, respond with a full, clear explanation, and include example JSON only
                 campaignExecutedThisTurn = true;
 
                 // 🔥 AUTO-DELETE PUBLISHED CAMPAIGN DATA AND STORAGE FILES FROM SUPABASE
-                const storageFileToClean = currentState?.creative?.storageFileName || currentState?.creative?.storageFileName;
+                const storageFileToClean = currentState?.creative?.storageFileName || currentState?.creative?.imageUrl || currentState?.user_provided_image_url;
                 await purgePublishedCampaign(userEmail, effectiveBusinessId, storageFileToClean);
 
                 return res.status(200).json({
@@ -6118,12 +6132,17 @@ async function handleGoogleAdsCampaignFlow(req, res, session, body) {
       try {
         gAdsState = typeof memData.content === "string" ? JSON.parse(memData.content) : memData.content;
 
-        // SELF-CLEANING RULE 1: Stale draft TTL (2 hours) or Stage COMPLETED
-        // Any draft older than 2 hours or marked COMPLETED is instantly purged so stale data never lingers!
+        // SELF-CLEANING RULE 1: Stale draft TTL (1 hour) or Stage COMPLETED
+        // Any draft older than 1 hour or marked COMPLETED is instantly purged so stale data never lingers!
         const lastUpdated = memData.updated_at ? new Date(memData.updated_at).getTime() : 0;
-        const isStale = lastUpdated > 0 && Date.now() - lastUpdated > 2 * 60 * 60 * 1000;
+        const isStale = lastUpdated > 0 && Date.now() - lastUpdated > 1 * 60 * 60 * 1000;
         if (isStale || gAdsState?.stage === "COMPLETED") {
-          console.log("[Self-Clean] Purging stale (>2h) or completed Google Ads draft memory");
+          console.log("[Self-Clean] Purging stale (>1h) or completed Google Ads draft memory");
+          await supabase
+            .from("agent_memory")
+            .delete()
+            .eq("email", userEmail)
+            .eq("memory_type", "google_ads_state");
           gAdsState = {
             stage: "INTAKE_PENDING",
             customerId: gAdsState?.customerId || null,
@@ -6222,6 +6241,12 @@ async function handleGoogleAdsCampaignFlow(req, res, session, body) {
       lowerInstruction.includes("create a display campaign") ||
       lowerInstruction.includes("create display campaign") ||
       lowerInstruction.includes("create a google display") ||
+      lowerInstruction.includes("create a google ads") ||
+      lowerInstruction.includes("create google ads") ||
+      lowerInstruction.includes("new google ads") ||
+      lowerInstruction.includes("start a google ads") ||
+      lowerInstruction.includes("run a google ad") ||
+      lowerInstruction.includes("run google ads") ||
       lowerInstruction === "start over" ||
       lowerInstruction === "new campaign" ||
       lowerInstruction === "reset campaign";
@@ -6864,23 +6889,12 @@ async function handleGoogleAdsCampaignFlow(req, res, session, body) {
         }
 
         // SELF-CLEANING RULE 3: Instant Post-Publication Purge
-        // Clear intake completely so the published campaign's data never lingers into subsequent chats!
+        // Purge google_ads_state completely so the published campaign's data never lingers into subsequent chats!
         await supabase
           .from("agent_memory")
-          .upsert({
-            email: userEmail,
-            memory_type: "google_ads_state",
-            content: JSON.stringify({
-              stage: "COMPLETED",
-              customerId: selectedCustomerId,
-              managerId: selectedManagerId,
-              intake: {},
-              lastCampaign: createRes,
-              plan: plan,
-              completed_at: new Date().toISOString()
-            }),
-            updated_at: new Date().toISOString(),
-          }, { onConflict: "email,memory_type" });
+          .delete()
+          .eq("email", userEmail)
+          .eq("memory_type", "google_ads_state");
 
         const dailyBudgetUnits = Math.round((plan.campaign.dailyBudgetMicros || 1000000000) / 1000000);
 

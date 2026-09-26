@@ -2497,14 +2497,14 @@ app.post(["/meta/jobs/create-campaign", "/meta/jobs/create"], requireAuth, async
             if (memData?.content) {
               const parsed = typeof memData.content === "string" ? JSON.parse(memData.content) : memData.content;
               if (parsed?.business_answers?.[businessId]?.campaign_state) {
-                parsed.business_answers[businessId].campaign_state.stage = "COMPLETED";
-                parsed.business_answers[businessId].campaign_state.final_result = campaignResult;
+                delete parsed.business_answers[businessId].campaign_state;
+                if (parsed.campaign_state) delete parsed.campaign_state;
                 await supabase
                   .from("agent_memory")
                   .update({ content: JSON.stringify(parsed), updated_at: new Date().toISOString() })
                   .eq("email", targetEmail)
                   .eq("memory_type", "client");
-                log(jobId, `Updated agent_memory to COMPLETED for ${targetEmail}`);
+                log(jobId, `Auto-cleaned published campaign_state from agent_memory for ${targetEmail}`);
               }
             }
           } catch (memErr) {

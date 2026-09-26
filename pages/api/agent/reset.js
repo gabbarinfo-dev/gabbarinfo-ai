@@ -1,6 +1,7 @@
 import { getServerSession } from "next-auth/next";
 import { authOptions } from "../auth/[...nextauth]";
 import { createClient } from "@supabase/supabase-js";
+import { cleanupEphemeralImage } from "../../../lib/services/image-service";
 
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL,
@@ -31,7 +32,7 @@ export default async function handler(req, res) {
     ];
     await Promise.allSettled(deletePromises);
 
-    // 2. Atomically wipe all in-flight campaign_state from client memory profile
+    // 2. Atomically wipe all in-flight campaign_state from client memory profile & clean up storage images
     const { data: clientMem } = await supabase
       .from("agent_memory")
       .select("content")
@@ -43,8 +44,18 @@ export default async function handler(req, res) {
       try {
         const content = typeof clientMem.content === "string" ? JSON.parse(clientMem.content) : clientMem.content;
         let modified = false;
+        const imagesToClean = [];
+
+        const collectImages = (st) => {
+          if (!st || typeof st !== "object") return;
+          if (st.storageFileName) imagesToClean.push(st.storageFileName);
+          if (st.creative?.storageFileName) imagesToClean.push(st.creative.storageFileName);
+          if (st.creative?.imageUrl) imagesToClean.push(st.creative.imageUrl);
+          if (st.user_provided_image_url) imagesToClean.push(st.user_provided_image_url);
+        };
 
         if (content.campaign_state) {
+          collectImages(content.campaign_state);
           delete content.campaign_state;
           modified = true;
         }
@@ -52,10 +63,15 @@ export default async function handler(req, res) {
         if (content.business_answers && typeof content.business_answers === "object") {
           for (const k of Object.keys(content.business_answers)) {
             if (content.business_answers[k]?.campaign_state) {
+              collectImages(content.business_answers[k].campaign_state);
               delete content.business_answers[k].campaign_state;
               modified = true;
             }
           }
+        }
+
+        if (imagesToClean.length > 0) {
+          await cleanupEphemeralImage(imagesToClean).catch(() => {});
         }
 
         if (modified) {

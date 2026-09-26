@@ -172,6 +172,15 @@ export default async function handler(req, res) {
       });
     }
 
+    // Auto-clean published Google Ads campaign data from storage once successfully published
+    if (email) {
+      await supabaseServer
+        .from("agent_memory")
+        .delete()
+        .eq("email", email)
+        .eq("memory_type", "google_ads_state");
+    }
+
     return res.status(200).json({
       ok: true,
       message: "Campaign created successfully in Google Ads in PAUSED status.",
