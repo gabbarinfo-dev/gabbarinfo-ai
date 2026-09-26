@@ -132,15 +132,32 @@ export default async function handler(req, res) {
       .eq("email", userEmail.toLowerCase())
       .maybeSingle();
 
-    const pageId = brandMeta?.pageId || (allBrands.length === 0 ? defaultMeta?.fb_page_id?.split(",")[0]?.trim() : null);
-    const pageToken = brandMeta?.pageToken || (allBrands.length === 0 ? (defaultMeta?.fb_page_access_token || defaultMeta?.fb_user_access_token) : null);
-    const igId = brandMeta?.igId || (allBrands.length === 0 ? (defaultMeta?.instagram_actor_id || defaultMeta?.ig_business_id) : null);
+    let pageId = brandMeta?.pageId || null;
+    let pageToken = brandMeta?.pageToken || null;
+    let igId = brandMeta?.igId || null;
+
+    if (!brandMeta && allBrands.length === 0 && defaultMeta) {
+      try {
+        const metaIdentity = await getMetaIdentity(defaultMeta);
+        const match = checkBrandMatch({
+          storeName: storeDisplayName,
+          storeDomain: normStoreDomain,
+          shopHandle: reqShop || "",
+          metaIdentity,
+        });
+        if (match.isMatched) {
+          pageId = defaultMeta.fb_page_id?.split(",")[0]?.trim();
+          pageToken = defaultMeta.fb_page_access_token || defaultMeta.fb_user_access_token;
+          igId = defaultMeta.instagram_actor_id || defaultMeta.ig_business_id;
+        }
+      } catch (_) {}
+    }
 
     if (!pageId || !pageToken) {
       return res.status(200).json({
         ok: false,
         require_connect: true,
-        message: `No connected Facebook Page found for ${storeDisplayName}. Please connect or pair Meta in Social Pilot.`,
+        message: `No connected or paired Meta account matches '${storeDisplayName}'. Cross-business posting prevented. Please pair this store in Social Pilot.`,
       });
     }
 

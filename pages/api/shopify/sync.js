@@ -8,6 +8,7 @@ import { getValidShopifyAccessToken } from "../../../lib/shopify/token-service";
 import { getMetaIdentity, checkBrandMatch, normalizeBrand } from "../../../lib/meta/brand-verifier";
 import { runShopifyAutopilotCycle } from "../../../lib/shopify/shopify-autopilot";
 import { ensureInstagramCompatibleJpeg } from "../../../lib/instagram-image-helper.js";
+import { buildCrossBrandNegativeList, validateTopicRelevance } from "../../../lib/brand-integrity-guard.js";
 
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL,
@@ -1569,6 +1570,14 @@ Respond ONLY with a valid JSON object matching this structure:
       const brandName = conn.shopName || shop.split(".")[0] || "Our Store";
       const targetLoc = (targetLocations || conn.country || "").trim();
 
+      // Cross-Brand Isolation: Disallow other businesses' keywords in suggested topics
+      const { forbiddenTerms: crossBrandForbidden } = await buildCrossBrandNegativeList({
+        supabase,
+        userEmail,
+        currentBusinessKey: shop,
+        currentSiteUrl: conn.domain || shop,
+      });
+
       const topicPrompt = `You are a chief eCommerce content strategist and SEO director for brand "${brandName}".
 Catalog Snapshot (In-Stock Products & Categories):
 ${JSON.stringify(sampleProducts.slice(0, 25), null, 2)}
@@ -1577,6 +1586,7 @@ Target Keywords / Niche: "${targetKeywords || nicheFocus || "designer lifestyle 
 ${targetLoc ? `Target Geographic Territory (Cities / Countries): "${targetLoc}"` : ""}
 Already Published Titles (DO NOT DUPLICATE):
 ${existingTitles.slice(0, 25).join("\n")}
+${crossBrandForbidden.length > 0 ? `STRICT ZERO CROSS-BRAND LEAK: Never include terms, concepts, or themes from: ${crossBrandForbidden.slice(0, 15).join(", ")}. Must be 100% focused on "${brandName}".` : ""}
 
 YOUR MISSION:
 Generate AT LEAST 40 unique, high-ranking, buyer-intent eCommerce blog topic titles.
@@ -1622,15 +1632,21 @@ Respond ONLY with a valid JSON object matching this schema:
         }
       }
 
+      if (crossBrandForbidden.length > 0) {
+        topics = topics.filter((t) => validateTopicRelevance({ topic: t, forbiddenTerms: crossBrandForbidden }).ok);
+      }
+
       // Ensure at least 40 topics are present
       if (topics.length < 40) {
         const fallbacks = getFallbackEcommerceTopics(brandName, targetLoc, targetKeywords || nicheFocus);
         const existingSet = new Set(topics.map((t) => t.toLowerCase()));
         for (const fb of fallbacks) {
           if (!existingSet.has(fb.toLowerCase())) {
-            topics.push(fb);
-            existingSet.add(fb.toLowerCase());
-            if (topics.length >= 45) break;
+            if (crossBrandForbidden.length === 0 || validateTopicRelevance({ topic: fb, forbiddenTerms: crossBrandForbidden }).ok) {
+              topics.push(fb);
+              existingSet.add(fb.toLowerCase());
+              if (topics.length >= 45) break;
+            }
           }
         }
       }
@@ -1780,6 +1796,7 @@ Respond ONLY with a valid JSON object matching this schema:
           body: JSON.stringify({
             force: true,
             email: userEmail,
+            shop: shop,
           }),
         });
 
@@ -1798,10 +1815,11 @@ Respond ONLY with a valid JSON object matching this schema:
 
       // 2. Reliable Native Engine Execution: Execute directly without failing silently!
       try {
-        console.log(`[Shopify Trigger] Executing native autonomous cycle for ${userEmail}...`);
+        console.log(`[Shopify Trigger] Executing native autonomous cycle for ${userEmail} (Store: ${shop})...`);
         const results = await runShopifyAutopilotCycle({
           force: true,
           email: userEmail,
+          targetShop: shop,
           logger: (msg) => console.log(`[Shopify Native Engine] ${msg}`),
         });
 

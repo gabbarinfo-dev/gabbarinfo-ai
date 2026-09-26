@@ -2139,8 +2139,14 @@ app.post("/autopilot/shopify/trigger", requireAuth, async (req, res) => {
   try {
     const force = Boolean(req.body?.force || req.query?.force);
     const email = req.body?.email || req.query?.email || null;
-    log("AUTOPILOT", `Manual trigger: Shopify SEO Autopilot (force: ${force}, email: ${email || "all"})`);
-    const results = await runShopifyAutopilotCycle({ supabase, openai, force, email, logger: (msg) => log("SHOPIFY_AP", msg) });
+    const targetShop = req.body?.shop || req.body?.targetShop || null;
+    log("AUTOPILOT", `Manual trigger: Shopify SEO Autopilot (force: ${force}, email: ${email || "all"}, shop: ${targetShop || "all"})`);
+    try {
+      delete require.cache[require.resolve("./lib/brand-integrity-guard")];
+      delete require.cache[require.resolve("./lib/shopify-autopilot")];
+    } catch (_) {}
+    const { runShopifyAutopilotCycle: freshRunShopify } = require("./lib/shopify-autopilot");
+    const results = await freshRunShopify({ supabase, openai, force, email, targetShop, logger: (msg) => log("SHOPIFY_AP", msg) });
     res.json({ ok: true, count: results.length, results });
   } catch (err) {
     log("AUTOPILOT", `Shopify Autopilot Error: ${err.message}`);
@@ -2632,7 +2638,12 @@ cron.schedule("15 9 * * *", async () => {
 cron.schedule("30 9 * * *", async () => {
   log("CRON_SHOPIFY", "Executing scheduled Shopify SEO Autopilot cycle (09:30 AM IST)...");
   try {
-    await runShopifyAutopilotCycle({ supabase, openai, force: false, logger: (msg) => log("CRON_SHOPIFY", msg) });
+    try {
+      delete require.cache[require.resolve("./lib/brand-integrity-guard")];
+      delete require.cache[require.resolve("./lib/shopify-autopilot")];
+    } catch (_) {}
+    const { runShopifyAutopilotCycle: freshRunShopify } = require("./lib/shopify-autopilot");
+    await freshRunShopify({ supabase, openai, force: false, logger: (msg) => log("CRON_SHOPIFY", msg) });
   } catch (e) {
     log("CRON_SHOPIFY", `Scheduled Shopify cycle error: ${e.message}`);
   }

@@ -1,6 +1,12 @@
 // video-worker/lib/shopify-autopilot.js
 const OpenAI = require("openai");
 const { ensureInstagramCompatibleJpeg } = require("./instagram-image-helper");
+const {
+  buildCrossBrandNegativeList,
+  validateTopicRelevance,
+  checkTopicSimilarityAgainstHistory,
+  getVisualGuardDirectives,
+} = require("./brand-integrity-guard");
 
 /**
  * Validates and refreshes offline Shopify access token if expiring or expired.
@@ -185,7 +191,7 @@ function sanitizeShopifyBodyHtml(bodyHtml, title) {
 /**
  * Main autonomous Shopify publishing cycle on Railway worker.
  */
-async function runShopifyAutopilotCycle({ supabase, openai, force = false, email = null, logger = console.log }) {
+async function runShopifyAutopilotCycle({ supabase, openai, force = false, email = null, targetShop = null, logger = console.log }) {
   if (!supabase) throw new Error("Supabase client is required.");
   if (!openai) {
     openai = process.env.OPENAI_API_KEY ? new OpenAI({ apiKey: process.env.OPENAI_API_KEY }) : null;
@@ -243,9 +249,13 @@ async function runShopifyAutopilotCycle({ supabase, openai, force = false, email
 
     if (!conn || !conn.shop) continue;
     const shop = conn.shop;
-    const brandName = conn.shopName || shop.split(".")[0] || "Our Store";
+    if (targetShop && shop.toLowerCase() !== targetShop.toLowerCase()) {
+      continue;
+    }
+    const brandName = conn.shopName || conn.name || shop.split(".")[0] || "Our Store";
+    const primaryDomain = conn.domain || conn.primary_domain || shop;
 
-    logger(`[Shopify Autopilot] Evaluating store: ${shop} (${userEmail})...`);
+    logger(`[Shopify Autopilot] Evaluating store: ${shop} (${userEmail}) - Brand: "${brandName}"...`);
 
     // 2. Fetch Autopilot Config for this store
     const autoMemoryKey = `shopify_autopilot_${shop}`;
@@ -265,12 +275,24 @@ async function runShopifyAutopilotCycle({ supabase, openai, force = false, email
       targetKeywords: "",
       nicheFocus: "",
       recentArticles: [],
+      publishedTopics: [],
     };
 
     if (autoMemRow?.content) {
       try {
         config = { ...config, ...(typeof autoMemRow.content === "string" ? JSON.parse(autoMemRow.content) : autoMemRow.content) };
       } catch (_) {}
+    }
+
+    // 2.1 Multi-Store & Cross-Brand Isolation: Map foreign brands into negative blacklist
+    const { forbiddenTerms: crossBrandForbidden, foreignBrands } = await buildCrossBrandNegativeList({
+      supabase,
+      userEmail,
+      currentBusinessKey: shop,
+      currentSiteUrl: primaryDomain,
+    });
+    if (crossBrandForbidden.length > 0) {
+      logger(`[Shopify Autopilot] Brand Integrity Guard: Activated ${crossBrandForbidden.length} negative exclusion terms from ${foreignBrands.length} foreign brands under ${userEmail}.`);
     }
 
     // If disabled and not forced, skip
@@ -368,10 +390,10 @@ async function runShopifyAutopilotCycle({ supabase, openai, force = false, email
         continue;
       }
 
-      // 7. Check Existing Published Articles to Avoid Topic Collision
+      // 7. Check Existing Published Articles & 30-Day History (STRICT ZERO REPETITION & ANTI-SIMILARITY)
       let existingTitles = [];
       try {
-        const articlesRes = await fetch(`https://${shop}/admin/api/2024-01/blogs/${blogId}/articles.json?limit=25`, {
+        const articlesRes = await fetch(`https://${shop}/admin/api/2024-01/blogs/${blogId}/articles.json?limit=50&fields=id,title,handle`, {
           headers: {
             "X-Shopify-Access-Token": accessToken,
             "Content-Type": "application/json",
@@ -384,6 +406,31 @@ async function runShopifyAutopilotCycle({ supabase, openai, force = false, email
       } catch (aErr) {
         logger(`[Shopify Autopilot] Recent articles fetch note: ${aErr.message}`);
       }
+
+      const THIRTY_DAYS_MS = 30 * 24 * 60 * 60 * 1000;
+      const validRecentPublishedTopics = (Array.isArray(config.publishedTopics) ? config.publishedTopics : [])
+        .filter((item) => {
+          if (!item) return false;
+          if (typeof item === "object" && item.publishedAt) {
+            const pubTime = new Date(item.publishedAt).getTime();
+            return !isNaN(pubTime) && (now.getTime() - pubTime) <= THIRTY_DAYS_MS;
+          }
+          return true;
+        });
+
+      const memoryTopicTitles = validRecentPublishedTopics
+        .map((item) => (typeof item === "string" ? item : item.title || ""))
+        .filter(Boolean);
+
+      const allPreviousTitles = [
+        ...new Set([
+          ...existingTitles,
+          ...memoryTopicTitles,
+          config.lastArticleTitle,
+        ].filter(Boolean))
+      ];
+
+      const past30Titles = allPreviousTitles.slice(0, 30);
 
       // 8. Determine Strategic Topic (Priority 1: User-Selected Topic Lineup Queue)
       const targetLocations = (config.targetLocations || config.targetMarket || conn.country || "").trim();
@@ -401,24 +448,31 @@ async function runShopifyAutopilotCycle({ supabase, openai, force = false, email
       }
 
       if (!strategicTopic) {
-        const sampleProducts = products.slice(0, 10).map((p) => ({
+        const sampleProducts = products.slice(0, 15).map((p) => ({
           title: p.title,
           tags: p.tags,
           product_type: p.product_type,
           handle: p.handle,
         }));
 
-        const topicPlanningPrompt = `You are a chief eCommerce content strategist for store "${brandName}".
-Catalog Snapshot:
-${JSON.stringify(sampleProducts, null, 2)}
+        const topicPlanningPrompt = `You are a chief eCommerce content strategist for store "${brandName}" (${primaryDomain}).
+Catalog Snapshot (In-Stock Featured Products):
+${JSON.stringify(sampleProducts.slice(0, 10), null, 2)}
 
-Target Keywords / Niche: "${config.targetKeywords || config.nicheFocus || "luxury lifestyle & trending apparel"}"
+Target Keywords / Niche: "${config.targetKeywords || config.nicheFocus || "trending style & luxury accessories"}"
 ${targetLocations ? `Target Geographic Territory (Countries/Cities): "${targetLocations}"` : ""}
-Previous Published Titles (Avoid Duplication):
-${existingTitles.slice(0, 10).join("\n")}
 
+PREVIOUS 30 PUBLISHED BLOG TITLES (FULL MONTH HISTORY - STRICT ZERO REPETITION & ZERO SIMILARITY MANDATE):
+${past30Titles.map((t, idx) => `[Day ${idx + 1}] "${t}"`).join("\n")}
+
+CRITICAL INSTRUCTIONS:
 Generate 1 fresh, highly attractive, search-intent driven eCommerce article topic for 2026.
-${targetLocations ? `Tailor the topic and keyword angle specifically to appeal to shoppers in ${targetLocations}.` : ""}
+- STRICT ZERO REPETITION: The topic MUST be completely distinct in title, angle, and search intent from all 30 previous titles listed above.
+- STRICT ZERO SIMILARITY: NEVER reuse formulaic patterns or phrasing similar to any past title.
+- Focus on a specific styling scenario, occasion pairing guide, material craftsmanship, gift curation, or 2026 trending aesthetic strictly relevant to this store's in-stock catalog.
+${targetLocations ? `- Tailor the topic and keyword angle specifically to appeal to shoppers in ${targetLocations}.` : ""}
+${crossBrandForbidden.length > 0 ? `- STRICT ZERO CROSS-BRAND LEAK: ABSOLUTELY NEVER use, mention, or borrow words, concepts, or motifs related to: ${crossBrandForbidden.slice(0, 15).join(", ")}. The topic MUST strictly be 100% about "${brandName}" (${primaryDomain}).` : ""}
+
 Format response strictly as JSON:
 {
   "topic": "Compelling Title with Primary Keyword",
@@ -426,12 +480,6 @@ Format response strictly as JSON:
   "secondaryKeywords": ["keyword 1", "keyword 2", "keyword 3"],
   "featuredProductHandle": "${sampleProducts[0]?.handle || ""}"
 }`;
-
-        strategicTopic = {
-          topic: `Top Trending Styles and Curated Essentials for 2026: Elevate Your Wardrobe`,
-          primaryKeyword: "luxury fashion trends 2026",
-          secondaryKeywords: ["designer streetwear", "premium apparel", "winter style guide"],
-        };
 
         try {
           const topicComp = await openai.chat.completions.create({
@@ -442,10 +490,34 @@ Format response strictly as JSON:
           });
           const parsedTopic = JSON.parse(topicComp.choices[0]?.message?.content || "{}");
           if (parsedTopic.topic) {
-            strategicTopic = parsedTopic;
+            const relCheck = validateTopicRelevance({
+              topic: parsedTopic.topic,
+              primaryKeyword: parsedTopic.primaryKeyword,
+              secondaryKeywords: parsedTopic.secondaryKeywords,
+              forbiddenTerms: crossBrandForbidden,
+              pastTitles: past30Titles,
+              logger,
+            });
+            if (!relCheck.ok) {
+              logger(`[Shopify Autopilot] Discarding topic due to validation failure ("${relCheck.violation}"). Enforcing safe unique catalog angle.`);
+              strategicTopic = null;
+            } else {
+              strategicTopic = parsedTopic;
+              logger(`[Shopify Autopilot] Strategic topic planned & verified: "${strategicTopic.topic}" (Focus: "${strategicTopic.primaryKeyword}")`);
+            }
           }
         } catch (tErr) {
           logger(`[Shopify Autopilot] Fallback to default strategic topic: ${tErr.message}`);
+        }
+
+        if (!strategicTopic) {
+          const pickProd = sampleProducts[0] || { title: "Exclusive Artisan Collection", handle: "" };
+          strategicTopic = {
+            topic: `The Art of Elevating Your Style with ${pickProd.title}: 2026 Curated Guide`,
+            primaryKeyword: `${pickProd.title} styling guide`,
+            secondaryKeywords: ["handcrafted jewelry", "artisan styling", "2026 luxury trends"],
+            featuredProductHandle: pickProd.handle || "",
+          };
         }
       }
 
@@ -532,8 +604,14 @@ Respond ONLY with a valid JSON object matching this schema:
         return JSON.parse(comp.choices[0]?.message?.content || "{}");
       })();
 
+      const visualGuard = getVisualGuardDirectives({
+        businessName: brandName,
+        industry: config.nicheFocus || "Jewellery & Lifestyle Fashion",
+        currentSiteUrl: primaryDomain,
+      });
+
       const imagePromise = (async () => {
-        const imagePrompt = `Ultra-realistic cinematic editorial lifestyle commercial photograph for eCommerce article titled "${strategicTopic.topic}". High fashion luxury aesthetic, 8k professional studio lighting, depth of field, award-winning commercial shot, clean product styling.`;
+        const imagePrompt = `Ultra-realistic cinematic editorial lifestyle commercial photograph for eCommerce article titled "${strategicTopic.topic}". ${visualGuard.requiredAesthetic}, 8k professional studio lighting, depth of field, award-winning commercial shot, clean product styling. ${visualGuard.negativeConstraints}`;
         const candidateModels = ["gpt-image-2", "gpt-image-2-2026-04-21", "gpt-image-1.5"];
         for (const modelName of candidateModels) {
           try {
@@ -679,53 +757,56 @@ Respond ONLY with a valid JSON object matching this schema:
             });
           }
 
-          const { data: meta } = await supabase
-            .from("meta_connections")
-            .select("fb_page_id, fb_page_access_token, fb_user_access_token, instagram_actor_id, ig_business_id")
-            .eq("email", userEmail.toLowerCase())
-            .maybeSingle();
+          let pageId = null;
+          let effectiveToken = null;
+          let igId = null;
+          let isBrandMatched = false;
+          let metaAssetTitle = "";
 
-          const pageId = brandMeta?.pageId || (brandProfiles.length === 1 ? brandProfiles[0].pageId : (brandProfiles.length === 0 && meta?.fb_page_id ? meta.fb_page_id.split(",")[0].trim() : null));
-          const effectiveToken = brandMeta?.pageToken || (brandProfiles.length === 1 ? brandProfiles[0].pageToken : (brandProfiles.length === 0 ? (meta?.fb_page_access_token || meta?.fb_user_access_token) : null));
-          const igId = brandMeta?.igId || (brandProfiles.length === 1 ? brandProfiles[0].igId : (brandProfiles.length === 0 ? (meta?.instagram_actor_id || meta?.ig_business_id) : null));
-
-          if (pageId && effectiveToken) {
-            // 11.5.1 Brand Integrity & Anti-Exploitation Cross-Check
-            let isBrandMatched = Boolean(brandMeta || brandProfiles.length === 1);
-            let metaAssetTitle = brandMeta?.pageName || "";
-            try {
-              if (pageId && effectiveToken) {
-                const checkRes = await fetch(`https://graph.facebook.com/v21.0/${pageId}?fields=name,website&access_token=${effectiveToken}`);
-                if (checkRes.ok) {
-                  const checkData = await checkRes.json();
-                  metaAssetTitle = checkData.name || metaAssetTitle;
-                  const pWeb = checkData.website || "";
-
-                  const normStore = String(brandName || primaryDomain || shop || "").toLowerCase().replace(/[^a-z0-9]/g, "");
-                  const normMeta = String(metaAssetTitle || "").toLowerCase().replace(/[^a-z0-9]/g, "");
-                  const normWeb = cleanDomainStr(pWeb);
-
-                  if (normStore && normMeta && (normStore.includes(normMeta) || normMeta.includes(normStore))) {
-                    isBrandMatched = true;
-                  }
-                  if (normStoreDomain && normWeb && (normStoreDomain.includes(normWeb) || normWeb.includes(normStoreDomain))) {
-                    isBrandMatched = true;
-                  }
-                }
-              }
-            } catch (vErr) {
-              logger(`[Shopify Autopilot] Brand validation warning: ${vErr.message}`);
+          if (brandMeta) {
+            pageId = brandMeta.pageId;
+            effectiveToken = brandMeta.pageToken || brandMeta.token;
+            igId = brandMeta.igId;
+            metaAssetTitle = brandMeta.pageName || brandMeta.businessName || "";
+            isBrandMatched = true;
+          } else if (storeConns.length === 1 && brandProfiles.length === 1) {
+            // Strict check: Only allow fallback if the single meta profile actually relates to the store
+            const b = brandProfiles[0];
+            const bUrl = cleanDomainStr(b.website || b.websiteUrl || "");
+            const bName = String(b.businessName || b.pageName || "").toLowerCase().replace(/[^a-z0-9]/g, "");
+            const bIg = String(b.igUsername || "").toLowerCase().replace(/[^a-z0-9]/g, "");
+            if (
+              (bUrl && normStoreDomain && (normStoreDomain.includes(bUrl) || bUrl.includes(normStoreDomain))) ||
+              (bName && normStoreName && (normStoreName.includes(bName) || bName.includes(normStoreName))) ||
+              (bIg && normStoreName && (normStoreName.includes(bIg) || bIg.includes(normStoreName)))
+            ) {
+              pageId = b.pageId;
+              effectiveToken = b.pageToken;
+              igId = b.igId;
+              metaAssetTitle = b.pageName || b.businessName || "";
+              isBrandMatched = true;
             }
+          }
 
-            if (!isBrandMatched) {
-              logger(`[Shopify Autopilot 🛡️ Anti-Exploitation Shield] Social syndication BLOCKED: Store "${brandName}" (${primaryDomain}) does not match connected Meta channel "${metaAssetTitle || pageId}". Cross-business posting prevented.`);
-            } else {
-              const candidateShareImg = articleObj.image?.src || imageData.imageUrl || null;
-              const hasImageAttachment = Boolean(candidateShareImg || imageData.imageBase64);
+          if (pageId && effectiveToken && isBrandMatched) {
+            try {
+              const checkRes = await fetch(`https://graph.facebook.com/v21.0/${pageId}?fields=name,website&access_token=${effectiveToken}`);
+              if (checkRes.ok) {
+                const checkData = await checkRes.json();
+                metaAssetTitle = checkData.name || metaAssetTitle;
+              }
+            } catch (_) {}
+          }
 
-              // Facebook Page link preview / photo post
-              const shouldShareFb = (config.autoShareFacebook === true || config.autoShareFacebook === undefined) && pageId && effectiveToken;
-              if (shouldShareFb) {
+          if (!isBrandMatched || !pageId || !effectiveToken) {
+            logger(`[Shopify Autopilot 🛡️ Anti-Exploitation Shield] Social syndication BLOCKED: Store "${brandName}" (${primaryDomain}) does not have a verified matching Meta account. Cross-business posting prevented.`);
+          } else {
+            const candidateShareImg = articleObj.image?.src || imageData.imageUrl || null;
+            const hasImageAttachment = Boolean(candidateShareImg || imageData.imageBase64);
+
+            // Facebook Page link preview / photo post
+            const shouldShareFb = (config.autoShareFacebook === true || config.autoShareFacebook === undefined) && pageId && effectiveToken;
+            if (shouldShareFb) {
                 try {
                   logger(`[Shopify Autopilot] Syndicating article to Facebook Page (${pageId})...`);
                   const fullMessage = `📢 ${articleData.title}\n\n${articleData.seoDescription || ""}\n\nRead full article & explore pieces 👇\n${publicUrl}\n\n#Shopify #OnlineShopping #TrendingStyles`;
@@ -838,20 +919,38 @@ Respond ONLY with a valid JSON object matching this schema:
                 }
               }
             }
-          }
-        } catch (metaErr) {
+          } catch (metaErr) {
           logger(`[Shopify Autopilot] Social syndication check note: ${metaErr.message}`);
         }
       }
 
-      // 12. Save Updated Autopilot State & History
+      // 12. Save Updated Autopilot State & History (Strict 30-Day Topic History)
+      const THIRTY_DAYS_MS_SAVE = 30 * 24 * 60 * 60 * 1000;
+      const updatedPublishedTopics = (Array.isArray(config.publishedTopics) ? config.publishedTopics : [])
+        .filter((entry) => {
+          if (!entry) return false;
+          if (typeof entry === "object" && entry.publishedAt) {
+            const pubTime = new Date(entry.publishedAt).getTime();
+            return !isNaN(pubTime) && (now.getTime() - pubTime) <= THIRTY_DAYS_MS_SAVE;
+          }
+          return true;
+        });
+
+      updatedPublishedTopics.push({
+        title: articleObj.title || articleData.title,
+        publishedAt: now.toISOString(),
+        articleId: articleObj.id,
+        handle: articleObj.handle,
+      });
+      if (updatedPublishedTopics.length > 80) updatedPublishedTopics.shift();
+
       const updatedRecent = [
         {
           id: articleObj.id,
           title: articleObj.title || articleData.title,
           url: finalUrl,
           isDraft: !!config.isDraft,
-          publishedAt: new Date().toISOString(),
+          publishedAt: now.toISOString(),
           socialShares,
         },
         ...(config.recentArticles || []).slice(0, 9),
@@ -860,13 +959,14 @@ Respond ONLY with a valid JSON object matching this schema:
       const updatedConfig = {
         ...config,
         topicQueue: config.topicQueue || [],
-        lastPublishedAt: new Date().toISOString(),
+        lastPublishedAt: now.toISOString(),
         lastArticleTitle: articleObj.title || articleData.title,
         lastArticleUrl: finalUrl,
         lastArticleId: articleObj.id,
         recentArticles: updatedRecent,
+        publishedTopics: updatedPublishedTopics,
         totalArticlesGenerated: (config.totalArticlesGenerated || 0) + 1,
-        updatedAt: new Date().toISOString(),
+        updatedAt: now.toISOString(),
       };
 
       await supabase.from("agent_memory").upsert(
@@ -874,7 +974,7 @@ Respond ONLY with a valid JSON object matching this schema:
           email: userEmail,
           memory_type: autoMemoryKey,
           content: JSON.stringify(updatedConfig),
-          updated_at: new Date().toISOString(),
+          updated_at: now.toISOString(),
         },
         { onConflict: "email,memory_type" }
       );
