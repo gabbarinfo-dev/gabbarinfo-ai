@@ -124,7 +124,7 @@ function buildRichMetaPreview({
   metaRow = null,
   imageUrl = null,
   header = "Campaign Strategy Locked & Ready",
-  actionText = "👉 Reply **LAUNCH** or **YES** to upload this ad creative to your Meta Ad Account and publish the campaign live!"
+  actionText = "👉 Reply **YES** to upload this ad creative to your Meta Ad Account and publish the campaign live!"
 }) {
   const currentPlan = plan || state?.plan || {};
   const adSet0 = Array.isArray(currentPlan.ad_sets) ? currentPlan.ad_sets[0] : (currentPlan.ad_sets || {});
@@ -1308,7 +1308,7 @@ export default async function handler(req, res) {
               verifiedMetaAssets,
               metaRow,
               header: "Campaign Strategy Locked & Ready",
-              actionText: "👉 Reply **LAUNCH** or **YES** to publish this campaign live to your Meta Ad Account!"
+              actionText: "👉 Reply **YES** to publish this campaign live to your Meta Ad Account!"
             })
           });
         } else {
@@ -1407,7 +1407,7 @@ export default async function handler(req, res) {
             metaRow,
             imageUrl: providedImageUrl,
             header: "Custom Ad Creative Linked & Ready",
-            actionText: "👉 Reply **LAUNCH** or **YES** to upload this creative and publish the campaign live to your Meta Ad Account!"
+            actionText: "👉 Reply **YES** to upload this creative and publish the campaign live to your Meta Ad Account!"
           })
         });
       } else if (isSkipping) {
@@ -1482,7 +1482,7 @@ export default async function handler(req, res) {
             metaRow,
             imageUrl: previewUrl,
             header: previewUrl ? "Ad Creative Ready" : "Campaign Strategy Locked & Ready",
-            actionText: "👉 Reply **LAUNCH** or **YES** to upload this ad creative to your Meta Ad Account and publish the campaign live!"
+            actionText: "👉 Reply **YES** to upload this ad creative to your Meta Ad Account and publish the campaign live!"
           })
         });
       } else {
@@ -3180,7 +3180,7 @@ You are in GENERIC DIGITAL MARKETING AGENT MODE.
         ok: true,
         mode,
         gated: true,
-        text: "Phone number confirmed for Call Ads. Reply OK to continue",
+        text: "Phone number confirmed for Call Ads. Reply YES to continue",
       });
     }
 
@@ -3276,7 +3276,7 @@ You are in GENERIC DIGITAL MARKETING AGENT MODE.
           ok: true,
           mode,
           gated: true,
-          text: `WhatsApp number **${cleaned}** saved. Reply OK to generate your campaign plan.`
+          text: `WhatsApp number **${cleaned}** saved. Reply YES to generate your campaign plan.`
         });
       }
 
@@ -3306,7 +3306,7 @@ You are in GENERIC DIGITAL MARKETING AGENT MODE.
           ok: true,
           mode,
           gated: true,
-          text: `WhatsApp number **${detectedWhatsappNumber}** confirmed. Reply OK to generate your campaign plan.`
+          text: `WhatsApp number **${detectedWhatsappNumber}** confirmed. Reply YES to generate your campaign plan.`
         });
       }
     }
@@ -3342,7 +3342,7 @@ You are in GENERIC DIGITAL MARKETING AGENT MODE.
 
       let promptText = "WhatsApp ads require an explicit WhatsApp-enabled number.\n\n";
       if (detectedWhatsappNumber) {
-        promptText = `We have found a WhatsApp Business number connected to your account (**${detectedWhatsappNumber}**).\n\nPress **OK** to confirm or reply with a different number.`;
+        promptText = `We have found a WhatsApp Business number connected to your account (**${detectedWhatsappNumber}**).\n\nReply **YES** to confirm or reply with a different number.`;
       } else {
         promptText += "Please reply with the exact WhatsApp number you want to use (with country code, e.g., +91XXXXXXXXXX).";
       }
@@ -3404,7 +3404,7 @@ You are in GENERIC DIGITAL MARKETING AGENT MODE.
           ok: true,
           mode,
           gated: true,
-          text: `Message channel set to **${selectedMessageChannel.replace("_", " ")}**. Reply OK to generate your campaign plan.`
+          text: `Message channel set to **${selectedMessageChannel.replace("_", " ")}**. Reply YES to generate your campaign plan.`
         });
       }
 
@@ -3470,7 +3470,7 @@ You are in GENERIC DIGITAL MARKETING AGENT MODE.
 
           nextText += "\n\nWhich service do you want to promote?\n\n" + serviceOptions;
         } else {
-          nextText += " Reply OK to continue.";
+          nextText += " Reply YES to continue.";
         }
 
         return res.status(200).json({
@@ -3505,7 +3505,7 @@ You are in GENERIC DIGITAL MARKETING AGENT MODE.
           ok: true,
           mode,
           gated: true,
-          text: `Website saved: **${extractedData.website_url}**. Reply OK to continue.`
+          text: `Website saved: **${extractedData.website_url}**. Reply YES to continue.`
         });
       }
     }
@@ -4398,7 +4398,7 @@ Otherwise, respond with a full, clear explanation, and include example JSON only
             verifiedMetaAssets,
             metaRow,
             header: "Plan Proposed",
-            actionText: "Reply **YES** to confirm and proceed."
+            actionText: "Reply **YES** to confirm."
           })
         });
       }
@@ -4463,7 +4463,7 @@ Otherwise, respond with a full, clear explanation, and include example JSON only
               `• **Audience**: ${genderLabel} (Age: ${state.target_age_min || 18}-${state.target_age_max || 65})\n` +
               `• **Daily Budget**: ${state.budget_per_day || 200} INR (${state.total_days || 7} days)${offerLine}\n` +
               `• **Ad Creative**: High-converting visual with your branding & headline (rendered on publish)\n\n` +
-              `👉 Reply **LAUNCH** or **YES** to publish this campaign live to your Meta Ad Account!`
+              `👉 Reply **YES** to publish this campaign live to your Meta Ad Account!`
           });
         }
       }
@@ -4484,7 +4484,7 @@ Otherwise, respond with a full, clear explanation, and include example JSON only
             metaRow,
             imageUrl: previewUrl,
             header: "Ad Creative Ready",
-            actionText: "👉 Reply **LAUNCH** or **YES** to upload this ad creative to your Meta Ad Account and publish the campaign live!"
+            actionText: "👉 Reply **YES** to upload this ad creative to your Meta Ad Account and publish the campaign live!"
           }),
         });
       }
@@ -4856,7 +4856,7 @@ Otherwise, respond with a full, clear explanation, and include example JSON only
       if (errorOcurred) {
         feedbackText = `❌ **Automation Interrupted**:\n\n**Error**: ${stopReason}\n\n**Pipeline Progress**:\n${waterfallLog.join("\n")}\n\nI've saved the progress so far. Please check the error above and reply to try again.`;
       } else if (state.stage === "IMAGE_GENERATED") {
-        feedbackText = `✅ **Image Generated Successfully**\n\n[Image Generated]\n\n**Next Steps**:\n1. Upload image to Meta Assets\n2. Create active campaign on Facebook/Instagram\n\nReply **LAUNCH** to complete these steps automatically.`;
+        feedbackText = `✅ **Image Generated Successfully**\n\n[Image Generated]\n\n**Next Steps**:\n1. Upload image to Meta Assets\n2. Create active campaign on Facebook/Instagram\n\nReply **YES** to complete these steps automatically.`;
       } else if (state.stage === "READY_TO_LAUNCH" && state.image_hash) {
         if (imageUploadedThisTurn) {
           feedbackText = `✅ **Image Uploaded & Ready**\n\nEverything is set for campaign launch.\n\n**Details**:\n- Campaign: ${state.plan.campaign_name}\n`;
@@ -5264,7 +5264,7 @@ Otherwise, respond with a full, clear explanation, and include example JSON only
               verifiedMetaAssets,
               metaRow,
               header: "Plan Proposed",
-              actionText: "Reply **YES** to confirm this plan and proceed."
+              actionText: "Reply **YES** to confirm this plan."
             });
 
             return res.status(200).json({ ok: true, mode, text });
@@ -5421,7 +5421,7 @@ Otherwise, respond with a full, clear explanation, and include example JSON only
             verifiedMetaAssets,
             metaRow,
             header: "Plan Proposed",
-            actionText: "Reply **YES** to confirm this plan and proceed."
+            actionText: "Reply **YES** to confirm this plan."
           })
         });
       }
@@ -5505,7 +5505,7 @@ Otherwise, respond with a full, clear explanation, and include example JSON only
               verifiedMetaAssets,
               metaRow,
               header: "Plan Proposed",
-              actionText: "Reply **YES** to confirm and proceed."
+              actionText: "Reply **YES** to confirm."
             })
           });
         }
@@ -5797,7 +5797,7 @@ Otherwise, respond with a full, clear explanation, and include example JSON only
         if (errorOcurred) {
           feedbackText = `❌ **Automation Interrupted**:\n\n**Error**: ${stopReason}\n\n**Pipeline Progress**:\n${waterfallLog.join("\n")}\n\nI've saved the progress so far. Please check the error above and reply to try again.`;
         } else if (currentState?.stage === "IMAGE_GENERATED") {
-          feedbackText = `✅ **Image Generated Successfully**\n\n[Image Generated]\n\n**Next Steps**:\n1. Upload image to Meta Assets\n2. Create paused campaign on Facebook/Instagram\n\nReply **LAUNCH** to complete these steps automatically.`;
+          feedbackText = `✅ **Image Generated Successfully**\n\n[Image Generated]\n\n**Next Steps**:\n1. Upload image to Meta Assets\n2. Create paused campaign on Facebook/Instagram\n\nReply **YES** to complete these steps automatically.`;
         } else if (
           currentState.stage === "READY_TO_LAUNCH" &&
           currentState.image_hash
@@ -7650,7 +7650,7 @@ Landing Page:
             currentTargetKeywords.map(k => `• \`${k}\``).join("\n") +
             `\n\n🛡️ **Updated Negative Keywords (${currentNegativeKeywords.length}):**\n` +
             currentNegativeKeywords.map(k => `• \`${k}\``).join("\n") +
-            `\n\nEverything looks solid! Reply **"Proceed"** or **"Looks good"**, and I will generate your optimized Search Ads (Headlines & Descriptions) crafted directly from these keywords!`,
+            `\n\nEverything looks solid! Reply **YES** to generate your optimized Search Ads (Headlines & Descriptions) crafted directly from these keywords!`,
         });
       }
     }
@@ -7706,7 +7706,7 @@ Landing Page:
           initialNegatives.map(n => `• \`${n}\``).join("\n") +
           `\n*(Excludes searchers seeking free items, job vacancies, or repair guides so you never waste ad spend)*\n\n` +
           `---\n` +
-          `👉 Reply **"Proceed"** or **"Looks good"**, and I will generate your finalized Standard Shopping campaign plan ready to publish in **PAUSED** mode!`;
+          `👉 Reply **YES** to generate your finalized Standard Shopping campaign plan ready to publish in **PAUSED** mode!`;
 
         return res.status(200).json({
           ok: true,
@@ -7829,7 +7829,7 @@ JSON wrapped in \`\`\`json \`\`\`:
         `• Want to **add** any specific keywords/themes of your own?\n` +
         `• Want to **remove** any items from this list?\n` +
         `• Want to add any more **negative exclusions**?\n\n` +
-        `👉 If you are satisfied with this targeting architecture, simply reply **"Looks good"** or **"Proceed"**, and I will generate your optimized ${activeCampaignType} campaign blueprint ready to publish!`;
+        `👉 If you are satisfied with this targeting architecture, simply reply **YES** to generate your optimized ${activeCampaignType} campaign blueprint ready to publish!`;
 
       return res.status(200).json({
         ok: true,

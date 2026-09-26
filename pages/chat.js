@@ -1400,27 +1400,28 @@ Now respond as GabbarInfo AI.
         setCampaignStepCount(0);
       }
 
+      const lowerRaw = (rawText || "").toLowerCase();
+      const isConfirmationStep =
+        (lowerRaw.includes("reply") &&
+          (lowerRaw.includes("yes") ||
+            lowerRaw.includes("launch") ||
+            lowerRaw.includes("proceed") ||
+            lowerRaw.includes("publish") ||
+            lowerRaw.includes("confirm") ||
+            lowerRaw.includes("ok"))) ||
+        lowerRaw.includes("reply **yes**") ||
+        lowerRaw.includes("reply yes") ||
+        lowerRaw.includes("reply **launch**") ||
+        lowerRaw.includes("plan proposed") ||
+        lowerRaw.includes("ad creative ready") ||
+        lowerRaw.includes("strategy locked & ready") ||
+        lowerRaw.includes("campaign strategy locked");
+
       if (data?.fillInTemplate) {
         // Step 1: Agent specifically requests missing intake info / questionnaire
         setAgentInstruction(data.fillInTemplate);
         setInput(data.fillInTemplate);
-      } else if (
-        rawText &&
-        (rawText.toLowerCase().includes("reply **yes**") ||
-          rawText.toLowerCase().includes('reply "yes"') ||
-          rawText.toLowerCase().includes("reply yes") ||
-          rawText.toLowerCase().includes("reply **launch**") ||
-          rawText.toLowerCase().includes('reply "launch"') ||
-          rawText.toLowerCase().includes("reply launch") ||
-          rawText.toLowerCase().includes('reply **"proceed"**') ||
-          rawText.toLowerCase().includes('reply "proceed"') ||
-          rawText.toLowerCase().includes('reply **"publish"**') ||
-          rawText.toLowerCase().includes('reply "publish"') ||
-          (rawText.toLowerCase().includes("reply") && rawText.toLowerCase().includes("proceed")) ||
-          (rawText.toLowerCase().includes("reply") && rawText.toLowerCase().includes("publish")) ||
-          (rawText.toLowerCase().includes("reply") && rawText.toLowerCase().includes("launch")) ||
-          (rawText.toLowerCase().includes("reply") && rawText.toLowerCase().includes("yes")))
-      ) {
+      } else if (isConfirmationStep) {
         // Confirmation/Launch steps: Strictly autofill "YES" (User requirement: no "Proceed" or "Publish")
         setAgentInstruction("YES");
         setInput("YES");
