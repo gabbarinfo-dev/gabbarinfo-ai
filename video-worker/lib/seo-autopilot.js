@@ -625,12 +625,27 @@ async function runSeoAutopilotCycle({ supabase, openai, force = false, logger = 
         ];
       }
 
-      // 4.3 Anti-Duplication History & Strategic Topic Selection
+      // 4.3 Anti-Duplication History & Strategic Topic Selection (Strict 30-Day Window)
+      const THIRTY_DAYS_MS = 30 * 24 * 60 * 60 * 1000;
+      const validRecentPublishedTopics = (Array.isArray(config.publishedTopics) ? config.publishedTopics : [])
+        .filter((item) => {
+          if (!item) return false;
+          if (typeof item === "object" && item.publishedAt) {
+            const pubTime = new Date(item.publishedAt).getTime();
+            return !isNaN(pubTime) && (now.getTime() - pubTime) <= THIRTY_DAYS_MS;
+          }
+          return true;
+        });
+
+      const memoryTopicTitles = validRecentPublishedTopics
+        .map((item) => (typeof item === "string" ? item : item.title || ""))
+        .filter(Boolean);
+
       const existingTitles = existingPublishedPosts.map((p) => p.title).filter(Boolean);
       const allPreviousTitles = [
         ...new Set([
           ...existingTitles,
-          ...(Array.isArray(config.publishedTopics) ? config.publishedTopics : []),
+          ...memoryTopicTitles,
           config.lastPublishedTitle,
         ].filter(Boolean))
       ];
@@ -725,10 +740,11 @@ Format response strictly as JSON:
               primaryKeyword: parsed.primaryKeyword,
               secondaryKeywords: parsed.secondaryKeywords,
               forbiddenTerms: crossBrandForbidden,
+              pastTitles: past30Titles,
               logger,
             });
             if (!relCheck.ok) {
-              logger(`[SEO Autopilot] Discarding topic due to foreign brand violation ("${relCheck.violation}"). Fallback to safe verified service topic.`);
+              logger(`[SEO Autopilot] Discarding topic due to validation failure ("${relCheck.violation}"). Fallback to safe verified service topic.`);
               strategicTopic = null;
             } else {
               strategicTopic = parsed;
@@ -1361,9 +1377,24 @@ Format output as valid JSON:
       config.lastPublishedPostId = publishedPostId;
       config.lastServiceIndex = nextServiceIndex;
       config.publishedCount = (Number(config.publishedCount) || 0) + 1;
-      config.publishedTopics = config.publishedTopics || [];
-      config.publishedTopics.push(parsedArticle.title);
-      if (config.publishedTopics.length > 50) config.publishedTopics.shift();
+      // Maintain strictly timestamped 30-day topic history (Zero Repetition / Zero Similarity)
+      const THIRTY_DAYS_MS_SAVE = 30 * 24 * 60 * 60 * 1000;
+      config.publishedTopics = (Array.isArray(config.publishedTopics) ? config.publishedTopics : [])
+        .filter((entry) => {
+          if (!entry) return false;
+          if (typeof entry === "object" && entry.publishedAt) {
+            const pubTime = new Date(entry.publishedAt).getTime();
+            return !isNaN(pubTime) && (now.getTime() - pubTime) <= THIRTY_DAYS_MS_SAVE;
+          }
+          return true;
+        });
+      config.publishedTopics.push({
+        title: parsedArticle.title,
+        publishedAt: now.toISOString(),
+        service: activeService,
+        postId: publishedPostId,
+      });
+      if (config.publishedTopics.length > 80) config.publishedTopics.shift();
 
       try {
         const { error: saveErr } = await supabase

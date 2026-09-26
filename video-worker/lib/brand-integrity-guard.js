@@ -222,18 +222,100 @@ function filterCleanCandidateServices({ candidateServices = [], forbiddenTerms =
   return clean;
 }
 
+const SIMILARITY_STOPWORDS = new Set([
+  "the", "a", "an", "and", "or", "but", "in", "on", "at", "to", "for", "of", "with",
+  "by", "from", "up", "about", "into", "through", "after", "before", "is", "are",
+  "was", "were", "be", "been", "how", "what", "why", "when", "where", "which",
+  "who", "whom", "this", "that", "these", "those", "your", "our", "their", "its",
+  "guide", "tips", "top", "best", "strategies", "secrets", "ways", "2026", "ultimate",
+  "complete", "mastering", "essential", "simple", "step"
+]);
+
+function extractSignificantTokens(text) {
+  return normalizeText(text)
+    .replace(/[^a-z0-9\s]/g, " ")
+    .split(/\s+/)
+    .filter((w) => w.length > 2 && !SIMILARITY_STOPWORDS.has(w));
+}
+
 /**
- * Validates that a generated topic does not contain cross-contaminated terms.
+ * STRICT 30-DAY ANTI-SIMILARITY DEFENSE
+ * Rejects candidate topics that have semantic token similarity (Jaccard >= 50%)
+ * or substantial word overlap with any post published in the past 30 days.
  */
-function validateTopicRelevance({ topic, primaryKeyword = "", secondaryKeywords = [], forbiddenTerms = [], logger = console.log }) {
-  if (forbiddenTerms.length === 0) return { ok: true };
+function checkTopicSimilarityAgainstHistory({
+  topic,
+  pastTitles = [],
+  similarityThreshold = 0.50,
+  logger = console.log,
+}) {
+  if (!topic || !Array.isArray(pastTitles) || pastTitles.length === 0) {
+    return { isTooSimilar: false };
+  }
 
-  const fullTopicText = `${normalizeText(topic)} ${normalizeText(primaryKeyword)} ${Array.isArray(secondaryKeywords) ? secondaryKeywords.join(" ").toLowerCase() : ""}`;
+  const topicTokens = new Set(extractSignificantTokens(topic));
+  if (topicTokens.size === 0) return { isTooSimilar: false };
 
-  for (const term of forbiddenTerms) {
-    if (matchesForbiddenTerm(fullTopicText, term)) {
-      logger(`[BrandIntegrityGuard] 🚨 TOPIC REJECTED: Topic contains foreign brand violation "${term}": "${topic}".`);
-      return { ok: false, violation: term };
+  const normTopic = normalizeText(topic).replace(/[^a-z0-9]/g, "");
+
+  for (const rawPast of pastTitles) {
+    const pastTitle = typeof rawPast === "string" ? rawPast : rawPast?.title || "";
+    if (!pastTitle) continue;
+
+    const normPast = normalizeText(pastTitle).replace(/[^a-z0-9]/g, "");
+    if (normPast && (normPast === normTopic || normPast.includes(normTopic) || normTopic.includes(normPast))) {
+      logger(`[BrandIntegrityGuard] ⚠️ Topic exact/substring collision rejected: "${topic}" resembles past post "${pastTitle}".`);
+      return { isTooSimilar: true, similarTo: pastTitle, reason: "exact_or_substring_match" };
+    }
+
+    const pastTokens = new Set(extractSignificantTokens(pastTitle));
+    if (pastTokens.size === 0) continue;
+
+    // Calculate Jaccard similarity between token sets
+    let intersectionCount = 0;
+    for (const t of topicTokens) {
+      if (pastTokens.has(t)) intersectionCount++;
+    }
+
+    const unionCount = new Set([...topicTokens, ...pastTokens]).size;
+    const jaccardScore = unionCount > 0 ? intersectionCount / unionCount : 0;
+
+    if (jaccardScore >= similarityThreshold || (intersectionCount >= 4 && topicTokens.size <= 6)) {
+      logger(`[BrandIntegrityGuard] ⚠️ Topic semantic similarity (${(jaccardScore * 100).toFixed(0)}%) rejected: "${topic}" too similar to past post "${pastTitle}".`);
+      return { isTooSimilar: true, similarTo: pastTitle, similarity: jaccardScore, reason: "semantic_overlap" };
+    }
+  }
+
+  return { isTooSimilar: false };
+}
+
+/**
+ * Validates that a generated topic does not contain cross-contaminated terms
+ * and does NOT collide with previous posts from the past 30 days.
+ */
+function validateTopicRelevance({
+  topic,
+  primaryKeyword = "",
+  secondaryKeywords = [],
+  forbiddenTerms = [],
+  pastTitles = [],
+  logger = console.log,
+}) {
+  if (pastTitles && pastTitles.length > 0) {
+    const simCheck = checkTopicSimilarityAgainstHistory({ topic, pastTitles, logger });
+    if (simCheck.isTooSimilar) {
+      return { ok: false, violation: `Similarity collision with past post: "${simCheck.similarTo}"` };
+    }
+  }
+
+  if (forbiddenTerms && forbiddenTerms.length > 0) {
+    const fullTopicText = `${normalizeText(topic)} ${normalizeText(primaryKeyword)} ${Array.isArray(secondaryKeywords) ? secondaryKeywords.join(" ").toLowerCase() : ""}`;
+
+    for (const term of forbiddenTerms) {
+      if (matchesForbiddenTerm(fullTopicText, term)) {
+        logger(`[BrandIntegrityGuard] 🚨 TOPIC REJECTED: Topic contains foreign brand violation "${term}": "${topic}".`);
+        return { ok: false, violation: term };
+      }
     }
   }
 
@@ -284,5 +366,6 @@ module.exports = {
   buildCrossBrandNegativeList,
   filterCleanCandidateServices,
   validateTopicRelevance,
+  checkTopicSimilarityAgainstHistory,
   getVisualGuardDirectives,
 };

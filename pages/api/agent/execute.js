@@ -211,6 +211,14 @@ function sanitizeStateForMemory(obj) {
 async function purgeIncompleteCampaign(userEmail, businessId) {
   if (!userEmail) return;
   try {
+    // Purge visual and draft caches from agent_memory
+    await Promise.allSettled([
+      supabase.from("agent_memory").delete().eq("email", userEmail).like("memory_type", "campaign_visual_%"),
+      supabase.from("agent_memory").delete().eq("email", userEmail).like("memory_type", "meta_draft_%"),
+      supabase.from("agent_memory").delete().eq("email", userEmail).like("memory_type", "social_draft_%"),
+      supabase.from("agent_memory").delete().eq("email", userEmail).like("memory_type", "post_draft_%"),
+    ]);
+
     const { data: existing } = await supabase
       .from("agent_memory")
       .select("content")

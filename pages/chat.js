@@ -653,6 +653,11 @@ export default function ChatPage() {
           managerId: acc?.managerId || null,
         }),
       });
+      fetch("/api/agent/reset", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ mode: "google_ads", customerId: newCustomerId }),
+      }).catch(() => {});
       console.log(`[Chat] Switched active Google Ads account to ${newCustomerId}`);
     } catch (e) {
       console.error("Error switching Google Ads account:", e);
@@ -670,6 +675,11 @@ export default function ChatPage() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ brandKey: newBrandKey }),
       });
+      fetch("/api/agent/reset", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ mode: "meta_ads", brandKey: newBrandKey }),
+      }).catch(() => {});
       console.log(`[Chat] Switched active Meta brand to ${newBrandKey}`);
     } catch (e) {
       console.error("Error switching Meta brand:", e);

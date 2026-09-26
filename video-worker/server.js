@@ -2571,6 +2571,29 @@ app.post("/system/reload", requireAuth, (req, res) => {
   }
 });
 
+app.post("/system/sync-module", requireAuth, (req, res) => {
+  try {
+    const { modulePath, content } = req.body || {};
+    if (!modulePath || typeof content !== "string") {
+      return res.status(400).json({ ok: false, error: "modulePath and content string required" });
+    }
+    const safePath = path.resolve(__dirname, modulePath);
+    if (!safePath.startsWith(__dirname)) {
+      return res.status(403).json({ ok: false, error: "Path traversal forbidden" });
+    }
+    fs.writeFileSync(safePath, content, "utf8");
+    try {
+      const resolved = require.resolve(safePath);
+      delete require.cache[resolved];
+      require(safePath);
+    } catch (_) {}
+    log("SYS", `Hot-synced module ${modulePath} and refreshed cache`);
+    res.json({ ok: true, synced: modulePath, timestamp: new Date().toISOString() });
+  } catch (err) {
+    res.status(500).json({ ok: false, error: err.message });
+  }
+});
+
 // -------------------------------------------------------------
 // Scheduled Native Cron Jobs (Reliable Background Execution in Asia/Kolkata)
 // -------------------------------------------------------------

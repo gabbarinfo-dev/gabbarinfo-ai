@@ -656,19 +656,28 @@ Respond ONLY with a valid JSON object matching this schema:
             } catch (_) {}
           }
 
-          const normStoreDomain = String(primaryDomain || shop || "").toLowerCase().replace(/^https?:\/\//, "").replace(/\/$/, "");
-          const normStoreName = String(brandName || conn.name || "").toLowerCase().replace(/[^a-z0-9]/g, "");
+          const cleanDomainStr = (str) => String(str || "").toLowerCase().replace(/^https?:\/\//, "").replace(/^www\./, "").replace(/\/$/, "");
+          const normStoreDomain = cleanDomainStr(conn.domain || conn.primary_domain || primaryDomain || shop);
+          const normStoreName = String(brandName || conn.shopName || conn.name || "").toLowerCase().replace(/[^a-z0-9]/g, "");
 
-          let brandMeta = brandProfiles.find((b) => {
-            const bKey = String(b.key || "").toLowerCase().replace(/[^a-z0-9]/g, "");
-            const bUrl = String(b.websiteUrl || b.website || "").toLowerCase().replace(/^https?:\/\//, "").replace(/\/$/, "");
-            const bName = String(b.businessName || b.pageName || "").toLowerCase().replace(/[^a-z0-9]/g, "");
-            const bIg = String(b.igUsername || "").toLowerCase().replace(/[^a-z0-9]/g, "");
-            return (bKey && normStoreName && (bKey.includes(normStoreName) || normStoreName.includes(bKey))) ||
-                   (bUrl && (normStoreDomain.includes(bUrl) || bUrl.includes(normStoreDomain))) ||
-                   (bName && normStoreName && (bName.includes(normStoreName) || normStoreName.includes(bName))) ||
-                   (bIg && normStoreName && (bIg.includes(normStoreName) || normStoreName.includes(bIg)));
-          });
+          let brandMeta = null;
+          if (config.selectedMetaPageId) {
+            brandMeta = brandProfiles.find((b) => b.pageId === config.selectedMetaPageId);
+          }
+          if (!brandMeta) {
+            brandMeta = brandProfiles.find((b) => {
+              const bKey = String(b.key || "").toLowerCase().replace(/[^a-z0-9]/g, "");
+              const bUrl = cleanDomainStr(b.website || b.websiteUrl || "");
+              const bName = String(b.businessName || b.pageName || "").toLowerCase().replace(/[^a-z0-9]/g, "");
+              const bIg = String(b.igUsername || "").toLowerCase().replace(/[^a-z0-9]/g, "");
+              return (
+                (bKey && normStoreName && (bKey.includes(normStoreName) || normStoreName.includes(bKey))) ||
+                (bUrl && normStoreDomain && (normStoreDomain === bUrl || normStoreDomain.includes(bUrl) || bUrl.includes(normStoreDomain))) ||
+                (bName && normStoreName && (bName.includes(normStoreName) || normStoreName.includes(bName))) ||
+                (bIg && normStoreName && (bIg.includes(normStoreName) || normStoreName.includes(bIg)))
+              );
+            });
+          }
 
           const { data: meta } = await supabase
             .from("meta_connections")
@@ -676,30 +685,30 @@ Respond ONLY with a valid JSON object matching this schema:
             .eq("email", userEmail.toLowerCase())
             .maybeSingle();
 
-          const pageId = brandMeta?.pageId || (brandProfiles.length === 0 && meta?.fb_page_id ? meta.fb_page_id.split(",")[0].trim() : null);
-          const effectiveToken = brandMeta?.pageToken || (brandProfiles.length === 0 ? (meta?.fb_page_access_token || meta?.fb_user_access_token) : null);
-          const igId = brandMeta?.igId || (brandProfiles.length === 0 ? (meta?.instagram_actor_id || meta?.ig_business_id) : null);
+          const pageId = brandMeta?.pageId || (brandProfiles.length === 1 ? brandProfiles[0].pageId : (brandProfiles.length === 0 && meta?.fb_page_id ? meta.fb_page_id.split(",")[0].trim() : null));
+          const effectiveToken = brandMeta?.pageToken || (brandProfiles.length === 1 ? brandProfiles[0].pageToken : (brandProfiles.length === 0 ? (meta?.fb_page_access_token || meta?.fb_user_access_token) : null));
+          const igId = brandMeta?.igId || (brandProfiles.length === 1 ? brandProfiles[0].igId : (brandProfiles.length === 0 ? (meta?.instagram_actor_id || meta?.ig_business_id) : null));
 
           if (pageId && effectiveToken) {
             // 11.5.1 Brand Integrity & Anti-Exploitation Cross-Check
-            let isBrandMatched = Boolean(brandMeta); // Paired explicitly in Brand Wizard
+            let isBrandMatched = Boolean(brandMeta || brandProfiles.length === 1);
             let metaAssetTitle = brandMeta?.pageName || "";
             try {
               if (pageId && effectiveToken) {
                 const checkRes = await fetch(`https://graph.facebook.com/v21.0/${pageId}?fields=name,website&access_token=${effectiveToken}`);
                 if (checkRes.ok) {
                   const checkData = await checkRes.json();
-                  metaAssetTitle = checkData.name || "";
+                  metaAssetTitle = checkData.name || metaAssetTitle;
                   const pWeb = checkData.website || "";
 
                   const normStore = String(brandName || primaryDomain || shop || "").toLowerCase().replace(/[^a-z0-9]/g, "");
                   const normMeta = String(metaAssetTitle || "").toLowerCase().replace(/[^a-z0-9]/g, "");
-                  const normWeb = String(pWeb || "").toLowerCase().replace(/[^a-z0-9]/g, "");
+                  const normWeb = cleanDomainStr(pWeb);
 
                   if (normStore && normMeta && (normStore.includes(normMeta) || normMeta.includes(normStore))) {
                     isBrandMatched = true;
                   }
-                  if (normStore && normWeb && (normStore.includes(normWeb) || normWeb.includes(normStore))) {
+                  if (normStoreDomain && normWeb && (normStoreDomain.includes(normWeb) || normWeb.includes(normStoreDomain))) {
                     isBrandMatched = true;
                   }
                 }
@@ -711,6 +720,9 @@ Respond ONLY with a valid JSON object matching this schema:
             if (!isBrandMatched) {
               logger(`[Shopify Autopilot 🛡️ Anti-Exploitation Shield] Social syndication BLOCKED: Store "${brandName}" (${primaryDomain}) does not match connected Meta channel "${metaAssetTitle || pageId}". Cross-business posting prevented.`);
             } else {
+              const candidateShareImg = articleObj.image?.src || imageData.imageUrl || null;
+              const hasImageAttachment = Boolean(candidateShareImg || imageData.imageBase64);
+
               // Facebook Page link preview / photo post
               const shouldShareFb = (config.autoShareFacebook === true || config.autoShareFacebook === undefined) && pageId && effectiveToken;
               if (shouldShareFb) {
@@ -731,7 +743,7 @@ Respond ONLY with a valid JSON object matching this schema:
                     logger(`[Shopify Autopilot] Facebook Link Card published: ${fbData.id}`);
                   } else {
                     logger(`[Shopify Autopilot] Facebook Feed link post failed (${fbData.error?.message}), attempting photo post fallback...`);
-                    const shareImg = imageData.imageUrl;
+                    const shareImg = candidateShareImg;
                     if (shareImg) {
                       const photoParams = new URLSearchParams();
                       photoParams.append("url", shareImg);
@@ -759,13 +771,12 @@ Respond ONLY with a valid JSON object matching this schema:
               }
 
               // Instagram Feed Photo post with guaranteed pristine JPEG
-              const rawShareImg = imageData.imageUrl;
-              const shouldShareIg = (config.autoShareInstagram === true || config.autoShareInstagram === undefined) && igId && effectiveToken && rawShareImg;
+              const shouldShareIg = (config.autoShareInstagram === true || config.autoShareInstagram === undefined) && igId && effectiveToken && hasImageAttachment;
               if (shouldShareIg) {
                 try {
                   logger(`[Shopify Autopilot] Syndicating article to Instagram (${igId})...`);
                   const verifiedIgUrl = await ensureInstagramCompatibleJpeg({
-                    imageUrl: rawShareImg,
+                    imageUrl: candidateShareImg,
                     imageBuffer: imageData.imageBase64 ? Buffer.from(imageData.imageBase64, "base64") : null,
                     supabase,
                     logger,

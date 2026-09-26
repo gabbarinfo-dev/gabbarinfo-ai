@@ -7,6 +7,7 @@ import { GoogleGenerativeAI } from "@google/generative-ai";
 import { getValidShopifyAccessToken } from "../../../lib/shopify/token-service";
 import { getMetaIdentity, checkBrandMatch, normalizeBrand } from "../../../lib/meta/brand-verifier";
 import { runShopifyAutopilotCycle } from "../../../lib/shopify/shopify-autopilot";
+import { ensureInstagramCompatibleJpeg } from "../../../lib/instagram-image-helper.js";
 
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL,
@@ -180,19 +181,19 @@ async function checkShopifyBrandSecurity(userEmail, conn) {
     } catch (_) {}
   }
 
-  const normStoreDomain = normalizeBrand(conn.domain || conn.shop || "");
-  const normStoreName = normalizeBrand(conn.name || conn.shopName || "");
+  const normStoreDomain = normalizeBrand(conn.domain || conn.primary_domain || conn.shop || "");
+  const normStoreName = normalizeBrand(conn.shopName || conn.name || "");
   const normShop = normalizeBrand(conn.shop || "");
 
   // 1. Check multi-brand profiles from pairing wizard
   for (const b of brandProfiles) {
-    const normMetaUrl = normalizeBrand(b.websiteUrl || "");
+    const normMetaUrl = normalizeBrand(b.website || b.websiteUrl || "");
     const normMetaName = normalizeBrand(b.businessName || b.pageName || "");
     const normMetaIg = normalizeBrand(b.igUsername || "");
 
-    const urlMatches = (normMetaUrl && normStoreDomain && (normMetaUrl === normStoreDomain || normMetaUrl.includes(normStoreDomain) || normStoreDomain.includes(normMetaUrl)));
-    const nameMatches = (normMetaName.length >= 3 && normStoreName.length >= 3 && (normMetaName === normStoreName || normMetaName.includes(normStoreName) || normStoreName.includes(normMetaName)));
-    const igMatches = (normMetaIg.length >= 3 && normStoreName.length >= 3 && (normMetaIg.includes(normStoreName) || normStoreName.includes(normMetaIg)));
+    const urlMatches = Boolean(normMetaUrl && normStoreDomain && (normMetaUrl === normStoreDomain || normMetaUrl.includes(normStoreDomain) || normStoreDomain.includes(normMetaUrl)));
+    const nameMatches = Boolean(normMetaName.length >= 3 && normStoreName.length >= 3 && (normMetaName === normStoreName || normMetaName.includes(normStoreName) || normStoreName.includes(normMetaName)));
+    const igMatches = Boolean(normMetaIg.length >= 3 && normStoreName.length >= 3 && (normMetaIg.includes(normStoreName) || normStoreName.includes(normMetaIg)));
 
     if (urlMatches || nameMatches || igMatches) {
       const display = `${b.businessName || b.pageName}${b.igUsername ? ` (@${b.igUsername})` : ""}`;
@@ -200,8 +201,8 @@ async function checkShopifyBrandSecurity(userEmail, conn) {
         isMatched: true,
         status: "MATCHED",
         matchDetail: urlMatches ? "Direct paired website match" : "Store brand name match",
-        reason: `Verified brand alignment between '${conn.name || conn.domain}' and '${display}'.`,
-        store: { name: conn.name, domain: conn.domain },
+        reason: `Verified brand alignment between '${conn.shopName || conn.name || conn.domain}' and '${display}'.`,
+        store: { name: conn.shopName || conn.name, domain: conn.domain },
         meta: {
           display,
           pageName: b.pageName || b.businessName,
@@ -1428,6 +1429,64 @@ Respond ONLY with a valid JSON object matching this structure:
       const adminDraftUrl = `https://admin.shopify.com/store/${storeHandle}/articles/${data.article?.id}`;
       const livePublicUrl = `https://${conn.domain || shop}/blogs/${chosenBlogHandle}/${data.article?.handle}`;
 
+      const socialShares = {};
+      if (!isDraft && (payload.autoShareFacebook || payload.autoShareInstagram)) {
+        try {
+          const brandSec = await checkShopifyBrandSecurity(userEmail, conn);
+          if (brandSec.isMatched && brandSec.meta?.pageId && brandSec.meta?.pageToken) {
+            const pageId = brandSec.meta.pageId;
+            const pageToken = brandSec.meta.pageToken;
+            const igId = brandSec.meta.igId;
+
+            if (payload.autoShareFacebook) {
+              try {
+                const fullMsg = `📢 ${title}\n\n${summaryHtml ? summaryHtml.replace(/<[^>]+>/g, "") : ""}\n\nRead full article & explore pieces 👇\n${livePublicUrl}\n\n#Shopify #Trending`;
+                const feedParams = new URLSearchParams();
+                feedParams.append("link", livePublicUrl);
+                feedParams.append("message", fullMsg);
+                feedParams.append("access_token", pageToken);
+                const fbRes = await fetch(`https://graph.facebook.com/v21.0/${pageId}/feed`, { method: "POST", body: feedParams });
+                const fbData = await fbRes.json();
+                if (fbData.id) socialShares.facebook = { ok: true, id: fbData.id };
+              } catch (_) {}
+            }
+
+            const heroImg = data.article?.image?.src || imageUrl || null;
+            if (payload.autoShareInstagram && igId && (heroImg || imageBase64)) {
+              try {
+                const cleanIgImgUrl = await ensureInstagramCompatibleJpeg({
+                  imageUrl: heroImg,
+                  imageBuffer: imageBase64 ? Buffer.from(imageBase64, "base64") : null,
+                  supabase,
+                  bucket: "instagram-creatives",
+                });
+                const igCap = `📢 ${title}\n\n🔗 Read full story & shop the pieces: ${livePublicUrl}\n\n#Shopify #Trending`;
+                const cParams = new URLSearchParams();
+                cParams.append("image_url", cleanIgImgUrl);
+                cParams.append("caption", igCap);
+                cParams.append("access_token", pageToken);
+                const cRes = await fetch(`https://graph.facebook.com/v21.0/${igId}/media`, { method: "POST", body: cParams });
+                const cData = await cRes.json();
+                if (cData.id) {
+                  for (let i = 0; i < 10; i++) {
+                    await new Promise((r) => setTimeout(r, 2000));
+                    const sRes = await fetch(`https://graph.facebook.com/v21.0/${cData.id}?fields=status_code&access_token=${pageToken}`);
+                    const sData = await sRes.json().catch(() => ({}));
+                    if (sData.status_code === "FINISHED") break;
+                  }
+                  const pubParams = new URLSearchParams();
+                  pubParams.append("creation_id", cData.id);
+                  pubParams.append("access_token", pageToken);
+                  const pRes = await fetch(`https://graph.facebook.com/v21.0/${igId}/media_publish`, { method: "POST", body: pubParams });
+                  const pData = await pRes.json().catch(() => ({}));
+                  if (pData.id) socialShares.instagram = { ok: true, id: pData.id };
+                }
+              } catch (_) {}
+            }
+          }
+        } catch (_) {}
+      }
+
       return res.status(200).json({
         ok: true,
         message: isDraft ? "Article saved as Shopify Draft in your Admin!" : "Article published live to Shopify blog!",
@@ -1436,6 +1495,7 @@ Respond ONLY with a valid JSON object matching this structure:
         articleUrl: isDraft ? adminDraftUrl : livePublicUrl,
         adminUrl: adminDraftUrl,
         publicUrl: livePublicUrl,
+        socialShares,
       });
     }
 
