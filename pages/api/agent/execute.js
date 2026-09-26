@@ -50,6 +50,33 @@ const Messages = {
 };
 
 
+function isUserAffirmative(text) {
+  if (!text || typeof text !== "string") return false;
+  const t = text.toLowerCase().trim();
+  return (
+    t === "yes" ||
+    t === "y" ||
+    t === "launch" ||
+    t === "proceed" ||
+    t === "publish" ||
+    t === "ok" ||
+    t === "sure" ||
+    t === "confirm" ||
+    t === "approved" ||
+    t === "approve" ||
+    t.includes("yes") ||
+    t.includes("proceed") ||
+    t.includes("publish") ||
+    t.includes("launch") ||
+    t.includes("approve") ||
+    t.includes("confirm") ||
+    t.includes("run") ||
+    t.includes("start") ||
+    t.includes("looks good") ||
+    t.includes("go ahead")
+  );
+}
+
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL,
   process.env.SUPABASE_SERVICE_ROLE_KEY
@@ -1289,19 +1316,6 @@ export default async function handler(req, res) {
       const userInput = instruction.trim();
       const lowerInput = userInput.toLowerCase();
 
-      // Detect if user is skipping (no/skip/generate)
-      const isSkipping =
-        lowerInput === "no" ||
-        lowerInput === "skip" ||
-        lowerInput === "n" ||
-        lowerInput.includes("generate") ||
-        lowerInput.includes("no image") ||
-        lowerInput.includes("skip image") ||
-        lowerInput.includes("don't have") ||
-        lowerInput.includes("dont have") ||
-        lowerInput.includes("auto") ||
-        lowerInput.includes("automatically");
-
       // 🔒 Detect a valid HTTPS image URL (.png, .jpg, .jpeg)
       // Meta's adimages API requires HTTPS URLs for external image fetching
       const imageUrlMatch = userInput.match(
@@ -1312,6 +1326,38 @@ export default async function handler(req, res) {
       const httpOnlyMatch = !imageUrlMatch && userInput.match(
         /http:\/\/[^\s]+\.(?:png|jpg|jpeg)(?:[?#][^\s]*)?/i
       );
+
+      const looksLikeUrlAttempt = /https?:\/\//i.test(userInput) || /\.(png|jpg|jpeg|webp)/i.test(userInput);
+
+      // Detect if user is skipping (no/skip/generate/none/non or any normal text response that is not a URL)
+      const isSkipping =
+        !looksLikeUrlAttempt ||
+        lowerInput === "no" ||
+        lowerInput === "none" ||
+        lowerInput === "non" ||
+        lowerInput === "nope" ||
+        lowerInput === "nah" ||
+        lowerInput === "n" ||
+        lowerInput === "na" ||
+        lowerInput === "skip" ||
+        lowerInput === "skip image" ||
+        lowerInput === "proceed" ||
+        lowerInput === "continue" ||
+        lowerInput === "yes" ||
+        lowerInput === "generate" ||
+        lowerInput.includes("none") ||
+        lowerInput.includes("generate") ||
+        lowerInput.includes("no image") ||
+        lowerInput.includes("skip") ||
+        lowerInput.includes("don't have") ||
+        lowerInput.includes("dont have") ||
+        lowerInput.includes("auto") ||
+        lowerInput.includes("automatically") ||
+        lowerInput.includes("ai") ||
+        lowerInput.includes("without image") ||
+        lowerInput.includes("create") ||
+        lowerInput.includes("you choose") ||
+        lowerInput.includes("you decide");
 
       if (imageUrlMatch) {
         // ✅ User provided an image URL — save it and proceed to READY_TO_LAUNCH
@@ -1475,7 +1521,7 @@ export default async function handler(req, res) {
         ok: true,
         mode,
         gated: true,
-        text: `${offerConfirmMsg}\n\n**Reply "OK" or "Proceed"** to see your complete Meta Ads strategy.`,
+        text: `${offerConfirmMsg}\n\n**Reply "YES"** to see your complete Meta Ads strategy.`,
       });
     }
 
@@ -4388,11 +4434,7 @@ Otherwise, respond with a full, clear explanation, and include example JSON only
           session.user.email.toLowerCase()
         );
 
-        const wantsToLaunchNow =
-          lowerInstruction.includes("launch") ||
-          lowerInstruction.includes("execute") ||
-          lowerInstruction.includes("publish") ||
-          lowerInstruction.includes("run");
+        const wantsToLaunchNow = isUserAffirmative(lowerInstruction);
 
         if (!wantsToLaunchNow) {
           const genderLabel = state.target_gender === "women" ? "Women only" : state.target_gender === "men" ? "Men only" : "All genders";
@@ -4850,7 +4892,7 @@ Otherwise, respond with a full, clear explanation, and include example JSON only
     // 🕵️ DETECT AND SAVE JSON PLAN (FROM GEMINI)
     // Supports: ```json ... ```, ``` ... ```, or plain JSON starting with {
     // 🔒 ABSOLUTE RULE: No plan generation on first message or when user confirms
-    if (effectiveBusinessId && !isNewMetaCampaignRequest && !lowerInstruction.includes("yes")) {
+    if (effectiveBusinessId && !isNewMetaCampaignRequest && !isUserAffirmative(lowerInstruction)) {
       let jsonString = null;
 
       // 1. Try code blocks
@@ -5237,7 +5279,7 @@ Otherwise, respond with a full, clear explanation, and include example JSON only
       !lockedCampaignState?.plan &&
       !lockedCampaignState?.stage &&
       effectiveBusinessId &&
-      !lowerInstruction.includes("yes");
+      !isUserAffirmative(lowerInstruction);
 
     if ((mode === "meta_ads_plan" || isPlanText) && canProposePlan) {
       console.log("TRACE: FALLBACK META ADS PATH HIT");

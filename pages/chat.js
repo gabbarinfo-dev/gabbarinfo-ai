@@ -1397,25 +1397,24 @@ Now respond as GabbarInfo AI.
         setInput(data.fillInTemplate);
       } else if (
         rawText &&
-        (rawText.includes('Reply **"Proceed"**') ||
-          rawText.includes('Reply "Proceed"') ||
-          rawText.toLowerCase().includes('reply "proceed"') ||
+        (rawText.toLowerCase().includes("reply **yes**") ||
+          rawText.toLowerCase().includes('reply "yes"') ||
+          rawText.toLowerCase().includes("reply yes") ||
+          rawText.toLowerCase().includes("reply **launch**") ||
+          rawText.toLowerCase().includes('reply "launch"') ||
+          rawText.toLowerCase().includes("reply launch") ||
           rawText.toLowerCase().includes('reply **"proceed"**') ||
-          (rawText.toLowerCase().includes("reply") && rawText.toLowerCase().includes("proceed")))
+          rawText.toLowerCase().includes('reply "proceed"') ||
+          rawText.toLowerCase().includes('reply **"publish"**') ||
+          rawText.toLowerCase().includes('reply "publish"') ||
+          (rawText.toLowerCase().includes("reply") && rawText.toLowerCase().includes("proceed")) ||
+          (rawText.toLowerCase().includes("reply") && rawText.toLowerCase().includes("publish")) ||
+          (rawText.toLowerCase().includes("reply") && rawText.toLowerCase().includes("launch")) ||
+          (rawText.toLowerCase().includes("reply") && rawText.toLowerCase().includes("yes")))
       ) {
-        // Phase 2: Agent asks to reply "Proceed" or "Looks good"
-        setAgentInstruction("Proceed");
-        setInput("Proceed");
-      } else if (
-        rawText &&
-        (rawText.includes('Reply **"Publish"**') ||
-          rawText.includes('Reply "Publish"') ||
-          rawText.toLowerCase().includes("publish now") ||
-          (rawText.toLowerCase().includes("reply") && rawText.toLowerCase().includes("publish")))
-      ) {
-        // Phase 3: Agent asks to reply "Publish"
-        setAgentInstruction("Publish");
-        setInput("Publish");
+        // Confirmation/Launch steps: Strictly autofill "YES" (User requirement: no "Proceed" or "Publish")
+        setAgentInstruction("YES");
+        setInput("YES");
       } else {
         // Subsequent steps or general responses: clear the boxes
         setAgentInstruction("");
