@@ -148,7 +148,7 @@ function buildRichMetaPreview({
   const adAccDisplay = adAccName ? `${adAccName} (\`${adAccId}\`)` : `\`${adAccId}\``;
 
   const bAmount = currentPlan.budget?.amount || currentPlan.budget_value || state?.budget_per_day || 200;
-  const bCurrency = currentPlan.budget?.currency || "INR";
+  const bCurrency = currentPlan.budget?.currency || state?.account_currency || "INR";
   const bType = currentPlan.budget?.type || currentPlan.budget_type || "DAILY";
   const days = state?.total_days || 7;
 
@@ -185,6 +185,50 @@ function buildRichMetaPreview({
 
   const offerLine = state?.offer ? `\n• **Special Offer**: "${state.offer}"` : "";
 
+  // 🎯 Destination details for all campaign types
+  const destination = (state?.destination || currentPlan.destination || "").toLowerCase();
+  const landingPage =
+    state?.landing_page ||
+    state?.destination_url ||
+    state?.website_url ||
+    creative.destination_url ||
+    creative.link_url ||
+    creative.website_url ||
+    creative.url ||
+    adSet0.ad_creative?.destination_url ||
+    currentPlan.destination_url ||
+    null;
+  const phoneNumber = state?.phone || currentPlan.phone || metaRow?.business_phone || null;
+  const whatsappNumber = state?.whatsapp || currentPlan.whatsapp || metaRow?.business_phone || null;
+  const catalogName = state?.product_set_name || metaRow?.business_name || null;
+  const catalogId = state?.catalog_id || metaRow?.fb_catalog_id || null;
+
+  let destinationLine = "";
+  let actionDestinationDetail = "";
+
+  if (destination === "website" || (!destination && landingPage)) {
+    destinationLine = `\n• **Website / Landing Page**: ${landingPage || "Not specified"}`;
+    actionDestinationDetail = landingPage ? `\n**Website Destination**: ${landingPage}` : "";
+  } else if (destination === "call" || phoneNumber) {
+    destinationLine = `\n• **Direct Phone Call**: ${phoneNumber || "Not specified"}`;
+    actionDestinationDetail = phoneNumber ? `\n**Direct Dial Number**: ${phoneNumber}` : "";
+  } else if (destination === "whatsapp" || whatsappNumber) {
+    destinationLine = `\n• **WhatsApp Direct**: ${whatsappNumber || "Not specified"}`;
+    actionDestinationDetail = whatsappNumber ? `\n**WhatsApp Destination**: ${whatsappNumber}` : "";
+  } else if (destination === "catalogue" || catalogId) {
+    destinationLine = `\n• **Catalog**: \`${catalogId || "Active"}\`${catalogName ? ` (${catalogName})` : ""}`;
+    actionDestinationDetail = `\n**Product Catalog**: \`${catalogId || "Active"}\``;
+  } else if (destination === "instant_form") {
+    destinationLine = `\n• **Lead Destination**: Instant Form (On-Facebook Leads)`;
+    actionDestinationDetail = `\n**Lead Flow**: Meta Instant Form`;
+  } else if (destination === "instagram_profile") {
+    destinationLine = `\n• **Destination**: Connected Instagram Profile`;
+    actionDestinationDetail = `\n**Destination**: Instagram Profile Visits`;
+  } else if (landingPage) {
+    destinationLine = `\n• **Website / Landing Page**: ${landingPage}`;
+    actionDestinationDetail = `\n**Website Destination**: ${landingPage}`;
+  }
+
   const imagePrompt =
     creative.image_prompt ||
     creative.imagePrompt ||
@@ -202,7 +246,7 @@ function buildRichMetaPreview({
 ${imageMarkdown}**Ad Account**: ${adAccDisplay}
 
 **Targeting**: ${location} | ${genderLabel} | Age: ${ageMin}–${ageMax}${suggestionsText}
-**Budget**: ${bAmount} ${bCurrency} (${bType}, ${days} days)${offerLine}
+**Budget**: ${bAmount} ${bCurrency} (${bType}, ${days} days)${destinationLine}${offerLine}
 
 **Creative Idea**:
 "${headline}"
@@ -211,7 +255,7 @@ _${primaryText}_
 **Image Concept**:
 _${imagePrompt}_
 
-**Call to Action**: ${cta}
+**Call to Action**: ${cta}${actionDestinationDetail}
 
 ${actionText}
 `.trim();
@@ -2680,9 +2724,82 @@ You are in GENERIC DIGITAL MARKETING AGENT MODE.
 
       // Check if input is a valid service name (and not a campaign creation trigger)
       if (!isCampaignCreationPrompt && rawInput.length >= 2 && !/^\d+$/.test(rawInput)) {
+        // Check if user already provided a website URL in this input
+        const urlMatch = rawInput.match(/(https?:\/\/[^\s]+|[a-zA-Z0-9][-a-zA-Z0-9]{0,62}\.(?:com|in|org|net|co|io|biz|info|ai|store|shop|online|app)[^\s]*)/i);
+        let extractedUrl = urlMatch ? urlMatch[0] : null;
+        if (extractedUrl && !extractedUrl.startsWith("http")) {
+          extractedUrl = `https://${extractedUrl}`;
+        }
+        let cleanedService = rawInput;
+        if (extractedUrl) {
+          cleanedService = rawInput.replace(urlMatch[0], "").trim() || rawInput;
+        }
+
+        const isWebsiteCampaign = selectedDestination === "website" || (selectedMetaObjective === "OUTCOME_SALES" && selectedDestination !== "catalogue");
+
+        // If website is required and not yet confirmed:
+        if (isWebsiteCampaign && !lockedCampaignState?.landing_page_confirmed) {
+          if (extractedUrl) {
+            lockedCampaignState = {
+              ...lockedCampaignState,
+              service: cleanedService,
+              service_confirmed: true,
+              landing_page: extractedUrl,
+              landing_page_confirmed: true,
+              stage: "service_selected"
+            };
+            currentState = lockedCampaignState;
+
+            await saveAnswerMemory(
+              process.env.NEXT_PUBLIC_BASE_URL,
+              effectiveBusinessId,
+              { campaign_state: lockedCampaignState },
+              session.user.email.toLowerCase()
+            );
+
+            return res.status(200).json({
+              ok: true,
+              mode,
+              gated: true,
+              text: `Got it. Promoting: **${cleanedService}**.\n🌐 Landing page locked: **${extractedUrl}**.\n\nNext, what is the **Target Location** (City, State, or Country) for these ads?`
+            });
+          }
+
+          lockedCampaignState = {
+            ...lockedCampaignState,
+            service: cleanedService,
+            service_confirmed: true,
+            stage: "awaiting_landing_page"
+          };
+          currentState = lockedCampaignState;
+
+          await saveAnswerMemory(
+            process.env.NEXT_PUBLIC_BASE_URL,
+            effectiveBusinessId,
+            { campaign_state: lockedCampaignState },
+            session.user.email.toLowerCase()
+          );
+
+          if (detectedLandingPage) {
+            return res.status(200).json({
+              ok: true,
+              mode,
+              gated: true,
+              text: `Got it. Promoting: **${cleanedService}**.\n\n🌐 I found this website from your connected business:\n**${detectedLandingPage}**\n\nIs this the landing page you want people to visit?\n• Reply **YES** to confirm this website\n• Or reply with a different website URL (e.g., https://yourwebsite.com)`
+            });
+          } else {
+            return res.status(200).json({
+              ok: true,
+              mode,
+              gated: true,
+              text: `Got it. Promoting: **${cleanedService}**.\n\n🌐 What is the **Website or Landing Page URL** where visitors should be directed? (e.g., https://yourwebsite.com)`
+            });
+          }
+        }
+
         lockedCampaignState = {
           ...lockedCampaignState,
-          service: rawInput,
+          service: cleanedService,
           service_confirmed: true,
           stage: "service_selected"
         };
@@ -2699,7 +2816,7 @@ You are in GENERIC DIGITAL MARKETING AGENT MODE.
           ok: true,
           mode,
           gated: true,
-          text: `Got it. Promoting: **${rawInput}**.\n\nNext, what is the **Target Location** (City, State, or Country) for these ads?`
+          text: `Got it. Promoting: **${cleanedService}**.\n\nNext, what is the **Target Location** (City, State, or Country) for these ads?`
         });
       } else {
         let modeGoalLabel = "Campaign destination and goal locked.";
@@ -2718,8 +2835,105 @@ You are in GENERIC DIGITAL MARKETING AGENT MODE.
       }
     }
 
+    // Step 4b: Landing Page Intake (Strict Gate for Website Traffic & Sales)
+    if (
+      !isPlanProposed &&
+      mode === "meta_ads_plan" &&
+      lockedCampaignState?.stage === "awaiting_landing_page" &&
+      !lockedCampaignState?.landing_page_confirmed
+    ) {
+      const cleanInput = instruction.trim();
+      const lower = cleanInput.toLowerCase();
+
+      // Check if user confirmed detected website
+      const isYes =
+        lower === "yes" ||
+        lower.startsWith("yes ") ||
+        lower.endsWith(" yes") ||
+        lower === "ok" ||
+        lower === "use this" ||
+        lower.includes("correct") ||
+        lower.includes("confirm");
+
+      if (isYes && detectedLandingPage) {
+        lockedCampaignState = {
+          ...lockedCampaignState,
+          landing_page: detectedLandingPage,
+          landing_page_confirmed: true,
+          stage: "service_selected",
+          locked_at: new Date().toISOString()
+        };
+        currentState = lockedCampaignState;
+
+        await saveAnswerMemory(
+          process.env.NEXT_PUBLIC_BASE_URL,
+          effectiveBusinessId,
+          { campaign_state: lockedCampaignState },
+          session.user.email.toLowerCase()
+        );
+
+        return res.status(200).json({
+          ok: true,
+          mode,
+          gated: true,
+          text: `Website confirmed: **${detectedLandingPage}**.\n\nNext, what is the **Target Location** (City, State, or Country) for these ads?`
+        });
+      }
+
+      // Check if user entered a URL
+      const urlMatch = cleanInput.match(/(https?:\/\/[^\s]+|[a-zA-Z0-9][-a-zA-Z0-9]{0,62}\.(?:com|in|org|net|co|io|biz|info|ai|store|shop|online|app)[^\s]*)/i);
+      if (urlMatch) {
+        let finalUrl = urlMatch[0];
+        if (!finalUrl.startsWith("http")) {
+          finalUrl = `https://${finalUrl}`;
+        }
+
+        lockedCampaignState = {
+          ...lockedCampaignState,
+          landing_page: finalUrl,
+          landing_page_confirmed: true,
+          stage: "service_selected",
+          locked_at: new Date().toISOString()
+        };
+        currentState = lockedCampaignState;
+
+        await saveAnswerMemory(
+          process.env.NEXT_PUBLIC_BASE_URL,
+          effectiveBusinessId,
+          { campaign_state: lockedCampaignState },
+          session.user.email.toLowerCase()
+        );
+
+        return res.status(200).json({
+          ok: true,
+          mode,
+          gated: true,
+          text: `Website set: **${finalUrl}**.\n\nNext, what is the **Target Location** (City, State, or Country) for these ads?`
+        });
+      }
+
+      // Invalid input
+      if (detectedLandingPage) {
+        return res.status(200).json({
+          ok: true,
+          mode,
+          gated: true,
+          text: `Please enter a valid website URL (e.g., https://yourwebsite.com), or reply **YES** to use **${detectedLandingPage}**.`
+        });
+      } else {
+        return res.status(200).json({
+          ok: true,
+          mode,
+          gated: true,
+          text: `Please enter a valid website URL starting with https:// (e.g., https://yourwebsite.com) where your ad traffic should go.`
+        });
+      }
+    }
+
     // Step 5: Location Confirmation
-    if (!isPlanProposed && mode === "meta_ads_plan" && lockedCampaignState?.service && !lockedCampaignState?.location && !lockedCampaignState?.location_confirmed) {
+    const isAwaitingLandingPage = lockedCampaignState?.stage === "awaiting_landing_page";
+    const needsWebsiteGate = (selectedDestination === "website" || (selectedMetaObjective === "OUTCOME_SALES" && selectedDestination !== "catalogue")) && !lockedCampaignState?.landing_page_confirmed;
+    if (!isPlanProposed && mode === "meta_ads_plan" && lockedCampaignState?.service && !lockedCampaignState?.location && !lockedCampaignState?.location_confirmed && !isAwaitingLandingPage && !needsWebsiteGate) {
       const input = instruction.trim();
       const isPureNumber = /^\d+$/.test(input);
 
@@ -3432,10 +3646,11 @@ You are in GENERIC DIGITAL MARKETING AGENT MODE.
 
     let landingPageConfirmed = !!lockedCampaignState?.landing_page_confirmed;
 
-    // 1. Handle "YES" confirmation to use the detected website
+    // 1. Stage-aware confirmation if explicitly in awaiting_landing_page
     if (
       !isPlanProposed &&
       mode === "meta_ads_plan" &&
+      lockedCampaignState?.stage === "awaiting_landing_page" &&
       !landingPageConfirmed &&
       (instruction.toLowerCase().includes("yes") ||
         instruction.toLowerCase().includes("use this") ||
@@ -3448,87 +3663,87 @@ You are in GENERIC DIGITAL MARKETING AGENT MODE.
           ...lockedCampaignState,
           landing_page: detectedLandingPage,
           landing_page_confirmed: true,
+          stage: "service_selected",
           locked_at: new Date().toISOString()
         };
         await saveAnswerMemory(baseUrl, effectiveBusinessId, { campaign_state: nextState }, session.user.email.toLowerCase());
         lockedCampaignState = nextState;
 
-        let nextText = "Website confirmed.";
-
-        if (!lockedCampaignState?.service) {
-          const rawServices = autoBusinessContext?.detected_services || [];
-          const normalizedServices = normalizeServiceOptions(
-            rawServices,
-            detectedLandingPage ||
-            autoBusinessContext?.business_website ||
-            autoBusinessContext?.instagram_website ||
-            null
-          );
-          const serviceOptions = normalizedServices.length
-            ? normalizedServices.map((s, i) => `${i + 1}. ${s}`).join("\n")
-            : "- Type your service name";
-
-          nextText += "\n\nWhich service do you want to promote?\n\n" + serviceOptions;
-        } else {
-          nextText += " Reply YES to continue.";
-        }
-
         return res.status(200).json({
           ok: true,
           mode,
           gated: true,
-          text: nextText,
+          text: `Website confirmed: **${detectedLandingPage}**.\n\nNext, what is the **Target Location** (City, State, or Country) for these ads?`,
         });
       }
     }
 
-    // 2. Handle manual URL entry (Fixed the "false" loop and enabled for Sales)
+    // 2. Handle manual URL entry across turns
+    const matchedUrlInInput = instruction.match(/(https?:\/\/[^\s]+|[a-zA-Z0-9][-a-zA-Z0-9]{0,62}\.(?:com|in|org|net|co|io|biz|info|ai|store|shop|online|app)[^\s]*)/i);
+    const candidateManualUrl = extractedData.website_url || (matchedUrlInInput ? (matchedUrlInInput[0].startsWith("http") ? matchedUrlInInput[0] : `https://${matchedUrlInInput[0]}`) : null);
+
     if (
       !landingPageConfirmed &&
-      selectedDestination === "website" &&
-      extractedData.website_url &&
+      (selectedDestination === "website" || (selectedMetaObjective === "OUTCOME_SALES" && selectedDestination !== "catalogue")) &&
+      candidateManualUrl &&
       !lockedCampaignState?.landing_page_confirmed
     ) {
       if (effectiveBusinessId) {
         const baseUrl = process.env.NEXT_PUBLIC_BASE_URL;
         const nextState = {
           ...lockedCampaignState,
-          landing_page: extractedData.website_url,
+          landing_page: candidateManualUrl,
           landing_page_confirmed: true,
+          stage: lockedCampaignState?.service ? "service_selected" : (lockedCampaignState?.stage || "start"),
           locked_at: new Date().toISOString()
         };
         await saveAnswerMemory(baseUrl, effectiveBusinessId, { campaign_state: nextState }, session.user.email.toLowerCase());
         lockedCampaignState = nextState;
         landingPageConfirmed = true;
 
+        const nextPrompt = !lockedCampaignState?.location
+          ? "Next, what is the **Target Location** (City, State, or Country) for these ads?"
+          : "Reply **YES** to continue.";
+
         return res.status(200).json({
           ok: true,
           mode,
           gated: true,
-          text: `Website saved: **${extractedData.website_url}**. Reply YES to continue.`
+          text: `Website saved: **${candidateManualUrl}**.\n\n${nextPrompt}`
         });
       }
     }
 
-    // If objective is website traffic and landing page exists but not confirmed
+    // 3. Fallback gate: If destination is website traffic and landing page exists but not confirmed
     if (
       !isPlanProposed &&
-      selectedDestination === "website" &&
-      detectedLandingPage &&
+      (selectedDestination === "website" || (selectedMetaObjective === "OUTCOME_SALES" && selectedDestination !== "catalogue")) &&
       !landingPageConfirmed &&
       !lockedCampaignState?.landing_page_confirmed
     ) {
+      const baseUrl = process.env.NEXT_PUBLIC_BASE_URL;
+      const questionState = {
+        ...lockedCampaignState,
+        stage: "awaiting_landing_page",
+        locked_at: new Date().toISOString(),
+      };
+      await saveAnswerMemory(
+        baseUrl,
+        effectiveBusinessId,
+        { campaign_state: questionState },
+        session.user.email.toLowerCase()
+      );
+      lockedCampaignState = questionState;
+
       console.log("TRACE: ENTER META INTAKE FLOW");
       console.log("TRACE: RETURNING RESPONSE — STAGE =", currentState?.stage);
       return res.status(200).json({
         ok: true,
         mode,
         gated: true,
-        text:
-          `I found this website from your connected assets:\n\n` +
-          `${detectedLandingPage}\n\n` +
-          `Is this the page you want people to visit?\n\n` +
-          `Reply YES to confirm, or paste a different URL.`,
+        text: detectedLandingPage
+          ? `I found this website from your connected business:\n\n**${detectedLandingPage}**\n\nIs this the landing page you want people to visit?\n• Reply **YES** to confirm this website\n• Or reply with a different website URL (e.g., https://yourwebsite.com)`
+          : `What is the **Website or Landing Page URL** where visitors should be directed? (e.g., https://yourwebsite.com)`,
       });
     }
     // ============================================================
@@ -4215,7 +4430,9 @@ ${ragContext || "(none)"}
     let finalLandingPage = null;
 
     if (selectedDestination === "website" || selectedMetaObjective === "OUTCOME_SALES") {
-      if (!detectedLandingPage) {
+      finalLandingPage = lockedCampaignState?.landing_page || detectedLandingPage;
+
+      if (!finalLandingPage) {
         return res.status(200).json({
           ok: true,
           gated: true,
@@ -4224,8 +4441,6 @@ ${ragContext || "(none)"}
             "Please paste the exact URL you want people to visit.",
         });
       }
-
-      finalLandingPage = detectedLandingPage;
     }
 
     const finalPrompt = `
@@ -5580,6 +5795,9 @@ Otherwise, respond with a full, clear explanation, and include example JSON only
                   if (adCreative.destination_url && (adCreative.destination_url === "N/A" || adCreative.destination_url === "n/a" || !adCreative.destination_url.startsWith("http"))) {
                     adCreative.destination_url = null;
                   }
+                  if (!adCreative.destination_url && currentState.landing_page && currentState.landing_page.startsWith("http")) {
+                    adCreative.destination_url = currentState.landing_page;
+                  }
 
                   // Force Catalogue settings for dynamic ads
                   if (isCatalogueMode) {
@@ -5847,12 +6065,18 @@ async function generateMetaCampaignPlan({ lockedCampaignState, autoBusinessConte
   const targetLocation = lockedCampaignState?.location || "India";
   const dailyBudget = lockedCampaignState?.budget_per_day || 500;
   const duration = lockedCampaignState?.total_days || 7;
+  const destinationUrl =
+    lockedCampaignState?.landing_page ||
+    lockedCampaignState?.destination_url ||
+    detectedLandingPage ||
+    "https://gabbarinfo.com";
+  const accountCurrency = lockedCampaignState?.account_currency || "INR";
 
   return {
     campaign_name: `${serviceName} - ${targetLocation} - ${new Date().toLocaleDateString()}`,
     objective: lockedCampaignState.objective || "OUTCOME_TRAFFIC",
     performance_goal: lockedCampaignState.performance_goal || "MAXIMIZE_LINK_CLICKS",
-    budget: { amount: dailyBudget, currency: "INR", type: "DAILY" },
+    budget: { amount: dailyBudget, currency: accountCurrency, type: "DAILY" },
     duration: duration,
     targeting: { universal_locations: targetLocation.split(',').map(l => l.trim()), age_min: lockedCampaignState?.target_age_min || 18, age_max: lockedCampaignState?.target_age_max || 65, genders: lockedCampaignState?.target_gender || "all" },
     ad_sets: [{
@@ -5862,7 +6086,7 @@ async function generateMetaCampaignPlan({ lockedCampaignState, autoBusinessConte
         primary_text: `Looking for ${serviceName}? We provide the best solutions for your needs.`,
         headline: `Best ${serviceName} in ${targetLocation}`,
         call_to_action: "LEARN_MORE",
-        destination_url: detectedLandingPage || "https://gabbarinfo.com"
+        destination_url: destinationUrl
       }
     }]
   };
