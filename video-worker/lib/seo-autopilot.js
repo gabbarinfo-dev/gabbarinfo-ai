@@ -377,17 +377,23 @@ function ensureRichLinks(contentHtml, {
   return html;
 }
 
-async function runSeoAutopilotCycle({ supabase, openai, force = false, logger = console.log }) {
+async function runSeoAutopilotCycle({ supabase, openai, force = false, email = null, targetBiz = null, logger = console.log }) {
   if (!supabase) throw new Error("Supabase client is required.");
   if (!openai) throw new Error("OpenAI client is required for blog & visual generation.");
 
   logger("[SEO Autopilot] Starting autonomous scheduled blog cycle on Railway...");
 
   // 1. Fetch active SEO Autopilot configurations
-  const { data: configs, error } = await supabase
+  let query = supabase
     .from("agent_memory")
     .select("email, memory_type, content")
     .like("memory_type", "wp_autopilot_%");
+
+  if (email) {
+    query = query.ilike("email", email.trim());
+  }
+
+  const { data: configs, error } = await query;
 
   if (error) {
     logger("[SEO Autopilot] Failed to fetch SEO autopilot configs:", error.message);
@@ -399,13 +405,23 @@ async function runSeoAutopilotCycle({ supabase, openai, force = false, logger = 
   for (const item of configs || []) {
     try {
       const config = JSON.parse(item.content);
-      const isEnabled = config.enabled === undefined ? true : config.enabled;
-      if (!isEnabled && !force) {
-        logger(`[SEO Autopilot] Autopilot disabled for ${item.email}. Skipping.`);
+      // Hard Rule: Strict Opt-in. Never run unless explicitly enabled === true.
+      const isEnabled = config.enabled === true;
+      if (!isEnabled) {
+        logger(`[SEO Autopilot] Autopilot not active for ${item.email} (${config.businessName || item.memory_type}). Skipping.`);
         continue;
       }
 
       const businessName = config.businessName || "GABBARinfo";
+
+      if (targetBiz) {
+        const normTarget = targetBiz.toLowerCase().trim().replace(/[^a-z0-9]/g, "_");
+        const itemBizKey = item.memory_type.replace(/^wp_autopilot_/, "").toLowerCase().trim();
+        if (itemBizKey !== normTarget && !businessName.toLowerCase().includes(targetBiz.toLowerCase())) {
+          continue;
+        }
+      }
+
       logger(`[SEO Autopilot] Processing cycle for ${item.email} (${businessName})...`);
 
       // 2. Check Cadence velocity (~12 hours for daily)

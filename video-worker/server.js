@@ -2109,14 +2109,16 @@ async function uploadMasterVideo(filePath, filename, userEmail) {
 app.post("/autopilot/social/trigger", requireAuth, async (req, res) => {
   try {
     const force = Boolean(req.body?.force || req.query?.force);
-    log("AUTOPILOT", `Manual trigger: Social Media Planner Autopilot (force: ${force})`);
+    const email = req.body?.email || req.query?.email || null;
+    const targetBrand = req.body?.brand || req.body?.targetBrand || null;
+    log("AUTOPILOT", `Manual trigger: Social Media Planner Autopilot (force: ${force}, email: ${email || "all"}, brand: ${targetBrand || "all"})`);
     try {
       delete require.cache[require.resolve("./lib/brand-integrity-guard")];
       delete require.cache[require.resolve("./lib/instagram-image-helper")];
       delete require.cache[require.resolve("./lib/social-autopilot")];
     } catch (_) {}
     const { runSocialAutopilotCycle: freshRunSocial } = require("./lib/social-autopilot");
-    const results = await freshRunSocial({ supabase, openai, force, logger: (msg) => log("SOCIAL_AP", msg) });
+    const results = await freshRunSocial({ supabase, openai, force, email, targetBrand, logger: (msg) => log("SOCIAL_AP", msg) });
     res.json({ ok: true, count: results.length, results });
   } catch (err) {
     log("AUTOPILOT", `Social Autopilot Error: ${err.message}`);
@@ -2127,13 +2129,15 @@ app.post("/autopilot/social/trigger", requireAuth, async (req, res) => {
 app.post("/autopilot/seo/trigger", requireAuth, async (req, res) => {
   try {
     const force = Boolean(req.body?.force || req.query?.force);
-    log("AUTOPILOT", `Manual trigger: SEO Suite Autopilot (force: ${force})`);
+    const email = req.body?.email || req.query?.email || null;
+    const targetBiz = req.body?.biz || req.body?.targetBiz || null;
+    log("AUTOPILOT", `Manual trigger: SEO Suite Autopilot (force: ${force}, email: ${email || "all"}, biz: ${targetBiz || "all"})`);
     try {
       delete require.cache[require.resolve("./lib/brand-integrity-guard")];
       delete require.cache[require.resolve("./lib/seo-autopilot")];
     } catch (_) {}
     const { runSeoAutopilotCycle: freshRunSeo } = require("./lib/seo-autopilot");
-    const results = await freshRunSeo({ supabase, openai, force, logger: (msg) => log("SEO_AP", msg) });
+    const results = await freshRunSeo({ supabase, openai, force, email, targetBiz, logger: (msg) => log("SEO_AP", msg) });
     res.json({ ok: true, count: results.length, results });
   } catch (err) {
     log("AUTOPILOT", `SEO Autopilot Error: ${err.message}`);

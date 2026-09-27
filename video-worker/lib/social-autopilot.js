@@ -248,16 +248,22 @@ ${archetype.description}
 - ${profile.visualDirectives.negativeConstraints}`;
 }
 
-async function runSocialAutopilotCycle({ supabase, openai, force = false, logger = console.log }) {
+async function runSocialAutopilotCycle({ supabase, openai, force = false, email = null, targetBrand = null, logger = console.log }) {
   if (!supabase) throw new Error("Supabase client is required.");
   if (!openai) throw new Error("OpenAI client is required for gpt-image-2 visual generation.");
 
   logger("[Social Autopilot] Starting autonomous scheduled cycle on Railway...");
 
-  const { data: configs, error } = await supabase
+  let query = supabase
     .from("agent_memory")
     .select("email, memory_type, content")
     .like("memory_type", "social_autopilot_%");
+
+  if (email) {
+    query = query.ilike("email", email.trim());
+  }
+
+  const { data: configs, error } = await query;
 
   if (error) {
     logger("[Social Autopilot] Failed to fetch social autopilot configs:", error.message);
@@ -269,13 +275,115 @@ async function runSocialAutopilotCycle({ supabase, openai, force = false, logger
   for (const item of configs || []) {
     try {
       const config = JSON.parse(item.content);
-      const isEnabled = config.enabled === undefined ? true : config.enabled;
-      if (!isEnabled && !force) {
-        logger(`[Social Autopilot] Autopilot disabled for ${item.email}. Skipping.`);
+      // Hard Rule 1: Strict Opt-in. Never run unless explicitly enabled === true.
+      const isEnabled = config.enabled === true;
+      if (!isEnabled) {
+        logger(`[Social Autopilot] Autopilot not active for ${item.email} (${config.businessName || item.memory_type}). Skipping.`);
         continue;
       }
 
       const businessName = config.businessName || "GABBARinfo";
+
+      // Hard Rule 1.2: If a targetBrand filter was passed, isolate strictly
+      const rawBizKey = item.memory_type.replace(/^social_autopilot_/, "");
+      let cleanBizKey = rawBizKey;
+      if (cleanBizKey.toLowerCase().startsWith(item.email.toLowerCase())) {
+        cleanBizKey = cleanBizKey.slice(item.email.length).replace(/^[_:]/, "");
+      }
+      const sanitizedEmail = item.email.toLowerCase().replace(/[^a-z0-9]/g, "_");
+      if (cleanBizKey.toLowerCase().startsWith(sanitizedEmail)) {
+        cleanBizKey = cleanBizKey.slice(sanitizedEmail.length).replace(/^[_:]/, "");
+      }
+      const normalizedBiz = (config.businessName || cleanBizKey || "default")
+        .toLowerCase()
+        .trim()
+        .replace(/[^a-z0-9]/g, "_");
+
+      if (targetBrand) {
+        const normTarget = targetBrand.toLowerCase().trim().replace(/[^a-z0-9]/g, "_");
+        if (cleanBizKey !== normTarget && normalizedBiz !== normTarget && !businessName.toLowerCase().includes(targetBrand.toLowerCase())) {
+          continue;
+        }
+      }
+
+      // Hard Rule 1.3: Verify connected Meta channels FIRST before burning any LLM or image generation credits
+      const [brandMemsRes, bundlePairRes] = await Promise.all([
+        supabase
+          .from("agent_memory")
+          .select("memory_type, content")
+          .eq("email", item.email.trim().toLowerCase())
+          .like("memory_type", "meta_conn_%"),
+        supabase
+          .from("agent_memory")
+          .select("content")
+          .eq("email", item.email.trim().toLowerCase())
+          .in("memory_type", ["bundle_pairings", "brand_asset_pairings"])
+          .maybeSingle(),
+      ]);
+
+      const brandProfiles = [];
+      (brandMemsRes.data || []).forEach((m) => {
+        try {
+          const parsed = JSON.parse(m.content);
+          brandProfiles.push({ key: m.memory_type.replace("meta_conn_", ""), ...parsed });
+        } catch (_) {}
+      });
+
+      if (bundlePairRes.data?.content) {
+        try {
+          const pairList = JSON.parse(bundlePairRes.data.content);
+          if (Array.isArray(pairList)) {
+            pairList.forEach((p) => {
+              if (p.pageId && !brandProfiles.some((b) => b.pageId === p.pageId)) {
+                brandProfiles.push(p);
+              }
+            });
+          }
+        } catch (_) {}
+      }
+
+      let activeMeta = null;
+      const matchedBrand = brandProfiles.find((b) => {
+        const bKey = String(b.key || "").toLowerCase();
+        const bName = String(b.businessName || b.pageName || "").toLowerCase().replace(/[^a-z0-9]/g, "");
+        const targetName = String(config.businessName || cleanBizKey || "").toLowerCase().replace(/[^a-z0-9]/g, "");
+        const targetKey = String(cleanBizKey || "").toLowerCase();
+        const normKey = String(normalizedBiz || "").toLowerCase();
+        return (bKey && (bKey === targetKey || bKey === normKey || bKey.includes(targetKey) || targetKey.includes(bKey))) ||
+               (bName && targetName && (bName === targetName || bName.includes(targetName) || targetName.includes(bName)));
+      });
+
+      if (matchedBrand && (matchedBrand.pageId || matchedBrand.igId)) {
+        activeMeta = {
+          fb_page_id: matchedBrand.pageId,
+          fb_page_access_token: matchedBrand.pageToken || matchedBrand.fb_page_access_token,
+          fb_user_access_token: matchedBrand.userToken || matchedBrand.fb_user_access_token,
+          ig_business_id: matchedBrand.igId || matchedBrand.ig_business_id,
+          instagram_actor_id: matchedBrand.igId || matchedBrand.instagram_actor_id,
+        };
+      }
+
+      if (!activeMeta && brandProfiles.length === 0) {
+        const { data: metaConn, error: metaErr } = await supabase
+          .from("meta_connections")
+          .select("fb_page_id, fb_page_access_token, fb_user_access_token, ig_business_id, instagram_actor_id, business_website, business_phone, website_url, email, business_name")
+          .ilike("email", item.email.trim())
+          .order("updated_at", { ascending: false })
+          .limit(1)
+          .maybeSingle();
+
+        if (metaErr) {
+          logger(`[Social Autopilot] Error fetching meta_connections for ${item.email}: ${metaErr.message}`);
+        }
+        activeMeta = metaConn;
+      }
+
+      if (!activeMeta || (!activeMeta.fb_page_id && !activeMeta.ig_business_id)) {
+        logger(`[Social Autopilot] No verified Meta assets (Facebook Page / Instagram ID) connected for ${item.email} (${businessName}). Skipping cycle.`);
+        results.push({ email: item.email, status: "skipped", reason: "no_meta_connection", business: businessName });
+        continue;
+      }
+
       logger(`[Social Autopilot] Processing ${item.email} (${businessName})...`);
 
       // 1. Check Cadence velocity (default: daily = ~12 hours interval)
@@ -559,93 +667,7 @@ async function runSocialAutopilotCycle({ supabase, openai, force = false, logger
         }
       }
 
-      // 3. Multi-Brand Meta Assets Discovery & Verification (RUN BEFORE CAPTION GENERATION)
-      const rawBizKey = item.memory_type.replace(/^social_autopilot_/, "");
-      let cleanBizKey = rawBizKey;
-      if (cleanBizKey.toLowerCase().startsWith(item.email.toLowerCase())) {
-        cleanBizKey = cleanBizKey.slice(item.email.length).replace(/^[_:]/, "");
-      }
-      const sanitizedEmail = item.email.toLowerCase().replace(/[^a-z0-9]/g, "_");
-      if (cleanBizKey.toLowerCase().startsWith(sanitizedEmail)) {
-        cleanBizKey = cleanBizKey.slice(sanitizedEmail.length).replace(/^[_:]/, "");
-      }
-      const normalizedBiz = (config.businessName || cleanBizKey || "default")
-        .toLowerCase()
-        .trim()
-        .replace(/[^a-z0-9]/g, "_");
-
-      const [brandMemsRes, bundlePairRes] = await Promise.all([
-        supabase
-          .from("agent_memory")
-          .select("memory_type, content")
-          .eq("email", item.email.trim().toLowerCase())
-          .like("memory_type", "meta_conn_%"),
-        supabase
-          .from("agent_memory")
-          .select("content")
-          .eq("email", item.email.trim().toLowerCase())
-          .in("memory_type", ["bundle_pairings", "brand_asset_pairings"])
-          .maybeSingle(),
-      ]);
-
-      const brandProfiles = [];
-      (brandMemsRes.data || []).forEach((m) => {
-        try {
-          const parsed = JSON.parse(m.content);
-          brandProfiles.push({ key: m.memory_type.replace("meta_conn_", ""), ...parsed });
-        } catch (_) {}
-      });
-
-      if (bundlePairRes.data?.content) {
-        try {
-          const pairList = JSON.parse(bundlePairRes.data.content);
-          if (Array.isArray(pairList)) {
-            pairList.forEach((p) => {
-              if (p.pageId && !brandProfiles.some((b) => b.pageId === p.pageId)) {
-                brandProfiles.push(p);
-              }
-            });
-          }
-        } catch (_) {}
-      }
-
-      // Match target brand strictly
-      let activeMeta = null;
-      const matchedBrand = brandProfiles.find((b) => {
-        const bKey = String(b.key || "").toLowerCase();
-        const bName = String(b.businessName || b.pageName || "").toLowerCase().replace(/[^a-z0-9]/g, "");
-        const targetName = String(config.businessName || cleanBizKey || "").toLowerCase().replace(/[^a-z0-9]/g, "");
-        const targetKey = String(cleanBizKey || "").toLowerCase();
-        const normKey = String(normalizedBiz || "").toLowerCase();
-        return (bKey && (bKey === targetKey || bKey === normKey || bKey.includes(targetKey) || targetKey.includes(bKey))) ||
-               (bName && targetName && (bName === targetName || bName.includes(targetName) || targetName.includes(bName)));
-      });
-
-      if (matchedBrand && (matchedBrand.pageId || matchedBrand.igId)) {
-        activeMeta = {
-          fb_page_id: matchedBrand.pageId,
-          fb_page_access_token: matchedBrand.pageToken || matchedBrand.fb_page_access_token,
-          fb_user_access_token: matchedBrand.userToken || matchedBrand.fb_user_access_token,
-          ig_business_id: matchedBrand.igId || matchedBrand.ig_business_id,
-          instagram_actor_id: matchedBrand.igId || matchedBrand.instagram_actor_id,
-        };
-      }
-
-      // Strict Isolation: Fallback to meta_connections ONLY if user has 0 custom brand profiles
-      if (!activeMeta && brandProfiles.length === 0) {
-        const { data: metaConn, error: metaErr } = await supabase
-          .from("meta_connections")
-          .select("fb_page_id, fb_page_access_token, fb_user_access_token, ig_business_id, instagram_actor_id, business_website, business_phone, website_url, email, business_name")
-          .ilike("email", item.email.trim())
-          .order("updated_at", { ascending: false })
-          .limit(1)
-          .maybeSingle();
-
-        if (metaErr) {
-          logger(`[Social Autopilot] Error fetching meta_connections for ${item.email}: ${metaErr.message}`);
-        }
-        activeMeta = metaConn;
-      }
+      // 3. Multi-Brand Meta Assets already verified and activeMeta resolved upfront
 
       // Resolve actual business details to avoid placeholder tokens
       const resolvedWebsite = (
