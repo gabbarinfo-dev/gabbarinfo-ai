@@ -7,6 +7,8 @@ const {
   filterCleanCandidateServices,
   validateTopicRelevance,
   getVisualGuardDirectives,
+  getBusinessLimitationProfile,
+  validateContentLimitations,
 } = require("./brand-integrity-guard");
 
 const BLACKLISTED_TERMS = [
@@ -31,7 +33,16 @@ const BLACKLISTED_TERMS = [
   "discreet",
   "horoscope",
   "home",
-  "blogs"
+  "blogs",
+  "single scan",
+  "scan trial",
+  "virtual scan",
+  "scan to try",
+  "virtual trial",
+  "virtual try-on",
+  "ar try on",
+  "scanner",
+  "sample page"
 ];
 
 function decodeHtmlEntities(str) {
@@ -99,31 +110,104 @@ function sanitizeAndInterpolateSocialCaption(rawCaption, { website = "", phone =
   return text.trim();
 }
 
-function getCreativeArchetypes(service, industry) {
+function getCreativeArchetypes(service, industry, limitationProfile) {
   const s = service || "Professional Services";
   const ind = industry || "Commercial Solutions";
+  const domain = limitationProfile?.domainCategory || "GENERAL_BUSINESS";
 
+  if (domain === "PHYSICAL_JEWELLERY_FASHION") {
+    return [
+      {
+        name: "LUXURY_JEWELLERY_STUDIO_PEDESTAL",
+        description: `
+[VISUAL ARCHETYPE: LUXURY ARTISANAL FINE JEWELLERY PEDESTAL]
+- Ultra-premium, high-gloss commercial ad poster for "${s}" (${ind}).
+- Features a striking, hyper-realistic physical jewellery focal piece representing "${s}" displayed with pride on an elegant black obsidian or cream travertine pedestal.
+- Materials & Atmosphere: Exquisite metallic sheen (gold, silver, polki, kundan), sparkling gemstone facets, dramatic rim lighting, luxury velvet backdrop with soft architectural shadows.
+- STRICT ANTI-FICTION RULE: NEVER depict smartphone app mockups, phone screens, glowing scanner interfaces, QR codes, scan frames, virtual trial UI, or digital dashboards. This is a physical luxury jewellery brand. Show ONLY the real physical jewellery piece and luxury styling.
+- Typography: Sophisticated, clean modern luxury typography: "${s}".
+`
+      },
+      {
+        name: "EDITORIAL_LUXURY_SHOWCASE",
+        description: `
+[VISUAL ARCHETYPE: EDITORIAL HIGH-FASHION ACCESSORY SHOWCASE]
+- Editorial luxury magazine campaign aesthetic showcasing "${s}".
+- Features an elegant neck bust or luxury studio presentation of authentic physical "${s}" with couture details and refined styling.
+- Materials & Atmosphere: Soft daylight studio ambiance, warm metallic reflections, pristine editorial composition.
+- STRICT ANTI-FICTION RULE: Show ONLY the tangible physical jewellery. Absolutely NO phone scanners, NO apps, NO QR codes, NO virtual fitting overlays.
+- Typography: Refined high-fashion serif/sans-serif typography: "${s}".
+`
+      }
+    ];
+  }
+
+  if (domain === "TWO_WHEELER_MECHANIC") {
+    return [
+      {
+        name: "PROFESSIONAL_BIKE_WORKSHOP",
+        description: `
+[VISUAL ARCHETYPE: PROFESSIONAL TWO-WHEELER WORKSHOP & TUNING]
+- Clean, high-end commercial workshop photograph representing "${s}".
+- Features authentic two-wheeler motorcycle or scooter mechanics, specialized bike tools, precision components, and an organized service bay.
+- Materials & Atmosphere: Crisp industrial workshop lighting, polished metallic motorcycle parts, clean service floor, dynamic depth of field.
+- STRICT ANTI-FICTION RULE: Depict ONLY two-wheelers, motorcycles, and scooters. STRICTLY NO cars, NO four-wheelers, NO trucks, NO digital scanning apps.
+- Typography: Bold, powerhouse automotive typography: "${s}".
+`
+      }
+    ];
+  }
+
+  if (domain === "WELLNESS_SPA_MASSAGE") {
+    return [
+      {
+        name: "SERENE_WELLNESS_SANCTUARY",
+        description: `
+[VISUAL ARCHETYPE: SERENE WELLNESS SPA SANCTUARY]
+- Tranquil luxury spa retreat aesthetic representing "${s}".
+- Features warm ambient candle glow, aromatic essential oil bottles, smooth basalt massage stones, plush clean towels, and soothing bamboo or orchid accents.
+- Materials & Atmosphere: Warm golden glow, soft natural shadows, deeply relaxing peaceful atmosphere.
+- STRICT ANTI-FICTION RULE: Depict ONLY peaceful physical massage therapy and relaxation. STRICTLY NO computer screens, NO marketing dashboards, NO laptops, NO clinical surgery tools.
+- Typography: Elegant calming typography: "${s}".
+`
+      }
+    ];
+  }
+
+  if (domain === "DIGITAL_AGENCY_MARKETING") {
+    return [
+      {
+        name: "DYNAMIC_AGENCY_POWERHOUSE",
+        description: `
+[VISUAL ARCHETYPE: DYNAMIC MODERN 3D COMMERCIAL GRAPHIC]
+- Cutting-edge commercial graphic design with dynamic depth and layered 3D accents representing "${s}".
+- Features high-impact 3D visual icons, sleek creative workspace, polished dark slate materials, and vibrant glowing ambient lighting.
+- Typography: High-impact powerhouse advertising typography: "${s}".
+`
+      },
+      {
+        name: "BRIGHT_CONTEMPORARY_STUDIO",
+        description: `
+[VISUAL ARCHETYPE: BRIGHT MINIMALIST & CONTEMPORARY STUDIO]
+- Pristine, daylight-filled high-end commercial ad aesthetic with soft architectural shadows.
+- Features clean, elegant composition showing modern creative workspace and presentation elements representing "${s}".
+- Typography: Sophisticated contemporary sans-serif typography: "${s}".
+`
+      }
+    ];
+  }
+
+  // Default clean commercial showcase
   return [
     {
       name: "HERO_COMMERCIAL_SHOWCASE",
       description: `
 [VISUAL ARCHETYPE: HERO COMMERCIAL SHOWCASE & PEDESTAL]
 - Ultra-premium, high-gloss commercial ad poster for "${s}" (${ind}).
-- Features a striking, hyper-realistic focal subject representing "${s}" displayed with pride on a sleek modern pedestal or floating center-right with dramatic studio lighting.
-- Materials & Atmosphere: Polished obsidian reflections, subtle ambient particle glow, and deep rich contrast.
-- Color Palette: Sophisticated luxury palette with vibrant color-matched rim lighting.
-- Typography: Ultra-clean, bold modern display typography with high readability: "${s}".
-`
-    },
-    {
-      name: "DYNAMIC_MODERN_GRAPHIC",
-      description: `
-[VISUAL ARCHETYPE: DYNAMIC MODERN 3D COMMERCIAL GRAPHIC]
-- Cutting-edge commercial graphic design with dynamic depth and layered 3D accents.
-- Features high-impact 3D visual icons, floating contextual dashboards, or stylized physical elements representing "${s}" with realistic materials and glossy finishes.
-- Materials & Atmosphere: Sleek glassmorphism panels, energetic directional lighting, and crisp geometric accents.
-- Color Palette: Bold high-contrast dark palette with vibrant glowing ambient accents.
-- Typography: High-impact powerhouse advertising typography: "${s}".
+- Features a striking, hyper-realistic focal subject representing "${s}" displayed with pride on a sleek modern pedestal with dramatic studio lighting.
+- Materials & Atmosphere: Polished reflections, subtle ambient glow, and deep rich contrast.
+- STRICT ANTI-FICTION RULE: NEVER depict smartphone app mockups, phone screens, QR codes, or virtual scan frames unless this is explicitly a mobile software company.
+- Typography: Ultra-clean, bold modern display typography: "${s}".
 `
     },
     {
@@ -131,18 +215,17 @@ function getCreativeArchetypes(service, industry) {
       description: `
 [VISUAL ARCHETYPE: BRIGHT MINIMALIST & CONTEMPORARY STUDIO]
 - Pristine, daylight-filled high-end commercial ad aesthetic with soft architectural shadows.
-- Features clean, elegant composition showing modern workspace, key equipment, refined architecture, and presentation elements representing "${s}".
-- Materials & Atmosphere: Soft matte textures, bright airy space, smooth light travertine or clean off-white gradient backdrop.
-- Color Palette: Crisp high-contrast dark typography and vibrant accent lines.
+- Features clean, elegant composition showing authentic workspace, key equipment, and refined presentation representing "${s}".
 - Typography: Sophisticated contemporary sans-serif typography: "${s}".
 `
     }
   ];
 }
 
-function buildGraphicPrompt(businessName, service, industry, hook, topic) {
+function buildGraphicPrompt(businessName, service, industry, hook, topic, limitationProfile) {
   const userIndustry = industry || businessName || "Professional Services";
-  const archetypes = getCreativeArchetypes(service, userIndustry);
+  const profile = limitationProfile || getBusinessLimitationProfile({ businessName, industry: userIndustry, services: [service] });
+  const archetypes = getCreativeArchetypes(service, userIndustry, profile);
   const archetype = archetypes[Math.floor(Math.random() * archetypes.length)];
 
   return `You are an award-winning commercial graphic designer creating a finished agency-grade commercial ad poster for social media advertising.
@@ -150,17 +233,19 @@ function buildGraphicPrompt(businessName, service, industry, hook, topic) {
 [CLIENT BUSINESS CONTEXT]
 - Brand Name: "${businessName}"
 - Industry: "${userIndustry}"
-- Specific Service: "${service}"
+- Specific Offering: "${service}"
 - Core Message / Hook: "${hook}: ${topic}"
 
 [VISUAL DIRECTION]
 ${archetype.description}
 
 [SUBJECT MATTER RULES - CRITICAL]
-- Accurately depict premium, professional visual elements and commercial atmosphere directly relevant to "${service}" and "${userIndustry}".
+- Accurately depict premium, professional visual elements directly relevant to "${service}" and "${userIndustry}".
+- Accurately honor verified service scope: ${profile.allowedCapabilities}
 - NEVER depict random unrelated stock scenes or physical delivery trucks unless specifically requested.
-- Sleek studio lighting, 3D geometric accents, high contrast, clean commercial composition, pristine 4K quality.
-- Absolutely NO text watermarks or random gibberish letters.`;
+- Sleek studio lighting, high contrast, clean commercial composition, pristine 4K quality.
+- Absolutely NO text watermarks or random gibberish letters.
+- ${profile.visualDirectives.negativeConstraints}`;
 }
 
 async function runSocialAutopilotCycle({ supabase, openai, force = false, logger = console.log }) {
@@ -240,18 +325,24 @@ async function runSocialAutopilotCycle({ supabase, openai, force = false, logger
         logger(`[Social Autopilot] Brand Integrity Guard: Activated ${crossBrandForbidden.length} negative exclusion terms from ${foreignBrands.length} foreign brands under ${item.email}.`);
       }
 
-      // 2. Discover / Filter legitimate services
-      let candidateServices = [];
-      if (Array.isArray(config.services)) candidateServices.push(...config.services.map(decodeHtmlEntities));
-      if (Array.isArray(config.discoveredServices)) candidateServices.push(...config.discoveredServices.map(decodeHtmlEntities));
-      if (Array.isArray(config.queue)) {
-        config.queue.forEach(q => {
-          if (q?.service) candidateServices.push(decodeHtmlEntities(q.service));
-        });
-      }
-      candidateServices = [...new Set(candidateServices)].filter(isLegitimateService);
+      const businessIndustry = config.industry || businessName || "Commercial Services";
+      const limitationProfile = getBusinessLimitationProfile({
+        businessName,
+        industry: businessIndustry,
+        currentSiteUrl: siteUrl,
+        services: config.services || []
+      });
+      logger(`[Social Autopilot] Limitation Profile: Domain "${limitationProfile.domainCategory}" active for ${businessName}.`);
 
-      // If not yet discovered, check client onboarding memory for their exact business services
+      // 2. Discover / Filter legitimate services
+      // CRITICAL RULE: If config.services has verified items, it is the AUTHORITATIVE, CLOSED roster.
+      // Never crawl external web pages or pull dirty historical queue items into candidate services!
+      let candidateServices = [];
+      if (Array.isArray(config.services) && config.services.length > 0) {
+        candidateServices = config.services.map(decodeHtmlEntities).filter(isLegitimateService);
+      }
+
+      // If not yet discovered in config, check client onboarding memory for their exact business services
       if (candidateServices.length === 0) {
         try {
           const { data: clientMem } = await supabase
@@ -272,8 +363,14 @@ async function runSocialAutopilotCycle({ supabase, openai, force = false, logger
         } catch (_) {}
       }
 
-      // Dynamically crawl their actual site's published pages if candidate services not yet configured
-      if (siteUrl && candidateServices.length === 0) {
+      // Dynamically crawl their actual site's published pages ONLY if candidate services not yet configured
+      // and ONLY if siteUrl is confirmed to belong strictly to this brand (NEVER crawl for eCommerce/Shopify stores)
+      const isShopifyBrand = Boolean(
+        limitationProfile.domainCategory === "PHYSICAL_JEWELLERY_FASHION" ||
+        (item.memory_type || "").toLowerCase().includes("bella") ||
+        (businessName || "").toLowerCase().includes("bella")
+      );
+      if (siteUrl && candidateServices.length === 0 && !isShopifyBrand) {
         try {
           const pagesRes = await fetch(`${siteUrl}/wp-json/wp/v2/pages?per_page=50&_fields=title,slug`);
           if (pagesRes.ok) {
@@ -291,51 +388,7 @@ async function runSocialAutopilotCycle({ supabase, openai, force = false, logger
         } catch (_) {}
       }
 
-      // Also load intelligence from Supabase agent_memory strictly for this business profile (Zero Cross-Site Contamination)
-      try {
-        const { data: intelMems } = await supabase
-          .from("agent_memory")
-          .select("memory_type, content")
-          .eq("email", item.email.trim().toLowerCase())
-          .like("memory_type", "wp_intel_%");
-
-        const normalizedBiz = (businessName || "").toLowerCase().trim().replace(/[^a-z0-9]/g, "_");
-        let cleanSiteHost = "";
-        if (siteUrl) {
-          try { cleanSiteHost = new URL(siteUrl).hostname.replace(/^www\./i, "").toLowerCase(); } catch (_) {}
-        }
-
-        for (const im of intelMems || []) {
-          try {
-            const mType = im.memory_type || "";
-            const intelKey = mType.replace("wp_intel_", "");
-            const parsedIntel = typeof im.content === "string" ? JSON.parse(im.content) : im.content;
-
-            let intelHost = "";
-            if (parsedIntel?.siteUrl) {
-              try { intelHost = new URL(parsedIntel.siteUrl).hostname.replace(/^www\./i, "").toLowerCase(); } catch (_) {}
-            }
-
-            const isExactKey = Boolean(
-              normalizedBiz && (intelKey.includes(normalizedBiz) || normalizedBiz.includes(intelKey))
-            );
-            const isHostMatch = Boolean(cleanSiteHost && intelHost && cleanSiteHost === intelHost);
-            const isBizMatch = Boolean(
-              parsedIntel?.businessName &&
-              parsedIntel.businessName.toLowerCase().replace(/[^a-z0-9]/g, "_") === normalizedBiz
-            );
-
-            // Strict Anti-Cross-Contamination: If intel does not belong to this business, reject!
-            if (!isExactKey && !isHostMatch && !isBizMatch) {
-              continue;
-            }
-
-            if (Array.isArray(parsedIntel?.coreOfferings)) {
-              candidateServices.push(...parsedIntel.coreOfferings.map(decodeHtmlEntities));
-            }
-          } catch (_) {}
-        }
-      } catch (_) {}
+      // Filter against foreign brands
       candidateServices = [...new Set(candidateServices)].filter(isLegitimateService);
       candidateServices = filterCleanCandidateServices({
         candidateServices,
@@ -343,15 +396,65 @@ async function runSocialAutopilotCycle({ supabase, openai, force = false, logger
         logger,
       });
 
-      // Dynamic fallback based on the user's specific business name & industry
+      // Filter against domain limitation forbidden capabilities (e.g. no "scan" for jewelry, no "car" for bike mechanic, no "seo" for massage)
+      candidateServices = candidateServices.filter(s => {
+        const check = validateContentLimitations({ text: s, limitationProfile, logger });
+        if (!check.ok) {
+          logger(`[Social Autopilot] Discarded candidate service "${s}": violates domain limitation "${check.violation}".`);
+          return false;
+        }
+        return true;
+      });
+
+      // Domain-tailored clean fallback based on business limitation profile
       if (candidateServices.length === 0) {
-        const ind = config.industry || businessName || "Commercial Services";
-        candidateServices = [
-          `${ind} Core Solutions`,
-          `Professional High-Quality ${ind}`,
-          `Strategic Client Delivery in ${ind}`,
-          `Trusted Industry Standards in ${ind}`
-        ];
+        if (limitationProfile.domainCategory === "PHYSICAL_JEWELLERY_FASHION") {
+          candidateServices = [
+            "Designer Jewellery",
+            "Bridal Accessories",
+            "Earrings & Rings",
+            "Anti-Tarnish Jewellery",
+            "Statement Necklaces"
+          ];
+        } else if (limitationProfile.domainCategory === "TWO_WHEELER_MECHANIC") {
+          candidateServices = [
+            "Two-Wheeler Servicing",
+            "Motorcycle Engine Tuning",
+            "Brake & Suspension Check",
+            "Scooter Maintenance",
+            "Genuine Bike Parts"
+          ];
+        } else if (limitationProfile.domainCategory === "WELLNESS_SPA_MASSAGE") {
+          candidateServices = [
+            "Woman Deep Massage",
+            "Aromatherapy Therapy",
+            "Swedish Massage",
+            "Full Body Relaxation",
+            "Stress Relief Therapy"
+          ];
+        } else if (limitationProfile.domainCategory === "ASTROLOGY_PALMISTRY") {
+          candidateServices = [
+            "Vedic Astrology Reading",
+            "Palmistry Insights",
+            "Kundali Matchmaking",
+            "Planetary Transit Guidance"
+          ];
+        } else if (limitationProfile.domainCategory === "DIGITAL_AGENCY_MARKETING") {
+          candidateServices = [
+            "Performance Marketing",
+            "Meta Social Ads",
+            "Google Ads Strategy",
+            "Website Design",
+            "Video Editing"
+          ];
+        } else {
+          candidateServices = [
+            `${businessIndustry} Core Solutions`,
+            `Professional High-Quality ${businessIndustry}`,
+            `Strategic Client Delivery in ${businessIndustry}`,
+            `Trusted Industry Standards in ${businessIndustry}`
+          ];
+        }
       }
 
       // 30-Day Social History & Anti-Repetition Ranking
@@ -397,15 +500,20 @@ async function runSocialAutopilotCycle({ supabase, openai, force = false, logger
         activeQueueItem = config.queue.find(q => q.status === "pending" && isLegitimateService(q.service));
         if (activeQueueItem) {
           const queueServ = decodeHtmlEntities(activeQueueItem.service);
-          const queueServStat = serviceStats.find(s => s.service.toLowerCase() === queueServ.toLowerCase());
-          // If this queued service was already posted recently and we have fresh unserved services
-          if (queueServStat && queueServStat.count > minCount && eligibleServices.length > 0) {
-            logger(`[Social Autopilot] Queue item service "${queueServ}" was already posted ${queueServStat.count} times recently. Enforcing 30-day anti-repetition rotation to fresh service.`);
-            let nextIndex = (Number(config.lastServiceIndex) || 0) + 1;
-            if (nextIndex >= eligibleServices.length) nextIndex = 0;
-            activeService = eligibleServices[nextIndex];
+          // Check if queue item itself was corrupted by a past bug with a forbidden term
+          const qCheck = validateContentLimitations({
+            text: `${queueServ} ${activeQueueItem.topic || ""} ${activeQueueItem.hook || ""}`,
+            limitationProfile,
+            logger
+          });
+          if (!qCheck.ok) {
+            logger(`[Social Autopilot] 🚨 Queue item "${queueServ}" violates domain limitations (${qCheck.violation}). Auto-correcting to verified service.`);
+            activeService = candidateServices[0] || `${businessName} Core Offerings`;
             activeQueueItem.service = activeService;
+            activeQueueItem.topic = `${activeService}: Premium Craftsmanship & Style`;
+            activeQueueItem.hook = `Essential Guide & Insider Tips`;
           } else {
+            // Sacred rule: Keep the planned queue service! Never overwrite it with a foreign/crawled item!
             activeService = queueServ;
           }
         }
@@ -450,8 +558,6 @@ async function runSocialAutopilotCycle({ supabase, openai, force = false, logger
           activeQueueItem = null; // Do not consume conflicting queue item today
         }
       }
-
-      const businessIndustry = config.industry || businessName || "Commercial Services";
 
       // 3. Multi-Brand Meta Assets Discovery & Verification (RUN BEFORE CAPTION GENERATION)
       const rawBizKey = item.memory_type.replace(/^social_autopilot_/, "");
@@ -598,6 +704,8 @@ ${targetLocations ? `Target Markets: "${targetLocations}"` : ""}
 PREVIOUS 30 SOCIAL HOOKS (DO NOT REPEAT ANY OF THESE HOOKS, PATTERNS, OR PHRASING):
 ${pastHooks.slice(0, 30).map((h, i) => `[Post ${i + 1}] "${h}"`).join("\n")}
 
+${limitationProfile.promptLimitationsDirective}
+
 STRICT INSTRUCTIONS:
 - The hook must be completely original, punchy, curiosity-inducing, and commercially compelling.
 - NEVER reuse any phrasing, sentence structure, or angle from the past 30 posts above.
@@ -652,6 +760,8 @@ Hook: "${selectedHook}"
 ${targetLocations ? `Target Geographic Markets: "${targetLocations}" (Tailor the hook and message to resonate strongly with customers and decision-makers in ${targetLocations})` : ""}
 Include 3-4 bullet benefits, a strong call to action, and 6-8 relevant hashtags${targetLocations ? ` (including geo-targeted hashtags for ${targetLocations})` : ""}.
 
+${limitationProfile.promptLimitationsDirective}
+
 CALL TO ACTION & CONTACT MANDATES:
 ${ctaDirectives}`
             }
@@ -675,14 +785,37 @@ ${ctaDirectives}`
         businessName: resolvedBrandName,
       });
 
-      // 5. Generate Bespoke 3D Poster via gpt-image-2 (ZERO STOCK PHOTOS, Hardened with Brand Integrity Guard)
+      // Strict Validation Gate: Check topic, hook, and caption against limitation profile
+      const topicCheck = validateContentLimitations({ text: topicTitle, limitationProfile, logger });
+      const hookCheck = validateContentLimitations({ text: selectedHook, limitationProfile, logger });
+      const captionCheck = validateContentLimitations({ text: captionText, limitationProfile, logger });
+
+      if (!topicCheck.ok || !hookCheck.ok || !captionCheck.ok) {
+        const violation = topicCheck.violation || hookCheck.violation || captionCheck.violation;
+        logger(`[Social Autopilot] 🚨 Content breached domain limitation rules ("${violation}"). Sanitizing content...`);
+        const rx = new RegExp(violation.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"), "gi");
+        topicTitle = topicTitle.replace(rx, "").trim() || `${activeService} Spotlight`;
+        selectedHook = selectedHook.replace(rx, "").trim() || `Discover High-Quality ${activeService}`;
+        captionText = captionText.replace(rx, "").trim();
+      }
+
+      // 5. Generate Bespoke Visual via gpt-image-2 (ZERO STOCK PHOTOS, Hardened with Brand Integrity Guard)
       logger(`[Social Autopilot] Generating commercial ad visual for "${activeService}"...`);
-      const visualGuard = getVisualGuardDirectives({
-        businessName: resolvedBrandName,
-        industry: businessIndustry,
-        currentSiteUrl: siteUrl,
-      });
-      const graphicPrompt = `${buildGraphicPrompt(resolvedBrandName, activeService, businessIndustry, selectedHook, topicTitle)}. ${visualGuard.negativeConstraints}`;
+      let graphicPrompt = buildGraphicPrompt(
+        resolvedBrandName,
+        activeService,
+        businessIndustry,
+        selectedHook,
+        topicTitle,
+        limitationProfile
+      );
+
+      const imgPromptCheck = validateContentLimitations({ text: graphicPrompt, limitationProfile, logger });
+      if (!imgPromptCheck.ok) {
+        logger(`[Social Autopilot] 🚨 Graphic prompt contained forbidden term ("${imgPromptCheck.violation}"). Sanitizing graphic prompt...`);
+        const rx = new RegExp(imgPromptCheck.violation.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"), "gi");
+        graphicPrompt = graphicPrompt.replace(rx, "").trim();
+      }
 
       const candidateModels = ["gpt-image-2", "gpt-image-2-2026-04-21", "gpt-image-1.5"];
       let imageBuffer = null;

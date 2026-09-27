@@ -12,6 +12,7 @@ import { reserveQuota, commitQuota, releaseQuota, checkActionEntitlement, getBus
 import { getPlanConfig } from "../../../lib/billing/plans.js";
 import OpenAI from "openai";
 import { uploadToMediaBridge, purgeFromMediaBridge } from "../../../lib/wordpress/media-bridge.js";
+import { getBusinessLimitationProfile } from "../../../lib/brand-integrity-guard.js";
 
 const supabase = supabaseServer;
 
@@ -310,11 +311,32 @@ export async function resolveBrandIntelligence({ email, normBusiness, matchedBra
   }
 
   // 4. Standalone generic / Meta page fallback
+  const bName = matchedBrand?.businessName || "My Business";
+  const bCat = matchedBrand?.businessCategory || "Retail & Consumer Brand";
+  const limitationProfile = getBusinessLimitationProfile({ businessName: bName, industry: bCat });
+
+  let fallbackServices = ["Featured Products", "Customer Favorites", "New Arrivals", "Special Offers"];
+  let fallbackIndustry = bCat;
+
+  if (limitationProfile.domainCategory === "PHYSICAL_JEWELLERY_FASHION") {
+    fallbackServices = ["Designer Jewellery", "Bridal Accessories", "Earrings & Rings", "Anti-Tarnish Jewellery", "Statement Necklaces"];
+    fallbackIndustry = "Designer Jewellery & Fashion Accessories";
+  } else if (limitationProfile.domainCategory === "TWO_WHEELER_MECHANIC") {
+    fallbackServices = ["Two-Wheeler Servicing", "Motorcycle Engine Tuning", "Brake & Suspension Check", "Scooter Maintenance", "Genuine Bike Parts"];
+    fallbackIndustry = "Two-Wheeler & Motorcycle Workshop";
+  } else if (limitationProfile.domainCategory === "FOUR_WHEELER_MECHANIC") {
+    fallbackServices = ["Automotive Maintenance", "Car Engine Diagnostics", "Brake Service", "Car Suspension & Alignment", "Oil & Filter Service"];
+    fallbackIndustry = "Automotive Repair & Car Maintenance";
+  } else if (limitationProfile.domainCategory === "WELLNESS_SPA_MASSAGE") {
+    fallbackServices = ["Woman Deep Massage", "Aromatherapy Therapy", "Swedish Massage", "Full Body Relaxation", "Stress Relief Therapy"];
+    fallbackIndustry = "Wellness, Spa & Massage Therapy";
+  }
+
   return {
     type: "generic",
-    businessName: matchedBrand?.businessName || "My Business",
-    industry: matchedBrand?.businessCategory || "Retail & Consumer Brand",
-    services: ["Featured Products", "Customer Favorites", "New Arrivals", "Special Offers"],
+    businessName: bName,
+    industry: fallbackIndustry,
+    services: fallbackServices,
     suggestedTopics: [],
     brandVoice: "Engaging, friendly, and authentic",
     targetAudience: "Valued customers and community",
