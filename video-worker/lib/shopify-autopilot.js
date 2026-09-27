@@ -801,8 +801,38 @@ Respond ONLY with a valid JSON object matching this schema:
           if (!isBrandMatched || !pageId || !effectiveToken) {
             logger(`[Shopify Autopilot 🛡️ Anti-Exploitation Shield] Social syndication BLOCKED: Store "${brandName}" (${primaryDomain}) does not have a verified matching Meta account. Cross-business posting prevented.`);
           } else {
-            const candidateShareImg = articleObj.image?.src || imageData.imageUrl || null;
+            let candidateShareImg = articleObj.image?.src || imageData.imageUrl || null;
+            if (!candidateShareImg && articleObj.id) {
+              try {
+                await new Promise((r) => setTimeout(r, 1500));
+                const freshArtRes = await fetch(`https://${shop}/admin/api/2024-01/articles/${articleObj.id}.json`, {
+                  headers: { "X-Shopify-Access-Token": accessToken }
+                });
+                if (freshArtRes.ok) {
+                  const freshArtData = await freshArtRes.json();
+                  if (freshArtData.article?.image?.src) {
+                    candidateShareImg = freshArtData.article.image.src;
+                  }
+                }
+              } catch (_) {}
+            }
+            if (!candidateShareImg && articleData.bodyHtml) {
+              const imgMatch = articleData.bodyHtml.match(/<img[^>]+src=["']([^"']+)["']/i);
+              if (imgMatch) candidateShareImg = imgMatch[1];
+            }
             const hasImageAttachment = Boolean(candidateShareImg || imageData.imageBase64);
+
+            if (!igId && pageId && effectiveToken) {
+              try {
+                const pageDetailRes = await fetch(`https://graph.facebook.com/v21.0/${pageId}?fields=instagram_business_account&access_token=${effectiveToken}`);
+                if (pageDetailRes.ok) {
+                  const pageDetail = await pageDetailRes.json();
+                  if (pageDetail.instagram_business_account?.id) {
+                    igId = pageDetail.instagram_business_account.id;
+                  }
+                }
+              } catch (_) {}
+            }
 
             // Facebook Page link preview / photo post
             const shouldShareFb = (config.autoShareFacebook === true || config.autoShareFacebook === undefined) && pageId && effectiveToken;
@@ -849,6 +879,12 @@ Respond ONLY with a valid JSON object matching this schema:
                   logger(`[Shopify Autopilot] Facebook syndication error: ${fbErr.message}`);
                   socialShares.facebook = { ok: false, error: fbErr.message };
                 }
+              } else {
+                let fbSkipReason = "autoShareFacebook is disabled";
+                if (!pageId) fbSkipReason = "No connected Facebook page matched for this store";
+                else if (!effectiveToken) fbSkipReason = "No Meta access token available";
+                socialShares.facebook = { ok: false, skipped: true, reason: fbSkipReason };
+                logger(`[Shopify Autopilot] Facebook syndication skipped: ${fbSkipReason}`);
               }
 
               // Instagram Feed Photo post with guaranteed pristine JPEG
@@ -877,7 +913,7 @@ Respond ONLY with a valid JSON object matching this schema:
                   if (cData.id) {
                     const creationId = cData.id;
                     let ready = false;
-                    for (let attempt = 0; attempt < 12; attempt++) {
+                    for (let attempt = 0; attempt < 15; attempt++) {
                       await new Promise((r) => setTimeout(r, 2500));
                       const sRes = await fetch(`https://graph.facebook.com/v21.0/${creationId}?fields=status_code,status&access_token=${effectiveToken}`);
                       const sData = await sRes.json().catch(() => ({}));
@@ -904,19 +940,26 @@ Respond ONLY with a valid JSON object matching this schema:
                         socialShares.instagram = { ok: true, id: pubData.id };
                         logger(`[Shopify Autopilot] Instagram post published: ${pubData.id}`);
                       } else {
-                        socialShares.instagram = { ok: false, error: pubData.error?.message };
+                        socialShares.instagram = { ok: false, error: pubData.error?.message || "Publish request failed" };
                       }
                     } else {
                       socialShares.instagram = { ok: false, error: "Instagram media container was not ready in time." };
                       logger("[Shopify Autopilot] Instagram container timed out or errored before publish.");
                     }
                   } else {
-                    socialShares.instagram = { ok: false, error: cData.error?.message };
+                    socialShares.instagram = { ok: false, error: cData.error?.message || "Container creation failed" };
                   }
                 } catch (igErr) {
                   logger(`[Shopify Autopilot] Instagram syndication error: ${igErr.message}`);
                   socialShares.instagram = { ok: false, error: igErr.message };
                 }
+              } else {
+                let igSkipReason = "autoShareInstagram is disabled";
+                if (!igId) igSkipReason = "No connected Instagram account matched for this store";
+                else if (!effectiveToken) igSkipReason = "No Meta access token available";
+                else if (!hasImageAttachment) igSkipReason = "No image attachment available for Instagram post";
+                socialShares.instagram = { ok: false, skipped: true, reason: igSkipReason };
+                logger(`[Shopify Autopilot] Instagram syndication skipped: ${igSkipReason}`);
               }
             }
           } catch (metaErr) {
@@ -941,6 +984,7 @@ Respond ONLY with a valid JSON object matching this schema:
         publishedAt: now.toISOString(),
         articleId: articleObj.id,
         handle: articleObj.handle,
+        socialShares,
       });
       if (updatedPublishedTopics.length > 80) updatedPublishedTopics.shift();
 

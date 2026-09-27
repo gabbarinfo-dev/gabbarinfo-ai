@@ -2110,7 +2110,13 @@ app.post("/autopilot/social/trigger", requireAuth, async (req, res) => {
   try {
     const force = Boolean(req.body?.force || req.query?.force);
     log("AUTOPILOT", `Manual trigger: Social Media Planner Autopilot (force: ${force})`);
-    const results = await runSocialAutopilotCycle({ supabase, openai, force, logger: (msg) => log("SOCIAL_AP", msg) });
+    try {
+      delete require.cache[require.resolve("./lib/brand-integrity-guard")];
+      delete require.cache[require.resolve("./lib/instagram-image-helper")];
+      delete require.cache[require.resolve("./lib/social-autopilot")];
+    } catch (_) {}
+    const { runSocialAutopilotCycle: freshRunSocial } = require("./lib/social-autopilot");
+    const results = await freshRunSocial({ supabase, openai, force, logger: (msg) => log("SOCIAL_AP", msg) });
     res.json({ ok: true, count: results.length, results });
   } catch (err) {
     log("AUTOPILOT", `Social Autopilot Error: ${err.message}`);
@@ -2143,6 +2149,7 @@ app.post("/autopilot/shopify/trigger", requireAuth, async (req, res) => {
     log("AUTOPILOT", `Manual trigger: Shopify SEO Autopilot (force: ${force}, email: ${email || "all"}, shop: ${targetShop || "all"})`);
     try {
       delete require.cache[require.resolve("./lib/brand-integrity-guard")];
+      delete require.cache[require.resolve("./lib/instagram-image-helper")];
       delete require.cache[require.resolve("./lib/shopify-autopilot")];
     } catch (_) {}
     const { runShopifyAutopilotCycle: freshRunShopify } = require("./lib/shopify-autopilot");
@@ -2625,7 +2632,13 @@ cron.schedule("0 9 * * *", async () => {
 cron.schedule("15 9 * * *", async () => {
   log("CRON_SOCIAL", "Executing scheduled Social Media Planner Autopilot cycle (09:15 AM IST)...");
   try {
-    await runSocialAutopilotCycle({ supabase, openai, force: false, logger: (msg) => log("CRON_SOCIAL", msg) });
+    try {
+      delete require.cache[require.resolve("./lib/brand-integrity-guard")];
+      delete require.cache[require.resolve("./lib/instagram-image-helper")];
+      delete require.cache[require.resolve("./lib/social-autopilot")];
+    } catch (_) {}
+    const { runSocialAutopilotCycle: freshRunSocial } = require("./lib/social-autopilot");
+    await freshRunSocial({ supabase, openai, force: false, logger: (msg) => log("CRON_SOCIAL", msg) });
   } catch (e) {
     log("CRON_SOCIAL", `Scheduled Social cycle error: ${e.message}`);
   }
@@ -2640,6 +2653,7 @@ cron.schedule("30 9 * * *", async () => {
   try {
     try {
       delete require.cache[require.resolve("./lib/brand-integrity-guard")];
+      delete require.cache[require.resolve("./lib/instagram-image-helper")];
       delete require.cache[require.resolve("./lib/shopify-autopilot")];
     } catch (_) {}
     const { runShopifyAutopilotCycle: freshRunShopify } = require("./lib/shopify-autopilot");

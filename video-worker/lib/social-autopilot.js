@@ -203,19 +203,25 @@ async function runSocialAutopilotCycle({ supabase, openai, force = false, logger
         continue;
       }
 
-      // Discover siteUrl if available in config or from connected WordPress
+      // 1.5 Strict Multi-Tenant Brand Isolation: Map all foreign brands into negative blacklist
+      const brandKey = (item.memory_type || "").replace(/^social_autopilot_[^_]+_?/, "") || (businessName || "").toLowerCase().replace(/[^a-z0-9]/g, "_");
+
+      // Discover siteUrl if available in config or from connected WordPress strictly matching this brand
       let siteUrl = (config.siteUrl || config.website || "").replace(/\/$/, "");
       if (!siteUrl) {
         try {
           const { data: wpMemList } = await supabase
             .from("agent_memory")
-            .select("content")
+            .select("memory_type, content")
             .eq("email", item.email)
             .or("memory_type.like.wp_conn_%,memory_type.like.wp_connection_%");
+          const normBrand = String(brandKey || businessName || "").toLowerCase().replace(/[^a-z0-9]/g, "");
           for (const m of wpMemList || []) {
             try {
               const parsed = JSON.parse(m.content);
-              if (parsed.siteUrl) {
+              const wpName = (parsed.siteName || parsed.businessName || m.memory_type || "").toLowerCase().replace(/[^a-z0-9]/g, "");
+              const wpDomain = (parsed.siteUrl || "").toLowerCase();
+              if (parsed.siteUrl && normBrand && (wpName.includes(normBrand) || normBrand.includes(wpName) || wpDomain.includes(normBrand))) {
                 siteUrl = parsed.siteUrl.replace(/\/$/, "");
                 break;
               }
@@ -224,7 +230,6 @@ async function runSocialAutopilotCycle({ supabase, openai, force = false, logger
         } catch (_) {}
       }
 
-      // 1.5 Strict Multi-Tenant Brand Isolation: Map all foreign brands into negative blacklist
       const { forbiddenTerms: crossBrandForbidden, foreignBrands } = await buildCrossBrandNegativeList({
         supabase,
         userEmail: item.email,
@@ -267,8 +272,8 @@ async function runSocialAutopilotCycle({ supabase, openai, force = false, logger
         } catch (_) {}
       }
 
-      // Dynamically crawl their actual site's published pages to discover all genuine services and offerings
-      if (siteUrl) {
+      // Dynamically crawl their actual site's published pages if candidate services not yet configured
+      if (siteUrl && candidateServices.length === 0) {
         try {
           const pagesRes = await fetch(`${siteUrl}/wp-json/wp/v2/pages?per_page=50&_fields=title,slug`);
           if (pagesRes.ok) {
