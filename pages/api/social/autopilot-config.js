@@ -1065,15 +1065,35 @@ Respond ONLY in JSON: { "hook": "short catchy hook (4-7 words)", "topic": "speci
           try {
             const captionData = await generateCaption(agentState);
             const fullHashtags = Array.isArray(captionData.hashtags) ? captionData.hashtags.join(" ") : "";
+            const finalCaption = captionData.caption.includes("#")
+              ? captionData.caption
+              : `${captionData.caption}\n\n${fullHashtags}`;
             return {
-              caption: `${captionData.caption}\n\n${fullHashtags}`,
+              caption: finalCaption.trim(),
               visualMood: captionData.visualMood,
               tagline: captionData.tagline || tagline,
             };
           } catch (capErr) {
             console.warn("[Social Autopilot] Gemini caption failed, fallback:", capErr.message);
+            const cleanBiz = businessName.replace(/[^a-zA-Z0-9]/g, "");
+            const cleanServ = service.replace(/[^a-zA-Z0-9]/g, "");
+            const cleanInd = businessCategory.replace(/[^a-zA-Z0-9]/g, "");
+            const combined = `${businessName} ${service} ${businessCategory}`.toLowerCase();
+            let domainTags = [];
+            if (/astrolog|horoscope|palmistry|kundli|vedic|zodiac/i.test(combined)) {
+              domainTags = ["#VedicAstrology", "#HoroscopeReading", "#PalmistryInsights", "#KundliAnalysis", "#AstrologyGuidance"];
+            } else if (/jewel|diamond|ring|necklace|bangle/i.test(combined)) {
+              domainTags = ["#FineJewellery", "#BridalJewellery", "#HandcraftedJewellery", "#JewelleryDesign"];
+            } else if (/bike|motorcycle|scooter|two[- ]wheeler/i.test(combined)) {
+              domainTags = ["#BikeServicing", "#MotorcycleCare", "#TwoWheelerService", "#BikeMaintenance"];
+            } else if (/spa|massage|wellness|relax/i.test(combined)) {
+              domainTags = ["#SpaWellness", "#MassageTherapy", "#RelaxationCare", "#SelfCareDaily"];
+            } else {
+              domainTags = [`#${cleanBiz}`, `#${cleanServ}`, `#${cleanInd}`];
+            }
+            const ctaText = clientWebsite ? `Visit ${clientWebsite} to learn more!` : `Send us a message to connect!`;
             return {
-              caption: `📢 ${hook.toUpperCase()}\n\n${topic}\n\nRunning a business means staying ahead of the curve. At ${businessName}, we help you turn complex digital challenges into predictable revenue.\n\n👉 Send us a message or visit our website to learn more!\n\n#${service.replace(/[^a-zA-Z0-9]/g, "")} #BusinessGrowth #Marketing #${businessName.replace(/[^a-zA-Z0-9]/g, "")}`,
+              caption: `📢 ${hook.toUpperCase()}\n\n${topic}\n\nAt ${businessName}, our ${service} delivers authentic expertise, dedicated craftsmanship, and measurable peace of mind.\n\n👉 ${ctaText}\n\n${domainTags.join(" ")} #${cleanBiz}`,
               visualMood: "Dynamic 3D Commercial Agency Graphic",
               tagline,
             };
