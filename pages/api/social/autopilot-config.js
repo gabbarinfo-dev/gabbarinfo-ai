@@ -937,27 +937,34 @@ Respond ONLY in JSON: { "hook": "short catchy hook (4-7 words)", "topic": "speci
       if (action === "test-post") {
         console.log(`[Social Autopilot] Executing immediate test post for ${normalizedEmail}...`);
 
-        // 🔒 Server-Side Quota Gate: Reserve SOCIAL_POST quota
-        const quotaRes = await reserveQuota({
-          session,
-          userEmail: normalizedEmail,
-          businessId: current.businessId,
-          actionType: "SOCIAL_POST",
-        });
+        // Check if user has already used their 1 free test post
+        const testPostsUsed = current.testPostsUsed || 0;
+        const isFreeTestPost = !isOwner && testPostsUsed === 0;
 
-        if (!quotaRes.ok) {
-          return res.status(quotaRes.code === "FEATURE_NOT_INCLUDED" ? 403 : 402).json({
-            ok: false,
-            code: quotaRes.code,
-            error: quotaRes.error,
-            planId: quotaRes.planId,
-            nextResetDate: quotaRes.nextResetDate,
-          });
-        }
-
-        // 💳 Server-Side Internal Accounting Credit Check (10 credits)
+        let quotaRes = null;
         let resCred = null;
-        if (!isOwner) {
+
+        // If NOT owner and NOT the free test post, enforce active subscription quota & credits
+        if (!isOwner && !isFreeTestPost) {
+          // 🔒 Server-Side Quota Gate: Reserve SOCIAL_POST quota
+          quotaRes = await reserveQuota({
+            session,
+            userEmail: normalizedEmail,
+            businessId: current.businessId,
+            actionType: "SOCIAL_POST",
+          });
+
+          if (!quotaRes.ok) {
+            return res.status(quotaRes.code === "FEATURE_NOT_INCLUDED" ? 403 : 402).json({
+              ok: false,
+              code: quotaRes.code,
+              error: quotaRes.error,
+              planId: quotaRes.planId,
+              nextResetDate: quotaRes.nextResetDate,
+            });
+          }
+
+          // 💳 Server-Side Internal Accounting Credit Check (10 credits)
           resCred = await reserveCredits({
             businessId: quotaRes.businessId || current.businessId || "default_business",
             userEmail: normalizedEmail,
@@ -1127,6 +1134,7 @@ Respond ONLY in JSON: { "hook": "short catchy hook (4-7 words)", "topic": "speci
               userEmail: normalizedEmail,
               imageUrl,
               caption,
+              targetInstagramId: matchedBrand?.igId || null,
             });
             publishedTo.instagram = {
               ok: true,
@@ -1150,13 +1158,15 @@ Respond ONLY in JSON: { "hook": "short catchy hook (4-7 words)", "topic": "speci
             publishedTo.instagram?.error ? `Instagram: ${publishedTo.instagram.error}` : null,
           ].filter(Boolean).join(" | ");
 
-          await releaseQuota({
-            reservationId: quotaRes.reservationId,
-            businessId: quotaRes.businessId,
-            cycleStart: quotaRes.cycleStart,
-            actionType: "SOCIAL_POST",
-            reason: "Publishing to social network failed",
-          });
+          if (quotaRes?.reservationId) {
+            await releaseQuota({
+              reservationId: quotaRes.reservationId,
+              businessId: quotaRes.businessId,
+              cycleStart: quotaRes.cycleStart,
+              actionType: "SOCIAL_POST",
+              reason: "Publishing to social network failed",
+            });
+          }
 
           if (resCred?.transactionId) {
             await releaseCredits({
@@ -1171,13 +1181,15 @@ Respond ONLY in JSON: { "hook": "short catchy hook (4-7 words)", "topic": "speci
         }
 
         // Commit successful post quota
-        await commitQuota({
-          reservationId: quotaRes.reservationId,
-          businessId: quotaRes.businessId,
-          cycleStart: quotaRes.cycleStart,
-          actionType: "SOCIAL_POST",
-          userEmail: normalizedEmail,
-        });
+        if (quotaRes?.reservationId) {
+          await commitQuota({
+            reservationId: quotaRes.reservationId,
+            businessId: quotaRes.businessId,
+            cycleStart: quotaRes.cycleStart,
+            actionType: "SOCIAL_POST",
+            userEmail: normalizedEmail,
+          });
+        }
 
         // ── AUTOMATIC STORAGE CLEANUP (Hosting Media Bridge & Supabase) ──
         if (targetItem?.image_url && targetItem.image_url.includes("media_bridge/")) {
