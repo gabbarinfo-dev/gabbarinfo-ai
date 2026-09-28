@@ -3,7 +3,7 @@
 client_id = "780623701173e04f1ed178424bd72ba9"
 name = "GabbarInfo AI"
 application_url = "https://ai.gabbarinfo.com"
-embedded = true
+embedded = false
 
 [access_scopes]
 scopes = "read_content,write_content,read_products,write_products"
