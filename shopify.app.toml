@@ -1,6 +1,6 @@
 # Learn more about configuring your app at https://shopify.dev/docs/apps/tools/cli/configuration
 
-client_id = "788623701173e04f1ed178424bd72ba9"
+client_id = "780623701173e04f1ed178424bd72ba9"
 name = "GabbarInfo AI"
 application_url = "https://ai.gabbarinfo.com"
 embedded = true
