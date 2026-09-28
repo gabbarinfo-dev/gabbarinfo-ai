@@ -174,7 +174,7 @@ function buildFallbackQueue(services = [], businessName = "Our Business", count 
   return queue;
 }
 
-export async function resolveBrandIntelligence({ email, normBusiness, matchedBrand, supabase }) {
+export async function resolveBrandIntelligence({ email, normBusiness, matchedBrand, meta, supabase }) {
   const isAgencyRoot = normBusiness === "gabbarinfo" || normBusiness === "gabbarinfo_digital_solutions";
 
   // 1. Check if linked to Shopify store
@@ -259,7 +259,6 @@ export async function resolveBrandIntelligence({ email, normBusiness, matchedBra
           (normBusiness && (intelKey.includes(normBusiness) || normBusiness.includes(intelKey))) ||
           (siteUrl && parsed.siteUrl && siteUrl.includes(parsed.siteUrl.toLowerCase().replace(/https?:\/\//, "")))
         ) {
-          // Provide ALL real offerings without slicing down to 5 items!
           const coreServices = (parsed.coreOfferings && parsed.coreOfferings.length > 0)
             ? parsed.coreOfferings
             : (parsed.targetKeywords && parsed.targetKeywords.length > 0)
@@ -310,35 +309,146 @@ export async function resolveBrandIntelligence({ email, normBusiness, matchedBra
     };
   }
 
-  // 4. Standalone generic / Meta page fallback
-  const bName = matchedBrand?.businessName || "My Business";
-  const bCat = matchedBrand?.businessCategory || "Retail & Consumer Brand";
-  const limitationProfile = getBusinessLimitationProfile({ businessName: bName, industry: bCat });
+  // 4. Standalone Meta Page / Brand Intelligence (AI Synthesized from Meta Signals)
+  const bName = matchedBrand?.businessName || meta?.business_name || matchedBrand?.pageName || "My Business";
+  const bCat = matchedBrand?.category || matchedBrand?.businessCategory || meta?.business_category || "";
+  const bAbout = matchedBrand?.about || meta?.business_about || "";
+  const bWebsite = matchedBrand?.websiteUrl || matchedBrand?.website || meta?.business_website || "";
 
-  let fallbackServices = ["Featured Products", "Customer Favorites", "New Arrivals", "Special Offers"];
-  let fallbackIndustry = bCat;
+  // Check if we have pre-cached brand intelligence in agent_memory
+  try {
+    const intelKey = `brand_intel_${normBusiness || "default"}`;
+    const { data: cachedIntel } = await supabase
+      .from("agent_memory")
+      .select("content")
+      .eq("email", email)
+      .eq("memory_type", intelKey)
+      .maybeSingle();
 
-  if (limitationProfile.domainCategory === "PHYSICAL_JEWELLERY_FASHION") {
+    if (cachedIntel?.content) {
+      const parsed = JSON.parse(cachedIntel.content);
+      if (parsed.services && Array.isArray(parsed.services) && parsed.services.length > 0 && !parsed.services.includes("Featured Products")) {
+        return {
+          type: "ai_synthesized",
+          businessName: bName,
+          industry: parsed.industry || bCat || "Specialized Professional Services",
+          services: parsed.services,
+          suggestedTopics: parsed.suggestedTopics || [],
+          brandVoice: parsed.brandVoice || "Engaging, authoritative, and customer-centric",
+          targetAudience: parsed.targetAudience || "Valued customers and community",
+          targetLocations: parsed.targetLocations || "Global"
+        };
+      }
+    }
+  } catch (_) {}
+
+  // Synthesize on the fly with OpenAI if we have any brand signals
+  const apiKey = process.env.OPENAI_API_KEY;
+  if (apiKey && (bName !== "My Business" || bCat || bAbout || bWebsite)) {
+    try {
+      const openai = new OpenAI({ apiKey });
+      const prompt = `You are a premier commercial brand strategist and creative director.
+Analyze this real business profile from their connected Facebook/Instagram page and synthesize authoritative, deeply relevant brand intelligence for automated social media marketing.
+
+BUSINESS CONTEXT:
+- Brand Name: "${bName}"
+- Business Category / Niche: "${bCat || "Specialized Services"}"
+- About / Mission / Bio: "${bAbout || "Leading provider in its niche"}"
+- Stated Website: "${bWebsite}"
+
+CRITICAL REQUIREMENTS:
+1. Determine their exact, authentic industry (e.g. "AI Vedic Astrology & Palmistry SaaS", "Luxury Jewellery & Bridal Fashion", "Automotive Diagnostic Repair", etc.).
+2. Generate 6 to 8 REAL core services/offerings tailored specifically to this business.
+   STRICT RULE: NEVER output generic retail e-commerce placeholders like "Featured Products", "Customer Favorites", "New Arrivals", or "Special Offers" unless the business is explicitly an e-commerce clothing or general retail product store.
+3. Formulate 10 compelling, high-converting social media content topics.
+4. Define brand voice and target audience.
+
+Format strictly as JSON:
+{
+  "industry": "Exact industry name",
+  "services": ["Service 1", "Service 2", ...],
+  "brandVoice": "Tone description",
+  "targetAudience": "Audience description",
+  "suggestedTopics": ["Topic 1", "Topic 2", ...],
+  "targetLocations": "Primary target region or global"
+}`;
+
+      const aiRes = await openai.chat.completions.create({
+        model: "gpt-4o-mini",
+        messages: [
+          { role: "system", content: "You are an elite brand intelligence extractor. Respond strictly with valid JSON." },
+          { role: "user", content: prompt }
+        ],
+        response_format: { type: "json_object" },
+        temperature: 0.7,
+      });
+
+      const parsed = JSON.parse(aiRes.choices[0]?.message?.content || "{}");
+      if (parsed.services && Array.isArray(parsed.services) && parsed.services.length > 0) {
+        // Cache synthesized intelligence to agent_memory so it's persistent and fast
+        try {
+          await supabase.from("agent_memory").upsert(
+            {
+              email,
+              memory_type: `brand_intel_${normBusiness || "default"}`,
+              content: JSON.stringify(parsed),
+              updated_at: new Date().toISOString()
+            },
+            { onConflict: "email,memory_type" }
+          );
+        } catch (_) {}
+
+        return {
+          type: "ai_synthesized",
+          businessName: bName,
+          industry: parsed.industry || bCat || "Specialized Professional Services",
+          services: parsed.services,
+          suggestedTopics: parsed.suggestedTopics || [],
+          brandVoice: parsed.brandVoice || "Engaging, authoritative, and customer-centric",
+          targetAudience: parsed.targetAudience || "Valued customers and community",
+          targetLocations: parsed.targetLocations || "Global"
+        };
+      }
+    } catch (aiErr) {
+      console.warn("[Social Autopilot] AI brand synthesis error:", aiErr.message);
+    }
+  }
+
+  // Heuristic domain fallbacks (astrology, spa, mechanic, legal, medical, etc.)
+  const combinedText = `${bName} ${bCat} ${bAbout}`.toLowerCase();
+  let fallbackServices = ["Consultation & Assessment", "Custom Solutions", "Professional Service", "Expert Guidance", "Premium Support"];
+  let fallbackIndustry = bCat || "Specialized Professional Services";
+
+  if (/astrolog|horoscope|kundli|palmistry|zodiac|vedic|tarot|spiritual/i.test(combinedText)) {
+    fallbackServices = ["Personalized Horoscope Analysis", "Vedic Kundli & Birth Chart", "Palmistry Reading & Line Analysis", "Planetary Transit Guidance", "Relationship & Marriage Compatibility", "Astrological Remedies & Solutions"];
+    fallbackIndustry = "Vedic Astrology & Palmistry Services";
+  } else if (/jewel|ring|earring|necklace|kundan|diamond|bangle/i.test(combinedText)) {
     fallbackServices = ["Designer Jewellery", "Bridal Accessories", "Earrings & Rings", "Anti-Tarnish Jewellery", "Statement Necklaces"];
     fallbackIndustry = "Designer Jewellery & Fashion Accessories";
-  } else if (limitationProfile.domainCategory === "TWO_WHEELER_MECHANIC") {
+  } else if (/two[- ]wheeler|bike|motorcycle|scooter/i.test(combinedText)) {
     fallbackServices = ["Two-Wheeler Servicing", "Motorcycle Engine Tuning", "Brake & Suspension Check", "Scooter Maintenance", "Genuine Bike Parts"];
     fallbackIndustry = "Two-Wheeler & Motorcycle Workshop";
-  } else if (limitationProfile.domainCategory === "FOUR_WHEELER_MECHANIC") {
+  } else if (/car|auto|mechanic|garage|vehicle/i.test(combinedText)) {
     fallbackServices = ["Automotive Maintenance", "Car Engine Diagnostics", "Brake Service", "Car Suspension & Alignment", "Oil & Filter Service"];
     fallbackIndustry = "Automotive Repair & Car Maintenance";
-  } else if (limitationProfile.domainCategory === "WELLNESS_SPA_MASSAGE") {
+  } else if (/spa|massage|therapy|wellness/i.test(combinedText)) {
     fallbackServices = ["Woman Deep Massage", "Aromatherapy Therapy", "Swedish Massage", "Full Body Relaxation", "Stress Relief Therapy"];
     fallbackIndustry = "Wellness, Spa & Massage Therapy";
+  } else if (/dental|dentist|teeth/i.test(combinedText)) {
+    fallbackServices = ["Dental Checkup & Cleaning", "Teeth Whitening", "Orthodontics & Aligners", "Root Canal Therapy", "Cosmetic Dentistry"];
+    fallbackIndustry = "Dental & Oral Healthcare";
+  } else if (/gym|fitness|trainer|workout/i.test(combinedText)) {
+    fallbackServices = ["Personal Training", "Strength & Conditioning", "Weight Loss Programs", "Nutrition & Diet Coaching", "Group HIIT Sessions"];
+    fallbackIndustry = "Fitness, Gym & Personal Training";
   }
 
   return {
-    type: "generic",
+    type: "generic_heuristic",
     businessName: bName,
     industry: fallbackIndustry,
     services: fallbackServices,
     suggestedTopics: [],
-    brandVoice: "Engaging, friendly, and authentic",
+    brandVoice: "Engaging, authoritative, and authentic",
     targetAudience: "Valued customers and community",
     targetLocations: "Global"
   };
@@ -398,11 +508,12 @@ export default async function handler(req, res) {
       const hasFacebook = Boolean(matchedBrand?.pageId || meta?.fb_page_id || meta?.fb_business_id);
       const hasInstagram = Boolean(matchedBrand?.igId || meta?.ig_business_id || meta?.instagram_actor_id);
 
-      // Resolve intelligent brand context (Shopify store products, WordPress crawled intel, or generic)
+      // Resolve intelligent brand context (Shopify store products, WordPress crawled intel, or AI synthesized)
       const intel = await resolveBrandIntelligence({
         email: normalizedEmail,
         normBusiness: effectiveNormBiz,
         matchedBrand,
+        meta,
         supabase
       });
 
@@ -426,15 +537,23 @@ export default async function handler(req, res) {
       const hasDirtyAgencyServices = !isAgency && saved?.services && saved.services.some(s => /seo|google ads|meta social ads|website design/i.test(s));
       const hasDirtyAgencyQueue = !isAgency && saved?.queue && saved.queue.some(q => /google ads|seo optimization|meta social ads|website design for growth/i.test(q.topic || "") || /google ads|seo optimization/i.test(q.service || ""));
 
-      const finalServices = (!hasDirtyAgencyServices && saved?.services && saved.services.length > 0)
+      // Also sanitize generic retail placeholders ("Featured Products", "Customer Favorites", "New Arrivals") if not an e-commerce/retail store!
+      const isRetail = (intel.industry || "").toLowerCase().includes("retail") || (intel.industry || "").toLowerCase().includes("e-commerce") || (intel.industry || "").toLowerCase().includes("jewellery") || (intel.industry || "").toLowerCase().includes("store");
+      const hasDirtyRetailServices = !isRetail && saved?.services && saved.services.some(s => /featured products|customer favorites|new arrivals|special offers/i.test(s));
+      const hasDirtyRetailQueue = !isRetail && saved?.queue && saved.queue.some(q => /featured products|customer favorites|new arrivals|special offers/i.test(q.topic || "") || /featured products|customer favorites/i.test(q.service || ""));
+
+      const isDirtyServices = hasDirtyAgencyServices || hasDirtyRetailServices;
+      const isDirtyQueue = hasDirtyAgencyQueue || hasDirtyRetailQueue;
+
+      const finalServices = (!isDirtyServices && saved?.services && saved.services.length > 0)
         ? saved.services
         : intel.services;
 
-      const finalIndustry = (!hasDirtyAgencyServices && saved?.industry && !saved.industry.toLowerCase().includes("digital marketing"))
+      const finalIndustry = (!isDirtyServices && saved?.industry && !saved.industry.toLowerCase().includes("digital marketing") && !saved.industry.toLowerCase().includes("retail & consumer"))
         ? saved.industry
         : intel.industry;
 
-      let finalQueue = (!hasDirtyAgencyQueue && saved?.queue && saved.queue.length > 0)
+      let finalQueue = (!isDirtyQueue && saved?.queue && saved.queue.length > 0)
         ? saved.queue
         : buildFallbackQueue(finalServices, matchedBrand?.businessName || intel.businessName, 30, intel.suggestedTopics);
 

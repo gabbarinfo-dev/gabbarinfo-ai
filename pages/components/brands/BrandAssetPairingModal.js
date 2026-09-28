@@ -97,8 +97,10 @@ export default function BrandAssetPairingModal({ onClose, onSaved }) {
             const b = existing[key];
             const nameToMatch = b.businessName || b.pageName || key;
             const autoSite = findBestSiteMatch(nameToMatch);
-            const chosenUrl = b.websiteUrl || b.website || autoSite?.url || "";
-            const chosenType = b.websiteType || autoSite?.type || "wordpress";
+            const verifiedSite = autoSite || sites.find((s) => s.url === b.websiteUrl);
+            const chosenUrl = verifiedSite ? verifiedSite.url : "";
+            const chosenType = verifiedSite ? verifiedSite.type : "";
+            const metaPageWebsite = b.website || b.websiteUrl || "";
             return {
               brandKey: key,
               businessName: nameToMatch,
@@ -111,6 +113,7 @@ export default function BrandAssetPairingModal({ onClose, onSaved }) {
               adAccountName: b.adAccountName || null,
               websiteUrl: chosenUrl,
               websiteType: chosenType,
+              metaPageWebsite,
             };
           })
         );
@@ -375,7 +378,7 @@ export default function BrandAssetPairingModal({ onClose, onSaved }) {
                     {/* Website Binding */}
                     <div>
                       <label style={{ fontSize: 11, fontWeight: 700, color: "#94a3b8", display: "block", marginBottom: 6 }}>
-                        🌐 Bound Website (Blog & Cross-Post Target):
+                        🌐 Verified Website (Blog & Cross-Post Target):
                       </label>
                       {connectedWebsites.length > 0 ? (
                         <select
@@ -406,7 +409,7 @@ export default function BrandAssetPairingModal({ onClose, onSaved }) {
                             cursor: "pointer",
                           }}
                         >
-                          <option value="">-- Select Website --</option>
+                          <option value="">-- No Website Bound (Social Posts Only) --</option>
                           {connectedWebsites.map((site, sIdx) => (
                             <option key={sIdx} value={site.url}>
                               {site.type.toUpperCase()}: {site.name} ({site.url.replace(/^https?:\/\//, "")})
@@ -414,22 +417,28 @@ export default function BrandAssetPairingModal({ onClose, onSaved }) {
                           ))}
                         </select>
                       ) : (
-                        <input
-                          type="text"
-                          value={pairing.websiteUrl || ""}
-                          onChange={(e) => handleUpdatePairing(index, "websiteUrl", e.target.value)}
-                          placeholder="e.g. https://divinecng.com"
+                        <div
                           style={{
-                            width: "100%",
                             background: "#080c14",
-                            border: "1px solid rgba(255, 255, 255, 0.12)",
+                            border: "1px solid rgba(255, 255, 255, 0.08)",
                             borderRadius: 8,
-                            padding: "8px 12px",
-                            fontSize: 13,
-                            color: "#fff",
-                            outline: "none",
+                            padding: "9px 12px",
+                            fontSize: 12,
                           }}
-                        />
+                        >
+                          <div style={{ color: "#94a3b8", fontWeight: 700 }}>
+                            ⚪ No WordPress or Shopify Website Connected
+                          </div>
+                          {pairing.metaPageWebsite ? (
+                            <div style={{ fontSize: 11, color: "#64748b", marginTop: 4 }}>
+                              Page Info URL from Meta: <span style={{ color: "#38bdf8" }}>{pairing.metaPageWebsite}</span> (Informational only — not connected for blogging)
+                            </div>
+                          ) : (
+                            <div style={{ fontSize: 11, color: "#475569", marginTop: 3 }}>
+                              Connect WordPress in SEO Suite or Shopify Store to enable automated blog syndication.
+                            </div>
+                          )}
+                        </div>
                       )}
                     </div>
                   </div>
