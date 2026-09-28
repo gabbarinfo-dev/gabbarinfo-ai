@@ -31,7 +31,6 @@ const BLACKLISTED_TERMS = [
   "cookie",
   "test",
   "discreet",
-  "horoscope",
   "home",
   "blogs",
   "single scan",

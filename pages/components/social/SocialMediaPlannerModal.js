@@ -317,10 +317,11 @@ export default function SocialMediaPlannerModal({ onClose }) {
       // If serverless function timed out (status 504), poll in background
       setTestingStatus("Publishing to your page... (almost ready)");
       let completed = false;
-      for (let attempt = 0; attempt < 8; attempt++) {
+      const pollUrl = targetBiz ? `/api/social/autopilot-config?businessName=${encodeURIComponent(targetBiz)}` : "/api/social/autopilot-config";
+      for (let attempt = 0; attempt < 15; attempt++) {
         await new Promise((resolve) => setTimeout(resolve, 3000));
         try {
-          const pollRes = await fetch("/api/social/autopilot-config");
+          const pollRes = await fetch(pollUrl);
           const pollData = await pollRes.json();
           if (pollData.ok && pollData.config) {
             const lastPublished = pollData.config.lastPublishedAt
@@ -332,7 +333,7 @@ export default function SocialMediaPlannerModal({ onClose }) {
               const postLink = latest?.postUrl ? `\n\nDirect Link: ${latest.postUrl}` : "";
               alert(`🎉 Success! Autonomous test creative published successfully to ${destLabel}!${postLink}`);
               completed = true;
-              fetchConfig();
+              fetchConfig(targetBiz);
               break;
             }
           }
