@@ -27,6 +27,9 @@ export default function FacebookBusinessConnect({ onOpenSocialPlanner }) {
               setSelectedBrand(data.connectedBrands[0]);
             }
             clearInterval(interval);
+          } else if (data.needsReconnect || data.tokenExpired) {
+            setStatus("reconnect_needed");
+            clearInterval(interval);
           }
         });
     }, 1000);
@@ -789,17 +792,66 @@ export default function FacebookBusinessConnect({ onOpenSocialPlanner }) {
         </>
       ) : (
         <>
-          <button
-            onClick={() => setShowConnectWarningModal(true)}
-            className="btn-gabbar-gold"
-            style={{
-              padding: "11px 22px",
-              fontSize: "14px",
-              cursor: "pointer",
-            }}
-          >
-            Connect Facebook Business ↗
-          </button>
+          {status === "reconnect_needed" && (
+            <div
+              style={{
+                background: "rgba(239, 68, 68, 0.12)",
+                border: "1px solid rgba(239, 68, 68, 0.35)",
+                borderRadius: "10px",
+                padding: "14px 16px",
+                marginBottom: "16px",
+              }}
+            >
+              <div
+                style={{
+                  display: "flex",
+                  alignItems: "center",
+                  gap: "8px",
+                  color: "#f87171",
+                  fontWeight: 700,
+                  fontSize: "14px",
+                  marginBottom: "6px",
+                }}
+              >
+                <span>⚠️</span> <span>Facebook Session Expired</span>
+              </div>
+              <p
+                style={{
+                  color: "#cbd5e1",
+                  fontSize: "12px",
+                  margin: "0 0 12px",
+                  lineHeight: "1.5",
+                }}
+              >
+                Meta invalidated your session (password changed, session timed out, or security reset). Please reconnect your Facebook account so automated social posts can publish.
+              </p>
+              <button
+                onClick={handleConnect}
+                className="btn-gabbar-gold"
+                style={{
+                  padding: "9px 18px",
+                  fontSize: "13px",
+                  cursor: "pointer",
+                }}
+              >
+                🔄 Reconnect Facebook Business ➔
+              </button>
+            </div>
+          )}
+
+          {status !== "reconnect_needed" && (
+            <button
+              onClick={() => setShowConnectWarningModal(true)}
+              className="btn-gabbar-gold"
+              style={{
+                padding: "11px 22px",
+                fontSize: "14px",
+                cursor: "pointer",
+              }}
+            >
+              Connect Facebook Business ↗
+            </button>
+          )}
 
           {/* PRE-CONNECTION ASSET SLOT WARNING MODAL */}
           {showConnectWarningModal && (

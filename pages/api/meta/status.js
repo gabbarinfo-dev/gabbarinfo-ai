@@ -85,8 +85,37 @@ export default async function handler(req, res) {
     }
   }
 
+  // Live token health check to prevent silent posting failures when Facebook invalidates session
+  let tokenValid = true;
+  let tokenError = null;
+  const tokenToCheck =
+    matchedBrand?.pageToken ||
+    matchedBrand?.userToken ||
+    metaRes.data?.fb_page_access_token ||
+    metaRes.data?.fb_user_access_token ||
+    Object.values(allMetaConnections)[0]?.pageToken ||
+    Object.values(allMetaConnections)[0]?.userToken;
+
+  if (tokenToCheck) {
+    try {
+      const fbCheck = await fetch(`https://graph.facebook.com/v21.0/me?fields=id&access_token=${encodeURIComponent(tokenToCheck)}`);
+      const fbJson = await fbCheck.json();
+      if (fbJson.error && (fbJson.error.code === 190 || fbJson.error.error_subcode === 460)) {
+        tokenValid = false;
+        tokenError = fbJson.error.message || "Facebook session has been invalidated. Please reconnect your account.";
+      }
+    } catch (netErr) {
+      console.warn("[Meta Status] Token check network error:", netErr.message);
+    }
+  }
+
+  const hasConnection = !!metaRes.data || connectedBrands.length > 0;
+
   return res.json({
-    connected: !!metaRes.data || connectedBrands.length > 0,
+    connected: hasConnection && tokenValid,
+    tokenExpired: !tokenValid,
+    tokenError,
+    needsReconnect: hasConnection && !tokenValid,
     meta: metaRes.data || Object.values(allMetaConnections)[0] || null,
     brandMeta: isTargeted ? matchedBrand : (metaRes.data || Object.values(allMetaConnections)[0] || null),
     allMetaConnections,
