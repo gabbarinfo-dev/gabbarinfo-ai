@@ -106,6 +106,7 @@ export default async function handler(req, res) {
         client_id: clientId,
         client_secret: activeSecret,
         code,
+        expiring: 1,
       }),
     });
 
