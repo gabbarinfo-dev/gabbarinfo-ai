@@ -361,6 +361,7 @@ export default async function handler(req, res) {
                 .from("agent_memory")
                 .select("content")
                 .eq("email", userEmail)
+                .neq("memory_type", "shopify_connection")
                 .like("memory_type", "shopify_conn_%")
                 .limit(1);
 
