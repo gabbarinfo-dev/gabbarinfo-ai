@@ -349,8 +349,8 @@ async function runSocialAutopilotCycle({ supabase, openai, force = false, email 
         const targetName = String(config.businessName || cleanBizKey || "").toLowerCase().replace(/[^a-z0-9]/g, "");
         const targetKey = String(cleanBizKey || "").toLowerCase();
         const normKey = String(normalizedBiz || "").toLowerCase();
-        return (bKey && (bKey === targetKey || bKey === normKey || bKey.includes(targetKey) || targetKey.includes(bKey))) ||
-               (bName && targetName && (bName === targetName || bName.includes(targetName) || targetName.includes(bName)));
+        return (targetKey.length > 2 && bKey && (bKey === targetKey || (normKey && bKey === normKey) || bKey.includes(targetKey) || targetKey.includes(bKey))) ||
+               (targetName.length > 2 && bName && (bName === targetName || bName.includes(targetName) || targetName.includes(bName)));
       });
 
       if (matchedBrand && (matchedBrand.pageId || matchedBrand.igId)) {

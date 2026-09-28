@@ -1230,34 +1230,74 @@ export default function SocialMediaPlannerModal({ onClose }) {
                               {d.toLocaleDateString("en-US", { month: "short", day: "numeric" })}
                             </div>
                           </div>
-                          <div
-                            style={{
-                              fontSize: 10,
-                              marginTop: 8,
-                              fontWeight: 700,
-                              padding: "3px 6px",
-                              borderRadius: 6,
-                              background: !config.enabled
-                                ? "rgba(255, 255, 255, 0.04)"
-                                : isScheduled
-                                ? "rgba(16, 185, 129, 0.15)"
-                                : "rgba(255, 255, 255, 0.04)",
-                              color: !config.enabled
-                                ? "#64748b"
-                                : isScheduled
-                                ? "#34d399"
-                                : "#64748b",
-                              border: isScheduled && config.enabled
-                                ? "1px solid rgba(16, 185, 129, 0.3)"
-                                : "1px solid transparent",
-                            }}
-                          >
-                            {!config.enabled
-                              ? "⚪ Paused"
-                              : isScheduled
-                              ? "🟢 Active Dispatch"
-                              : "⚪ Rest Day"}
-                          </div>
+                          {(() => {
+                            const todayStr = new Date().toISOString().slice(0, 10);
+                            const lastPubDate = config.lastPublishedAt ? new Date(config.lastPublishedAt).toISOString().slice(0, 10) : null;
+                            const hasTodayHistory = Array.isArray(config.history) && config.history.some((h) => {
+                              const dt = h.publishedAt || h.createdAt || h.date;
+                              return dt && new Date(dt).toISOString().slice(0, 10) === todayStr;
+                            });
+                            const isTodayDone = lastPubDate === todayStr || hasTodayHistory;
+                            const isTodayFailed = !isTodayDone && (
+                              config.lastStatus === "failed" ||
+                              (config.lastError && config.lastAttemptAt && new Date(config.lastAttemptAt).toISOString().slice(0, 10) === todayStr) ||
+                              (Array.isArray(config.history) && config.history.some((h) => {
+                                const dt = h.attemptedAt || h.date;
+                                return dt && new Date(dt).toISOString().slice(0, 10) === todayStr && h.status === "failed";
+                              }))
+                            );
+
+                            let badgeText = "⚪ Rest Day";
+                            let badgeBg = "rgba(255, 255, 255, 0.04)";
+                            let badgeColor = "#64748b";
+                            let badgeBorder = "1px solid transparent";
+
+                            if (!config.enabled) {
+                              badgeText = "⚪ Paused";
+                            } else if (isToday) {
+                              if (isTodayDone) {
+                                badgeText = "✅ Dispatched Successfully";
+                                badgeBg = "rgba(16, 185, 129, 0.22)";
+                                badgeColor = "#34d399";
+                                badgeBorder = "1px solid #10b981";
+                              } else if (isTodayFailed) {
+                                badgeText = "❌ Couldn't Dispatch";
+                                badgeBg = "rgba(239, 68, 68, 0.22)";
+                                badgeColor = "#f87171";
+                                badgeBorder = "1px solid #ef4444";
+                              } else if (isScheduled) {
+                                badgeText = "🟢 Active Dispatch Today";
+                                badgeBg = "rgba(56, 189, 248, 0.18)";
+                                badgeColor = "#38bdf8";
+                                badgeBorder = "1px solid rgba(56, 189, 248, 0.4)";
+                              }
+                            } else {
+                              if (isScheduled) {
+                                badgeText = "🟢 Active Dispatch";
+                                badgeBg = "rgba(16, 185, 129, 0.12)";
+                                badgeColor = "#34d399";
+                                badgeBorder = "1px solid rgba(16, 185, 129, 0.25)";
+                              }
+                            }
+
+                            return (
+                              <div
+                                style={{
+                                  fontSize: 10,
+                                  marginTop: 8,
+                                  fontWeight: 700,
+                                  padding: "4px 6px",
+                                  borderRadius: 6,
+                                  background: badgeBg,
+                                  color: badgeColor,
+                                  border: badgeBorder,
+                                  lineHeight: 1.3,
+                                }}
+                              >
+                                {badgeText}
+                              </div>
+                            );
+                          })()}
                         </div>
                       );
                     })}

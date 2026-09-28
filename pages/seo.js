@@ -3585,20 +3585,61 @@ export default function SeoHubPage() {
                           {d.toLocaleDateString("en-US", { month: "short", day: "numeric" })}
                         </div>
                       </div>
-                      <div
-                        style={{
-                          fontSize: 11,
-                          marginTop: 10,
-                          fontWeight: 600,
-                          padding: "4px 8px",
-                          borderRadius: 6,
-                          background: isScheduled ? "rgba(16, 185, 129, 0.15)" : "rgba(255, 255, 255, 0.04)",
-                          color: isScheduled ? "#34d399" : "#64748b",
-                          border: isScheduled ? "1px solid rgba(16, 185, 129, 0.25)" : "1px solid transparent",
-                        }}
-                      >
-                        {isScheduled ? "🟢 Active Dispatch Day" : "⚪ Rest / Buffer Day"}
-                      </div>
+                      {(() => {
+                        const todayStr = new Date().toISOString().slice(0, 10);
+                        const lastPubDate = lastPublishedAt ? new Date(lastPublishedAt).toISOString().slice(0, 10) : null;
+                        const hasTodayBlog = Array.isArray(contentList) && contentList.some((item) => {
+                          const dStr = item.date || item.date_gmt || item.created_at;
+                          return dStr && new Date(dStr).toISOString().slice(0, 10) === todayStr;
+                        });
+                        const isTodayDone = lastPubDate === todayStr || hasTodayBlog;
+
+                        let badgeText = "⚪ Rest / Buffer Day";
+                        let badgeBg = "rgba(255, 255, 255, 0.04)";
+                        let badgeColor = "#64748b";
+                        let badgeBorder = "1px solid transparent";
+
+                        if (!autopilotEnabled) {
+                          badgeText = "⚪ Paused";
+                        } else if (isToday) {
+                          if (isTodayDone) {
+                            badgeText = "✅ Dispatched Successfully";
+                            badgeBg = "rgba(16, 185, 129, 0.22)";
+                            badgeColor = "#34d399";
+                            badgeBorder = "1px solid #10b981";
+                          } else if (isScheduled) {
+                            badgeText = "🟢 Active Dispatch Today";
+                            badgeBg = "rgba(56, 189, 248, 0.18)";
+                            badgeColor = "#38bdf8";
+                            badgeBorder = "1px solid rgba(56, 189, 248, 0.4)";
+                          }
+                        } else {
+                          if (isScheduled) {
+                            badgeText = "🟢 Active Dispatch Day";
+                            badgeBg = "rgba(16, 185, 129, 0.15)";
+                            badgeColor = "#34d399";
+                            badgeBorder = "1px solid rgba(16, 185, 129, 0.25)";
+                          }
+                        }
+
+                        return (
+                          <div
+                            style={{
+                              fontSize: 11,
+                              marginTop: 10,
+                              fontWeight: 700,
+                              padding: "4px 8px",
+                              borderRadius: 6,
+                              background: badgeBg,
+                              color: badgeColor,
+                              border: badgeBorder,
+                              lineHeight: 1.3,
+                            }}
+                          >
+                            {badgeText}
+                          </div>
+                        );
+                      })()}
                     </div>
                   );
                 })}
