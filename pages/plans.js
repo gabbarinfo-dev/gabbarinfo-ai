@@ -16,39 +16,39 @@ import { SUBSCRIPTION_PLANS } from "../lib/billing/plans";
 
 // ─── Plan categories for tab navigation ───────────────────────────────────────
 const CATEGORIES = [
-  { key: "video",  emoji: "🎬", label: "AI Cinema Video" },
-  { key: "suite",  emoji: "⚡", label: "All-in-One Suites" },
-  { key: "seo",    emoji: "📝", label: "SEO Content" },
-  { key: "social", emoji: "📱", label: "Social Autopilot" },
-  { key: "ads",    emoji: "🚀", label: "Performance Ads" },
-  { key: "gmb",    emoji: "📍", label: "Local Maps" },
-  { key: "bundle", emoji: "🔗", label: "Power Bundles" },
-  { key: "trial",  emoji: "🎁", label: "Trial Pack" },
-  { key: "agency", emoji: "🏢", label: "Agency Scale" },
+  { key: "suite",   emoji: "⚡", label: "All-in-One Suites" },
+  { key: "social",  emoji: "📱", label: "Social Autopilot" },
+  { key: "shopify", emoji: "🛍️", label: "Shopify Store SEO" },
+  { key: "seo",     emoji: "📝", label: "WordPress SEO" },
+  { key: "ads",     emoji: "🚀", label: "Performance Ads" },
+  { key: "gmb",     emoji: "📍", label: "Local Maps" },
+  { key: "trial",   emoji: "🎁", label: "Trial Pack" },
+  { key: "video",   emoji: "🎬", label: "AI Cinema Video" },
 ];
 
 // ─── Ordered plan list ─────────────────────────────────────────────────────────
 const ALL_PLANS = [
-  SUBSCRIPTION_PLANS.video_creator,
-  SUBSCRIPTION_PLANS.video_pro,
-  SUBSCRIPTION_PLANS.video_cinema,
   SUBSCRIPTION_PLANS.trial_99,
   SUBSCRIPTION_PLANS.suite_1,
   SUBSCRIPTION_PLANS.suite_2,
   SUBSCRIPTION_PLANS.suite_3,
-  SUBSCRIPTION_PLANS.gmb_1,
-  SUBSCRIPTION_PLANS.bundle_gads_gmb,
-  SUBSCRIPTION_PLANS.bundle_seo_gmb,
-  SUBSCRIPTION_PLANS.seo_1,
-  SUBSCRIPTION_PLANS.seo_2,
-  SUBSCRIPTION_PLANS.seo_3,
   SUBSCRIPTION_PLANS.social_1,
   SUBSCRIPTION_PLANS.social_2,
   SUBSCRIPTION_PLANS.social_3,
+  SUBSCRIPTION_PLANS.social_4,
+  SUBSCRIPTION_PLANS.shopify_1,
+  SUBSCRIPTION_PLANS.shopify_2,
+  SUBSCRIPTION_PLANS.shopify_3,
+  SUBSCRIPTION_PLANS.seo_1,
+  SUBSCRIPTION_PLANS.seo_2,
+  SUBSCRIPTION_PLANS.seo_3,
   SUBSCRIPTION_PLANS.ads_1,
   SUBSCRIPTION_PLANS.ads_2,
   SUBSCRIPTION_PLANS.ads_3,
-  SUBSCRIPTION_PLANS.agency_scale,
+  SUBSCRIPTION_PLANS.gmb_1,
+  SUBSCRIPTION_PLANS.video_creator,
+  SUBSCRIPTION_PLANS.video_pro,
+  SUBSCRIPTION_PLANS.video_cinema,
 ].filter(Boolean);
 
 // ─── Helper: pretty category labels ───────────────────────────────────────────

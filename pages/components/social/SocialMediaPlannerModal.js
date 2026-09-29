@@ -2,13 +2,16 @@
 
 import { useState, useEffect } from "react";
 
-export default function SocialMediaPlannerModal({ onClose }) {
+export default function SocialMediaPlannerModal({ onClose, isTrial99: propIsTrial99, onUpgrade }) {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [generatingQueue, setGeneratingQueue] = useState(false);
   const [regeneratingIdx, setRegeneratingIdx] = useState(null);
   const [testingPost, setTestingPost] = useState(false);
   const [activeTab, setActiveTab] = useState("planner"); // "planner" | "history" | "settings"
+  const [canUseAutopilot, setCanUseAutopilot] = useState(!propIsTrial99);
+  const [isTrial99, setIsTrial99] = useState(Boolean(propIsTrial99));
+  const [planName, setPlanName] = useState("");
 
   const [hasFacebook, setHasFacebook] = useState(false);
   const [hasInstagram, setHasInstagram] = useState(false);
@@ -68,6 +71,15 @@ export default function SocialMediaPlannerModal({ onClose }) {
         setFbPageName(data.fbPageName);
         setIgUsername(data.igUsername);
         setAvailableBrands(data.availableBrands || []);
+        if (data.canUseAutopilot !== undefined) {
+          setCanUseAutopilot(Boolean(data.canUseAutopilot));
+        }
+        if (data.isTrial99 !== undefined) {
+          setIsTrial99(Boolean(data.isTrial99));
+        }
+        if (data.planName) {
+          setPlanName(data.planName);
+        }
         if (targetBiz) {
           setSelectedBrand(targetBiz);
         } else if (data.activeBrand && !selectedBrand) {
@@ -139,6 +151,14 @@ export default function SocialMediaPlannerModal({ onClose }) {
   async function handleToggleEnabled() {
     if (isRestricted && !config.enabled) {
       alert("Service is restricted: Social Media service has been revoked or is not enabled for your account.");
+      return;
+    }
+    if ((isTrial99 || !canUseAutopilot) && !config.enabled) {
+      if (onUpgrade) {
+        onUpgrade();
+      } else {
+        alert("🔒 Social Autopilot is locked on the Power Sampler (₹99) trial pack. Upgrade to a Monthly Subscription to activate autonomous daily/weekly posting.");
+      }
       return;
     }
     const nextState = !config.enabled;
@@ -576,19 +596,37 @@ export default function SocialMediaPlannerModal({ onClose }) {
                   fontSize: 11.5,
                   fontWeight: 700,
                   cursor: "pointer",
-                  border: "none",
+                  border: (isTrial99 || !canUseAutopilot) && !config.enabled
+                    ? "1px solid rgba(245, 158, 11, 0.4)"
+                    : isRestricted
+                    ? "1px solid rgba(239, 68, 68, 0.3)"
+                    : "none",
                   background: isRestricted
                     ? "rgba(239, 68, 68, 0.15)"
+                    : (isTrial99 || !canUseAutopilot) && !config.enabled
+                    ? "linear-gradient(135deg, rgba(245, 158, 11, 0.18) 0%, rgba(234, 88, 12, 0.1) 100%)"
                     : config.enabled
                     ? "linear-gradient(135deg, #10b981 0%, #059669 100%)"
                     : "rgba(255, 255, 255, 0.08)",
-                  color: isRestricted ? "#fca5a5" : config.enabled ? "#042416" : "#cbd5e1",
+                  color: isRestricted
+                    ? "#fca5a5"
+                    : (isTrial99 || !canUseAutopilot) && !config.enabled
+                    ? "#fbbf24"
+                    : config.enabled
+                    ? "#042416"
+                    : "#cbd5e1",
                   boxShadow: config.enabled && !isRestricted ? "0 0 20px rgba(16, 185, 129, 0.35)" : "none",
                   transition: "all 0.2s ease",
                   whiteSpace: "nowrap",
                 }}
               >
-                {isRestricted ? "🔒 Service Restricted" : config.enabled ? "Autopilot ON ✓" : "Turn ON Autopilot"}
+                {isRestricted
+                  ? "🔒 Service Restricted"
+                  : (isTrial99 || !canUseAutopilot) && !config.enabled
+                  ? "🔒 Upgrade for Autopilot"
+                  : config.enabled
+                  ? "Autopilot ON ✓"
+                  : "Turn ON Autopilot"}
               </button>
 
               <button
@@ -1117,34 +1155,99 @@ export default function SocialMediaPlannerModal({ onClose }) {
                   How often should GabbarInfo AI automatically generate and publish a creative?
                 </p>
 
+                {/* 🔒 Sampler / Trial Locked Banner */}
+                {(isTrial99 || !canUseAutopilot) && (
+                  <div
+                    style={{
+                      marginBottom: 16,
+                      padding: "14px 18px",
+                      borderRadius: 12,
+                      background: "linear-gradient(135deg, rgba(245, 158, 11, 0.14) 0%, rgba(234, 88, 12, 0.08) 100%)",
+                      border: "1px solid rgba(245, 158, 11, 0.4)",
+                      display: "flex",
+                      alignItems: "center",
+                      justifyContent: "space-between",
+                      gap: 14,
+                      flexWrap: "wrap",
+                    }}
+                  >
+                    <div style={{ display: "flex", alignItems: "center", gap: 12, minWidth: 240, flex: 1 }}>
+                      <span style={{ fontSize: 26 }}>🔒</span>
+                      <div>
+                        <div style={{ fontSize: 13.5, fontWeight: 800, color: "#fbbf24" }}>
+                          Autopilot Cadence Locked on Power Sampler (₹99)
+                        </div>
+                        <div style={{ fontSize: 11.5, color: "#cbd5e1", marginTop: 3, lineHeight: 1.45 }}>
+                          Your trial pack includes <strong>2 on-demand sample posts</strong> to test AI creative quality. Autonomous scheduled posting (Daily/Weekly) requires an active Monthly Subscription.
+                        </div>
+                      </div>
+                    </div>
+                    {onUpgrade && (
+                      <button
+                        type="button"
+                        onClick={onUpgrade}
+                        style={{
+                          padding: "8px 18px",
+                          borderRadius: 8,
+                          background: "linear-gradient(135deg, #f59e0b 0%, #ea580c 100%)",
+                          border: "none",
+                          color: "#fff",
+                          fontWeight: 800,
+                          fontSize: 12,
+                          cursor: "pointer",
+                          whiteSpace: "nowrap",
+                          boxShadow: "0 0 15px rgba(245, 158, 11, 0.35)",
+                        }}
+                      >
+                        Upgrade Plan ↗
+                      </button>
+                    )}
+                  </div>
+                )}
+
                 <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(130px, 1fr))", gap: 10 }}>
                   {[
                     { id: "daily", label: "Daily (30 Posts / Mo)", desc: "1 fresh post every single day" },
                     { id: "weekly_4", label: "4 Posts / Week", desc: "~16 posts / mo on peak days" },
                     { id: "alternate", label: "Every 2 Days", desc: "15 posts / mo evenly spaced" },
                     { id: "weekly", label: "Weekly (4 Posts / Mo)", desc: "1 high-impact post per week" },
-                  ].map((cad) => (
-                    <div
-                      key={cad.id}
-                      onClick={() => saveConfig({ cadence: cad.id })}
-                      style={{
-                        padding: "14px 16px",
-                        borderRadius: 12,
-                        cursor: "pointer",
-                        background:
-                          config.cadence === cad.id ? "rgba(56, 189, 248, 0.12)" : "rgba(255, 255, 255, 0.03)",
-                        border: `1.5px solid ${
-                          config.cadence === cad.id ? "#38bdf8" : "rgba(255, 255, 255, 0.08)"
-                        }`,
-                        transition: "all 0.2s ease",
-                      }}
-                    >
-                      <h4 style={{ margin: "0 0 4px 0", fontSize: 13, fontWeight: 700, color: "#ffffff" }}>
-                        {cad.label}
-                      </h4>
-                      <p style={{ margin: 0, fontSize: 11.5, color: "#94a3b8" }}>{cad.desc}</p>
-                    </div>
-                  ))}
+                  ].map((cad) => {
+                    const isLocked = isTrial99 || !canUseAutopilot;
+                    return (
+                      <div
+                        key={cad.id}
+                        onClick={() => {
+                          if (isLocked) {
+                            if (onUpgrade) onUpgrade();
+                            else alert("🔒 Cadence selection requires a Monthly Subscription. Upgrade to activate.");
+                            return;
+                          }
+                          saveConfig({ cadence: cad.id });
+                        }}
+                        style={{
+                          padding: "14px 16px",
+                          borderRadius: 12,
+                          cursor: isLocked ? "not-allowed" : "pointer",
+                          opacity: isLocked ? 0.45 : 1,
+                          filter: isLocked ? "grayscale(0.4)" : "none",
+                          background:
+                            config.cadence === cad.id && !isLocked
+                              ? "rgba(56, 189, 248, 0.12)"
+                              : "rgba(255, 255, 255, 0.03)",
+                          border: `1.5px solid ${
+                            config.cadence === cad.id && !isLocked ? "#38bdf8" : "rgba(255, 255, 255, 0.08)"
+                          }`,
+                          transition: "all 0.2s ease",
+                        }}
+                      >
+                        <h4 style={{ margin: "0 0 4px 0", fontSize: 13, fontWeight: 700, color: "#ffffff", display: "flex", alignItems: "center", gap: 6 }}>
+                          {isLocked && <span style={{ fontSize: 12 }}>🔒</span>}
+                          {cad.label}
+                        </h4>
+                        <p style={{ margin: 0, fontSize: 11.5, color: "#94a3b8" }}>{cad.desc}</p>
+                      </div>
+                    );
+                  })}
                 </div>
 
                 {/* ── UPCOMING 7-DAY AUTONOMOUS DISPATCH CADENCE (PROJECTED DISPATCH SCHEDULE) ── */}
@@ -1196,7 +1299,7 @@ export default function SocialMediaPlannerModal({ onClose }) {
                       const isToday = offset === 0;
 
                       let isScheduled = false;
-                      if (config.enabled && !isRestricted) {
+                      if (config.enabled && !isRestricted && !isTrial99 && canUseAutopilot) {
                         if (config.cadence === "daily") {
                           isScheduled = true;
                         } else if (config.cadence === "alternate") {
@@ -1253,7 +1356,12 @@ export default function SocialMediaPlannerModal({ onClose }) {
                             let badgeColor = "#64748b";
                             let badgeBorder = "1px solid transparent";
 
-                            if (!config.enabled) {
+                            if (isTrial99 || !canUseAutopilot) {
+                              badgeText = "🔒 Locked";
+                              badgeBg = "rgba(245, 158, 11, 0.1)";
+                              badgeColor = "#fbbf24";
+                              badgeBorder = "1px solid rgba(245, 158, 11, 0.25)";
+                            } else if (!config.enabled) {
                               badgeText = "⚪ Paused";
                             } else if (isToday) {
                               if (isTodayDone) {

@@ -2,8 +2,11 @@
 
 import { useEffect, useState } from "react";
 import BrandAssetPairingModal from "../brands/BrandAssetPairingModal";
+import SubscriptionModal from "../SubscriptionModal";
 
 export default function ShopifyStoreConnect({ onConnectionChange }) {
+  const [subData, setSubData] = useState(null);
+  const [showSubscriptionModal, setShowSubscriptionModal] = useState(false);
   const [loading, setLoading] = useState(true);
   const [connection, setConnection] = useState(null);
   const [allConnections, setAllConnections] = useState([]);
@@ -104,6 +107,29 @@ export default function ShopifyStoreConnect({ onConnectionChange }) {
   const [socialShareStatus, setSocialShareStatus] = useState(null);
   const [showMetaConnectNotice, setShowMetaConnectNotice] = useState(false);
   const [brandSecurity, setBrandSecurity] = useState(null);
+
+  // Fetch Subscription Status & Entitlements
+  useEffect(() => {
+    async function fetchSub() {
+      try {
+        const res = await fetch("/api/subscriptions/status");
+        if (res.ok) {
+          const data = await res.json();
+          if (data.ok) setSubData(data);
+        }
+      } catch (e) {
+        console.warn("Sub status fetch error in shopify connect:", e);
+      }
+    }
+    fetchSub();
+  }, []);
+
+  const planId = (subData?.subscription?.planId || "none").toLowerCase();
+  const isTrial99 = planId === "trial_99" || planId === "trial-99";
+  const canUseShopifyAutopilot = Boolean(
+    subData?.subscription?.isUnlimited ||
+    (!isTrial99 && planId !== "none" && planId !== "try" && subData?.subscription?.status === "active")
+  );
 
   useEffect(() => {
     fetchConnection();
@@ -309,9 +335,13 @@ export default function ShopifyStoreConnect({ onConnectionChange }) {
   };
 
   const handleSaveAutopilot = async (overrideEnabled = null) => {
+    const isEnabled = typeof overrideEnabled === "boolean" ? overrideEnabled : autopilotConfig.enabled;
+    if (isEnabled && (isTrial99 || !canUseShopifyAutopilot)) {
+      setShowSubscriptionModal(true);
+      return;
+    }
     setAutopilotSaving(true);
     setAutopilotNotice("");
-    const isEnabled = typeof overrideEnabled === "boolean" ? overrideEnabled : autopilotConfig.enabled;
     const toSave = {
       ...autopilotConfig,
       enabled: isEnabled,
@@ -2634,17 +2664,35 @@ export default function ShopifyStoreConnect({ onConnectionChange }) {
                 {/* Master Autopilot Toggle */}
                 <button
                   type="button"
-                  onClick={() => handleSaveAutopilot(!autopilotConfig.enabled)}
+                  onClick={() => {
+                    if ((isTrial99 || !canUseShopifyAutopilot) && !autopilotConfig.enabled) {
+                      setShowSubscriptionModal(true);
+                      return;
+                    }
+                    handleSaveAutopilot(!autopilotConfig.enabled);
+                  }}
                   disabled={autopilotSaving}
                   style={{
                     padding: "10px 20px",
                     borderRadius: 8,
-                    border: autopilotConfig.enabled ? "1px solid #10b981" : "1px solid rgba(255, 255, 255, 0.18)",
-                    background: autopilotConfig.enabled ? "#10b981" : "rgba(255, 255, 255, 0.06)",
-                    color: autopilotConfig.enabled ? "#052e16" : "#ffffff",
+                    border: (isTrial99 || !canUseShopifyAutopilot) && !autopilotConfig.enabled
+                      ? "1px solid rgba(245, 158, 11, 0.4)"
+                      : autopilotConfig.enabled
+                      ? "1px solid #10b981"
+                      : "1px solid rgba(255, 255, 255, 0.18)",
+                    background: (isTrial99 || !canUseShopifyAutopilot) && !autopilotConfig.enabled
+                      ? "linear-gradient(135deg, rgba(245, 158, 11, 0.18) 0%, rgba(234, 88, 12, 0.1) 100%)"
+                      : autopilotConfig.enabled
+                      ? "#10b981"
+                      : "rgba(255, 255, 255, 0.06)",
+                    color: (isTrial99 || !canUseShopifyAutopilot) && !autopilotConfig.enabled
+                      ? "#fbbf24"
+                      : autopilotConfig.enabled
+                      ? "#052e16"
+                      : "#ffffff",
                     fontWeight: 700,
                     fontSize: 13,
-                    cursor: autopilotSaving ? "not-allowed" : "pointer",
+                    cursor: "pointer",
                     display: "flex",
                     alignItems: "center",
                     gap: 8,
@@ -2652,9 +2700,11 @@ export default function ShopifyStoreConnect({ onConnectionChange }) {
                     transition: "all 0.2s ease",
                   }}
                 >
-                  <span>{autopilotConfig.enabled ? "✓" : "▶"}</span>
+                  <span>{(isTrial99 || !canUseShopifyAutopilot) && !autopilotConfig.enabled ? "🔒" : autopilotConfig.enabled ? "✓" : "▶"}</span>
                   {autopilotSaving
                     ? "Updating…"
+                    : (isTrial99 || !canUseShopifyAutopilot) && !autopilotConfig.enabled
+                    ? "🔒 Upgrade for Autopilot"
                     : autopilotConfig.enabled
                     ? "Active Production Engine"
                     : "Enable Production Routine"}
@@ -2815,6 +2865,55 @@ export default function ShopifyStoreConnect({ onConnectionChange }) {
             </div>
           )}
 
+          {/* 🔒 Sampler / Trial Locked Banner */}
+          {(isTrial99 || !canUseShopifyAutopilot) && (
+            <div
+              style={{
+                marginBottom: 16,
+                padding: "16px 20px",
+                borderRadius: 14,
+                background: "linear-gradient(135deg, rgba(245, 158, 11, 0.14) 0%, rgba(234, 88, 12, 0.08) 100%)",
+                border: "1px solid rgba(245, 158, 11, 0.4)",
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "space-between",
+                gap: 16,
+                flexWrap: "wrap",
+                boxShadow: "0 8px 30px rgba(0,0,0,0.3)",
+              }}
+            >
+              <div style={{ display: "flex", alignItems: "center", gap: 14, minWidth: 260, flex: 1 }}>
+                <span style={{ fontSize: 28 }}>🔒</span>
+                <div>
+                  <div style={{ fontSize: 14, fontWeight: 800, color: "#fbbf24" }}>
+                    Shopify SEO Autopilot Locked on Power Sampler (₹99)
+                  </div>
+                  <div style={{ fontSize: 12.5, color: "#cbd5e1", marginTop: 4, lineHeight: 1.5 }}>
+                    Your trial pack includes <strong>2 on-demand SEO blogs</strong> to test AI generation quality. Scheduled automated publishing requires an active Monthly Subscription.
+                  </div>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setShowSubscriptionModal(true)}
+                style={{
+                  padding: "9px 20px",
+                  borderRadius: 10,
+                  background: "linear-gradient(135deg, #f59e0b 0%, #ea580c 100%)",
+                  border: "none",
+                  color: "#fff",
+                  fontWeight: 800,
+                  fontSize: 13,
+                  cursor: "pointer",
+                  whiteSpace: "nowrap",
+                  boxShadow: "0 0 15px rgba(245, 158, 11, 0.35)",
+                }}
+              >
+                Upgrade to Monthly ↗
+              </button>
+            </div>
+          )}
+
           {/* Autopilot Settings Grid */}
           <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(300px, 1fr))", gap: 16 }}>
             {/* 1. Cadence Setting */}
@@ -2830,36 +2929,52 @@ export default function ShopifyStoreConnect({ onConnectionChange }) {
                   { id: "daily", label: "Daily (1 Article / Day at 09:30 AM IST)", desc: "Maximum organic velocity & crawl frequency" },
                   { id: "3x_week", label: "3x Per Week (Mon, Wed, Fri)", desc: "Consistent strategic content pacing" },
                   { id: "weekly", label: "Weekly (1 Article / Week)", desc: "Steady authority building" },
-                ].map((c) => (
-                  <label
-                    key={c.id}
-                    style={{
-                      display: "flex",
-                      alignItems: "flex-start",
-                      gap: 10,
-                      padding: "10px 12px",
-                      borderRadius: 8,
-                      background: autopilotConfig.cadence === c.id ? "rgba(16, 185, 129, 0.1)" : "rgba(255, 255, 255, 0.03)",
-                      border: autopilotConfig.cadence === c.id ? "1px solid rgba(16, 185, 129, 0.4)" : "1px solid rgba(255, 255, 255, 0.08)",
-                      cursor: "pointer",
-                    }}
-                  >
-                    <input
-                      type="radio"
-                      name="shopifyCadence"
-                      value={c.id}
-                      checked={autopilotConfig.cadence === c.id}
-                      onChange={() => setAutopilotConfig({ ...autopilotConfig, cadence: c.id })}
-                      style={{ marginTop: 2, accentColor: "#10b981", cursor: "pointer" }}
-                    />
-                    <div>
-                      <div style={{ fontSize: 12.5, fontWeight: 700, color: autopilotConfig.cadence === c.id ? "#34d399" : "#e2e8f0" }}>
-                        {c.label}
+                ].map((c) => {
+                  const isLocked = isTrial99 || !canUseShopifyAutopilot;
+                  return (
+                    <label
+                      key={c.id}
+                      onClick={(e) => {
+                        if (isLocked) {
+                          e.preventDefault();
+                          setShowSubscriptionModal(true);
+                        }
+                      }}
+                      style={{
+                        display: "flex",
+                        alignItems: "flex-start",
+                        gap: 10,
+                        padding: "10px 12px",
+                        borderRadius: 8,
+                        background: autopilotConfig.cadence === c.id && !isLocked ? "rgba(16, 185, 129, 0.1)" : "rgba(255, 255, 255, 0.03)",
+                        border: autopilotConfig.cadence === c.id && !isLocked ? "1px solid rgba(16, 185, 129, 0.4)" : "1px solid rgba(255, 255, 255, 0.08)",
+                        cursor: isLocked ? "not-allowed" : "pointer",
+                        opacity: isLocked ? 0.45 : 1,
+                        filter: isLocked ? "grayscale(0.4)" : "none",
+                      }}
+                    >
+                      <input
+                        type="radio"
+                        name="shopifyCadence"
+                        value={c.id}
+                        disabled={isLocked}
+                        checked={autopilotConfig.cadence === c.id && !isLocked}
+                        onChange={() => {
+                          if (isLocked) return;
+                          setAutopilotConfig({ ...autopilotConfig, cadence: c.id });
+                        }}
+                        style={{ marginTop: 2, accentColor: "#10b981", cursor: isLocked ? "not-allowed" : "pointer" }}
+                      />
+                      <div>
+                        <div style={{ fontSize: 12.5, fontWeight: 700, color: autopilotConfig.cadence === c.id && !isLocked ? "#34d399" : "#e2e8f0", display: "flex", alignItems: "center", gap: 6 }}>
+                          {isLocked && <span style={{ fontSize: 12 }}>🔒</span>}
+                          {c.label}
+                        </div>
+                        <div style={{ fontSize: 11, color: "#94a3b8", marginTop: 2 }}>{c.desc}</div>
                       </div>
-                      <div style={{ fontSize: 11, color: "#94a3b8", marginTop: 2 }}>{c.desc}</div>
-                    </div>
-                  </label>
-                ))}
+                    </label>
+                  );
+                })}
               </div>
             </div>
 

@@ -599,8 +599,14 @@ export default async function handler(req, res) {
 
       const fbPageName = matchedBrand?.pageName || meta?.business_name || (meta?.fb_page_id ? `Page ID: ${meta.fb_page_id}` : null);
 
-      // Entitlement check for Social Media feature
-      const ent = await verifyEntitlement(session, config.businessId || meta?.fb_business_id, FEATURES.SOCIAL);
+      // Entitlement check for Social Media feature & Autopilot
+      const [ent, subState] = await Promise.all([
+        verifyEntitlement(session, config.businessId || meta?.fb_business_id, FEATURES.SOCIAL),
+        getBusinessSubscriptionState(config.businessId || meta?.fb_business_id, normalizedEmail),
+      ]);
+      const plan = subState?.plan || {};
+      const isTrial99 = plan.id === "trial_99";
+      const canUseAutopilot = isOwner || Boolean(plan.features?.SOCIAL_AUTOPILOT);
 
       return res.status(200).json({
         ok: true,
@@ -608,6 +614,10 @@ export default async function handler(req, res) {
         isOwner,
         isRestricted: !ent.allowed,
         restrictionReason: ent.error || null,
+        canUseAutopilot,
+        isTrial99,
+        planId: plan.id || "none",
+        planName: plan.name || "Free Explorer",
         availableBrands,
         activeBrand: normBusiness || matchedBrand?.key || null,
         hasFacebook,
@@ -658,11 +668,26 @@ export default async function handler(req, res) {
         const subState = await getBusinessSubscriptionState(current.businessId, normalizedEmail);
         const plan = subState.plan;
 
+        if (!isOwner && (plan.id === "trial_99" || !plan.features.SOCIAL_AUTOPILOT)) {
+          if (updatedConfig?.enabled) {
+            return res.status(403).json({
+              ok: false,
+              error: `Social Autopilot is locked on the ${plan.name}. Your trial includes 2 on-demand sample posts. Upgrade to a Monthly Plan to activate automated daily/weekly posting.`,
+            });
+          }
+          if (updatedConfig?.cadence && updatedConfig.cadence !== current.cadence) {
+            return res.status(403).json({
+              ok: false,
+              error: `Autonomous posting cadences are locked on the ${plan.name}. Upgrade to a Monthly Plan to choose a publishing rhythm.`,
+            });
+          }
+        }
+
         if (updatedConfig?.enabled) {
           if (!isOwner && !plan.features.SOCIAL_AUTOPILOT) {
             return res.status(403).json({
               ok: false,
-              error: `Social Autopilot is not included in the ${plan.name} plan. Upgrade to Starter or above to activate.`,
+              error: `Social Autopilot is not included in the ${plan.name}. Upgrade to a Monthly Subscription to activate.`,
             });
           }
 
@@ -674,7 +699,7 @@ export default async function handler(req, res) {
             if (cadence === "daily" || cadence === "alternate" || cadence === "weekly_4") {
               return res.status(400).json({
                 ok: false,
-                error: `The ${plan.name} plan includes up to 4 social posts/month (Weekly cadence). Daily or Alternate cadences require Growth or above.`,
+                error: `The ${plan.name} includes up to 4 social posts/month (Weekly cadence). Daily or Alternate cadences require Growth or above.`,
               });
             }
           }

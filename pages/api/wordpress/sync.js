@@ -641,13 +641,13 @@ export default async function handler(req, res) {
     // 11. SAVE AUTOPILOT CONFIG
     // ----------------------------------------------------------------
     if (action === "save-autopilot-config") {
-      // 🔒 Entitlement Gate: SEO feature must be permitted to enable or update Autopilot
+      // 🔒 Entitlement Gate: SEO_AUTOPILOT feature must be permitted to enable Autopilot
       if (body.config?.enabled && session) {
-        const ent = await verifyEntitlement(session, null, FEATURES.SEO);
+        const ent = await verifyEntitlement(session, null, FEATURES.SEO_AUTOPILOT);
         if (!ent.allowed) {
           return res.status(403).json({
             ok: false,
-            error: ent.error || "SEO Autopilot service is restricted for your account. Please contact administrator.",
+            error: ent.error || "SEO Autopilot is locked on the Power Sampler (₹99) pack. Your trial includes 2 on-demand SEO blogs. Upgrade to a Monthly Subscription to activate autonomous publishing.",
           });
         }
       }

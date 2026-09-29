@@ -5,10 +5,16 @@ import { useSession } from "next-auth/react";
 import { useRouter } from "next/router";
 import Head from "next/head";
 import BrandAssetPairingModal from "./components/brands/BrandAssetPairingModal";
+import SubscriptionModal from "./components/SubscriptionModal";
 
 export default function SeoHubPage() {
   const { data: session, status } = useSession();
   const router = useRouter();
+
+  // Subscription & Entitlements
+  const [subData, setSubData] = useState(null);
+  const [loadingSub, setLoadingSub] = useState(true);
+  const [showSubscriptionModal, setShowSubscriptionModal] = useState(false);
 
   // State
   const [activeBusiness, setActiveBusiness] = useState("");
@@ -176,6 +182,32 @@ export default function SeoHubPage() {
 
   const connectedProfiles = Object.keys(allConnections || {}).filter(k => allConnections[k]?.siteUrl);
 
+  // 0. Fetch Subscription Status & Entitlements
+  useEffect(() => {
+    if (!session) return;
+    async function fetchSub() {
+      try {
+        const res = await fetch("/api/subscriptions/status");
+        if (res.ok) {
+          const data = await res.json();
+          if (data.ok) setSubData(data);
+        }
+      } catch (e) {
+        console.warn("Sub status fetch error in seo:", e);
+      } finally {
+        setLoadingSub(false);
+      }
+    }
+    fetchSub();
+  }, [session]);
+
+  const planId = (subData?.subscription?.planId || "none").toLowerCase();
+  const isTrial99 = planId === "trial_99" || planId === "trial-99";
+  const canUseSeoAutopilot = Boolean(
+    subData?.subscription?.isUnlimited ||
+    (!isTrial99 && planId !== "none" && planId !== "try" && subData?.subscription?.status === "active")
+  );
+
   // 1. Initial Load: Read from URL query or localStorage
   useEffect(() => {
     if (router?.isReady) {
@@ -332,8 +364,12 @@ export default function SeoHubPage() {
       setActiveTab("integrations");
       return;
     }
-    setSavingAutopilotConfig(true);
     const isEnabled = typeof overrideEnabled === "boolean" ? overrideEnabled : autopilotEnabled;
+    if (isEnabled && (isTrial99 || !canUseSeoAutopilot)) {
+      setShowSubscriptionModal(true);
+      return;
+    }
+    setSavingAutopilotConfig(true);
     const bizToUse = activeBusiness || connection?.businessName || "default";
     try {
       const res = await fetch("/api/wordpress/sync", {
@@ -2792,14 +2828,32 @@ export default function SeoHubPage() {
 
                 <div style={{ display: "flex", gap: 12, alignItems: "center", flexWrap: "wrap" }}>
                   <button
-                    onClick={() => handleSaveAutopilotSettings(!autopilotEnabled)}
+                    onClick={() => {
+                      if ((isTrial99 || !canUseSeoAutopilot) && !autopilotEnabled) {
+                        setShowSubscriptionModal(true);
+                        return;
+                      }
+                      handleSaveAutopilotSettings(!autopilotEnabled);
+                    }}
                     disabled={savingAutopilotConfig}
                     style={{
                       padding: "10px 22px",
                       borderRadius: 8,
-                      border: autopilotEnabled ? "1px solid #10b981" : "1px solid rgba(255, 255, 255, 0.18)",
-                      background: autopilotEnabled ? "#10b981" : "rgba(255, 255, 255, 0.06)",
-                      color: autopilotEnabled ? "#052e16" : "#ffffff",
+                      border: (isTrial99 || !canUseSeoAutopilot) && !autopilotEnabled
+                        ? "1px solid rgba(245, 158, 11, 0.4)"
+                        : autopilotEnabled
+                        ? "1px solid #10b981"
+                        : "1px solid rgba(255, 255, 255, 0.18)",
+                      background: (isTrial99 || !canUseSeoAutopilot) && !autopilotEnabled
+                        ? "linear-gradient(135deg, rgba(245, 158, 11, 0.18) 0%, rgba(234, 88, 12, 0.1) 100%)"
+                        : autopilotEnabled
+                        ? "#10b981"
+                        : "rgba(255, 255, 255, 0.06)",
+                      color: (isTrial99 || !canUseSeoAutopilot) && !autopilotEnabled
+                        ? "#fbbf24"
+                        : autopilotEnabled
+                        ? "#052e16"
+                        : "#ffffff",
                       fontWeight: 700,
                       fontSize: 14,
                       cursor: "pointer",
@@ -2810,8 +2864,14 @@ export default function SeoHubPage() {
                       transition: "all 0.2s ease",
                     }}
                   >
-                    <span>{autopilotEnabled ? "✓" : "▶"}</span>
-                    {savingAutopilotConfig ? "Updating…" : autopilotEnabled ? "Active Production Engine" : "Enable Production Routine"}
+                    <span>{(isTrial99 || !canUseSeoAutopilot) && !autopilotEnabled ? "🔒" : autopilotEnabled ? "✓" : "▶"}</span>
+                    {savingAutopilotConfig
+                      ? "Updating…"
+                      : (isTrial99 || !canUseSeoAutopilot) && !autopilotEnabled
+                      ? "🔒 Upgrade for Autopilot"
+                      : autopilotEnabled
+                      ? "Active Production Engine"
+                      : "Enable Production Routine"}
                   </button>
 
                   <button
@@ -2890,14 +2950,6 @@ export default function SeoHubPage() {
                   </div>
                   <div style={{ fontSize: 11, color: "#64748b", marginTop: 2 }}>Autonomous cadence monitor</div>
                 </div>
-
-                <div style={{ background: "rgba(255, 255, 255, 0.03)", border: "1px solid rgba(255, 255, 255, 0.06)", borderRadius: 10, padding: "12px 16px" }}>
-                  <div style={{ fontSize: 11, color: "#94a3b8", fontWeight: 700, textTransform: "uppercase" }}>🚀 Multichannel Syndication</div>
-                  <div style={{ fontSize: 13, fontWeight: 700, color: autoShareFb ? "#60a5fa" : "#94a3b8", marginTop: 6 }}>
-                    {autoShareFb ? "✓ Facebook Page Live" : "○ Facebook Off"}
-                  </div>
-                  <div style={{ fontSize: 11, color: "#64748b", marginTop: 2 }}>Instant cross-posting enabled</div>
-                </div>
               </div>
             </div>
 
@@ -2907,16 +2959,73 @@ export default function SeoHubPage() {
                 1. Define Publishing Rhythm & Volume
               </div>
 
+              {/* 🔒 Sampler / Trial Locked Banner */}
+              {(isTrial99 || !canUseSeoAutopilot) && (
+                <div
+                  style={{
+                    marginBottom: 20,
+                    padding: "16px 20px",
+                    borderRadius: 14,
+                    background: "linear-gradient(135deg, rgba(245, 158, 11, 0.14) 0%, rgba(234, 88, 12, 0.08) 100%)",
+                    border: "1px solid rgba(245, 158, 11, 0.4)",
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "space-between",
+                    gap: 16,
+                    flexWrap: "wrap",
+                    boxShadow: "0 8px 30px rgba(0,0,0,0.3)",
+                  }}
+                >
+                  <div style={{ display: "flex", alignItems: "center", gap: 14, minWidth: 260, flex: 1 }}>
+                    <span style={{ fontSize: 28 }}>🔒</span>
+                    <div>
+                      <div style={{ fontSize: 14, fontWeight: 800, color: "#fbbf24" }}>
+                        SEO Autopilot Locked on Power Sampler (₹99)
+                      </div>
+                      <div style={{ fontSize: 12.5, color: "#cbd5e1", marginTop: 4, lineHeight: 1.5 }}>
+                        Your trial pack includes <strong>2 on-demand SEO blogs</strong> to test AI generation quality. Continuous scheduled publishing (Daily / Weekly) requires an active Monthly Subscription.
+                      </div>
+                    </div>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => setShowSubscriptionModal(true)}
+                    style={{
+                      padding: "9px 20px",
+                      borderRadius: 10,
+                      background: "linear-gradient(135deg, #f59e0b 0%, #ea580c 100%)",
+                      border: "none",
+                      color: "#fff",
+                      fontWeight: 800,
+                      fontSize: 13,
+                      cursor: "pointer",
+                      whiteSpace: "nowrap",
+                      boxShadow: "0 0 15px rgba(245, 158, 11, 0.35)",
+                    }}
+                  >
+                    Upgrade to Monthly ↗
+                  </button>
+                </div>
+              )}
+
               <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))", gap: 16 }}>
                 {/* Daily High-Growth Cadence */}
                 <div
-                  onClick={() => setCadence("daily")}
+                  onClick={() => {
+                    if (isTrial99 || !canUseSeoAutopilot) {
+                      setShowSubscriptionModal(true);
+                      return;
+                    }
+                    setCadence("daily");
+                  }}
                   style={{
-                    background: cadence === "daily" ? "rgba(16, 185, 129, 0.08)" : "rgba(13, 20, 35, 0.7)",
-                    border: cadence === "daily" ? "1.5px solid #10b981" : "1px solid rgba(255, 255, 255, 0.1)",
+                    background: cadence === "daily" && !isTrial99 && canUseSeoAutopilot ? "rgba(16, 185, 129, 0.08)" : "rgba(13, 20, 35, 0.7)",
+                    border: cadence === "daily" && !isTrial99 && canUseSeoAutopilot ? "1.5px solid #10b981" : "1px solid rgba(255, 255, 255, 0.1)",
                     borderRadius: 12,
                     padding: 20,
-                    cursor: "pointer",
+                    cursor: (isTrial99 || !canUseSeoAutopilot) ? "not-allowed" : "pointer",
+                    opacity: (isTrial99 || !canUseSeoAutopilot) ? 0.45 : 1,
+                    filter: (isTrial99 || !canUseSeoAutopilot) ? "grayscale(0.4)" : "none",
                     position: "relative",
                     transition: "all 0.2s ease",
                     display: "flex",
@@ -2926,7 +3035,10 @@ export default function SeoHubPage() {
                 >
                   <div>
                     <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 8 }}>
-                      <div style={{ fontSize: 16, fontWeight: 800, color: "#fff" }}>Daily High-Growth Cadence</div>
+                      <div style={{ fontSize: 16, fontWeight: 800, color: "#fff", display: "flex", alignItems: "center", gap: 6 }}>
+                        {(isTrial99 || !canUseSeoAutopilot) && <span style={{ fontSize: 14 }}>🔒</span>}
+                        Daily High-Growth Cadence
+                      </div>
                       <span style={{ fontSize: 9, padding: "3px 8px", borderRadius: 12, background: "rgba(16, 185, 129, 0.2)", color: "#34d399", fontWeight: 700, border: "1px solid rgba(16, 185, 129, 0.3)", letterSpacing: "0.4px" }}>
                         MAX RANKINGS
                       </span>
@@ -2936,7 +3048,7 @@ export default function SeoHubPage() {
                       Rapidly establishes topical authority and captures emerging keyword trends with daily fresh content.
                     </p>
                   </div>
-                  {cadence === "daily" && (
+                  {cadence === "daily" && !isTrial99 && canUseSeoAutopilot && (
                     <div style={{ marginTop: 14, display: "flex", justifyContent: "flex-end" }}>
                       <span style={{ width: 22, height: 22, borderRadius: "50%", background: "#10b981", color: "#052e16", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 13, fontWeight: 900 }}>✓</span>
                     </div>
@@ -2945,13 +3057,21 @@ export default function SeoHubPage() {
 
                 {/* Weekly Authority Sprint */}
                 <div
-                  onClick={() => setCadence("weekly")}
+                  onClick={() => {
+                    if (isTrial99 || !canUseSeoAutopilot) {
+                      setShowSubscriptionModal(true);
+                      return;
+                    }
+                    setCadence("weekly");
+                  }}
                   style={{
-                    background: cadence === "weekly" ? "rgba(16, 185, 129, 0.08)" : "rgba(13, 20, 35, 0.7)",
-                    border: cadence === "weekly" ? "1.5px solid #10b981" : "1px solid rgba(255, 255, 255, 0.1)",
+                    background: cadence === "weekly" && !isTrial99 && canUseSeoAutopilot ? "rgba(16, 185, 129, 0.08)" : "rgba(13, 20, 35, 0.7)",
+                    border: cadence === "weekly" && !isTrial99 && canUseSeoAutopilot ? "1.5px solid #10b981" : "1px solid rgba(255, 255, 255, 0.1)",
                     borderRadius: 12,
                     padding: 20,
-                    cursor: "pointer",
+                    cursor: (isTrial99 || !canUseSeoAutopilot) ? "not-allowed" : "pointer",
+                    opacity: (isTrial99 || !canUseSeoAutopilot) ? 0.45 : 1,
+                    filter: (isTrial99 || !canUseSeoAutopilot) ? "grayscale(0.4)" : "none",
                     position: "relative",
                     transition: "all 0.2s ease",
                     display: "flex",
@@ -2961,7 +3081,10 @@ export default function SeoHubPage() {
                 >
                   <div>
                     <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 8 }}>
-                      <div style={{ fontSize: 16, fontWeight: 800, color: "#fff" }}>Weekly Authority Sprint</div>
+                      <div style={{ fontSize: 16, fontWeight: 800, color: "#fff", display: "flex", alignItems: "center", gap: 6 }}>
+                        {(isTrial99 || !canUseSeoAutopilot) && <span style={{ fontSize: 14 }}>🔒</span>}
+                        Weekly Authority Sprint
+                      </div>
                       <span style={{ fontSize: 9, padding: "3px 8px", borderRadius: 12, background: "rgba(56, 189, 248, 0.15)", color: "#38bdf8", fontWeight: 700, border: "1px solid rgba(56, 189, 248, 0.3)", letterSpacing: "0.4px" }}>
                         STEADY
                       </span>
@@ -2971,7 +3094,7 @@ export default function SeoHubPage() {
                       Evenly paced weekly releases engineered for consistent crawler crawl rates and steady audience engagement.
                     </p>
                   </div>
-                  {cadence === "weekly" && (
+                  {cadence === "weekly" && !isTrial99 && canUseSeoAutopilot && (
                     <div style={{ marginTop: 14, display: "flex", justifyContent: "flex-end" }}>
                       <span style={{ width: 22, height: 22, borderRadius: "50%", background: "#10b981", color: "#052e16", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 13, fontWeight: 900 }}>✓</span>
                     </div>
@@ -2980,13 +3103,21 @@ export default function SeoHubPage() {
 
                 {/* Monthly Flagship Pillar */}
                 <div
-                  onClick={() => setCadence("monthly")}
+                  onClick={() => {
+                    if (isTrial99 || !canUseSeoAutopilot) {
+                      setShowSubscriptionModal(true);
+                      return;
+                    }
+                    setCadence("monthly");
+                  }}
                   style={{
-                    background: cadence === "monthly" ? "rgba(16, 185, 129, 0.08)" : "rgba(13, 20, 35, 0.7)",
-                    border: cadence === "monthly" ? "1.5px solid #10b981" : "1px solid rgba(255, 255, 255, 0.1)",
+                    background: cadence === "monthly" && !isTrial99 && canUseSeoAutopilot ? "rgba(16, 185, 129, 0.08)" : "rgba(13, 20, 35, 0.7)",
+                    border: cadence === "monthly" && !isTrial99 && canUseSeoAutopilot ? "1.5px solid #10b981" : "1px solid rgba(255, 255, 255, 0.1)",
                     borderRadius: 12,
                     padding: 20,
-                    cursor: "pointer",
+                    cursor: (isTrial99 || !canUseSeoAutopilot) ? "not-allowed" : "pointer",
+                    opacity: (isTrial99 || !canUseSeoAutopilot) ? 0.45 : 1,
+                    filter: (isTrial99 || !canUseSeoAutopilot) ? "grayscale(0.4)" : "none",
                     position: "relative",
                     transition: "all 0.2s ease",
                     display: "flex",
@@ -2996,7 +3127,10 @@ export default function SeoHubPage() {
                 >
                   <div>
                     <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 8 }}>
-                      <div style={{ fontSize: 16, fontWeight: 800, color: "#fff" }}>Monthly Flagship Pillar</div>
+                      <div style={{ fontSize: 16, fontWeight: 800, color: "#fff", display: "flex", alignItems: "center", gap: 6 }}>
+                        {(isTrial99 || !canUseSeoAutopilot) && <span style={{ fontSize: 14 }}>🔒</span>}
+                        Monthly Flagship Pillar
+                      </div>
                       <span style={{ fontSize: 9, padding: "3px 8px", borderRadius: 12, background: "rgba(168, 85, 247, 0.15)", color: "#c084fc", fontWeight: 700, border: "1px solid rgba(168, 85, 247, 0.3)", letterSpacing: "0.4px" }}>
                         PILLAR
                       </span>
@@ -3006,7 +3140,7 @@ export default function SeoHubPage() {
                       Deep-tier monthly cornerstone resource designed to anchor core search rankings and earn long-term backlinks.
                     </p>
                   </div>
-                  {cadence === "monthly" && (
+                  {cadence === "monthly" && !isTrial99 && canUseSeoAutopilot && (
                     <div style={{ marginTop: 14, display: "flex", justifyContent: "flex-end" }}>
                       <span style={{ width: 22, height: 22, borderRadius: "50%", background: "#10b981", color: "#052e16", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 13, fontWeight: 900 }}>✓</span>
                     </div>
@@ -3015,13 +3149,21 @@ export default function SeoHubPage() {
 
                 {/* Tailored Frequency Plan */}
                 <div
-                  onClick={() => setCadence("custom")}
+                  onClick={() => {
+                    if (isTrial99 || !canUseSeoAutopilot) {
+                      setShowSubscriptionModal(true);
+                      return;
+                    }
+                    setCadence("custom");
+                  }}
                   style={{
-                    background: cadence === "custom" ? "rgba(16, 185, 129, 0.08)" : "rgba(13, 20, 35, 0.7)",
-                    border: cadence === "custom" ? "1.5px solid #10b981" : "1px solid rgba(255, 255, 255, 0.1)",
+                    background: cadence === "custom" && !isTrial99 && canUseSeoAutopilot ? "rgba(16, 185, 129, 0.08)" : "rgba(13, 20, 35, 0.7)",
+                    border: cadence === "custom" && !isTrial99 && canUseSeoAutopilot ? "1.5px solid #10b981" : "1px solid rgba(255, 255, 255, 0.1)",
                     borderRadius: 12,
                     padding: 20,
-                    cursor: "pointer",
+                    cursor: (isTrial99 || !canUseSeoAutopilot) ? "not-allowed" : "pointer",
+                    opacity: (isTrial99 || !canUseSeoAutopilot) ? 0.45 : 1,
+                    filter: (isTrial99 || !canUseSeoAutopilot) ? "grayscale(0.4)" : "none",
                     position: "relative",
                     transition: "all 0.2s ease",
                     display: "flex",
@@ -3031,7 +3173,10 @@ export default function SeoHubPage() {
                 >
                   <div>
                     <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 8 }}>
-                      <div style={{ fontSize: 16, fontWeight: 800, color: "#fff" }}>Tailored Frequency Plan</div>
+                      <div style={{ fontSize: 16, fontWeight: 800, color: "#fff", display: "flex", alignItems: "center", gap: 6 }}>
+                        {(isTrial99 || !canUseSeoAutopilot) && <span style={{ fontSize: 14 }}>🔒</span>}
+                        Tailored Frequency Plan
+                      </div>
                       <span style={{ fontSize: 9, padding: "3px 8px", borderRadius: 12, background: "rgba(56, 189, 248, 0.2)", color: "#38bdf8", fontWeight: 700, border: "1px solid rgba(56, 189, 248, 0.3)", letterSpacing: "0.4px" }}>
                         ADAPTIVE
                       </span>
@@ -3043,7 +3188,7 @@ export default function SeoHubPage() {
                       Configure a bespoke weekly output volume fine-tuned to your brand's growth targets.
                     </p>
                   </div>
-                  {cadence === "custom" && (
+                  {cadence === "custom" && !isTrial99 && canUseSeoAutopilot && (
                     <div style={{ marginTop: 14, display: "flex", justifyContent: "flex-end" }}>
                       <span style={{ width: 22, height: 22, borderRadius: "50%", background: "#10b981", color: "#052e16", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 13, fontWeight: 900 }}>✓</span>
                     </div>
@@ -4316,6 +4461,10 @@ export default function SeoHubPage() {
             fetchConnection(activeBusiness);
           }}
         />
+      )}
+
+      {showSubscriptionModal && (
+        <SubscriptionModal onClose={() => setShowSubscriptionModal(false)} />
       )}
     </div>
   );

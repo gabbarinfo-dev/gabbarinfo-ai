@@ -17,15 +17,12 @@ import { useRouter } from "next/router";
 import { useSession } from "next-auth/react";
 import { SUBSCRIPTION_PLANS } from "../../lib/billing/plans";
 
-const CATEGORIES = [
-  { key: "suite", label: "⚡ Growth Suites (All-in-One)" },
-  { key: "trial", label: "🎁 ₹99 Trial Pack" },
-  { key: "gmb", label: "📍 Local Maps (GMB)" },
-  { key: "bundle", label: "🔗 Power Bundles" },
-  { key: "seo", label: "📝 SEO Content" },
-  { key: "social", label: "📱 Social Autopilot" },
-  { key: "ads", label: "🚀 Performance Ads" },
-  { key: "agency", label: "🏢 Agency Scale" },
+const MODULAR_SUB_CATEGORIES = [
+  { key: "social", label: "📱 Social Media Autopilot", desc: "Automate Facebook & Instagram with scheduled posts & AI visuals" },
+  { key: "shopify", label: "🛍️ Shopify Store SEO", desc: "Product-linked blogs & high-converting product descriptions" },
+  { key: "seo", label: "📝 WordPress SEO Suite", desc: "Autonomous long-form SEO articles & service landing pages" },
+  { key: "ads", label: "🚀 Performance Ads (+ Free GMB)", desc: "Launch high-ROI Google & Meta ads with free local maps booster" },
+  { key: "gmb", label: "📍 Solo Local Maps (GMB)", desc: "Rank in Google Maps Local 3-Pack with 5-min AI review responder" },
 ];
 
 const MODULAR_PLANS = [
@@ -33,19 +30,20 @@ const MODULAR_PLANS = [
   SUBSCRIPTION_PLANS.suite_1,
   SUBSCRIPTION_PLANS.suite_2,
   SUBSCRIPTION_PLANS.suite_3,
-  SUBSCRIPTION_PLANS.gmb_1,
-  SUBSCRIPTION_PLANS.bundle_gads_gmb,
-  SUBSCRIPTION_PLANS.bundle_seo_gmb,
-  SUBSCRIPTION_PLANS.seo_1,
-  SUBSCRIPTION_PLANS.seo_2,
-  SUBSCRIPTION_PLANS.seo_3,
   SUBSCRIPTION_PLANS.social_1,
   SUBSCRIPTION_PLANS.social_2,
   SUBSCRIPTION_PLANS.social_3,
+  SUBSCRIPTION_PLANS.social_4,
+  SUBSCRIPTION_PLANS.shopify_1,
+  SUBSCRIPTION_PLANS.shopify_2,
+  SUBSCRIPTION_PLANS.shopify_3,
+  SUBSCRIPTION_PLANS.seo_1,
+  SUBSCRIPTION_PLANS.seo_2,
+  SUBSCRIPTION_PLANS.seo_3,
   SUBSCRIPTION_PLANS.ads_1,
   SUBSCRIPTION_PLANS.ads_2,
   SUBSCRIPTION_PLANS.ads_3,
-  SUBSCRIPTION_PLANS.agency_scale,
+  SUBSCRIPTION_PLANS.gmb_1,
 ].filter(Boolean);
 
 export default function SubscriptionModal({
@@ -62,7 +60,8 @@ export default function SubscriptionModal({
   const isAdmin = session?.user?.email?.toLowerCase() === ADMIN_EMAIL.toLowerCase();
 
   const [selectedPlan, setSelectedPlan] = useState(null);
-  const [selectedCategory, setSelectedCategory] = useState("suite");
+  const [mainTab, setMainTab] = useState("modular"); // "modular" | "suite"
+  const [selectedCategory, setSelectedCategory] = useState("social");
   const [step, setStep] = useState("plans"); // "plans" | "checkout" | "confirmation"
   const [paymentRef, setPaymentRef] = useState("");
   const [submitting, setSubmitting] = useState(false);
@@ -209,7 +208,12 @@ export default function SubscriptionModal({
     }
   }
 
-  const filteredPlans = MODULAR_PLANS.filter((p) => p.category === selectedCategory);
+  const filteredPlans = MODULAR_PLANS.filter((p) => {
+    if (mainTab === "suite") {
+      return p.category === "suite";
+    }
+    return p.category === selectedCategory;
+  });
 
   return (
     <div
@@ -494,44 +498,118 @@ export default function SubscriptionModal({
                 )}
               </div>
 
-              {/* Category Tab Switcher */}
+              {/* PRIMARY VIEW SWITCHER (Tab 1: Modular vs Tab 2: Growth Bundles) */}
               <div
                 style={{
-                  display: "flex",
-                  gap: 8,
-                  marginBottom: 24,
-                  overflowX: "auto",
-                  paddingBottom: 4,
-                  borderBottom: "1px solid rgba(255, 255, 255, 0.06)",
+                  display: "grid",
+                  gridTemplateColumns: "1fr 1fr",
+                  gap: 12,
+                  marginBottom: 18,
+                  background: "rgba(255, 255, 255, 0.04)",
+                  padding: 6,
+                  borderRadius: 16,
+                  border: "1px solid rgba(255, 255, 255, 0.08)",
                 }}
               >
-                {CATEGORIES.map((cat) => {
-                  const isActive = selectedCategory === cat.key;
-                  return (
-                    <button
-                      key={cat.key}
-                      onClick={() => setSelectedCategory(cat.key)}
-                      style={{
-                        padding: "8px 16px",
-                        borderRadius: 12,
-                        border: "none",
-                        background: isActive
-                          ? "linear-gradient(135deg, #2563eb 0%, #1d4ed8 100%)"
-                          : "rgba(255, 255, 255, 0.04)",
-                        color: isActive ? "#ffffff" : "#94a3b8",
-                        fontWeight: 700,
-                        fontSize: 13,
-                        cursor: "pointer",
-                        whiteSpace: "nowrap",
-                        boxShadow: isActive ? "0 4px 14px rgba(37, 99, 235, 0.35)" : "none",
-                        transition: "all 0.2s ease",
-                      }}
-                    >
-                      {cat.label}
-                    </button>
-                  );
-                })}
+                <button
+                  type="button"
+                  onClick={() => {
+                    setMainTab("modular");
+                    if (selectedCategory === "suite") setSelectedCategory("social");
+                  }}
+                  style={{
+                    padding: "12px 16px",
+                    borderRadius: 12,
+                    border: "none",
+                    background:
+                      mainTab === "modular"
+                        ? "linear-gradient(135deg, #2563eb 0%, #1d4ed8 100%)"
+                        : "transparent",
+                    color: mainTab === "modular" ? "#ffffff" : "#94a3b8",
+                    fontWeight: 800,
+                    fontSize: 13.5,
+                    cursor: "pointer",
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "center",
+                    gap: 8,
+                    boxShadow: mainTab === "modular" ? "0 4px 16px rgba(37, 99, 235, 0.4)" : "none",
+                    transition: "all 0.2s ease",
+                  }}
+                >
+                  <span>🧩</span> Tab 1: Modular Tools (A-la-Carte)
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => {
+                    setMainTab("suite");
+                    setSelectedCategory("suite");
+                  }}
+                  style={{
+                    padding: "12px 16px",
+                    borderRadius: 12,
+                    border: "none",
+                    background:
+                      mainTab === "suite"
+                        ? "linear-gradient(135deg, #10b981 0%, #059669 100%)"
+                        : "transparent",
+                    color: mainTab === "suite" ? "#ffffff" : "#94a3b8",
+                    fontWeight: 800,
+                    fontSize: 13.5,
+                    cursor: "pointer",
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "center",
+                    gap: 8,
+                    boxShadow: mainTab === "suite" ? "0 4px 16px rgba(16, 185, 129, 0.4)" : "none",
+                    transition: "all 0.2s ease",
+                  }}
+                >
+                  <span>⚡</span> Tab 2: All-in-One Growth Bundles
+                </button>
               </div>
+
+              {/* Sub-Category Selector (Only visible for Tab 1: Modular) */}
+              {mainTab === "modular" && (
+                <div
+                  style={{
+                    display: "flex",
+                    gap: 8,
+                    marginBottom: 24,
+                    overflowX: "auto",
+                    paddingBottom: 4,
+                    borderBottom: "1px solid rgba(255, 255, 255, 0.06)",
+                  }}
+                >
+                  {MODULAR_SUB_CATEGORIES.map((cat) => {
+                    const isActive = selectedCategory === cat.key;
+                    return (
+                      <button
+                        key={cat.key}
+                        onClick={() => setSelectedCategory(cat.key)}
+                        style={{
+                          padding: "8px 16px",
+                          borderRadius: 12,
+                          border: "none",
+                          background: isActive
+                            ? "linear-gradient(135deg, #3b82f6 0%, #1d4ed8 100%)"
+                            : "rgba(255, 255, 255, 0.04)",
+                          color: isActive ? "#ffffff" : "#94a3b8",
+                          fontWeight: 700,
+                          fontSize: 13,
+                          cursor: "pointer",
+                          whiteSpace: "nowrap",
+                          boxShadow: isActive ? "0 4px 14px rgba(37, 99, 235, 0.35)" : "none",
+                          transition: "all 0.2s ease",
+                        }}
+                      >
+                        {cat.label}
+                      </button>
+                    );
+                  })}
+                </div>
+              )}
 
               {/* Plans Grid */}
               <div
@@ -556,10 +634,9 @@ export default function SubscriptionModal({
                   const isPopular =
                     p.id === "suite_1" ||
                     p.id === "gmb_1" ||
-                    p.id === "bundle_gads_gmb" ||
-                    p.id === "bundle_seo_gmb" ||
                     p.id === "seo_1" ||
-                    p.id === "social_1" ||
+                    p.id === "shopify_1" ||
+                    p.id === "social_2" ||
                     p.id === "ads_1";
 
                   return (
@@ -631,72 +708,75 @@ export default function SubscriptionModal({
 
                         {/* Feature Bullet Allowances */}
                         <ul style={{ listStyle: "none", padding: 0, margin: "0 0 24px 0", fontSize: 12.5, lineHeight: "2" }}>
-                          {/* WordPress Sites & Isolated Blogs */}
-                          {p.limits.maxWordPressSites > 0 ? (
+                          {/* WordPress Sites */}
+                          {p.limits.maxWordPressSites > 0 && (
                             <li style={{ color: "#cbd5e1" }}>
-                              🌐 <strong>{p.limits.maxWordPressSites}</strong> {p.limits.maxWordPressSites === 1 ? "Website Slot" : "Website Slots"}{" "}
-                              <span style={{ color: "#38bdf8", fontWeight: 600 }}>({p.perAssetQuotas?.blogsPerSite || 30} blogs/site)</span>
+                              🌐 <strong>{p.limits.maxWordPressSites}</strong> {p.limits.maxWordPressSites === 1 ? "WordPress Site" : "WordPress Sites"}{" "}
+                              <span style={{ color: "#38bdf8", fontWeight: 600 }}>({p.quotas.SEO_ARTICLE} blogs/mo)</span>
                             </li>
-                          ) : (
-                            <li style={{ color: "#64748b" }}>🌐 No WordPress Sites</li>
                           )}
 
-                          {/* Social Brands & Isolated Posts */}
-                          {p.limits.maxSocialBrands > 0 ? (
+                          {/* Shopify Stores */}
+                          {p.limits.maxShopifyStores > 0 && (
+                            <li style={{ color: "#cbd5e1" }}>
+                              🛍️ <strong>{p.limits.maxShopifyStores}</strong> {p.limits.maxShopifyStores === 1 ? "Shopify Store" : "Shopify Stores"}{" "}
+                              <span style={{ color: "#10b981", fontWeight: 600 }}>({p.quotas.SEO_ARTICLE} blogs + {p.quotas.PRODUCT_DESC} product descs)</span>
+                            </li>
+                          )}
+
+                          {/* WP Pages (if applicable) */}
+                          {p.quotas.PAGE_CREATION > 0 && (
+                            <li style={{ color: "#cbd5e1" }}>
+                              📄 <strong>{p.quotas.PAGE_CREATION}</strong> SEO Service / Landing Pages
+                            </li>
+                          )}
+
+                          {/* Product Descriptions for standalone Shopify */}
+                          {p.quotas.PRODUCT_DESC > 0 && !p.limits.maxShopifyStores && (
+                            <li style={{ color: "#cbd5e1" }}>
+                              🏷️ <strong>{p.quotas.PRODUCT_DESC}</strong> Product Descriptions Optimized
+                            </li>
+                          )}
+
+                          {/* Social Brands & Posts */}
+                          {p.limits.maxSocialBrands > 0 && (
                             <li style={{ color: "#cbd5e1" }}>
                               📱 <strong>{p.limits.maxSocialBrands}</strong> {p.limits.maxSocialBrands === 1 ? "Social Brand" : "Social Brands"}{" "}
-                              <span style={{ color: "#a855f7", fontWeight: 600 }}>({p.perAssetQuotas?.postsPerBrand || 30} posts/brand)</span>
+                              <span style={{ color: "#a855f7", fontWeight: 600 }}>({p.quotas.SOCIAL_POST} posts/mo pool)</span>
                             </li>
-                          ) : (
-                            <li style={{ color: "#64748b" }}>📱 No Social Media Brands</li>
                           )}
 
-                          {/* Ads Units & Isolated Campaigns */}
-                          {p.limits.maxAdAccounts > 0 ? (
+                          {/* Ads Campaigns */}
+                          {(p.quotas.GOOGLE_CAMPAIGN > 0 || p.quotas.META_CAMPAIGN > 0) && (
                             <li style={{ color: "#cbd5e1" }}>
-                              🎯 <strong>{p.limits.maxAdAccounts}</strong> {p.limits.maxAdAccounts === 1 ? "Ad Unit" : "Ad Units"}{" "}
+                              🎯 <strong>{(p.quotas.GOOGLE_CAMPAIGN || 0) + (p.quotas.META_CAMPAIGN || 0)}</strong> Ad Campaigns/mo{" "}
                               <span style={{ color: "#facc15", fontWeight: 600 }}>
-                                ({p.perAssetQuotas?.googleAdsPerAccount || 2} Google + {p.perAssetQuotas?.metaAdsPerAccount || 2} Meta)
+                                ({p.quotas.GOOGLE_CAMPAIGN} Google + {p.quotas.META_CAMPAIGN} Meta)
                               </span>
                             </li>
-                          ) : (
-                            <li style={{ color: "#64748b" }}>🎯 No Ad Engine Access</li>
                           )}
 
-                          {/* Google Business Profile (GMB) Locations */}
-                          {p.limits.maxGmbLocations > 0 ? (
+                          {/* GMB Locations */}
+                          {p.limits.maxGmbLocations > 0 && (
                             <li style={{ color: "#cbd5e1" }}>
-                              📍 <strong>{p.limits.maxGmbLocations}</strong> {p.limits.maxGmbLocations === 1 ? "GMB Local Maps Profile" : "GMB Local Maps Profiles"}{" "}
-                              <span style={{ color: "#10b981", fontWeight: 600 }}>(AI Review Responder & Insights)</span>
-                            </li>
-                          ) : (
-                            <li style={{ color: "#64748b" }}>📍 No GMB Local Maps</li>
-                          )}
-
-                          {/* Businesses */}
-                          <li style={{ color: "#cbd5e1" }}>
-                            🏢 <strong>{p.limits.maxBusinesses}</strong> {p.limits.maxBusinesses === 1 ? "Isolated Workspace" : "Workspaces"}
-                          </li>
-
-                          {/* Image Generation */}
-                          <li style={{ color: "#cbd5e1" }}>
-                            🎨 <strong>{p.quotas.IMAGE_GENERATION}</strong> AI Images/mo (Ultra HD)
-                          </li>
-
-                          {/* Autopilot Toggles */}
-                          <li style={{ color: p.features.SEO_AUTOPILOT ? "#34d399" : "#64748b" }}>
-                            {p.features.SEO_AUTOPILOT ? "✓ Autonomous SEO Autopilot" : "✕ SEO Autopilot Not Included"}
-                          </li>
-                          <li style={{ color: p.features.SOCIAL_AUTOPILOT ? "#34d399" : "#64748b" }}>
-                            {p.features.SOCIAL_AUTOPILOT ? "✓ Autonomous Social Autopilot" : "✕ Social Autopilot Not Included"}
-                          </li>
-                          {p.features.GMB_AUTOPILOT && (
-                            <li style={{ color: "#34d399" }}>
-                              ✓ 5-Min AI Review Responder & Maps Sync
+                              📍 <strong>{p.limits.maxGmbLocations}</strong> {p.limits.maxGmbLocations === 1 ? "GMB Local Maps Profile" : "GMB Profiles"}{" "}
+                              <span style={{ color: "#34d399", fontWeight: 600 }}>(Free Review Responder & Maps SEO)</span>
                             </li>
                           )}
-                          <li style={{ color: "#34d399", fontSize: 11.5 }}>
-                            ✓ 1 Free Test Post Included (Zero Slot Lock)
+
+                          {/* Workspaces / Businesses */}
+                          <li style={{ color: "#cbd5e1" }}>
+                            🏢 Up to <strong>{p.limits.maxBusinesses}</strong> {p.limits.maxBusinesses === 1 ? "Business Connected" : "Businesses Connected"}
+                          </li>
+
+                          {/* Images & Queries */}
+                          <li style={{ color: "#cbd5e1" }}>
+                            🎨 <strong>{p.quotas.IMAGE_GENERATION}</strong> AI Images &bull; <strong>{p.quotas.AI_QUERY}</strong> Queries/mo
+                          </li>
+
+                          {/* Autopilot Status */}
+                          <li style={{ color: p.features.SOCIAL_AUTOPILOT || p.features.SEO_AUTOPILOT ? "#34d399" : "#64748b" }}>
+                            {p.features.SOCIAL_AUTOPILOT || p.features.SEO_AUTOPILOT ? "✓ Autonomous Autopilot & Flexible Cadence" : "✕ On-Demand Testing Only"}
                           </li>
                         </ul>
                       </div>

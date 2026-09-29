@@ -1,5 +1,5 @@
 // pages/api/shopify/webhooks/compliance.js
-import { getRawBody, verifyShopifyWebhook } from "../../../lib/shopify/verify-webhook.js";
+import { getRawBody, verifyShopifyWebhook } from "../../../../lib/shopify/verify-webhook.js";
 
 export const config = {
   api: {

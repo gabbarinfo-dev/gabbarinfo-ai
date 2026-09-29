@@ -2170,7 +2170,14 @@ export default function HomePage() {
 
       {/* Autonomous Social Media Planner Modal */}
       {showSocialPlanner && (
-        <SocialMediaPlannerModal onClose={() => setShowSocialPlanner(false)} />
+        <SocialMediaPlannerModal
+          onClose={() => setShowSocialPlanner(false)}
+          isTrial99={isTrial99}
+          onUpgrade={() => {
+            setShowSocialPlanner(false);
+            setShowSubscriptionModal(true);
+          }}
+        />
       )}
 
       {/* SEO Suite Onboarding Guidance Modal */}

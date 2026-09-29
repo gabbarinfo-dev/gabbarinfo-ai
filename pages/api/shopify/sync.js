@@ -9,6 +9,7 @@ import { getMetaIdentity, checkBrandMatch, normalizeBrand } from "../../../lib/m
 import { runShopifyAutopilotCycle } from "../../../lib/shopify/shopify-autopilot";
 import { ensureInstagramCompatibleJpeg } from "../../../lib/instagram-image-helper.js";
 import { buildCrossBrandNegativeList, validateTopicRelevance } from "../../../lib/brand-integrity-guard.js";
+import { reserveQuota, commitQuota, releaseQuota } from "../../../lib/billing/quota-service";
 
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL,
@@ -768,11 +769,26 @@ export default async function handler(req, res) {
         return res.status(400).json({ ok: false, error: "Product title is required." });
       }
 
+      // 🛡️ SERVER-SIDE ENTITLEMENT & QUOTA GATE: PRODUCT_DESC
+      const reservation = await reserveQuota({
+        session,
+        userEmail,
+        actionType: "PRODUCT_DESC",
+      });
+
+      if (!reservation.ok) {
+        return res.status(403).json({
+          ok: false,
+          code: reservation.code,
+          error: reservation.error,
+        });
+      }
+
       const prompt = `You are a world-class luxury ecommerce copywriter and SEO specialist.
 Write a comprehensive, high-converting product listing for the following product:
 
 PRODUCT TITLE: ${title}
-VENDOR/BRAND: ${vendor || conn.shopName || "Brand"}
+VENDOR/BRAND: ${vendor || conn?.shopName || "Brand"}
 CATEGORY: ${category || "General"}
 TARGET KEYWORDS: ${keywords || title}
 DESIRED TONE: ${tone}
@@ -824,8 +840,18 @@ Respond ONLY with the raw JSON object. Do not include markdown code block backti
       }
 
       if (!aiResult || !aiResult.bodyHtml) {
+        await releaseQuota({
+          reservationId: reservation.reservationId,
+          reason: "Failed to generate AI product description",
+        });
         return res.status(500).json({ ok: false, error: "Failed to generate AI product description." });
       }
+
+      await commitQuota({
+        reservationId: reservation.reservationId,
+        userEmail,
+        actionType: "PRODUCT_DESC",
+      });
 
       return res.status(200).json({
         ok: true,
@@ -1739,6 +1765,17 @@ Respond ONLY with a valid JSON object matching this schema:
 
       const inputCfg = payload.config || {};
       const targetLoc = (inputCfg.targetLocations || inputCfg.targetMarket || "").trim();
+
+      // 🔒 Entitlement Gate: SEO_AUTOPILOT feature must be permitted to enable Autopilot
+      if (inputCfg.enabled && session) {
+        const ent = await verifyEntitlement(session, null, FEATURES.SEO_AUTOPILOT);
+        if (!ent.allowed) {
+          return res.status(403).json({
+            ok: false,
+            error: ent.error || "Shopify SEO Autopilot is locked on the Power Sampler (₹99) pack. Your trial includes 2 on-demand SEO blogs. Upgrade to a Monthly Plan to activate automated publishing.",
+          });
+        }
+      }
 
       // Anti-Exploitation Shield: Multi-brand security verification
       const brandSecurity = await checkShopifyBrandSecurity(userEmail, conn);
