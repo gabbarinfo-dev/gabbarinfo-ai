@@ -37,7 +37,7 @@ export default async function handler(req, res) {
       fetch(`https://graph.facebook.com/v21.0/me/adaccounts?fields=id,name,account_id,currency,business&access_token=${user_access_token}`)
         .then(r => r.json())
         .catch(() => ({ data: [] })),
-      fetch(`https://graph.facebook.com/v21.0/me/accounts?fields=id,name,phone,website,about,category,access_token,instagram_business_account{id,username}&access_token=${user_access_token}`)
+      fetch(`https://graph.facebook.com/v21.0/me/accounts?fields=id,name,phone,website,about,bio,description,category,category_list,access_token,instagram_business_account{id,username,name,biography,website}&access_token=${user_access_token}`)
         .then(r => r.json())
         .catch(() => ({ data: [] })),
     ]);
@@ -53,9 +53,11 @@ export default async function handler(req, res) {
       });
     }
 
-    // 3. Multi-brand isolation: save every page/brand bundle to agent_memory
+    // 3. Multi-brand isolation: save every page/brand bundle to agent_memory & discover intelligence
+    const { discoverAndCacheMetaBrandIntelligence } = await import("../../../lib/meta/brand-intelligence.js");
     const allMetaConnections = {};
     const connectedBrands = [];
+    const discoveredIntelligences = {};
 
     for (let i = 0; i < allPages.length; i++) {
       const page = allPages[i];
@@ -74,22 +76,31 @@ export default async function handler(req, res) {
       ) || allBusinesses[i] || allBusinesses[0] || null;
 
       const igData = page.instagram_business_account || null;
+      const brandWebsite = page.website || igData?.website || null;
 
       const brandPayload = {
         businessName: pageName,
         pageId: page.id,
         pageName: pageName,
         pageToken: page.access_token,
+        category: page.category || null,
+        categoryList: page.category_list || [],
+        about: page.about || null,
+        bio: page.bio || null,
+        description: page.description || null,
+        phone: page.phone || null,
+        website: brandWebsite,
+        websiteUrl: brandWebsite,
         igId: igData?.id || null,
         igUsername: igData?.username || null,
+        igName: igData?.name || null,
+        igBiography: igData?.biography || null,
+        igWebsite: igData?.website || null,
         businessId: matchingBiz?.id || businessId || null,
         businessTitle: matchingBiz?.name || pageName,
         adAccountId: matchingAd?.id || null,
         adAccountName: matchingAd?.name || null,
         currency: matchingAd?.currency || "INR",
-        phone: page.phone || null,
-        website: page.website || null,
-        category: page.category || null,
         userToken: user_access_token,
         connectedAt: new Date().toISOString(),
       };
@@ -106,6 +117,18 @@ export default async function handler(req, res) {
         },
         { onConflict: "email,memory_type" }
       );
+
+      // Trigger automatic website crawl and brand intelligence synthesis
+      discoverAndCacheMetaBrandIntelligence({
+        email: normEmail,
+        normBusiness: normName,
+        brandPayload,
+        forceRefresh: true,
+      })
+        .then((intel) => {
+          if (intel) discoveredIntelligences[normName] = intel;
+        })
+        .catch((e) => console.warn(`[Sync Meta Intel Error for ${normName}]:`, e.message));
     }
 
     // 4. Update primary meta_connections row with first/primary asset
@@ -114,6 +137,8 @@ export default async function handler(req, res) {
     const primaryBiz = allBusinesses[0];
 
     const primaryPageIg = primaryPage.instagram_business_account?.id || primaryPage.connected_instagram_account?.id || null;
+    const primaryWebsite = primaryPage.website || primaryPage.instagram_business_account?.website || null;
+    const primaryAbout = primaryPage.about || primaryPage.bio || primaryPage.description || null;
 
     await supabaseServer
       .from("meta_connections")
@@ -126,8 +151,8 @@ export default async function handler(req, res) {
         instagram_actor_id: primaryPageIg,
         business_name: primaryPage.name || null,
         business_phone: primaryPage.phone || null,
-        business_website: primaryPage.website || null,
-        business_about: primaryPage.about || null,
+        business_website: primaryWebsite,
+        business_about: primaryAbout,
         business_category: primaryPage.category || null,
         business_info_synced: true,
         account_currency: primaryAd?.currency || "INR",

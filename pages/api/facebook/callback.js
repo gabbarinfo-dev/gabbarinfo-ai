@@ -65,9 +65,9 @@ export default async function handler(req, res) {
       axios.get("https://graph.facebook.com/v19.0/me/adaccounts", {
         params: { fields: "id,name,account_id,currency,business{id,name}", access_token: fb_user_access_token },
       }).catch(() => ({ data: { data: [] } })),
-      axios.get("https://graph.facebook.com/v19.0/me/accounts", {
+      axios.get("https://graph.facebook.com/v21.0/me/accounts", {
         params: {
-          fields: "id,name,access_token,category,instagram_business_account{id,username},connected_instagram_account{id,username}",
+          fields: "id,name,access_token,category,category_list,about,bio,description,website,phone,single_line_address,instagram_business_account{id,username,name,biography,website},connected_instagram_account{id,username,name,biography,website}",
           access_token: fb_user_access_token,
         },
       }).catch(() => ({ data: { data: [] } })),
@@ -89,6 +89,8 @@ export default async function handler(req, res) {
     // -------------------------------------------------------------
     // 3.2. MULTI-BRAND ISOLATION: Save each distinct Page/Brand Bundle
     // -------------------------------------------------------------
+    const { discoverAndCacheMetaBrandIntelligence } = await import("../../../lib/meta/brand-intelligence.js");
+
     for (let i = 0; i < allPages.length; i++) {
       const page = allPages[i];
       const pageName = page.name || `Brand_${page.id}`;
@@ -105,13 +107,26 @@ export default async function handler(req, res) {
       ) || allBusinesses[i] || allBusinesses[0] || null;
 
       const pageIg = page.instagram_business_account || page.connected_instagram_account || null;
+      const brandWebsite = page.website || pageIg?.website || null;
+
       const brandPayload = {
         businessName: pageName,
         pageId: page.id,
         pageName: pageName,
         pageToken: page.access_token,
+        category: page.category || null,
+        categoryList: page.category_list || [],
+        about: page.about || null,
+        bio: page.bio || null,
+        description: page.description || null,
+        phone: page.phone || null,
+        website: brandWebsite,
+        websiteUrl: brandWebsite,
         igId: pageIg?.id || null,
         igUsername: pageIg?.username || null,
+        igName: pageIg?.name || null,
+        igBiography: pageIg?.biography || null,
+        igWebsite: pageIg?.website || null,
         instagramActorId: pageIg?.id || null,
         businessId: matchingBiz?.id || fb_business_id,
         businessTitle: matchingBiz?.name || pageName,
@@ -130,6 +145,14 @@ export default async function handler(req, res) {
         },
         { onConflict: "email,memory_type" }
       );
+
+      // Proactively discover brand intelligence, crawl connected website, and formulate bespoke topics
+      discoverAndCacheMetaBrandIntelligence({
+        email,
+        normBusiness: normName,
+        brandPayload,
+        forceRefresh: true,
+      }).catch((e) => console.warn(`[Meta Connect Auto-Intel Error for ${normName}]:`, e.message));
     }
 
     // -----------------------------
@@ -158,6 +181,10 @@ export default async function handler(req, res) {
     // -----------------------------
     // 4. UPSERT PRIMARY (FAIL-LOUD)
     // -----------------------------
+    const primaryPage = allPages[0] || {};
+    const primaryWebsite = primaryPage.website || primaryIg?.website || null;
+    const primaryAbout = primaryPage.about || primaryPage.bio || primaryPage.description || null;
+
     const { error: upsertError } = await supabase
       .from("meta_connections")
       .upsert(
@@ -170,6 +197,11 @@ export default async function handler(req, res) {
           ig_business_id,
           instagram_actor_id,
           fb_ad_account_id,
+          business_name: primaryPage.name || null,
+          business_about: primaryAbout,
+          business_website: primaryWebsite,
+          business_phone: primaryPage.phone || null,
+          business_category: primaryPage.category || null,
           scopes: ["ads", "pages", "instagram"],
           updated_at: new Date().toISOString(),
         },

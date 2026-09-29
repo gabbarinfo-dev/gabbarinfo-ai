@@ -309,109 +309,39 @@ export async function resolveBrandIntelligence({ email, normBusiness, matchedBra
     };
   }
 
-  // 4. Standalone Meta Page / Brand Intelligence (AI Synthesized from Meta Signals)
-  const bName = matchedBrand?.businessName || meta?.business_name || matchedBrand?.pageName || "My Business";
-  const bCat = matchedBrand?.category || matchedBrand?.businessCategory || meta?.business_category || "";
-  const bAbout = matchedBrand?.about || meta?.business_about || "";
-  const bWebsite = matchedBrand?.websiteUrl || matchedBrand?.website || meta?.business_website || "";
-
-  // Check if we have pre-cached brand intelligence in agent_memory
+  // 4. Standalone Meta Page / Brand Intelligence (AI Synthesized with Live Website Crawling)
   try {
-    const intelKey = `brand_intel_${normBusiness || "default"}`;
-    const { data: cachedIntel } = await supabase
-      .from("agent_memory")
-      .select("content")
-      .eq("email", email)
-      .eq("memory_type", intelKey)
-      .maybeSingle();
+    const { discoverAndCacheMetaBrandIntelligence } = await import("../../../lib/meta/brand-intelligence.js");
+    const metaIntel = await discoverAndCacheMetaBrandIntelligence({
+      email,
+      normBusiness: normBusiness || "default",
+      brandPayload: matchedBrand || {
+        businessName: meta?.business_name,
+        category: meta?.business_category,
+        about: meta?.business_about,
+        website: meta?.business_website,
+        phone: meta?.business_phone,
+      },
+      forceRefresh: false,
+    });
 
-    if (cachedIntel?.content) {
-      const parsed = JSON.parse(cachedIntel.content);
-      if (parsed.services && Array.isArray(parsed.services) && parsed.services.length > 0 && !parsed.services.includes("Featured Products")) {
-        return {
-          type: "ai_synthesized",
-          businessName: bName,
-          industry: parsed.industry || bCat || "Specialized Professional Services",
-          services: parsed.services,
-          suggestedTopics: parsed.suggestedTopics || [],
-          brandVoice: parsed.brandVoice || "Engaging, authoritative, and customer-centric",
-          targetAudience: parsed.targetAudience || "Valued customers and community",
-          targetLocations: parsed.targetLocations || "Global"
-        };
-      }
+    if (metaIntel) {
+      return {
+        type: "ai_synthesized",
+        businessName: metaIntel.businessName || bName,
+        industry: metaIntel.industry || bCat || "Specialized Professional Services",
+        services: metaIntel.services,
+        suggestedTopics: metaIntel.suggestedTopics || [],
+        richQueue: metaIntel.richQueue || [],
+        brandVoice: metaIntel.brandVoice || "Engaging, authoritative, and customer-centric",
+        targetAudience: metaIntel.targetAudience || "Valued customers and community",
+        targetLocations: metaIntel.targetLocations || "Global",
+        website: metaIntel.crawledWebsite || null,
+        discoveredBio: metaIntel.discoveredBio || null,
+      };
     }
-  } catch (_) {}
-
-  // Synthesize on the fly with OpenAI if we have any brand signals
-  const apiKey = process.env.OPENAI_API_KEY;
-  if (apiKey && (bName !== "My Business" || bCat || bAbout || bWebsite)) {
-    try {
-      const openai = new OpenAI({ apiKey });
-      const prompt = `You are a premier commercial brand strategist and creative director.
-Analyze this real business profile from their connected Facebook/Instagram page and synthesize authoritative, deeply relevant brand intelligence for automated social media marketing.
-
-BUSINESS CONTEXT:
-- Brand Name: "${bName}"
-- Business Category / Niche: "${bCat || "Specialized Services"}"
-- About / Mission / Bio: "${bAbout || "Leading provider in its niche"}"
-- Stated Website: "${bWebsite}"
-
-CRITICAL REQUIREMENTS:
-1. Determine their exact, authentic industry (e.g. "AI Vedic Astrology & Palmistry SaaS", "Luxury Jewellery & Bridal Fashion", "Automotive Diagnostic Repair", etc.).
-2. Generate 6 to 8 REAL core services/offerings tailored specifically to this business.
-   STRICT RULE: NEVER output generic retail e-commerce placeholders like "Featured Products", "Customer Favorites", "New Arrivals", or "Special Offers" unless the business is explicitly an e-commerce clothing or general retail product store.
-3. Formulate 10 compelling, high-converting social media content topics.
-4. Define brand voice and target audience.
-
-Format strictly as JSON:
-{
-  "industry": "Exact industry name",
-  "services": ["Service 1", "Service 2", ...],
-  "brandVoice": "Tone description",
-  "targetAudience": "Audience description",
-  "suggestedTopics": ["Topic 1", "Topic 2", ...],
-  "targetLocations": "Primary target region or global"
-}`;
-
-      const aiRes = await openai.chat.completions.create({
-        model: "gpt-4o-mini",
-        messages: [
-          { role: "system", content: "You are an elite brand intelligence extractor. Respond strictly with valid JSON." },
-          { role: "user", content: prompt }
-        ],
-        response_format: { type: "json_object" },
-        temperature: 0.7,
-      });
-
-      const parsed = JSON.parse(aiRes.choices[0]?.message?.content || "{}");
-      if (parsed.services && Array.isArray(parsed.services) && parsed.services.length > 0) {
-        // Cache synthesized intelligence to agent_memory so it's persistent and fast
-        try {
-          await supabase.from("agent_memory").upsert(
-            {
-              email,
-              memory_type: `brand_intel_${normBusiness || "default"}`,
-              content: JSON.stringify(parsed),
-              updated_at: new Date().toISOString()
-            },
-            { onConflict: "email,memory_type" }
-          );
-        } catch (_) {}
-
-        return {
-          type: "ai_synthesized",
-          businessName: bName,
-          industry: parsed.industry || bCat || "Specialized Professional Services",
-          services: parsed.services,
-          suggestedTopics: parsed.suggestedTopics || [],
-          brandVoice: parsed.brandVoice || "Engaging, authoritative, and customer-centric",
-          targetAudience: parsed.targetAudience || "Valued customers and community",
-          targetLocations: parsed.targetLocations || "Global"
-        };
-      }
-    } catch (aiErr) {
-      console.warn("[Social Autopilot] AI brand synthesis error:", aiErr.message);
-    }
+  } catch (intelErr) {
+    console.warn("[Social Autopilot] discoverAndCacheMetaBrandIntelligence error:", intelErr.message);
   }
 
   // Heuristic domain fallbacks (astrology, spa, mechanic, legal, medical, etc.)
@@ -564,6 +494,9 @@ export default async function handler(req, res) {
         businessName: matchedBrand?.businessName || saved?.businessName || intel.businessName,
         industry: finalIndustry,
         services: finalServices,
+        suggestedTopics: intel.suggestedTopics || saved?.suggestedTopics || [],
+        discoveredWebsite: intel.website || matchedBrand?.website || meta?.business_website || null,
+        discoveredBio: intel.discoveredBio || matchedBrand?.about || matchedBrand?.igBiography || meta?.business_about || null,
         brandVoice: saved?.brandVoice || intel.brandVoice,
         targetAudience: saved?.targetAudience || intel.targetAudience,
         targetMarket: saved?.targetMarket || intel.targetLocations || "",
@@ -660,6 +593,57 @@ export default async function handler(req, res) {
         try {
           current = JSON.parse(mem.content);
         } catch (e) {}
+      }
+
+      // ── ACTION: SUGGEST / REFRESH TOPICS (WITH LIVE WEBSITE CRAWL) ──
+      if (action === "suggest-topics" || action === "refresh-topics") {
+        const { discoverAndCacheMetaBrandIntelligence } = await import("../../../lib/meta/brand-intelligence.js");
+        const intel = await discoverAndCacheMetaBrandIntelligence({
+          email: normalizedEmail,
+          normBusiness: effectiveNormBiz || "default",
+          brandPayload: matchedBrand || {
+            businessName: current.businessName || meta?.business_name,
+            category: current.industry || meta?.business_category,
+            about: meta?.business_about,
+            website: meta?.business_website,
+            phone: meta?.business_phone,
+          },
+          forceRefresh: true,
+        });
+
+        const newTopics = intel?.suggestedTopics || [];
+        const newServices = intel?.services || current.services || [];
+        const newQueue = buildFallbackQueue(newServices, current.businessName || intel?.businessName, 30, newTopics, intel?.richQueue);
+
+        const merged = {
+          ...current,
+          industry: intel?.industry || current.industry,
+          services: newServices,
+          suggestedTopics: newTopics,
+          discoveredWebsite: intel?.crawledWebsite || current.discoveredWebsite || null,
+          discoveredBio: intel?.discoveredBio || current.discoveredBio || null,
+          queue: newQueue,
+          updatedAt: new Date().toISOString(),
+        };
+
+        await supabase.from("agent_memory").upsert(
+          {
+            email: normalizedEmail,
+            memory_type: autoMemoryKey,
+            content: JSON.stringify(merged),
+            updated_at: new Date().toISOString(),
+          },
+          { onConflict: "email,memory_type" }
+        );
+
+        return res.status(200).json({
+          ok: true,
+          config: merged,
+          topics: newTopics,
+          services: newServices,
+          industry: intel?.industry,
+          website: intel?.crawledWebsite,
+        });
       }
 
       // ── ACTION: SAVE CONFIG ──
@@ -1062,6 +1046,17 @@ Respond ONLY in JSON: { "hook": "short catchy hook (4-7 words)", "topic": "speci
         let nextIndex = queue.findIndex(q => q.status === "pending");
         if (nextIndex === -1) nextIndex = 0;
         const targetItem = { ...queue[nextIndex] };
+
+        // Support user-selected customTopic / customHook from UI suggested topics
+        if (customTopic || req.body?.topic) {
+          targetItem.topic = customTopic || req.body.topic;
+          if (customHook || req.body?.hook) {
+            targetItem.hook = customHook || req.body.hook;
+          }
+          if (req.body?.service) {
+            targetItem.service = req.body.service;
+          }
+        }
 
         const service = targetItem.service || (current.services && current.services[0]) || "Core Services";
         const topic = targetItem.topic || `Practical insights for ${service}`;

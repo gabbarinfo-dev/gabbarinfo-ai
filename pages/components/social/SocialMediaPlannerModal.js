@@ -25,6 +25,9 @@ export default function SocialMediaPlannerModal({ onClose, isTrial99: propIsTria
     businessName: "",
     industry: "",
     services: [],
+    suggestedTopics: [],
+    discoveredWebsite: null,
+    discoveredBio: null,
     brandVoice: "",
     queue: [],
     history: [],
@@ -46,6 +49,7 @@ export default function SocialMediaPlannerModal({ onClose, isTrial99: propIsTria
   const [availableBrands, setAvailableBrands] = useState([]);
   const [selectedBrand, setSelectedBrand] = useState("");
   const [syncingMeta, setSyncingMeta] = useState(false);
+  const [refreshingTopics, setRefreshingTopics] = useState(false);
 
   // Load initial config
   useEffect(() => {
@@ -264,7 +268,7 @@ export default function SocialMediaPlannerModal({ onClose, isTrial99: propIsTria
     saveConfig({ services: updated });
   }
 
-  async function handleTestPostNow() {
+  async function handleTestPostNow(selectedTopic = null) {
     const testPostsUsed = config.testPostsUsed || 0;
     if (!isOwner && testPostsUsed >= 1 && isRestricted) {
       alert("You have already used your 1 free test post. Social Media service is restricted for your account.");
@@ -278,9 +282,13 @@ export default function SocialMediaPlannerModal({ onClose, isTrial99: propIsTria
         ? "Facebook Page"
         : "Instagram";
 
+    const topicLabel = typeof selectedTopic === "string" && selectedTopic.trim()
+      ? ` on topic:\n"${selectedTopic.trim()}"`
+      : "";
+
     const confirmMsg = (!isOwner && testPostsUsed >= 1)
-      ? `Publish an immediate live creative to ${destLabel}? This will consume 1 social post allowance from your monthly plan.`
-      : `Post an immediate live test creative now to ${destLabel}? (1 free test post)`;
+      ? `Publish an immediate live creative${topicLabel} to ${destLabel}? This will consume 1 social post allowance from your monthly plan.`
+      : `Post an immediate live test creative${topicLabel} now to ${destLabel}? (1 free test post)`;
 
     const confirmPost = confirm(confirmMsg);
     if (!confirmPost) return;
@@ -291,10 +299,15 @@ export default function SocialMediaPlannerModal({ onClose, isTrial99: propIsTria
 
     try {
       const targetBiz = selectedBrand || config.businessName;
+      const payload = { action: "test-post", businessName: targetBiz };
+      if (typeof selectedTopic === "string" && selectedTopic.trim()) {
+        payload.customTopic = selectedTopic.trim();
+      }
+
       const res = await fetch("/api/social/autopilot-config", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ action: "test-post", businessName: targetBiz }),
+        body: JSON.stringify(payload),
       });
       const rawText = await res.text();
       let data = null;
@@ -372,6 +385,48 @@ export default function SocialMediaPlannerModal({ onClose, isTrial99: propIsTria
       setTestingPost(false);
       setTestingStatus("");
     }
+  }
+
+  async function handleRefreshTopics() {
+    setRefreshingTopics(true);
+    try {
+      const targetBiz = selectedBrand || config.businessName;
+      const res = await fetch("/api/social/autopilot-config", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "refresh-topics", businessName: targetBiz }),
+      });
+      const data = await res.json();
+      if (data.ok && data.config) {
+        setConfig(data.config);
+      } else {
+        alert("Discovery notice: " + (data.error || "Could not complete topic discovery"));
+      }
+    } catch (e) {
+      alert("Discovery error: " + e.message);
+    } finally {
+      setRefreshingTopics(false);
+    }
+  }
+
+  async function handleAddTopicToQueue(topicText) {
+    if (!topicText) return;
+    const currentQueue = Array.isArray(config.queue) ? [...config.queue] : [];
+    const newDay = currentQueue.length + 1;
+    const d = new Date();
+    d.setDate(d.getDate() + newDay);
+    const newItem = {
+      day: newDay,
+      pillar: "educational_tips",
+      service: (config.services && config.services[0]) || "Core Offerings",
+      hook: "Special Spotlight",
+      topic: topicText,
+      status: "pending",
+      scheduledDate: d.toISOString(),
+    };
+    const updatedQueue = [...currentQueue, newItem];
+    setConfig((prev) => ({ ...prev, queue: updatedQueue }));
+    await saveConfig({ queue: updatedQueue });
   }
 
   const pillarBadges = {
@@ -812,6 +867,204 @@ export default function SocialMediaPlannerModal({ onClose, isTrial99: propIsTria
                   >
                     {generatingQueue ? "AI Generating..." : "⚡ Generate 30-Day Queue"}
                   </button>
+                </div>
+              </div>
+
+              {/* ── AI BRAND INTELLIGENCE & SUGGESTED TOPICS BANNER ── */}
+              <div
+                style={{
+                  marginBottom: 16,
+                  padding: "16px 18px",
+                  borderRadius: 14,
+                  background: "linear-gradient(135deg, rgba(56, 189, 248, 0.08) 0%, rgba(168, 85, 247, 0.05) 100%)",
+                  border: "1px solid rgba(56, 189, 248, 0.25)",
+                  boxShadow: "0 6px 20px rgba(0, 0, 0, 0.25)",
+                  width: "100%",
+                  boxSizing: "border-box",
+                }}
+              >
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", flexWrap: "wrap", gap: 10, marginBottom: 12 }}>
+                  <div>
+                    <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap", marginBottom: 4 }}>
+                      <span
+                        style={{
+                          fontSize: 10.5,
+                          padding: "2px 8px",
+                          borderRadius: 12,
+                          background: "rgba(56, 189, 248, 0.2)",
+                          color: "#38bdf8",
+                          fontWeight: 800,
+                          textTransform: "uppercase",
+                          letterSpacing: "0.5px",
+                        }}
+                      >
+                        🎯 Verified Brand Intelligence
+                      </span>
+                      <span style={{ fontSize: 13.5, fontWeight: 800, color: "#ffffff" }}>
+                        {config.industry || config.businessName || "Specialized Business"}
+                      </span>
+                    </div>
+                    <div style={{ fontSize: 12, color: "#94a3b8", lineHeight: 1.4 }}>
+                      {config.discoveredWebsite ? (
+                        <span>
+                          🌐 Crawled from live website:{" "}
+                          <a
+                            href={config.discoveredWebsite}
+                            target="_blank"
+                            rel="noreferrer"
+                            style={{ color: "#38bdf8", textDecoration: "none", fontWeight: 700 }}
+                          >
+                            {config.discoveredWebsite} ↗
+                          </a>
+                        </span>
+                      ) : config.discoveredBio ? (
+                        <span>
+                          📱 Extracted from Page Bio &amp; Social Profile:{" "}
+                          <em style={{ color: "#cbd5e1" }}>
+                            "{config.discoveredBio.length > 75 ? config.discoveredBio.slice(0, 75) + "…" : config.discoveredBio}"
+                          </em>
+                        </span>
+                      ) : (
+                        <span>✨ Synthesized from connected business assets &amp; social profiles</span>
+                      )}
+                    </div>
+                  </div>
+
+                  <button
+                    type="button"
+                    onClick={handleRefreshTopics}
+                    disabled={refreshingTopics}
+                    style={{
+                      padding: "6px 12px",
+                      borderRadius: 8,
+                      fontSize: 11.5,
+                      fontWeight: 700,
+                      cursor: refreshingTopics ? "not-allowed" : "pointer",
+                      background: "rgba(56, 189, 248, 0.12)",
+                      border: "1px solid rgba(56, 189, 248, 0.3)",
+                      color: "#38bdf8",
+                      display: "inline-flex",
+                      alignItems: "center",
+                      gap: 6,
+                    }}
+                  >
+                    {refreshingTopics ? "Crawling & Analyzing…" : "⚡ Re-Scan & Discover Topics"}
+                  </button>
+                </div>
+
+                {/* Core Services Chips */}
+                {Array.isArray(config.services) && config.services.length > 0 && (
+                  <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginBottom: 14 }}>
+                    <span style={{ fontSize: 11, fontWeight: 700, color: "#94a3b8", alignSelf: "center", marginRight: 2 }}>
+                      Core Offerings:
+                    </span>
+                    {config.services.slice(0, 8).map((srv, idx) => (
+                      <span
+                        key={idx}
+                        style={{
+                          fontSize: 11,
+                          padding: "2px 8px",
+                          borderRadius: 6,
+                          background: "rgba(255, 255, 255, 0.05)",
+                          border: "1px solid rgba(255, 255, 255, 0.1)",
+                          color: "#e2e8f0",
+                          fontWeight: 600,
+                        }}
+                      >
+                        {srv}
+                      </span>
+                    ))}
+                  </div>
+                )}
+
+                {/* Suggested Topics Shelf */}
+                <div>
+                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 8, flexWrap: "wrap", gap: 6 }}>
+                    <span style={{ fontSize: 12, fontWeight: 800, color: "#f8fafc" }}>
+                      💡 Suggested Post Topics for {config.businessName || "Your Brand"}{" "}
+                      {Array.isArray(config.suggestedTopics) && config.suggestedTopics.length > 0 && `(${config.suggestedTopics.length})`}
+                    </span>
+                    <span style={{ fontSize: 11, color: "#94a3b8" }}>
+                      Click "Post This" for an immediate test creative or "+ Queue" to add to calendar
+                    </span>
+                  </div>
+
+                  {!config.suggestedTopics || config.suggestedTopics.length === 0 ? (
+                    <div style={{ padding: "12px", background: "rgba(0,0,0,0.25)", borderRadius: 8, fontSize: 12, color: "#94a3b8", textAlign: "center" }}>
+                      Click <strong>"⚡ Re-Scan &amp; Discover Topics"</strong> above to crawl your business website and generate authentic topics.
+                    </div>
+                  ) : (
+                    <div
+                      style={{
+                        display: "flex",
+                        gap: 10,
+                        overflowX: "auto",
+                        paddingBottom: 6,
+                        WebkitOverflowScrolling: "touch",
+                        scrollbarWidth: "thin",
+                      }}
+                    >
+                      {config.suggestedTopics.slice(0, 15).map((top, idx) => (
+                        <div
+                          key={idx}
+                          style={{
+                            flex: "0 0 260px",
+                            background: "rgba(13, 17, 28, 0.8)",
+                            border: "1px solid rgba(255, 255, 255, 0.1)",
+                            borderRadius: 10,
+                            padding: "10px 12px",
+                            display: "flex",
+                            flexDirection: "column",
+                            justifyContent: "space-between",
+                            gap: 8,
+                          }}
+                        >
+                          <div style={{ fontSize: 12.5, fontWeight: 600, color: "#f1f5f9", lineHeight: 1.4, wordBreak: "break-word" }}>
+                            "{top}"
+                          </div>
+                          <div style={{ display: "flex", gap: 6, alignItems: "center" }}>
+                            <button
+                              type="button"
+                              onClick={() => handleTestPostNow(top)}
+                              disabled={testingPost}
+                              style={{
+                                flex: 1,
+                                padding: "5px 8px",
+                                borderRadius: 6,
+                                fontSize: 11,
+                                fontWeight: 700,
+                                background: "rgba(56, 189, 248, 0.15)",
+                                border: "1px solid rgba(56, 189, 248, 0.35)",
+                                color: "#38bdf8",
+                                cursor: testingPost ? "not-allowed" : "pointer",
+                                whiteSpace: "nowrap",
+                              }}
+                            >
+                              🚀 Post This
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => handleAddTopicToQueue(top)}
+                              title="Add to content calendar"
+                              style={{
+                                padding: "5px 8px",
+                                borderRadius: 6,
+                                fontSize: 11,
+                                fontWeight: 700,
+                                background: "rgba(16, 185, 129, 0.12)",
+                                border: "1px solid rgba(16, 185, 129, 0.3)",
+                                color: "#34d399",
+                                cursor: "pointer",
+                                whiteSpace: "nowrap",
+                              }}
+                            >
+                              + Queue
+                            </button>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  )}
                 </div>
               </div>
 
