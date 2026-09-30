@@ -1316,42 +1316,45 @@ STRICT CINEMATIC CONTINUITY RULES:
    - All 3 scenes MUST feature this EXACT SAME HERO VEHICLE / SUBJECT in this EXACT SAME ENVIRONMENT. No switching cars, no switching locations!
 2. ZERO MARKETING OR TEXT OVERLAYS:
    - This is a cinematic feature film sequence. ABSOLUTELY NO CALLS TO ACTION, NO MARKETING SLOGANS, NO OVERLAYS, NO TEXT, NO BADGES, NO LOGOS, NO CAPTIONS.
-3. THREE CONTINUOUS ACTION CUTS:
-   - Scene 1 (The Approach / Hook, 0-5s): Dynamic high-speed approach, camera low to the asphalt.
-   - Scene 2 (The Climax / Action, 5-10s): Extreme action maneuver (violent high-speed drift around a tight hairpin, smoke pouring from rear tires, camera pushing in close).
-   - Scene 3 (The Payoff / Exit, 10-15s): Blazing high-speed exit down the straightaway with glowing tail-lights fading into the neon mist.
-4. VISCERAL FOLEY SOUND DESIGN:
+3. THREE DISTINCT, VARIED CINEMATIC CAMERA ANGLES (NEVER use 3 rear shots!):
+   - Scene 1 (The Head-On Approach, 0-5s): Low-angle front 3/4 tracking shot skimming 1 foot off the wet asphalt, revealing the aggressive front grille, front bumper, blazing xenon headlights, and spinning alloy rims charging directly towards the camera.
+   - Scene 2 (The Sideways Drift, 5-10s): High-speed side-profile / wheel-arch tracking camera capturing the vehicle drifting violently sideways, voluminous white tire smoke billowing from the spinning rear tires, true motion blur.
+   - Scene 3 (The High-Speed Chase, 10-15s): Dynamic rear-quarter tracking camera pulling up and back as the car screams down the highway straightaway, tail-lights glowing red into the dark atmospheric rain mist.
+4. GRITTY HOLLYWOOD REALISM (NO ARCADE CARTOONS):
+   - Gritty 35mm Arri Alexa film grain, authentic wet black asphalt with realistic puddle reflections, natural xenon headlights, authentic rubber tire smoke.
+   - ABSOLUTELY NO PSYCHEDELIC RAINBOW LIGHT TRAILS, NO NEON LIGHT RIBBONS, NO GLOWING LASER STREAKS, NO ARCADE/CARTOON CGI SATURATION.
+5. VISCERAL FOLEY SOUND DESIGN:
    - Provide realistic, visceral physical Foley sound prompts tailored to each scene (screaming high-rev twin-turbo engine, loud tire screech on asphalt drift, metallic brake squeal, turbo blow-off valve flutter).
 
 Return ONLY valid JSON:
 {
   "title": "Action Movie Scene",
-  "heroSubject": "Exact locked description of the hero vehicle or subject",
-  "environmentSetting": "Exact locked description of the environment, lighting, and weather",
+  "heroSubject": "Exact locked description of the hero vehicle or subject (e.g. Matte-black customized hypercar, menacing front grille, aggressive aerodynamic body lines, low-slung stance)",
+  "environmentSetting": "Exact locked description of the environment (e.g. Dark wet asphalt expressway at midnight, atmospheric fog, moody cinematic film noir lighting)",
   "fullScript": "",
   "scenes": [
     {
       "sceneNumber": 1,
-      "text": "Scene 1 action description",
+      "text": "Scene 1 front approach action description",
       "spokenAudio": "",
-      "visualPrompt": "Detailed 9:16 cinematography description featuring the heroSubject in the environmentSetting",
-      "cameraMotion": "Low-angle tracking shot skimming asphalt 2 feet off the ground with motion blur",
+      "visualPrompt": "Low-angle front 3/4 tracking shot skimming the wet asphalt as the heroSubject charges forward, menacing front headlights blazing, real-world grit, 35mm film still. Gritty photorealism, no rainbow light trails, no cartoon effects.",
+      "cameraMotion": "Low-angle front tracking shot skimming asphalt 1 foot off ground",
       "foleySoundPrompt": "Aggressive twin-turbo V8 engine roar, loud tire screech on asphalt drift, metallic brake squeal"
     },
     {
       "sceneNumber": 2,
-      "text": "Scene 2 action description",
+      "text": "Scene 2 side drift action description",
       "spokenAudio": "",
-      "visualPrompt": "Detailed 9:16 cinematography description continuing the exact same heroSubject drifting around a tight corner",
-      "cameraMotion": "Fast dynamic camera push-in on the smoking tires and revving engine",
+      "visualPrompt": "Close side-profile tracking shot of the exact same heroSubject drifting violently sideways around a sharp corner, white tire smoke pouring from spinning alloy wheels, authentic physics. Gritty photorealism, no rainbow light trails.",
+      "cameraMotion": "Fast dynamic side-profile push-in on the smoking tires and drift angle",
       "foleySoundPrompt": "High-RPM screaming engine, sharp tire squeal on asphalt, violent downshift exhaust pop"
     },
     {
       "sceneNumber": 3,
-      "text": "Scene 3 action description",
+      "text": "Scene 3 straightaway chase action description",
       "spokenAudio": "",
-      "visualPrompt": "Detailed 9:16 cinematography description of the exact same heroSubject accelerating away down the highway into neon mist",
-      "cameraMotion": "High-speed tracking shot pulling back as the car blazes into the distance",
+      "visualPrompt": "Dynamic rear-quarter chase camera tracking the exact same heroSubject accelerating at top speed down the dark straightaway into moody atmospheric mist. Gritty photorealism, no rainbow light trails.",
+      "cameraMotion": "High-speed tracking shot pulling back as the car rockets into the distance",
       "foleySoundPrompt": "Twin-turbo engine roaring down the straightaway, echoing exhaust fade, whooshing air"
     }
   ]
@@ -1959,7 +1962,7 @@ Requirements:
           const cameraInfo = sc.cameraMotion ? ` Camera mechanics: ${sc.cameraMotion}.` : "";
 
           if (isCreativeFilm && heroSubject) {
-            smartPrompt = `Vertical 9:16 Hollywood cinema scene. Feature the exact same hero subject: ${heroSubject} in ${environmentSetting || "the scene"}. Action: ${cleanAction}.${cameraInfo} 35mm anamorphic lens, raytraced lighting, fluid physics, motion blur, masterpiece 8k. ABSOLUTELY ZERO text, NO subtitles, NO letters, NO words, NO watermark, NO logo.`;
+            smartPrompt = `Vertical 9:16 Hollywood cinema scene. Feature the exact same hero subject: ${heroSubject} in ${environmentSetting || "the scene"}. Action: ${cleanAction}.${cameraInfo} 35mm anamorphic lens, raytraced lighting, fluid physics, motion blur, masterpiece 8k, gritty realism. ABSOLUTELY NO rainbow light trails, NO neon light ribbons, NO sci-fi glow, NO arcade effects, NO cartoon CGI. ABSOLUTELY ZERO text, NO subtitles, NO letters, NO words, NO watermark, NO logo.`;
           } else {
             smartPrompt = `Vertical 9:16 cinematic scene. ${cleanAction}.${cameraInfo} Dynamic camera motion, high aesthetic fidelity, master lighting. Absolutely NO text, NO letters, NO words, NO subtitles, NO watermark, NO logo.`;
           }
@@ -1975,7 +1978,7 @@ Requirements:
           try {
             log(job.id, `Generating high-res FLUX.1 master anchor frame for Scene 1 (${visualAesthetic})...`);
             const fluxRes = await generateConsistentCharacterPortrait({
-              prompt: heroSubject ? `Vertical 9:16 cinematic still. ${heroSubject} in ${environmentSetting}. Masterful lighting, photorealistic 8k, 35mm film still. No text, no watermark.` : smartPrompt,
+              prompt: heroSubject ? `Vertical 9:16 cinematic movie still. Front 3/4 low angle tracking shot of ${heroSubject} in ${environmentSetting}. Menacing front bumper, headlights cutting through dark rain mist, gritty wet asphalt, master film lighting, 35mm Arri Alexa film still. Absolutely NO rainbow light trails, NO neon ribbons, NO cartoon CGI, no text, no watermark.` : smartPrompt,
               aspectRatio: "9:16",
               visualAesthetic,
               jobId: job.id,
