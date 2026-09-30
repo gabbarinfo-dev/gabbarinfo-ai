@@ -8,7 +8,7 @@ export default function ReelsRedirect() {
   useEffect(() => {
     if (router.isReady) {
       const queryParams = new URLSearchParams(window.location.search);
-      queryParams.set("tab", "reels");
+      queryParams.set("tab", "cinema");
       router.replace(`/?${queryParams.toString()}`);
     }
   }, [router.isReady]);
@@ -27,7 +27,7 @@ export default function ReelsRedirect() {
     >
       <div style={{ textAlign: "center" }}>
         <div style={{ fontSize: 32, marginBottom: 12 }}>🎬</div>
-        <p>Loading AI Reels & Shorts Studio…</p>
+        <p>Loading AI Cinema Studio…</p>
       </div>
     </div>
   );

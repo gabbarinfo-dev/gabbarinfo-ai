@@ -9,8 +9,7 @@ import GoogleAdsAccountConnect from "./components/google/googleadsaccountconnect
 import GoogleBusinessConnect from "./components/google/GoogleBusinessConnect";
 import WordPressSiteConnect from "./components/wordpress/WordPressSiteConnect";
 import ShopifyStoreConnect from "./components/shopify/ShopifyStoreConnect";
-import ReelsStudioConnect from "./components/video/ReelsStudioConnect";
-import CharacterStudioWorkstation from "./components/video/CharacterStudioWorkstation";
+import CinemaStudio from "./components/video/CinemaStudio";
 import SubscriptionModal from "./components/SubscriptionModal";
 import SocialMediaPlannerModal from "./components/social/SocialMediaPlannerModal";
 import CyberMatrixBackground from "./components/CyberMatrixBackground";
@@ -367,16 +366,9 @@ export default function HomePage() {
     { id: "wordpress", label: "WordPress & SEO", icon: "🌐", badge: hasWpConnected ? "Paired" : null },
     { id: "shopify", label: "Shopify Store & SEO", icon: "🛍️", badge: hasShopifyConnected ? "Paired" : "Ecommerce" },
     {
-      id: "reels",
-      label: "AI Reels & Shorts",
+      id: "cinema",
+      label: "AI Cinema & Video Studio",
       icon: "🎬",
-      badge: isAdmin ? "Admin Preview" : "Coming Soon",
-      isLocked: !isAdmin,
-    },
-    {
-      id: "characters",
-      label: "Character IP & Stories",
-      icon: "✨",
       badge: isAdmin ? "Admin Preview" : "Coming Soon",
       isLocked: !isAdmin,
     },
@@ -1298,34 +1290,19 @@ export default function HomePage() {
                           🛍️ Shopify Store ➔
                         </button>
                         <button
-                          onClick={() => handleSelectTab("reels")}
+                          onClick={() => handleSelectTab("cinema")}
                           className="btn-gabbar-secondary"
                           style={{
                             padding: "11px 20px",
                             fontSize: 13,
                             flex: "1 1 auto",
-                            border: isAdmin ? "1px solid rgba(236, 72, 153, 0.4)" : "1px solid rgba(100, 116, 139, 0.2)",
-                            color: isAdmin ? "#f472b6" : "#64748b",
+                            border: isAdmin ? "1px solid rgba(99, 102, 241, 0.4)" : "1px solid rgba(100, 116, 139, 0.2)",
+                            color: isAdmin ? "#818cf8" : "#64748b",
                             opacity: isAdmin ? 1 : 0.45,
                             cursor: isAdmin ? "pointer" : "not-allowed",
                           }}
                         >
-                          🎬 AI Reels & Shorts {isAdmin ? "➔" : "(Coming Soon)"}
-                        </button>
-                        <button
-                          onClick={() => handleSelectTab("characters")}
-                          className="btn-gabbar-secondary"
-                          style={{
-                            padding: "11px 20px",
-                            fontSize: 13,
-                            flex: "1 1 auto",
-                            border: isAdmin ? "1px solid rgba(168, 85, 247, 0.4)" : "1px solid rgba(100, 116, 139, 0.2)",
-                            color: isAdmin ? "#c084fc" : "#64748b",
-                            opacity: isAdmin ? 1 : 0.45,
-                            cursor: isAdmin ? "pointer" : "not-allowed",
-                          }}
-                        >
-                          ✨ Character IP & Stories {isAdmin ? "➔" : "(Coming Soon)"}
+                          🎬 AI Cinema & Video Studio {isAdmin ? "➔" : "(Coming Soon)"}
                         </button>
                         <button
                           onClick={() => handleSelectTab("gmb")}
@@ -1649,11 +1626,11 @@ export default function HomePage() {
                 </div>
               )}
 
-              {/* TAB 2C: AI REELS & SHORTS STUDIO */}
-              {activeTab === "reels" && (
+              {/* UNIFIED TAB: AI CINEMA & VIDEO STUDIO */}
+              {(activeTab === "cinema" || activeTab === "reels" || activeTab === "characters") && (
                 isAdmin ? (
                   <div>
-                    <ReelsStudioConnect />
+                    <CinemaStudio />
                   </div>
                 ) : (
                   <div
@@ -1661,7 +1638,7 @@ export default function HomePage() {
                       padding: "clamp(40px, 6vw, 80px) 24px",
                       borderRadius: 24,
                       background: "rgba(15, 23, 42, 0.8)",
-                      border: "1px solid rgba(236, 72, 153, 0.2)",
+                      border: "1px solid rgba(99, 102, 241, 0.2)",
                       textAlign: "center",
                       maxWidth: 620,
                       margin: "60px auto",
@@ -1670,47 +1647,10 @@ export default function HomePage() {
                   >
                     <div style={{ fontSize: 48, marginBottom: 16 }}>🎬</div>
                     <h2 style={{ fontSize: 24, fontWeight: 800, color: "#fff", marginBottom: 12 }}>
-                      AI Reels & Shorts — Coming Soon
+                      AI Cinema Studio — Coming Soon
                     </h2>
                     <p style={{ color: "#94a3b8", fontSize: 14.5, lineHeight: 1.6, marginBottom: 28 }}>
-                      We are currently fine-tuning our neural cinematic rendering, multi-character dialogue engine, and lip-sync synchronization in private studio calibration. Public access will be unlocked shortly.
-                    </p>
-                    <button
-                      onClick={() => setActiveTab("overview")}
-                      className="btn-gabbar-secondary"
-                      style={{ padding: "11px 28px", fontSize: 13 }}
-                    >
-                      ← Back to Command Center
-                    </button>
-                  </div>
-                )
-              )}
-
-              {/* TAB 2D: AI CHARACTER IP & STORIES WORKSTATION */}
-              {activeTab === "characters" && (
-                isAdmin ? (
-                  <div>
-                    <CharacterStudioWorkstation />
-                  </div>
-                ) : (
-                  <div
-                    style={{
-                      padding: "clamp(40px, 6vw, 80px) 24px",
-                      borderRadius: 24,
-                      background: "rgba(15, 23, 42, 0.8)",
-                      border: "1px solid rgba(168, 85, 247, 0.2)",
-                      textAlign: "center",
-                      maxWidth: 620,
-                      margin: "60px auto",
-                      boxShadow: "0 25px 60px rgba(0,0,0,0.5)",
-                    }}
-                  >
-                    <div style={{ fontSize: 48, marginBottom: 16 }}>✨</div>
-                    <h2 style={{ fontSize: 24, fontWeight: 800, color: "#fff", marginBottom: 12 }}>
-                      Character IP & Stories — Coming Soon
-                    </h2>
-                    <p style={{ color: "#94a3b8", fontSize: 14.5, lineHeight: 1.6, marginBottom: 28 }}>
-                      Autonomous multi-character video stories and brand IPs are currently in private studio testing. Public access will be available soon.
+                      We are fine-tuning our autonomous multi-model cinema pipeline (Seedance 2.5, Omnihuman, FLUX.1 + PuLID) in private studio calibration. Public access will be unlocked shortly.
                     </p>
                     <button
                       onClick={() => setActiveTab("overview")}
