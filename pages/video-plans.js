@@ -443,7 +443,7 @@ export default function VideoPlansPage() {
               letterSpacing: "1px",
               marginBottom: 20,
             }}>
-              🎬 Runway & Higgsfield Grade Video Engine
+              🎬 GabbarInfo Supreme Cinema Engine
             </div>
 
             <h1 style={{

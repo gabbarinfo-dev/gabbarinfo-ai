@@ -1138,7 +1138,7 @@ Respond ONLY in JSON: { "hook": "short catchy hook (4-7 words)", "topic": "speci
                 return res.status(200).json({
                   ok: true,
                   status: "processing",
-                  message: "Creative generation & publication started in background on Railway worker.",
+                  message: "Creative generation & publication started in background on GabbarInfo AI.",
                 });
               }
             }

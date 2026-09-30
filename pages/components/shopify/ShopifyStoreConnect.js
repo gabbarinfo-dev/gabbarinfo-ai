@@ -365,7 +365,7 @@ export default function ShopifyStoreConnect({ onConnectionChange }) {
         setAutopilotNotice(
           `✅ Autopilot schedule saved for ${connection?.shopName || selectedShop} (${isEnabled ? "Active" : "Paused"}, ${
             toSave.cadence === "daily" ? "Daily" : toSave.cadence === "3x_week" ? "3x / Week" : "Weekly"
-          }). ${toSave.topicQueue?.length || 0} topics in queue. Background routine updated on Railway.`
+          }). ${toSave.topicQueue?.length || 0} topics in queue. Background routine updated.`
         );
         setTimeout(() => setAutopilotNotice(""), 6000);
       } else {
@@ -380,7 +380,7 @@ export default function ShopifyStoreConnect({ onConnectionChange }) {
 
   const handleTriggerAutopilot = async () => {
     setAutopilotRunning(true);
-    setAutopilotNotice("⚡ Offloading autonomous generation cycle to Railway worker (0 timeouts)...");
+    setAutopilotNotice("⚡ Offloading autonomous generation cycle to GabbarInfo AI engine (0 timeouts)...");
     try {
       const res = await fetch("/api/shopify/sync", {
         method: "POST",
@@ -2617,7 +2617,7 @@ export default function ShopifyStoreConnect({ onConnectionChange }) {
     )}
 
       {/* -------------------------------------------------------------
-          SUB-TAB 3: AUTONOMOUS SHOPIFY SEO AUTOPILOT (RAILWAY ENGINE)
+          SUB-TAB 3: AUTONOMOUS SHOPIFY SEO AUTOPILOT
       ------------------------------------------------------------- */}
       {activeSubTab === "autopilot" && (
         <div style={{ display: "flex", flexDirection: "column", gap: 20 }}>
@@ -2650,13 +2650,13 @@ export default function ShopifyStoreConnect({ onConnectionChange }) {
                     marginBottom: 10,
                   }}
                 >
-                  <span>⚡</span> Railway Autonomous Engine (Unlimited Runtime)
+                  <span>⚡</span> GabbarInfo Autonomous Engine (Unlimited Runtime)
                 </div>
                 <h3 style={{ margin: "0 0 6px 0", fontSize: 20, color: "#fff", fontWeight: 800 }}>
                   Autonomous Shopify SEO Velocity & Dispatch
                 </h3>
                 <p style={{ margin: 0, color: "#94a3b8", fontSize: 13.5, maxWidth: 700, lineHeight: 1.5 }}>
-                  Every cycle, the Railway background engine analyzes your connected store's catalog ({products.length} products), avoids previously written topics, generates 1,500+ word rank-seeking articles, creates ultra-HD featured images, and posts directly to your Shopify blog with 0 timeout limits.
+                  Every cycle, the GabbarInfo AI autonomous engine analyzes your connected store's catalog ({products.length} products), avoids previously written topics, generates 1,500+ word rank-seeking articles, creates ultra-HD featured images, and posts directly to your Shopify blog with 0 timeout limits.
                 </p>
               </div>
 
@@ -2731,7 +2731,7 @@ export default function ShopifyStoreConnect({ onConnectionChange }) {
                   }}
                 >
                   <span>⚡</span>
-                  {autopilotRunning ? "Generating on Railway…" : "Trigger Immediate Autopilot Generation ↗"}
+                  {autopilotRunning ? "Generating Article…" : "Trigger Immediate Autopilot Generation ↗"}
                 </button>
               </div>
             </div>
@@ -2922,7 +2922,7 @@ export default function ShopifyStoreConnect({ onConnectionChange }) {
                 📅 Publishing Cadence
               </div>
               <p style={{ margin: "0 0 14px 0", fontSize: 12, color: "#94a3b8" }}>
-                How frequently the Railway worker should autonomously dispatch new articles.
+                How frequently the autonomous engine should dispatch new articles.
               </p>
               <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
                 {[
@@ -3166,7 +3166,7 @@ export default function ShopifyStoreConnect({ onConnectionChange }) {
 
               <div style={{ display: "flex", flexDirection: "column", gap: 10, fontSize: 12 }}>
                 <div style={{ display: "flex", justifyContent: "space-between", padding: "8px 10px", background: "rgba(0,0,0,0.25)", borderRadius: 6 }}>
-                  <span style={{ color: "#94a3b8" }}>Railway Worker Engine:</span>
+                  <span style={{ color: "#94a3b8" }}>Autonomous Production Engine:</span>
                   <span style={{ color: "#34d399", fontWeight: 700 }}>● Active & Online</span>
                 </div>
                 <div style={{ display: "flex", justifyContent: "space-between", padding: "8px 10px", background: "rgba(0,0,0,0.25)", borderRadius: 6 }}>
@@ -3204,7 +3204,7 @@ export default function ShopifyStoreConnect({ onConnectionChange }) {
                   Strategic Topic Lineup & Suggestions (40+ Topics)
                 </h3>
                 <p style={{ margin: 0, color: "#94a3b8", fontSize: 13, maxWidth: 740, lineHeight: 1.5 }}>
-                  Select the topics you want your Autonomous Autopilot to write and publish in order. The Railway worker will consume from your selected queue first. You can also paste 30+ custom topics in bulk below.
+                  Select the topics you want your Autonomous Autopilot to write and publish in order. The engine will consume from your selected queue first. You can also paste 30+ custom topics in bulk below.
                 </p>
               </div>
 
@@ -3965,7 +3965,7 @@ export default function ShopifyStoreConnect({ onConnectionChange }) {
               </div>
             ) : (
               <div style={{ padding: "24px 16px", textAlign: "center", color: "#64748b", background: "rgba(0,0,0,0.2)", borderRadius: 10 }}>
-                No autonomous articles generated yet. Enable the production routine or click "Trigger Immediate Autopilot Generation ↗" to generate your first article via Railway.
+                No autonomous articles generated yet. Enable the production routine or click "Trigger Immediate Autopilot Generation ↗" to generate your first article.
               </div>
             )}
           </div>

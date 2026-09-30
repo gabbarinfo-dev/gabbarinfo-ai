@@ -1842,8 +1842,8 @@ Respond ONLY with a valid JSON object matching this schema:
           const wData = await workerRes.json();
           return res.status(200).json({
             ok: true,
-            engine: "railway",
-            message: "Autonomous article generated and published smoothly via Railway!",
+            engine: "gabbarinfo_ai",
+            message: "Autonomous article generated and published smoothly via GabbarInfo AI!",
             results: wData.results || [],
           });
         }

@@ -204,7 +204,7 @@ export default function CinemaStudio() {
     setGenerationError(null);
     setGeneratedVideoUrl(null);
     setJobProgress(10);
-    setJobStage("Dispatching brief to Supreme AI Director (GPT-6.1 Sol / GPT-4o)...");
+    setJobStage("Dispatching brief to GabbarInfo AI Video Engine...");
 
     try {
       const res = await fetch("/api/video/generate", {
@@ -329,7 +329,7 @@ export default function CinemaStudio() {
 
         <div style={{ display: "flex", gap: 8 }}>
           <span style={{ fontSize: 12, padding: "6px 12px", borderRadius: 8, background: "rgba(16, 185, 129, 0.12)", border: "1px solid rgba(16, 185, 129, 0.25)", color: "#34d399", fontWeight: 600 }}>
-            ● Higgsfield + Hedra + ElevenLabs Online
+            ● GabbarInfo AI Video Engine Online
           </span>
         </div>
       </div>

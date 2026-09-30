@@ -173,9 +173,9 @@ export default function ReelsStudioConnect() {
       id: "talking_avatar",
       icon: "👤",
       name: "Actor Lip-Sync & Dialogue Reel",
-      tag: "Hedra & Sync Labs Flagship",
+      tag: "GabbarInfo Neural Lip-Sync Flagship",
       tagColor: "#6366f1",
-      desc: "Photorealistic digital actor or spokesperson speaking your script with natural human head motion and lip-sync (Sync Labs sync-3 & Hedra Character Engine).",
+      desc: "Photorealistic digital actor or spokesperson speaking your script with natural human head motion and lip-sync (GabbarInfo AI Character Engine).",
       renderTime: "~45s render",
       cost: "AI character lip-sync",
       gradient: "linear-gradient(135deg, rgba(99, 102, 241, 0.22) 0%, rgba(15, 23, 42, 0.7) 100%)",
@@ -185,7 +185,7 @@ export default function ReelsStudioConnect() {
       id: "generative_cinematic",
       icon: "🎥",
       name: "Cinematic 3D Generative AI Video",
-      tag: "Higgsfield / Minimax 4K",
+      tag: "GabbarInfo 4K Cinema Engine",
       tagColor: "#ec4899",
       desc: "Text-to-video neural synthesis with cinematic camera motion, realistic physical depth, and high-fidelity lighting.",
       renderTime: "~90s render",
@@ -342,7 +342,7 @@ export default function ReelsStudioConnect() {
       setGenerationStep("Generating neural voiceover & lip-sync timeline…");
       await new Promise((r) => setTimeout(r, 800));
 
-      setGenerationStep("Dispatching reel render to Railway GPU worker...");
+      setGenerationStep("Dispatching reel render to GabbarInfo AI Video Engine...");
 
       const effectiveTopic = topic.trim() || (brandName ? `${brandName} ${serviceToPromote}` : customScript.slice(0, 50));
       const isSkit = promoAngle === "customer_owner_skit" || /\b(Customer|Founder|Owner)\b/i.test(customScript);
@@ -380,7 +380,7 @@ export default function ReelsStudioConnect() {
       }
 
       const jobId = data.jobId;
-      setGenerationStep("Reel queued on Railway worker. Generating AI scenes...");
+      setGenerationStep("Reel queued on GabbarInfo AI Video Engine. Generating AI scenes...");
 
       await new Promise((resolve, reject) => {
         const interval = setInterval(async () => {
@@ -441,7 +441,7 @@ export default function ReelsStudioConnect() {
                   captions: captionsToUse,
                 });
                 setIsPlaying(true);
-                setToastMsg("🎬 Master reel rendered by Railway background worker!");
+                setToastMsg("🎬 Master reel rendered by GabbarInfo AI Video Engine!");
                 setTimeout(() => setToastMsg(""), 6000);
                 resolve();
               } else if (jobData.status === "failed") {
