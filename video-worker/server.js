@@ -1172,9 +1172,9 @@ async function processReelVideo(job, jobDir) {
     specialOffer = "",
     promoAngle = "founder_pitch", // "founder_pitch" | "customer_owner_skit" | "direct_response"
     promoCTA = "Click the link in bio",
-    websiteUrl = "",
-    selectedStyle = "talking_avatar", // "talking_avatar" | "generative_cinematic" | "motion_broll"
-    language = "hindi",
+    selectedStyle = "cinema_unified", // "cinema_unified" | "talking_avatar" | "generative_cinematic"
+    language = "en_us",
+    audioMode = "music_only", // "music_only" | "voiceover" | "dialogue_lipsync"
     voice = "alloy",
     niche = "business",
     backgroundBeat = "upbeat_lofi",
@@ -1298,7 +1298,7 @@ Requirements:
   } else {
     let langRule = "Language: American English. Dynamic, viral short-form social media tone.";
     if (language === "hindi") {
-      langRule = "Language: Hindi. CRITICAL: Spoken text in 'spokenAudio' MUST be written in natural, conversational Devanagari script (हिंदी) with authentic colloquial vocabulary so OpenAI TTS speaks with natural Indian pronunciation without American accent!";
+      langRule = "Language: Hindi. CRITICAL: Spoken text in 'spokenAudio' MUST be written in natural, conversational Devanagari script (हिंदी) with authentic colloquial vocabulary so the audio engine speaks with natural Indian pronunciation without American accent!";
     } else if (language === "en_uk") {
       langRule = "Language: British English. Refined, eloquent British cadence and vocabulary (e.g. bespoke, whilst, enquire, complimentary). Absolutely NO American slang.";
     }
@@ -1380,8 +1380,47 @@ Requirements:
   }
 
   job.progress = 25;
-  job.stage = "Synthesizing studio voiceover audio with GabbarInfo Audio Engine...";
-  log(job.id, `Synthesizing audio with base voice: ${ttsVoice} (Lang: ${language})`);
+  const isMusicOnly = audioMode === "music_only";
+  const bgMusicPath = path.join(jobDir, "bg_music.mp3");
+  const reelAudioPath = path.join(jobDir, "reel_voiceover.mp3");
+
+  // 1. Prepare crisp background music track tailored to exact targetSecs
+  const beatUrls = {
+    upbeat_lofi: "https://ai.gabbarinfo.com/audio/upbeat_lofi.mp3",
+    commercial_energetic: "https://ai.gabbarinfo.com/audio/commercial_energetic.mp3",
+    chill_acoustic: "https://ai.gabbarinfo.com/audio/chill_acoustic.mp3",
+  };
+  const beatUrl = beatUrls[backgroundBeat] || beatUrls.commercial_energetic || beatUrls.upbeat_lofi;
+
+  let hasBgMusic = false;
+  try {
+    const rawBgPath = path.join(jobDir, "raw_bg.mp3");
+    const beatRes = await fetch(beatUrl);
+    if (beatRes.ok) {
+      fs.writeFileSync(rawBgPath, Buffer.from(await beatRes.arrayBuffer()));
+      const fadeStart = Math.max(1, targetSecs - 2);
+      await new Promise((resolve) => {
+        const p = spawn("ffmpeg", [
+          "-y",
+          "-i", rawBgPath,
+          "-t", String(targetSecs),
+          "-af", `afade=t=out:st=${fadeStart}:d=2`,
+          "-c:a", "libmp3lame",
+          "-loglevel", "error",
+          bgMusicPath,
+        ]);
+        p.on("close", (code) => {
+          if (code === 0 && fs.existsSync(bgMusicPath)) {
+            hasBgMusic = true;
+          }
+          resolve();
+        });
+        p.on("error", () => resolve());
+      });
+    }
+  } catch (mErr) {
+    log(job.id, `Background music fetch notice: ${mErr.message}`);
+  }
 
   const isSkitJob = promoAngle === "customer_owner_skit" || (
     reelScript.scenes.length >= 2 &&
@@ -1391,9 +1430,27 @@ Requirements:
     )
   );
 
-  const reelAudioPath = path.join(jobDir, "reel_voiceover.mp3");
-
-  if (isSkitJob && reelScript.scenes.length >= 2) {
+  if (isMusicOnly) {
+    job.stage = "Setting up cinematic background score...";
+    log(job.id, `Audio Mode: Music Only. Pure cinematic visual reel with background score (${targetSecs}s)...`);
+    if (hasBgMusic) {
+      fs.copyFileSync(bgMusicPath, reelAudioPath);
+    } else {
+      await new Promise((resolve) => {
+        const p = spawn("ffmpeg", [
+          "-y",
+          "-f", "lavfi",
+          "-i", "anullsrc=r=44100:cl=stereo",
+          "-t", String(targetSecs),
+          "-c:a", "libmp3lame",
+          reelAudioPath,
+        ]);
+        p.on("close", resolve);
+        p.on("error", resolve);
+      });
+    }
+  } else if (isSkitJob && reelScript.scenes.length >= 2) {
+    job.stage = "Synthesizing alternating 2-character skit voiceover...";
     log(job.id, "Synthesizing alternating 2-character skit voiceover (Customer + Founder)...");
     let customerVoice = "nova";
     if (["nova", "shimmer"].includes(ttsVoice.toLowerCase())) {
@@ -1413,7 +1470,7 @@ Requirements:
 
       const sRes = await generateStudioSpeech({
         text: cleanText.replace(/^["']|["']$/g, ""),
-        language: language || "hindi",
+        language: language || "en_us",
         gender: g,
         voiceId: v,
         openai,
@@ -1452,12 +1509,14 @@ Requirements:
     });
     log(job.id, "Multi-character skit voiceover successfully concatenated!");
   } else {
-    // Baseline combined voiceover (used for B-roll / fallback)
+    // Baseline combined voiceover
+    job.stage = "Synthesizing studio voiceover audio with GabbarInfo Audio Engine...";
+    log(job.id, `Synthesizing audio with voice: ${ttsVoice} (Lang: ${language})`);
     const fullSpokenText = reelScript.scenes.map(s => sanitizeDialogue(s.spokenAudio || s.text)).join(" ");
     const baselineGender = (ttsVoice === "shimmer" || ttsVoice === "nova") ? "female" : "male";
     const fullAudioRes = await generateStudioSpeech({
       text: fullSpokenText.replace(/^["']|["']$/g, ""),
-      language: language || "hindi",
+      language: language || "en_us",
       gender: baselineGender,
       voiceId: ttsVoice,
       openai,
@@ -1468,16 +1527,47 @@ Requirements:
       throw new Error(fullAudioRes.error || "Failed to synthesize studio voiceover audio.");
     }
 
-    const fullAudioBuf = fullAudioRes.buffer;
-    fs.writeFileSync(reelAudioPath, fullAudioBuf);
+    const rawVoPath = path.join(jobDir, "raw_vo.mp3");
+    fs.writeFileSync(rawVoPath, fullAudioRes.buffer);
+
+    if (hasBgMusic) {
+      // Mix voiceover (100% vol) + background music (18% vol)
+      await new Promise((resolve) => {
+        const p = spawn("ffmpeg", [
+          "-y",
+          "-i", rawVoPath,
+          "-i", bgMusicPath,
+          "-filter_complex", "[0:a]volume=1.0[v];[1:a]volume=0.18[m];[v][m]amix=inputs=2:duration=longest:dropout_transition=2[out]",
+          "-map", "[out]",
+          "-t", String(targetSecs),
+          "-c:a", "libmp3lame",
+          "-loglevel", "error",
+          reelAudioPath,
+        ]);
+        p.on("close", (code) => {
+          if (code === 0 && fs.existsSync(reelAudioPath)) resolve();
+          else {
+            fs.copyFileSync(rawVoPath, reelAudioPath);
+            resolve();
+          }
+        });
+        p.on("error", () => {
+          fs.copyFileSync(rawVoPath, reelAudioPath);
+          resolve();
+        });
+      });
+    } else {
+      fs.writeFileSync(reelAudioPath, fullAudioRes.buffer);
+    }
   }
 
   // Check visual style
   job.progress = 45;
   const sceneVisuals = [];
 
-  const wantsTalkingActor = selectedStyle === "talking_avatar" ||
-                            payload.workflowType === "character_story" ||
+  const wantsTalkingActor = audioMode === "dialogue_lipsync" ||
+                            selectedStyle === "talking_avatar" ||
+                            (payload.workflowType === "character_story" && !isMusicOnly) ||
                             isSkitJob;
 
   if (wantsTalkingActor) {

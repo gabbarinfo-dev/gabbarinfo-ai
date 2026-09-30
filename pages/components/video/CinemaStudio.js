@@ -22,7 +22,9 @@ export default function CinemaStudio() {
   const [aspectRatio, setAspectRatio] = useState("9:16"); // "9:16" | "16:9"
   const [durationSeconds, setDurationSeconds] = useState(30); // 15 | 30 | 60 | 120 | 300
   const [visualAesthetic, setVisualAesthetic] = useState("photoreal_cinema"); // "photoreal_cinema" | "pixar_3d" | "anime_cel" | "commercial_studio"
-  const [workflowType, setWorkflowType] = useState("product_ad"); // "product_ad" | "creative_film" | "character_story" | "episodic_series"
+  const [workflowType, setWorkflowType] = useState("creative_film"); // "product_ad" | "creative_film" | "character_story" | "episodic_series"
+  const [language, setLanguage] = useState("en_us"); // "en_us" | "en_uk" | "hindi" | "auto"
+  const [audioMode, setAudioMode] = useState("music_only"); // "music_only" | "voiceover" | "dialogue_lipsync"
   const [selectedCharacter, setSelectedCharacter] = useState("auto"); // "auto" or character ID
   const [characterVault, setCharacterVault] = useState([]);
 
@@ -217,6 +219,8 @@ export default function CinemaStudio() {
           durationSeconds,
           workflowType,
           visualAesthetic,
+          language,
+          audioMode,
           seriesId: workflowType === "episodic_series" ? selectedSeriesId : null,
           episodeNumber: workflowType === "episodic_series" ? episodeNumber : null,
           attachedAssets: attachedFiles.map((f) => f.url),
@@ -696,6 +700,49 @@ export default function CinemaStudio() {
                       👤 {c.name} ({c.archetype || "Saved IP"})
                     </option>
                   ))}
+                </select>
+              </div>
+
+              {/* 6. Audio Track Mode Pill */}
+              <div>
+                <label style={{ fontSize: 11, fontWeight: 700, color: "#94a3b8", display: "block", marginBottom: 4, textTransform: "uppercase" }}>
+                  Audio Track
+                </label>
+                <select
+                  value={audioMode}
+                  onChange={(e) => setAudioMode(e.target.value)}
+                  style={{ width: "100%", padding: "9px 12px", borderRadius: 10, background: "rgba(15, 23, 42, 0.9)", border: "1px solid rgba(99, 102, 241, 0.25)", color: "#fff", fontSize: 12.5, outline: "none" }}
+                >
+                  <option value="music_only">🎵 Music Only (No Voiceover)</option>
+                  <option value="voiceover">🎙️ Voiceover + Music</option>
+                  <option value="dialogue_lipsync">🗣️ Character Dialogue & Lip-Sync</option>
+                </select>
+              </div>
+
+              {/* 7. Language Pill */}
+              <div>
+                <label style={{ fontSize: 11, fontWeight: 700, color: "#94a3b8", display: "block", marginBottom: 4, textTransform: "uppercase" }}>
+                  Language
+                </label>
+                <select
+                  value={language}
+                  onChange={(e) => setLanguage(e.target.value)}
+                  disabled={audioMode === "music_only"}
+                  style={{
+                    width: "100%",
+                    padding: "9px 12px",
+                    borderRadius: 10,
+                    background: audioMode === "music_only" ? "rgba(15, 23, 42, 0.4)" : "rgba(15, 23, 42, 0.9)",
+                    border: "1px solid rgba(99, 102, 241, 0.25)",
+                    color: audioMode === "music_only" ? "#64748b" : "#fff",
+                    fontSize: 12.5,
+                    outline: "none"
+                  }}
+                >
+                  <option value="en_us">🇺🇸 English (US)</option>
+                  <option value="en_uk">🇬🇧 English (UK)</option>
+                  <option value="hindi">🇮🇳 Hindi (हिंदी)</option>
+                  <option value="auto">🌐 Auto-Detect</option>
                 </select>
               </div>
             </div>
