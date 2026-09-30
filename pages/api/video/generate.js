@@ -99,9 +99,12 @@ export default async function handler(req, res) {
           selectedStyle,
           // Forward active API keys from environment
           higgsfieldApiKey: process.env.HIGGSFIELD_API_KEY,
+          higgsfieldKeyId: process.env.HIGGSFIELD_API_KEY_ID,
+          higgsfieldKeySecret: process.env.HIGGSFIELD_API_KEY_SECRET,
           hedraApiKey: process.env.HEDRA_API_KEY,
           elevenLabsApiKey: process.env.ELEVENLABS_API_KEY,
           replicateApiToken: process.env.REPLICATE_API_TOKEN,
+          syncLabsApiKey: process.env.SYNC_LABS_API_KEY,
         },
         userEmail,
       }),

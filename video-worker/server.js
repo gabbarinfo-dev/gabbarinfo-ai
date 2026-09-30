@@ -169,6 +169,29 @@ async function processJob(jobId) {
   const job = jobs.get(jobId);
   if (!job) return;
 
+  // Adopt any forwarded API keys from payload if not in worker environment
+  if (job.payload?.higgsfieldApiKey && !process.env.HIGGSFIELD_API_KEY) {
+    process.env.HIGGSFIELD_API_KEY = job.payload.higgsfieldApiKey;
+  }
+  if (job.payload?.higgsfieldKeyId && !process.env.HIGGSFIELD_API_KEY_ID) {
+    process.env.HIGGSFIELD_API_KEY_ID = job.payload.higgsfieldKeyId;
+  }
+  if (job.payload?.higgsfieldKeySecret && !process.env.HIGGSFIELD_API_KEY_SECRET) {
+    process.env.HIGGSFIELD_API_KEY_SECRET = job.payload.higgsfieldKeySecret;
+  }
+  if (job.payload?.replicateApiToken && !process.env.REPLICATE_API_TOKEN) {
+    process.env.REPLICATE_API_TOKEN = job.payload.replicateApiToken;
+  }
+  if (job.payload?.elevenLabsApiKey && !process.env.ELEVENLABS_API_KEY) {
+    process.env.ELEVENLABS_API_KEY = job.payload.elevenLabsApiKey;
+  }
+  if (job.payload?.hedraApiKey && !process.env.HEDRA_API_KEY) {
+    process.env.HEDRA_API_KEY = job.payload.hedraApiKey;
+  }
+  if (job.payload?.syncLabsApiKey && !process.env.SYNC_LABS_API_KEY) {
+    process.env.SYNC_LABS_API_KEY = job.payload.syncLabsApiKey;
+  }
+
   job.status = "processing";
   job.progress = 10;
   job.stage = "Starting video pipeline...";
@@ -743,7 +766,7 @@ Return ONLY valid JSON in this exact structure:
 
   // Step 2: Multi-Character Voiceover Synthesis
   job.progress = 30;
-  job.stage = "Synthesizing multi-character voice acting via OpenAI TTS...";
+  job.stage = "Synthesizing multi-character voice acting with GabbarInfo Audio Studio...";
   log(job.id, `Synthesizing ${script.scenes.length} audio tracks with distinct character voices...`);
 
   const audioFiles = [];
@@ -1357,7 +1380,7 @@ Requirements:
   }
 
   job.progress = 25;
-  job.stage = "Synthesizing studio voiceover audio (ElevenLabs / TTS-HD)...";
+  job.stage = "Synthesizing studio voiceover audio with GabbarInfo Audio Engine...";
   log(job.id, `Synthesizing audio with base voice: ${ttsVoice} (Lang: ${language})`);
 
   const isSkitJob = promoAngle === "customer_owner_skit" || (
@@ -1453,7 +1476,11 @@ Requirements:
   job.progress = 45;
   const sceneVisuals = [];
 
-  if (selectedStyle === "talking_avatar" || isSkitJob) {
+  const wantsTalkingActor = selectedStyle === "talking_avatar" ||
+                            payload.workflowType === "character_story" ||
+                            isSkitJob;
+
+  if (wantsTalkingActor) {
     // TRUE LIP-SYNC TALKING AVATAR (Sync Labs Precision Lip-Sync + Replicate Fallback)
     job.stage = isSkitJob
       ? "Rendering 2-character lip-synced commercial skit (Customer & Founder)..."
@@ -1653,10 +1680,13 @@ Requirements:
       sceneVisuals.push(presenterSeg);
     }
 
-  } else if (selectedStyle === "generative_cinematic") {
-    // GENERATIVE CINEMATIC AI VIDEO
-    job.stage = "Generating cinematic generative AI visuals...";
-    log(job.id, `Generating cinematic scenes for reel...`);
+  } else {
+    // REAL GENERATIVE CINEMATIC AI VIDEO (Higgsfield Seedance 2.5 / Minimax Video-01 / FLUX.1)
+    job.stage = "Generating cinematic AI visuals & video motion...";
+    log(job.id, `Generating cinematic scenes with Higgsfield / Minimax / FLUX...`);
+
+    const visualAesthetic = payload.visualAesthetic || "photoreal_cinema";
+    const attachedAssets = payload.attachedAssets || [];
 
     for (let i = 0; i < reelScript.scenes.length; i++) {
       const sc = reelScript.scenes[i];
@@ -1673,129 +1703,70 @@ Requirements:
             .replace(/^(?:\(?\s*(?:Customer|Client|Consumer|User|Owner|Founder|Agency|Director|Host|Speaker|Narrator\s*\d*)\s*\)?)\s*[:\-–—]?\s*/i, "")
             .replace(/^["'“”‘’]+|["'“”‘’]+$/g, "")
             .trim();
-          smartPrompt = `Vertical 9:16 cinematic movie scene. ${cleanAction}. Photorealistic 8k, dynamic camera motion, cinematic dramatic lighting, masterpiece. Absolutely NO text, NO letters, NO words, NO subtitles, NO watermark, NO logo, NO posters, NO banners.`;
+          smartPrompt = `Vertical 9:16 cinematic scene. ${cleanAction}. Dynamic camera motion, high aesthetic fidelity, master lighting. Absolutely NO text, NO letters, NO words, NO subtitles, NO watermark, NO logo.`;
         }
-        const scPrompt = smartPrompt;
-        let imgRes = null;
-        const reelImageModels = ["gpt-image-2", "gpt-image-1.5", "dall-e-3"];
-        for (const m of reelImageModels) {
+
+        // 1. Initial Frame generation (or user attached asset)
+        let firstFrameUrl = null;
+        if (i === 0 && attachedAssets.length > 0) {
+          firstFrameUrl = attachedAssets[0];
+          log(job.id, `Using user product asset as opening anchor for scene ${i + 1}: ${firstFrameUrl}`);
+        } else if (process.env.REPLICATE_API_TOKEN) {
           try {
-            imgRes = await openai.images.generate({
-              model: m,
-              prompt: scPrompt.slice(0, 950),
-              n: 1,
-              size: "1024x1792",
+            log(job.id, `Generating high-res FLUX.1 frame for scene ${i + 1} (${visualAesthetic})...`);
+            const fluxRes = await generateConsistentCharacterPortrait({
+              prompt: smartPrompt,
+              aspectRatio: "9:16",
+              visualAesthetic,
+              jobId: job.id,
+              log,
             });
-            if (imgRes?.data?.[0]?.b64_json || imgRes?.data?.[0]?.url) break;
-          } catch (e) {
-            console.warn(`[VideoWorker] Reel scene image generation with ${m} (1024x1792) failed:`, e.message);
-            try {
-              imgRes = await openai.images.generate({
-                model: m,
-                prompt: scPrompt.slice(0, 950),
-                n: 1,
-                size: "1024x1024",
-              });
-              if (imgRes?.data?.[0]?.b64_json || imgRes?.data?.[0]?.url) break;
-            } catch (e2) {
-              console.warn(`[VideoWorker] Reel scene image generation with ${m} (1024x1024) failed:`, e2.message);
+            if (fluxRes && fluxRes.imageUrl) {
+              firstFrameUrl = fluxRes.imageUrl;
+              const fImg = await fetch(fluxRes.imageUrl);
+              if (fImg.ok) {
+                fs.writeFileSync(scImgPath, Buffer.from(await fImg.arrayBuffer()));
+              }
             }
+          } catch (fluxErr) {
+            log(job.id, `FLUX.1 frame notice: ${fluxErr.message}`);
           }
         }
 
-        if (imgRes?.data?.[0]?.b64_json) {
-          fs.writeFileSync(scImgPath, Buffer.from(imgRes.data[0].b64_json, "base64"));
-        } else if (imgRes?.data?.[0]?.url) {
-          const fetchRes = await fetch(imgRes.data[0].url);
-          fs.writeFileSync(scImgPath, Buffer.from(await fetchRes.arrayBuffer()));
-        }
-
-        // Fast video motion via Wan 2.1 or AnimateDiff (all scenes)
-        job.stage = `Generating neural video motion for scene ${i + 1}/${reelScript.scenes.length}...`;
+        // 2. Direct Video Motion via Higgsfield / Minimax Video-01
+        job.stage = `Rendering video camera motion for scene ${i + 1}/${reelScript.scenes.length}...`;
         try {
-          const vidUrl = await generateWanVideo({
+          const vidUrl = await generateGenerativeClip({
             prompt: smartPrompt,
             isWidescreen: false,
+            firstFrameUrl,
             jobId: job.id,
-          }).catch(() => generateGenerativeClip({
-            prompt: smartPrompt,
-            isWidescreen: false,
-            jobId: job.id,
-          }));
+          });
 
           if (vidUrl) {
             const fVid = await fetch(vidUrl);
             if (fVid.ok) {
               fs.writeFileSync(scVidPath, Buffer.from(await fVid.arrayBuffer()));
               sceneVisuals.push({ type: "video", path: scVidPath });
+              log(job.id, `Scene ${i + 1} video successfully generated & saved!`);
               continue;
             }
           }
         } catch (vErr) {
-          log(job.id, `Reel scene ${i + 1} video fallback: ${vErr.message}`);
+          log(job.id, `Video motion for scene ${i + 1} notice: ${vErr.message}`);
         }
 
-        sceneVisuals.push({ type: "image", path: scImgPath });
+        // Fallback: If video generation had a timeout, use the FLUX image
+        if (fs.existsSync(scImgPath)) {
+          sceneVisuals.push({ type: "image", path: scImgPath });
+        } else {
+          await createFallbackImage(scImgPath, 1080, 1920, sc.text || "Scene");
+          sceneVisuals.push({ type: "image", path: scImgPath });
+        }
       } catch (e) {
-        log(job.id, `Reel scene ${i} fallback: ${e.message}`);
+        log(job.id, `Reel scene ${i} error: ${e.message}`);
         await createFallbackImage(scImgPath, 1080, 1920, sc.text || "Scene");
         sceneVisuals.push({ type: "image", path: scImgPath });
-      }
-    }
-  } else {
-    // MOTION B-ROLL (Pexels Vertical 4K HD Clips)
-    job.stage = "Fetching vertical 9:16 cinematography matching script...";
-    log(job.id, `Fetching Pexels vertical video clips...`);
-
-    const pexelsKey = process.env.PEXELS_API_KEY;
-    const usedPexelsIds = new Set();
-
-    for (let i = 0; i < reelScript.scenes.length; i++) {
-      const sc = reelScript.scenes[i];
-      const scVidPath = path.join(jobDir, `pexels_sc_${i}.mp4`);
-      let fetched = false;
-
-      if (pexelsKey) {
-        try {
-          const smartQ = getSmartBrollQuery(sc.text, i, reelScript.scenes.length, niche, topic, sc.searchQuery);
-          const q = encodeURIComponent(smartQ);
-          log(job.id, `Scene ${i + 1}/${reelScript.scenes.length} B-roll query: "${smartQ}"`);
-
-          const pexRes = await fetch(`https://api.pexels.com/videos/search?query=${q}&orientation=portrait&per_page=12&size=medium`, {
-            headers: { Authorization: pexelsKey },
-          });
-          const pexData = await pexRes.json();
-          const videos = (pexData.videos && Array.isArray(pexData.videos)) ? pexData.videos : [];
-
-          // Select a unique video not yet used in this reel
-          const chosenVideo = videos.find(v => !usedPexelsIds.has(v.id)) || videos[i % Math.max(1, videos.length)] || videos[0];
-
-          if (chosenVideo) {
-            usedPexelsIds.add(chosenVideo.id);
-            const pexFiles = chosenVideo.video_files || [];
-            const bestFile = pexFiles.find(f => f.height > f.width && f.file_type === "video/mp4") ||
-                             pexFiles.find(f => f.file_type === "video/mp4") ||
-                             pexFiles[0];
-
-            if (bestFile?.link) {
-              const dl = await fetch(bestFile.link);
-              if (dl.ok) {
-                fs.writeFileSync(scVidPath, Buffer.from(await dl.arrayBuffer()));
-                sceneVisuals.push({ type: "video", path: scVidPath });
-                fetched = true;
-                log(job.id, `Scene ${i + 1} acquired unique vertical B-roll: Pexels #${chosenVideo.id} (${bestFile.width}x${bestFile.height})`);
-              }
-            }
-          }
-        } catch (pErr) {
-          log(job.id, `Pexels query error scene ${i}: ${pErr.message}`);
-        }
-      }
-
-      if (!fetched) {
-        const fallbackImg = path.join(jobDir, `fallback_sc_${i}.png`);
-        await createFallbackImage(fallbackImg, 1080, 1920, sc.text || "Scene");
-        sceneVisuals.push({ type: "image", path: fallbackImg });
       }
     }
   }
