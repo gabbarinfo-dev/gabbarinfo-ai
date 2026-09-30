@@ -80,7 +80,7 @@ async function generateHiggsfieldVideo({
     const status = (checkData.status || "").toLowerCase();
 
     if (status === "completed" || status === "succeeded" || status === "done") {
-      const videoUrl = checkData.video_url || checkData.output?.video_url || checkData.output?.url || checkData.url;
+      const videoUrl = checkData.video?.url || checkData.video_url || checkData.output?.video_url || checkData.output?.url || checkData.url;
       log(jobId, `[Higgsfield] Video generation succeeded: ${videoUrl}`);
       return { ok: true, videoUrl };
     }
@@ -90,7 +90,7 @@ async function generateHiggsfieldVideo({
     }
   }
 
-  throw new Error("Higgsfield video generation timed out after 300s");
+  throw new Error("Higgsfield video generation timed out after 120s");
 }
 
 module.exports = {

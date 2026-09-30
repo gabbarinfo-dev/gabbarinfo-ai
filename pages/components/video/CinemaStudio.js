@@ -268,10 +268,10 @@ export default function CinemaStudio() {
         }
       } catch (_) {}
 
-      if (Date.now() - startTime > 10 * 60 * 1000) {
+      if (Date.now() - startTime > 18 * 60 * 1000) {
         clearInterval(interval);
         setGenerating(false);
-        setGenerationError("Video generation timed out. Please check back shortly.");
+        setGenerationError("Video is taking longer than usual to assemble. Please refresh or check back shortly.");
       }
     }, 4000);
   };
