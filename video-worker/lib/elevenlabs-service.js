@@ -186,9 +186,49 @@ async function generateStudioSpeech({
   return { ok: false, error: "No voice synthesis credentials available." };
 }
 
+/**
+ * AI Foley & Sound Effects Generator
+ * Generates physical scene sound effects (engines, tire screech, punches, jets, water splashes)
+ */
+async function generateStudioSoundEffects({
+  prompt,
+  durationSeconds = 5.0,
+  apiKey = null,
+}) {
+  const elevenApiKey = apiKey || process.env.ELEVENLABS_API_KEY;
+  if (!elevenApiKey) {
+    throw new Error("Missing audio API key for Foley sound effects");
+  }
+
+  const cleanPrompt = (prompt || "Cinematic physical sound design, impacts, atmosphere").slice(0, 400);
+  const dur = Math.min(20, Math.max(1, Number(durationSeconds) || 5));
+
+  const res = await fetch("https://api.elevenlabs.io/v1/sound-generation", {
+    method: "POST",
+    headers: {
+      "xi-api-key": elevenApiKey,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({
+      text: cleanPrompt,
+      duration_seconds: dur,
+      prompt_influence: 0.5,
+    }),
+  });
+
+  if (!res.ok) {
+    const errText = await res.text();
+    throw new Error(`Sound Effects generation error (${res.status}): ${errText}`);
+  }
+
+  const arrayBuf = await res.arrayBuffer();
+  return Buffer.from(arrayBuf);
+}
+
 module.exports = {
   ELEVENLABS_VOICES,
   VOICE_MAP,
   resolveElevenLabsVoiceId,
   generateStudioSpeech,
+  generateStudioSoundEffects,
 };

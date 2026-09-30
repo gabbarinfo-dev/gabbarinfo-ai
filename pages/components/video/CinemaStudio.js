@@ -24,7 +24,7 @@ export default function CinemaStudio() {
   const [visualAesthetic, setVisualAesthetic] = useState("photoreal_cinema"); // "photoreal_cinema" | "pixar_3d" | "anime_cel" | "commercial_studio"
   const [workflowType, setWorkflowType] = useState("creative_film"); // "product_ad" | "creative_film" | "character_story" | "episodic_series"
   const [language, setLanguage] = useState("en_us"); // "en_us" | "en_uk" | "hindi" | "auto"
-  const [audioMode, setAudioMode] = useState("music_only"); // "music_only" | "voiceover" | "dialogue_lipsync"
+  const [audioMode, setAudioMode] = useState("foley_sfx"); // "foley_sfx" | "music_only" | "voiceover" | "dialogue_lipsync"
   const [selectedCharacter, setSelectedCharacter] = useState("auto"); // "auto" or character ID
   const [characterVault, setCharacterVault] = useState([]);
 
@@ -713,7 +713,8 @@ export default function CinemaStudio() {
                   onChange={(e) => setAudioMode(e.target.value)}
                   style={{ width: "100%", padding: "9px 12px", borderRadius: 10, background: "rgba(15, 23, 42, 0.9)", border: "1px solid rgba(99, 102, 241, 0.25)", color: "#fff", fontSize: 12.5, outline: "none" }}
                 >
-                  <option value="music_only">🎵 Music Only (No Voiceover)</option>
+                  <option value="foley_sfx">🎬 Foley Sound FX (Engines, Brakes, Punches + Score)</option>
+                  <option value="music_only">🎵 Background Music Only</option>
                   <option value="voiceover">🎙️ Voiceover + Music</option>
                   <option value="dialogue_lipsync">🗣️ Character Dialogue & Lip-Sync</option>
                 </select>
@@ -727,14 +728,14 @@ export default function CinemaStudio() {
                 <select
                   value={language}
                   onChange={(e) => setLanguage(e.target.value)}
-                  disabled={audioMode === "music_only"}
+                  disabled={audioMode === "music_only" || audioMode === "foley_sfx"}
                   style={{
                     width: "100%",
                     padding: "9px 12px",
                     borderRadius: 10,
-                    background: audioMode === "music_only" ? "rgba(15, 23, 42, 0.4)" : "rgba(15, 23, 42, 0.9)",
+                    background: (audioMode === "music_only" || audioMode === "foley_sfx") ? "rgba(15, 23, 42, 0.4)" : "rgba(15, 23, 42, 0.9)",
                     border: "1px solid rgba(99, 102, 241, 0.25)",
-                    color: audioMode === "music_only" ? "#64748b" : "#fff",
+                    color: (audioMode === "music_only" || audioMode === "foley_sfx") ? "#64748b" : "#fff",
                     fontSize: 12.5,
                     outline: "none"
                   }}

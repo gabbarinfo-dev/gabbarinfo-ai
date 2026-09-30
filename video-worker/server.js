@@ -11,7 +11,7 @@ const cron = require("node-cron");
 const { runSocialAutopilotCycle } = require("./lib/social-autopilot");
 const { runSeoAutopilotCycle } = require("./lib/seo-autopilot");
 const { runShopifyAutopilotCycle, generateShopifyArticleOnDemand } = require("./lib/shopify-autopilot");
-const { generateStudioSpeech } = require("./lib/elevenlabs-service");
+const { generateStudioSpeech, generateStudioSoundEffects } = require("./lib/elevenlabs-service");
 const { generateSyncLabsLipSync } = require("./lib/synclabs-service");
 const { generateHiggsfieldVideo } = require("./lib/higgsfield-service");
 const { generateHedraTalkingAvatar } = require("./lib/hedra-service");
@@ -1317,28 +1317,31 @@ Requirements:
 - Return ONLY valid JSON:
 {
   "title": "Short catchy title",
-  "fullScript": "Complete voiceover text",
+  "fullScript": "Complete voiceover text (or brief story summary if no speech)",
   "scenes": [
     {
       "sceneNumber": 1,
-      "text": "Spoken line for scene 1",
-      "spokenAudio": "Exact spoken line in Devanagari Hindi if Hindi",
-      "visualPrompt": "Detailed visual description of the speaker or cinematic action scene in vertical 9:16 framing",
-      "searchQuery": "english stock video search keywords"
+      "text": "Spoken line for scene 1 (or physical action if music/sound effects only)",
+      "spokenAudio": "Exact spoken line in Devanagari Hindi if Hindi, otherwise English",
+      "visualPrompt": "Detailed visual description of the cinematic action scene in vertical 9:16 framing",
+      "cameraMotion": "Professional camera mechanics (e.g. 'Low-angle tracking shot skimming asphalt with motion blur' or 'Fast dynamic whip-pan following action' or 'Close-up macro impact shot')",
+      "foleySoundPrompt": "Precise physical sound effects tailored to this scene's action and camera distance (e.g. 'Aggressive twin-turbo V8 engine roar, loud tire screech on asphalt drift, metallic brake squeal' or 'Heavy bone-crushing punch impact thud, fast air whoosh, body drop' or 'Deafening supersonic jet engine flyby roar')"
     },
     {
       "sceneNumber": 2,
       "text": "Spoken line for scene 2",
-      "spokenAudio": "Exact spoken line in Devanagari Hindi if Hindi",
+      "spokenAudio": "Exact spoken line in Devanagari Hindi if Hindi, otherwise English",
       "visualPrompt": "Detailed visual description of scene 2 in vertical 9:16 framing",
-      "searchQuery": "english stock video search keywords"
+      "cameraMotion": "Professional camera mechanics for scene 2",
+      "foleySoundPrompt": "Precise physical sound effects for scene 2"
     },
     {
       "sceneNumber": 3,
       "text": "Spoken line for scene 3",
-      "spokenAudio": "Exact spoken line in Devanagari Hindi if Hindi",
+      "spokenAudio": "Exact spoken line in Devanagari Hindi if Hindi, otherwise English",
       "visualPrompt": "Detailed visual description of scene 3 in vertical 9:16 framing",
-      "searchQuery": "english stock video search keywords"
+      "cameraMotion": "Professional camera mechanics for scene 3",
+      "foleySoundPrompt": "Precise physical sound effects for scene 3"
     }
   ]
 }`;
@@ -1430,7 +1433,83 @@ Requirements:
     )
   );
 
-  if (isMusicOnly) {
+  const isFoleySfx = audioMode === "foley_sfx";
+
+  if (isFoleySfx) {
+    job.stage = "Generating AI Foley sound design & physical sound effects...";
+    log(job.id, `Generating scene-by-scene Foley sound design for ${reelScript.scenes.length} scenes...`);
+    const foleyFiles = [];
+    const secPerScene = Math.max(3, Math.round(targetSecs / reelScript.scenes.length));
+
+    for (let sIdx = 0; sIdx < reelScript.scenes.length; sIdx++) {
+      const sc = reelScript.scenes[sIdx];
+      const scFoleyPrompt = sc.foleySoundPrompt || sc.visualPrompt || "Cinematic action sound design, impacts, mechanical sounds, atmosphere";
+      const scFoleyPath = path.join(jobDir, `foley_sc_${sIdx}.mp3`);
+
+      try {
+        log(job.id, `Synthesizing Foley SFX for Scene ${sIdx + 1}/${reelScript.scenes.length} (${secPerScene}s): "${scFoleyPrompt.slice(0, 60)}..."`);
+        const sfxBuf = await generateStudioSoundEffects({
+          prompt: scFoleyPrompt,
+          durationSeconds: secPerScene,
+          apiKey: process.env.ELEVENLABS_API_KEY,
+        });
+        fs.writeFileSync(scFoleyPath, sfxBuf);
+        foleyFiles.push(scFoleyPath);
+      } catch (sfxErr) {
+        log(job.id, `Foley generation notice for scene ${sIdx + 1}: ${sfxErr.message}`);
+      }
+    }
+
+    const rawFoleyPath = path.join(jobDir, "raw_foley.mp3");
+    if (foleyFiles.length > 0) {
+      if (foleyFiles.length === 1) {
+        fs.copyFileSync(foleyFiles[0], rawFoleyPath);
+      } else {
+        const foleyListFile = path.join(jobDir, "foley_list.txt");
+        fs.writeFileSync(foleyListFile, foleyFiles.map(f => `file '${f.replace(/\\/g, "/")}'`).join("\n"));
+        await new Promise((resolve) => {
+          const p = spawn("ffmpeg", [
+            "-y", "-f", "concat", "-safe", "0", "-i", foleyListFile, "-c", "copy", "-loglevel", "error", rawFoleyPath
+          ]);
+          p.on("close", resolve);
+          p.on("error", resolve);
+        });
+      }
+    }
+
+    // Hollywood 2-Layer Mix: Foley Track (100%) + Atmospheric Cinematic Score (25%)
+    if (fs.existsSync(rawFoleyPath) && hasBgMusic) {
+      log(job.id, "Mixing Foley SFX (100%) with atmospheric cinematic score (25%)...");
+      await new Promise((resolve) => {
+        const p = spawn("ffmpeg", [
+          "-y",
+          "-i", rawFoleyPath,
+          "-i", bgMusicPath,
+          "-filter_complex", "[0:a]volume=1.0[f];[1:a]volume=0.25[m];[f][m]amix=inputs=2:duration=longest:dropout_transition=2[out]",
+          "-map", "[out]",
+          "-t", String(targetSecs),
+          "-c:a", "libmp3lame",
+          "-loglevel", "error",
+          reelAudioPath,
+        ]);
+        p.on("close", (code) => {
+          if (code === 0 && fs.existsSync(reelAudioPath)) resolve();
+          else {
+            fs.copyFileSync(rawFoleyPath, reelAudioPath);
+            resolve();
+          }
+        });
+        p.on("error", () => {
+          fs.copyFileSync(rawFoleyPath, reelAudioPath);
+          resolve();
+        });
+      });
+    } else if (fs.existsSync(rawFoleyPath)) {
+      fs.copyFileSync(rawFoleyPath, reelAudioPath);
+    } else if (hasBgMusic) {
+      fs.copyFileSync(bgMusicPath, reelAudioPath);
+    }
+  } else if (isMusicOnly) {
     job.stage = "Setting up cinematic background score...";
     log(job.id, `Audio Mode: Music Only. Pure cinematic visual reel with background score (${targetSecs}s)...`);
     if (hasBgMusic) {
@@ -1792,8 +1871,8 @@ Requirements:
             .replace(/^Scene\s*\d+\s*(?:\([^)]+\)|\[[^\]]+\])?\s*[:\-–—]?\s*/i, "")
             .replace(/^(?:\(?\s*(?:Customer|Client|Consumer|User|Owner|Founder|Agency|Director|Host|Speaker|Narrator\s*\d*)\s*\)?)\s*[:\-–—]?\s*/i, "")
             .replace(/^["'“”‘’]+|["'“”‘’]+$/g, "")
-            .trim();
-          smartPrompt = `Vertical 9:16 cinematic scene. ${cleanAction}. Dynamic camera motion, high aesthetic fidelity, master lighting. Absolutely NO text, NO letters, NO words, NO subtitles, NO watermark, NO logo.`;
+          const cameraInfo = sc.cameraMotion ? ` Camera mechanics: ${sc.cameraMotion}.` : "";
+          smartPrompt = `Vertical 9:16 cinematic scene. ${cleanAction}.${cameraInfo} Dynamic camera motion, high aesthetic fidelity, master lighting. Absolutely NO text, NO letters, NO words, NO subtitles, NO watermark, NO logo.`;
         }
 
         // 1. Initial Frame generation (or user attached asset)
