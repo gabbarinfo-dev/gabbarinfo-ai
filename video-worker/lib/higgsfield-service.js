@@ -65,10 +65,10 @@ async function generateHiggsfieldVideo({
   log(jobId, `[Higgsfield] Generation queued (ID: ${requestId}). Polling status...`);
 
   // Poll status endpoint
-  const statusUrl = `https://api.higgsfield.ai/requests/${requestId}/status`;
+  const statusUrl = data.status_url || `https://api.higgsfield.ai/requests/${requestId}/status`;
   const startTime = Date.now();
 
-  while ((Date.now() - startTime) < 300000) {
+  while ((Date.now() - startTime) < 180000) {
     await new Promise((r) => setTimeout(r, 4000));
 
     const checkRes = await fetch(statusUrl, {
@@ -90,7 +90,7 @@ async function generateHiggsfieldVideo({
     }
   }
 
-  throw new Error("Higgsfield video generation timed out after 120s");
+  throw new Error("Higgsfield video generation timed out after 180s");
 }
 
 module.exports = {

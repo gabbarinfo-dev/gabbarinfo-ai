@@ -1296,6 +1296,67 @@ Requirements:
       messages: [{ role: "system", content: promoPrompt }],
     });
     reelScript = JSON.parse(completion.choices[0].message.content);
+  } else if (payload.workflowType === "creative_film" || selectedStyle === "cinema_unified" || selectedStyle === "generative_cinematic" || audioMode === "foley_sfx") {
+    // DEDICATED HOLLYWOOD ACTION & CINEMA FILM DIRECTOR (Strict Subject Continuity & Zero Marketing Fluff)
+    log(job.id, `Generating Hollywood Action Film Screenplay for topic: "${topic}"`);
+    const filmPrompt = `You are an elite Hollywood Director of Photography and Action Filmmaker creating a thrilling continuous ${targetSecs}-second movie scene in vertical 9:16 Arri Alexa 35mm format.
+Topic / Scene Concept: "${topic}"
+
+STRICT CINEMATIC CONTINUITY RULES:
+1. LOCKED HERO SUBJECT:
+   - Define a single, ultra-detailed "heroSubject" (e.g. "Matte-black 2026 widebody sports hypercar with glowing crimson angular LED tail-lights, gloss carbon-fiber rear wing, twin hexagonal titanium exhausts, and low-slung wide track").
+   - Define a single "environmentSetting" (e.g. "Wet midnight rain-slicked Tokyo expressway under glowing neon skyscrapers, moody atmospheric mist, reflective asphalt puddles").
+   - All 3 scenes MUST feature this EXACT SAME HERO VEHICLE / SUBJECT in this EXACT SAME ENVIRONMENT. No switching cars, no switching locations!
+2. ZERO MARKETING OR TEXT OVERLAYS:
+   - This is a cinematic feature film sequence. ABSOLUTELY NO CALLS TO ACTION, NO MARKETING SLOGANS, NO OVERLAYS, NO TEXT, NO BADGES, NO LOGOS, NO CAPTIONS.
+3. THREE CONTINUOUS ACTION CUTS:
+   - Scene 1 (The Approach / Hook, 0-5s): Dynamic high-speed approach, camera low to the asphalt.
+   - Scene 2 (The Climax / Action, 5-10s): Extreme action maneuver (violent high-speed drift around a tight hairpin, smoke pouring from rear tires, camera pushing in close).
+   - Scene 3 (The Payoff / Exit, 10-15s): Blazing high-speed exit down the straightaway with glowing tail-lights fading into the neon mist.
+4. VISCERAL FOLEY SOUND DESIGN:
+   - Provide realistic, visceral physical Foley sound prompts tailored to each scene (screaming high-rev twin-turbo engine, loud tire screech on asphalt drift, metallic brake squeal, turbo blow-off valve flutter).
+
+Return ONLY valid JSON:
+{
+  "title": "Action Movie Scene",
+  "heroSubject": "Exact locked description of the hero vehicle or subject",
+  "environmentSetting": "Exact locked description of the environment, lighting, and weather",
+  "fullScript": "",
+  "scenes": [
+    {
+      "sceneNumber": 1,
+      "text": "Scene 1 action description",
+      "spokenAudio": "",
+      "visualPrompt": "Detailed 9:16 cinematography description featuring the heroSubject in the environmentSetting",
+      "cameraMotion": "Low-angle tracking shot skimming asphalt 2 feet off the ground with motion blur",
+      "foleySoundPrompt": "Aggressive twin-turbo V8 engine roar, loud tire screech on asphalt drift, metallic brake squeal"
+    },
+    {
+      "sceneNumber": 2,
+      "text": "Scene 2 action description",
+      "spokenAudio": "",
+      "visualPrompt": "Detailed 9:16 cinematography description continuing the exact same heroSubject drifting around a tight corner",
+      "cameraMotion": "Fast dynamic camera push-in on the smoking tires and revving engine",
+      "foleySoundPrompt": "High-RPM screaming engine, sharp tire squeal on asphalt, violent downshift exhaust pop"
+    },
+    {
+      "sceneNumber": 3,
+      "text": "Scene 3 action description",
+      "spokenAudio": "",
+      "visualPrompt": "Detailed 9:16 cinematography description of the exact same heroSubject accelerating away down the highway into neon mist",
+      "cameraMotion": "High-speed tracking shot pulling back as the car blazes into the distance",
+      "foleySoundPrompt": "Twin-turbo engine roaring down the straightaway, echoing exhaust fade, whooshing air"
+    }
+  ]
+}`;
+
+    const completion = await openai.chat.completions.create({
+      model: "gpt-4o",
+      temperature: 0.7,
+      response_format: { type: "json_object" },
+      messages: [{ role: "system", content: filmPrompt }],
+    });
+    reelScript = JSON.parse(completion.choices[0].message.content);
   } else {
     let langRule = "Language: American English. Dynamic, viral short-form social media tone.";
     if (language === "hindi") {
@@ -1389,41 +1450,50 @@ Requirements:
   const reelAudioPath = path.join(jobDir, "reel_voiceover.mp3");
 
   // 1. Prepare crisp background music track tailored to exact targetSecs
-  const beatUrls = {
-    upbeat_lofi: "https://ai.gabbarinfo.com/audio/upbeat_lofi.mp3",
-    commercial_energetic: "https://ai.gabbarinfo.com/audio/commercial_energetic.mp3",
-    chill_acoustic: "https://ai.gabbarinfo.com/audio/chill_acoustic.mp3",
-  };
-  const beatUrl = beatUrls[backgroundBeat] || beatUrls.commercial_energetic || beatUrls.upbeat_lofi;
+  const isFoleySfx = audioMode === "foley_sfx";
+  const isPureFoleyMode = isFoleySfx && (!backgroundBeat || ["none", "foley_only", "no_music", "off", "silence"].includes(String(backgroundBeat).toLowerCase().trim()));
 
   let hasBgMusic = false;
-  try {
-    const rawBgPath = path.join(jobDir, "raw_bg.mp3");
-    const beatRes = await fetch(beatUrl);
-    if (beatRes.ok) {
-      fs.writeFileSync(rawBgPath, Buffer.from(await beatRes.arrayBuffer()));
-      const fadeStart = Math.max(1, targetSecs - 2);
-      await new Promise((resolve) => {
-        const p = spawn("ffmpeg", [
-          "-y",
-          "-i", rawBgPath,
-          "-t", String(targetSecs),
-          "-af", `afade=t=out:st=${fadeStart}:d=2`,
-          "-c:a", "libmp3lame",
-          "-loglevel", "error",
-          bgMusicPath,
-        ]);
-        p.on("close", (code) => {
-          if (code === 0 && fs.existsSync(bgMusicPath)) {
-            hasBgMusic = true;
-          }
-          resolve();
-        });
-        p.on("error", () => resolve());
-      });
+  if (!isPureFoleyMode && backgroundBeat && !["none", "foley_only", "no_music", "off"].includes(backgroundBeat)) {
+    const beatUrls = {
+      upbeat_lofi: "https://ai.gabbarinfo.com/audio/upbeat_lofi.mp3",
+      commercial_energetic: "https://ai.gabbarinfo.com/audio/commercial_energetic.mp3",
+      chill_acoustic: "https://ai.gabbarinfo.com/audio/chill_acoustic.mp3",
+    };
+    const beatUrl = beatUrls[backgroundBeat] || (backgroundBeat.startsWith("http") ? backgroundBeat : null);
+
+    if (beatUrl) {
+      try {
+        const rawBgPath = path.join(jobDir, "raw_bg.mp3");
+        const beatRes = await fetch(beatUrl);
+        if (beatRes.ok) {
+          fs.writeFileSync(rawBgPath, Buffer.from(await beatRes.arrayBuffer()));
+          const fadeStart = Math.max(1, targetSecs - 2);
+          await new Promise((resolve) => {
+            const p = spawn("ffmpeg", [
+              "-y",
+              "-i", rawBgPath,
+              "-t", String(targetSecs),
+              "-af", `afade=t=out:st=${fadeStart}:d=2`,
+              "-c:a", "libmp3lame",
+              "-loglevel", "error",
+              bgMusicPath,
+            ]);
+            p.on("close", (code) => {
+              if (code === 0 && fs.existsSync(bgMusicPath)) {
+                hasBgMusic = true;
+              }
+              resolve();
+            });
+            p.on("error", () => resolve());
+          });
+        }
+      } catch (mErr) {
+        log(job.id, `Background music fetch notice: ${mErr.message}`);
+      }
     }
-  } catch (mErr) {
-    log(job.id, `Background music fetch notice: ${mErr.message}`);
+  } else {
+    log(job.id, `Audio Mode: Pure Foley SFX design active (no background music clashing).`);
   }
 
   const isSkitJob = promoAngle === "customer_owner_skit" || (
@@ -1857,6 +1927,12 @@ Requirements:
 
     const visualAesthetic = payload.visualAesthetic || "photoreal_cinema";
     const attachedAssets = payload.attachedAssets || [];
+    const isCreativeFilm = payload.workflowType === "creative_film" || audioMode === "foley_sfx" || selectedStyle === "cinema_unified" || selectedStyle === "generative_cinematic";
+    const heroSubject = reelScript.heroSubject || "";
+    const environmentSetting = reelScript.environmentSetting || "";
+
+    let previousSceneLastFrameUrl = null;
+    let anchorImageUrl = null;
 
     for (let i = 0; i < reelScript.scenes.length; i++) {
       const sc = reelScript.scenes[i];
@@ -1868,24 +1944,33 @@ Requirements:
         if (scriptMode === "product_promo") {
           smartPrompt = getSmartVisualPrompt(sc.text, sc.speaker, i, reelScript.scenes.length, brandName, serviceToPromote);
         } else {
-          const cleanAction = (sc.visualPrompt || sc.text || "")
+          let cleanAction = (sc.visualPrompt || sc.text || "")
             .replace(/^Scene\s*\d+\s*(?:\([^)]+\)|\[[^\]]+\])?\s*[:\-–—]?\s*/i, "")
             .replace(/^(?:\(?\s*(?:Customer|Client|Consumer|User|Owner|Founder|Agency|Director|Host|Speaker|Narrator\s*\d*)\s*\)?)\s*[:\-–—]?\s*/i, "")
             .replace(/^["'“”‘’]+|["'“”‘’]+$/g, "")
+            .replace(/\b(accelerate your success|visit us|shop now|buy now|link in bio|subscribe|limited offer|call to action|cta)\b/gi, "")
+            .trim();
+
           const cameraInfo = sc.cameraMotion ? ` Camera mechanics: ${sc.cameraMotion}.` : "";
-          smartPrompt = `Vertical 9:16 cinematic scene. ${cleanAction}.${cameraInfo} Dynamic camera motion, high aesthetic fidelity, master lighting. Absolutely NO text, NO letters, NO words, NO subtitles, NO watermark, NO logo.`;
+
+          if (isCreativeFilm && heroSubject) {
+            smartPrompt = `Vertical 9:16 Hollywood cinema scene. Feature the exact same hero subject: ${heroSubject} in ${environmentSetting || "the scene"}. Action: ${cleanAction}.${cameraInfo} 35mm anamorphic lens, raytraced lighting, fluid physics, motion blur, masterpiece 8k. ABSOLUTELY ZERO text, NO subtitles, NO letters, NO words, NO watermark, NO logo.`;
+          } else {
+            smartPrompt = `Vertical 9:16 cinematic scene. ${cleanAction}.${cameraInfo} Dynamic camera motion, high aesthetic fidelity, master lighting. Absolutely NO text, NO letters, NO words, NO subtitles, NO watermark, NO logo.`;
+          }
         }
 
-        // 1. Initial Frame generation (or user attached asset)
+        // 1. Initial Frame generation / Chaining
         let firstFrameUrl = null;
         if (i === 0 && attachedAssets.length > 0) {
           firstFrameUrl = attachedAssets[0];
+          anchorImageUrl = firstFrameUrl;
           log(job.id, `Using user product asset as opening anchor for scene ${i + 1}: ${firstFrameUrl}`);
-        } else if (process.env.REPLICATE_API_TOKEN) {
+        } else if (i === 0 && process.env.REPLICATE_API_TOKEN) {
           try {
-            log(job.id, `Generating high-res FLUX.1 frame for scene ${i + 1} (${visualAesthetic})...`);
+            log(job.id, `Generating high-res FLUX.1 master anchor frame for Scene 1 (${visualAesthetic})...`);
             const fluxRes = await generateConsistentCharacterPortrait({
-              prompt: smartPrompt,
+              prompt: heroSubject ? `Vertical 9:16 cinematic still. ${heroSubject} in ${environmentSetting}. Masterful lighting, photorealistic 8k, 35mm film still. No text, no watermark.` : smartPrompt,
               aspectRatio: "9:16",
               visualAesthetic,
               jobId: job.id,
@@ -1893,13 +1978,23 @@ Requirements:
             });
             if (fluxRes && fluxRes.imageUrl) {
               firstFrameUrl = fluxRes.imageUrl;
+              anchorImageUrl = fluxRes.imageUrl;
               const fImg = await fetch(fluxRes.imageUrl);
               if (fImg.ok) {
                 fs.writeFileSync(scImgPath, Buffer.from(await fImg.arrayBuffer()));
               }
             }
           } catch (fluxErr) {
-            log(job.id, `FLUX.1 frame notice: ${fluxErr.message}`);
+            log(job.id, `FLUX.1 anchor frame notice: ${fluxErr.message}`);
+          }
+        } else if (i > 0) {
+          // Continuity Chaining: lock to previous scene's last frame or opening anchor
+          if (previousSceneLastFrameUrl) {
+            firstFrameUrl = previousSceneLastFrameUrl;
+            log(job.id, `[Continuity Chaining] Scene ${i + 1} locked to exact ending frame of Scene ${i} for 100% vehicle & environment continuity.`);
+          } else if (anchorImageUrl) {
+            firstFrameUrl = anchorImageUrl;
+            log(job.id, `[Continuity Chaining] Scene ${i + 1} locked to master anchor frame.`);
           }
         }
 
@@ -1919,6 +2014,37 @@ Requirements:
               fs.writeFileSync(scVidPath, Buffer.from(await fVid.arrayBuffer()));
               sceneVisuals.push({ type: "video", path: scVidPath });
               log(job.id, `Scene ${i + 1} video successfully generated & saved!`);
+
+              // Extract last frame for seamless chaining into the next scene
+              if (i < reelScript.scenes.length - 1) {
+                try {
+                  const lastFramePath = path.join(jobDir, `last_frame_sc_${i}.png`);
+                  await new Promise((resolve) => {
+                    const p = spawn("ffmpeg", [
+                      "-y",
+                      "-sseof", "-0.1",
+                      "-i", scVidPath,
+                      "-vframes", "1",
+                      "-q:v", "1",
+                      "-loglevel", "error",
+                      lastFramePath,
+                    ]);
+                    p.on("close", resolve);
+                    p.on("error", resolve);
+                  });
+
+                  if (fs.existsSync(lastFramePath)) {
+                    const upLastFrame = await uploadPublicFile(lastFramePath, `continuity_${job.id}_sc${i}.png`, "image/png");
+                    if (upLastFrame) {
+                      previousSceneLastFrameUrl = upLastFrame;
+                      log(job.id, `Continuity frame uploaded for Scene ${i + 2}: ${upLastFrame}`);
+                    }
+                  }
+                } catch (lastFrameErr) {
+                  log(job.id, `Last frame extraction notice: ${lastFrameErr.message}`);
+                }
+              }
+
               continue;
             }
           }
