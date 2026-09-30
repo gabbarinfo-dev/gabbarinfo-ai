@@ -142,7 +142,7 @@ app.post("/jobs/create", requireAuth, async (req, res) => {
     payload,
     status: "queued",
     progress: 5,
-    stage: "Job queued in Railway background worker",
+    stage: "Job queued in GabbarInfo AI Video Engine",
     videoUrl: null,
     error: null,
     createdAt: new Date().toISOString(),
@@ -501,9 +501,12 @@ async function processLongFormYouTube(job, jobDir) {
     storyStyle = "movie_dialogue", // "movie_dialogue" | "storybook_narrated" | "documentary_voiceover"
     genre = "action_thriller", // "action_thriller" | "movie_drama" | "comedy_skit" | "sci_fi"
     visualEngine = "photoreal_human", // "photoreal_human" | "pixar_3d" | "anime_2d" | "user_vault"
+    visualAesthetic = payload.visualAesthetic || "photoreal_cinema",
     customScript = "",
     scriptMode = "ai_prompt",
   } = payload;
+
+  const resolvedVisualEngine = visualAesthetic === "pixar_3d" ? "pixar_3d" : (visualAesthetic === "anime_cel" ? "anime_2d" : (visualEngine || "photoreal_human"));
 
   if (payload.elevenLabsApiKey) process.env.ELEVENLABS_API_KEY = payload.elevenLabsApiKey;
   if (payload.syncLabsApiKey) process.env.SYNC_LABS_API_KEY = payload.syncLabsApiKey;
@@ -518,7 +521,7 @@ async function processLongFormYouTube(job, jobDir) {
   job.stage = hasCustomScript
     ? `Adapting user-provided screenplay (~${durationMins} min, ${targetTotalSecs}s)...`
     : `Scriptwriting ~${durationMins} min screenplay with GPT-4o...`;
-  log(job.id, `Generating cinematic screenplay (~${durationMins} min, ${targetTotalSecs}s) for "${videoTitle || episodeTitle || topic}" [CustomScript: ${hasCustomScript}, Style: ${storyStyle}, Genre: ${genre}, Engine: ${visualEngine}]`);
+  log(job.id, `Generating cinematic screenplay (~${durationMins} min, ${targetTotalSecs}s) for "${videoTitle || episodeTitle || topic}" [CustomScript: ${hasCustomScript}, Style: ${storyStyle}, Genre: ${genre}, Engine: ${resolvedVisualEngine}, Aesthetic: ${visualAesthetic}]`);
 
   // Character casting:
   const hasUserCharacters = characters && Array.isArray(characters) && characters.length > 0;
@@ -528,7 +531,7 @@ async function processLongFormYouTube(job, jobDir) {
     voice: resolveVoice(c),
     gender: c.gender || "male",
     traits: c.traits || c.visualTraits || "expressive photorealistic person",
-    archetype: c.archetype || visualEngine || "photoreal_human",
+    archetype: c.archetype || resolvedVisualEngine || "photoreal_human",
   })) : [];
 
   // Duration Pacing: 8 scenes for 2 mins (15s per scene) to guarantee true 120s runtime!
@@ -637,6 +640,7 @@ FORMAT: ${isWidescreen ? "16:9 Widescreen YouTube Cinematic Film" : "9:16 Vertic
 ${langInstruction}
 ${audiencePrompt}
 ${genrePrompt}
+VISUAL AESTHETIC ENFORCEMENT: ${visualAesthetic === "pixar_3d" ? "High-end 3D Pixar/Disney CGI animation style with subsurface scattering, expressive large stylized eyes, Octane 3D render. NO live-action, NO real human skin." : (visualAesthetic === "anime_cel" ? "2D Anime illustration, Studio Ghibli / Makoto Shinkai style, crisp lineart, cel shading." : "Hollywood 35mm Live-Action Photorealism, Arri Alexa Mini LF, natural human actors.")}
 
 ${customScriptSection}
 ${charContext}
@@ -1492,6 +1496,7 @@ Requirements:
             const fluxRes = await generateConsistentCharacterPortrait({
               prompt: characterImgPrompt,
               aspectRatio: "9:16",
+              visualAesthetic: payload.visualAesthetic || "photoreal_cinema",
               jobId: job.id,
               log,
             });

@@ -8,6 +8,7 @@ async function generateConsistentCharacterPortrait({
   prompt,
   referenceImageUrl = null,
   aspectRatio = "9:16",
+  visualAesthetic = "photoreal_cinema",
   jobId = "flux_char_job",
   log = console.log,
 }) {
@@ -16,14 +17,31 @@ async function generateConsistentCharacterPortrait({
     throw new Error("Missing REPLICATE_API_TOKEN for FLUX Character Generation.");
   }
 
+  const isPixar = visualAesthetic === "pixar_3d";
+  const isAnime = visualAesthetic === "anime_cel";
+
+  let styleTokens = "8k resolution, raw photography, natural skin pores, studio lighting, masterpiece, no text, no watermark";
+  let defaultNeg = "bad quality, deformed, cartoon, anime, 3d render, cgi, blurry, low resolution, multiple people";
+
+  if (isPixar) {
+    styleTokens = "high-end 3D Pixar Disney CGI animation style, 3D character design, subsurface scattering, Octane 3D render, expressive stylized eyes, charming proportions, 8k render, masterpiece, no text, no watermark";
+    defaultNeg = "bad quality, deformed, photorealistic, real human photo, live action, photography, 35mm film grain, blurry, low resolution";
+  } else if (isAnime) {
+    styleTokens = "cinematic 2D anime illustration, Studio Ghibli and Makoto Shinkai style, crisp lineart, cel shading, rich emotional depth, vibrant color palette, anime key visual, no text, no watermark";
+    defaultNeg = "bad quality, deformed, 3D CGI, live action, photography, realistic human face, blurry, low resolution";
+  } else if (visualAesthetic === "commercial_studio") {
+    styleTokens = "commercial advertising cinematography, razor-sharp product lighting, high-key studio grade, 8k resolution, masterpiece, no text, no watermark";
+    defaultNeg = "bad quality, deformed, cartoon, anime, blurry, low resolution";
+  }
+
   // 1. If reference image exists, use FLUX + PuLID for strict identity locking
   if (referenceImageUrl) {
     log(jobId, `[FLUX+PuLID] Generating scene portrait with locked character identity from reference...`);
     try {
       const pulidPayload = {
         main_face_image: referenceImageUrl,
-        prompt: `${prompt}, 8k UHD, ultra-detailed skin texture, realistic natural lighting, master photography, no text, no watermark`,
-        negative_prompt: "bad quality, deformed, cartoon, anime, blurry, low resolution, multiple people",
+        prompt: `${prompt}, ${styleTokens}`,
+        negative_prompt: defaultNeg,
         aspect_ratio: aspectRatio === "16:9" ? "16:9" : "9:16",
         id_weight: 1.0,
         num_inference_steps: 28,
@@ -63,7 +81,7 @@ async function generateConsistentCharacterPortrait({
   }
 
   // 2. Base Character Generation: FLUX.1 [schnell/dev]
-  log(jobId, `[FLUX.1] Generating base photorealistic character portrait...`);
+  log(jobId, `[FLUX.1] Generating character portrait (${visualAesthetic})...`);
   const fluxRes = await fetch("https://api.replicate.com/v1/models/black-forest-labs/flux-schnell/predictions", {
     method: "POST",
     headers: {
@@ -72,7 +90,7 @@ async function generateConsistentCharacterPortrait({
     },
     body: JSON.stringify({
       input: {
-        prompt: `${prompt}, vertical 9:16 portrait, 8k resolution, raw photography, natural skin pores, studio lighting, masterpiece, no text, no watermark`,
+        prompt: `${prompt}, ${aspectRatio === "16:9" ? "16:9 cinematic" : "vertical 9:16 portrait"}, ${styleTokens}`,
         aspect_ratio: aspectRatio === "16:9" ? "16:9" : "9:16",
         num_outputs: 1,
         output_format: "png",
