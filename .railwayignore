@@ -1,0 +1,5 @@
+*
+!video-worker/
+!video-worker/**
+video-worker/node_modules/
+video-worker/.git/
