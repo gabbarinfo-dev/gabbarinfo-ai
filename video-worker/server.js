@@ -381,6 +381,13 @@ async function generateGenerativeClip({ prompt, isWidescreen, jobId, firstFrameU
       });
       if (hfRes && hfRes.videoUrl) return hfRes.videoUrl;
     } catch (hfErr) {
+      if (
+        hfErr.message.includes("credit balance is too low") ||
+        hfErr.message.includes("not_enough_credits") ||
+        hfErr.message.includes("TOPUP_REQUIRED")
+      ) {
+        throw new Error("HIGGSFIELD_CREDITS_EXHAUSTED: Your Higgsfield balance is $0.00. Please recharge your credits at open.higgsfield.ai to generate videos on Seedance 2.5.");
+      }
       log(jobId, `Higgsfield AI notice: ${hfErr.message}, falling back to Minimax Video-01...`);
     }
   }
@@ -1997,6 +2004,7 @@ Requirements:
         }
 
         // 2. Direct Video Motion via Higgsfield / Minimax Video-01
+        job.progress = 45 + Math.round((i / reelScript.scenes.length) * 32);
         job.stage = `Rendering video camera motion for scene ${i + 1}/${reelScript.scenes.length}...`;
         try {
           const vidUrl = await generateGenerativeClip({
@@ -2012,6 +2020,7 @@ Requirements:
               fs.writeFileSync(scVidPath, Buffer.from(await fVid.arrayBuffer()));
               sceneVisuals.push({ type: "video", path: scVidPath });
               log(job.id, `Scene ${i + 1} video successfully generated & saved!`);
+              job.progress = 45 + Math.round(((i + 1) / reelScript.scenes.length) * 32);
 
               // Extract last frame for seamless chaining into the next scene
               if (i < reelScript.scenes.length - 1) {
