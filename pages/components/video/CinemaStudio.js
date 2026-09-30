@@ -21,9 +21,24 @@ export default function CinemaStudio() {
   const [promptText, setPromptText] = useState("");
   const [aspectRatio, setAspectRatio] = useState("9:16"); // "9:16" | "16:9"
   const [durationSeconds, setDurationSeconds] = useState(30); // 15 | 30 | 60 | 120 | 300
-  const [workflowType, setWorkflowType] = useState("product_ad"); // "product_ad" | "creative_film" | "character_story"
+  const [visualAesthetic, setVisualAesthetic] = useState("photoreal_cinema"); // "photoreal_cinema" | "pixar_3d" | "anime_cel" | "commercial_studio"
+  const [workflowType, setWorkflowType] = useState("product_ad"); // "product_ad" | "creative_film" | "character_story" | "episodic_series"
   const [selectedCharacter, setSelectedCharacter] = useState("auto"); // "auto" or character ID
   const [characterVault, setCharacterVault] = useState([]);
+
+  // Episodic Series State
+  const [seriesList, setSeriesList] = useState([]);
+  const [selectedSeriesId, setSelectedSeriesId] = useState("");
+  const [episodeNumber, setEpisodeNumber] = useState(1);
+  const [showCreateSeriesModal, setShowCreateSeriesModal] = useState(false);
+  const [newSeriesTitle, setNewSeriesTitle] = useState("");
+  const [newSeriesSynopsis, setNewSeriesSynopsis] = useState("");
+  const [newSeriesAesthetic, setNewSeriesAesthetic] = useState("pixar_3d");
+  const [newSeriesCoreCharIds, setNewSeriesCoreCharIds] = useState([]);
+  const [savingSeries, setSavingSeries] = useState(false);
+
+  // Active Series Object
+  const activeSeries = seriesList.find((s) => s.id === selectedSeriesId);
 
   // Asset Attachment State (Stored on Hosting Media Bridge)
   const [attachedFiles, setAttachedFiles] = useState([]); // [{ name, url, size, type }]
@@ -69,6 +84,65 @@ export default function CinemaStudio() {
     }
     loadCharacters();
   }, [userEmail]);
+
+  // Fetch Episodic Series
+  const loadSeries = async () => {
+    try {
+      const res = await fetch(`/api/series/list?userEmail=${encodeURIComponent(userEmail)}`);
+      const data = await res.json();
+      if (data.ok && Array.isArray(data.series)) {
+        setSeriesList(data.series);
+        if (data.series.length > 0 && !selectedSeriesId) {
+          setSelectedSeriesId(data.series[0].id);
+        }
+      }
+    } catch (_) {}
+  };
+
+  useEffect(() => {
+    loadSeries();
+  }, [userEmail]);
+
+  // Create new Episodic Series
+  const handleSaveSeries = async () => {
+    if (!newSeriesTitle.trim()) {
+      alert("Please provide a series title");
+      return;
+    }
+    setSavingSeries(true);
+    try {
+      const selectedChars = characterVault.filter((c) =>
+        newSeriesCoreCharIds.includes(c.id || c.name)
+      );
+      const res = await fetch("/api/series/create", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          title: newSeriesTitle.trim(),
+          synopsis: newSeriesSynopsis.trim(),
+          visualAesthetic: newSeriesAesthetic,
+          coreCharacters: selectedChars,
+          userEmail,
+        }),
+      });
+      const data = await res.json();
+      if (data.ok && data.series) {
+        setSeriesList((prev) => [data.series, ...prev]);
+        setSelectedSeriesId(data.series.id);
+        setVisualAesthetic(data.series.visualAesthetic || "pixar_3d");
+        setShowCreateSeriesModal(false);
+        setNewSeriesTitle("");
+        setNewSeriesSynopsis("");
+        setNewSeriesCoreCharIds([]);
+      } else {
+        alert(data.error || "Failed to create series");
+      }
+    } catch (e) {
+      alert(e.message);
+    } finally {
+      setSavingSeries(false);
+    }
+  };
 
   // Handle direct file upload to Hosting Media Bridge (gabbarinfo.com)
   const handleFileUpload = async (e) => {
@@ -142,6 +216,9 @@ export default function CinemaStudio() {
           format: aspectRatio,
           durationSeconds,
           workflowType,
+          visualAesthetic,
+          seriesId: workflowType === "episodic_series" ? selectedSeriesId : null,
+          episodeNumber: workflowType === "episodic_series" ? episodeNumber : null,
           attachedAssets: attachedFiles.map((f) => f.url),
           characterId: selectedCharacter !== "auto" ? selectedCharacter : null,
           userEmail,
@@ -362,6 +439,144 @@ export default function CinemaStudio() {
               </div>
             )}
 
+            {/* Episodic Series Control Banner (Appears when Episodic Series is active) */}
+            {workflowType === "episodic_series" && (
+              <div
+                style={{
+                  marginBottom: 16,
+                  padding: "14px 18px",
+                  borderRadius: 16,
+                  background: "linear-gradient(135deg, rgba(99, 102, 241, 0.15) 0%, rgba(168, 85, 247, 0.12) 100%)",
+                  border: "1px solid rgba(139, 92, 246, 0.35)",
+                  boxShadow: "0 8px 24px rgba(0,0,0,0.25)",
+                  display: "flex",
+                  flexDirection: "column",
+                  gap: 12,
+                }}
+              >
+                <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", flexWrap: "wrap", gap: 10 }}>
+                  <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+                    <span style={{ fontSize: 20 }}>📺</span>
+                    <div>
+                      <span style={{ fontSize: 13, fontWeight: 700, color: "#f8fafc" }}>Episodic Series Workflow</span>
+                      <span style={{ fontSize: 11.5, color: "#cbd5e1", marginLeft: 8 }}>
+                        Persistent cast stays locked; each episode has a complete story & auto-casts new guest characters.
+                      </span>
+                    </div>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => setShowCreateSeriesModal(true)}
+                    style={{
+                      padding: "5px 12px",
+                      borderRadius: 8,
+                      background: "rgba(139, 92, 246, 0.25)",
+                      border: "1px solid rgba(139, 92, 246, 0.45)",
+                      color: "#e0e7ff",
+                      fontSize: 11.5,
+                      fontWeight: 600,
+                      cursor: "pointer",
+                    }}
+                  >
+                    + Create New Series
+                  </button>
+                </div>
+
+                <div style={{ display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap" }}>
+                  <div style={{ flex: "1 1 200px" }}>
+                    <label style={{ fontSize: 10.5, fontWeight: 700, color: "#a5b4fc", textTransform: "uppercase", display: "block", marginBottom: 3 }}>
+                      Active Show / Series
+                    </label>
+                    <select
+                      value={selectedSeriesId}
+                      onChange={(e) => {
+                        if (e.target.value === "__new__") {
+                          setShowCreateSeriesModal(true);
+                        } else {
+                          setSelectedSeriesId(e.target.value);
+                          const found = seriesList.find((s) => s.id === e.target.value);
+                          if (found?.visualAesthetic) setVisualAesthetic(found.visualAesthetic);
+                        }
+                      }}
+                      style={{
+                        width: "100%",
+                        padding: "8px 12px",
+                        borderRadius: 8,
+                        background: "rgba(15, 23, 42, 0.85)",
+                        border: "1px solid rgba(139, 92, 246, 0.3)",
+                        color: "#fff",
+                        fontSize: 12,
+                        outline: "none",
+                      }}
+                    >
+                      {seriesList.length === 0 ? (
+                        <option value="">(No series found — Click + Create New Series)</option>
+                      ) : (
+                        seriesList.map((s) => (
+                          <option key={s.id} value={s.id}>
+                            🎬 {s.title} ({s.visualAesthetic === "pixar_3d" ? "Pixar 3D" : "Photoreal"})
+                          </option>
+                        ))
+                      )}
+                      <option value="__new__">+ Create New Series...</option>
+                    </select>
+                  </div>
+
+                  <div style={{ width: 110 }}>
+                    <label style={{ fontSize: 10.5, fontWeight: 700, color: "#a5b4fc", textTransform: "uppercase", display: "block", marginBottom: 3 }}>
+                      Episode #
+                    </label>
+                    <input
+                      type="number"
+                      min={1}
+                      max={999}
+                      value={episodeNumber}
+                      onChange={(e) => setEpisodeNumber(Number(e.target.value) || 1)}
+                      style={{
+                        width: "100%",
+                        padding: "8px 12px",
+                        borderRadius: 8,
+                        background: "rgba(15, 23, 42, 0.85)",
+                        border: "1px solid rgba(139, 92, 246, 0.3)",
+                        color: "#fff",
+                        fontSize: 12,
+                        outline: "none",
+                      }}
+                    />
+                  </div>
+
+                  {activeSeries && activeSeries.coreCharacters?.length > 0 && (
+                    <div style={{ flex: "2 1 240px" }}>
+                      <label style={{ fontSize: 10.5, fontWeight: 700, color: "#a5b4fc", textTransform: "uppercase", display: "block", marginBottom: 3 }}>
+                        Locked Core Cast
+                      </label>
+                      <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+                        {activeSeries.coreCharacters.map((c) => (
+                          <span
+                            key={c.id || c.name}
+                            style={{
+                              fontSize: 11,
+                              padding: "4px 8px",
+                              borderRadius: 6,
+                              background: "rgba(34, 197, 94, 0.15)",
+                              border: "1px solid rgba(34, 197, 94, 0.35)",
+                              color: "#86efac",
+                              fontWeight: 600,
+                            }}
+                          >
+                            🔒 {c.name}
+                          </span>
+                        ))}
+                        <span style={{ fontSize: 10.5, color: "#cbd5e1", alignSelf: "center" }}>
+                          + prompt guest actors
+                        </span>
+                      </div>
+                    </div>
+                  )}
+                </div>
+              </div>
+            )}
+
             {/* Gemini-Style Multi-Line Prompt Box */}
             <div style={{ position: "relative", marginBottom: 18 }}>
               <textarea
@@ -389,7 +604,7 @@ export default function CinemaStudio() {
               />
             </div>
 
-            {/* The 4 Inline Smart Pills */}
+            {/* The 5 Inline Smart Pills */}
             <div
               style={{
                 display: "grid",
@@ -431,7 +646,24 @@ export default function CinemaStudio() {
                 </select>
               </div>
 
-              {/* 3. Workflow Mode Pill */}
+              {/* 3. Visual Aesthetic Pill */}
+              <div>
+                <label style={{ fontSize: 11, fontWeight: 700, color: "#94a3b8", display: "block", marginBottom: 4, textTransform: "uppercase" }}>
+                  Visual Aesthetic
+                </label>
+                <select
+                  value={visualAesthetic}
+                  onChange={(e) => setVisualAesthetic(e.target.value)}
+                  style={{ width: "100%", padding: "9px 12px", borderRadius: 10, background: "rgba(15, 23, 42, 0.9)", border: "1px solid rgba(99, 102, 241, 0.25)", color: "#fff", fontSize: 12.5, outline: "none" }}
+                >
+                  <option value="photoreal_cinema">🎬 Photoreal Cinema</option>
+                  <option value="pixar_3d">🧸 3D Pixar Animation</option>
+                  <option value="anime_cel">🎌 Anime & Cel-Shaded</option>
+                  <option value="commercial_studio">🎥 Commercial Studio</option>
+                </select>
+              </div>
+
+              {/* 4. Production Mode Pill */}
               <div>
                 <label style={{ fontSize: 11, fontWeight: 700, color: "#94a3b8", display: "block", marginBottom: 4, textTransform: "uppercase" }}>
                   Production Mode
@@ -443,11 +675,12 @@ export default function CinemaStudio() {
                 >
                   <option value="product_ad">🏷️ Real Product Ad</option>
                   <option value="creative_film">🎬 Creative Cinema Film</option>
-                  <option value="character_story">📖 Multi-Character Story</option>
+                  <option value="character_story">📖 Standalone Story</option>
+                  <option value="episodic_series">📺 Episodic Series</option>
                 </select>
               </div>
 
-              {/* 4. Character Cast Vault Pill */}
+              {/* 5. Character Cast Vault Pill */}
               <div>
                 <label style={{ fontSize: 11, fontWeight: 700, color: "#94a3b8", display: "block", marginBottom: 4, textTransform: "uppercase" }}>
                   Character Cast
@@ -669,6 +902,201 @@ export default function CinemaStudio() {
           </div>
         </div>
       </div>
+      {/* CREATE NEW SERIES MODAL */}
+      {showCreateSeriesModal && (
+        <div
+          style={{
+            position: "fixed",
+            inset: 0,
+            background: "rgba(0, 0, 0, 0.75)",
+            backdropFilter: "blur(8px)",
+            zIndex: 1000,
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            padding: 20,
+          }}
+        >
+          <div
+            style={{
+              background: "linear-gradient(180deg, #0f172a 0%, #0a0f1e 100%)",
+              border: "1px solid rgba(139, 92, 246, 0.35)",
+              borderRadius: 20,
+              padding: 28,
+              width: "100%",
+              maxWidth: 520,
+              boxShadow: "0 25px 60px rgba(0,0,0,0.6)",
+            }}
+          >
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 16 }}>
+              <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+                <span style={{ fontSize: 24 }}>📺</span>
+                <h3 style={{ margin: 0, fontSize: 18, fontWeight: 700, color: "#fff" }}>Create New Episodic Series</h3>
+              </div>
+              <button
+                type="button"
+                onClick={() => setShowCreateSeriesModal(false)}
+                style={{ background: "transparent", border: "none", color: "#94a3b8", fontSize: 20, cursor: "pointer" }}
+              >
+                ×
+              </button>
+            </div>
+
+            <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
+              <div>
+                <label style={{ fontSize: 11.5, fontWeight: 700, color: "#cbd5e1", display: "block", marginBottom: 6 }}>
+                  Series / Show Title *
+                </label>
+                <input
+                  type="text"
+                  placeholder="e.g. The Neon Detectives, Dragon's Tale"
+                  value={newSeriesTitle}
+                  onChange={(e) => setNewSeriesTitle(e.target.value)}
+                  style={{
+                    width: "100%",
+                    padding: "10px 14px",
+                    borderRadius: 10,
+                    background: "rgba(15, 23, 42, 0.8)",
+                    border: "1px solid rgba(139, 92, 246, 0.3)",
+                    color: "#fff",
+                    fontSize: 13,
+                    outline: "none",
+                    boxSizing: "border-box",
+                  }}
+                />
+              </div>
+
+              <div>
+                <label style={{ fontSize: 11.5, fontWeight: 700, color: "#cbd5e1", display: "block", marginBottom: 6 }}>
+                  Visual Aesthetic
+                </label>
+                <select
+                  value={newSeriesAesthetic}
+                  onChange={(e) => setNewSeriesAesthetic(e.target.value)}
+                  style={{
+                    width: "100%",
+                    padding: "10px 14px",
+                    borderRadius: 10,
+                    background: "rgba(15, 23, 42, 0.8)",
+                    border: "1px solid rgba(139, 92, 246, 0.3)",
+                    color: "#fff",
+                    fontSize: 13,
+                    outline: "none",
+                    boxSizing: "border-box",
+                  }}
+                >
+                  <option value="pixar_3d">🧸 3D Pixar Animation (Stylized CGI)</option>
+                  <option value="photoreal_cinema">🎬 Photoreal Cinema (Live-Action / Arri Alexa)</option>
+                  <option value="anime_cel">🎌 Anime & Cel-Shaded (Makoto Shinkai style)</option>
+                  <option value="commercial_studio">🎥 Commercial Studio Grade</option>
+                </select>
+              </div>
+
+              <div>
+                <label style={{ fontSize: 11.5, fontWeight: 700, color: "#cbd5e1", display: "block", marginBottom: 6 }}>
+                  World Bible / Premise (Optional)
+                </label>
+                <textarea
+                  rows={2}
+                  placeholder="e.g. Two quirky detectives solving technological crimes in neo-Tokyo..."
+                  value={newSeriesSynopsis}
+                  onChange={(e) => setNewSeriesSynopsis(e.target.value)}
+                  style={{
+                    width: "100%",
+                    padding: "10px 14px",
+                    borderRadius: 10,
+                    background: "rgba(15, 23, 42, 0.8)",
+                    border: "1px solid rgba(139, 92, 246, 0.3)",
+                    color: "#fff",
+                    fontSize: 12.5,
+                    outline: "none",
+                    boxSizing: "border-box",
+                    resize: "none",
+                  }}
+                />
+              </div>
+
+              <div>
+                <label style={{ fontSize: 11.5, fontWeight: 700, color: "#cbd5e1", display: "block", marginBottom: 6 }}>
+                  Select Recurring Core Cast (Locked across all episodes)
+                </label>
+                {characterVault.length === 0 ? (
+                  <div style={{ fontSize: 12, color: "#94a3b8", fontStyle: "italic", padding: "8px 0" }}>
+                    No saved characters in vault yet. Guest actors will auto-cast per episode from your prompts.
+                  </div>
+                ) : (
+                  <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8, maxHeight: 120, overflowY: "auto" }}>
+                    {characterVault.map((c) => {
+                      const cid = c.id || c.name;
+                      const isSelected = newSeriesCoreCharIds.includes(cid);
+                      return (
+                        <div
+                          key={cid}
+                          onClick={() => {
+                            setNewSeriesCoreCharIds((prev) =>
+                              isSelected ? prev.filter((id) => id !== cid) : [...prev, cid]
+                            );
+                          }}
+                          style={{
+                            padding: "8px 10px",
+                            borderRadius: 8,
+                            background: isSelected ? "rgba(34, 197, 94, 0.2)" : "rgba(255, 255, 255, 0.05)",
+                            border: isSelected ? "1px solid rgba(34, 197, 94, 0.5)" : "1px solid rgba(255, 255, 255, 0.1)",
+                            cursor: "pointer",
+                            fontSize: 12,
+                            color: isSelected ? "#86efac" : "#cbd5e1",
+                            display: "flex",
+                            alignItems: "center",
+                            gap: 6,
+                          }}
+                        >
+                          <span>{isSelected ? "✅" : "👤"}</span>
+                          <span style={{ fontWeight: 600 }}>{c.name}</span>
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
+              </div>
+
+              <div style={{ display: "flex", justifyContent: "flex-end", gap: 10, marginTop: 10 }}>
+                <button
+                  type="button"
+                  onClick={() => setShowCreateSeriesModal(false)}
+                  style={{
+                    padding: "9px 16px",
+                    borderRadius: 10,
+                    background: "rgba(255,255,255,0.08)",
+                    border: "none",
+                    color: "#cbd5e1",
+                    fontSize: 12.5,
+                    cursor: "pointer",
+                  }}
+                >
+                  Cancel
+                </button>
+                <button
+                  type="button"
+                  onClick={handleSaveSeries}
+                  disabled={savingSeries}
+                  style={{
+                    padding: "9px 18px",
+                    borderRadius: 10,
+                    background: "linear-gradient(135deg, #8b5cf6 0%, #ec4899 100%)",
+                    border: "none",
+                    color: "#fff",
+                    fontSize: 12.5,
+                    fontWeight: 700,
+                    cursor: savingSeries ? "not-allowed" : "pointer",
+                  }}
+                >
+                  {savingSeries ? "Saving..." : "Create Series"}
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

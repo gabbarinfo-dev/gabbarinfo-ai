@@ -22,7 +22,8 @@ export default async function handler(req, res) {
     aspectRatio = "9:16",
     format = "9:16",
     durationSeconds = 30,
-    workflowType = "product_ad", // "product_ad" | "creative_film" | "character_story"
+    workflowType = "product_ad", // "product_ad" | "creative_film" | "character_story" | "episodic_series"
+    visualAesthetic = "photoreal_cinema", // "photoreal_cinema" | "pixar_3d" | "anime_cel" | "commercial_studio"
     attachedAssets = [], // Array of hosting URLs for uploaded photos/docs
     characterId = null,
     seriesId = null,
@@ -41,6 +42,30 @@ export default async function handler(req, res) {
   const isWidescreen = (aspectRatio === "16:9" || format === "16:9" || format === "youtube_16_9");
   const videoType = (durationSeconds > 60 || isWidescreen) ? "long_form_youtube" : "reel";
 
+  // Visual Aesthetic Prompt & Negative-Prompt Anchors
+  const aestheticPresets = {
+    photoreal_cinema: {
+      positive: ", Hollywood 35mm film still, Arri Alexa Mini LF, natural human skin texture, authentic lighting, hyper-realistic human actors, shallow depth of field, 8k cinematic master",
+      negative: ", cartoon, 3d render, cgi, animated, illustration, drawing, anime, plastic skin, uncanny valley",
+    },
+    pixar_3d: {
+      positive: ", high-end 3D Pixar Disney CGI animation style, subsurface scattering, expressive stylized eyes, charming friendly proportions, Octane 3D render, 8k cinematic lighting",
+      negative: ", photo, live-action, real human photo, photographic realism, grainy documentary, 35mm film grain",
+    },
+    anime_cel: {
+      positive: ", high-end anime cinematic visual, Studio Ghibli and Makoto Shinkai aesthetic, crisp lineart, cel shaded, vivid colors, emotional lighting",
+      negative: ", live-action, 3d cgi render, photographic, realistic human face, western cartoon",
+    },
+    commercial_studio: {
+      positive: ", commercial studio grade, high-key clean lighting, razor-sharp product detail, premium advertising cinematography, 8k commercial shoot",
+      negative: ", dark, muddy, grainy, amateur, low quality",
+    },
+  };
+
+  const styleProfile = aestheticPresets[visualAesthetic] || aestheticPresets.photoreal_cinema;
+  const enrichedPrompt = (prompt || resolvedTopic) + styleProfile.positive;
+  const negativePrompt = styleProfile.negative;
+
   try {
     const response = await fetch(`${workerUrl.replace(/\/+$/, "")}/jobs/create`, {
       method: "POST",
@@ -51,7 +76,10 @@ export default async function handler(req, res) {
       body: JSON.stringify({
         videoType,
         payload: {
-          prompt: prompt || resolvedTopic,
+          prompt: enrichedPrompt,
+          rawPrompt: prompt || resolvedTopic,
+          negativePrompt,
+          visualAesthetic,
           topic: resolvedTopic,
           customScript,
           scriptMode,
