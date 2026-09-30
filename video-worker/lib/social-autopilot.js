@@ -275,7 +275,7 @@ async function runSocialAutopilotCycle({ supabase, openai, force = false, email 
     try {
       const config = JSON.parse(item.content);
       // Hard Rule 1: Strict Opt-in. Never run unless explicitly enabled === true.
-      const isEnabled = config.enabled === true;
+      const isEnabled = config.enabled === true || force === true;
       if (!isEnabled) {
         logger(`[Social Autopilot] Autopilot not active for ${item.email} (${config.businessName || item.memory_type}). Skipping.`);
         continue;

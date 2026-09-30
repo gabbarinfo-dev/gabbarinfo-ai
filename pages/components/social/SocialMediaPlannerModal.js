@@ -318,13 +318,15 @@ export default function SocialMediaPlannerModal({ onClose, isTrial99: propIsTria
       }
 
       if (res.ok && data?.ok) {
-        if (data.config) {
-          setConfig(data.config);
+        if (data.status !== "processing") {
+          if (data.config) {
+            setConfig(data.config);
+          }
+          const postLink = data.postUrl ? `\n\nDirect Link: ${data.postUrl}` : "";
+          alert(`🎉 Success! Autonomous test creative published successfully to ${destLabel}!${postLink}`);
+          fetchConfig();
+          return;
         }
-        const postLink = data.postUrl ? `\n\nDirect Link: ${data.postUrl}` : "";
-        alert(`🎉 Success! Autonomous test creative published successfully to ${destLabel}!${postLink}`);
-        fetchConfig();
-        return;
       }
 
       // Handle restricted / error responses immediately
@@ -351,8 +353,8 @@ export default function SocialMediaPlannerModal({ onClose, isTrial99: propIsTria
       setTestingStatus("Publishing to your page... (almost ready)");
       let completed = false;
       const pollUrl = targetBiz ? `/api/social/autopilot-config?businessName=${encodeURIComponent(targetBiz)}` : "/api/social/autopilot-config";
-      for (let attempt = 0; attempt < 15; attempt++) {
-        await new Promise((resolve) => setTimeout(resolve, 3000));
+      for (let attempt = 0; attempt < 25; attempt++) {
+        await new Promise((resolve) => setTimeout(resolve, 2500));
         try {
           const pollRes = await fetch(pollUrl);
           const pollData = await pollRes.json();
@@ -376,8 +378,8 @@ export default function SocialMediaPlannerModal({ onClose, isTrial99: propIsTria
       }
 
       if (!completed) {
-        alert("Publishing request timed out on the gateway. Please refresh your page in a moment to verify if your post appeared.");
-        fetchConfig();
+        alert("Your test post is currently being generated and published in the background by the AI worker. Please refresh your page in a moment to verify your live post!");
+        fetchConfig(targetBiz);
       }
     } catch (e) {
       alert("Test post status: " + e.message);

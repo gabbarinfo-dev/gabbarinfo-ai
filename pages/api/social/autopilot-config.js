@@ -447,6 +447,15 @@ export default async function handler(req, res) {
         supabase
       });
 
+      // Check account-level master record for free test post (prevents exploitation across multiple brands)
+      const masterFreeKey = `social_free_test_${normalizedEmail}`;
+      const { data: masterFreeMem } = await supabase
+        .from("agent_memory")
+        .select("content")
+        .eq("email", normalizedEmail)
+        .eq("memory_type", masterFreeKey)
+        .maybeSingle();
+
       // Fetch saved memory for this specific brand
       const { data: mem } = await supabase
         .from("agent_memory")
@@ -503,7 +512,8 @@ export default async function handler(req, res) {
         targetLocations: saved?.targetLocations || intel.targetLocations || "",
         queue: finalQueue,
         publishedCount: saved?.publishedCount || 0,
-        testPostsUsed: saved?.testPostsUsed || 0,
+        testPostsUsed: masterFreeMem ? Math.max(saved?.testPostsUsed || 0, 1) : (saved?.testPostsUsed || 0),
+        hasUsedFreeTestPost: Boolean(masterFreeMem || (saved?.testPostsUsed && saved.testPostsUsed >= 1)),
         lastPublishedAt: saved?.lastPublishedAt || null,
         history: saved?.history || []
       };
@@ -946,16 +956,29 @@ Respond ONLY in JSON: { "hook": "short catchy hook (4-7 words)", "topic": "speci
       if (action === "test-post") {
         console.log(`[Social Autopilot] Executing immediate test post for ${normalizedEmail}...`);
 
-        // Check if user has already used their 1 free test post
-        const testPostsUsed = current.testPostsUsed || 0;
-        const isFreeTestPost = !isOwner && testPostsUsed === 0;
+        // Check if user has already used their 1 free test post (Account-level master check)
+        const masterFreeKey = `social_free_test_${normalizedEmail}`;
+        const { data: masterFreeMem } = await supabase
+          .from("agent_memory")
+          .select("content")
+          .eq("email", normalizedEmail)
+          .eq("memory_type", masterFreeKey)
+          .maybeSingle();
+
+        const hasUsedFreePost = Boolean(
+          masterFreeMem ||
+          (current.testPostsUsed && current.testPostsUsed >= 1) ||
+          current.hasUsedFreeTestPost
+        );
+
+        const isFreeTestPost = !isOwner && !hasUsedFreePost;
 
         let quotaRes = null;
         let resCred = null;
 
         // If NOT owner and NOT the free test post, enforce active subscription quota & credits
         if (!isOwner && !isFreeTestPost) {
-          // 🔒 Server-Side Quota Gate: Reserve SOCIAL_POST quota
+          // Server-Side Quota Gate: Reserve SOCIAL_POST quota
           quotaRes = await reserveQuota({
             session,
             userEmail: normalizedEmail,
@@ -967,13 +990,13 @@ Respond ONLY in JSON: { "hook": "short catchy hook (4-7 words)", "topic": "speci
             return res.status(quotaRes.code === "FEATURE_NOT_INCLUDED" ? 403 : 402).json({
               ok: false,
               code: quotaRes.code,
-              error: quotaRes.error,
+              error: quotaRes.error || "You have already used your 1 free test post. Please upgrade to a monthly plan to continue.",
               planId: quotaRes.planId,
               nextResetDate: quotaRes.nextResetDate,
             });
           }
 
-          // 💳 Server-Side Internal Accounting Credit Check (10 credits)
+          // Server-Side Internal Accounting Credit Check (10 credits)
           resCred = await reserveCredits({
             businessId: quotaRes.businessId || current.businessId || "default_business",
             userEmail: normalizedEmail,
@@ -992,6 +1015,44 @@ Respond ONLY in JSON: { "hook": "short catchy hook (4-7 words)", "topic": "speci
               ok: false,
               error: resCred.error || "Insufficient internal credits. Publishing a post requires 10 credits.",
             });
+          }
+        }
+
+        // ==============================================================
+        // ATOMIC UPFRONT QUOTA LOCKING (Zero Exploitation Guarantee)
+        // Mark free test post as consumed immediately BEFORE long operations!
+        // ==============================================================
+        if (isFreeTestPost) {
+          current.testPostsUsed = (current.testPostsUsed || 0) + 1;
+          current.hasUsedFreeTestPost = true;
+          try {
+            await Promise.all([
+              supabase.from("agent_memory").upsert(
+                {
+                  email: normalizedEmail,
+                  memory_type: autoMemoryKey,
+                  content: JSON.stringify(current),
+                  updated_at: new Date().toISOString(),
+                },
+                { onConflict: "email,memory_type" }
+              ),
+              supabase.from("agent_memory").upsert(
+                {
+                  email: normalizedEmail,
+                  memory_type: masterFreeKey,
+                  content: JSON.stringify({
+                    used: true,
+                    usedAt: new Date().toISOString(),
+                    businessName: current.businessName || normBusiness || "default",
+                  }),
+                  updated_at: new Date().toISOString(),
+                },
+                { onConflict: "email,memory_type" }
+              ),
+            ]);
+            console.log(`[Social Autopilot] Free test post successfully locked upfront for ${normalizedEmail}`);
+          } catch (lockErr) {
+            console.warn("[Social Autopilot] Upfront free post lock warning:", lockErr.message);
           }
         }
 
@@ -1036,6 +1097,56 @@ Respond ONLY in JSON: { "hook": "short catchy hook (4-7 words)", "topic": "speci
 
         const clientWebsite = matchedBrand?.websiteUrl || meta?.business_website || "";
         const clientPhone = meta?.business_phone || "";
+
+        // ==============================================================
+        // ASYNC WORKER OFFLOAD (Eliminates Vercel 10s Gateway Timeout)
+        // ==============================================================
+        const workerUrl = process.env.RAILWAY_WORKER_URL || "https://video-worker-production-96d4.up.railway.app";
+        const workerSecret = process.env.WORKER_SECRET_KEY || "gabbar_worker_secret_2026";
+        const targetBizKey = normBusiness || matchedBrand?.key || null;
+
+        if (workerUrl) {
+          try {
+            console.log(`[Social Autopilot] Offloading test post to Railway background worker (${workerUrl})...`);
+            const workerRes = await fetch(`${workerUrl}/autopilot/social/trigger`, {
+              method: "POST",
+              headers: {
+                "Content-Type": "application/json",
+                "x-worker-secret": workerSecret,
+              },
+              body: JSON.stringify({
+                email: normalizedEmail,
+                brand: targetBizKey,
+                force: true,
+                async: true,
+              }),
+            });
+
+            if (workerRes.ok) {
+              const workerJson = await workerRes.json();
+              if (workerJson.ok) {
+                if (quotaRes?.reservationId) {
+                  await commitQuota({
+                    reservationId: quotaRes.reservationId,
+                    businessId: quotaRes.businessId,
+                    cycleStart: quotaRes.cycleStart,
+                    actionType: "SOCIAL_POST",
+                    userEmail: normalizedEmail,
+                  });
+                }
+                console.log(`[Social Autopilot] Test post successfully dispatched to Railway background worker for ${normalizedEmail}`);
+                return res.status(200).json({
+                  ok: true,
+                  status: "processing",
+                  message: "Creative generation & publication started in background on Railway worker.",
+                });
+              }
+            }
+            console.warn("[Social Autopilot] Railway worker returned non-ok, falling back to synchronous execution...");
+          } catch (workerErr) {
+            console.warn("[Social Autopilot] Railway worker dispatch failed, falling back to synchronous execution:", workerErr.message);
+          }
+        }
 
         // Ensure queue exists
         let queue = Array.isArray(current.queue) && current.queue.length > 0

@@ -285,18 +285,18 @@ Return ONLY valid JSON matching this exact structure:
       console.warn("[CharacterStory] Audio storage upload warning:", e.message);
     }
 
-    // 3c. Optional: Live Talking Avatar via Replicate SadTalker
+    // 3c. Optional: Live Talking Avatar via Sync Labs / Hedra
     let liveTalkingVideoUrl = null;
     let talkingAvatarNotice = null;
 
     if (animationStyle === "live_talking_head" && publicAudioUrl && character.referenceSheetUrl) {
-      console.log(`[CharacterStory] Triggering SadTalker lip-sync on Replicate for "${character.name}"...`);
+      console.log(`[CharacterStory] Triggering precision lip-sync for "${character.name}"...`);
       try {
         liveTalkingVideoUrl = await generateTalkingAvatar({
           imageUrl: character.referenceSheetUrl,
           audioUrl: publicAudioUrl,
         });
-        console.log("[CharacterStory] SadTalker lip-sync completed:", liveTalkingVideoUrl);
+        console.log("[CharacterStory] Precision lip-sync completed:", liveTalkingVideoUrl);
       } catch (lipErr) {
         console.warn("[CharacterStory] Lip-sync generation notice:", lipErr.message);
         if (lipErr.message.includes("REPLICATE_BILLING_REQUIRED")) {

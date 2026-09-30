@@ -13,6 +13,9 @@ const { runSeoAutopilotCycle } = require("./lib/seo-autopilot");
 const { runShopifyAutopilotCycle, generateShopifyArticleOnDemand } = require("./lib/shopify-autopilot");
 const { generateStudioSpeech } = require("./lib/elevenlabs-service");
 const { generateSyncLabsLipSync } = require("./lib/synclabs-service");
+const { generateHiggsfieldVideo } = require("./lib/higgsfield-service");
+const { generateHedraTalkingAvatar } = require("./lib/hedra-service");
+const { generateConsistentCharacterPortrait } = require("./lib/flux-character-service");
 const {
   generateAdGraphic,
   uploadImageToMeta,
@@ -254,12 +257,13 @@ async function uploadPublicFile(filePath, filename, contentType = "application/o
 }
 
 // -------------------------------------------------------------
-// Precision Lip-Sync Engines (Sync Labs v2 Flagship + Replicate Fallback)
+// Precision Lip-Sync Engines (Sync Labs sync-3 -> Hedra Character-2 -> LivePortrait)
+// Outdated SadTalker completely eliminated.
 // -------------------------------------------------------------
 async function generatePrecisionLipSync({ imageUrl, videoUrl, audioUrl, jobId }) {
   const targetMediaUrl = videoUrl || imageUrl;
 
-  // 1. Primary: Sync Labs v2 Precision Lip-Sync (sync-3 -> lipsync-2-pro -> lipsync-2)
+  // 1. Primary: Sync Labs v2 Precision Lip-Sync (sync-3)
   if (process.env.SYNC_LABS_API_KEY && targetMediaUrl && audioUrl) {
     try {
       log(jobId, `Attempting precision lip-sync via Sync Labs (sync-3)...`);
@@ -277,52 +281,25 @@ async function generatePrecisionLipSync({ imageUrl, videoUrl, audioUrl, jobId })
       }
       log(jobId, `Sync Labs returned note: ${syncRes.error || "Falling back to secondary engine"}`);
     } catch (syncErr) {
-      log(jobId, `Sync Labs exception: ${syncErr.message}, falling back to Replicate...`);
+      log(jobId, `Sync Labs exception: ${syncErr.message}, falling back to Hedra / LivePortrait...`);
     }
   }
 
-  // 2. Secondary Fallback: Replicate GPU SadTalker
-  const token = process.env.REPLICATE_API_TOKEN;
-  if (!token) throw new Error("Missing both SYNC_LABS_API_KEY and REPLICATE_API_TOKEN in environment variables");
+  // 2. Secondary: Hedra Character-2 or Replicate LivePortrait
+  log(jobId, `Dispatching modern talking presenter generation to Hedra / LivePortrait...`);
+  const hedraRes = await generateHedraTalkingAvatar({
+    imageUrl: targetMediaUrl,
+    audioUrl,
+    aspectRatio: "9:16",
+    jobId,
+    log,
+  });
 
-  log(jobId, `Dispatching fallback SadTalker GPU lip-sync prediction to Replicate (preprocess: full)...`);
-  const prediction = await callReplicateWithRetry(
-    "https://api.replicate.com/v1/predictions",
-    {
-      version: "a519cc0cfebaaeade068b23899165a11ec76aaa1d2b313d40d214f204ec957a3",
-      input: {
-        source_image: imageUrl || targetMediaUrl,
-        driven_audio: audioUrl,
-        still: false,
-        use_enhancer: true,
-        enhancer: "gfpgan",
-        preprocess: "full",
-        expression_scale: 1.25,
-      },
-    },
-    token,
-    jobId
-  );
-  const pollUrl = prediction.urls?.get;
-
-  const startTime = Date.now();
-  while ((Date.now() - startTime) < 240000) {
-    await new Promise((r) => setTimeout(r, 4000));
-    const statusRes = await fetch(pollUrl, {
-      headers: { Authorization: `Token ${token}` },
-    });
-    if (!statusRes.ok) continue;
-    const statusData = await statusRes.json();
-    if (statusData.status === "succeeded") {
-      const out = Array.isArray(statusData.output) ? statusData.output[0] : statusData.output;
-      log(jobId, `SadTalker GPU lip-sync succeeded: ${out}`);
-      return out;
-    }
-    if (statusData.status === "failed" || statusData.status === "canceled") {
-      throw new Error(`SadTalker failed: ${statusData.error || "Unknown error"}`);
-    }
+  if (hedraRes && hedraRes.videoUrl) {
+    return hedraRes.videoUrl;
   }
-  throw new Error("Lip-sync prediction timed out after 240s");
+
+  throw new Error("Talking presenter lip-sync failed across all available modern engines.");
 }
 
 // Resilient Replicate caller with automatic 429 rate-limit backoff
@@ -361,48 +338,39 @@ async function callReplicateWithRetry(url, payload, token, jobId, maxRetries = 3
 // Backward-compatibility alias
 const generateSadTalkerLipSync = generatePrecisionLipSync;
 
-async function generateGenerativeClip({ prompt, isWidescreen, jobId }) {
-  const token = process.env.REPLICATE_API_TOKEN;
-  if (!token) throw new Error("Missing REPLICATE_API_TOKEN in environment variables");
-
-  log(jobId, `Dispatching Generative AI Video prediction to Replicate (AnimateDiff)...`);
-  const aspectDesc = isWidescreen ? "16:9 widescreen cinematic landscape" : "9:16 vertical smartphone format";
-  const cleanPrompt = `${prompt}, ${aspectDesc}, cinematic lighting, photorealistic 8k, physical character motion, fluid movement, no text, no watermark, masterpiece`;
-
-  const prediction = await callReplicateWithRetry(
-    "https://api.replicate.com/v1/predictions",
-    {
-      version: "beecf59c4aee8d81bf04f0381033dfa10dc16e845b4ae00d281e2fa377e48a9f",
-      input: {
-        prompt: cleanPrompt,
-        n_prompt: "bad quality, blurry, distorted, static, low resolution, text, typography, watermark, logo, poster",
-        steps: 25,
-        guidance_scale: 7.5,
-      },
-    },
-    token,
-    jobId
-  );
-  const pollUrl = prediction.urls?.get;
-
-  const startTime = Date.now();
-  while ((Date.now() - startTime) < 240000) {
-    await new Promise((r) => setTimeout(r, 4000));
-    const statusRes = await fetch(pollUrl, {
-      headers: { Authorization: `Token ${token}` },
-    });
-    if (!statusRes.ok) continue;
-    const statusData = await statusRes.json();
-    if (statusData.status === "succeeded") {
-      const out = Array.isArray(statusData.output) ? statusData.output[0] : statusData.output;
-      log(jobId, `Generative AI Video succeeded: ${out}`);
-      return out;
-    }
-    if (statusData.status === "failed" || statusData.status === "canceled") {
-      throw new Error(`Generative Video failed: ${statusData.error || "Unknown error"}`);
+// -------------------------------------------------------------
+// Cinematic Video Engines (Higgsfield AI -> Minimax Video-01 -> Wan 2.1)
+// Outdated AnimateDiff completely eliminated.
+// -------------------------------------------------------------
+async function generateGenerativeClip({ prompt, isWidescreen, jobId, firstFrameUrl = null }) {
+  // 1. Try Higgsfield AI if configured
+  if (process.env.HIGGSFIELD_API_KEY || (process.env.HIGGSFIELD_API_KEY_ID && process.env.HIGGSFIELD_API_KEY_SECRET)) {
+    try {
+      log(jobId, `Dispatching cinematic video to Higgsfield AI (${isWidescreen ? "16:9" : "9:16"})...`);
+      const hfRes = await generateHiggsfieldVideo({
+        prompt,
+        firstFrameUrl,
+        aspectRatio: isWidescreen ? "16:9" : "9:16",
+        durationSeconds: 5,
+        jobId,
+        log,
+      });
+      if (hfRes && hfRes.videoUrl) return hfRes.videoUrl;
+    } catch (hfErr) {
+      log(jobId, `Higgsfield AI notice: ${hfErr.message}, falling back to Minimax Video-01...`);
     }
   }
-  throw new Error("Generative Video prediction timed out after 240s");
+
+  // 2. High-fidelity Minimax Video-01 via Replicate
+  try {
+    log(jobId, `Dispatching cinematic clip to Minimax Video-01...`);
+    return await generateMinimaxVideo({ prompt, firstFrameUrl, isWidescreen, jobId });
+  } catch (mmErr) {
+    log(jobId, `Minimax error: ${mmErr.message}, falling back to Wan 2.1...`);
+  }
+
+  // 3. Fallback: Wan 2.1
+  return await generateWanVideo({ prompt, isWidescreen, jobId });
 }
 
 async function generateMinimaxVideo({ prompt, firstFrameUrl, isWidescreen, jobId }) {
@@ -1512,55 +1480,77 @@ Requirements:
 
       fs.writeFileSync(audioPath, actorSpeechRes.buffer);
 
-      // 2. Generate Character Image (or reuse existing locked character face)
+      // 2. Generate Character Image with FLUX.1 / PuLID (or reuse existing locked character face)
       if (reusedImgPath && fs.existsSync(reusedImgPath)) {
         fs.copyFileSync(reusedImgPath, imgPath);
         log(job.id, `Reusing locked actor portrait for ${filenamePrefix}`);
       } else {
-        let imgGen = null;
-        const charImageModels = ["gpt-image-2", "gpt-image-1.5", "dall-e-3"];
-        for (const m of charImageModels) {
+        let imageCreated = false;
+        if (process.env.REPLICATE_API_TOKEN) {
           try {
-            imgGen = await openai.images.generate({
-              model: m,
-              prompt: characterImgPrompt.slice(0, 950),
-              n: 1,
-              size: "1024x1792",
+            log(job.id, `Generating photorealistic actor portrait with FLUX.1...`);
+            const fluxRes = await generateConsistentCharacterPortrait({
+              prompt: characterImgPrompt,
+              aspectRatio: "9:16",
+              jobId: job.id,
+              log,
             });
-            if (imgGen.data?.[0]?.b64_json || imgGen.data?.[0]?.url) break;
-          } catch (e) {
-            console.warn(`[VideoWorker] Character image generation with ${m} (1024x1792) failed:`, e.message);
+            if (fluxRes && fluxRes.imageUrl) {
+              const fetchImg = await fetch(fluxRes.imageUrl);
+              if (fetchImg.ok) {
+                fs.writeFileSync(imgPath, Buffer.from(await fetchImg.arrayBuffer()));
+                imageCreated = true;
+                log(job.id, `FLUX.1 photorealistic portrait saved for ${filenamePrefix}`);
+              }
+            }
+          } catch (fluxErr) {
+            log(job.id, `FLUX.1 character portrait notice: ${fluxErr.message}, falling back to OpenAI...`);
+          }
+        }
+
+        if (!imageCreated) {
+          let imgGen = null;
+          const charImageModels = ["gpt-image-2", "gpt-image-1.5", "dall-e-3"];
+          for (const m of charImageModels) {
             try {
               imgGen = await openai.images.generate({
                 model: m,
                 prompt: characterImgPrompt.slice(0, 950),
                 n: 1,
-                size: "1024x1024",
+                size: "1024x1792",
               });
               if (imgGen.data?.[0]?.b64_json || imgGen.data?.[0]?.url) break;
-            } catch (e2) {
-              console.warn(`[VideoWorker] Character image generation with ${m} (1024x1024) failed:`, e2.message);
+            } catch (e) {
+              try {
+                imgGen = await openai.images.generate({
+                  model: m,
+                  prompt: characterImgPrompt.slice(0, 950),
+                  n: 1,
+                  size: "1024x1024",
+                });
+                if (imgGen.data?.[0]?.b64_json || imgGen.data?.[0]?.url) break;
+              } catch (_) {}
             }
           }
-        }
 
-        if (imgGen?.data?.[0]?.b64_json) {
-          fs.writeFileSync(imgPath, Buffer.from(imgGen.data[0].b64_json, "base64"));
-        } else if (imgGen?.data?.[0]?.url) {
-          const fetchRes = await fetch(imgGen.data[0].url);
-          fs.writeFileSync(imgPath, Buffer.from(await fetchRes.arrayBuffer()));
-        } else {
-          await createFallbackImage(imgPath, 1080, 1920, filenamePrefix);
+          if (imgGen?.data?.[0]?.b64_json) {
+            fs.writeFileSync(imgPath, Buffer.from(imgGen.data[0].b64_json, "base64"));
+          } else if (imgGen?.data?.[0]?.url) {
+            const fetchRes = await fetch(imgGen.data[0].url);
+            fs.writeFileSync(imgPath, Buffer.from(await fetchRes.arrayBuffer()));
+          } else {
+            await createFallbackImage(imgPath, 1080, 1920, filenamePrefix);
+          }
         }
       }
 
-      // 3. SadTalker GPU Lip-Sync
+      // 3. Modern Precision Lip-Sync (Sync Labs / Hedra / LivePortrait)
       try {
-        job.stage = `Generating GPU lip-sync for ${filenamePrefix}...`;
+        job.stage = `Generating precision lip-sync for ${filenamePrefix}...`;
         const audioPubUrl = await uploadPublicFile(audioPath, `${filenamePrefix}_${job.id}.mp3`, "audio/mpeg");
         const imgPubUrl = await uploadPublicFile(imgPath, `${filenamePrefix}_${job.id}.png`, "image/png");
 
-        const talkingVidUrl = await generateSadTalkerLipSync({
+        const talkingVidUrl = await generatePrecisionLipSync({
           imageUrl: imgPubUrl,
           audioUrl: audioPubUrl,
           jobId: job.id,
@@ -1569,11 +1559,11 @@ Requirements:
         const fetchVid = await fetch(talkingVidUrl);
         if (fetchVid.ok) {
           fs.writeFileSync(vidPath, Buffer.from(await fetchVid.arrayBuffer()));
-          log(job.id, `SadTalker generated native lip-synced video for ${filenamePrefix}`);
+          log(job.id, `Precision lip-sync successfully rendered video for ${filenamePrefix}`);
           return { type: "video", path: vidPath, imagePath: imgPath, hasEmbeddedAudio: true, audioPath };
         }
-      } catch (sTalkErr) {
-        log(job.id, `SadTalker (${filenamePrefix}) fallback: ${sTalkErr.message}`);
+      } catch (lipSyncErr) {
+        log(job.id, `Precision lip-sync (${filenamePrefix}) notice: ${lipSyncErr.message}`);
       }
 
       return { type: "image", path: imgPath, imagePath: imgPath, hasEmbeddedAudio: false, audioPath };
@@ -2111,13 +2101,22 @@ app.post("/autopilot/social/trigger", requireAuth, async (req, res) => {
     const force = Boolean(req.body?.force || req.query?.force);
     const email = req.body?.email || req.query?.email || null;
     const targetBrand = req.body?.brand || req.body?.targetBrand || null;
-    log("AUTOPILOT", `Manual trigger: Social Media Planner Autopilot (force: ${force}, email: ${email || "all"}, brand: ${targetBrand || "all"})`);
+    const isAsync = Boolean(req.body?.async);
+    log("AUTOPILOT", `Manual trigger: Social Media Planner Autopilot (force: ${force}, email: ${email || "all"}, brand: ${targetBrand || "all"}, async: ${isAsync})`);
     try {
       delete require.cache[require.resolve("./lib/brand-integrity-guard")];
       delete require.cache[require.resolve("./lib/instagram-image-helper")];
       delete require.cache[require.resolve("./lib/social-autopilot")];
     } catch (_) {}
     const { runSocialAutopilotCycle: freshRunSocial } = require("./lib/social-autopilot");
+
+    if (isAsync) {
+      res.json({ ok: true, status: "processing", message: "Autonomous social post triggered in background" });
+      freshRunSocial({ supabase, openai, force, email, targetBrand, logger: (msg) => log("SOCIAL_AP", msg) })
+        .catch(err => log("AUTOPILOT", `Async Social Autopilot Error: ${err.message}`));
+      return;
+    }
+
     const results = await freshRunSocial({ supabase, openai, force, email, targetBrand, logger: (msg) => log("SOCIAL_AP", msg) });
     res.json({ ok: true, count: results.length, results });
   } catch (err) {
