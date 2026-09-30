@@ -1504,8 +1504,6 @@ Requirements:
     )
   );
 
-  const isFoleySfx = audioMode === "foley_sfx";
-
   if (isFoleySfx) {
     job.stage = "Generating AI Foley sound design & physical sound effects...";
     log(job.id, `Generating scene-by-scene Foley sound design for ${reelScript.scenes.length} scenes...`);
