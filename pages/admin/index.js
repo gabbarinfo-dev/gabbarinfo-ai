@@ -425,6 +425,39 @@ export default function AdminPage() {
     }
   }
 
+  // ---------------- GRANT FREE TEST POST (ADMIN) ----------------
+  async function handleGrantFreeTestPost(userEmail, count = 1) {
+    if (!userEmail) return;
+    const confirmed = confirm(`Grant +${count} free test post(s) on Social Media Planner to ${userEmail}?`);
+    if (!confirmed) return;
+
+    try {
+      const res = await fetch("/api/admin/manage-tenant", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          action: "grant_free_test_post",
+          userEmail,
+          count,
+        }),
+      });
+      const data = await res.json();
+      if (data.success) {
+        setTenantActionMessage({
+          type: "success",
+          text: data.message || `Granted +${count} free test post to ${userEmail}!`,
+        });
+        setTimeout(() => setTenantActionMessage(null), 3500);
+        loadTenants();
+      } else {
+        alert(data.error || "Failed to grant free test post.");
+      }
+    } catch (err) {
+      console.error("Grant free test post error:", err);
+      alert("Failed to grant free test post.");
+    }
+  }
+
   // ---------------- SAVE CREDITS HANDLER ----------------
   async function handleAdjustCredits(e) {
     e.preventDefault();
@@ -856,6 +889,30 @@ export default function AdminPage() {
             </div>
 
             <button
+              onClick={() => {
+                const target = prompt("Enter user email to grant free social test post:");
+                if (target && target.trim()) {
+                  handleGrantFreeTestPost(target.trim(), 1);
+                }
+              }}
+              className="btn-gabbar-secondary"
+              title="Grant a free test post to any user email"
+              style={{
+                fontSize: 11,
+                padding: "6px 12px",
+                background: "rgba(56, 189, 248, 0.15)",
+                border: "1px solid rgba(56, 189, 248, 0.4)",
+                color: "#38bdf8",
+                fontWeight: 700,
+                borderRadius: 8,
+                cursor: "pointer",
+                whiteSpace: "nowrap",
+              }}
+            >
+              🎁 Grant Free Post to Anyone
+            </button>
+
+            <button
               onClick={loadTenants}
               disabled={loadingTenants}
               className="btn-gabbar-secondary refresh-btn"
@@ -1061,6 +1118,45 @@ export default function AdminPage() {
                                   Exp: {new Date(t.subscription.expiresAt).toLocaleDateString()}
                                 </div>
                               )}
+
+                              {/* Free Test Post Control */}
+                              <div
+                                style={{
+                                  marginTop: 6,
+                                  display: "flex",
+                                  alignItems: "center",
+                                  justifyContent: "space-between",
+                                  gap: 4,
+                                  background: "rgba(56, 189, 248, 0.08)",
+                                  padding: "3px 6px",
+                                  borderRadius: 4,
+                                  border: "1px solid rgba(56, 189, 248, 0.2)",
+                                }}
+                              >
+                                <span
+                                  style={{ fontSize: 9.5, color: "#38bdf8", fontWeight: 700 }}
+                                  title={`Used: ${t.socialFreeTest?.used ?? 0} / Allowed: ${t.socialFreeTest?.allowed ?? 1}`}
+                                >
+                                  📱 Free Posts: <strong>{t.socialFreeTest?.remaining ?? 1} left</strong>
+                                </span>
+                                <button
+                                  type="button"
+                                  onClick={() => handleGrantFreeTestPost(t.email, 1)}
+                                  title="Grant +1 Free Test Post on Social Planner (can be clicked multiple times)"
+                                  style={{
+                                    fontSize: 9.5,
+                                    padding: "1px 6px",
+                                    background: "rgba(56, 189, 248, 0.2)",
+                                    border: "1px solid rgba(56, 189, 248, 0.45)",
+                                    color: "#e0f2fe",
+                                    borderRadius: 3,
+                                    cursor: "pointer",
+                                    fontWeight: 700,
+                                  }}
+                                >
+                                  🎁 +1 Free
+                                </button>
+                              </div>
                             </div>
                           )}
                         </td>

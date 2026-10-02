@@ -74,6 +74,23 @@ export default async function handler(req, res) {
         } catch (_) {}
       });
 
+      // 2c. Fetch social free test post allowance from agent_memory
+      const { data: freeTestMemories } = await supabaseServer
+        .from("agent_memory")
+        .select("email, content")
+        .ilike("memory_type", "social_free_test_%");
+
+      const freeTestMap = {};
+      (freeTestMemories || []).forEach((m) => {
+        try {
+          const parsed = typeof m.content === "string" ? JSON.parse(m.content) : m.content;
+          const allowed = Math.max(1, Number(parsed?.allowedCount || 1));
+          const used = Number(parsed?.usedCount !== undefined ? parsed.usedCount : (parsed?.used ? 1 : 0));
+          const remaining = Math.max(0, allowed - used);
+          freeTestMap[m.email.toLowerCase()] = { allowed, used, remaining };
+        } catch (_) {}
+      });
+
       // 3. Fetch persistent registry from Supabase
       const registry = await getTenantRegistry();
       let registryModified = false;
@@ -103,6 +120,7 @@ export default async function handler(req, res) {
           isSuspended: Boolean(config.isSuspended),
           maxBusinesses: config.maxBusinesses || 1,
           gmbLocation: gmbMap[emailNorm] || null,
+          socialFreeTest: freeTestMap[emailNorm] || { allowed: 1, used: 0, remaining: 1 },
           subscription: config.subscription || {
             status: currentPlan === "none" ? "inactive" : "active",
             plan: currentPlan,
@@ -410,9 +428,149 @@ export default async function handler(req, res) {
           .eq("business_id", bizId);
       } catch (_) {}
 
+      // Also reset social free test posts usage
+      try {
+        const masterFreeKey = `social_free_test_${normEmail}`;
+        const { data: masterFreeMem } = await supabaseServer
+          .from("agent_memory")
+          .select("content")
+          .eq("email", normEmail)
+          .eq("memory_type", masterFreeKey)
+          .maybeSingle();
+
+        if (masterFreeMem?.content) {
+          const parsed = typeof masterFreeMem.content === "string" ? JSON.parse(masterFreeMem.content) : masterFreeMem.content;
+          parsed.used = false;
+          parsed.usedCount = 0;
+          await supabaseServer.from("agent_memory").upsert(
+            {
+              email: normEmail,
+              memory_type: masterFreeKey,
+              content: JSON.stringify(parsed),
+              updated_at: new Date().toISOString(),
+            },
+            { onConflict: "email,memory_type" }
+          );
+        }
+
+        const { data: configs } = await supabaseServer
+          .from("agent_memory")
+          .select("memory_type, content")
+          .eq("email", normEmail)
+          .ilike("memory_type", "social_autopilot_%");
+
+        for (const c of (configs || [])) {
+          const parsed = JSON.parse(c.content);
+          parsed.hasUsedFreeTestPost = false;
+          parsed.testPostsUsed = 0;
+          parsed.freeTestPostsRemaining = parsed.freeTestPostsAllowed || 1;
+          await supabaseServer.from("agent_memory").upsert(
+            {
+              email: normEmail,
+              memory_type: c.memory_type,
+              content: JSON.stringify(parsed),
+              updated_at: new Date().toISOString(),
+            },
+            { onConflict: "email,memory_type" }
+          );
+        }
+      } catch (_) {}
+
       return res.status(200).json({
         success: true,
-        message: `Quotas and asset usage successfully reset for ${targetEmail}.`,
+        message: `Quotas and free test posts successfully reset for ${targetEmail}.`,
+      });
+    }
+
+    // -------------------------------------------------------------
+    // 7c. GRANT FREE SOCIAL TEST POST (ADMIN)
+    // -------------------------------------------------------------
+    if (action === "grant_free_test_post") {
+      const { userEmail: targetEmail, count = 1 } = req.body;
+      if (!targetEmail) return res.status(400).json({ error: "userEmail is required" });
+      const normEmail = targetEmail.toLowerCase().trim();
+      const addCount = Math.max(1, Number(count) || 1);
+
+      const masterFreeKey = `social_free_test_${normEmail}`;
+      const { data: masterFreeMem } = await supabaseServer
+        .from("agent_memory")
+        .select("content")
+        .eq("email", normEmail)
+        .eq("memory_type", masterFreeKey)
+        .maybeSingle();
+
+      let masterFreeData = null;
+      if (masterFreeMem?.content) {
+        try {
+          masterFreeData = typeof masterFreeMem.content === "string" ? JSON.parse(masterFreeMem.content) : masterFreeMem.content;
+        } catch (_) {}
+      }
+
+      const currentAllowed = Math.max(1, Number(masterFreeData?.allowedCount || 1));
+      const currentUsed = Number(
+        masterFreeData?.usedCount !== undefined
+          ? masterFreeData.usedCount
+          : (masterFreeData?.used ? 1 : 0)
+      );
+
+      const newAllowed = currentAllowed + addCount;
+      const newRemaining = Math.max(0, newAllowed - currentUsed);
+
+      const updatedMaster = {
+        ...(masterFreeData || {}),
+        allowedCount: newAllowed,
+        usedCount: currentUsed,
+        used: newRemaining <= 0,
+        lastGrantedAt: new Date().toISOString(),
+        grantedBy: userEmail,
+        grantHistory: [
+          ...(masterFreeData?.grantHistory || []),
+          { added: addCount, grantedAt: new Date().toISOString(), grantedBy: userEmail },
+        ],
+      };
+
+      await supabaseServer.from("agent_memory").upsert(
+        {
+          email: normEmail,
+          memory_type: masterFreeKey,
+          content: JSON.stringify(updatedMaster),
+          updated_at: new Date().toISOString(),
+        },
+        { onConflict: "email,memory_type" }
+      );
+
+      // Also sync all social_autopilot_${normEmail}* configs
+      const { data: configs } = await supabaseServer
+        .from("agent_memory")
+        .select("memory_type, content")
+        .eq("email", normEmail)
+        .ilike("memory_type", "social_autopilot_%");
+
+      if (configs && configs.length > 0) {
+        for (const c of configs) {
+          try {
+            const parsed = JSON.parse(c.content);
+            parsed.hasUsedFreeTestPost = newRemaining <= 0;
+            parsed.freeTestPostsAllowed = newAllowed;
+            parsed.freeTestPostsRemaining = newRemaining;
+            parsed.testPostsUsed = currentUsed;
+            await supabaseServer.from("agent_memory").upsert(
+              {
+                email: normEmail,
+                memory_type: c.memory_type,
+                content: JSON.stringify(parsed),
+                updated_at: new Date().toISOString(),
+              },
+              { onConflict: "email,memory_type" }
+            );
+          } catch (_) {}
+        }
+      }
+
+      return res.status(200).json({
+        success: true,
+        message: `Granted +${addCount} free test post(s) to ${normEmail}. (Allowed: ${newAllowed}, Used: ${currentUsed}, Remaining: ${newRemaining})`,
+        socialFreeTest: { allowed: newAllowed, used: currentUsed, remaining: newRemaining },
       });
     }
 

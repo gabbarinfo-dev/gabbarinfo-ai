@@ -456,6 +456,23 @@ export default async function handler(req, res) {
         .eq("memory_type", masterFreeKey)
         .maybeSingle();
 
+      let masterFreeData = null;
+      if (masterFreeMem?.content) {
+        try {
+          masterFreeData = typeof masterFreeMem.content === "string" ? JSON.parse(masterFreeMem.content) : masterFreeMem.content;
+        } catch (_) {}
+      }
+
+      // Compute free test posts allowance & usage dynamically
+      const freeAllowed = Math.max(1, Number(masterFreeData?.allowedCount || 1));
+      const freeUsed = Number(
+        masterFreeData?.usedCount !== undefined
+          ? masterFreeData.usedCount
+          : (masterFreeData?.used ? 1 : (saved?.testPostsUsed || 0))
+      );
+      const freeRemaining = Math.max(0, freeAllowed - freeUsed);
+      const hasUsedFreeAll = freeRemaining <= 0;
+
       // Fetch saved memory for this specific brand
       const { data: mem } = await supabase
         .from("agent_memory")
@@ -512,8 +529,10 @@ export default async function handler(req, res) {
         targetLocations: saved?.targetLocations || intel.targetLocations || "",
         queue: finalQueue,
         publishedCount: saved?.publishedCount || 0,
-        testPostsUsed: masterFreeMem ? Math.max(saved?.testPostsUsed || 0, 1) : (saved?.testPostsUsed || 0),
-        hasUsedFreeTestPost: Boolean(masterFreeMem || (saved?.testPostsUsed && saved.testPostsUsed >= 1)),
+        testPostsUsed: freeUsed,
+        freeTestPostsAllowed: freeAllowed,
+        freeTestPostsRemaining: freeRemaining,
+        hasUsedFreeTestPost: hasUsedFreeAll,
         lastPublishedAt: saved?.lastPublishedAt || null,
         history: saved?.history || []
       };
@@ -952,11 +971,95 @@ Respond ONLY in JSON: { "hook": "short catchy hook (4-7 words)", "topic": "speci
         return res.status(200).json({ ok: true, updatedItem: queue[index], queue });
       }
 
+      // ── ACTION: ADMIN GRANT FREE TEST POST ──
+      if (action === "admin-grant-free-post") {
+        if (!isOwner) {
+          return res.status(403).json({ ok: false, error: "Only admin can grant free test posts." });
+        }
+        const { targetEmail, count = 1 } = req.body;
+        if (!targetEmail) {
+          return res.status(400).json({ ok: false, error: "targetEmail is required" });
+        }
+        const normTarget = targetEmail.toLowerCase().trim();
+        const addCount = Math.max(1, Number(count) || 1);
+
+        const targetMasterKey = `social_free_test_${normTarget}`;
+        const { data: targetMem } = await supabase
+          .from("agent_memory")
+          .select("content")
+          .eq("email", normTarget)
+          .eq("memory_type", targetMasterKey)
+          .maybeSingle();
+
+        let targetData = null;
+        if (targetMem?.content) {
+          try { targetData = typeof targetMem.content === "string" ? JSON.parse(targetMem.content) : targetMem.content; } catch (_) {}
+        }
+
+        const curAllowed = Math.max(1, Number(targetData?.allowedCount || 1));
+        const curUsed = Number(targetData?.usedCount !== undefined ? targetData.usedCount : (targetData?.used ? 1 : 0));
+        const nextAllowed = curAllowed + addCount;
+        const nextRemaining = Math.max(0, nextAllowed - curUsed);
+
+        const updatedTargetMaster = {
+          ...(targetData || {}),
+          allowedCount: nextAllowed,
+          usedCount: curUsed,
+          used: nextRemaining <= 0,
+          lastGrantedAt: new Date().toISOString(),
+          grantedBy: normalizedEmail,
+        };
+
+        await supabase.from("agent_memory").upsert(
+          {
+            email: normTarget,
+            memory_type: targetMasterKey,
+            content: JSON.stringify(updatedTargetMaster),
+            updated_at: new Date().toISOString(),
+          },
+          { onConflict: "email,memory_type" }
+        );
+
+        // Also update brand memories
+        const { data: brandMemories } = await supabase
+          .from("agent_memory")
+          .select("memory_type, content")
+          .eq("email", normTarget)
+          .ilike("memory_type", "social_autopilot_%");
+
+        for (const bm of (brandMemories || [])) {
+          try {
+            const parsed = JSON.parse(bm.content);
+            parsed.hasUsedFreeTestPost = nextRemaining <= 0;
+            parsed.freeTestPostsAllowed = nextAllowed;
+            parsed.freeTestPostsRemaining = nextRemaining;
+            parsed.testPostsUsed = curUsed;
+            await supabase.from("agent_memory").upsert(
+              {
+                email: normTarget,
+                memory_type: bm.memory_type,
+                content: JSON.stringify(parsed),
+                updated_at: new Date().toISOString(),
+              },
+              { onConflict: "email,memory_type" }
+            );
+          } catch (_) {}
+        }
+
+        return res.status(200).json({
+          ok: true,
+          message: `Successfully granted +${addCount} free test post to ${normTarget}`,
+          allowed: nextAllowed,
+          used: curUsed,
+          remaining: nextRemaining,
+        });
+      }
+
       // ── ACTION: TEST POST NOW (IMMEDIATE SINGLE POST ON-DEMAND) ──
       if (action === "test-post") {
         console.log(`[Social Autopilot] Executing immediate test post for ${normalizedEmail}...`);
 
-        // Check if user has already used their 1 free test post (Account-level master check)
+        // Check if user has already used their free test post allowance (Account-level master check)
         const masterFreeKey = `social_free_test_${normalizedEmail}`;
         const { data: masterFreeMem } = await supabase
           .from("agent_memory")
@@ -965,11 +1068,21 @@ Respond ONLY in JSON: { "hook": "short catchy hook (4-7 words)", "topic": "speci
           .eq("memory_type", masterFreeKey)
           .maybeSingle();
 
-        const hasUsedFreePost = Boolean(
-          masterFreeMem ||
-          (current.testPostsUsed && current.testPostsUsed >= 1) ||
-          current.hasUsedFreeTestPost
+        let masterFreeData = null;
+        if (masterFreeMem?.content) {
+          try {
+            masterFreeData = typeof masterFreeMem.content === "string" ? JSON.parse(masterFreeMem.content) : masterFreeMem.content;
+          } catch (_) {}
+        }
+
+        const freeAllowed = Math.max(1, Number(masterFreeData?.allowedCount || 1));
+        const freeUsed = Number(
+          masterFreeData?.usedCount !== undefined
+            ? masterFreeData.usedCount
+            : (masterFreeData?.used ? 1 : (current.testPostsUsed || 0))
         );
+        const freeRemaining = Math.max(0, freeAllowed - freeUsed);
+        const hasUsedFreePost = freeRemaining <= 0;
 
         const isFreeTestPost = !isOwner && !hasUsedFreePost;
 
@@ -990,7 +1103,7 @@ Respond ONLY in JSON: { "hook": "short catchy hook (4-7 words)", "topic": "speci
             return res.status(quotaRes.code === "FEATURE_NOT_INCLUDED" ? 403 : 402).json({
               ok: false,
               code: quotaRes.code,
-              error: quotaRes.error || "You have already used your 1 free test post. Please upgrade to a monthly plan to continue.",
+              error: quotaRes.error || "You have already used your free test post allowance. Please upgrade to a monthly plan to continue.",
               planId: quotaRes.planId,
               nextResetDate: quotaRes.nextResetDate,
             });
@@ -1023,8 +1136,24 @@ Respond ONLY in JSON: { "hook": "short catchy hook (4-7 words)", "topic": "speci
         // Mark free test post as consumed immediately BEFORE long operations!
         // ==============================================================
         if (isFreeTestPost) {
-          current.testPostsUsed = (current.testPostsUsed || 0) + 1;
-          current.hasUsedFreeTestPost = true;
+          const newFreeUsed = freeUsed + 1;
+          const newFreeRemaining = Math.max(0, freeAllowed - newFreeUsed);
+          const isNowUsedUp = newFreeRemaining <= 0;
+
+          current.testPostsUsed = newFreeUsed;
+          current.freeTestPostsAllowed = freeAllowed;
+          current.freeTestPostsRemaining = newFreeRemaining;
+          current.hasUsedFreeTestPost = isNowUsedUp;
+
+          const updatedMasterFree = {
+            ...(masterFreeData || {}),
+            allowedCount: freeAllowed,
+            usedCount: newFreeUsed,
+            used: isNowUsedUp,
+            lastUsedAt: new Date().toISOString(),
+            businessName: current.businessName || normBusiness || "default",
+          };
+
           try {
             await Promise.all([
               supabase.from("agent_memory").upsert(
@@ -1040,17 +1169,13 @@ Respond ONLY in JSON: { "hook": "short catchy hook (4-7 words)", "topic": "speci
                 {
                   email: normalizedEmail,
                   memory_type: masterFreeKey,
-                  content: JSON.stringify({
-                    used: true,
-                    usedAt: new Date().toISOString(),
-                    businessName: current.businessName || normBusiness || "default",
-                  }),
+                  content: JSON.stringify(updatedMasterFree),
                   updated_at: new Date().toISOString(),
                 },
                 { onConflict: "email,memory_type" }
               ),
             ]);
-            console.log(`[Social Autopilot] Free test post successfully locked upfront for ${normalizedEmail}`);
+            console.log(`[Social Autopilot] Free test post successfully locked upfront for ${normalizedEmail} (Used: ${newFreeUsed}/${freeAllowed}, Remaining: ${newFreeRemaining})`);
           } catch (lockErr) {
             console.warn("[Social Autopilot] Upfront free post lock warning:", lockErr.message);
           }

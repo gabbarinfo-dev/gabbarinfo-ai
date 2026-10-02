@@ -269,9 +269,12 @@ export default function SocialMediaPlannerModal({ onClose, isTrial99: propIsTria
   }
 
   async function handleTestPostNow(selectedTopic = null) {
-    const testPostsUsed = config.testPostsUsed || 0;
-    if (!isOwner && testPostsUsed >= 1 && isRestricted) {
-      alert("You have already used your 1 free test post. Social Media service is restricted for your account.");
+    const freeRemaining = config.freeTestPostsRemaining !== undefined
+      ? config.freeTestPostsRemaining
+      : (config.testPostsUsed >= 1 ? 0 : 1);
+
+    if (!isOwner && freeRemaining <= 0 && isRestricted) {
+      alert("You have already used your free test post allowance. Upgrade your plan to continue publishing.");
       return;
     }
 
@@ -286,9 +289,9 @@ export default function SocialMediaPlannerModal({ onClose, isTrial99: propIsTria
       ? ` on topic:\n"${selectedTopic.trim()}"`
       : "";
 
-    const confirmMsg = (!isOwner && testPostsUsed >= 1)
+    const confirmMsg = (!isOwner && freeRemaining <= 0)
       ? `Publish an immediate live creative${topicLabel} to ${destLabel}? This will consume 1 social post allowance from your monthly plan.`
-      : `Post an immediate live test creative${topicLabel} now to ${destLabel}? (1 free test post)`;
+      : `Post an immediate live test creative${topicLabel} now to ${destLabel}? (${freeRemaining} free test post${freeRemaining > 1 ? "s" : ""} available)`;
 
     const confirmPost = confirm(confirmMsg);
     if (!confirmPost) return;
@@ -567,18 +570,22 @@ export default function SocialMediaPlannerModal({ onClose, isTrial99: propIsTria
                     borderRadius: 999,
                     fontSize: 10,
                     fontWeight: 700,
-                    background: isRestricted
-                      ? "rgba(239, 68, 68, 0.15)"
-                      : config.enabled
-                      ? "rgba(16, 185, 129, 0.15)"
-                      : "rgba(148, 163, 184, 0.1)",
-                    color: isRestricted ? "#f87171" : config.enabled ? "#34d399" : "#94a3b8",
+                    background: (!isRestricted)
+                      ? (config.enabled ? "rgba(16, 185, 129, 0.15)" : "rgba(148, 163, 184, 0.1)")
+                      : ((config.freeTestPostsRemaining ?? (config.testPostsUsed >= 1 ? 0 : 1)) > 0)
+                      ? "rgba(56, 189, 248, 0.15)"
+                      : "rgba(239, 68, 68, 0.15)",
+                    color: (!isRestricted)
+                      ? (config.enabled ? "#34d399" : "#94a3b8")
+                      : ((config.freeTestPostsRemaining ?? (config.testPostsUsed >= 1 ? 0 : 1)) > 0)
+                      ? "#38bdf8"
+                      : "#f87171",
                     border: `1px solid ${
-                      isRestricted
-                        ? "rgba(239, 68, 68, 0.3)"
-                        : config.enabled
-                        ? "rgba(16, 185, 129, 0.3)"
-                        : "rgba(148, 163, 184, 0.2)"
+                      (!isRestricted)
+                        ? (config.enabled ? "rgba(16, 185, 129, 0.3)" : "rgba(148, 163, 184, 0.2)")
+                        : ((config.freeTestPostsRemaining ?? (config.testPostsUsed >= 1 ? 0 : 1)) > 0)
+                        ? "rgba(56, 189, 248, 0.3)"
+                        : "rgba(239, 68, 68, 0.3)"
                     }`,
                     flexShrink: 0,
                   }}
@@ -588,11 +595,23 @@ export default function SocialMediaPlannerModal({ onClose, isTrial99: propIsTria
                       width: 6,
                       height: 6,
                       borderRadius: "50%",
-                      background: isRestricted ? "#ef4444" : config.enabled ? "#10b981" : "#64748b",
-                      boxShadow: isRestricted ? "0 0 8px #ef4444" : config.enabled ? "0 0 8px #10b981" : "none",
+                      background: (!isRestricted)
+                        ? (config.enabled ? "#10b981" : "#64748b")
+                        : ((config.freeTestPostsRemaining ?? (config.testPostsUsed >= 1 ? 0 : 1)) > 0)
+                        ? "#38bdf8"
+                        : "#ef4444",
+                      boxShadow: (!isRestricted && config.enabled)
+                        ? "0 0 8px #10b981"
+                        : (isRestricted && (config.freeTestPostsRemaining ?? (config.testPostsUsed >= 1 ? 0 : 1)) <= 0)
+                        ? "0 0 8px #ef4444"
+                        : "none",
                     }}
                   />
-                  {isRestricted ? "RESTRICTED" : config.enabled ? "ACTIVE" : "PAUSED"}
+                  {(!isRestricted)
+                    ? (config.enabled ? "ACTIVE" : "PAUSED")
+                    : ((config.freeTestPostsRemaining ?? (config.testPostsUsed >= 1 ? 0 : 1)) > 0)
+                    ? `FREE TEST (${config.freeTestPostsRemaining ?? 1} LEFT)`
+                    : "RESTRICTED"}
                 </span>
               </div>
             </div>
@@ -809,44 +828,44 @@ export default function SocialMediaPlannerModal({ onClose, isTrial99: propIsTria
                 <div style={{ display: "flex", gap: 8, flexWrap: "wrap", width: "100%", boxSizing: "border-box" }}>
                   <button
                     onClick={handleTestPostNow}
-                    disabled={testingPost || (!isOwner && (config.testPostsUsed || 0) >= 1 && isRestricted)}
+                    disabled={testingPost || (!isOwner && (config.freeTestPostsRemaining !== undefined ? config.freeTestPostsRemaining : (config.testPostsUsed >= 1 ? 0 : 1)) <= 0 && isRestricted)}
                     style={{
                       padding: "8px 12px",
                       borderRadius: 8,
                       fontSize: 12,
                       fontWeight: 700,
-                      background: (!isOwner && (config.testPostsUsed || 0) >= 1 && isRestricted)
+                      background: (!isOwner && (config.freeTestPostsRemaining !== undefined ? config.freeTestPostsRemaining : (config.testPostsUsed >= 1 ? 0 : 1)) <= 0 && isRestricted)
                         ? "rgba(255, 255, 255, 0.05)"
-                        : (!isOwner && (config.testPostsUsed || 0) >= 1)
+                        : (!isOwner && (config.freeTestPostsRemaining !== undefined ? config.freeTestPostsRemaining : (config.testPostsUsed >= 1 ? 0 : 1)) <= 0)
                         ? "rgba(168, 85, 247, 0.12)"
                         : "rgba(56, 189, 248, 0.12)",
-                      border: (!isOwner && (config.testPostsUsed || 0) >= 1 && isRestricted)
+                      border: (!isOwner && (config.freeTestPostsRemaining !== undefined ? config.freeTestPostsRemaining : (config.testPostsUsed >= 1 ? 0 : 1)) <= 0 && isRestricted)
                         ? "1px solid rgba(255, 255, 255, 0.1)"
-                        : (!isOwner && (config.testPostsUsed || 0) >= 1)
+                        : (!isOwner && (config.freeTestPostsRemaining !== undefined ? config.freeTestPostsRemaining : (config.testPostsUsed >= 1 ? 0 : 1)) <= 0)
                         ? "1px solid rgba(168, 85, 247, 0.3)"
                         : "1px solid rgba(56, 189, 248, 0.3)",
-                      color: (!isOwner && (config.testPostsUsed || 0) >= 1 && isRestricted)
+                      color: (!isOwner && (config.freeTestPostsRemaining !== undefined ? config.freeTestPostsRemaining : (config.testPostsUsed >= 1 ? 0 : 1)) <= 0 && isRestricted)
                         ? "#94a3b8"
-                        : (!isOwner && (config.testPostsUsed || 0) >= 1)
+                        : (!isOwner && (config.freeTestPostsRemaining !== undefined ? config.freeTestPostsRemaining : (config.testPostsUsed >= 1 ? 0 : 1)) <= 0)
                         ? "#c084fc"
                         : "#38bdf8",
-                      cursor: testingPost || (!isOwner && (config.testPostsUsed || 0) >= 1 && isRestricted)
+                      cursor: testingPost || (!isOwner && (config.freeTestPostsRemaining !== undefined ? config.freeTestPostsRemaining : (config.testPostsUsed >= 1 ? 0 : 1)) <= 0 && isRestricted)
                         ? "not-allowed"
                         : "pointer",
                       flex: "1 1 140px",
                       minWidth: 0,
                       textAlign: "center",
-                      opacity: (!isOwner && (config.testPostsUsed || 0) >= 1 && isRestricted) ? 0.75 : 1,
+                      opacity: (!isOwner && (config.freeTestPostsRemaining !== undefined ? config.freeTestPostsRemaining : (config.testPostsUsed >= 1 ? 0 : 1)) <= 0 && isRestricted) ? 0.75 : 1,
                     }}
                   >
                     {testingPost
                       ? (testingStatus || "Publishing Test...")
-                      : (!isOwner && (config.testPostsUsed || 0) >= 1 && isRestricted)
+                      : (!isOwner && (config.freeTestPostsRemaining !== undefined ? config.freeTestPostsRemaining : (config.testPostsUsed >= 1 ? 0 : 1)) <= 0 && isRestricted)
                       ? "🔒 Service Restricted (Free Test Used)"
-                      : (!isOwner && (config.testPostsUsed || 0) >= 1)
+                      : (!isOwner && (config.freeTestPostsRemaining !== undefined ? config.freeTestPostsRemaining : (config.testPostsUsed >= 1 ? 0 : 1)) <= 0)
                       ? "🚀 Post Creative Now"
                       : !isOwner
-                      ? "🚀 Test Post Now (1 Free Left)"
+                      ? `🚀 Test Post Now (${config.freeTestPostsRemaining !== undefined ? config.freeTestPostsRemaining : 1} Free Left)`
                       : "🚀 Test Post Now"}
                   </button>
 
@@ -1028,17 +1047,23 @@ export default function SocialMediaPlannerModal({ onClose, isTrial99: propIsTria
                             <button
                               type="button"
                               onClick={() => handleTestPostNow(top)}
-                              disabled={testingPost}
+                              disabled={testingPost || (!isOwner && (config.freeTestPostsRemaining !== undefined ? config.freeTestPostsRemaining : (config.testPostsUsed >= 1 ? 0 : 1)) <= 0 && isRestricted)}
                               style={{
                                 flex: 1,
                                 padding: "5px 8px",
                                 borderRadius: 6,
                                 fontSize: 11,
                                 fontWeight: 700,
-                                background: "rgba(56, 189, 248, 0.15)",
-                                border: "1px solid rgba(56, 189, 248, 0.35)",
-                                color: "#38bdf8",
-                                cursor: testingPost ? "not-allowed" : "pointer",
+                                background: (!isOwner && (config.freeTestPostsRemaining !== undefined ? config.freeTestPostsRemaining : (config.testPostsUsed >= 1 ? 0 : 1)) <= 0 && isRestricted)
+                                  ? "rgba(255, 255, 255, 0.05)"
+                                  : "rgba(56, 189, 248, 0.15)",
+                                border: (!isOwner && (config.freeTestPostsRemaining !== undefined ? config.freeTestPostsRemaining : (config.testPostsUsed >= 1 ? 0 : 1)) <= 0 && isRestricted)
+                                  ? "1px solid rgba(255, 255, 255, 0.1)"
+                                  : "1px solid rgba(56, 189, 248, 0.35)",
+                                color: (!isOwner && (config.freeTestPostsRemaining !== undefined ? config.freeTestPostsRemaining : (config.testPostsUsed >= 1 ? 0 : 1)) <= 0 && isRestricted)
+                                  ? "#94a3b8"
+                                  : "#38bdf8",
+                                cursor: (testingPost || (!isOwner && (config.freeTestPostsRemaining !== undefined ? config.freeTestPostsRemaining : (config.testPostsUsed >= 1 ? 0 : 1)) <= 0 && isRestricted)) ? "not-allowed" : "pointer",
                                 whiteSpace: "nowrap",
                               }}
                             >
