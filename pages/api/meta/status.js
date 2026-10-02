@@ -10,21 +10,23 @@ export default async function handler(req, res) {
     return res.json({ connected: false });
   }
 
+  const normEmail = userEmail.toLowerCase().trim();
+
   const [metaRes, brandMemRes, activeMemRes] = await Promise.all([
     supabaseServer
       .from("meta_connections")
       .select("*")
-      .eq("email", userEmail)
+      .ilike("email", normEmail)
       .maybeSingle(),
     supabaseServer
       .from("agent_memory")
       .select("memory_type, content, updated_at")
-      .eq("email", userEmail)
+      .ilike("email", normEmail)
       .like("memory_type", "meta_conn_%"),
     supabaseServer
       .from("agent_memory")
       .select("content")
-      .eq("email", userEmail)
+      .ilike("email", normEmail)
       .eq("memory_type", "meta_active_profile")
       .maybeSingle(),
   ]);

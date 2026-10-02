@@ -12,49 +12,135 @@ export default function FacebookBusinessConnect({ onOpenSocialPlanner }) {
   const [showBoostModal, setShowBoostModal] = useState(false);
   const [showConnectWarningModal, setShowConnectWarningModal] = useState(false);
   const [showPairingModal, setShowPairingModal] = useState(false);
+  const [showDisconnectModal, setShowDisconnectModal] = useState(false);
+  const [disconnecting, setDisconnecting] = useState(false);
   const isLocked = status === "connected";
 
-  useEffect(() => {
-    const interval = setInterval(() => {
-      fetch("/api/meta/status")
-        .then(res => res.json())
-        .then(data => {
-          if (data.connected) {
-            setStatus("connected");
-            setMeta(data.meta);
-            setAllMetaConnections(data.allMetaConnections || {});
-            if (data.connectedBrands?.length > 0 && !selectedBrand) {
-              setSelectedBrand(data.connectedBrands[0]);
-            }
-            clearInterval(interval);
-          } else if (data.needsReconnect || data.tokenExpired) {
-            setStatus("reconnect_needed");
-            clearInterval(interval);
-          }
-        });
-    }, 1000);
+  const fetchStatus = async () => {
+    try {
+      const res = await fetch("/api/meta/status");
+      const data = await res.json();
+      if (data.connected) {
+        setStatus("connected");
+        setMeta(data.meta);
+        setAllMetaConnections(data.allMetaConnections || {});
+        if (data.connectedBrands?.length > 0) {
+          setSelectedBrand(prev => (prev && data.connectedBrands.includes(prev)) ? prev : (data.activeBrandKey || data.connectedBrands[0]));
+        }
+        return true;
+      } else if (data.needsReconnect || data.tokenExpired) {
+        setStatus("reconnect_needed");
+        setMeta(data.meta || null);
+        setAllMetaConnections(data.allMetaConnections || {});
+        return false;
+      } else {
+        setStatus("idle");
+        setMeta(null);
+        setAllMetaConnections({});
+        setSelectedBrand("");
+        return false;
+      }
+    } catch (e) {
+      console.warn("Failed to check Meta status:", e);
+      return false;
+    }
+  };
 
-    return () => clearInterval(interval);
-  }, [selectedBrand]);
+  useEffect(() => {
+    fetchStatus();
+
+    // Only poll while loading connection flow
+    let interval = null;
+    if (status === "loading") {
+      interval = setInterval(async () => {
+        const isConn = await fetchStatus();
+        if (isConn) clearInterval(interval);
+      }, 2000);
+    }
+
+    return () => {
+      if (interval) clearInterval(interval);
+    };
+  }, [status]);
+
+  const handleBrandChange = async (newBrandKey) => {
+    setSelectedBrand(newBrandKey);
+    try {
+      await fetch("/api/meta/select-profile", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ brandKey: newBrandKey }),
+      });
+      const res = await fetch("/api/meta/status");
+      const data = await res.json();
+      if (data.connected) {
+        setMeta(data.meta);
+        setAllMetaConnections(data.allMetaConnections || {});
+      }
+    } catch (e) {
+      console.warn("Failed to switch Meta brand profile:", e);
+    }
+  };
 
   const handleConnect = () => {
     setStatus("loading");
     window.location.href = "/api/facebook/connect";
   };
-  // 👇 ADD THIS FUNCTION EXACTLY HERE
-  const handleDisconnect = async () => {
-    const confirmDisconnect = confirm(
-      "Disconnect Facebook Business assets? You can reconnect anytime."
-    );
 
-    if (!confirmDisconnect) return;
+  const handleDisconnectCurrent = async () => {
+    if (!selectedBrand) return;
+    setDisconnecting(true);
+    try {
+      const res = await fetch("/api/meta/disconnect", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ brandKey: selectedBrand }),
+      });
+      const data = await res.json();
+      if (data.ok && data.remainingCount > 0) {
+        const nextAll = { ...allMetaConnections };
+        delete nextAll[selectedBrand];
+        setAllMetaConnections(nextAll);
+        setSelectedBrand(data.nextActiveBrand);
+        setMeta(data.profile);
+        setStatus("connected");
+      } else {
+        setMeta(null);
+        setAllMetaConnections({});
+        setSelectedBrand("");
+        setStatus("idle");
+      }
+    } catch (err) {
+      alert("Error disconnecting profile: " + err.message);
+    } finally {
+      setDisconnecting(false);
+      setShowDisconnectModal(false);
+    }
+  };
 
-    await fetch("/api/meta/disconnect", {
-      method: "POST",
-    });
-
-    setMeta(null);
-    setStatus("idle");
+  const handleDisconnectAll = async () => {
+    setDisconnecting(true);
+    try {
+      const res = await fetch("/api/meta/disconnect", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ disconnectAll: true }),
+      });
+      const data = await res.json();
+      if (data.ok) {
+        setMeta(null);
+        setAllMetaConnections({});
+        setSelectedBrand("");
+        setStatus("idle");
+      } else {
+        alert("Failed to disconnect: " + (data.error || "Unknown error"));
+      }
+    } catch (err) {
+      alert("Error disconnecting: " + err.message);
+    } finally {
+      setDisconnecting(false);
+      setShowDisconnectModal(false);
+    }
   };
   const handleSyncBusinessInfo = async () => {
     const confirmSync = confirm(
@@ -348,7 +434,7 @@ export default function FacebookBusinessConnect({ onOpenSocialPlanner }) {
             {Object.keys(allMetaConnections).length > 0 ? (
               <select
                 value={selectedBrand}
-                onChange={(e) => setSelectedBrand(e.target.value)}
+                onChange={(e) => handleBrandChange(e.target.value)}
                 style={{
                   width: "100%",
                   padding: "8px 12px",
@@ -511,7 +597,7 @@ export default function FacebookBusinessConnect({ onOpenSocialPlanner }) {
             </button>
 
             <button
-              onClick={handleDisconnect}
+              onClick={() => setShowDisconnectModal(true)}
               style={{
                 padding: "8px 12px",
                 background: "rgba(239, 68, 68, 0.1)",
@@ -534,6 +620,121 @@ export default function FacebookBusinessConnect({ onOpenSocialPlanner }) {
           {/* BOOST MODAL */}
           {showBoostModal && (
             <BoostModal onClose={() => setShowBoostModal(false)} />
+          )}
+
+          {/* DISCONNECT MODAL */}
+          {showDisconnectModal && (
+            <div style={modalOverlayStyle}>
+              <div style={{ ...modalContentStyle, maxWidth: "460px" }}>
+                <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 12 }}>
+                  <span style={{ fontSize: 24 }}>⚠️</span>
+                  <h3 style={{ margin: 0, fontSize: 16, fontWeight: 700, color: "#f8fafc" }}>
+                    Disconnect Facebook Business
+                  </h3>
+                </div>
+
+                {Object.keys(allMetaConnections).length > 1 ? (
+                  <>
+                    <p style={{ fontSize: 13, color: "#94a3b8", lineHeight: 1.5, marginBottom: 16 }}>
+                      You have <strong>{Object.keys(allMetaConnections).length} connected brand profiles</strong>. You can choose to disconnect only the active profile or disconnect all assets completely.
+                    </p>
+
+                    <div style={{ display: "flex", flexDirection: "column", gap: 10, marginBottom: 20 }}>
+                      <button
+                        onClick={handleDisconnectCurrent}
+                        disabled={disconnecting}
+                        style={{
+                          padding: "12px 14px",
+                          background: "rgba(239, 68, 68, 0.12)",
+                          border: "1px solid rgba(239, 68, 68, 0.35)",
+                          borderRadius: 8,
+                          color: "#fca5a5",
+                          fontWeight: 700,
+                          fontSize: 13,
+                          cursor: disconnecting ? "not-allowed" : "pointer",
+                          textAlign: "left",
+                          display: "flex",
+                          justifyContent: "space-between",
+                          alignItems: "center",
+                        }}
+                      >
+                        <div>
+                          <div>Disconnect "{allMetaConnections[selectedBrand]?.businessName || allMetaConnections[selectedBrand]?.pageName || selectedBrand}" Only</div>
+                          <div style={{ fontSize: 11, fontWeight: 400, color: "#f87171", marginTop: 3 }}>
+                            Removes only this page. Other profiles will stay active.
+                          </div>
+                        </div>
+                        <span style={{ fontSize: 16 }}>➔</span>
+                      </button>
+
+                      <button
+                        onClick={handleDisconnectAll}
+                        disabled={disconnecting}
+                        style={{
+                          padding: "12px 14px",
+                          background: "rgba(220, 38, 38, 0.25)",
+                          border: "1px solid rgba(220, 38, 38, 0.6)",
+                          borderRadius: 8,
+                          color: "#fee2e2",
+                          fontWeight: 700,
+                          fontSize: 13,
+                          cursor: disconnecting ? "not-allowed" : "pointer",
+                          textAlign: "left",
+                          display: "flex",
+                          justifyContent: "space-between",
+                          alignItems: "center",
+                        }}
+                      >
+                        <div>
+                          <div>Disconnect All Profiles ({Object.keys(allMetaConnections).length} accounts)</div>
+                          <div style={{ fontSize: 11, fontWeight: 400, color: "#fca5a5", marginTop: 3 }}>
+                            Completely unlinks Facebook Business and wipes all tokens.
+                          </div>
+                        </div>
+                        <span style={{ fontSize: 16 }}>➔</span>
+                      </button>
+                    </div>
+
+                    <div style={{ display: "flex", justifyContent: "flex-end" }}>
+                      <button
+                        onClick={() => setShowDisconnectModal(false)}
+                        disabled={disconnecting}
+                        style={cancelBtnStyle}
+                      >
+                        Cancel
+                      </button>
+                    </div>
+                  </>
+                ) : (
+                  <>
+                    <p style={{ fontSize: 13, color: "#94a3b8", lineHeight: 1.5, marginBottom: 20 }}>
+                      Are you sure you want to disconnect Facebook Business? Your connected Facebook Page, Instagram account, and Ad Account will be unlinked. You can reconnect anytime.
+                    </p>
+
+                    <div style={{ display: "flex", gap: 10, justifyContent: "flex-end" }}>
+                      <button
+                        onClick={() => setShowDisconnectModal(false)}
+                        disabled={disconnecting}
+                        style={cancelBtnStyle}
+                      >
+                        Cancel
+                      </button>
+                      <button
+                        onClick={handleDisconnectAll}
+                        disabled={disconnecting}
+                        style={{
+                          ...confirmBtnStyle,
+                          background: "linear-gradient(135deg, #ef4444, #dc2626)",
+                          boxShadow: "0 4px 14px rgba(239, 68, 68, 0.35)",
+                        }}
+                      >
+                        {disconnecting ? "Disconnecting..." : "Confirm Disconnect"}
+                      </button>
+                    </div>
+                  </>
+                )}
+              </div>
+            </div>
           )}
 
           {/* PAGE CONSENT MODAL */}
