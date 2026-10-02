@@ -349,11 +349,11 @@ export default function SocialMediaPlannerModal({ onClose, isTrial99: propIsTria
         return;
       }
 
-      // If serverless function timed out (status 504), poll in background
+      // Poll background worker for completion
       setTestingStatus("Publishing to your page... (almost ready)");
       let completed = false;
       const pollUrl = targetBiz ? `/api/social/autopilot-config?businessName=${encodeURIComponent(targetBiz)}` : "/api/social/autopilot-config";
-      for (let attempt = 0; attempt < 25; attempt++) {
+      for (let attempt = 0; attempt < 40; attempt++) {
         await new Promise((resolve) => setTimeout(resolve, 2500));
         try {
           const pollRes = await fetch(pollUrl);
@@ -378,7 +378,7 @@ export default function SocialMediaPlannerModal({ onClose, isTrial99: propIsTria
       }
 
       if (!completed) {
-        alert("Your test post is currently being generated and published in the background by the AI worker. Please refresh your page in a moment to verify your live post!");
+        alert("Your test creative is finalizing on Meta feeds. Please refresh the page in a few moments to view your live post!");
         fetchConfig(targetBiz);
       }
     } catch (e) {

@@ -59,7 +59,11 @@ function log(jobId, msg) {
 // Auth Middleware
 function requireAuth(req, res, next) {
   const authHeader = req.headers.authorization;
-  const token = authHeader && authHeader.startsWith("Bearer ") ? authHeader.slice(7) : req.query.token;
+  const token =
+    (authHeader && authHeader.startsWith("Bearer ") ? authHeader.slice(7) : null) ||
+    req.query?.token ||
+    req.headers["x-worker-secret"] ||
+    req.body?.token;
   if (!token || token !== WORKER_SECRET_KEY) {
     return res.status(401).json({ ok: false, error: "Unauthorized worker access." });
   }

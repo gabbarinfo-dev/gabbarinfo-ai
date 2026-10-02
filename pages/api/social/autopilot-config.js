@@ -1108,10 +1108,11 @@ Respond ONLY in JSON: { "hook": "short catchy hook (4-7 words)", "topic": "speci
         if (workerUrl) {
           try {
             console.log(`[Social Autopilot] Offloading test post to Railway background worker (${workerUrl})...`);
-            const workerRes = await fetch(`${workerUrl}/autopilot/social/trigger`, {
+            const workerRes = await fetch(`${workerUrl}/autopilot/social/trigger?token=${encodeURIComponent(workerSecret)}`, {
               method: "POST",
               headers: {
                 "Content-Type": "application/json",
+                "Authorization": `Bearer ${workerSecret}`,
                 "x-worker-secret": workerSecret,
               },
               body: JSON.stringify({
@@ -1142,7 +1143,7 @@ Respond ONLY in JSON: { "hook": "short catchy hook (4-7 words)", "topic": "speci
                 });
               }
             }
-            console.warn("[Social Autopilot] Railway worker returned non-ok, falling back to synchronous execution...");
+            console.warn(`[Social Autopilot] Railway worker returned status ${workerRes.status}, falling back to synchronous execution...`);
           } catch (workerErr) {
             console.warn("[Social Autopilot] Railway worker dispatch failed, falling back to synchronous execution:", workerErr.message);
           }
