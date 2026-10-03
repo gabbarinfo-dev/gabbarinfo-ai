@@ -216,6 +216,7 @@ export default function HomePage() {
       >
         <Head>
           <title>GabbarInfo AI · Autonomous Digital Marketing Strategist</title>
+          <meta name="google-site-verification" content="WOQ0qmU5s8uVc0qp9aBmkoxc_-iKyUfLArZ4xlkz1a4" />
         </Head>
 
         {/* Cybernetic Falling Code & 3D Rotating Geometric Wireframes Background */}
@@ -391,6 +392,7 @@ export default function HomePage() {
     >
       <Head>
         <title>Command Center | GabbarInfo AI</title>
+        <meta name="google-site-verification" content="WOQ0qmU5s8uVc0qp9aBmkoxc_-iKyUfLArZ4xlkz1a4" />
       </Head>
 
       {/* ── MOBILE BACKDROP OVERLAY ── */}
