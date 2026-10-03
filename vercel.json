@@ -6,10 +6,6 @@
       "destination": "/api/google-verify?id=0f508b164a828c08"
     },
     {
-      "source": "/google:id.html",
-      "destination": "/api/google-verify?id=:id"
-    },
-    {
       "source": "/webhooks",
       "destination": "/api/webhooks"
     },
