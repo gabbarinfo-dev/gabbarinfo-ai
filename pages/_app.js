@@ -15,6 +15,7 @@ export default function MyApp({ Component, pageProps }) {
           content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover"
         />
         <meta name="theme-color" content="#080b11" />
+        <meta name="google-site-verification" content="WOQ0qmU5s8uVc0qp9aBmkoxc_-iKyUfLArZ4xlkz1a4" />
         {/* Google Fonts: Plus Jakarta Sans & Outfit */}
         <link rel="preconnect" href="https://fonts.googleapis.com" />
         <link rel="preconnect" href="https://fonts.gstatic.com" crossOrigin="anonymous" />
