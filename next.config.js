@@ -4,6 +4,10 @@ const nextConfig = {
   async rewrites() {
     return [
       {
+        source: '/google:id.html',
+        destination: '/api/google-verify?id=:id',
+      },
+      {
         source: '/webhooks/:path*',
         destination: '/api/webhooks/:path*',
       },
