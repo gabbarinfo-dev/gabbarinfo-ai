@@ -19,6 +19,9 @@ export default function ReelStudioPage() {
   const [isProcessing, setIsProcessing] = useState(false);
   const [recordedBlobUrl, setRecordedBlobUrl] = useState(null);
   const [recordingSeconds, setRecordingSeconds] = useState(0);
+  const [countdown, setCountdown] = useState(null); // null | 3 | 2 | 1
+  const [showDownloadModal, setShowDownloadModal] = useState(false);
+  const countdownIntervalRef = useRef(null);
 
   // Helper time formatter
   const formatTime = (sec) => {
@@ -592,6 +595,7 @@ export default function ReelStudioPage() {
       const blob = new Blob(recordedChunksRef.current, { type: selectedMime });
       const url = URL.createObjectURL(blob);
       setRecordedBlobUrl(url);
+      setShowDownloadModal(true); // Open modal with video preview and download immediately!
       setIsProcessing(false);
       setIsRecording(false);
       clearInterval(timerIntervalRef.current);
@@ -610,6 +614,24 @@ export default function ReelStudioPage() {
 
     timerIntervalRef.current = setInterval(() => {
       setRecordingSeconds((prev) => prev + 1);
+    }, 1000);
+  };
+
+  // 3-2-1 Cinematic Countdown before recording starts
+  const triggerRecordingCountdown = () => {
+    if (countdown !== null || isRecording) return;
+    setCountdown(3);
+    let count = 3;
+    if (countdownIntervalRef.current) clearInterval(countdownIntervalRef.current);
+    countdownIntervalRef.current = setInterval(() => {
+      count -= 1;
+      if (count > 0) {
+        setCountdown(count);
+      } else {
+        clearInterval(countdownIntervalRef.current);
+        setCountdown(null);
+        handleStartRecording();
+      }
     }, 1000);
   };
 
@@ -662,7 +684,7 @@ export default function ReelStudioPage() {
         {/* Navigation Bar */}
         <header
           style={{
-            padding: "16px 28px",
+            padding: "14px 24px",
             borderBottom: "1px solid rgba(255, 255, 255, 0.08)",
             display: "flex",
             justifyContent: "space-between",
@@ -694,23 +716,107 @@ export default function ReelStudioPage() {
             </span>
           </div>
 
-          <div style={{ display: "flex", gap: 12 }}>
+          <div style={{ display: "flex", gap: 10, alignItems: "center" }}>
+            {recordedBlobUrl && (
+              <button
+                type="button"
+                onClick={handleDownload}
+                style={{
+                  padding: "6px 14px",
+                  borderRadius: 8,
+                  background: "linear-gradient(135deg, #10b981 0%, #059669 100%)",
+                  color: "#042416",
+                  fontWeight: 800,
+                  fontSize: 12,
+                  border: "none",
+                  cursor: "pointer",
+                  display: "flex",
+                  alignItems: "center",
+                  gap: 6,
+                }}
+              >
+                <span>💾</span> Download Finished Reel
+              </button>
+            )}
             <Link
               href="/"
               style={{
-                fontSize: 13,
-                color: "#94a3b8",
-                textDecoration: "none",
-                padding: "8px 16px",
+                padding: "8px 14px",
                 borderRadius: 8,
-                background: "rgba(255, 255, 255, 0.05)",
-                border: "1px solid rgba(255, 255, 255, 0.1)",
+                background: "rgba(255, 255, 255, 0.06)",
+                border: "1px solid rgba(255, 255, 255, 0.12)",
+                color: "#cbd5e1",
+                fontSize: 12,
+                fontWeight: 600,
+                textDecoration: "none",
               }}
             >
               ← Back to Dashboard
             </Link>
           </div>
         </header>
+
+        {/* Persistent Top Success Banner when reel is recorded */}
+        {recordedBlobUrl && (
+          <div
+            style={{
+              padding: "10px 24px",
+              background: "linear-gradient(90deg, rgba(16, 185, 129, 0.3) 0%, rgba(56, 189, 248, 0.25) 100%)",
+              borderBottom: "1px solid rgba(16, 185, 129, 0.5)",
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "space-between",
+              gap: 12,
+            }}
+          >
+            <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+              <span style={{ fontSize: 20 }}>🎉</span>
+              <div>
+                <strong style={{ fontSize: 13, color: "#34d399", display: "block" }}>
+                  Your 9:16 Vertical Reel is Ready!
+                </strong>
+                <span style={{ fontSize: 11, color: "#cbd5e1" }}>
+                  Video, dynamic cursor zooms, and voiceover rendered successfully.
+                </span>
+              </div>
+            </div>
+            <div style={{ display: "flex", gap: 8 }}>
+              <button
+                type="button"
+                onClick={() => setShowDownloadModal(true)}
+                style={{
+                  padding: "7px 14px",
+                  borderRadius: 8,
+                  background: "rgba(255, 255, 255, 0.1)",
+                  color: "#ffffff",
+                  fontWeight: 700,
+                  fontSize: 12,
+                  border: "1px solid rgba(255, 255, 255, 0.2)",
+                  cursor: "pointer",
+                }}
+              >
+                👁️ Watch Preview
+              </button>
+              <button
+                type="button"
+                onClick={handleDownload}
+                style={{
+                  padding: "7px 18px",
+                  borderRadius: 8,
+                  background: "linear-gradient(135deg, #10b981 0%, #059669 100%)",
+                  color: "#042416",
+                  fontWeight: 800,
+                  fontSize: 12,
+                  border: "none",
+                  cursor: "pointer",
+                  boxShadow: "0 0 20px rgba(16, 185, 129, 0.4)",
+                }}
+              >
+                💾 Download MP4
+              </button>
+            </div>
+          </div>
+        )}
 
         {/* Main Content Layout */}
         <div
@@ -1085,7 +1191,7 @@ export default function ReelStudioPage() {
                         handleStartScreenCapture();
                       }
                     } else {
-                      handleStartRecording();
+                      triggerRecordingCountdown();
                     }
                   }}
                   style={{
@@ -1297,9 +1403,9 @@ export default function ReelStudioPage() {
             {/* Phone Screen Frame (9:16) */}
             <div
               style={{
-                width: 360,
-                height: 640,
-                borderRadius: 36,
+                width: 310,
+                height: 550,
+                borderRadius: 32,
                 border: "4px solid rgba(255, 255, 255, 0.15)",
                 boxShadow: "0 25px 60px -15px rgba(0, 0, 0, 0.9), 0 0 40px rgba(56, 189, 248, 0.15)",
                 overflow: "hidden",
@@ -1492,7 +1598,7 @@ export default function ReelStudioPage() {
                           handleStartScreenCapture();
                         }
                       } else {
-                        handleStartRecording();
+                        triggerRecordingCountdown();
                       }
                     }}
                     style={{
@@ -1634,6 +1740,139 @@ export default function ReelStudioPage() {
           playsInline
           style={{ display: "none" }}
         />
+
+        {/* 3... 2... 1... COUNTDOWN OVERLAY */}
+        {countdown !== null && (
+          <div
+            style={{
+              position: "fixed",
+              inset: 0,
+              background: "rgba(4, 8, 18, 0.9)",
+              backdropFilter: "blur(14px)",
+              display: "flex",
+              flexDirection: "column",
+              alignItems: "center",
+              justifyContent: "center",
+              zIndex: 3000,
+            }}
+          >
+            <div
+              style={{
+                fontSize: 130,
+                fontWeight: 900,
+                color: "#38bdf8",
+                lineHeight: 1,
+                marginBottom: 20,
+                textShadow: "0 0 60px rgba(56, 189, 248, 0.9)",
+              }}
+            >
+              {countdown}
+            </div>
+            <strong style={{ fontSize: 24, color: "#ffffff", letterSpacing: -0.5 }}>
+              Get Ready to Demo & Speak!
+            </strong>
+            <p style={{ fontSize: 14, color: "#94a3b8", marginTop: 8 }}>
+              Recording starts automatically in {countdown}s… Switch to your demo window now!
+            </p>
+          </div>
+        )}
+
+        {/* REEL READY DOWNLOAD MODAL */}
+        {recordedBlobUrl && showDownloadModal && (
+          <div
+            style={{
+              position: "fixed",
+              inset: 0,
+              background: "rgba(4, 8, 18, 0.88)",
+              backdropFilter: "blur(12px)",
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+              zIndex: 3000,
+              padding: 16,
+            }}
+          >
+            <div
+              style={{
+                background: "#0c1324",
+                border: "2px solid #10b981",
+                borderRadius: 24,
+                padding: "26px 28px",
+                maxWidth: 420,
+                width: "100%",
+                display: "flex",
+                flexDirection: "column",
+                alignItems: "center",
+                boxShadow: "0 0 60px rgba(16, 185, 129, 0.35)",
+              }}
+            >
+              <div style={{ fontSize: 44, marginBottom: 6 }}>🎉</div>
+              <h2 style={{ fontSize: 20, fontWeight: 800, color: "#ffffff", margin: "0 0 6px 0" }}>
+                Your 9:16 Reel is Ready!
+              </h2>
+              <p style={{ fontSize: 12, color: "#94a3b8", textAlign: "center", margin: "0 0 16px 0" }}>
+                Dynamic zooms, smooth camera panning, and microphone voiceover are rendered together.
+              </p>
+
+              {/* Recorded video player */}
+              <video
+                src={recordedBlobUrl}
+                controls
+                autoPlay
+                playsInline
+                style={{
+                  width: "100%",
+                  maxHeight: 280,
+                  borderRadius: 14,
+                  background: "#000",
+                  marginBottom: 18,
+                  border: "1px solid rgba(255, 255, 255, 0.12)",
+                }}
+              />
+
+              <div style={{ display: "flex", flexDirection: "column", gap: 10, width: "100%" }}>
+                <button
+                  type="button"
+                  onClick={handleDownload}
+                  style={{
+                    padding: "14px 20px",
+                    borderRadius: 12,
+                    background: "linear-gradient(135deg, #10b981 0%, #059669 100%)",
+                    color: "#042416",
+                    fontWeight: 800,
+                    fontSize: 15,
+                    border: "none",
+                    cursor: "pointer",
+                    boxShadow: "0 0 30px rgba(16, 185, 129, 0.5)",
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "center",
+                    gap: 8,
+                  }}
+                >
+                  <span style={{ fontSize: 18 }}>💾</span> Download 1080x1920 Reel MP4
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => setShowDownloadModal(false)}
+                  style={{
+                    padding: "10px 16px",
+                    borderRadius: 10,
+                    background: "rgba(255, 255, 255, 0.08)",
+                    color: "#cbd5e1",
+                    fontWeight: 600,
+                    fontSize: 12,
+                    border: "none",
+                    cursor: "pointer",
+                  }}
+                >
+                  Close Preview
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
       </div>
     </>
   );
