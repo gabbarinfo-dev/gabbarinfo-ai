@@ -52,6 +52,7 @@ export default function ReelStudioPage() {
   const timerIntervalRef = useRef(null);
   const micStreamRef = useRef(null);
   const audioContextRef = useRef(null);
+  const fileInputRef = useRef(null);
 
   // Camera tracking state (normalized 0 to 1 coordinates) & Dynamic Zoom physics
   const targetFocusRef = useRef({ x: 0.5, y: 0.5 });
@@ -819,6 +820,7 @@ export default function ReelStudioPage() {
                       {sourceVideoFile ? "Click here if you want to switch to a different video file" : "Standard 16:9 desktop screen recording (e.g. from Win+Alt+R or OBS)"}
                     </span>
                     <input
+                      ref={fileInputRef}
                       type="file"
                       accept="video/mp4,video/webm,video/quicktime"
                       onChange={handleFileUpload}
@@ -1074,28 +1076,47 @@ export default function ReelStudioPage() {
 
               {!isRecording ? (
                 <button
-                  onClick={handleStartRecording}
-                  disabled={!sourceVideoUrl && !screenStreamRef.current}
+                  type="button"
+                  onClick={() => {
+                    if (!sourceVideoUrl && !screenStreamRef.current) {
+                      if (mode === "upload") {
+                        fileInputRef.current?.click();
+                      } else {
+                        handleStartScreenCapture();
+                      }
+                    } else {
+                      handleStartRecording();
+                    }
+                  }}
                   style={{
                     padding: "14px 20px",
                     borderRadius: 10,
                     background:
                       sourceVideoUrl || screenStreamRef.current
                         ? "linear-gradient(135deg, #ef4444 0%, #dc2626 100%)"
-                        : "rgba(255, 255, 255, 0.08)",
-                    color: "#ffffff",
+                        : "linear-gradient(135deg, #38bdf8 0%, #0284c7 100%)",
+                    color: sourceVideoUrl || screenStreamRef.current ? "#ffffff" : "#031525",
                     fontWeight: 800,
                     fontSize: 14,
                     border: "none",
-                    cursor: sourceVideoUrl || screenStreamRef.current ? "pointer" : "not-allowed",
+                    cursor: "pointer",
                     display: "flex",
                     alignItems: "center",
                     justifyContent: "center",
                     gap: 8,
-                    boxShadow: sourceVideoUrl || screenStreamRef.current ? "0 0 25px rgba(239, 68, 68, 0.4)" : "none",
+                    boxShadow: sourceVideoUrl || screenStreamRef.current
+                      ? "0 0 25px rgba(239, 68, 68, 0.4)"
+                      : "0 0 25px rgba(56, 189, 248, 0.35)",
                   }}
                 >
-                  <span style={{ fontSize: 16 }}>🔴</span> Start Recording Reel
+                  <span style={{ fontSize: 16 }}>
+                    {sourceVideoUrl || screenStreamRef.current ? "🔴" : mode === "upload" ? "📁" : "🖥️"}
+                  </span>
+                  {sourceVideoUrl || screenStreamRef.current
+                    ? "Start Recording Reel"
+                    : mode === "upload"
+                    ? "Select Video File First"
+                    : "Select Window / Tab to Record"}
                 </button>
               ) : (
                 <button
@@ -1444,29 +1465,44 @@ export default function ReelStudioPage() {
                 {!isRecording ? (
                   <button
                     type="button"
-                    onClick={handleStartRecording}
-                    disabled={!sourceVideoUrl && !screenStreamRef.current}
+                    onClick={() => {
+                      if (!sourceVideoUrl && !screenStreamRef.current) {
+                        if (mode === "upload") {
+                          fileInputRef.current?.click();
+                        } else {
+                          handleStartScreenCapture();
+                        }
+                      } else {
+                        handleStartRecording();
+                      }
+                    }}
                     style={{
                       width: "100%",
-                      padding: "13px 20px",
+                      padding: "14px 20px",
                       borderRadius: 12,
                       background: (sourceVideoUrl || screenStreamRef.current)
                         ? "linear-gradient(135deg, #ef4444 0%, #dc2626 100%)"
-                        : "rgba(255, 255, 255, 0.08)",
-                      color: "#ffffff",
+                        : "linear-gradient(135deg, #38bdf8 0%, #0284c7 100%)",
+                      color: (sourceVideoUrl || screenStreamRef.current) ? "#ffffff" : "#031525",
                       fontWeight: 800,
                       fontSize: 14,
                       border: "none",
-                      cursor: (sourceVideoUrl || screenStreamRef.current) ? "pointer" : "not-allowed",
+                      cursor: "pointer",
                       display: "flex",
                       alignItems: "center",
                       justifyContent: "center",
                       gap: 8,
-                      boxShadow: (sourceVideoUrl || screenStreamRef.current) ? "0 0 25px rgba(239, 68, 68, 0.45)" : "none",
+                      boxShadow: (sourceVideoUrl || screenStreamRef.current)
+                        ? "0 0 25px rgba(239, 68, 68, 0.45)"
+                        : "0 0 25px rgba(56, 189, 248, 0.4)",
                     }}
                   >
-                    <span style={{ fontSize: 16 }}>🔴</span>
-                    {mode === "upload" ? "Start Recording 9:16 Reel (From 0:00)" : "Start Recording Screen Live"}
+                    <span style={{ fontSize: 16 }}>
+                      {(sourceVideoUrl || screenStreamRef.current) ? "🔴" : mode === "upload" ? "📁" : "🖥️"}
+                    </span>
+                    {(sourceVideoUrl || screenStreamRef.current)
+                      ? (mode === "upload" ? "Start Recording 9:16 Reel (From 0:00)" : "Start Recording Screen Live")
+                      : (mode === "upload" ? "📁 Click Here to Select Video File" : "🖥️ Click Here to Select Window / Tab")}
                   </button>
                 ) : (
                   <button
