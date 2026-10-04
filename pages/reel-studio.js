@@ -54,6 +54,7 @@ export default function ReelStudioPage() {
   // Studio configuration controls
   const [zoomFactor, setZoomFactor] = useState(1.0); // Default 1.0x (Fit screen, no giant buttons!)
   const [panPosition, setPanPosition] = useState(0.5); // Smooth horizontal pan slider (0.05 to 0.95)
+  const panPositionRef = useRef(0.5);
   const [framingMode, setFramingMode] = useState("fill"); // "fill" (Tall 9:16 Vertical) | "full" (Edge-to-edge 9:16) | "classic" (16:9 Letterbox)
   const [focusArea, setFocusArea] = useState("center"); // "center" | "left" | "right" | "top"
   const [punchZoomOnClick, setPunchZoomOnClick] = useState(false); // Off by default to avoid sudden jumps
@@ -328,6 +329,8 @@ export default function ReelStudioPage() {
 
     targetFocusRef.current = { x: clampedX, y: clampedY };
     activeCursorPosRef.current = { x: clampedX, y: clampedY, visible: true };
+    panPositionRef.current = clampedX;
+    setPanPosition(clampedX);
     userManualOverrideRef.current = Date.now();
 
     if (isRecordingRef.current) {
@@ -453,7 +456,7 @@ export default function ReelStudioPage() {
 
         const now = Date.now();
 
-        // 0a. Auto-Scan Camera: Smooth cinematic gliding across the desktop (Left ➔ Center ➔ Right)
+        // 0a. Camera Pan & Tracking Director
         if (autoPan) {
           const t = now * 0.0006;
           // Smoothly glides across screen: Left (0.18) -> Center (0.5) -> Right (0.82)
@@ -461,14 +464,14 @@ export default function ReelStudioPage() {
             x: 0.5 + Math.sin(t) * 0.32,
             y: 0.5 + Math.cos(t * 0.7) * 0.14,
           };
-          targetZoomRef.current = 1.5 + Math.sin(t * 1.4) * 0.35;
+          targetZoomRef.current = 1.0;
         } else if (
           isPlaying &&
           cursorTimelineRef.current.length > 0 &&
-          now - userManualOverrideRef.current > 6000 &&
+          now - userManualOverrideRef.current > 4000 &&
           now - lastMousePosRef.current.time > 900
         ) {
-          // Only replay if timeline actually has non-center movement (variance > 0.06)
+          // Replay if timeline actually has non-center movement (variance > 0.06)
           const hasMovement = cursorTimelineRef.current.some(
             (e) => Math.abs(e.x - 0.5) > 0.06 || Math.abs(e.y - 0.5) > 0.06
           );
@@ -488,6 +491,15 @@ export default function ReelStudioPage() {
               targetFocusRef.current = { x: closest.x, y: closest.y };
               activeCursorPosRef.current = { x: closest.x, y: closest.y, visible: true };
             }
+          }
+        } else {
+          // Manual Pan Slider Direct Control (Slide Left <---> Right smoothly):
+          const px = panPositionRef.current !== undefined ? panPositionRef.current : 0.5;
+          targetFocusRef.current = {
+            x: px,
+            y: targetFocusRef.current.y || 0.5,
+          };
+        }
         // 1. Smooth Camera Physics (Exponential Lerp towards focus target & dynamic zoom)
         currentCameraRef.current.x +=
           (targetFocusRef.current.x - currentCameraRef.current.x) * cameraSpeed;
@@ -865,31 +877,6 @@ export default function ReelStudioPage() {
             if (blob.size > 0) {
               const url = URL.createObjectURL(blob);
               setRecordedBlobUrl(url);
-              setSourceVideoUrl(url); // Automatically make available for replay and camera directing!
-              const v = videoRef.current;
-              if (v) {
-                v.srcObject = null;
-                v.src = url;
-                v.loop = true;
-                v.currentTime = 0;
-                v.load();
-                v.onloadeddata = () => {
-                  let d = v.duration;
-                  if (!d || !isFinite(d) || isNaN(d)) {
-                    d = lastRecordedDurationRef.current || 10;
-                  }
-                  setDuration(d);
-                  v.play().then(() => setIsPlaying(true)).catch(() => {});
-                  startRenderLoop();
-                };
-                v.ontimeupdate = () => {
-                  setCurrentTime(v.currentTime || 0);
-                };
-                v.onended = () => {
-                  v.currentTime = 0;
-                  v.play().then(() => setIsPlaying(true)).catch(() => {});
-                };
-              }
               setShowDownloadModal(true); // Open modal with video preview and download immediately!
             }
           }
@@ -1450,12 +1437,32 @@ export default function ReelStudioPage() {
 
               {/* Horizontal Pan Slider */}
               <div style={{ background: "rgba(56, 189, 248, 0.08)", padding: "12px 14px", borderRadius: 12, border: "1px solid rgba(56, 189, 248, 0.25)" }}>
-                <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 6 }}>
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 6 }}>
                   <label style={{ fontSize: 13, fontWeight: 800, color: "#ffffff" }}>
                     ↔️ Slide Screen Left / Right (Pan)
                   </label>
+                  <button
+                    type="button"
+                    onClick={() => setAutoPan(!autoPan)}
+                    style={{
+                      padding: "4px 10px",
+                      borderRadius: 8,
+                      background: autoPan ? "linear-gradient(135deg, #10b981, #059669)" : "rgba(255, 255, 255, 0.08)",
+                      color: autoPan ? "#042416" : "#38bdf8",
+                      fontWeight: 800,
+                      fontSize: 11,
+                      border: "none",
+                      cursor: "pointer",
+                      boxShadow: autoPan ? "0 0 14px rgba(16, 185, 129, 0.5)" : "none",
+                    }}
+                  >
+                    {autoPan ? "✨ Auto-Glide: ON" : "🎬 Auto-Glide: OFF"}
+                  </button>
+                </div>
+                <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 6 }}>
+                  <span style={{ fontSize: 11, color: "#94a3b8" }}>Camera Focus:</span>
                   <span style={{ fontSize: 12, color: "#38bdf8", fontWeight: 800 }}>
-                    {panPosition < 0.35 ? "Left Sidebar" : panPosition > 0.65 ? "Right Panel" : "Center Overview"}
+                    {autoPan ? "Auto-Scanning across screen" : panPosition < 0.35 ? "Left Sidebar" : panPosition > 0.65 ? "Right Panel" : "Center Overview"}
                   </span>
                 </div>
                 <input
@@ -1466,7 +1473,9 @@ export default function ReelStudioPage() {
                   value={panPosition}
                   onChange={(e) => {
                     const val = parseFloat(e.target.value);
+                    setAutoPan(false);
                     setPanPosition(val);
+                    panPositionRef.current = val;
                     targetFocusRef.current = { x: val, y: targetFocusRef.current.y };
                     userManualOverrideRef.current = Date.now();
                   }}
@@ -2108,9 +2117,27 @@ export default function ReelStudioPage() {
                   <span style={{ fontSize: 12, fontWeight: 700, color: "#ffffff" }}>
                     ↔️ Slide Screen (Pan Left / Right)
                   </span>
-                  <span style={{ fontSize: 11, fontWeight: 800, color: "#38bdf8" }}>
-                    {panPosition < 0.35 ? "Left Sidebar" : panPosition > 0.65 ? "Right Panel" : "Center Overview"}
-                  </span>
+                  <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                    <button
+                      type="button"
+                      onClick={() => setAutoPan(!autoPan)}
+                      style={{
+                        padding: "2px 8px",
+                        borderRadius: 6,
+                        background: autoPan ? "linear-gradient(135deg, #10b981, #059669)" : "rgba(255, 255, 255, 0.08)",
+                        color: autoPan ? "#042416" : "#38bdf8",
+                        fontWeight: 800,
+                        fontSize: 10,
+                        border: "none",
+                        cursor: "pointer",
+                      }}
+                    >
+                      {autoPan ? "✨ Auto: ON" : "🎬 Auto: OFF"}
+                    </button>
+                    <span style={{ fontSize: 11, fontWeight: 800, color: "#38bdf8" }}>
+                      {autoPan ? "Scanning" : panPosition < 0.35 ? "Left Sidebar" : panPosition > 0.65 ? "Right Panel" : "Center Overview"}
+                    </span>
+                  </div>
                 </div>
                 <input
                   type="range"
@@ -2120,7 +2147,9 @@ export default function ReelStudioPage() {
                   value={panPosition}
                   onChange={(e) => {
                     const val = parseFloat(e.target.value);
+                    setAutoPan(false);
                     setPanPosition(val);
+                    panPositionRef.current = val;
                     targetFocusRef.current = { x: val, y: targetFocusRef.current.y };
                     userManualOverrideRef.current = Date.now();
                   }}
@@ -2417,8 +2446,10 @@ export default function ReelStudioPage() {
                 border: "2px solid #10b981",
                 borderRadius: 24,
                 padding: "26px 28px",
-                maxWidth: 420,
+                maxWidth: 440,
                 width: "100%",
+                maxHeight: "92vh",
+                overflowY: "auto",
                 display: "flex",
                 flexDirection: "column",
                 alignItems: "center",
@@ -2438,14 +2469,17 @@ export default function ReelStudioPage() {
                 src={recordedBlobUrl}
                 controls
                 autoPlay
+                loop
+                muted
                 playsInline
                 style={{
                   width: "100%",
-                  maxHeight: 280,
+                  maxHeight: 320,
                   borderRadius: 14,
                   background: "#000",
                   marginBottom: 18,
-                  border: "1px solid rgba(255, 255, 255, 0.12)",
+                  border: "1px solid rgba(56, 189, 248, 0.35)",
+                  boxShadow: "0 0 25px rgba(56, 189, 248, 0.15)",
                 }}
               />
 
