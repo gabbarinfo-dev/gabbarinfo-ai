@@ -154,8 +154,14 @@ export default function ReelStudioPage() {
   const togglePlayPause = () => {
     const video = videoRef.current;
     if (!video) return;
+    if (video.ended || (video.duration && video.currentTime >= video.duration - 0.2)) {
+      video.currentTime = 0;
+    }
     if (video.paused) {
-      video.play().then(() => setIsPlaying(true)).catch(() => {});
+      video.play().then(() => {
+        setIsPlaying(true);
+        startRenderLoop();
+      }).catch(() => {});
     } else {
       video.pause();
       setIsPlaying(false);
@@ -168,6 +174,7 @@ export default function ReelStudioPage() {
     const t = parseFloat(e.target.value);
     video.currentTime = t;
     setCurrentTime(t);
+    startRenderLoop();
   };
 
   // -------------------------------------------------------------
@@ -426,10 +433,12 @@ export default function ReelStudioPage() {
       const canvas = canvasRef.current;
 
       if (video && canvas && (video.readyState >= 2 || video.srcObject)) {
-        // Prevent drawing black frames if screen capture has ended
-        const screenTrack = screenStreamRef.current?.getVideoTracks()?.[0];
-        if (screenTrack && screenTrack.readyState === "ended") {
-          return;
+        // Prevent drawing black frames ONLY if we are actively capturing a live screen and user stopped it
+        if (video.srcObject && !sourceVideoUrl) {
+          const screenTrack = screenStreamRef.current?.getVideoTracks()?.[0];
+          if (screenTrack && screenTrack.readyState === "ended") {
+            return;
+          }
         }
         const ctx = canvas.getContext("2d");
         const outW = 1080;
@@ -580,9 +589,9 @@ export default function ReelStudioPage() {
           cardX = cardMargin;
           cardY = (outH - cardH) / 2;
         } else {
-          // Default: "fill" - SMART MODERN FLOATING CARD (Wide view, 70%+ of desktop visible!)
-          cardW = 1010;
-          cardH = 880;
+          // Default: "fill" - TALL IMMERSIVE 9:16 VERTICAL CARD (Fills the phone vertically in 9:16!)
+          cardW = 1000;
+          cardH = 1520;
           cardX = (outW - cardW) / 2;
           cardY = (outH - cardH) / 2;
         }
@@ -943,6 +952,7 @@ export default function ReelStudioPage() {
               if (v) {
                 v.srcObject = null;
                 v.src = url;
+                v.loop = true;
                 v.currentTime = 0;
                 v.load();
                 v.onloadeddata = () => {
@@ -958,7 +968,8 @@ export default function ReelStudioPage() {
                   setCurrentTime(v.currentTime || 0);
                 };
                 v.onended = () => {
-                  setIsPlaying(false);
+                  v.currentTime = 0;
+                  v.play().then(() => setIsPlaying(true)).catch(() => {});
                 };
               }
               setShowDownloadModal(true); // Open modal with video preview and download immediately!
@@ -1024,6 +1035,13 @@ export default function ReelStudioPage() {
   const handleStopRecording = () => {
     isRecordingRef.current = false;
     lastRecordedDurationRef.current = recordingSeconds;
+    if (screenStreamRef.current) {
+      try {
+        screenStreamRef.current.getTracks().forEach((t) => t.stop());
+      } catch (e) {}
+      screenStreamRef.current = null;
+      setIsScreenConnected(false);
+    }
     if (mediaRecorderRef.current) {
       if (mediaRecorderRef.current.state === "recording") {
         setIsProcessing(true);
