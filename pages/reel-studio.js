@@ -29,7 +29,9 @@ export default function ReelStudioPage() {
   };
 
   // Studio configuration controls
-  const [zoomFactor, setZoomFactor] = useState(1.6); // 1.1x to 2.4x
+  const [zoomFactor, setZoomFactor] = useState(2.2); // Target punch zoom level (1.0x to 3.8x)
+  const [punchZoomOnClick, setPunchZoomOnClick] = useState(true);
+  const [autoZoomOnHover, setAutoZoomOnHover] = useState(true);
   const [cameraSpeed, setCameraSpeed] = useState(0.08); // Lerp factor: 0.03 (smooth/cinematic) to 0.18 (snappy)
   const [bgBlur, setBgBlur] = useState(24); // px
   const [bgDim, setBgDim] = useState(0.45); // 0 to 1
@@ -48,10 +50,21 @@ export default function ReelStudioPage() {
   const screenStreamRef = useRef(null);
   const timerIntervalRef = useRef(null);
 
-  // Camera tracking state (normalized 0 to 1 coordinates)
+  // Camera tracking state (normalized 0 to 1 coordinates) & Dynamic Zoom physics
   const targetFocusRef = useRef({ x: 0.5, y: 0.5 });
   const currentCameraRef = useRef({ x: 0.5, y: 0.5 });
+  const targetZoomRef = useRef(2.2);
+  const currentZoomRef = useRef(1.4);
+  const lastMousePosRef = useRef({ x: 0.5, y: 0.5, time: Date.now() });
+  const mouseStopTimerRef = useRef(null);
   const clickRipplesRef = useRef([]);
+
+  // Direct Zoom Trigger Helper
+  const setCameraZoom = (val) => {
+    const clamped = Math.max(1.0, Math.min(3.8, val));
+    targetZoomRef.current = clamped;
+    setZoomFactor(clamped);
+  };
 
   // -------------------------------------------------------------
   // 1. FILE UPLOAD HANDLER & PLAYBACK CONTROLS
@@ -150,7 +163,7 @@ export default function ReelStudioPage() {
   };
 
   // -------------------------------------------------------------
-  // 3. MOUSE TRACKING & INTERACTIVE CAMERA DIRECTOR
+  // 3. MOUSE TRACKING & INTERACTIVE CAMERA DIRECTOR (DYNAMIC ZOOM + PAN)
   // -------------------------------------------------------------
   const handleCanvasMouseMove = (e) => {
     const canvas = canvasRef.current;
@@ -159,11 +172,42 @@ export default function ReelStudioPage() {
     const clientX = (e.clientX - rect.left) / rect.width;
     const clientY = (e.clientY - rect.top) / rect.height;
 
-    // Map canvas 9:16 coordinates back to focus target on the 16:9 source
-    targetFocusRef.current = {
-      x: Math.max(0.1, Math.min(0.9, clientX)),
-      y: Math.max(0.1, Math.min(0.9, clientY)),
-    };
+    const clampedX = Math.max(0.06, Math.min(0.94, clientX));
+    const clampedY = Math.max(0.06, Math.min(0.94, clientY));
+
+    targetFocusRef.current = { x: clampedX, y: clampedY };
+
+    // Screen Studio Dynamic Motion Zoom:
+    // When moving quickly across the canvas, zoom out slightly (~1.3x) for context.
+    // When the cursor slows down or stops on an element, punch in deep (2.2x - 3.0x)!
+    if (autoZoomOnHover) {
+      const now = Date.now();
+      const dt = Math.max(1, now - lastMousePosRef.current.time);
+      const dx = clampedX - lastMousePosRef.current.x;
+      const dy = clampedY - lastMousePosRef.current.y;
+      const dist = Math.hypot(dx, dy);
+      const speed = dist / dt;
+
+      lastMousePosRef.current = { x: clampedX, y: clampedY, time: now };
+
+      if (speed > 0.0012) {
+        targetZoomRef.current = 1.35;
+      }
+
+      if (mouseStopTimerRef.current) clearTimeout(mouseStopTimerRef.current);
+      mouseStopTimerRef.current = setTimeout(() => {
+        targetZoomRef.current = Math.max(2.2, zoomFactor);
+      }, 150);
+    }
+  };
+
+  // Scroll wheel to zoom in/out smoothly in real-time
+  const handleCanvasWheel = (e) => {
+    e.preventDefault();
+    const delta = e.deltaY < 0 ? 0.35 : -0.35;
+    const newZoom = Math.max(1.0, Math.min(3.6, targetZoomRef.current + delta));
+    targetZoomRef.current = newZoom;
+    setZoomFactor(newZoom);
   };
 
   const handleCanvasClick = (e) => {
@@ -174,6 +218,18 @@ export default function ReelStudioPage() {
     const cy = (e.clientY - rect.top) / rect.height;
 
     targetFocusRef.current = { x: cx, y: cy };
+
+    // Dynamic Punch Zoom: clicking toggles between wide overview (1.15x) and deep punch (2.5x+)
+    if (punchZoomOnClick) {
+      if (targetZoomRef.current < 1.7) {
+        const nextZoom = Math.max(2.4, zoomFactor);
+        targetZoomRef.current = nextZoom;
+        setZoomFactor(nextZoom);
+      } else {
+        targetZoomRef.current = 1.15;
+        setZoomFactor(1.15);
+      }
+    }
 
     if (showRipples) {
       clickRipplesRef.current.push({
@@ -215,16 +271,21 @@ export default function ReelStudioPage() {
             x: 0.5 + Math.sin(t) * 0.28,
             y: 0.5 + Math.cos(t * 1.3) * 0.18,
           };
+          targetZoomRef.current = 1.8 + Math.sin(t * 1.8) * 0.7; // auto-breathe zoom!
         }
 
-        // 1. Smooth Camera Physics (Exponential Lerp towards focus target)
+        // 1. Smooth Camera Physics (Exponential Lerp towards focus target & dynamic zoom)
         currentCameraRef.current.x +=
           (targetFocusRef.current.x - currentCameraRef.current.x) * cameraSpeed;
         currentCameraRef.current.y +=
           (targetFocusRef.current.y - currentCameraRef.current.y) * cameraSpeed;
 
+        currentZoomRef.current +=
+          (targetZoomRef.current - currentZoomRef.current) * (cameraSpeed * 1.3);
+
         const camX = currentCameraRef.current.x;
         const camY = currentCameraRef.current.y;
+        const dynamicZoom = Math.max(1.0, currentZoomRef.current);
 
         // 2. LAYER 1: Aesthetic Blurred & Dimmed Backdrop
         ctx.save();
@@ -246,24 +307,25 @@ export default function ReelStudioPage() {
         ctx.fillStyle = gradient;
         ctx.fillRect(0, 0, outW, outH);
 
-        // 4. LAYER 2: Zoomed & Focused Desktop Screen Cutout
-        // Calculate crop window on source video centered around (camX, camY)
-        const cropW = srcW / zoomFactor;
-        const cropH = cropW * (outH / outW) * 0.52; // Maintain pleasant proportion inside 9:16 canvas
+        // 4. LAYER 2: DYNAMICALLY ZOOMED & FOCUSED Desktop Screen Cutout
+        // Exact aspect-ratio preserving dynamic zoom:
+        const srcAspect = (srcW && srcH) ? srcW / srcH : (16 / 9);
+        const cardMargin = 35;
+        const cardW = outW - cardMargin * 2;
+        const cardH = cardW / srcAspect;
+        const cardX = cardMargin;
+        const cardY = (outH - cardH) / 2;
+
+        // Calculate crop window on source video centered around (camX, camY) using dynamicZoom!
+        const cropW = srcW / dynamicZoom;
+        const cropH = srcH / dynamicZoom;
 
         let sx = camX * srcW - cropW / 2;
         let sy = camY * srcH - cropH / 2;
 
         // Clamp crop within bounds
-        sx = Math.max(0, Math.min(srcW - cropW, sx));
-        sy = Math.max(0, Math.min(srcH - cropH, sy));
-
-        // Placement on 9:16 canvas (card frame with margins)
-        const cardMargin = 40;
-        const cardW = outW - cardMargin * 2;
-        const cardH = cardW * (cropH / cropW);
-        const cardX = cardMargin;
-        const cardY = (outH - cardH) / 2;
+        sx = Math.max(0, Math.min(Math.max(0, srcW - cropW), sx));
+        sy = Math.max(0, Math.min(Math.max(0, srcH - cropH), sy));
 
         ctx.save();
         // Drop shadow for the floating app frame
@@ -297,6 +359,34 @@ export default function ReelStudioPage() {
         ctx.strokeStyle = "rgba(56, 189, 248, 0.28)";
         ctx.lineWidth = 3;
         ctx.stroke();
+        ctx.restore();
+
+        // 5. Live Zoom Level Indicator HUD badge on Canvas
+        ctx.save();
+        const zoomText = `🔍 ${dynamicZoom.toFixed(1)}x ZOOM`;
+        ctx.font = "bold 20px Inter, system-ui, sans-serif";
+        const zoomMetrics = ctx.measureText(zoomText);
+        const zBadgeW = zoomMetrics.width + 28;
+        const zBadgeH = 38;
+        const zBadgeX = cardX + cardW - zBadgeW - 16;
+        const zBadgeY = cardY + 16;
+
+        ctx.beginPath();
+        if (ctx.roundRect) {
+          ctx.roundRect(zBadgeX, zBadgeY, zBadgeW, zBadgeH, 19);
+        } else {
+          ctx.rect(zBadgeX, zBadgeY, zBadgeW, zBadgeH);
+        }
+        ctx.fillStyle = "rgba(6, 11, 25, 0.85)";
+        ctx.strokeStyle = dynamicZoom > 1.8 ? "rgba(56, 189, 248, 0.85)" : "rgba(255, 255, 255, 0.25)";
+        ctx.lineWidth = 2;
+        ctx.fill();
+        ctx.stroke();
+
+        ctx.fillStyle = dynamicZoom > 1.8 ? "#38bdf8" : "#e2e8f0";
+        ctx.textAlign = "left";
+        ctx.textBaseline = "middle";
+        ctx.fillText(zoomText, zBadgeX + 14, zBadgeY + zBadgeH / 2);
         ctx.restore();
 
         // 5. Click Ripples / Visual Pulse FX
@@ -768,11 +858,11 @@ export default function ReelStudioPage() {
                 </div>
                 <input
                   type="range"
-                  min="1.1"
-                  max="2.4"
+                  min="1.0"
+                  max="3.5"
                   step="0.1"
                   value={zoomFactor}
-                  onChange={(e) => setZoomFactor(parseFloat(e.target.value))}
+                  onChange={(e) => setCameraZoom(parseFloat(e.target.value))}
                   style={{ width: "100%", accentColor: "#38bdf8" }}
                 />
               </div>
@@ -818,6 +908,26 @@ export default function ReelStudioPage() {
                 <label style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 12, color: "#cbd5e1", cursor: "pointer" }}>
                   <input
                     type="checkbox"
+                    checked={autoZoomOnHover}
+                    onChange={(e) => setAutoZoomOnHover(e.target.checked)}
+                    style={{ accentColor: "#38bdf8" }}
+                  />
+                  <span>Dynamic Motion Zoom (Pulls out when moving, zooms in deep when hovering)</span>
+                </label>
+
+                <label style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 12, color: "#cbd5e1", cursor: "pointer" }}>
+                  <input
+                    type="checkbox"
+                    checked={punchZoomOnClick}
+                    onChange={(e) => setPunchZoomOnClick(e.target.checked)}
+                    style={{ accentColor: "#38bdf8" }}
+                  />
+                  <span>Click to Punch Zoom (Instant toggle between wide & close-up)</span>
+                </label>
+
+                <label style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 12, color: "#cbd5e1", cursor: "pointer" }}>
+                  <input
+                    type="checkbox"
                     checked={showRipples}
                     onChange={(e) => setShowRipples(e.target.checked)}
                     style={{ accentColor: "#38bdf8" }}
@@ -832,7 +942,7 @@ export default function ReelStudioPage() {
                     onChange={(e) => setAutoPan(e.target.checked)}
                     style={{ accentColor: "#38bdf8" }}
                   />
-                  <span>Auto-Scan Camera (Hands-free slow cinematic glide)</span>
+                  <span>Auto-Scan Camera (Hands-free slow cinematic glide & breathe zoom)</span>
                 </label>
 
                 <label style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 12, color: "#cbd5e1", cursor: "pointer" }}>
@@ -1002,6 +1112,7 @@ export default function ReelStudioPage() {
               }}
               onMouseMove={handleCanvasMouseMove}
               onClick={handleCanvasClick}
+              onWheel={handleCanvasWheel}
             >
               {/* Top Phone Speaker Island */}
               <div
@@ -1094,6 +1205,62 @@ export default function ReelStudioPage() {
                   </p>
                 </div>
               )}
+            </div>
+
+            {/* Quick Zoom Preset Buttons & Live Zoom Display */}
+            <div style={{ marginTop: 14, display: "flex", flexDirection: "column", alignItems: "center", gap: 10, width: "100%", maxWidth: 380 }}>
+              <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap", justifyContent: "center" }}>
+                <span style={{ fontSize: 11, fontWeight: 700, color: "#94a3b8", textTransform: "uppercase", letterSpacing: 0.5 }}>
+                  Zoom Presets:
+                </span>
+                {[
+                  { label: "1.0x Full", val: 1.0 },
+                  { label: "1.5x Wide", val: 1.5 },
+                  { label: "2.2x Close-Up", val: 2.2 },
+                  { label: "3.0x Macro", val: 3.0 },
+                ].map((preset) => (
+                  <button
+                    key={preset.val}
+                    type="button"
+                    onClick={() => setCameraZoom(preset.val)}
+                    style={{
+                      padding: "6px 14px",
+                      borderRadius: 20,
+                      background: Math.abs(zoomFactor - preset.val) < 0.25 ? "rgba(56, 189, 248, 0.3)" : "rgba(255, 255, 255, 0.08)",
+                      border: `1px solid ${Math.abs(zoomFactor - preset.val) < 0.25 ? "#38bdf8" : "rgba(255, 255, 255, 0.15)"}`,
+                      color: Math.abs(zoomFactor - preset.val) < 0.25 ? "#38bdf8" : "#cbd5e1",
+                      fontSize: 12,
+                      fontWeight: 700,
+                      cursor: "pointer",
+                      transition: "all 0.2s ease",
+                    }}
+                  >
+                    {preset.label}
+                  </button>
+                ))}
+              </div>
+
+              <div
+                style={{
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  gap: 10,
+                  padding: "6px 14px",
+                  borderRadius: 12,
+                  background: "rgba(15, 23, 42, 0.8)",
+                  border: "1px solid rgba(255, 255, 255, 0.08)",
+                  fontSize: 11,
+                  color: "#94a3b8",
+                  flexWrap: "wrap",
+                }}
+              >
+                <span>🖱️ <strong>Scroll wheel</strong> to zoom</span>
+                <span>•</span>
+                <span>👆 <strong>Click video</strong> to toggle punch</span>
+                <span>•</span>
+                <span>🎯 <strong>Move mouse</strong> to aim</span>
+              </div>
             </div>
           </div>
         </div>
