@@ -52,8 +52,8 @@ export default function ReelStudioPage() {
   };
 
   // Studio configuration controls
-  const [zoomFactor, setZoomFactor] = useState(2.4); // Target punch zoom level (1.0x to 3.8x, default close-up 2.4x)
-  const [framingMode, setFramingMode] = useState("fill"); // "fill" (Tall 9:16 card, 3x larger!) | "full" (Edge-to-edge 9:16) | "classic" (16:9 Letterbox)
+  const [zoomFactor, setZoomFactor] = useState(1.4); // Natural balanced zoom (1.0x full view to 3.8x macro)
+  const [framingMode, setFramingMode] = useState("fill"); // "fill" (Smart Dynamic Focus) | "full" (Edge-to-edge 9:16) | "classic" (16:9 Letterbox)
   const [focusArea, setFocusArea] = useState("center"); // "center" | "left" | "right" | "top"
   const [punchZoomOnClick, setPunchZoomOnClick] = useState(true);
   const [autoZoomOnHover, setAutoZoomOnHover] = useState(true);
@@ -83,8 +83,8 @@ export default function ReelStudioPage() {
   // Screen Studio Camera tracking state (normalized 0 to 1 coordinates) & Dynamic Zoom physics
   const targetFocusRef = useRef({ x: 0.5, y: 0.5 });
   const currentCameraRef = useRef({ x: 0.5, y: 0.5 });
-  const targetZoomRef = useRef(2.2);
-  const currentZoomRef = useRef(1.4);
+  const targetZoomRef = useRef(1.4);
+  const currentZoomRef = useRef(1.2);
   const lastMousePosRef = useRef({ x: 0.5, y: 0.5, time: Date.now() });
   const mouseStopTimerRef = useRef(null);
   const clickRipplesRef = useRef([]);
@@ -99,11 +99,13 @@ export default function ReelStudioPage() {
   const prevFrameDataRef = useRef(null);
   const lastMotionCheckTimeRef = useRef(0);
   const lastBroadcastCursorTimeRef = useRef(0);
+  const userManualOverrideRef = useRef(0); // Protects manual pan & zoom from being overridden
 
   // Direct Zoom Trigger Helper
   const setCameraZoom = (val) => {
     const clamped = Math.max(1.0, Math.min(3.8, val));
     targetZoomRef.current = clamped;
+    userManualOverrideRef.current = Date.now();
     setZoomFactor(clamped);
   };
 
@@ -318,6 +320,7 @@ export default function ReelStudioPage() {
 
     targetFocusRef.current = { x: clampedX, y: clampedY };
     activeCursorPosRef.current = { x: clampedX, y: clampedY, visible: true };
+    userManualOverrideRef.current = Date.now();
 
     if (isRecordingRef.current) {
       const t = (Date.now() - recordingStartTimeRef.current) / 1000;
@@ -326,7 +329,7 @@ export default function ReelStudioPage() {
 
     // Screen Studio Dynamic Motion Zoom:
     // When moving quickly across the canvas, zoom out slightly (~1.35x) for context.
-    // When the cursor slows down or stops on an element, punch in deep (2.2x - 3.0x)!
+    // When the cursor slows down or stops on an element, punch in deep (1.8x - 2.5x)!
     if (autoZoomOnHover) {
       const now = Date.now();
       const dt = Math.max(1, now - lastMousePosRef.current.time);
@@ -338,12 +341,12 @@ export default function ReelStudioPage() {
       lastMousePosRef.current = { x: clampedX, y: clampedY, time: now };
 
       if (speed > 0.0012) {
-        targetZoomRef.current = 1.35;
+        targetZoomRef.current = 1.25;
       }
 
       if (mouseStopTimerRef.current) clearTimeout(mouseStopTimerRef.current);
       mouseStopTimerRef.current = setTimeout(() => {
-        targetZoomRef.current = Math.max(2.2, zoomFactor);
+        targetZoomRef.current = Math.max(1.8, zoomFactor);
       }, 150);
     }
   };
@@ -351,7 +354,8 @@ export default function ReelStudioPage() {
   // Scroll wheel to zoom in/out smoothly in real-time
   const handleCanvasWheel = (e) => {
     e.preventDefault();
-    const delta = e.deltaY < 0 ? 0.35 : -0.35;
+    userManualOverrideRef.current = Date.now();
+    const delta = e.deltaY < 0 ? 0.25 : -0.25;
     const newZoom = Math.max(1.0, Math.min(3.6, targetZoomRef.current + delta));
     targetZoomRef.current = newZoom;
     setZoomFactor(newZoom);
@@ -366,6 +370,7 @@ export default function ReelStudioPage() {
 
     targetFocusRef.current = { x: cx, y: cy };
     activeCursorPosRef.current = { x: cx, y: cy, visible: true };
+    userManualOverrideRef.current = Date.now();
 
     if (isRecordingRef.current) {
       const t = (Date.now() - recordingStartTimeRef.current) / 1000;
@@ -375,7 +380,7 @@ export default function ReelStudioPage() {
     // Dynamic Punch Zoom: clicking toggles between wide overview (1.15x) and deep punch (2.5x+)
     if (punchZoomOnClick) {
       if (targetZoomRef.current < 1.7) {
-        const nextZoom = Math.max(2.4, zoomFactor);
+        const nextZoom = Math.max(2.2, zoomFactor);
         targetZoomRef.current = nextZoom;
         setZoomFactor(nextZoom);
       } else {
@@ -403,6 +408,7 @@ export default function ReelStudioPage() {
     if (mouseStopTimerRef.current) clearTimeout(mouseStopTimerRef.current);
     targetFocusRef.current = { x: 0.5, y: 0.5 };
     activeCursorPosRef.current = { x: 0.5, y: 0.5, visible: false };
+    userManualOverrideRef.current = Date.now();
     targetZoomRef.current = zoomFactor;
     setFocusArea("center");
   };
@@ -435,34 +441,43 @@ export default function ReelStudioPage() {
         const srcW = video.videoWidth || 1920;
         const srcH = video.videoHeight || 1080;
 
-        // Auto-pan sinus generator if active
-        if (autoPan) {
-          const t = Date.now() * 0.0006;
-          targetFocusRef.current = {
-            x: 0.5 + Math.sin(t) * 0.28,
-            y: 0.5 + Math.cos(t * 1.3) * 0.18,
-          };
-          targetZoomRef.current = 1.8 + Math.sin(t * 1.8) * 0.7; // auto-breathe zoom!
-        }
-
         const now = Date.now();
 
-        // Screen Studio Interactive Playback: Auto-follow recorded cursor timeline if video is playing & mouse is idle
-        if (isPlaying && cursorTimelineRef.current.length > 0 && (now - lastMousePosRef.current.time > 700)) {
-          const ct = video.currentTime || 0;
-          let closest = null;
-          let minDiff = 0.35;
-          for (let i = 0; i < cursorTimelineRef.current.length; i++) {
-            const entry = cursorTimelineRef.current[i];
-            const diff = Math.abs(entry.t - ct);
-            if (diff < minDiff) {
-              minDiff = diff;
-              closest = entry;
+        // 0a. Auto-Scan Camera: Smooth cinematic gliding across the desktop (Left ➔ Center ➔ Right)
+        if (autoPan) {
+          const t = now * 0.0006;
+          // Smoothly glides across screen: Left (0.18) -> Center (0.5) -> Right (0.82)
+          targetFocusRef.current = {
+            x: 0.5 + Math.sin(t) * 0.32,
+            y: 0.5 + Math.cos(t * 0.7) * 0.14,
+          };
+          targetZoomRef.current = 1.5 + Math.sin(t * 1.4) * 0.35;
+        } else if (
+          isPlaying &&
+          cursorTimelineRef.current.length > 0 &&
+          now - userManualOverrideRef.current > 6000 &&
+          now - lastMousePosRef.current.time > 900
+        ) {
+          // Only replay if timeline actually has non-center movement (variance > 0.06)
+          const hasMovement = cursorTimelineRef.current.some(
+            (e) => Math.abs(e.x - 0.5) > 0.06 || Math.abs(e.y - 0.5) > 0.06
+          );
+          if (hasMovement) {
+            const ct = video.currentTime || 0;
+            let closest = null;
+            let minDiff = 0.35;
+            for (let i = 0; i < cursorTimelineRef.current.length; i++) {
+              const entry = cursorTimelineRef.current[i];
+              const diff = Math.abs(entry.t - ct);
+              if (diff < minDiff) {
+                minDiff = diff;
+                closest = entry;
+              }
             }
-          }
-          if (closest) {
-            targetFocusRef.current = { x: closest.x, y: closest.y };
-            activeCursorPosRef.current = { x: closest.x, y: closest.y, visible: true };
+            if (closest) {
+              targetFocusRef.current = { x: closest.x, y: closest.y };
+              activeCursorPosRef.current = { x: closest.x, y: closest.y, visible: true };
+            }
           }
         }
 
@@ -565,9 +580,9 @@ export default function ReelStudioPage() {
           cardX = cardMargin;
           cardY = (outH - cardH) / 2;
         } else {
-          // Default: "fill" - TALL IMMERSIVE VERTICAL CARD (3x LARGER, fills 76% of canvas height!)
-          cardW = 1000;
-          cardH = 1460;
+          // Default: "fill" - SMART MODERN FLOATING CARD (Wide view, 70%+ of desktop visible!)
+          cardW = 1010;
+          cardH = 880;
           cardX = (outW - cardW) / 2;
           cardY = (outH - cardH) / 2;
         }
@@ -1466,15 +1481,17 @@ export default function ReelStudioPage() {
                 <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr 1fr", gap: 6 }}>
                   {[
                     { id: "center", label: "🎯 Center", x: 0.5, y: 0.5 },
-                    { id: "left", label: "👈 Left Nav", x: 0.22, y: 0.5 },
-                    { id: "right", label: "👉 Right Main", x: 0.78, y: 0.5 },
-                    { id: "top", label: "🔼 Top Bar", x: 0.5, y: 0.22 },
+                    { id: "left", label: "👈 Left Nav", x: 0.15, y: 0.5 },
+                    { id: "right", label: "👉 Right Main", x: 0.85, y: 0.5 },
+                    { id: "top", label: "🔼 Top Bar", x: 0.5, y: 0.18 },
                   ].map((p) => (
                     <button
                       key={p.id}
                       type="button"
                       onClick={() => {
                         targetFocusRef.current = { x: p.x, y: p.y };
+                        activeCursorPosRef.current = { x: p.x, y: p.y, visible: true };
+                        userManualOverrideRef.current = Date.now();
                         setFocusArea(p.id);
                       }}
                       style={{
@@ -2055,15 +2072,17 @@ export default function ReelStudioPage() {
                 </span>
                 {[
                   { label: "🎯 Center", x: 0.5, y: 0.5, id: "center" },
-                  { label: "👈 Left Nav", x: 0.22, y: 0.5, id: "left" },
-                  { label: "👉 Right Main", x: 0.78, y: 0.5, id: "right" },
-                  { label: "🔼 Top Bar", x: 0.5, y: 0.22, id: "top" },
+                  { label: "👈 Left Nav", x: 0.15, y: 0.5, id: "left" },
+                  { label: "👉 Right Main", x: 0.85, y: 0.5, id: "right" },
+                  { label: "🔼 Top Bar", x: 0.5, y: 0.18, id: "top" },
                 ].map((pos) => (
                   <button
                     key={pos.id}
                     type="button"
                     onClick={() => {
                       targetFocusRef.current = { x: pos.x, y: pos.y };
+                      activeCursorPosRef.current = { x: pos.x, y: pos.y, visible: true };
+                      userManualOverrideRef.current = Date.now();
                       setFocusArea(pos.id);
                     }}
                     style={{
@@ -2080,6 +2099,29 @@ export default function ReelStudioPage() {
                     {pos.label}
                   </button>
                 ))}
+
+                <button
+                  type="button"
+                  onClick={() => {
+                    const next = !autoPan;
+                    setAutoPan(next);
+                    if (next) userManualOverrideRef.current = 0;
+                  }}
+                  style={{
+                    padding: "5px 11px",
+                    borderRadius: 16,
+                    background: autoPan ? "rgba(56, 189, 248, 0.35)" : "rgba(255, 255, 255, 0.06)",
+                    border: `1px solid ${autoPan ? "#38bdf8" : "rgba(255, 255, 255, 0.15)"}`,
+                    color: autoPan ? "#38bdf8" : "#cbd5e1",
+                    fontSize: 11,
+                    fontWeight: 800,
+                    cursor: "pointer",
+                    boxShadow: autoPan ? "0 0 15px rgba(56, 189, 248, 0.4)" : "none",
+                  }}
+                  title="Automatically pans across the 16:9 screen smoothly like a camera operator"
+                >
+                  {autoPan ? "✨ Auto-Glide: ON" : "✨ Auto-Glide"}
+                </button>
               </div>
 
               {/* VIDEO PLAYBACK & REPLAY SCRUBBER CONTROLLER (Visible when video is loaded or recorded!) */}
