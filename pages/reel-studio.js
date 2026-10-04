@@ -1091,32 +1091,28 @@ export default function ReelStudioPage() {
                   style={{
                     padding: "14px 20px",
                     borderRadius: 10,
-                    background:
-                      sourceVideoUrl || screenStreamRef.current
-                        ? "linear-gradient(135deg, #ef4444 0%, #dc2626 100%)"
-                        : "linear-gradient(135deg, #38bdf8 0%, #0284c7 100%)",
-                    color: sourceVideoUrl || screenStreamRef.current ? "#ffffff" : "#031525",
+                    background: "linear-gradient(135deg, #ef4444 0%, #dc2626 100%)",
+                    color: "#ffffff",
                     fontWeight: 800,
                     fontSize: 14,
                     border: "none",
                     cursor: "pointer",
                     display: "flex",
+                    flexDirection: "column",
                     alignItems: "center",
                     justifyContent: "center",
-                    gap: 8,
-                    boxShadow: sourceVideoUrl || screenStreamRef.current
-                      ? "0 0 25px rgba(239, 68, 68, 0.4)"
-                      : "0 0 25px rgba(56, 189, 248, 0.35)",
+                    gap: 3,
+                    boxShadow: "0 0 25px rgba(239, 68, 68, 0.4)",
                   }}
                 >
-                  <span style={{ fontSize: 16 }}>
-                    {sourceVideoUrl || screenStreamRef.current ? "🔴" : mode === "upload" ? "📁" : "🖥️"}
-                  </span>
-                  {sourceVideoUrl || screenStreamRef.current
-                    ? "Start Recording Reel"
-                    : mode === "upload"
-                    ? "Select Video File First"
-                    : "Select Window / Tab to Record"}
+                  <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                    <span style={{ fontSize: 16 }}>🔴</span> Start Recording Reel
+                  </div>
+                  {(!sourceVideoUrl && !screenStreamRef.current) && (
+                    <span style={{ fontSize: 10.5, opacity: 0.85, fontWeight: 500 }}>
+                      {mode === "upload" ? "(Click to pick video & start)" : "(Click to pick window/tab & start)"}
+                    </span>
+                  )}
                 </button>
               ) : (
                 <button
@@ -1394,17 +1390,40 @@ export default function ReelStudioPage() {
                     justifyContent: "center",
                     padding: 24,
                     textAlign: "center",
-                    background: "rgba(6, 9, 19, 0.88)",
+                    background: "rgba(6, 9, 19, 0.9)",
                     zIndex: 10,
                   }}
                 >
                   <span style={{ fontSize: 44, marginBottom: 12 }}>📱</span>
-                  <strong style={{ fontSize: 15, color: "#ffffff", marginBottom: 6 }}>
+                  <strong style={{ fontSize: 16, color: "#ffffff", marginBottom: 6 }}>
                     No Video Source Active
                   </strong>
-                  <p style={{ fontSize: 12, color: "#94a3b8", lineHeight: 1.5, margin: 0 }}>
-                    Upload a 16:9 screen video or click &quot;Record Screen Live&quot; on the left to start directing your 9:16 Reel.
+                  <p style={{ fontSize: 12, color: "#94a3b8", lineHeight: 1.5, margin: "0 0 16px 0" }}>
+                    Select a 16:9 screen video or capture your live screen to direct your 9:16 Reel.
                   </p>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      if (mode === "upload") {
+                        fileInputRef.current?.click();
+                      } else {
+                        handleStartScreenCapture();
+                      }
+                    }}
+                    style={{
+                      padding: "11px 20px",
+                      borderRadius: 10,
+                      background: "linear-gradient(135deg, #38bdf8 0%, #0284c7 100%)",
+                      color: "#031525",
+                      fontWeight: 800,
+                      fontSize: 13,
+                      border: "none",
+                      cursor: "pointer",
+                      boxShadow: "0 0 25px rgba(56, 189, 248, 0.45)",
+                    }}
+                  >
+                    {mode === "upload" ? "📁 Pick 16:9 Video File" : "🖥️ Select Window / Tab"}
+                  </button>
                 </div>
               )}
             </div>
@@ -1480,29 +1499,28 @@ export default function ReelStudioPage() {
                       width: "100%",
                       padding: "14px 20px",
                       borderRadius: 12,
-                      background: (sourceVideoUrl || screenStreamRef.current)
-                        ? "linear-gradient(135deg, #ef4444 0%, #dc2626 100%)"
-                        : "linear-gradient(135deg, #38bdf8 0%, #0284c7 100%)",
-                      color: (sourceVideoUrl || screenStreamRef.current) ? "#ffffff" : "#031525",
+                      background: "linear-gradient(135deg, #ef4444 0%, #dc2626 100%)",
+                      color: "#ffffff",
                       fontWeight: 800,
-                      fontSize: 14,
+                      fontSize: 15,
                       border: "none",
                       cursor: "pointer",
                       display: "flex",
+                      flexDirection: "column",
                       alignItems: "center",
                       justifyContent: "center",
-                      gap: 8,
-                      boxShadow: (sourceVideoUrl || screenStreamRef.current)
-                        ? "0 0 25px rgba(239, 68, 68, 0.45)"
-                        : "0 0 25px rgba(56, 189, 248, 0.4)",
+                      gap: 4,
+                      boxShadow: "0 0 30px rgba(239, 68, 68, 0.5)",
                     }}
                   >
-                    <span style={{ fontSize: 16 }}>
-                      {(sourceVideoUrl || screenStreamRef.current) ? "🔴" : mode === "upload" ? "📁" : "🖥️"}
-                    </span>
-                    {(sourceVideoUrl || screenStreamRef.current)
-                      ? (mode === "upload" ? "Start Recording 9:16 Reel (From 0:00)" : "Start Recording Screen Live")
-                      : (mode === "upload" ? "📁 Click Here to Select Video File" : "🖥️ Click Here to Select Window / Tab")}
+                    <div style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 16 }}>
+                      <span>🔴</span> Start Recording 9:16 Reel
+                    </div>
+                    {(!sourceVideoUrl && !screenStreamRef.current) && (
+                      <span style={{ fontSize: 11, fontWeight: 500, color: "rgba(255, 255, 255, 0.85)" }}>
+                        {mode === "upload" ? "(Click to pick 16:9 video & begin)" : "(Click to pick window/tab & begin)"}
+                      </span>
+                    )}
                   </button>
                 ) : (
                   <button
