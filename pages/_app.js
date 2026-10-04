@@ -1,3 +1,4 @@
+import { useEffect } from "react";
 import Head from "next/head";
 import { SessionProvider } from "next-auth/react";
 import FluidCursor from "./components/FluidCursor";
@@ -5,6 +6,48 @@ import PolicyFooter from "./components/PolicyFooter";
 
 export default function MyApp({ Component, pageProps }) {
   const { session, ...rest } = pageProps || {};
+
+  // Real-Time Cross-Tab Cursor Tracking for 9:16 Reel Studio (Screen Studio camera follow & auto-pan)
+  useEffect(() => {
+    if (typeof window === "undefined" || !("BroadcastChannel" in window)) return;
+    let channel;
+    try {
+      channel = new BroadcastChannel("gabbar_reel_cursor_channel");
+    } catch (e) {
+      return;
+    }
+
+    let lastSent = 0;
+    const handlePointerMove = (e) => {
+      const now = Date.now();
+      if (now - lastSent < 25) return; // 40fps broadcast rate
+      lastSent = now;
+      const x = Math.max(0.02, Math.min(0.98, e.clientX / window.innerWidth));
+      const y = Math.max(0.02, Math.min(0.98, e.clientY / window.innerHeight));
+      try {
+        channel.postMessage({ type: "CURSOR_MOVE", x, y, time: now });
+      } catch (err) {}
+    };
+
+    const handleClick = (e) => {
+      const x = Math.max(0.02, Math.min(0.98, e.clientX / window.innerWidth));
+      const y = Math.max(0.02, Math.min(0.98, e.clientY / window.innerHeight));
+      try {
+        channel.postMessage({ type: "CURSOR_CLICK", x, y, time: Date.now() });
+      } catch (err) {}
+    };
+
+    window.addEventListener("pointermove", handlePointerMove, { passive: true });
+    window.addEventListener("click", handleClick, { passive: true });
+
+    return () => {
+      window.removeEventListener("pointermove", handlePointerMove);
+      window.removeEventListener("click", handleClick);
+      try {
+        channel.close();
+      } catch (e) {}
+    };
+  }, []);
 
   return (
     <SessionProvider session={session}>

@@ -45,7 +45,7 @@ export default function ReelStudioPage() {
 
   // Helper time formatter
   const formatTime = (sec) => {
-    if (isNaN(sec) || sec < 0) return "00:00";
+    if (typeof sec !== "number" || isNaN(sec) || !isFinite(sec) || sec < 0) return "00:00";
     const m = Math.floor(sec / 60);
     const s = Math.floor(sec % 60);
     return `${m.toString().padStart(2, "0")}:${s.toString().padStart(2, "0")}`;
@@ -80,7 +80,7 @@ export default function ReelStudioPage() {
   const fileInputRef = useRef(null);
   const bgIntervalRef = useRef(null);
 
-  // Camera tracking state (normalized 0 to 1 coordinates) & Dynamic Zoom physics
+  // Screen Studio Camera tracking state (normalized 0 to 1 coordinates) & Dynamic Zoom physics
   const targetFocusRef = useRef({ x: 0.5, y: 0.5 });
   const currentCameraRef = useRef({ x: 0.5, y: 0.5 });
   const targetZoomRef = useRef(2.2);
@@ -88,6 +88,17 @@ export default function ReelStudioPage() {
   const lastMousePosRef = useRef({ x: 0.5, y: 0.5, time: Date.now() });
   const mouseStopTimerRef = useRef(null);
   const clickRipplesRef = useRef([]);
+
+  // Cross-Tab Cursor Tracking, Timeline Replay & Optical Motion Detection Refs
+  const cursorTimelineRef = useRef([]);
+  const isRecordingRef = useRef(false);
+  const recordingStartTimeRef = useRef(0);
+  const lastRecordedDurationRef = useRef(0);
+  const activeCursorPosRef = useRef({ x: 0.5, y: 0.5, visible: false });
+  const motionCanvasRef = useRef(null);
+  const prevFrameDataRef = useRef(null);
+  const lastMotionCheckTimeRef = useRef(0);
+  const lastBroadcastCursorTimeRef = useRef(0);
 
   // Direct Zoom Trigger Helper
   const setCameraZoom = (val) => {
@@ -204,6 +215,97 @@ export default function ReelStudioPage() {
   // -------------------------------------------------------------
   // 3. MOUSE TRACKING & INTERACTIVE CAMERA DIRECTOR (DYNAMIC ZOOM + PAN)
   // -------------------------------------------------------------
+
+  // Real-Time Cross-Tab Cursor Tracking (Screen Studio Camera Follow)
+  useEffect(() => {
+    if (typeof window === "undefined" || !("BroadcastChannel" in window)) return;
+    let channel;
+    try {
+      channel = new BroadcastChannel("gabbar_reel_cursor_channel");
+    } catch (e) {
+      return;
+    }
+
+    const handleMessage = (e) => {
+      const msg = e.data;
+      if (!msg) return;
+
+      if (msg.type === "CURSOR_MOVE") {
+        lastBroadcastCursorTimeRef.current = Date.now();
+        const cx = Math.max(0.04, Math.min(0.96, msg.x));
+        const cy = Math.max(0.04, Math.min(0.96, msg.y));
+
+        targetFocusRef.current = { x: cx, y: cy };
+        activeCursorPosRef.current = { x: cx, y: cy, visible: true };
+
+        // Record cursor movement to timeline if recording is active
+        if (isRecordingRef.current) {
+          const t = (Date.now() - recordingStartTimeRef.current) / 1000;
+          cursorTimelineRef.current.push({ t, x: cx, y: cy, type: "move" });
+        }
+
+        // Screen Studio Dynamic Motion Zoom:
+        // When cursor is sliding quickly, pull back slightly (~1.4x) for overview
+        // When cursor hovers or pauses on a button/text, smoothly punch in (2.2x - 2.5x)!
+        if (autoZoomOnHover) {
+          const now = Date.now();
+          const dt = Math.max(1, now - lastMousePosRef.current.time);
+          const dx = cx - lastMousePosRef.current.x;
+          const dy = cy - lastMousePosRef.current.y;
+          const dist = Math.hypot(dx, dy);
+          const speed = dist / dt;
+
+          lastMousePosRef.current = { x: cx, y: cy, time: now };
+
+          if (speed > 0.001) {
+            targetZoomRef.current = 1.45; // wide view during slide
+          }
+
+          if (mouseStopTimerRef.current) clearTimeout(mouseStopTimerRef.current);
+          mouseStopTimerRef.current = setTimeout(() => {
+            targetZoomRef.current = Math.max(2.2, zoomFactor); // punch in when hovering on target
+          }, 160);
+        }
+      } else if (msg.type === "CURSOR_CLICK") {
+        lastBroadcastCursorTimeRef.current = Date.now();
+        const cx = Math.max(0.04, Math.min(0.96, msg.x));
+        const cy = Math.max(0.04, Math.min(0.96, msg.y));
+        targetFocusRef.current = { x: cx, y: cy };
+        activeCursorPosRef.current = { x: cx, y: cy, visible: true };
+
+        if (isRecordingRef.current) {
+          const t = (Date.now() - recordingStartTimeRef.current) / 1000;
+          cursorTimelineRef.current.push({ t, x: cx, y: cy, type: "click" });
+        }
+
+        if (showRipples) {
+          clickRipplesRef.current.push({
+            x: cx * 1080,
+            y: cy * 1920,
+            radius: 0,
+            alpha: 1.0,
+          });
+        }
+
+        if (punchZoomOnClick) {
+          targetZoomRef.current = Math.min(3.2, targetZoomRef.current + 0.4);
+          setTimeout(() => {
+            targetZoomRef.current = Math.max(2.2, zoomFactor);
+          }, 350);
+        }
+      }
+    };
+
+    channel.addEventListener("message", handleMessage);
+
+    return () => {
+      channel.removeEventListener("message", handleMessage);
+      try {
+        channel.close();
+      } catch (e) {}
+    };
+  }, [autoZoomOnHover, zoomFactor, showRipples, punchZoomOnClick]);
+
   const handleCanvasMouseMove = (e) => {
     const canvas = canvasRef.current;
     if (!canvas) return;
@@ -215,9 +317,15 @@ export default function ReelStudioPage() {
     const clampedY = Math.max(0.06, Math.min(0.94, clientY));
 
     targetFocusRef.current = { x: clampedX, y: clampedY };
+    activeCursorPosRef.current = { x: clampedX, y: clampedY, visible: true };
+
+    if (isRecordingRef.current) {
+      const t = (Date.now() - recordingStartTimeRef.current) / 1000;
+      cursorTimelineRef.current.push({ t, x: clampedX, y: clampedY, type: "move" });
+    }
 
     // Screen Studio Dynamic Motion Zoom:
-    // When moving quickly across the canvas, zoom out slightly (~1.3x) for context.
+    // When moving quickly across the canvas, zoom out slightly (~1.35x) for context.
     // When the cursor slows down or stops on an element, punch in deep (2.2x - 3.0x)!
     if (autoZoomOnHover) {
       const now = Date.now();
@@ -257,6 +365,12 @@ export default function ReelStudioPage() {
     const cy = (e.clientY - rect.top) / rect.height;
 
     targetFocusRef.current = { x: cx, y: cy };
+    activeCursorPosRef.current = { x: cx, y: cy, visible: true };
+
+    if (isRecordingRef.current) {
+      const t = (Date.now() - recordingStartTimeRef.current) / 1000;
+      cursorTimelineRef.current.push({ t, x: cx, y: cy, type: "click" });
+    }
 
     // Dynamic Punch Zoom: clicking toggles between wide overview (1.15x) and deep punch (2.5x+)
     if (punchZoomOnClick) {
@@ -280,16 +394,15 @@ export default function ReelStudioPage() {
     }
   };
 
-  // Reset to default center overview when mouse leaves the phone frame
+  // When mouse leaves preview, PRESERVE smooth camera focus (Do NOT snap back to center!)
   const handleCanvasMouseLeave = () => {
     if (mouseStopTimerRef.current) clearTimeout(mouseStopTimerRef.current);
-    targetFocusRef.current = { x: 0.5, y: 0.5 };
-    targetZoomRef.current = zoomFactor;
   };
 
   const handleResetCamera = () => {
     if (mouseStopTimerRef.current) clearTimeout(mouseStopTimerRef.current);
     targetFocusRef.current = { x: 0.5, y: 0.5 };
+    activeCursorPosRef.current = { x: 0.5, y: 0.5, visible: false };
     targetZoomRef.current = zoomFactor;
     setFocusArea("center");
   };
@@ -330,6 +443,79 @@ export default function ReelStudioPage() {
             y: 0.5 + Math.cos(t * 1.3) * 0.18,
           };
           targetZoomRef.current = 1.8 + Math.sin(t * 1.8) * 0.7; // auto-breathe zoom!
+        }
+
+        const now = Date.now();
+
+        // Screen Studio Interactive Playback: Auto-follow recorded cursor timeline if video is playing & mouse is idle
+        if (isPlaying && cursorTimelineRef.current.length > 0 && (now - lastMousePosRef.current.time > 700)) {
+          const ct = video.currentTime || 0;
+          let closest = null;
+          let minDiff = 0.35;
+          for (let i = 0; i < cursorTimelineRef.current.length; i++) {
+            const entry = cursorTimelineRef.current[i];
+            const diff = Math.abs(entry.t - ct);
+            if (diff < minDiff) {
+              minDiff = diff;
+              closest = entry;
+            }
+          }
+          if (closest) {
+            targetFocusRef.current = { x: closest.x, y: closest.y };
+            activeCursorPosRef.current = { x: closest.x, y: closest.y, visible: true };
+          }
+        }
+
+        // Optical Motion Tracker Fallback (Automatically slides camera when recording foreign desktop windows)
+        if (now - lastBroadcastCursorTimeRef.current > 1200 && (now - lastMotionCheckTimeRef.current > 120)) {
+          lastMotionCheckTimeRef.current = now;
+          if (!motionCanvasRef.current && typeof document !== "undefined") {
+            const mc = document.createElement("canvas");
+            mc.width = 48;
+            mc.height = 27;
+            motionCanvasRef.current = mc;
+          }
+          if (motionCanvasRef.current) {
+            const mc = motionCanvasRef.current;
+            const mctx = mc.getContext("2d", { willReadFrequently: true });
+            if (mctx) {
+              try {
+                mctx.drawImage(video, 0, 0, 48, 27);
+                const imgData = mctx.getImageData(0, 0, 48, 27).data;
+                if (prevFrameDataRef.current && prevFrameDataRef.current.length === imgData.length) {
+                  const prev = prevFrameDataRef.current;
+                  let totalDiff = 0;
+                  let sumX = 0;
+                  let sumY = 0;
+                  for (let i = 0; i < imgData.length; i += 4) {
+                    const diff = Math.abs(imgData[i] - prev[i]) +
+                                 Math.abs(imgData[i + 1] - prev[i + 1]) +
+                                 Math.abs(imgData[i + 2] - prev[i + 2]);
+                    if (diff > 45) {
+                      const pIdx = i / 4;
+                      const px = pIdx % 48;
+                      const py = Math.floor(pIdx / 48);
+                      totalDiff += diff;
+                      sumX += px * diff;
+                      sumY += py * diff;
+                    }
+                  }
+                  if (totalDiff > 1200) {
+                    const detectedX = sumX / totalDiff / 48;
+                    const detectedY = sumY / totalDiff / 27;
+                    const targetX = Math.max(0.08, Math.min(0.92, detectedX));
+                    const targetY = Math.max(0.08, Math.min(0.92, detectedY));
+                    targetFocusRef.current = { x: targetX, y: targetY };
+                    activeCursorPosRef.current = { x: targetX, y: targetY, visible: true };
+                    if (autoZoomOnHover) {
+                      targetZoomRef.current = Math.max(2.0, zoomFactor);
+                    }
+                  }
+                }
+                prevFrameDataRef.current = new Uint8ClampedArray(imgData);
+              } catch (e) {}
+            }
+          }
         }
 
         // 1. Smooth Camera Physics (Exponential Lerp towards focus target & dynamic zoom)
@@ -470,7 +656,42 @@ export default function ReelStudioPage() {
         ctx.fillText(zoomText, zBadgeX + 14, zBadgeY + zBadgeH / 2);
         ctx.restore();
 
-        // 5. Click Ripples / Visual Pulse FX
+        // 5b. SCREEN STUDIO CURSOR SPOTLIGHT HALO (Follows user's mouse cursor across desktop!)
+        if (activeCursorPosRef.current && activeCursorPosRef.current.visible) {
+          const cur = activeCursorPosRef.current;
+          const px = cur.x * srcW;
+          const py = cur.y * srcH;
+          const relX = (px - sx) / cropW;
+          const relY = (py - sy) / cropH;
+          const curCanvasX = cardX + relX * cardW;
+          const curCanvasY = cardY + relY * cardH;
+
+          if (
+            curCanvasX >= cardX - 25 &&
+            curCanvasX <= cardX + cardW + 25 &&
+            curCanvasY >= cardY - 25 &&
+            curCanvasY <= cardY + cardH + 25
+          ) {
+            ctx.save();
+            ctx.beginPath();
+            ctx.arc(curCanvasX, curCanvasY, 20, 0, Math.PI * 2);
+            ctx.strokeStyle = "rgba(56, 189, 248, 0.85)";
+            ctx.lineWidth = 3;
+            ctx.shadowColor = "#38bdf8";
+            ctx.shadowBlur = 14;
+            ctx.stroke();
+
+            ctx.beginPath();
+            ctx.arc(curCanvasX, curCanvasY, 4.5, 0, Math.PI * 2);
+            ctx.fillStyle = "#ffffff";
+            ctx.shadowColor = "#ffffff";
+            ctx.shadowBlur = 8;
+            ctx.fill();
+            ctx.restore();
+          }
+        }
+
+        // 5c. Click Ripples / Visual Pulse FX
         if (showRipples && clickRipplesRef.current.length > 0) {
           ctx.save();
           for (let i = clickRipplesRef.current.length - 1; i >= 0; i--) {
@@ -710,7 +931,11 @@ export default function ReelStudioPage() {
                 v.currentTime = 0;
                 v.load();
                 v.onloadeddata = () => {
-                  setDuration(v.duration || 0);
+                  let d = v.duration;
+                  if (!d || !isFinite(d) || isNaN(d)) {
+                    d = lastRecordedDurationRef.current || 10;
+                  }
+                  setDuration(d);
                   v.play().then(() => setIsPlaying(true)).catch(() => {});
                   startRenderLoop();
                 };
@@ -729,12 +954,16 @@ export default function ReelStudioPage() {
         }
         setIsProcessing(false);
         setIsRecording(false);
+        isRecordingRef.current = false;
         if (timerIntervalRef.current) clearInterval(timerIntervalRef.current);
       };
 
       recorder.start(100);
       mediaRecorderRef.current = recorder;
       setIsRecording(true);
+      isRecordingRef.current = true;
+      recordingStartTimeRef.current = Date.now();
+      cursorTimelineRef.current = [];
       setRecordingSeconds(0);
 
       // If video source is loaded, play from start
@@ -752,6 +981,7 @@ export default function ReelStudioPage() {
       console.error("Failed to start recording:", startErr);
       alert("Could not start recording: " + startErr.message);
       setIsRecording(false);
+      isRecordingRef.current = false;
     }
   };
 
@@ -777,6 +1007,8 @@ export default function ReelStudioPage() {
   };
 
   const handleStopRecording = () => {
+    isRecordingRef.current = false;
+    lastRecordedDurationRef.current = recordingSeconds;
     if (mediaRecorderRef.current) {
       if (mediaRecorderRef.current.state === "recording") {
         setIsProcessing(true);
@@ -1952,13 +2184,17 @@ export default function ReelStudioPage() {
                     }}
                   >
                     <div style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 16 }}>
-                      <span>🔴</span> Start Recording 9:16 Reel
+                      <span>🔴</span> {sourceVideoUrl ? "Bake & Export Directed 9:16 Reel" : "Start Recording 9:16 Reel"}
                     </div>
-                    {((mode === "upload" && !sourceVideoUrl) || (mode === "record" && !isScreenConnected && !screenStreamRef.current)) && (
+                    {sourceVideoUrl ? (
+                      <span style={{ fontSize: 11, fontWeight: 500, color: "rgba(255, 255, 255, 0.9)" }}>
+                        (Records video with your live mouse slides & zooms into a new 9:16 Reel)
+                      </span>
+                    ) : ((mode === "upload" && !sourceVideoUrl) || (mode === "record" && !isScreenConnected && !screenStreamRef.current)) ? (
                       <span style={{ fontSize: 11, fontWeight: 500, color: "rgba(255, 255, 255, 0.85)" }}>
                         {mode === "upload" ? "(Click to pick 16:9 video & begin)" : "(Click to pick window/tab & begin)"}
                       </span>
-                    )}
+                    ) : null}
                   </button>
                 ) : (
                   <button
