@@ -374,6 +374,13 @@ export default function HomePage() {
       badge: isAdmin ? "Admin Preview" : "Coming Soon",
       isLocked: !isAdmin,
     },
+    {
+      id: "reel-studio",
+      label: "9:16 Reel Studio",
+      icon: "⚡",
+      badge: "Free Tool",
+      href: "/reel-studio",
+    },
     { id: "gmb", label: "Local Maps (GMB)", icon: "📍", badge: "Maps" },
   ];
 
