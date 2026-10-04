@@ -12,10 +12,21 @@ export default function ReelStudioPage() {
   // Video source & recording states
   const [sourceVideoUrl, setSourceVideoUrl] = useState(null);
   const [sourceVideoFile, setSourceVideoFile] = useState(null);
+  const [isPlaying, setIsPlaying] = useState(false);
+  const [currentTime, setCurrentTime] = useState(0);
+  const [duration, setDuration] = useState(0);
   const [isRecording, setIsRecording] = useState(false);
   const [isProcessing, setIsProcessing] = useState(false);
   const [recordedBlobUrl, setRecordedBlobUrl] = useState(null);
   const [recordingSeconds, setRecordingSeconds] = useState(0);
+
+  // Helper time formatter
+  const formatTime = (sec) => {
+    if (isNaN(sec) || sec < 0) return "00:00";
+    const m = Math.floor(sec / 60);
+    const s = Math.floor(sec % 60);
+    return `${m.toString().padStart(2, "0")}:${s.toString().padStart(2, "0")}`;
+  };
 
   // Studio configuration controls
   const [zoomFactor, setZoomFactor] = useState(1.6); // 1.1x to 2.4x
@@ -43,7 +54,7 @@ export default function ReelStudioPage() {
   const clickRipplesRef = useRef([]);
 
   // -------------------------------------------------------------
-  // 1. FILE UPLOAD HANDLER
+  // 1. FILE UPLOAD HANDLER & PLAYBACK CONTROLS
   // -------------------------------------------------------------
   const handleFileUpload = (e) => {
     const file = e.target.files?.[0];
@@ -57,10 +68,47 @@ export default function ReelStudioPage() {
     setSourceVideoUrl(url);
     setRecordedBlobUrl(null);
 
-    if (videoRef.current) {
-      videoRef.current.src = url;
-      videoRef.current.load();
+    const video = videoRef.current;
+    if (video) {
+      video.src = url;
+      video.currentTime = 0;
+      video.load();
+      video.onloadeddata = () => {
+        setDuration(video.duration || 0);
+        video.play().then(() => {
+          setIsPlaying(true);
+        }).catch((err) => {
+          console.warn("Autoplay blocked:", err);
+          setIsPlaying(false);
+        });
+        startRenderLoop();
+      };
+      video.ontimeupdate = () => {
+        setCurrentTime(video.currentTime || 0);
+      };
+      video.onended = () => {
+        setIsPlaying(false);
+      };
     }
+  };
+
+  const togglePlayPause = () => {
+    const video = videoRef.current;
+    if (!video) return;
+    if (video.paused) {
+      video.play().then(() => setIsPlaying(true)).catch(() => {});
+    } else {
+      video.pause();
+      setIsPlaying(false);
+    }
+  };
+
+  const handleSeek = (e) => {
+    const video = videoRef.current;
+    if (!video) return;
+    const t = parseFloat(e.target.value);
+    video.currentTime = t;
+    setCurrentTime(t);
   };
 
   // -------------------------------------------------------------
@@ -587,20 +635,20 @@ export default function ReelStudioPage() {
                       flexDirection: "column",
                       alignItems: "center",
                       justifyContent: "center",
-                      padding: "24px 16px",
+                      padding: "20px 16px",
                       borderRadius: 12,
-                      border: "2px dashed rgba(56, 189, 248, 0.35)",
-                      background: "rgba(56, 189, 248, 0.03)",
+                      border: sourceVideoFile ? "2px solid rgba(16, 185, 129, 0.4)" : "2px dashed rgba(56, 189, 248, 0.35)",
+                      background: sourceVideoFile ? "rgba(16, 185, 129, 0.05)" : "rgba(56, 189, 248, 0.03)",
                       cursor: "pointer",
                       textAlign: "center",
                     }}
                   >
-                    <span style={{ fontSize: 32, marginBottom: 8 }}>📤</span>
-                    <strong style={{ fontSize: 13, color: "#38bdf8" }}>
-                      {sourceVideoFile ? sourceVideoFile.name : "Click to Upload MP4 / WebM Recording"}
+                    <span style={{ fontSize: 28, marginBottom: 6 }}>{sourceVideoFile ? "🎬" : "📤"}</span>
+                    <strong style={{ fontSize: 13, color: sourceVideoFile ? "#34d399" : "#38bdf8" }}>
+                      {sourceVideoFile ? `✓ Loaded: ${sourceVideoFile.name}` : "Click to Upload MP4 / WebM Recording"}
                     </strong>
                     <span style={{ fontSize: 11, color: "#94a3b8", marginTop: 4 }}>
-                      Standard 16:9 desktop screen recording (e.g. from Win+Alt+R or OBS)
+                      {sourceVideoFile ? "Click here if you want to switch to a different video file" : "Standard 16:9 desktop screen recording (e.g. from Win+Alt+R or OBS)"}
                     </span>
                     <input
                       type="file"
@@ -609,6 +657,68 @@ export default function ReelStudioPage() {
                       style={{ display: "none" }}
                     />
                   </label>
+
+                  {/* Video Playback & Seek Controller */}
+                  {sourceVideoFile && (
+                    <div
+                      style={{
+                        marginTop: 12,
+                        padding: "14px 16px",
+                        borderRadius: 12,
+                        background: "rgba(15, 23, 42, 0.8)",
+                        border: "1px solid rgba(56, 189, 248, 0.25)",
+                        display: "flex",
+                        flexDirection: "column",
+                        gap: 10,
+                      }}
+                    >
+                      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                        <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                          <span style={{ width: 8, height: 8, borderRadius: "50%", background: isPlaying ? "#10b981" : "#f59e0b", display: "inline-block" }} />
+                          <strong style={{ fontSize: 12, color: isPlaying ? "#34d399" : "#fbbf24" }}>
+                            {isPlaying ? "Playing Live Preview" : "Preview Paused"}
+                          </strong>
+                        </div>
+                        <span style={{ fontSize: 11, color: "#94a3b8", fontFamily: "monospace" }}>
+                          {formatTime(currentTime)} / {formatTime(duration)}
+                        </span>
+                      </div>
+
+                      <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+                        <button
+                          type="button"
+                          onClick={togglePlayPause}
+                          style={{
+                            padding: "8px 14px",
+                            borderRadius: 8,
+                            background: isPlaying ? "rgba(239, 68, 68, 0.2)" : "rgba(16, 185, 129, 0.25)",
+                            border: `1px solid ${isPlaying ? "rgba(239, 68, 68, 0.5)" : "rgba(16, 185, 129, 0.5)"}`,
+                            color: isPlaying ? "#fca5a5" : "#34d399",
+                            fontWeight: 800,
+                            fontSize: 12,
+                            cursor: "pointer",
+                            whiteSpace: "nowrap",
+                          }}
+                        >
+                          {isPlaying ? "⏸️ Pause" : "▶️ Play"}
+                        </button>
+
+                        <input
+                          type="range"
+                          min="0"
+                          max={duration || 100}
+                          step="0.1"
+                          value={currentTime}
+                          onChange={handleSeek}
+                          style={{ flex: 1, accentColor: "#38bdf8", cursor: "pointer" }}
+                        />
+                      </div>
+
+                      <p style={{ margin: 0, fontSize: 11, color: "#cbd5e1", lineHeight: 1.4 }}>
+                        👆 Click <strong>Play</strong> to watch your video on the right. <strong>Move your mouse</strong> over the phone screen to direct where the camera zooms.
+                      </p>
+                    </div>
+                  )}
                 </div>
               ) : (
                 <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
@@ -918,6 +1028,46 @@ export default function ReelStudioPage() {
                   display: "block",
                 }}
               />
+
+              {/* Click to Play Overlay when video is paused */}
+              {sourceVideoUrl && !isPlaying && (
+                <div
+                  onClick={togglePlayPause}
+                  style={{
+                    position: "absolute",
+                    inset: 0,
+                    display: "flex",
+                    flexDirection: "column",
+                    alignItems: "center",
+                    justifyContent: "center",
+                    background: "rgba(0, 0, 0, 0.4)",
+                    zIndex: 15,
+                    cursor: "pointer",
+                  }}
+                >
+                  <div
+                    style={{
+                      width: 64,
+                      height: 64,
+                      borderRadius: "50%",
+                      background: "rgba(16, 185, 129, 0.95)",
+                      boxShadow: "0 0 30px rgba(16, 185, 129, 0.6)",
+                      display: "flex",
+                      alignItems: "center",
+                      justifyContent: "center",
+                      fontSize: 26,
+                      paddingLeft: 4,
+                      color: "#042416",
+                      marginBottom: 8,
+                    }}
+                  >
+                    ▶
+                  </div>
+                  <span style={{ fontSize: 12, fontWeight: 700, color: "#ffffff", background: "rgba(0,0,0,0.7)", padding: "4px 12px", borderRadius: 999 }}>
+                    Click to Play Preview
+                  </span>
+                </div>
+              )}
 
               {/* Overlay Prompt when no video is loaded */}
               {!sourceVideoUrl && !screenStreamRef.current && (
