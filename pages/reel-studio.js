@@ -21,7 +21,27 @@ export default function ReelStudioPage() {
   const [recordingSeconds, setRecordingSeconds] = useState(0);
   const [countdown, setCountdown] = useState(null); // null | 3 | 2 | 1
   const [showDownloadModal, setShowDownloadModal] = useState(false);
+  const [isScreenConnected, setIsScreenConnected] = useState(false);
   const countdownIntervalRef = useRef(null);
+
+  // Audio beep cue helper for 3-2-1 countdown & start chime
+  const playBeep = (freq = 800, duration = 0.12) => {
+    try {
+      const AudioCtx = window.AudioContext || window.webkitAudioContext;
+      if (!AudioCtx) return;
+      const ctx = new AudioCtx();
+      const osc = ctx.createOscillator();
+      const gain = ctx.createGain();
+      osc.type = "sine";
+      osc.frequency.setValueAtTime(freq, ctx.currentTime);
+      gain.gain.setValueAtTime(0.18, ctx.currentTime);
+      gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + duration);
+      osc.connect(gain);
+      gain.connect(ctx.destination);
+      osc.start();
+      osc.stop(ctx.currentTime + duration);
+    } catch (e) {}
+  };
 
   // Helper time formatter
   const formatTime = (sec) => {
@@ -137,7 +157,7 @@ export default function ReelStudioPage() {
   // -------------------------------------------------------------
   // 2. LIVE SCREEN CAPTURE (BROWSER NATIVE)
   // -------------------------------------------------------------
-  const handleStartScreenCapture = async () => {
+  const handleStartScreenCapture = async (autoRecord = true) => {
     try {
       if (screenStreamRef.current) {
         screenStreamRef.current.getTracks().forEach((t) => t.stop());
@@ -154,6 +174,7 @@ export default function ReelStudioPage() {
       });
 
       screenStreamRef.current = stream;
+      setIsScreenConnected(true);
       if (videoRef.current) {
         videoRef.current.srcObject = stream;
         videoRef.current.play();
@@ -161,14 +182,19 @@ export default function ReelStudioPage() {
 
       // Handle user clicking "Stop sharing" from Chrome bar
       stream.getVideoTracks()[0].onended = () => {
+        setIsScreenConnected(false);
         handleStopRecording();
       };
 
       setRecordedBlobUrl(null);
       startRenderLoop();
+
+      // Automatically launch 3-2-1 countdown now that window is selected!
+      if (autoRecord) {
+        triggerRecordingCountdown();
+      }
     } catch (err) {
       console.warn("Screen capture cancelled or denied:", err);
-      alert("Screen capture was cancelled or permission was denied.");
     }
   };
 
@@ -592,10 +618,14 @@ export default function ReelStudioPage() {
     };
 
     recorder.onstop = () => {
-      const blob = new Blob(recordedChunksRef.current, { type: selectedMime });
-      const url = URL.createObjectURL(blob);
-      setRecordedBlobUrl(url);
-      setShowDownloadModal(true); // Open modal with video preview and download immediately!
+      if (recordedChunksRef.current && recordedChunksRef.current.length > 0) {
+        const blob = new Blob(recordedChunksRef.current, { type: selectedMime });
+        if (blob.size > 0) {
+          const url = URL.createObjectURL(blob);
+          setRecordedBlobUrl(url);
+          setShowDownloadModal(true); // Open modal with video preview and download immediately!
+        }
+      }
       setIsProcessing(false);
       setIsRecording(false);
       clearInterval(timerIntervalRef.current);
@@ -617,19 +647,22 @@ export default function ReelStudioPage() {
     }, 1000);
   };
 
-  // 3-2-1 Cinematic Countdown before recording starts
+  // 3-2-1 Cinematic Countdown before recording starts (with audible cues)
   const triggerRecordingCountdown = () => {
     if (countdown !== null || isRecording) return;
     setCountdown(3);
+    playBeep(650, 0.14);
     let count = 3;
     if (countdownIntervalRef.current) clearInterval(countdownIntervalRef.current);
     countdownIntervalRef.current = setInterval(() => {
       count -= 1;
       if (count > 0) {
         setCountdown(count);
+        playBeep(650, 0.14);
       } else {
         clearInterval(countdownIntervalRef.current);
         setCountdown(null);
+        playBeep(1200, 0.28); // Celebratory GO cue
         handleStartRecording();
       }
     }, 1000);
@@ -1002,19 +1035,21 @@ export default function ReelStudioPage() {
                     Captures your GabbarInfo AI window or tab live. Your mouse movements will be tracked smoothly on the vertical canvas.
                   </p>
                   <button
-                    onClick={handleStartScreenCapture}
+                    onClick={() => handleStartScreenCapture(true)}
                     style={{
                       padding: "12px 18px",
                       borderRadius: 10,
-                      background: "linear-gradient(135deg, #10b981 0%, #059669 100%)",
-                      color: "#042416",
+                      background: isScreenConnected
+                        ? "rgba(16, 185, 129, 0.2)"
+                        : "linear-gradient(135deg, #10b981 0%, #059669 100%)",
+                      color: isScreenConnected ? "#34d399" : "#042416",
                       fontWeight: 800,
                       fontSize: 13,
-                      border: "none",
+                      border: isScreenConnected ? "1px solid #10b981" : "none",
                       cursor: "pointer",
                     }}
                   >
-                    🖥️ Select Window / Tab to Record
+                    {isScreenConnected ? "✅ Screen Connected & Ready (Click to Change)" : "🖥️ Select Window / Tab & Start"}
                   </button>
                 </div>
               )}
@@ -1184,14 +1219,18 @@ export default function ReelStudioPage() {
                 <button
                   type="button"
                   onClick={() => {
-                    if (!sourceVideoUrl && !screenStreamRef.current) {
-                      if (mode === "upload") {
+                    if (mode === "upload") {
+                      if (!sourceVideoUrl) {
                         fileInputRef.current?.click();
                       } else {
-                        handleStartScreenCapture();
+                        triggerRecordingCountdown();
                       }
                     } else {
-                      triggerRecordingCountdown();
+                      if (!isScreenConnected && !screenStreamRef.current) {
+                        handleStartScreenCapture(true);
+                      } else {
+                        triggerRecordingCountdown();
+                      }
                     }
                   }}
                   style={{
@@ -1214,7 +1253,7 @@ export default function ReelStudioPage() {
                   <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
                     <span style={{ fontSize: 16 }}>🔴</span> Start Recording Reel
                   </div>
-                  {(!sourceVideoUrl && !screenStreamRef.current) && (
+                  {((mode === "upload" && !sourceVideoUrl) || (mode === "record" && !isScreenConnected && !screenStreamRef.current)) && (
                     <span style={{ fontSize: 10.5, opacity: 0.85, fontWeight: 500 }}>
                       {mode === "upload" ? "(Click to pick video & start)" : "(Click to pick window/tab & start)"}
                     </span>
@@ -1485,7 +1524,7 @@ export default function ReelStudioPage() {
               )}
 
               {/* Overlay Prompt when no video is loaded */}
-              {!sourceVideoUrl && !screenStreamRef.current && (
+              {!sourceVideoUrl && !isScreenConnected && !screenStreamRef.current && (
                 <div
                   style={{
                     position: "absolute",
@@ -1513,7 +1552,7 @@ export default function ReelStudioPage() {
                       if (mode === "upload") {
                         fileInputRef.current?.click();
                       } else {
-                        handleStartScreenCapture();
+                        handleStartScreenCapture(true);
                       }
                     }}
                     style={{
@@ -1528,7 +1567,7 @@ export default function ReelStudioPage() {
                       boxShadow: "0 0 25px rgba(56, 189, 248, 0.45)",
                     }}
                   >
-                    {mode === "upload" ? "📁 Pick 16:9 Video File" : "🖥️ Select Window / Tab"}
+                    {mode === "upload" ? "📁 Pick 16:9 Video File" : "🖥️ Select Window / Tab & Start"}
                   </button>
                 </div>
               )}
@@ -1591,14 +1630,18 @@ export default function ReelStudioPage() {
                   <button
                     type="button"
                     onClick={() => {
-                      if (!sourceVideoUrl && !screenStreamRef.current) {
-                        if (mode === "upload") {
+                      if (mode === "upload") {
+                        if (!sourceVideoUrl) {
                           fileInputRef.current?.click();
                         } else {
-                          handleStartScreenCapture();
+                          triggerRecordingCountdown();
                         }
                       } else {
-                        triggerRecordingCountdown();
+                        if (!isScreenConnected && !screenStreamRef.current) {
+                          handleStartScreenCapture(true);
+                        } else {
+                          triggerRecordingCountdown();
+                        }
                       }
                     }}
                     style={{
@@ -1622,7 +1665,7 @@ export default function ReelStudioPage() {
                     <div style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 16 }}>
                       <span>🔴</span> Start Recording 9:16 Reel
                     </div>
-                    {(!sourceVideoUrl && !screenStreamRef.current) && (
+                    {((mode === "upload" && !sourceVideoUrl) || (mode === "record" && !isScreenConnected && !screenStreamRef.current)) && (
                       <span style={{ fontSize: 11, fontWeight: 500, color: "rgba(255, 255, 255, 0.85)" }}>
                         {mode === "upload" ? "(Click to pick 16:9 video & begin)" : "(Click to pick window/tab & begin)"}
                       </span>
