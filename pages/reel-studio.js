@@ -52,13 +52,15 @@ export default function ReelStudioPage() {
   };
 
   // Studio configuration controls
-  const [zoomFactor, setZoomFactor] = useState(2.2); // Target punch zoom level (1.0x to 3.8x)
+  const [zoomFactor, setZoomFactor] = useState(2.4); // Target punch zoom level (1.0x to 3.8x, default close-up 2.4x)
+  const [framingMode, setFramingMode] = useState("fill"); // "fill" (Tall 9:16 card, 3x larger!) | "full" (Edge-to-edge 9:16) | "classic" (16:9 Letterbox)
+  const [focusArea, setFocusArea] = useState("center"); // "center" | "left" | "right" | "top"
   const [punchZoomOnClick, setPunchZoomOnClick] = useState(true);
   const [autoZoomOnHover, setAutoZoomOnHover] = useState(true);
   const [cameraSpeed, setCameraSpeed] = useState(0.08); // Lerp factor: 0.03 (smooth/cinematic) to 0.18 (snappy)
   const [bgBlur, setBgBlur] = useState(24); // px
   const [bgDim, setBgDim] = useState(0.45); // 0 to 1
-  const [frameRadius, setFrameRadius] = useState(22); // rounded corners for foreground
+  const [frameRadius, setFrameRadius] = useState(24); // rounded corners for foreground
   const [showRipples, setShowRipples] = useState(true);
   const [autoPan, setAutoPan] = useState(false);
   const [brandText, setBrandText] = useState("GabbarInfo AI");
@@ -282,15 +284,14 @@ export default function ReelStudioPage() {
   const handleCanvasMouseLeave = () => {
     if (mouseStopTimerRef.current) clearTimeout(mouseStopTimerRef.current);
     targetFocusRef.current = { x: 0.5, y: 0.5 };
-    targetZoomRef.current = 1.0;
-    setZoomFactor(1.0);
+    targetZoomRef.current = zoomFactor;
   };
 
   const handleResetCamera = () => {
     if (mouseStopTimerRef.current) clearTimeout(mouseStopTimerRef.current);
     targetFocusRef.current = { x: 0.5, y: 0.5 };
-    targetZoomRef.current = 1.0;
-    setZoomFactor(1.0);
+    targetZoomRef.current = zoomFactor;
+    setFocusArea("center");
   };
 
   // -------------------------------------------------------------
@@ -365,17 +366,35 @@ export default function ReelStudioPage() {
         ctx.fillRect(0, 0, outW, outH);
 
         // 4. LAYER 2: DYNAMICALLY ZOOMED & FOCUSED Desktop Screen Cutout
-        // Exact aspect-ratio preserving dynamic zoom:
-        const srcAspect = (srcW && srcH) ? srcW / srcH : (16 / 9);
-        const cardMargin = 35;
-        const cardW = outW - cardMargin * 2;
-        const cardH = cardW / srcAspect;
-        const cardX = cardMargin;
-        const cardY = (outH - cardH) / 2;
+        let cardW, cardH, cardX, cardY;
+        if (framingMode === "full") {
+          cardW = outW;
+          cardH = outH;
+          cardX = 0;
+          cardY = 0;
+        } else if (framingMode === "classic") {
+          const cardMargin = 35;
+          cardW = outW - cardMargin * 2;
+          cardH = cardW / ((srcW && srcH) ? (srcW / srcH) : (16 / 9));
+          cardX = cardMargin;
+          cardY = (outH - cardH) / 2;
+        } else {
+          // Default: "fill" - TALL IMMERSIVE VERTICAL CARD (3x LARGER, fills 76% of canvas height!)
+          cardW = 1000;
+          cardH = 1460;
+          cardX = (outW - cardW) / 2;
+          cardY = (outH - cardH) / 2;
+        }
 
+        const cardAspect = cardW / cardH;
         // Calculate crop window on source video centered around (camX, camY) using dynamicZoom!
-        const cropW = srcW / dynamicZoom;
-        const cropH = srcH / dynamicZoom;
+        let cropH = srcH / Math.max(1.0, dynamicZoom);
+        let cropW = cropH * cardAspect;
+
+        if (cropW > srcW) {
+          cropW = srcW;
+          cropH = cropW / cardAspect;
+        }
 
         let sx = camX * srcW - cropW / 2;
         let sy = camY * srcH - cropH / 2;
@@ -386,14 +405,17 @@ export default function ReelStudioPage() {
 
         ctx.save();
         // Drop shadow for the floating app frame
-        ctx.shadowColor = "rgba(0, 0, 0, 0.65)";
-        ctx.shadowBlur = 38;
-        ctx.shadowOffsetY = 18;
+        if (framingMode !== "full") {
+          ctx.shadowColor = "rgba(0, 0, 0, 0.65)";
+          ctx.shadowBlur = 38;
+          ctx.shadowOffsetY = 18;
+        }
 
         // Clip rounded rectangle
         ctx.beginPath();
+        const effectiveRadius = framingMode === "full" ? 0 : frameRadius;
         if (ctx.roundRect) {
-          ctx.roundRect(cardX, cardY, cardW, cardH, frameRadius);
+          ctx.roundRect(cardX, cardY, cardW, cardH, effectiveRadius);
         } else {
           ctx.rect(cardX, cardY, cardW, cardH);
         }
@@ -406,17 +428,19 @@ export default function ReelStudioPage() {
         ctx.restore();
 
         // Subtle glowing border around card
-        ctx.save();
-        ctx.beginPath();
-        if (ctx.roundRect) {
-          ctx.roundRect(cardX, cardY, cardW, cardH, frameRadius);
-        } else {
-          ctx.rect(cardX, cardY, cardW, cardH);
+        if (framingMode !== "full") {
+          ctx.save();
+          ctx.beginPath();
+          if (ctx.roundRect) {
+            ctx.roundRect(cardX, cardY, cardW, cardH, frameRadius);
+          } else {
+            ctx.rect(cardX, cardY, cardW, cardH);
+          }
+          ctx.strokeStyle = "rgba(56, 189, 248, 0.28)";
+          ctx.lineWidth = 3;
+          ctx.stroke();
+          ctx.restore();
         }
-        ctx.strokeStyle = "rgba(56, 189, 248, 0.28)";
-        ctx.lineWidth = 3;
-        ctx.stroke();
-        ctx.restore();
 
         // 5. Live Zoom Level Indicator HUD badge on Canvas
         ctx.save();
@@ -482,38 +506,41 @@ export default function ReelStudioPage() {
           ctx.textAlign = "center";
           ctx.shadowColor = "rgba(0,0,0,0.8)";
           ctx.shadowBlur = 10;
-          ctx.fillText(`⚡ ${brandText}`, outW / 2, cardY - 45);
+          const headerY = framingMode === "full" ? 110 : Math.max(90, cardY - 45);
+          ctx.fillText(`⚡ ${brandText}`, outW / 2, headerY);
 
           ctx.font = "600 20px Inter, sans-serif";
           ctx.fillStyle = "#38bdf8";
-          ctx.fillText("AI ENGINE DEMO", outW / 2, cardY - 14);
+          ctx.fillText("AI ENGINE DEMO", outW / 2, headerY + 31);
           ctx.restore();
         }
 
         // 7. Footer CTA Pill
-        ctx.save();
-        const pillW = 420;
-        const pillH = 64;
-        const pillX = (outW - pillW) / 2;
-        const pillY = cardY + cardH + 45;
+        if (showBrandBadge) {
+          ctx.save();
+          const pillW = 420;
+          const pillH = 64;
+          const pillX = (outW - pillW) / 2;
+          const pillY = framingMode === "full" ? 1800 : Math.min(1820, cardY + cardH + 35);
 
-        ctx.beginPath();
-        if (ctx.roundRect) {
-          ctx.roundRect(pillX, pillY, pillW, pillH, 32);
-        } else {
-          ctx.rect(pillX, pillY, pillW, pillH);
+          ctx.beginPath();
+          if (ctx.roundRect) {
+            ctx.roundRect(pillX, pillY, pillW, pillH, 32);
+          } else {
+            ctx.rect(pillX, pillY, pillW, pillH);
+          }
+          ctx.fillStyle = "rgba(16, 185, 129, 0.2)";
+          ctx.strokeStyle = "rgba(16, 185, 129, 0.5)";
+          ctx.lineWidth = 2;
+          ctx.fill();
+          ctx.stroke();
+
+          ctx.font = "700 22px Inter, sans-serif";
+          ctx.fillStyle = "#34d399";
+          ctx.textAlign = "center";
+          ctx.fillText("🚀 Try Free at ai.gabbarinfo.com", outW / 2, pillY + 40);
+          ctx.restore();
         }
-        ctx.fillStyle = "rgba(16, 185, 129, 0.15)";
-        ctx.strokeStyle = "rgba(16, 185, 129, 0.4)";
-        ctx.lineWidth = 2;
-        ctx.fill();
-        ctx.stroke();
-
-        ctx.font = "700 22px Inter, sans-serif";
-        ctx.fillStyle = "#34d399";
-        ctx.textAlign = "center";
-        ctx.fillText("🚀 Try Free at ai.gabbarinfo.com", outW / 2, pillY + 40);
-        ctx.restore();
       }
 
       animFrameIdRef.current = requestAnimationFrame(render);
@@ -528,7 +555,7 @@ export default function ReelStudioPage() {
         render();
       }
     }, 33);
-  }, [zoomFactor, cameraSpeed, bgBlur, bgDim, frameRadius, showRipples, autoPan, brandText, showBrandBadge]);
+  }, [zoomFactor, cameraSpeed, bgBlur, bgDim, frameRadius, showRipples, autoPan, brandText, showBrandBadge, framingMode]);
 
   // Restart loop on setting changes
   useEffect(() => {
@@ -1144,6 +1171,79 @@ export default function ReelStudioPage() {
                 2. Camera Zoom & Motion Physics
               </h3>
 
+              {/* Framing Mode Selector */}
+              <div>
+                <label style={{ fontSize: 12, fontWeight: 700, color: "#cbd5e1", display: "block", marginBottom: 8 }}>
+                  📐 Framing Style (How Video Fits on Phone)
+                </label>
+                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 8 }}>
+                  {[
+                    { id: "fill", label: "📱 Vertical Fill", desc: "3x Larger (Best for Reels)" },
+                    { id: "full", label: "🌟 Full Bleed", desc: "Edge-to-Edge 9:16" },
+                    { id: "classic", label: "🖥️ Mini 16:9", desc: "Letterbox Center" },
+                  ].map((f) => (
+                    <button
+                      key={f.id}
+                      type="button"
+                      onClick={() => setFramingMode(f.id)}
+                      style={{
+                        padding: "8px 6px",
+                        borderRadius: 10,
+                        background: framingMode === f.id ? "rgba(56, 189, 248, 0.2)" : "rgba(255, 255, 255, 0.05)",
+                        border: `1px solid ${framingMode === f.id ? "#38bdf8" : "rgba(255, 255, 255, 0.1)"}`,
+                        color: framingMode === f.id ? "#38bdf8" : "#94a3b8",
+                        cursor: "pointer",
+                        display: "flex",
+                        flexDirection: "column",
+                        alignItems: "center",
+                        textAlign: "center",
+                        gap: 2,
+                      }}
+                    >
+                      <span style={{ fontSize: 12, fontWeight: 800 }}>{f.label}</span>
+                      <span style={{ fontSize: 9.5, opacity: 0.8 }}>{f.desc}</span>
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              {/* Camera Focus Position */}
+              <div>
+                <label style={{ fontSize: 12, fontWeight: 700, color: "#cbd5e1", display: "block", marginBottom: 8 }}>
+                  🎯 Camera Focus Position
+                </label>
+                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr 1fr", gap: 6 }}>
+                  {[
+                    { id: "center", label: "🎯 Center", x: 0.5, y: 0.5 },
+                    { id: "left", label: "👈 Left Nav", x: 0.22, y: 0.5 },
+                    { id: "right", label: "👉 Right Main", x: 0.78, y: 0.5 },
+                    { id: "top", label: "🔼 Top Bar", x: 0.5, y: 0.22 },
+                  ].map((p) => (
+                    <button
+                      key={p.id}
+                      type="button"
+                      onClick={() => {
+                        targetFocusRef.current = { x: p.x, y: p.y };
+                        setFocusArea(p.id);
+                      }}
+                      style={{
+                        padding: "7px 4px",
+                        borderRadius: 8,
+                        background: focusArea === p.id ? "rgba(16, 185, 129, 0.2)" : "rgba(255, 255, 255, 0.05)",
+                        border: `1px solid ${focusArea === p.id ? "#10b981" : "rgba(255, 255, 255, 0.1)"}`,
+                        color: focusArea === p.id ? "#34d399" : "#cbd5e1",
+                        fontSize: 11,
+                        fontWeight: 700,
+                        cursor: "pointer",
+                        textAlign: "center",
+                      }}
+                    >
+                      {p.label}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
               {/* Zoom Level */}
               <div>
                 <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 6 }}>
@@ -1515,11 +1615,11 @@ export default function ReelStudioPage() {
             {/* Phone Screen Frame (9:16) */}
             <div
               style={{
-                width: 310,
-                height: 550,
-                borderRadius: 32,
-                border: "4px solid rgba(255, 255, 255, 0.15)",
-                boxShadow: "0 25px 60px -15px rgba(0, 0, 0, 0.9), 0 0 40px rgba(56, 189, 248, 0.15)",
+                width: 350,
+                height: 622,
+                borderRadius: 36,
+                border: "4px solid rgba(255, 255, 255, 0.18)",
+                boxShadow: "0 25px 60px -15px rgba(0, 0, 0, 0.95), 0 0 50px rgba(56, 189, 248, 0.2)",
                 overflow: "hidden",
                 position: "relative",
                 background: "#060913",
@@ -1646,17 +1746,16 @@ export default function ReelStudioPage() {
               )}
             </div>
 
-            {/* Quick Zoom Preset Buttons & Live Zoom Display */}
-            <div style={{ marginTop: 14, display: "flex", flexDirection: "column", alignItems: "center", gap: 10, width: "100%", maxWidth: 380 }}>
+            {/* Quick Zoom & Focus Preset Buttons */}
+            <div style={{ marginTop: 14, display: "flex", flexDirection: "column", alignItems: "center", gap: 8, width: "100%", maxWidth: 390 }}>
               <div style={{ display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap", justifyContent: "center" }}>
                 <span style={{ fontSize: 11, fontWeight: 700, color: "#94a3b8", textTransform: "uppercase", letterSpacing: 0.5 }}>
                   Zoom:
                 </span>
                 {[
-                  { label: "1.0x Full", val: 1.0 },
                   { label: "1.5x Wide", val: 1.5 },
-                  { label: "2.2x Close-Up", val: 2.2 },
-                  { label: "3.0x Macro", val: 3.0 },
+                  { label: "2.4x Close-Up", val: 2.4 },
+                  { label: "3.2x Focus", val: 3.2 },
                 ].map((preset) => (
                   <button
                     key={preset.val}
@@ -1695,6 +1794,40 @@ export default function ReelStudioPage() {
                 >
                   🔄 Reset Center
                 </button>
+              </div>
+
+              {/* Quick Focus Targets */}
+              <div style={{ display: "flex", alignItems: "center", gap: 5, flexWrap: "wrap", justifyContent: "center" }}>
+                <span style={{ fontSize: 11, fontWeight: 700, color: "#94a3b8", textTransform: "uppercase", letterSpacing: 0.5 }}>
+                  Pan:
+                </span>
+                {[
+                  { label: "🎯 Center", x: 0.5, y: 0.5, id: "center" },
+                  { label: "👈 Left Nav", x: 0.22, y: 0.5, id: "left" },
+                  { label: "👉 Right Main", x: 0.78, y: 0.5, id: "right" },
+                  { label: "🔼 Top Bar", x: 0.5, y: 0.22, id: "top" },
+                ].map((pos) => (
+                  <button
+                    key={pos.id}
+                    type="button"
+                    onClick={() => {
+                      targetFocusRef.current = { x: pos.x, y: pos.y };
+                      setFocusArea(pos.id);
+                    }}
+                    style={{
+                      padding: "5px 10px",
+                      borderRadius: 16,
+                      background: focusArea === pos.id ? "rgba(16, 185, 129, 0.25)" : "rgba(255, 255, 255, 0.06)",
+                      border: `1px solid ${focusArea === pos.id ? "#10b981" : "rgba(255, 255, 255, 0.12)"}`,
+                      color: focusArea === pos.id ? "#34d399" : "#cbd5e1",
+                      fontSize: 11,
+                      fontWeight: 700,
+                      cursor: "pointer",
+                    }}
+                  >
+                    {pos.label}
+                  </button>
+                ))}
               </div>
 
               {/* PRIMARY ONE-CLICK RECORD / FINISH / DOWNLOAD BUTTON */}
