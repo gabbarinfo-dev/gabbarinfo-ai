@@ -40,6 +40,7 @@ export default function ReelStudioPage() {
   const [autoPan, setAutoPan] = useState(false);
   const [brandText, setBrandText] = useState("GabbarInfo AI");
   const [showBrandBadge, setShowBrandBadge] = useState(true);
+  const [recordMic, setRecordMic] = useState(true); // capture user microphone voiceover
 
   // Hidden/Active Refs
   const videoRef = useRef(null);
@@ -49,6 +50,8 @@ export default function ReelStudioPage() {
   const animFrameIdRef = useRef(null);
   const screenStreamRef = useRef(null);
   const timerIntervalRef = useRef(null);
+  const micStreamRef = useRef(null);
+  const audioContextRef = useRef(null);
 
   // Camera tracking state (normalized 0 to 1 coordinates) & Dynamic Zoom physics
   const targetFocusRef = useRef({ x: 0.5, y: 0.5 });
@@ -492,16 +495,37 @@ export default function ReelStudioPage() {
   }, [startRenderLoop]);
 
   // -------------------------------------------------------------
-  // 5. EXPORT / RECORD 9:16 REEL TO MP4 / WEBM
+  // 5. EXPORT / RECORD 9:16 REEL TO MP4 / WEBM (WITH MIC VOICEOVER)
   // -------------------------------------------------------------
-  const handleStartRecording = () => {
+  const handleStartRecording = async () => {
     const canvas = canvasRef.current;
     if (!canvas) return;
 
     recordedChunksRef.current = [];
     const stream = canvas.captureStream(60);
 
-    // If source video has audio, combine audio track into recording
+    // 1. Microphone voiceover capture
+    let micTrack = null;
+    if (recordMic && navigator.mediaDevices?.getUserMedia) {
+      try {
+        const mStream = await navigator.mediaDevices.getUserMedia({
+          audio: {
+            echoCancellation: true,
+            noiseSuppression: true,
+            autoGainControl: true,
+          },
+        });
+        micStreamRef.current = mStream;
+        if (mStream.getAudioTracks().length > 0) {
+          micTrack = mStream.getAudioTracks()[0];
+        }
+      } catch (err) {
+        console.warn("Microphone access denied or unavailable:", err);
+      }
+    }
+
+    // 2. Source video / live screen audio capture
+    let videoAudioTrack = null;
     const video = videoRef.current;
     if (video) {
       let audioStream = null;
@@ -511,15 +535,42 @@ export default function ReelStudioPage() {
         audioStream = video.mozCaptureStream();
       }
       if (audioStream && audioStream.getAudioTracks().length > 0) {
-        stream.addTrack(audioStream.getAudioTracks()[0]);
+        videoAudioTrack = audioStream.getAudioTracks()[0];
       } else if (screenStreamRef.current && screenStreamRef.current.getAudioTracks().length > 0) {
-        stream.addTrack(screenStreamRef.current.getAudioTracks()[0]);
+        videoAudioTrack = screenStreamRef.current.getAudioTracks()[0];
       }
     }
 
+    // 3. Audio Mixing using Web Audio API (Mic + System/Video Audio)
+    if (micTrack && videoAudioTrack) {
+      try {
+        const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+        audioContextRef.current = audioCtx;
+        const dest = audioCtx.createMediaStreamDestination();
+
+        const micSource = audioCtx.createMediaStreamSource(new MediaStream([micTrack]));
+        const videoSource = audioCtx.createMediaStreamSource(new MediaStream([videoAudioTrack]));
+
+        micSource.connect(dest);
+        videoSource.connect(dest);
+
+        const mixedTrack = dest.stream.getAudioTracks()[0];
+        if (mixedTrack) {
+          stream.addTrack(mixedTrack);
+        }
+      } catch (mixErr) {
+        console.warn("Audio mixing fallback, adding mic track:", mixErr);
+        stream.addTrack(micTrack);
+      }
+    } else if (micTrack) {
+      stream.addTrack(micTrack);
+    } else if (videoAudioTrack) {
+      stream.addTrack(videoAudioTrack);
+    }
+
     const mimeOptions = [
-      "video/webm;codecs=vp9",
-      "video/webm;codecs=vp8",
+      "video/webm;codecs=vp9,opus",
+      "video/webm;codecs=vp8,opus",
       "video/webm",
       "video/mp4",
     ];
@@ -553,7 +604,7 @@ export default function ReelStudioPage() {
     // If file mode, play video from start
     if (mode === "upload" && video) {
       video.currentTime = 0;
-      video.play();
+      video.play().then(() => setIsPlaying(true)).catch(() => {});
     }
 
     timerIntervalRef.current = setInterval(() => {
@@ -565,6 +616,15 @@ export default function ReelStudioPage() {
     if (mediaRecorderRef.current && mediaRecorderRef.current.state === "recording") {
       setIsProcessing(true);
       mediaRecorderRef.current.stop();
+    }
+    // Clean up mic stream cleanly so browser recording dot turns off
+    if (micStreamRef.current) {
+      micStreamRef.current.getTracks().forEach((t) => t.stop());
+      micStreamRef.current = null;
+    }
+    if (audioContextRef.current) {
+      audioContextRef.current.close().catch(() => {});
+      audioContextRef.current = null;
     }
   };
 
@@ -1458,6 +1518,33 @@ export default function ReelStudioPage() {
                     <span style={{ fontSize: 16 }}>💾</span> Download 1080x1920 Reel MP4
                   </button>
                 )}
+
+                {/* Mic Voiceover Live Toggle */}
+                <div style={{ marginTop: 8, display: "flex", alignItems: "center", justifyContent: "center" }}>
+                  <label
+                    style={{
+                      display: "flex",
+                      alignItems: "center",
+                      gap: 6,
+                      fontSize: 11,
+                      fontWeight: 600,
+                      color: recordMic ? "#34d399" : "#94a3b8",
+                      cursor: "pointer",
+                      padding: "4px 10px",
+                      borderRadius: 8,
+                      background: recordMic ? "rgba(16, 185, 129, 0.12)" : "rgba(255, 255, 255, 0.05)",
+                      border: `1px solid ${recordMic ? "rgba(16, 185, 129, 0.3)" : "rgba(255, 255, 255, 0.1)"}`,
+                    }}
+                  >
+                    <input
+                      type="checkbox"
+                      checked={recordMic}
+                      onChange={(e) => setRecordMic(e.target.checked)}
+                      style={{ accentColor: "#10b981" }}
+                    />
+                    <span>{recordMic ? "🎙️ Mic Voiceover: ACTIVE (Speaking recorded)" : "🔇 Mic Voiceover: OFF"}</span>
+                  </label>
+                </div>
               </div>
 
               <div
