@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from "react";
 
-export default function SocialMediaPlannerModal({ onClose, isTrial99: propIsTrial99, onUpgrade }) {
+export default function SocialMediaPlannerModal({ onClose, isTrial99: propIsTrial99, onUpgrade, initialBrand }) {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [generatingQueue, setGeneratingQueue] = useState(false);
@@ -47,16 +47,16 @@ export default function SocialMediaPlannerModal({ onClose, isTrial99: propIsTria
   const [savingLocations, setSavingLocations] = useState(false);
 
   const [availableBrands, setAvailableBrands] = useState([]);
-  const [selectedBrand, setSelectedBrand] = useState("");
+  const [selectedBrand, setSelectedBrand] = useState(initialBrand || "");
   const [syncingMeta, setSyncingMeta] = useState(false);
   const [refreshingTopics, setRefreshingTopics] = useState(false);
 
   // Load initial config
   useEffect(() => {
-    fetchConfig();
-  }, []);
+    fetchConfig(initialBrand || selectedBrand);
+  }, [initialBrand]);
 
-  async function fetchConfig(targetBiz = selectedBrand) {
+  async function fetchConfig(targetBiz = (selectedBrand || initialBrand)) {
     setLoading(true);
     try {
       const url = targetBiz

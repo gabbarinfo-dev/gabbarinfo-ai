@@ -403,8 +403,8 @@ export default async function handler(req, res) {
   // ================================================================
   if (req.method === "GET") {
     try {
-      // 1. Fetch all connected brand profiles from agent_memory
-      const [{ data: meta }, { data: brandMems }] = await Promise.all([
+      // 1. Fetch all connected brand profiles & active profile preference from agent_memory
+      const [{ data: meta }, { data: brandMems }, { data: activeMem }] = await Promise.all([
         supabase
           .from("meta_connections")
           .select("*")
@@ -415,6 +415,12 @@ export default async function handler(req, res) {
           .select("memory_type, content")
           .eq("email", normalizedEmail)
           .like("memory_type", "meta_conn_%"),
+        supabase
+          .from("agent_memory")
+          .select("content")
+          .eq("email", normalizedEmail)
+          .eq("memory_type", "meta_active_profile")
+          .maybeSingle(),
       ]);
 
       const availableBrands = (brandMems || []).map((m) => {
@@ -427,10 +433,18 @@ export default async function handler(req, res) {
         }
       }).filter(Boolean);
 
-      // Match target brand or default to first
+      let preferredBrandKey = null;
+      if (activeMem?.content) {
+        try {
+          const parsed = typeof activeMem.content === "string" ? JSON.parse(activeMem.content) : activeMem.content;
+          preferredBrandKey = parsed.activeBrandKey || null;
+        } catch (_) {}
+      }
+
+      // Match target brand: explicit query, or saved active profile, or default to first
       const matchedBrand = normBusiness
         ? availableBrands.find((b) => b.key === normBusiness || b.businessName?.toLowerCase().replace(/[^a-z0-9]/g, "_") === normBusiness)
-        : (availableBrands[0] || null);
+        : (preferredBrandKey ? availableBrands.find((b) => b.key === preferredBrandKey) : null) || (availableBrands[0] || null);
 
       const effectiveNormBiz = normBusiness || matchedBrand?.key || null;
       const targetMemoryKey = effectiveNormBiz ? `social_autopilot_${normalizedEmail}_${effectiveNormBiz}` : `social_autopilot_${normalizedEmail}`;
@@ -447,14 +461,29 @@ export default async function handler(req, res) {
         supabase
       });
 
-      // Check account-level master record for free test post (prevents exploitation across multiple brands)
+      // Fetch saved memory for this specific brand & account-level free test post record in parallel
       const masterFreeKey = `social_free_test_${normalizedEmail}`;
-      const { data: masterFreeMem } = await supabase
-        .from("agent_memory")
-        .select("content")
-        .eq("email", normalizedEmail)
-        .eq("memory_type", masterFreeKey)
-        .maybeSingle();
+      const [{ data: mem }, { data: masterFreeMem }] = await Promise.all([
+        supabase
+          .from("agent_memory")
+          .select("content")
+          .eq("email", normalizedEmail)
+          .eq("memory_type", targetMemoryKey)
+          .maybeSingle(),
+        supabase
+          .from("agent_memory")
+          .select("content")
+          .eq("email", normalizedEmail)
+          .eq("memory_type", masterFreeKey)
+          .maybeSingle(),
+      ]);
+
+      let saved = null;
+      if (mem?.content) {
+        try {
+          saved = typeof mem.content === "string" ? JSON.parse(mem.content) : mem.content;
+        } catch (_) {}
+      }
 
       let masterFreeData = null;
       if (masterFreeMem?.content) {
@@ -472,21 +501,6 @@ export default async function handler(req, res) {
       );
       const freeRemaining = Math.max(0, freeAllowed - freeUsed);
       const hasUsedFreeAll = freeRemaining <= 0;
-
-      // Fetch saved memory for this specific brand
-      const { data: mem } = await supabase
-        .from("agent_memory")
-        .select("content")
-        .eq("email", normalizedEmail)
-        .eq("memory_type", targetMemoryKey)
-        .maybeSingle();
-
-      let saved = null;
-      if (mem?.content) {
-        try {
-          saved = JSON.parse(mem.content);
-        } catch (_) {}
-      }
 
       // Sanitize: If saved services/queue contain digital marketing agency terms but this brand is NOT Gabbarinfo, discard the wrong agency topics!
       const isAgency = effectiveNormBiz === "gabbarinfo" || effectiveNormBiz === "gabbarinfo_digital_solutions";

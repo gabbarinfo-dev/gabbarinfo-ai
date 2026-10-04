@@ -568,7 +568,7 @@ export default function FacebookBusinessConnect({ onOpenSocialPlanner }) {
             </button>
 
             <button
-              onClick={onOpenSocialPlanner}
+              onClick={() => onOpenSocialPlanner && onOpenSocialPlanner(selectedBrand)}
               className="btn-gabbar-primary"
               style={{
                 padding: "8px 16px",

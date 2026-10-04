@@ -28,6 +28,7 @@ export default function HomePage() {
 
   const [showSubscriptionModal, setShowSubscriptionModal] = useState(false);
   const [showSocialPlanner, setShowSocialPlanner] = useState(false);
+  const [activeSocialBrand, setActiveSocialBrand] = useState("");
   const [hasWpConnected, setHasWpConnected] = useState(false);
   const [hasShopifyConnected, setHasShopifyConnected] = useState(false);
   const [showWpConnectPrompt, setShowWpConnectPrompt] = useState(false);
@@ -1695,7 +1696,10 @@ export default function HomePage() {
                         SOCIAL SYNDICATE
                       </span>
                     </div>
-                    <FacebookBusinessConnect onOpenSocialPlanner={() => setShowSocialPlanner(true)} />
+                    <FacebookBusinessConnect onOpenSocialPlanner={(brandKey) => {
+                      if (brandKey && typeof brandKey === "string") setActiveSocialBrand(brandKey);
+                      setShowSocialPlanner(true);
+                    }} />
                   </section>
 
                   {/* Right Column: Social Planner Launch & Telemetry */}
@@ -2081,7 +2085,10 @@ export default function HomePage() {
                 <h2 style={{ margin: "0 0 14px 0", fontSize: 18, fontWeight: 700, color: "#ffffff" }}>
                   📘 Facebook Business & Instagram
                 </h2>
-                <FacebookBusinessConnect onOpenSocialPlanner={() => setShowSocialPlanner(true)} />
+                <FacebookBusinessConnect onOpenSocialPlanner={(brandKey) => {
+                  if (brandKey && typeof brandKey === "string") setActiveSocialBrand(brandKey);
+                  setShowSocialPlanner(true);
+                }} />
               </section>
             </div>
           )}
@@ -2114,6 +2121,7 @@ export default function HomePage() {
       {showSocialPlanner && (
         <SocialMediaPlannerModal
           onClose={() => setShowSocialPlanner(false)}
+          initialBrand={activeSocialBrand}
           isTrial99={isTrial99}
           onUpgrade={() => {
             setShowSocialPlanner(false);
