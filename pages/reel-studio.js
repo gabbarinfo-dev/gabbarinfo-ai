@@ -702,6 +702,25 @@ export default function ReelStudioPage() {
             if (blob.size > 0) {
               const url = URL.createObjectURL(blob);
               setRecordedBlobUrl(url);
+              setSourceVideoUrl(url); // Automatically make available for replay and camera directing!
+              const v = videoRef.current;
+              if (v) {
+                v.srcObject = null;
+                v.src = url;
+                v.currentTime = 0;
+                v.load();
+                v.onloadeddata = () => {
+                  setDuration(v.duration || 0);
+                  v.play().then(() => setIsPlaying(true)).catch(() => {});
+                  startRenderLoop();
+                };
+                v.ontimeupdate = () => {
+                  setCurrentTime(v.currentTime || 0);
+                };
+                v.onended = () => {
+                  setIsPlaying(false);
+                };
+              }
               setShowDownloadModal(true); // Open modal with video preview and download immediately!
             }
           }
@@ -718,9 +737,9 @@ export default function ReelStudioPage() {
       setIsRecording(true);
       setRecordingSeconds(0);
 
-      // If file mode, play video from start
+      // If video source is loaded, play from start
       const video = videoRef.current;
-      if (mode === "upload" && video) {
+      if (video && sourceVideoUrl) {
         video.currentTime = 0;
         video.play().then(() => setIsPlaying(true)).catch(() => {});
       }
@@ -1753,9 +1772,10 @@ export default function ReelStudioPage() {
                   Zoom:
                 </span>
                 {[
-                  { label: "1.5x Wide", val: 1.5 },
-                  { label: "2.4x Close-Up", val: 2.4 },
-                  { label: "3.2x Focus", val: 3.2 },
+                  { label: "1.0x Full Screen (No Crop)", val: 1.0 },
+                  { label: "1.8x Balanced", val: 1.8 },
+                  { label: "2.5x Close-Up", val: 2.5 },
+                  { label: "3.2x Macro", val: 3.2 },
                 ].map((preset) => (
                   <button
                     key={preset.val}
@@ -1829,6 +1849,69 @@ export default function ReelStudioPage() {
                   </button>
                 ))}
               </div>
+
+              {/* VIDEO PLAYBACK & REPLAY SCRUBBER CONTROLLER (Visible when video is loaded or recorded!) */}
+              {sourceVideoUrl && (
+                <div
+                  style={{
+                    width: "100%",
+                    padding: "12px 14px",
+                    borderRadius: 14,
+                    background: "rgba(15, 23, 42, 0.95)",
+                    border: "1px solid rgba(56, 189, 248, 0.35)",
+                    display: "flex",
+                    flexDirection: "column",
+                    gap: 8,
+                    boxShadow: "0 0 25px rgba(56, 189, 248, 0.15)",
+                  }}
+                >
+                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                    <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                      <span style={{ width: 8, height: 8, borderRadius: "50%", background: isPlaying ? "#10b981" : "#f59e0b", display: "inline-block" }} />
+                      <strong style={{ fontSize: 12, color: isPlaying ? "#34d399" : "#fbbf24" }}>
+                        {isPlaying ? "▶ Playing (Move mouse to direct!)" : "⏸ Paused (Hit Play to Direct)"}
+                      </strong>
+                    </div>
+                    <span style={{ fontSize: 11, color: "#94a3b8", fontFamily: "monospace" }}>
+                      {formatTime(currentTime)} / {formatTime(duration)}
+                    </span>
+                  </div>
+
+                  <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                    <button
+                      type="button"
+                      onClick={togglePlayPause}
+                      style={{
+                        padding: "8px 14px",
+                        borderRadius: 8,
+                        background: isPlaying ? "rgba(239, 68, 68, 0.25)" : "rgba(16, 185, 129, 0.3)",
+                        border: `1px solid ${isPlaying ? "rgba(239, 68, 68, 0.6)" : "rgba(16, 185, 129, 0.6)"}`,
+                        color: isPlaying ? "#fca5a5" : "#34d399",
+                        fontWeight: 800,
+                        fontSize: 12,
+                        cursor: "pointer",
+                        whiteSpace: "nowrap",
+                      }}
+                    >
+                      {isPlaying ? "⏸ Pause" : "▶ Play Video"}
+                    </button>
+
+                    <input
+                      type="range"
+                      min="0"
+                      max={duration || 100}
+                      step="0.1"
+                      value={currentTime}
+                      onChange={handleSeek}
+                      style={{ flex: 1, accentColor: "#38bdf8", cursor: "pointer" }}
+                    />
+                  </div>
+
+                  <p style={{ margin: 0, fontSize: 10.5, color: "#cbd5e1", lineHeight: 1.4 }}>
+                    👆 <strong>Director Mode:</strong> Hit <strong>Play</strong>, then move your mouse over the phone screen or click <strong>Left Nav / Right Main</strong> above to direct your zooms & pans in real time!
+                  </p>
+                </div>
+              )}
 
               {/* PRIMARY ONE-CLICK RECORD / FINISH / DOWNLOAD BUTTON */}
               <div style={{ width: "100%", maxWidth: 360, marginTop: 4 }}>
