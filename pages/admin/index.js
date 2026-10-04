@@ -4,6 +4,54 @@
 import { useState, useEffect } from "react";
 import { useSession, signOut, signIn } from "next-auth/react";
 import Head from "next/head";
+import { SUBSCRIPTION_PLANS } from "../../lib/billing/plans";
+
+const ADMIN_PLAN_CATEGORIES = [
+  {
+    label: "⚡ Growth Suites (All-in-One)",
+    plans: ["suite_1", "suite_2", "suite_3"],
+  },
+  {
+    label: "🛍️ Shopify Store SEO",
+    plans: ["shopify_1", "shopify_2", "shopify_3"],
+  },
+  {
+    label: "📝 WordPress SEO Suite",
+    plans: ["seo_1", "seo_2", "seo_3"],
+  },
+  {
+    label: "📱 Social Media Autopilot",
+    plans: ["social_1", "social_2", "social_3", "social_4"],
+  },
+  {
+    label: "🚀 Performance Ads (+ Free GMB)",
+    plans: ["ads_1", "ads_2", "ads_3"],
+  },
+  {
+    label: "📍 Local Maps (GMB)",
+    plans: ["gmb_1"],
+  },
+  {
+    label: "🎬 AI Cinema Long-Form Video",
+    plans: ["video_creator", "video_pro", "video_cinema"],
+  },
+  {
+    label: "🔗 Cross-Channel Power Bundles",
+    plans: ["bundle_gads_gmb", "bundle_seo_gmb"],
+  },
+  {
+    label: "🎁 Trial & Free Explorer",
+    plans: ["trial_99", "try"],
+  },
+  {
+    label: "👑 Super Admin & Master Tier",
+    plans: ["agency"],
+  },
+  {
+    label: "⏳ Legacy Plans",
+    plans: ["agency_scale", "social_scale", "starter", "growth", "business"],
+  },
+];
 
 const ALL_SERVICES = [
   { key: "SEO", label: "SEO Blog", icon: "📝" },
@@ -1020,43 +1068,23 @@ export default function AdminPage() {
                                 }}
                               >
                                 <option value="none">🚫 None (Revoke All Services)</option>
-                                <optgroup label="⚡ Growth Suites (All-in-One)">
-                                  <option value="suite_1">Solo Growth (1 Biz) — ₹2,499</option>
-                                  <option value="suite_2">Duo Growth (2 Biz) — ₹4,499</option>
-                                  <option value="suite_3">Trio Growth (3 Biz) — ₹6,499</option>
-                                </optgroup>
-                                <optgroup label="📝 SEO Content (30 blogs/site)">
-                                  <option value="seo_1">SEO Solo (1 Site) — ₹1,299</option>
-                                  <option value="seo_2">SEO Duo (2 Sites) — ₹2,299</option>
-                                  <option value="seo_3">SEO Trio (3 Sites) — ₹3,199</option>
-                                </optgroup>
-                                <optgroup label="📱 Social Autopilot (30 posts/brand)">
-                                  <option value="social_1">Social Solo (1 Brand) — ₹1,299</option>
-                                  <option value="social_2">Social Duo (2 Brands) — ₹2,299</option>
-                                  <option value="social_3">Social Trio (3 Brands) — ₹3,199</option>
-                                </optgroup>
-                                <optgroup label="🚀 Performance Ads (2 GAds + 2 Meta)">
-                                  <option value="ads_1">Ads Solo (1 Unit) — ₹1,099</option>
-                                  <option value="ads_2">Ads Duo (2 Units) — ₹1,999</option>
-                                  <option value="ads_3">Ads Trio (3 Units) — ₹2,799</option>
-                                </optgroup>
-                                <optgroup label="📍 Local Maps & Review Booster (GMB)">
-                                  <option value="gmb_1">Local Maps & Review Booster (1 Profile) — ₹999</option>
-                                </optgroup>
-                                <optgroup label="🔗 Cross-Channel Power Bundles">
-                                  <option value="bundle_gads_gmb">Google Omnipresence (Ads + Maps) — ₹1,999</option>
-                                  <option value="bundle_seo_gmb">Complete Search Dominance (SEO + Maps) — ₹1,999</option>
-                                </optgroup>
-                                <optgroup label="🏢 Agency Scale">
-                                  <option value="agency_scale">Agency Growth Suite (15 Sites/8 Brands/5 GMB) — ₹9,999</option>
-                                </optgroup>
-                                <optgroup label="Legacy & Trial">
-                                  <option value="try">Free Trial / Starter Mode</option>
-                                  <option value="starter">Starter (₹999)</option>
-                                  <option value="growth">Growth (₹2,499)</option>
-                                  <option value="business">Business (₹4,999)</option>
-                                  <option value="agency">Agency (₹9,999)</option>
-                                </optgroup>
+                                {ADMIN_PLAN_CATEGORIES.map((cat) => (
+                                  <optgroup key={cat.label} label={cat.label}>
+                                    {cat.plans.map((pId) => {
+                                      const p = SUBSCRIPTION_PLANS[pId];
+                                      if (!p) return null;
+                                      const isLegacy = cat.label.includes("Legacy");
+                                      const label = isLegacy
+                                        ? `${pId.toUpperCase()} (Legacy -> ${p.name})`
+                                        : `${p.name} — ₹${p.priceINR?.toLocaleString("en-IN") || 0}`;
+                                      return (
+                                        <option key={pId} value={pId}>
+                                          {label}
+                                        </option>
+                                      );
+                                    })}
+                                  </optgroup>
+                                ))}
                               </select>
 
                               <div style={{ display: "flex", gap: 4 }}>
