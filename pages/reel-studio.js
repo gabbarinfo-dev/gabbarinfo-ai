@@ -52,11 +52,12 @@ export default function ReelStudioPage() {
   };
 
   // Studio configuration controls
-  const [zoomFactor, setZoomFactor] = useState(1.4); // Natural balanced zoom (1.0x full view to 3.8x macro)
-  const [framingMode, setFramingMode] = useState("fill"); // "fill" (Smart Dynamic Focus) | "full" (Edge-to-edge 9:16) | "classic" (16:9 Letterbox)
+  const [zoomFactor, setZoomFactor] = useState(1.0); // Default 1.0x (Fit screen, no giant buttons!)
+  const [panPosition, setPanPosition] = useState(0.5); // Smooth horizontal pan slider (0.05 to 0.95)
+  const [framingMode, setFramingMode] = useState("fill"); // "fill" (Tall 9:16 Vertical) | "full" (Edge-to-edge 9:16) | "classic" (16:9 Letterbox)
   const [focusArea, setFocusArea] = useState("center"); // "center" | "left" | "right" | "top"
-  const [punchZoomOnClick, setPunchZoomOnClick] = useState(true);
-  const [autoZoomOnHover, setAutoZoomOnHover] = useState(true);
+  const [punchZoomOnClick, setPunchZoomOnClick] = useState(false); // Off by default to avoid sudden jumps
+  const [autoZoomOnHover, setAutoZoomOnHover] = useState(false); // Off by default so zoom stays at user's slider setting
   const [cameraSpeed, setCameraSpeed] = useState(0.08); // Lerp factor: 0.03 (smooth/cinematic) to 0.18 (snappy)
   const [bgBlur, setBgBlur] = useState(24); // px
   const [bgDim, setBgDim] = useState(0.45); // 0 to 1
@@ -64,7 +65,7 @@ export default function ReelStudioPage() {
   const [showRipples, setShowRipples] = useState(true);
   const [autoPan, setAutoPan] = useState(false);
   const [brandText, setBrandText] = useState("GabbarInfo AI");
-  const [showBrandBadge, setShowBrandBadge] = useState(true);
+  const [showBrandBadge, setShowBrandBadge] = useState(false); // Clean video by default
   const [recordMic, setRecordMic] = useState(true); // capture user microphone voiceover
 
   // Hidden/Active Refs
@@ -83,8 +84,8 @@ export default function ReelStudioPage() {
   // Screen Studio Camera tracking state (normalized 0 to 1 coordinates) & Dynamic Zoom physics
   const targetFocusRef = useRef({ x: 0.5, y: 0.5 });
   const currentCameraRef = useRef({ x: 0.5, y: 0.5 });
-  const targetZoomRef = useRef(1.4);
-  const currentZoomRef = useRef(1.2);
+  const targetZoomRef = useRef(1.0);
+  const currentZoomRef = useRef(1.0);
   const lastMousePosRef = useRef({ x: 0.5, y: 0.5, time: Date.now() });
   const mouseStopTimerRef = useRef(null);
   const clickRipplesRef = useRef([]);
@@ -487,61 +488,6 @@ export default function ReelStudioPage() {
               targetFocusRef.current = { x: closest.x, y: closest.y };
               activeCursorPosRef.current = { x: closest.x, y: closest.y, visible: true };
             }
-          }
-        }
-
-        // Optical Motion Tracker Fallback (Automatically slides camera when recording foreign desktop windows)
-        if (now - lastBroadcastCursorTimeRef.current > 1200 && (now - lastMotionCheckTimeRef.current > 120)) {
-          lastMotionCheckTimeRef.current = now;
-          if (!motionCanvasRef.current && typeof document !== "undefined") {
-            const mc = document.createElement("canvas");
-            mc.width = 48;
-            mc.height = 27;
-            motionCanvasRef.current = mc;
-          }
-          if (motionCanvasRef.current) {
-            const mc = motionCanvasRef.current;
-            const mctx = mc.getContext("2d", { willReadFrequently: true });
-            if (mctx) {
-              try {
-                mctx.drawImage(video, 0, 0, 48, 27);
-                const imgData = mctx.getImageData(0, 0, 48, 27).data;
-                if (prevFrameDataRef.current && prevFrameDataRef.current.length === imgData.length) {
-                  const prev = prevFrameDataRef.current;
-                  let totalDiff = 0;
-                  let sumX = 0;
-                  let sumY = 0;
-                  for (let i = 0; i < imgData.length; i += 4) {
-                    const diff = Math.abs(imgData[i] - prev[i]) +
-                                 Math.abs(imgData[i + 1] - prev[i + 1]) +
-                                 Math.abs(imgData[i + 2] - prev[i + 2]);
-                    if (diff > 45) {
-                      const pIdx = i / 4;
-                      const px = pIdx % 48;
-                      const py = Math.floor(pIdx / 48);
-                      totalDiff += diff;
-                      sumX += px * diff;
-                      sumY += py * diff;
-                    }
-                  }
-                  if (totalDiff > 1200) {
-                    const detectedX = sumX / totalDiff / 48;
-                    const detectedY = sumY / totalDiff / 27;
-                    const targetX = Math.max(0.08, Math.min(0.92, detectedX));
-                    const targetY = Math.max(0.08, Math.min(0.92, detectedY));
-                    targetFocusRef.current = { x: targetX, y: targetY };
-                    activeCursorPosRef.current = { x: targetX, y: targetY, visible: true };
-                    if (autoZoomOnHover) {
-                      targetZoomRef.current = Math.max(2.0, zoomFactor);
-                    }
-                  }
-                }
-                prevFrameDataRef.current = new Uint8ClampedArray(imgData);
-              } catch (e) {}
-            }
-          }
-        }
-
         // 1. Smooth Camera Physics (Exponential Lerp towards focus target & dynamic zoom)
         currentCameraRef.current.x +=
           (targetFocusRef.current.x - currentCameraRef.current.x) * cameraSpeed;
@@ -651,34 +597,6 @@ export default function ReelStudioPage() {
           ctx.stroke();
           ctx.restore();
         }
-
-        // 5. Live Zoom Level Indicator HUD badge on Canvas
-        ctx.save();
-        const zoomText = `🔍 ${dynamicZoom.toFixed(1)}x ZOOM`;
-        ctx.font = "bold 20px Inter, system-ui, sans-serif";
-        const zoomMetrics = ctx.measureText(zoomText);
-        const zBadgeW = zoomMetrics.width + 28;
-        const zBadgeH = 38;
-        const zBadgeX = cardX + cardW - zBadgeW - 16;
-        const zBadgeY = cardY + 16;
-
-        ctx.beginPath();
-        if (ctx.roundRect) {
-          ctx.roundRect(zBadgeX, zBadgeY, zBadgeW, zBadgeH, 19);
-        } else {
-          ctx.rect(zBadgeX, zBadgeY, zBadgeW, zBadgeH);
-        }
-        ctx.fillStyle = "rgba(6, 11, 25, 0.85)";
-        ctx.strokeStyle = dynamicZoom > 1.8 ? "rgba(56, 189, 248, 0.85)" : "rgba(255, 255, 255, 0.25)";
-        ctx.lineWidth = 2;
-        ctx.fill();
-        ctx.stroke();
-
-        ctx.fillStyle = dynamicZoom > 1.8 ? "#38bdf8" : "#e2e8f0";
-        ctx.textAlign = "left";
-        ctx.textBaseline = "middle";
-        ctx.fillText(zoomText, zBadgeX + 14, zBadgeY + zBadgeH / 2);
-        ctx.restore();
 
         // 5b. SCREEN STUDIO CURSOR SPOTLIGHT HALO (Follows user's mouse cursor across desktop!)
         if (activeCursorPosRef.current && activeCursorPosRef.current.visible) {
@@ -1530,11 +1448,42 @@ export default function ReelStudioPage() {
                 </div>
               </div>
 
+              {/* Horizontal Pan Slider */}
+              <div style={{ background: "rgba(56, 189, 248, 0.08)", padding: "12px 14px", borderRadius: 12, border: "1px solid rgba(56, 189, 248, 0.25)" }}>
+                <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 6 }}>
+                  <label style={{ fontSize: 13, fontWeight: 800, color: "#ffffff" }}>
+                    ↔️ Slide Screen Left / Right (Pan)
+                  </label>
+                  <span style={{ fontSize: 12, color: "#38bdf8", fontWeight: 800 }}>
+                    {panPosition < 0.35 ? "Left Sidebar" : panPosition > 0.65 ? "Right Panel" : "Center Overview"}
+                  </span>
+                </div>
+                <input
+                  type="range"
+                  min="0.06"
+                  max="0.94"
+                  step="0.01"
+                  value={panPosition}
+                  onChange={(e) => {
+                    const val = parseFloat(e.target.value);
+                    setPanPosition(val);
+                    targetFocusRef.current = { x: val, y: targetFocusRef.current.y };
+                    userManualOverrideRef.current = Date.now();
+                  }}
+                  style={{ width: "100%", accentColor: "#38bdf8", cursor: "pointer", height: 8 }}
+                />
+                <div style={{ display: "flex", justifyContent: "space-between", fontSize: 11, color: "#94a3b8", marginTop: 4 }}>
+                  <span>👈 Left Sidebar (0%)</span>
+                  <span>🎯 Center (50%)</span>
+                  <span>👉 Right Panel (100%)</span>
+                </div>
+              </div>
+
               {/* Zoom Level */}
               <div>
                 <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 6 }}>
                   <label style={{ fontSize: 12, fontWeight: 600, color: "#cbd5e1" }}>🔍 Zoom Magnitude</label>
-                  <span style={{ fontSize: 12, color: "#38bdf8", fontWeight: 700 }}>{zoomFactor.toFixed(1)}x</span>
+                  <span style={{ fontSize: 12, color: "#38bdf8", fontWeight: 700 }}>{zoomFactor.toFixed(1)}x {zoomFactor === 1.0 ? "(Fit Screen)" : ""}</span>
                 </div>
                 <input
                   type="range"
@@ -2140,6 +2089,48 @@ export default function ReelStudioPage() {
                 >
                   {autoPan ? "✨ Auto-Glide: ON" : "✨ Auto-Glide"}
                 </button>
+              </div>
+
+              {/* SMOOTH HORIZONTAL PAN SLIDER UNDER CANVAS */}
+              <div
+                style={{
+                  width: "100%",
+                  padding: "10px 14px",
+                  borderRadius: 12,
+                  background: "rgba(15, 23, 42, 0.9)",
+                  border: "1px solid rgba(56, 189, 248, 0.3)",
+                  display: "flex",
+                  flexDirection: "column",
+                  gap: 6,
+                }}
+              >
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                  <span style={{ fontSize: 12, fontWeight: 700, color: "#ffffff" }}>
+                    ↔️ Slide Screen (Pan Left / Right)
+                  </span>
+                  <span style={{ fontSize: 11, fontWeight: 800, color: "#38bdf8" }}>
+                    {panPosition < 0.35 ? "Left Sidebar" : panPosition > 0.65 ? "Right Panel" : "Center Overview"}
+                  </span>
+                </div>
+                <input
+                  type="range"
+                  min="0.06"
+                  max="0.94"
+                  step="0.01"
+                  value={panPosition}
+                  onChange={(e) => {
+                    const val = parseFloat(e.target.value);
+                    setPanPosition(val);
+                    targetFocusRef.current = { x: val, y: targetFocusRef.current.y };
+                    userManualOverrideRef.current = Date.now();
+                  }}
+                  style={{ width: "100%", accentColor: "#38bdf8", cursor: "pointer", height: 6 }}
+                />
+                <div style={{ display: "flex", justifyContent: "space-between", fontSize: 10, color: "#94a3b8" }}>
+                  <span>👈 Left (0%)</span>
+                  <span>🎯 Center (50%)</span>
+                  <span>👉 Right (100%)</span>
+                </div>
               </div>
 
               {/* VIDEO PLAYBACK & REPLAY SCRUBBER CONTROLLER (Visible when video is loaded or recorded!) */}
