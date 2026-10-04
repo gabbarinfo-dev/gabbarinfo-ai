@@ -101,6 +101,9 @@ export default function ReelStudioPage() {
       };
       video.onended = () => {
         setIsPlaying(false);
+        if (mediaRecorderRef.current && mediaRecorderRef.current.state === "recording") {
+          handleStopRecording();
+        }
       };
     }
   };
@@ -239,6 +242,21 @@ export default function ReelStudioPage() {
         alpha: 1.0,
       });
     }
+  };
+
+  // Reset to default center overview when mouse leaves the phone frame
+  const handleCanvasMouseLeave = () => {
+    if (mouseStopTimerRef.current) clearTimeout(mouseStopTimerRef.current);
+    targetFocusRef.current = { x: 0.5, y: 0.5 };
+    targetZoomRef.current = 1.0;
+    setZoomFactor(1.0);
+  };
+
+  const handleResetCamera = () => {
+    if (mouseStopTimerRef.current) clearTimeout(mouseStopTimerRef.current);
+    targetFocusRef.current = { x: 0.5, y: 0.5 };
+    targetZoomRef.current = 1.0;
+    setZoomFactor(1.0);
   };
 
   // -------------------------------------------------------------
@@ -1088,14 +1106,116 @@ export default function ReelStudioPage() {
               minHeight: 650,
             }}
           >
-            <div style={{ marginBottom: 12, textAlign: "center" }}>
-              <span style={{ fontSize: 13, fontWeight: 700, color: "#cbd5e1" }}>
-                Interactive Director Canvas (Hover or Click to Aim Camera)
-              </span>
-              <p style={{ margin: "4px 0 0 0", fontSize: 11, color: "#64748b" }}>
-                Hover mouse over preview to guide camera position smoothly in real-time.
-              </p>
-            </div>
+            {/* Prominent Live Status Bar */}
+            {isRecording ? (
+              <div
+                style={{
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "space-between",
+                  width: "100%",
+                  maxWidth: 360,
+                  marginBottom: 10,
+                  padding: "10px 16px",
+                  borderRadius: 14,
+                  background: "rgba(239, 68, 68, 0.25)",
+                  border: "1px solid rgba(239, 68, 68, 0.6)",
+                  boxShadow: "0 0 25px rgba(239, 68, 68, 0.25)",
+                }}
+              >
+                <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                  <span
+                    style={{
+                      width: 10,
+                      height: 10,
+                      borderRadius: "50%",
+                      background: "#ef4444",
+                      display: "inline-block",
+                      boxShadow: "0 0 10px #ef4444",
+                    }}
+                  />
+                  <strong style={{ fontSize: 13, color: "#fca5a5" }}>
+                    🔴 RECORDING: {formatTime(recordingSeconds)}
+                  </strong>
+                </div>
+                <button
+                  type="button"
+                  onClick={handleStopRecording}
+                  style={{
+                    padding: "5px 12px",
+                    borderRadius: 8,
+                    background: "#ef4444",
+                    color: "#ffffff",
+                    border: "none",
+                    fontWeight: 800,
+                    fontSize: 11,
+                    cursor: "pointer",
+                  }}
+                >
+                  ⏹️ Stop & Save
+                </button>
+              </div>
+            ) : recordedBlobUrl ? (
+              <div
+                style={{
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "space-between",
+                  width: "100%",
+                  maxWidth: 360,
+                  marginBottom: 10,
+                  padding: "10px 16px",
+                  borderRadius: 14,
+                  background: "rgba(16, 185, 129, 0.2)",
+                  border: "1px solid rgba(16, 185, 129, 0.6)",
+                  boxShadow: "0 0 25px rgba(16, 185, 129, 0.25)",
+                }}
+              >
+                <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                  <span style={{ fontSize: 14 }}>🎉</span>
+                  <strong style={{ fontSize: 13, color: "#34d399" }}>Reel Recorded!</strong>
+                </div>
+                <button
+                  type="button"
+                  onClick={handleDownload}
+                  style={{
+                    padding: "5px 14px",
+                    borderRadius: 8,
+                    background: "linear-gradient(135deg, #10b981 0%, #059669 100%)",
+                    color: "#042416",
+                    border: "none",
+                    fontWeight: 800,
+                    fontSize: 11,
+                    cursor: "pointer",
+                  }}
+                >
+                  💾 Download MP4
+                </button>
+              </div>
+            ) : (
+              <div
+                style={{
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "space-between",
+                  width: "100%",
+                  maxWidth: 360,
+                  marginBottom: 10,
+                  padding: "8px 14px",
+                  borderRadius: 12,
+                  background: "rgba(15, 23, 42, 0.8)",
+                  border: "1px solid rgba(255, 255, 255, 0.1)",
+                }}
+              >
+                <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                  <span style={{ fontSize: 13 }}>👁️</span>
+                  <span style={{ fontSize: 12, fontWeight: 700, color: "#cbd5e1" }}>
+                    Director Preview (Not Recording)
+                  </span>
+                </div>
+                <span style={{ fontSize: 10, color: "#64748b" }}>Test Zooms Live</span>
+              </div>
+            )}
 
             {/* Phone Screen Frame (9:16) */}
             <div
@@ -1113,6 +1233,7 @@ export default function ReelStudioPage() {
               onMouseMove={handleCanvasMouseMove}
               onClick={handleCanvasClick}
               onWheel={handleCanvasWheel}
+              onMouseLeave={handleCanvasMouseLeave}
             >
               {/* Top Phone Speaker Island */}
               <div
@@ -1209,9 +1330,9 @@ export default function ReelStudioPage() {
 
             {/* Quick Zoom Preset Buttons & Live Zoom Display */}
             <div style={{ marginTop: 14, display: "flex", flexDirection: "column", alignItems: "center", gap: 10, width: "100%", maxWidth: 380 }}>
-              <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap", justifyContent: "center" }}>
+              <div style={{ display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap", justifyContent: "center" }}>
                 <span style={{ fontSize: 11, fontWeight: 700, color: "#94a3b8", textTransform: "uppercase", letterSpacing: 0.5 }}>
-                  Zoom Presets:
+                  Zoom:
                 </span>
                 {[
                   { label: "1.0x Full", val: 1.0 },
@@ -1224,7 +1345,7 @@ export default function ReelStudioPage() {
                     type="button"
                     onClick={() => setCameraZoom(preset.val)}
                     style={{
-                      padding: "6px 14px",
+                      padding: "6px 12px",
                       borderRadius: 20,
                       background: Math.abs(zoomFactor - preset.val) < 0.25 ? "rgba(56, 189, 248, 0.3)" : "rgba(255, 255, 255, 0.08)",
                       border: `1px solid ${Math.abs(zoomFactor - preset.val) < 0.25 ? "#38bdf8" : "rgba(255, 255, 255, 0.15)"}`,
@@ -1238,6 +1359,105 @@ export default function ReelStudioPage() {
                     {preset.label}
                   </button>
                 ))}
+
+                <button
+                  type="button"
+                  onClick={handleResetCamera}
+                  style={{
+                    padding: "6px 12px",
+                    borderRadius: 20,
+                    background: "rgba(16, 185, 129, 0.15)",
+                    border: "1px solid rgba(16, 185, 129, 0.35)",
+                    color: "#34d399",
+                    fontSize: 12,
+                    fontWeight: 700,
+                    cursor: "pointer",
+                  }}
+                  title="Reset to center full screen"
+                >
+                  🔄 Reset Center
+                </button>
+              </div>
+
+              {/* PRIMARY ONE-CLICK RECORD / FINISH / DOWNLOAD BUTTON */}
+              <div style={{ width: "100%", maxWidth: 360, marginTop: 4 }}>
+                {!isRecording ? (
+                  <button
+                    type="button"
+                    onClick={handleStartRecording}
+                    disabled={!sourceVideoUrl && !screenStreamRef.current}
+                    style={{
+                      width: "100%",
+                      padding: "13px 20px",
+                      borderRadius: 12,
+                      background: (sourceVideoUrl || screenStreamRef.current)
+                        ? "linear-gradient(135deg, #ef4444 0%, #dc2626 100%)"
+                        : "rgba(255, 255, 255, 0.08)",
+                      color: "#ffffff",
+                      fontWeight: 800,
+                      fontSize: 14,
+                      border: "none",
+                      cursor: (sourceVideoUrl || screenStreamRef.current) ? "pointer" : "not-allowed",
+                      display: "flex",
+                      alignItems: "center",
+                      justifyContent: "center",
+                      gap: 8,
+                      boxShadow: (sourceVideoUrl || screenStreamRef.current) ? "0 0 25px rgba(239, 68, 68, 0.45)" : "none",
+                    }}
+                  >
+                    <span style={{ fontSize: 16 }}>🔴</span>
+                    {mode === "upload" ? "Start Recording 9:16 Reel (From 0:00)" : "Start Recording Screen Live"}
+                  </button>
+                ) : (
+                  <button
+                    type="button"
+                    onClick={handleStopRecording}
+                    style={{
+                      width: "100%",
+                      padding: "13px 20px",
+                      borderRadius: 12,
+                      background: "linear-gradient(135deg, #10b981 0%, #059669 100%)",
+                      color: "#042416",
+                      fontWeight: 800,
+                      fontSize: 14,
+                      border: "none",
+                      cursor: "pointer",
+                      display: "flex",
+                      alignItems: "center",
+                      justifyContent: "center",
+                      gap: 8,
+                      boxShadow: "0 0 25px rgba(16, 185, 129, 0.45)",
+                    }}
+                  >
+                    <span style={{ fontSize: 16 }}>⏹️</span> Stop & Save 9:16 Reel ({recordingSeconds}s)
+                  </button>
+                )}
+
+                {recordedBlobUrl && (
+                  <button
+                    type="button"
+                    onClick={handleDownload}
+                    style={{
+                      marginTop: 8,
+                      width: "100%",
+                      padding: "13px 20px",
+                      borderRadius: 12,
+                      background: "linear-gradient(135deg, #38bdf8 0%, #0284c7 100%)",
+                      color: "#031525",
+                      fontWeight: 800,
+                      fontSize: 14,
+                      border: "none",
+                      cursor: "pointer",
+                      display: "flex",
+                      alignItems: "center",
+                      justifyContent: "center",
+                      gap: 8,
+                      boxShadow: "0 0 25px rgba(56, 189, 248, 0.4)",
+                    }}
+                  >
+                    <span style={{ fontSize: 16 }}>💾</span> Download 1080x1920 Reel MP4
+                  </button>
+                )}
               </div>
 
               <div
