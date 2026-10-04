@@ -76,6 +76,7 @@ export default function ReelStudioPage() {
   const micStreamRef = useRef(null);
   const audioContextRef = useRef(null);
   const fileInputRef = useRef(null);
+  const bgIntervalRef = useRef(null);
 
   // Camera tracking state (normalized 0 to 1 coordinates) & Dynamic Zoom physics
   const targetFocusRef = useRef({ x: 0.5, y: 0.5 });
@@ -305,6 +306,11 @@ export default function ReelStudioPage() {
       const canvas = canvasRef.current;
 
       if (video && canvas && (video.readyState >= 2 || video.srcObject)) {
+        // Prevent drawing black frames if screen capture has ended
+        const screenTrack = screenStreamRef.current?.getVideoTracks()?.[0];
+        if (screenTrack && screenTrack.readyState === "ended") {
+          return;
+        }
         const ctx = canvas.getContext("2d");
         const outW = 1080;
         const outH = 1920;
@@ -514,6 +520,14 @@ export default function ReelStudioPage() {
     };
 
     animFrameIdRef.current = requestAnimationFrame(render);
+
+    // Background tab render ticker (fires even when user switches to demo tab!)
+    if (bgIntervalRef.current) clearInterval(bgIntervalRef.current);
+    bgIntervalRef.current = setInterval(() => {
+      if (document.hidden) {
+        render();
+      }
+    }, 33);
   }, [zoomFactor, cameraSpeed, bgBlur, bgDim, frameRadius, showRipples, autoPan, brandText, showBrandBadge]);
 
   // Restart loop on setting changes
@@ -521,6 +535,7 @@ export default function ReelStudioPage() {
     startRenderLoop();
     return () => {
       if (animFrameIdRef.current) cancelAnimationFrame(animFrameIdRef.current);
+      if (bgIntervalRef.current) clearInterval(bgIntervalRef.current);
     };
   }, [startRenderLoop]);
 
@@ -531,120 +546,167 @@ export default function ReelStudioPage() {
     const canvas = canvasRef.current;
     if (!canvas) return;
 
-    recordedChunksRef.current = [];
-    const stream = canvas.captureStream(60);
+    try {
+      recordedChunksRef.current = [];
+      const stream = canvas.captureStream(60);
 
-    // 1. Microphone voiceover capture
-    let micTrack = null;
-    if (recordMic && navigator.mediaDevices?.getUserMedia) {
+      // 1. Microphone voiceover capture (safe)
+      let micTrack = null;
+      if (recordMic && navigator.mediaDevices?.getUserMedia) {
+        try {
+          const mStream = await navigator.mediaDevices.getUserMedia({
+            audio: {
+              echoCancellation: true,
+              noiseSuppression: true,
+              autoGainControl: true,
+            },
+          });
+          micStreamRef.current = mStream;
+          if (mStream.getAudioTracks().length > 0) {
+            micTrack = mStream.getAudioTracks()[0];
+          }
+        } catch (err) {
+          console.warn("Microphone access denied or unavailable:", err);
+        }
+      }
+
+      // 2. Source video / live screen audio capture (Safe extraction without calling video.captureStream() on MediaStream)
+      let videoAudioTrack = null;
       try {
-        const mStream = await navigator.mediaDevices.getUserMedia({
-          audio: {
-            echoCancellation: true,
-            noiseSuppression: true,
-            autoGainControl: true,
-          },
-        });
-        micStreamRef.current = mStream;
-        if (mStream.getAudioTracks().length > 0) {
-          micTrack = mStream.getAudioTracks()[0];
+        if (screenStreamRef.current && screenStreamRef.current.getAudioTracks().length > 0) {
+          videoAudioTrack = screenStreamRef.current.getAudioTracks()[0];
+        } else if (videoRef.current && mode === "upload") {
+          const v = videoRef.current;
+          let audioStream = null;
+          if (typeof v.captureStream === "function") {
+            try { audioStream = v.captureStream(); } catch (e) {}
+          } else if (typeof v.mozCaptureStream === "function") {
+            try { audioStream = v.mozCaptureStream(); } catch (e) {}
+          }
+          if (audioStream && audioStream.getAudioTracks().length > 0) {
+            videoAudioTrack = audioStream.getAudioTracks()[0];
+          }
         }
-      } catch (err) {
-        console.warn("Microphone access denied or unavailable:", err);
+      } catch (audErr) {
+        console.warn("Could not capture system/video audio:", audErr);
       }
-    }
 
-    // 2. Source video / live screen audio capture
-    let videoAudioTrack = null;
-    const video = videoRef.current;
-    if (video) {
-      let audioStream = null;
-      if (video.captureStream) {
-        audioStream = video.captureStream();
-      } else if (video.mozCaptureStream) {
-        audioStream = video.mozCaptureStream();
-      }
-      if (audioStream && audioStream.getAudioTracks().length > 0) {
-        videoAudioTrack = audioStream.getAudioTracks()[0];
-      } else if (screenStreamRef.current && screenStreamRef.current.getAudioTracks().length > 0) {
-        videoAudioTrack = screenStreamRef.current.getAudioTracks()[0];
-      }
-    }
+      // 3. Audio Mixing using Web Audio API (Mic + System/Video Audio)
+      if (micTrack && videoAudioTrack) {
+        try {
+          const AudioCtx = window.AudioContext || window.webkitAudioContext;
+          if (AudioCtx) {
+            const audioCtx = new AudioCtx();
+            if (audioCtx.state === "suspended") {
+              await audioCtx.resume();
+            }
+            audioContextRef.current = audioCtx;
+            const dest = audioCtx.createMediaStreamDestination();
 
-    // 3. Audio Mixing using Web Audio API (Mic + System/Video Audio)
-    if (micTrack && videoAudioTrack) {
-      try {
-        const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
-        audioContextRef.current = audioCtx;
-        const dest = audioCtx.createMediaStreamDestination();
+            const micSource = audioCtx.createMediaStreamSource(new MediaStream([micTrack]));
+            const videoSource = audioCtx.createMediaStreamSource(new MediaStream([videoAudioTrack]));
 
-        const micSource = audioCtx.createMediaStreamSource(new MediaStream([micTrack]));
-        const videoSource = audioCtx.createMediaStreamSource(new MediaStream([videoAudioTrack]));
+            micSource.connect(dest);
+            videoSource.connect(dest);
 
-        micSource.connect(dest);
-        videoSource.connect(dest);
-
-        const mixedTrack = dest.stream.getAudioTracks()[0];
-        if (mixedTrack) {
-          stream.addTrack(mixedTrack);
+            const mixedTrack = dest.stream.getAudioTracks()[0];
+            if (mixedTrack) {
+              stream.addTrack(mixedTrack);
+            }
+          } else {
+            stream.addTrack(micTrack);
+          }
+        } catch (mixErr) {
+          console.warn("Audio mixing fallback, adding mic track directly:", mixErr);
+          try { stream.addTrack(micTrack); } catch (e) {}
         }
-      } catch (mixErr) {
-        console.warn("Audio mixing fallback, adding mic track:", mixErr);
-        stream.addTrack(micTrack);
+      } else if (micTrack) {
+        try { stream.addTrack(micTrack); } catch (e) {}
+      } else if (videoAudioTrack) {
+        try { stream.addTrack(videoAudioTrack); } catch (e) {}
       }
-    } else if (micTrack) {
-      stream.addTrack(micTrack);
-    } else if (videoAudioTrack) {
-      stream.addTrack(videoAudioTrack);
-    }
 
-    const mimeOptions = [
-      "video/webm;codecs=vp9,opus",
-      "video/webm;codecs=vp8,opus",
-      "video/webm",
-      "video/mp4",
-    ];
-    let selectedMime = mimeOptions.find((m) => MediaRecorder.isTypeSupported(m)) || "video/webm";
+      // 4. Robust MediaRecorder initialization with fallbacks
+      let recorder = null;
+      let usedMime = "";
+      const mimeOptions = [
+        "video/webm;codecs=vp9,opus",
+        "video/webm;codecs=vp8,opus",
+        "video/webm;codecs=vp9",
+        "video/webm;codecs=vp8",
+        "video/webm",
+        "video/mp4",
+      ];
 
-    const recorder = new MediaRecorder(stream, {
-      mimeType: selectedMime,
-      videoBitsPerSecond: 8000000, // 8 Mbps high quality
-    });
-
-    recorder.ondataavailable = (e) => {
-      if (e.data && e.data.size > 0) {
-        recordedChunksRef.current.push(e.data);
+      for (const mime of mimeOptions) {
+        try {
+          if (MediaRecorder.isTypeSupported(mime)) {
+            usedMime = mime;
+            recorder = new MediaRecorder(stream, {
+              mimeType: mime,
+              videoBitsPerSecond: 8000000,
+            });
+            break;
+          }
+        } catch (e) {}
       }
-    };
 
-    recorder.onstop = () => {
-      if (recordedChunksRef.current && recordedChunksRef.current.length > 0) {
-        const blob = new Blob(recordedChunksRef.current, { type: selectedMime });
-        if (blob.size > 0) {
-          const url = URL.createObjectURL(blob);
-          setRecordedBlobUrl(url);
-          setShowDownloadModal(true); // Open modal with video preview and download immediately!
+      if (!recorder) {
+        try {
+          recorder = new MediaRecorder(stream);
+        } catch (eFallback) {
+          console.error("Default MediaRecorder creation failed:", eFallback);
+          alert("MediaRecorder error: " + eFallback.message);
+          return;
         }
       }
-      setIsProcessing(false);
+
+      recorder.ondataavailable = (e) => {
+        if (e.data && e.data.size > 0) {
+          recordedChunksRef.current.push(e.data);
+        }
+      };
+
+      recorder.onstop = () => {
+        try {
+          if (recordedChunksRef.current && recordedChunksRef.current.length > 0) {
+            const finalMime = recorder.mimeType || usedMime || "video/webm";
+            const blob = new Blob(recordedChunksRef.current, { type: finalMime });
+            if (blob.size > 0) {
+              const url = URL.createObjectURL(blob);
+              setRecordedBlobUrl(url);
+              setShowDownloadModal(true); // Open modal with video preview and download immediately!
+            }
+          }
+        } catch (stopErr) {
+          console.error("Error creating video blob on stop:", stopErr);
+        }
+        setIsProcessing(false);
+        setIsRecording(false);
+        if (timerIntervalRef.current) clearInterval(timerIntervalRef.current);
+      };
+
+      recorder.start(100);
+      mediaRecorderRef.current = recorder;
+      setIsRecording(true);
+      setRecordingSeconds(0);
+
+      // If file mode, play video from start
+      const video = videoRef.current;
+      if (mode === "upload" && video) {
+        video.currentTime = 0;
+        video.play().then(() => setIsPlaying(true)).catch(() => {});
+      }
+
+      if (timerIntervalRef.current) clearInterval(timerIntervalRef.current);
+      timerIntervalRef.current = setInterval(() => {
+        setRecordingSeconds((prev) => prev + 1);
+      }, 1000);
+    } catch (startErr) {
+      console.error("Failed to start recording:", startErr);
+      alert("Could not start recording: " + startErr.message);
       setIsRecording(false);
-      clearInterval(timerIntervalRef.current);
-    };
-
-    recorder.start(100);
-    mediaRecorderRef.current = recorder;
-    setIsRecording(true);
-    setRecordingSeconds(0);
-
-    // If file mode, play video from start
-    if (mode === "upload" && video) {
-      video.currentTime = 0;
-      video.play().then(() => setIsPlaying(true)).catch(() => {});
     }
-
-    timerIntervalRef.current = setInterval(() => {
-      setRecordingSeconds((prev) => prev + 1);
-    }, 1000);
   };
 
   // 3-2-1 Cinematic Countdown before recording starts (with audible cues)
@@ -669,17 +731,28 @@ export default function ReelStudioPage() {
   };
 
   const handleStopRecording = () => {
-    if (mediaRecorderRef.current && mediaRecorderRef.current.state === "recording") {
-      setIsProcessing(true);
-      mediaRecorderRef.current.stop();
+    if (mediaRecorderRef.current) {
+      if (mediaRecorderRef.current.state === "recording") {
+        setIsProcessing(true);
+        try {
+          mediaRecorderRef.current.requestData();
+        } catch (e) {}
+        try {
+          mediaRecorderRef.current.stop();
+        } catch (e) {}
+      }
     }
     // Clean up mic stream cleanly so browser recording dot turns off
     if (micStreamRef.current) {
-      micStreamRef.current.getTracks().forEach((t) => t.stop());
+      try {
+        micStreamRef.current.getTracks().forEach((t) => t.stop());
+      } catch (e) {}
       micStreamRef.current = null;
     }
     if (audioContextRef.current) {
-      audioContextRef.current.close().catch(() => {});
+      try {
+        audioContextRef.current.close().catch(() => {});
+      } catch (e) {}
       audioContextRef.current = null;
     }
   };
