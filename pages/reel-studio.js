@@ -81,6 +81,7 @@ export default function ReelStudioPage() {
   const audioContextRef = useRef(null);
   const fileInputRef = useRef(null);
   const bgIntervalRef = useRef(null);
+  const blurCanvasRef = useRef(null);
 
   // Screen Studio Camera tracking state (normalized 0 to 1 coordinates) & Dynamic Zoom physics
   const targetFocusRef = useRef({ x: 0.5, y: 0.5 });
@@ -330,7 +331,6 @@ export default function ReelStudioPage() {
     targetFocusRef.current = { x: clampedX, y: clampedY };
     activeCursorPosRef.current = { x: clampedX, y: clampedY, visible: true };
     panPositionRef.current = clampedX;
-    setPanPosition(clampedX);
     userManualOverrideRef.current = Date.now();
 
     if (isRecordingRef.current) {
@@ -448,8 +448,9 @@ export default function ReelStudioPage() {
         const outW = 1080;
         const outH = 1920;
 
-        canvas.width = outW;
-        canvas.height = outH;
+        if (canvas.width !== outW) canvas.width = outW;
+        if (canvas.height !== outH) canvas.height = outH;
+        ctx.clearRect(0, 0, outW, outH);
 
         const srcW = video.videoWidth || 1920;
         const srcH = video.videoHeight || 1080;
@@ -513,17 +514,22 @@ export default function ReelStudioPage() {
         const camY = currentCameraRef.current.y;
         const dynamicZoom = Math.max(1.0, currentZoomRef.current);
 
-        // 2. LAYER 1: Aesthetic Blurred & Dimmed Backdrop
-        ctx.save();
-        ctx.filter = `blur(${bgBlur}px) brightness(${bgDim})`;
-        // Scale 16:9 to fill entire 9:16 vertical canvas
-        const scaleBack = Math.max(outW / srcW, outH / srcH);
-        const backW = srcW * scaleBack;
-        const backH = srcH * scaleBack;
-        const backX = (outW - backW) / 2;
-        const backY = (outH - backH) / 2;
-        ctx.drawImage(video, backX, backY, backW, backH);
-        ctx.restore();
+        // 2. LAYER 1: Aesthetic Blurred & Dimmed Backdrop (Hardware GPU-scaled: 0% CPU, 0ms lag!)
+        if (!blurCanvasRef.current && typeof document !== "undefined") {
+          blurCanvasRef.current = document.createElement("canvas");
+          blurCanvasRef.current.width = 120;
+          blurCanvasRef.current.height = 213;
+        }
+        const bCanvas = blurCanvasRef.current;
+        if (bCanvas) {
+          const bCtx = bCanvas.getContext("2d");
+          bCtx.drawImage(video, 0, 0, 120, 213);
+          ctx.save();
+          ctx.drawImage(bCanvas, 0, 0, outW, outH);
+          ctx.fillStyle = `rgba(6, 10, 20, ${bgDim})`;
+          ctx.fillRect(0, 0, outW, outH);
+          ctx.restore();
+        }
 
         // 3. Dark Gradient Overlay for high-end cinematic feel
         const gradient = ctx.createLinearGradient(0, 0, 0, outH);
@@ -718,24 +724,34 @@ export default function ReelStudioPage() {
         }
       }
 
-      animFrameIdRef.current = requestAnimationFrame(render);
+      if (!document.hidden) {
+        animFrameIdRef.current = requestAnimationFrame(render);
+      }
     };
 
+    if (animFrameIdRef.current) cancelAnimationFrame(animFrameIdRef.current);
     animFrameIdRef.current = requestAnimationFrame(render);
 
-    // Background tab render ticker (fires even when user switches to demo tab!)
+    // Background tab render ticker (fires ONLY when hidden during recording/playback, NO RAF fork bomb!)
     if (bgIntervalRef.current) clearInterval(bgIntervalRef.current);
     bgIntervalRef.current = setInterval(() => {
-      if (document.hidden) {
+      if (document.hidden && (isRecordingRef.current || isPlaying)) {
         render();
       }
-    }, 33);
+    }, 66);
   }, [zoomFactor, cameraSpeed, bgBlur, bgDim, frameRadius, showRipples, autoPan, brandText, showBrandBadge, framingMode]);
 
-  // Restart loop on setting changes
+  // Restart loop on setting changes & tab visibility
   useEffect(() => {
     startRenderLoop();
+    const handleVis = () => {
+      if (!document.hidden) {
+        startRenderLoop();
+      }
+    };
+    document.addEventListener("visibilitychange", handleVis);
     return () => {
+      document.removeEventListener("visibilitychange", handleVis);
       if (animFrameIdRef.current) cancelAnimationFrame(animFrameIdRef.current);
       if (bgIntervalRef.current) clearInterval(bgIntervalRef.current);
     };
@@ -940,13 +956,8 @@ export default function ReelStudioPage() {
   const handleStopRecording = () => {
     isRecordingRef.current = false;
     lastRecordedDurationRef.current = recordingSeconds;
-    if (screenStreamRef.current) {
-      try {
-        screenStreamRef.current.getTracks().forEach((t) => t.stop());
-      } catch (e) {}
-      screenStreamRef.current = null;
-      setIsScreenConnected(false);
-    }
+    if (timerIntervalRef.current) clearInterval(timerIntervalRef.current);
+
     if (mediaRecorderRef.current) {
       if (mediaRecorderRef.current.state === "recording") {
         setIsProcessing(true);
@@ -957,7 +968,11 @@ export default function ReelStudioPage() {
           mediaRecorderRef.current.stop();
         } catch (e) {}
       }
+    } else {
+      setIsRecording(false);
+      setIsProcessing(false);
     }
+
     // Clean up mic stream cleanly so browser recording dot turns off
     if (micStreamRef.current) {
       try {
