@@ -55,7 +55,7 @@ export default function ReelStudioPage() {
   const [zoomFactor, setZoomFactor] = useState(1.0); // Default 1.0x (Fit screen, no giant buttons!)
   const [panPosition, setPanPosition] = useState(0.5); // Smooth horizontal pan slider (0.05 to 0.95)
   const panPositionRef = useRef(0.5);
-  const [framingMode, setFramingMode] = useState("fill"); // "fill" (Tall 9:16 Vertical) | "full" (Edge-to-edge 9:16) | "classic" (16:9 Letterbox)
+  const [framingMode, setFramingMode] = useState("classic"); // "classic" (100% Whole Screen Fit, Zero Cutoffs) | "fill" (Tall 9:16 Vertical) | "full" (Edge-to-edge 9:16)
   const [focusArea, setFocusArea] = useState("center"); // "center" | "left" | "right" | "top"
   const [punchZoomOnClick, setPunchZoomOnClick] = useState(false); // Off by default to avoid sudden jumps
   const [autoZoomOnHover, setAutoZoomOnHover] = useState(false); // Off by default so zoom stays at user's slider setting
@@ -64,7 +64,7 @@ export default function ReelStudioPage() {
   const [bgDim, setBgDim] = useState(0.45); // 0 to 1
   const [frameRadius, setFrameRadius] = useState(24); // rounded corners for foreground
   const [showRipples, setShowRipples] = useState(true);
-  const [autoPan, setAutoPan] = useState(false);
+  const [autoPan, setAutoPan] = useState(true); // Smooth gliding across screen on by default
   const [brandText, setBrandText] = useState("GabbarInfo AI");
   const [showBrandBadge, setShowBrandBadge] = useState(false); // Clean video by default
   const [recordMic, setRecordMic] = useState(true); // capture user microphone voiceover
@@ -82,6 +82,8 @@ export default function ReelStudioPage() {
   const fileInputRef = useRef(null);
   const bgIntervalRef = useRef(null);
   const blurCanvasRef = useRef(null);
+  const rawScreenRecorderRef = useRef(null);
+  const rawScreenChunksRef = useRef([]);
 
   // Screen Studio Camera tracking state (normalized 0 to 1 coordinates) & Dynamic Zoom physics
   const targetFocusRef = useRef({ x: 0.5, y: 0.5 });
@@ -201,6 +203,23 @@ export default function ReelStudioPage() {
 
       screenStreamRef.current = stream;
       setIsScreenConnected(true);
+
+      // Prompt/Capture microphone upfront in direct user gesture (bypasses Chrome permissions block)
+      if (recordMic && navigator.mediaDevices?.getUserMedia) {
+        try {
+          const mic = await navigator.mediaDevices.getUserMedia({
+            audio: {
+              echoCancellation: true,
+              noiseSuppression: true,
+              autoGainControl: true,
+            },
+          });
+          micStreamRef.current = mic;
+        } catch (micErr) {
+          console.warn("Microphone access prompt error:", micErr);
+        }
+      }
+
       if (videoRef.current) {
         videoRef.current.srcObject = stream;
         videoRef.current.play();
@@ -913,6 +932,61 @@ export default function ReelStudioPage() {
       cursorTimelineRef.current = [];
       setRecordingSeconds(0);
 
+      // 5. Parallel Raw 16:9 Screen Capture (Saves the raw uncropped 16:9 desktop video into Studio for editing)
+      if (screenStreamRef.current) {
+        try {
+          rawScreenChunksRef.current = [];
+          const rawStream = new MediaStream();
+          screenStreamRef.current.getVideoTracks().forEach((vt) => rawStream.addTrack(vt));
+          const audTrack = stream.getAudioTracks()[0];
+          if (audTrack) rawStream.addTrack(audTrack);
+
+          let rawRec = null;
+          for (const m of mimeOptions) {
+            try {
+              if (MediaRecorder.isTypeSupported(m)) {
+                rawRec = new MediaRecorder(rawStream, { mimeType: m, videoBitsPerSecond: 8000000 });
+                break;
+              }
+            } catch (e) {}
+          }
+          if (!rawRec) rawRec = new MediaRecorder(rawStream);
+          rawRec.ondataavailable = (e) => {
+            if (e.data && e.data.size > 0) rawScreenChunksRef.current.push(e.data);
+          };
+          rawRec.onstop = () => {
+            try {
+              if (rawScreenChunksRef.current.length > 0) {
+                const rBlob = new Blob(rawScreenChunksRef.current, { type: rawRec.mimeType || "video/webm" });
+                if (rBlob.size > 0) {
+                  const rawUrl = URL.createObjectURL(rBlob);
+                  setSourceVideoUrl(rawUrl);
+                  setMode("upload");
+                  const v = videoRef.current;
+                  if (v) {
+                    v.srcObject = null;
+                    v.src = rawUrl;
+                    v.currentTime = 0;
+                    v.load();
+                    v.onloadeddata = () => {
+                      setDuration(v.duration || lastRecordedDurationRef.current || 10);
+                      v.play().then(() => setIsPlaying(true)).catch(() => {});
+                      startRenderLoop();
+                    };
+                  }
+                }
+              }
+            } catch (rErr) {
+              console.warn("Raw screen blob creation error:", rErr);
+            }
+          };
+          rawRec.start(100);
+          rawScreenRecorderRef.current = rawRec;
+        } catch (rawStartErr) {
+          console.warn("Could not start parallel raw screen recorder:", rawStartErr);
+        }
+      }
+
       // If video source is loaded, play from start
       const video = videoRef.current;
       if (video && sourceVideoUrl) {
@@ -957,6 +1031,15 @@ export default function ReelStudioPage() {
     isRecordingRef.current = false;
     lastRecordedDurationRef.current = recordingSeconds;
     if (timerIntervalRef.current) clearInterval(timerIntervalRef.current);
+
+    if (rawScreenRecorderRef.current && rawScreenRecorderRef.current.state === "recording") {
+      try {
+        rawScreenRecorderRef.current.requestData();
+      } catch (e) {}
+      try {
+        rawScreenRecorderRef.current.stop();
+      } catch (e) {}
+    }
 
     if (mediaRecorderRef.current) {
       if (mediaRecorderRef.current.state === "recording") {
@@ -1382,9 +1465,9 @@ export default function ReelStudioPage() {
                 </label>
                 <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 8 }}>
                   {[
-                    { id: "fill", label: "📱 Vertical Fill", desc: "3x Larger (Best for Reels)" },
+                    { id: "classic", label: "🖥️ Fit Whole 16:9", desc: "100% Screen (No Cutoffs)" },
+                    { id: "fill", label: "📱 Zoomed Pan Card", desc: "Large 9:16 + Slide L/R" },
                     { id: "full", label: "🌟 Full Bleed", desc: "Edge-to-Edge 9:16" },
-                    { id: "classic", label: "🖥️ Mini 16:9", desc: "Letterbox Center" },
                   ].map((f) => (
                     <button
                       key={f.id}
@@ -2056,6 +2139,52 @@ export default function ReelStudioPage() {
                 </button>
               </div>
 
+              {/* Quick Framing Mode Switcher directly under phone */}
+              <div style={{ display: "flex", gap: 8, width: "100%", justifyContent: "center" }}>
+                <button
+                  type="button"
+                  onClick={() => setFramingMode("classic")}
+                  style={{
+                    flex: 1,
+                    padding: "8px 12px",
+                    borderRadius: 12,
+                    background: framingMode === "classic" ? "rgba(56, 189, 248, 0.25)" : "rgba(255, 255, 255, 0.06)",
+                    border: `1.5px solid ${framingMode === "classic" ? "#38bdf8" : "rgba(255, 255, 255, 0.12)"}`,
+                    color: framingMode === "classic" ? "#38bdf8" : "#cbd5e1",
+                    fontSize: 12,
+                    fontWeight: 800,
+                    cursor: "pointer",
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "center",
+                    gap: 6,
+                  }}
+                >
+                  <span>🖥️</span> Fit Whole 16:9 Screen (No Cutoffs)
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setFramingMode("fill")}
+                  style={{
+                    flex: 1,
+                    padding: "8px 12px",
+                    borderRadius: 12,
+                    background: framingMode === "fill" ? "rgba(16, 185, 129, 0.25)" : "rgba(255, 255, 255, 0.06)",
+                    border: `1.5px solid ${framingMode === "fill" ? "#10b981" : "rgba(255, 255, 255, 0.12)"}`,
+                    color: framingMode === "fill" ? "#34d399" : "#cbd5e1",
+                    fontSize: 12,
+                    fontWeight: 800,
+                    cursor: "pointer",
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "center",
+                    gap: 6,
+                  }}
+                >
+                  <span>📱</span> Zoomed Pan Card (Slide L/R)
+                </button>
+              </div>
+
               {/* Quick Focus Targets */}
               <div style={{ display: "flex", alignItems: "center", gap: 5, flexWrap: "wrap", justifyContent: "center" }}>
                 <span style={{ fontSize: 11, fontWeight: 700, color: "#94a3b8", textTransform: "uppercase", letterSpacing: 0.5 }}>
@@ -2485,18 +2614,21 @@ export default function ReelStudioPage() {
                 controls
                 autoPlay
                 loop
-                muted
                 playsInline
                 style={{
                   width: "100%",
                   maxHeight: 320,
                   borderRadius: 14,
                   background: "#000",
-                  marginBottom: 18,
+                  marginBottom: 10,
                   border: "1px solid rgba(56, 189, 248, 0.35)",
                   boxShadow: "0 0 25px rgba(56, 189, 248, 0.15)",
                 }}
               />
+
+              <div style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 16, fontSize: 12, color: "#34d399", fontWeight: 700 }}>
+                <span>🔊</span> Audio & Voiceover Embedded
+              </div>
 
               <div style={{ display: "flex", flexDirection: "column", gap: 10, width: "100%" }}>
                 <button
@@ -2525,17 +2657,34 @@ export default function ReelStudioPage() {
                   type="button"
                   onClick={() => setShowDownloadModal(false)}
                   style={{
-                    padding: "10px 16px",
+                    padding: "11px 18px",
                     borderRadius: 10,
-                    background: "rgba(255, 255, 255, 0.08)",
-                    color: "#cbd5e1",
+                    background: "rgba(56, 189, 248, 0.15)",
+                    border: "1px solid rgba(56, 189, 248, 0.4)",
+                    color: "#38bdf8",
+                    fontWeight: 700,
+                    fontSize: 13,
+                    cursor: "pointer",
+                  }}
+                >
+                  ✏️ Edit Framing, Sliding & Pan in Studio
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => setShowDownloadModal(false)}
+                  style={{
+                    padding: "8px 14px",
+                    borderRadius: 8,
+                    background: "transparent",
+                    color: "#64748b",
                     fontWeight: 600,
-                    fontSize: 12,
+                    fontSize: 11,
                     border: "none",
                     cursor: "pointer",
                   }}
                 >
-                  Close Preview
+                  Close
                 </button>
               </div>
             </div>
