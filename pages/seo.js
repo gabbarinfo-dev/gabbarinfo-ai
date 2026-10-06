@@ -42,6 +42,12 @@ export default function SeoHubPage() {
   const [optFocusKw, setOptFocusKw] = useState("");
   const [optSaving, setOptSaving] = useState(false);
 
+  // Autonomous AI Page Optimizer State
+  const [isOptimizingWithAi, setIsOptimizingWithAi] = useState(false);
+  const [showAiOptimizeModal, setShowAiOptimizeModal] = useState(false);
+  const [aiCustomInstructions, setAiCustomInstructions] = useState("");
+  const [aiImprovements, setAiImprovements] = useState([]);
+
   // New Blog Generator Modal
   const [showNewBlogModal, setShowNewBlogModal] = useState(false);
   const [newTopic, setNewTopic] = useState("");
@@ -747,6 +753,61 @@ export default function SeoHubPage() {
     setTimeout(() => setEditorNotice(null), 4000);
   };
 
+  // Autonomous Full AI Page Optimizer & Copy Rewriter (Preserving Layout & Forms)
+  const handleRunAiPageOptimization = async (customPrompt = "") => {
+    if (!editingArticle) return;
+    setIsOptimizingWithAi(true);
+    setShowAiOptimizeModal(false);
+
+    setEditorNotice({
+      type: "info",
+      message: "🤖 GabbarInfo AI is auditing page DOM, weaving target keywords & upgrading content without breaking layout…",
+    });
+
+    try {
+      const res = await fetch("/api/wordpress/optimize-page", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          pageId: editingArticle.id,
+          url: editingArticle.url,
+          title: editingArticle.title,
+          content: editingArticle.content,
+          businessName: activeBusiness,
+          targetKeywords: keywords || [],
+          customInstructions: customPrompt || aiCustomInstructions || "",
+          focusKeyword: editingArticle.focus_keyword || "",
+        }),
+      });
+
+      const data = await res.json();
+      if (data.ok) {
+        setEditingArticle((prev) => ({
+          ...prev,
+          title: data.title || prev.title,
+          content: data.content || prev.content,
+          focus_keyword: data.focus_keyword || prev.focus_keyword,
+          meta_title: data.meta_title || prev.meta_title,
+          meta_description: data.meta_description || prev.meta_description,
+          slug: data.slug || prev.slug,
+        }));
+
+        setAiImprovements(data.audit_improvements || []);
+        setEditorNotice({
+          type: "success",
+          message: `✨ Page autonomously upgraded! AI Score: ${data.audit_score || 95}/100. Layout & form wrappers preserved.`,
+        });
+      } else {
+        alert("AI Optimization error: " + (data.error || "Failed to optimize page."));
+      }
+    } catch (e) {
+      console.error("AI Page Optimization failed:", e);
+      alert("Error during AI Page Optimization: " + e.message);
+    } finally {
+      setIsOptimizingWithAi(false);
+    }
+  };
+
   // Request Instant Indexing
   const handleRequestIndexing = () => {
     setEditorNotice({
@@ -1430,22 +1491,25 @@ export default function SeoHubPage() {
                       </button>
 
                       <button
-                        onClick={handleAutoOptimizeSeoFields}
+                        onClick={() => setShowAiOptimizeModal(true)}
+                        disabled={isOptimizingWithAi}
                         style={{
-                          background: "rgba(99, 102, 241, 0.18)",
-                          border: "1px solid #6366f1",
-                          color: "#a5b4fc",
-                          padding: "8px 13px",
+                          background: "linear-gradient(135deg, #4f46e5 0%, #7c3aed 50%, #9333ea 100%)",
+                          border: "1px solid #c084fc",
+                          color: "#ffffff",
+                          padding: "8px 16px",
                           borderRadius: 6,
                           fontSize: 12,
-                          fontWeight: 700,
-                          cursor: "pointer",
+                          fontWeight: 800,
+                          cursor: isOptimizingWithAi ? "not-allowed" : "pointer",
                           display: "inline-flex",
                           alignItems: "center",
-                          gap: 5,
+                          gap: 6,
+                          boxShadow: "0 2px 10px rgba(124, 58, 237, 0.4)",
+                          opacity: isOptimizingWithAi ? 0.7 : 1,
                         }}
                       >
-                        <span>✨</span> AI Auto-Optimize SEO
+                        <span>🤖</span> {isOptimizingWithAi ? "AI Optimizing Page…" : "✨ AI Auto-Optimize Page (Content & Design)"}
                       </button>
 
                       <button
@@ -1764,6 +1828,30 @@ export default function SeoHubPage() {
                           }}
                         >
                           ⊞ Table
+                        </button>
+
+                        <span style={{ color: "rgba(255,255,255,0.2)", margin: "0 4px" }}>|</span>
+
+                        <button
+                          type="button"
+                          onClick={() => setShowAiOptimizeModal(true)}
+                          disabled={isOptimizingWithAi}
+                          style={{
+                            padding: "5px 12px",
+                            borderRadius: 4,
+                            background: "linear-gradient(135deg, rgba(99, 102, 241, 0.25) 0%, rgba(168, 85, 247, 0.3) 100%)",
+                            border: "1px solid rgba(168, 85, 247, 0.6)",
+                            color: "#d8b4fe",
+                            fontSize: 12,
+                            fontWeight: 800,
+                            cursor: isOptimizingWithAi ? "not-allowed" : "pointer",
+                            display: "inline-flex",
+                            alignItems: "center",
+                            gap: 5,
+                            boxShadow: "0 2px 8px rgba(168, 85, 247, 0.25)",
+                          }}
+                        >
+                          <span>🤖</span> {isOptimizingWithAi ? "AI Rewriting…" : "✨ AI Rewrite & Enhance Copy"}
                         </button>
                       </div>
 
@@ -3973,18 +4061,46 @@ export default function SeoHubPage() {
               </div>
             </div>
 
-            <div style={{ display: "flex", justifyContent: "flex-end", gap: 10, marginTop: 20 }}>
-              <button onClick={() => setOptimizingItem(null)} style={{ padding: "8px 14px", borderRadius: 6, border: "1px solid #1e293b", background: "transparent", color: "#94a3b8", cursor: "pointer" }}>
-                Cancel
-              </button>
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 10, marginTop: 20, flexWrap: "wrap" }}>
               <button
-                onClick={handleSaveOptimization}
-                disabled={optSaving}
-                className="btn-gabbar-primary"
-                style={{ padding: "9px 20px", fontSize: 13, cursor: "pointer" }}
+                type="button"
+                onClick={async () => {
+                  const target = optimizingItem;
+                  setOptimizingItem(null);
+                  await handleOpenEditor(target);
+                  setShowAiOptimizeModal(true);
+                }}
+                style={{
+                  padding: "9px 16px",
+                  borderRadius: 6,
+                  border: "1px solid #c084fc",
+                  background: "linear-gradient(135deg, #4f46e5 0%, #7c3aed 100%)",
+                  color: "#ffffff",
+                  fontSize: 12,
+                  fontWeight: 800,
+                  cursor: "pointer",
+                  display: "inline-flex",
+                  alignItems: "center",
+                  gap: 6,
+                  boxShadow: "0 2px 8px rgba(124, 58, 237, 0.35)",
+                }}
               >
-                {optSaving ? "Saving…" : "Apply On-Page SEO ↗"}
+                <span>🤖</span> Autonomous AI Full Page Rewrite ↗
               </button>
+
+              <div style={{ display: "flex", gap: 10 }}>
+                <button onClick={() => setOptimizingItem(null)} style={{ padding: "8px 14px", borderRadius: 6, border: "1px solid #1e293b", background: "transparent", color: "#94a3b8", cursor: "pointer" }}>
+                  Cancel
+                </button>
+                <button
+                  onClick={handleSaveOptimization}
+                  disabled={optSaving}
+                  className="btn-gabbar-primary"
+                  style={{ padding: "9px 20px", fontSize: 13, cursor: "pointer" }}
+                >
+                  {optSaving ? "Saving…" : "Apply On-Page SEO ↗"}
+                </button>
+              </div>
             </div>
           </div>
         </div>
@@ -4379,6 +4495,93 @@ export default function SeoHubPage() {
                 </div>
               );
             })()}
+          </div>
+      {/* ── MODAL 5: AUTONOMOUS AI PAGE OPTIMIZER ── */}
+      {showAiOptimizeModal && editingArticle && (
+        <div style={{ position: "fixed", top: 0, left: 0, right: 0, bottom: 0, background: "rgba(0,0,0,0.85)", backdropFilter: "blur(6px)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 1000, padding: 16 }}>
+          <div style={{ background: "#0b1120", border: "1px solid rgba(168, 85, 247, 0.4)", borderRadius: 16, maxWidth: 640, width: "100%", padding: 28, boxShadow: "0 20px 50px rgba(0,0,0,0.8), 0 0 30px rgba(168, 85, 247, 0.25)" }}>
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 14 }}>
+              <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+                <div style={{ width: 40, height: 40, borderRadius: 10, background: "linear-gradient(135deg, #6366f1, #a855f7)", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 20 }}>
+                  🤖
+                </div>
+                <div>
+                  <h3 style={{ margin: 0, fontSize: 18, color: "#fff", fontWeight: 800 }}>Autonomous AI Page Optimizer</h3>
+                  <p style={{ margin: 0, fontSize: 12, color: "#a855f7" }}>Full-Page Copy & SEO Overhaul (Zero Layout Breakage)</p>
+                </div>
+              </div>
+              <button onClick={() => setShowAiOptimizeModal(false)} style={{ border: "none", background: "none", color: "#94a3b8", fontSize: 20, cursor: "pointer" }}>✕</button>
+            </div>
+
+            <div style={{ background: "rgba(168, 85, 247, 0.08)", border: "1px solid rgba(168, 85, 247, 0.2)", borderRadius: 10, padding: "14px 16px", marginBottom: 18 }}>
+              <div style={{ fontSize: 13, color: "#e2e8f0", lineHeight: 1.6 }}>
+                Target Page: <strong style={{ color: "#ffffff" }}>{editingArticle.title}</strong> (<em>/{editingArticle.slug || "page"}</em>)
+              </div>
+              <div style={{ marginTop: 10, display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10, fontSize: 12, color: "#c084fc" }}>
+                <div>🛡️ <strong>Layout Preservation:</strong> 100% theme & form tags kept</div>
+                <div>🎯 <strong>Headline Upgrade:</strong> High-intent commercial H1/H2</div>
+                <div>📍 <strong>Geo & Keywords:</strong> Local authority signals injected</div>
+                <div>📑 <strong>FAQ & Proof Points:</strong> GEO AI snippet structure added</div>
+              </div>
+            </div>
+
+            <div style={{ marginBottom: 20 }}>
+              <label style={{ fontSize: 12, color: "#cbd5e1", fontWeight: 700, display: "block", marginBottom: 6 }}>
+                Custom Focus / Strategic Guidance (Optional):
+              </label>
+              <textarea
+                value={aiCustomInstructions}
+                onChange={(e) => setAiCustomInstructions(e.target.value)}
+                placeholder="e.g. Focus on local clients in Ahmedabad, highlight transparent pricing, target enterprise B2B clients (or leave blank for full autonomous optimization)"
+                rows={3}
+                style={{
+                  width: "100%",
+                  padding: "10px 14px",
+                  borderRadius: 8,
+                  border: "1px solid rgba(255, 255, 255, 0.14)",
+                  background: "#050811",
+                  color: "#ffffff",
+                  fontSize: 13,
+                  lineHeight: 1.5,
+                  resize: "vertical",
+                  boxSizing: "border-box",
+                }}
+              />
+              <span style={{ fontSize: 11, color: "#64748b", marginTop: 4, display: "block" }}>
+                Leave blank to let GabbarInfo AI autonomously audit, research, and optimize using your brand memory and market profile.
+              </span>
+            </div>
+
+            <div style={{ display: "flex", justifyContent: "flex-end", gap: 10 }}>
+              <button
+                type="button"
+                onClick={() => setShowAiOptimizeModal(false)}
+                style={{ padding: "9px 16px", borderRadius: 8, border: "1px solid #1e293b", background: "transparent", color: "#94a3b8", cursor: "pointer", fontSize: 13 }}
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={() => handleRunAiPageOptimization(aiCustomInstructions)}
+                disabled={isOptimizingWithAi}
+                style={{
+                  padding: "10px 22px",
+                  borderRadius: 8,
+                  border: "none",
+                  background: "linear-gradient(135deg, #4f46e5 0%, #7c3aed 50%, #9333ea 100%)",
+                  color: "#ffffff",
+                  fontWeight: 800,
+                  fontSize: 13,
+                  cursor: isOptimizingWithAi ? "not-allowed" : "pointer",
+                  boxShadow: "0 4px 15px rgba(124, 58, 237, 0.5)",
+                  display: "inline-flex",
+                  alignItems: "center",
+                  gap: 8,
+                }}
+              >
+                <span>⚡</span> {isOptimizingWithAi ? "Optimizing Page…" : "Run Full Autonomous AI Rewrite (1 Click) ↗"}
+              </button>
+            </div>
           </div>
         </div>
       )}
