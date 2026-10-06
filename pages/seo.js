@@ -782,10 +782,18 @@ export default function SeoHubPage() {
           targetKeywords: keywords || [],
           customInstructions: customPrompt || aiCustomInstructions || "",
           focusKeyword: editingArticle.focus_keyword || "",
+          userEmail: session?.user?.email,
         }),
       });
 
-      const data = await res.json();
+      const resText = await res.text();
+      let data;
+      try {
+        data = JSON.parse(resText);
+      } catch (parseErr) {
+        throw new Error(`Server returned status ${res.status}: ${resText.slice(0, 160) || "Gateway Timeout / Execution Error"}`);
+      }
+
       if (data.ok) {
         setEditingArticle((prev) => ({
           ...prev,
@@ -1501,22 +1509,29 @@ export default function SeoHubPage() {
                         onClick={() => setShowAiOptimizeModal(true)}
                         disabled={isOptimizingWithAi}
                         style={{
-                          background: "linear-gradient(135deg, #4f46e5 0%, #7c3aed 50%, #9333ea 100%)",
-                          border: "1px solid #c084fc",
+                          background: isOptimizingWithAi
+                            ? "linear-gradient(135deg, #7c3aed 0%, #ec4899 50%, #8b5cf6 100%)"
+                            : "linear-gradient(135deg, #4f46e5 0%, #7c3aed 50%, #9333ea 100%)",
+                          border: isOptimizingWithAi ? "2px solid #f43f5e" : "1px solid #c084fc",
                           color: "#ffffff",
                           padding: "8px 16px",
                           borderRadius: 6,
                           fontSize: 12,
                           fontWeight: 800,
-                          cursor: isOptimizingWithAi ? "not-allowed" : "pointer",
+                          cursor: isOptimizingWithAi ? "wait" : "pointer",
                           display: "inline-flex",
                           alignItems: "center",
                           gap: 6,
-                          boxShadow: "0 2px 10px rgba(124, 58, 237, 0.4)",
-                          opacity: isOptimizingWithAi ? 0.7 : 1,
+                          boxShadow: isOptimizingWithAi
+                            ? "0 0 20px rgba(236, 72, 153, 0.7), 0 0 35px rgba(139, 92, 246, 0.5)"
+                            : "0 2px 10px rgba(124, 58, 237, 0.4)",
+                          animation: isOptimizingWithAi ? "pulse 1s infinite alternate" : "none",
                         }}
                       >
-                        <span>🤖</span> {isOptimizingWithAi ? "AI Optimizing Page…" : "✨ AI Auto-Optimize Page (Content & Design)"}
+                        <span style={{ display: "inline-block", animation: isOptimizingWithAi ? "spin 1.5s linear infinite" : "none" }}>
+                          {isOptimizingWithAi ? "⏳" : "🤖"}
+                        </span>
+                        {isOptimizingWithAi ? "AI Optimizing Page… (Rewriting Content & Design)" : "✨ AI Auto-Optimize Page (Content & Design)"}
                       </button>
 
                       <button
@@ -1590,6 +1605,34 @@ export default function SeoHubPage() {
                       </button>
                     </div>
                   </div>
+
+                  {/* ── ACTIVE AI PROCESSING FULL-WIDTH GLOWING BANNER ── */}
+                  {isOptimizingWithAi && (
+                    <div
+                      style={{
+                        background: "linear-gradient(135deg, rgba(99, 102, 241, 0.25) 0%, rgba(168, 85, 247, 0.3) 50%, rgba(236, 72, 153, 0.25) 100%)",
+                        border: "2px solid #c084fc",
+                        borderRadius: 12,
+                        padding: "16px 22px",
+                        boxShadow: "0 0 25px rgba(168, 85, 247, 0.45)",
+                        display: "flex",
+                        alignItems: "center",
+                        gap: 16,
+                        animation: "pulse 1.2s infinite alternate",
+                      }}
+                    >
+                      <div style={{ fontSize: 32, animation: "spin 2s linear infinite" }}>⚙️</div>
+                      <div style={{ flex: 1 }}>
+                        <div style={{ fontSize: 15, fontWeight: 900, color: "#ffffff", display: "flex", alignItems: "center", gap: 10 }}>
+                          🤖 AI Autonomous Page Rewrite In Progress…
+                          <span style={{ fontSize: 11, background: "#e11d48", color: "#fff", padding: "2px 10px", borderRadius: 12, fontWeight: 800 }}>LIVE PROCESSING</span>
+                        </div>
+                        <div style={{ fontSize: 12, color: "#e2e8f0", marginTop: 4 }}>
+                          Auditing page DOM, rewriting headings & body copy, injecting local & internal links without breaking your Elementor layout or forms. Please hold on (~3 to 5 seconds)…
+                        </div>
+                      </div>
+                    </div>
+                  )}
 
                   {/* ── PRE VS POST AI OPTIMIZATION AUDIT REPORT CARD ── */}
                   {aiPostScore && (
@@ -1909,19 +1952,22 @@ export default function SeoHubPage() {
                           style={{
                             padding: "5px 12px",
                             borderRadius: 4,
-                            background: "linear-gradient(135deg, rgba(99, 102, 241, 0.25) 0%, rgba(168, 85, 247, 0.3) 100%)",
-                            border: "1px solid rgba(168, 85, 247, 0.6)",
-                            color: "#d8b4fe",
+                            background: isOptimizingWithAi
+                              ? "linear-gradient(135deg, rgba(236, 72, 153, 0.4) 0%, rgba(168, 85, 247, 0.5) 100%)"
+                              : "linear-gradient(135deg, rgba(99, 102, 241, 0.25) 0%, rgba(168, 85, 247, 0.3) 100%)",
+                            border: isOptimizingWithAi ? "1px solid #f43f5e" : "1px solid rgba(168, 85, 247, 0.6)",
+                            color: isOptimizingWithAi ? "#fecdd3" : "#d8b4fe",
                             fontSize: 12,
                             fontWeight: 800,
-                            cursor: isOptimizingWithAi ? "not-allowed" : "pointer",
+                            cursor: isOptimizingWithAi ? "wait" : "pointer",
                             display: "inline-flex",
                             alignItems: "center",
                             gap: 5,
-                            boxShadow: "0 2px 8px rgba(168, 85, 247, 0.25)",
+                            boxShadow: isOptimizingWithAi ? "0 0 12px rgba(244, 63, 94, 0.6)" : "0 2px 8px rgba(168, 85, 247, 0.25)",
+                            animation: isOptimizingWithAi ? "pulse 1s infinite alternate" : "none",
                           }}
                         >
-                          <span>🤖</span> {isOptimizingWithAi ? "AI Rewriting…" : "✨ AI Rewrite & Enhance Copy"}
+                          <span>{isOptimizingWithAi ? "⏳" : "🤖"}</span> {isOptimizingWithAi ? "AI Rewriting Copy…" : "✨ AI Rewrite & Enhance Copy"}
                         </button>
                       </div>
 
