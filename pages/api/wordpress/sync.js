@@ -322,20 +322,133 @@ export default async function handler(req, res) {
     // 5. LIST CONTENT (Posts and Pages)
     // ----------------------------------------------------------------
     if (action === "list-content") {
-      const queryParams = new URLSearchParams();
-      if (type) queryParams.set("type", type);
-      if (per_page) queryParams.set("per_page", per_page);
+      const requestedType = type && type !== "all" ? type : null;
+      const limit = per_page ? parseInt(per_page, 10) : 100;
+      const authHeader = {
+        Accept: "application/json",
+        Authorization: `Bearer ${activeKey}`,
+      };
 
-      const resp = await fetch(`${activeUrl}/wp-json/gabbarinfo/v1/list-content?${queryParams.toString()}`, {
-        method: "GET",
-        headers: {
-          Accept: "application/json",
-          Authorization: `Bearer ${activeKey}`,
-        },
+      // Helper to map standard WP REST item to SEO Suite schema if fallback needed
+      const mapStandardWpItem = (p, defaultType) => ({
+        id: p.id,
+        title: p.title?.rendered ? p.title.rendered.replace(/<[^>]+>/g, "").trim() : (p.slug || "Untitled"),
+        slug: p.slug,
+        url: p.link || p.url,
+        type: p.type || defaultType,
+        status: p.status || "publish",
+        date: p.date,
+        modified: p.modified,
+        word_count: p.content?.rendered ? p.content.rendered.replace(/<[^>]+>/g, " ").trim().split(/\s+/).filter(Boolean).length : 0,
+        excerpt: p.excerpt?.rendered ? p.excerpt.rendered.replace(/<[^>]+>/g, "").trim() : "",
+        featured_image: p.featured_media_src_url || null,
+        image_alt: "",
+        categories: [],
+        meta_title: p.yoast_head_json?.title || "",
+        meta_desc: p.yoast_head_json?.description || p.yoast_head_json?.og_description || "",
+        focus_keyword: "",
+        is_agent_created: false,
+        edit_count: 0,
+        edits_remaining: 0,
+        requires_credit: true,
+        is_custom_template: false,
+        template_file: "",
+        bypasses_db_content: false,
       });
 
-      const data = await resp.json().catch(() => ({}));
-      return res.status(resp.ok ? 200 : resp.status).json(data);
+      // Case A: Specific type requested ("page" or "post")
+      if (requestedType) {
+        let resp = await fetch(`${activeUrl}/wp-json/gabbarinfo/v1/list-content?type=${requestedType}&per_page=${limit}`, {
+          method: "GET",
+          headers: authHeader,
+        }).catch(() => null);
+
+        let data = resp && resp.ok ? await resp.json().catch(() => null) : null;
+
+        // Fallback to standard WP REST API if plugin endpoint failed or returned empty
+        if (!data || !data.ok || !Array.isArray(data.items) || data.items.length === 0) {
+          const wpEndpoint = requestedType === "page" ? "pages" : "posts";
+          const fallbackResp = await fetch(`${activeUrl}/wp-json/wp/v2/${wpEndpoint}?per_page=${limit}&status=publish`, {
+            method: "GET",
+            headers: authHeader,
+          }).catch(() => null);
+
+          if (fallbackResp && fallbackResp.ok) {
+            const rawWp = await fallbackResp.json().catch(() => []);
+            if (Array.isArray(rawWp) && rawWp.length > 0) {
+              const mapped = rawWp.map((p) => mapStandardWpItem(p, requestedType));
+              return res.status(200).json({ ok: true, total: mapped.length, items: mapped });
+            }
+          }
+        }
+
+        return res.status(resp && resp.ok ? 200 : (resp?.status || 400)).json(data || { ok: false, error: "Failed to fetch content" });
+      }
+
+      // Case B: Default - Fetch BOTH Pages AND Posts independently in parallel
+      // This prevents blog posts from eating up the page slots in shared query caps
+      const [pagesResp, postsResp] = await Promise.all([
+        fetch(`${activeUrl}/wp-json/gabbarinfo/v1/list-content?type=page&per_page=100`, {
+          method: "GET",
+          headers: authHeader,
+        }).catch(() => null),
+        fetch(`${activeUrl}/wp-json/gabbarinfo/v1/list-content?type=post&per_page=100`, {
+          method: "GET",
+          headers: authHeader,
+        }).catch(() => null),
+      ]);
+
+      const pagesData = pagesResp && pagesResp.ok ? await pagesResp.json().catch(() => null) : null;
+      const postsData = postsResp && postsResp.ok ? await postsResp.json().catch(() => null) : null;
+
+      let pageItems = pagesData?.ok && Array.isArray(pagesData?.items) ? pagesData.items : [];
+      let postItems = postsData?.ok && Array.isArray(postsData?.items) ? postsData.items : [];
+
+      // Fallback: If plugin returned empty pages (or plugin not active), query standard WP REST API /wp/v2/pages
+      if (pageItems.length === 0) {
+        try {
+          const wpPagesResp = await fetch(`${activeUrl}/wp-json/wp/v2/pages?per_page=100`, {
+            headers: authHeader,
+          });
+          if (wpPagesResp.ok) {
+            const rawPages = await wpPagesResp.json().catch(() => []);
+            if (Array.isArray(rawPages)) {
+              pageItems = rawPages.map((p) => mapStandardWpItem(p, "page"));
+            }
+          }
+        } catch (_) {}
+      }
+
+      // Fallback: If plugin returned empty posts, query standard WP REST API /wp/v2/posts
+      if (postItems.length === 0) {
+        try {
+          const wpPostsResp = await fetch(`${activeUrl}/wp-json/wp/v2/posts?per_page=100`, {
+            headers: authHeader,
+          });
+          if (wpPostsResp.ok) {
+            const rawPosts = await wpPostsResp.json().catch(() => []);
+            if (Array.isArray(rawPosts)) {
+              postItems = rawPosts.map((p) => mapStandardWpItem(p, "post"));
+            }
+          }
+        } catch (_) {}
+      }
+
+      // Deduplicate by ID and combine
+      const seenIds = new Set();
+      const combinedItems = [];
+      for (const item of [...pageItems, ...postItems]) {
+        if (!seenIds.has(item.id)) {
+          seenIds.add(item.id);
+          combinedItems.push(item);
+        }
+      }
+
+      return res.status(200).json({
+        ok: true,
+        total: combinedItems.length,
+        items: combinedItems,
+      });
     }
 
     // ----------------------------------------------------------------

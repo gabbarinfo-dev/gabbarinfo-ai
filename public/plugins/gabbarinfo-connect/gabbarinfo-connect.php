@@ -751,12 +751,16 @@ document.addEventListener('DOMContentLoaded', function() {
         $type_param = $request->get_param( 'type' );
         $post_types = ( ! empty( $type_param ) && in_array( $type_param, array( 'post', 'page' ) ) ) ? array( $type_param ) : array( 'post', 'page' );
         $per_page = intval( $request->get_param( 'per_page' ) );
-        if ( $per_page <= 0 || $per_page > 100 ) $per_page = 50;
+        if ( $per_page <= 0 ) $per_page = 100;
+        if ( $per_page > 250 ) $per_page = 250;
+        $paged = intval( $request->get_param( 'page' ) );
+        if ( $paged <= 0 ) $paged = 1;
 
         $query = new WP_Query( array(
             'post_type'      => $post_types,
             'post_status'    => array( 'publish', 'draft', 'pending', 'future' ),
             'posts_per_page' => $per_page,
+            'paged'          => $paged,
             'orderby'        => 'date',
             'order'          => 'DESC',
         ) );

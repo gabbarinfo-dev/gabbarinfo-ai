@@ -419,7 +419,7 @@ export default function SeoHubPage() {
           siteUrl: conn?.siteUrl || connection?.siteUrl,
           apiKey: conn?.apiKey || connection?.apiKey,
           businessName: activeBusiness,
-          per_page: 50,
+          per_page: 100,
         }),
       });
       const data = await res.json();
@@ -2333,7 +2333,7 @@ export default function SeoHubPage() {
                       flexShrink: 0,
                     }}
                   >
-                    {loadingContent ? "Syncing…" : "🔄 Sync WP Posts"}
+                    {loadingContent ? "Syncing…" : "🔄 Sync WP Posts & Pages"}
                   </button>
                 </div>
 

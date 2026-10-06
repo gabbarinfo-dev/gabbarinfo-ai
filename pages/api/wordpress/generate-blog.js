@@ -532,8 +532,8 @@ export async function executeBlogGeneration({
       }
 
       const [postsResp, pagesResp] = await Promise.all([
-        fetch(`${siteUrl}/wp-json/wp/v2/posts?per_page=20&_fields=id,title,slug,link`, { headers: wpReqHeaders }),
-        fetch(`${siteUrl}/wp-json/wp/v2/pages?per_page=15&_fields=id,title,slug,link`, { headers: wpReqHeaders })
+        fetch(`${siteUrl}/wp-json/wp/v2/posts?per_page=50&_fields=id,title,slug,link`, { headers: wpReqHeaders }),
+        fetch(`${siteUrl}/wp-json/wp/v2/pages?per_page=100&_fields=id,title,slug,link`, { headers: wpReqHeaders })
       ]);
       if (postsResp.ok) {
         const rawPosts = await postsResp.json();
