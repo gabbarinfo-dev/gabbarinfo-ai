@@ -23,6 +23,7 @@ const {
   executeMetaCampaign,
   executeFullMetaCampaign,
 } = require("./lib/meta-campaign-service");
+const { optimizePageContent } = require("./lib/seo-page-optimizer");
 
 const app = express();
 app.use(cors());
@@ -2831,6 +2832,89 @@ app.post(["/meta/jobs/create-campaign", "/meta/jobs/create"], requireAuth, async
     });
   } catch (err) {
     log("META_CAMPAIGN", `Error queueing background campaign job: ${err.message}`);
+    res.status(500).json({ ok: false, error: err.message });
+  }
+});
+
+// -------------------------------------------------------------
+// Asynchronous Background SEO Page Optimization Job (Zero Vercel Timeout)
+// -------------------------------------------------------------
+app.post(["/seo/jobs/optimize-page", "/seo/jobs/create"], requireAuth, async (req, res) => {
+  try {
+    const {
+      userEmail,
+      openaiApiKey,
+      pageId,
+      url,
+      title,
+      content,
+      businessName,
+      targetKeywords,
+      customInstructions,
+      focusKeyword,
+    } = req.body || {};
+
+    if (!title && !content) {
+      return res.status(400).json({ ok: false, error: "Title or content is required." });
+    }
+
+    const jobId = `seo_job_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`;
+    const job = {
+      id: jobId,
+      type: "seo_page_optimize",
+      userEmail: userEmail || "direct",
+      title: title || "Page Optimization",
+      status: "processing",
+      progress: 10,
+      stage: "Auditing page DOM & volumetric sections...",
+      result: null,
+      error: null,
+      createdAt: new Date().toISOString(),
+    };
+    jobs.set(jobId, job);
+    log(jobId, `[AsyncSeoJob] Queued background SEO page optimization job for "${title}" (${userEmail || "direct"})`);
+
+    // Respond immediately in <100ms so Vercel NEVER times out
+    res.json({ ok: true, jobId, status: "processing", title });
+
+    // Execute the complete orchestration pipeline in the background on Railway
+    setImmediate(async () => {
+      try {
+        job.progress = 35;
+        job.stage = "Rewriting macro sections to embody strategic directives...";
+        log(jobId, `Beginning section rewrite for "${title}"...`);
+
+        const result = await optimizePageContent({
+          openaiClient: openai,
+          openaiApiKey,
+          supabaseClient: supabase,
+          userEmail,
+          pageId,
+          url,
+          title,
+          content,
+          businessName,
+          targetKeywords,
+          customInstructions,
+          focusKeyword,
+          logger: (msg) => log(jobId, msg),
+        });
+
+        job.status = "completed";
+        job.progress = 100;
+        job.stage = "Page optimized successfully with 1:1 volumetric slot budgeting!";
+        job.completedAt = new Date().toISOString();
+        job.result = result;
+        log(jobId, `SEO optimization job completed successfully for "${title}"`);
+      } catch (err) {
+        log(jobId, `SEO optimization job failed: ${err.message}`);
+        job.status = "failed";
+        job.error = err.message;
+        job.completedAt = new Date().toISOString();
+      }
+    });
+  } catch (err) {
+    log("SEO_JOB", `Error queueing SEO optimization job: ${err.message}`);
     res.status(500).json({ ok: false, error: err.message });
   }
 });

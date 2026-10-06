@@ -807,6 +807,51 @@ export default function SeoHubPage() {
         throw new Error(`Server returned status ${res.status}: ${resText.slice(0, 160) || "Gateway Timeout / Execution Error"}`);
       }
 
+      // If offloaded to Railway background worker, poll until completion with live stage updates
+      if (data.ok && data.isAsync && data.jobId) {
+        const jobId = data.jobId;
+        setEditorNotice({
+          type: "info",
+          message: "🚀 Background worker engaged (zero timeouts). Auditing & optimizing page sections...",
+        });
+
+        let completedData = null;
+        const maxPollAttempts = 90; // up to 3 minutes
+        for (let attempt = 0; attempt < maxPollAttempts; attempt++) {
+          await new Promise((r) => setTimeout(r, 2000));
+          try {
+            const statusRes = await fetch(`/api/wordpress/optimize-status?jobId=${encodeURIComponent(jobId)}`);
+            if (statusRes.ok) {
+              const sData = await statusRes.json();
+              if (sData.stage) {
+                const pct = sData.progress || Math.min(95, 10 + attempt * 2);
+                setEditorNotice({
+                  type: "info",
+                  message: `🤖 ${sData.stage} (${pct}%)`,
+                });
+              }
+              if (sData.status === "completed" && sData.result) {
+                completedData = sData.result;
+                break;
+              }
+              if (sData.status === "failed") {
+                throw new Error(sData.error || "Optimization job failed on background worker.");
+              }
+            }
+          } catch (pollErr) {
+            if (pollErr.message && pollErr.message.includes("failed on background worker")) {
+              throw pollErr;
+            }
+            console.warn("Poll attempt notice:", pollErr.message);
+          }
+        }
+
+        if (!completedData) {
+          throw new Error("Optimization job timed out waiting for worker. Please try again.");
+        }
+        data = completedData;
+      }
+
       if (data.ok) {
         setEditingArticle((prev) => {
           const isPage = prev.post_type === "page" || prev.type === "page" || !prev.post_type;
