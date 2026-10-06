@@ -606,6 +606,12 @@ export default async function handler(req, res) {
         reservationId = quotaRes.reservationId;
       }
 
+      // Protect WordPress Navigation Menus: Never let long H1 headlines overwrite menu link titles
+      const isPage = payload.post_type === "page" || payload.type === "page";
+      if (isPage && payload.title && payload.title.length > 45) {
+        payload.preserve_title = true;
+      }
+
       let resp;
       try {
         resp = await fetch(`${activeUrl}/wp-json/gabbarinfo/v1/update-content`, {

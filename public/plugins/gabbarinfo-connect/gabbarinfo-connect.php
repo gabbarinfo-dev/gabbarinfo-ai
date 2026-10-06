@@ -3,7 +3,7 @@
  * Plugin Name: GabbarInfo AI Connect
  * Plugin URI: https://gabbarinfo.ai/
  * Description: Connects your WordPress & WooCommerce site to GabbarInfo AI for automated Google Ads conversion tracking (gtag.js), Meta Pixel, dynamic purchase tracking, and autonomous SEO & blogging.
- * Version: 1.2.0
+ * Version: 1.3.0
  * Author: GabbarInfo AI
  * Author URI: https://gabbarinfo.ai/
  * License: GPL v2 or later
@@ -16,7 +16,7 @@ if ( ! defined( 'ABSPATH' ) ) {
 
 class GabbarInfo_Connect {
 
-    const VERSION = '1.2.0';
+    const VERSION = '1.3.0';
     const OPTION_GROUP = 'gabbarinfo_settings_group';
 
     public function __construct() {
@@ -965,9 +965,19 @@ document.addEventListener('DOMContentLoaded', function() {
             return new WP_Error( 'invalid_post', 'Post ID or valid URL required.', array( 'status' => 400 ) );
         }
 
+        $is_page = get_post_type( $post_id ) === 'page';
+        $curr_title = get_the_title( $post_id );
+
         $update_data = array( 'ID' => $post_id );
         if ( isset( $params['title'] ) ) {
-            $update_data['post_title'] = sanitize_text_field( $params['title'] );
+            $new_title = sanitize_text_field( $params['title'] );
+            // Safeguard navigation menus: If it's a page and preserve_title is set, OR if the new title is a long headline (> 45 chars) while current title is clean (< 40 chars), protect existing menu title!
+            if ( $is_page && ( ! empty( $params['preserve_title'] ) || ( strlen( $new_title ) > 45 && strlen( $curr_title ) < 40 ) ) ) {
+                // Keep the existing short menu title untouched
+                unset( $update_data['post_title'] );
+            } else {
+                $update_data['post_title'] = $new_title;
+            }
         }
         if ( isset( $params['content'] ) ) {
             $update_data['post_content'] = wp_kses_post( $params['content'] );
@@ -987,6 +997,9 @@ document.addEventListener('DOMContentLoaded', function() {
         if ( is_wp_error( $res ) ) {
             return new WP_Error( 'update_failed', $res->get_error_message(), array( 'status' => 500 ) );
         }
+
+        // Mark page for dynamic template rendering so hardcoded theme templates output the new content
+        update_post_meta( $post_id, '_gabbarinfo_render_optimized_content', '1' );
 
         // Attach Featured Image if supplied
         if ( ! empty( $params['featured_image_url'] ) ) {
@@ -1034,6 +1047,25 @@ document.addEventListener('DOMContentLoaded', function() {
         update_post_meta( $post_id, '_gabbarinfo_edit_count', $new_edits );
         $is_agent_created = get_post_meta( $post_id, '_gabbarinfo_agent_created', true ) === '1';
 
+        // Purge caches across WordPress and caching plugins
+        clean_post_cache( $post_id );
+        wp_cache_delete( $post_id, 'posts' );
+        if ( has_action( 'litespeed_purge_post' ) ) {
+            do_action( 'litespeed_purge_post', $post_id );
+        }
+        if ( function_exists( 'rocket_clean_post' ) ) {
+            rocket_clean_post( $post_id );
+        }
+        if ( function_exists( 'w3tc_flush_post' ) ) {
+            w3tc_flush_post( $post_id );
+        }
+        if ( function_exists( 'wp_cache_post_change' ) ) {
+            wp_cache_post_change( $post_id );
+        }
+        if ( class_exists( 'autoptimizeCache' ) && method_exists( 'autoptimizeCache', 'clearall' ) ) {
+            autoptimizeCache::clearall();
+        }
+
         return rest_ensure_response( array(
             'ok'               => true,
             'post_id'          => $post_id,
@@ -1041,7 +1073,7 @@ document.addEventListener('DOMContentLoaded', function() {
             'is_agent_created' => $is_agent_created,
             'edit_count'       => $new_edits,
             'edits_remaining'  => $is_agent_created ? max( 0, 2 - $new_edits ) : 0,
-            'message'          => 'Content and SEO updated successfully.',
+            'message'          => 'Content and SEO updated successfully with menu protection & cache purge.',
         ) );
     }
 
@@ -1208,8 +1240,11 @@ document.addEventListener('DOMContentLoaded', function() {
     }
 
     /**
-     * Guarantees that single post articles are ALWAYS rendered with full content and clean styling
-     * even if the active theme only has index.php and forgot to implement single.php.
+     * Guarantees that:
+     * 1. Single post articles are ALWAYS rendered with full content and clean styling
+     *    even if the active theme only has index.php and forgot to implement single.php.
+     * 2. AI-Optimized Pages dynamically render their full database content via page-optimized.php
+     *    even if the active theme template hardcodes static HTML.
      */
     public function filter_single_post_template( $template ) {
         if ( is_singular( 'post' ) ) {
@@ -1218,6 +1253,17 @@ document.addEventListener('DOMContentLoaded', function() {
                 $fallback = plugin_dir_path( __FILE__ ) . 'templates/single-post.php';
                 if ( file_exists( $fallback ) ) {
                     return $fallback;
+                }
+            }
+        } elseif ( is_page() || is_singular( 'page' ) ) {
+            $post_id = get_queried_object_id();
+            if ( ! $post_id ) {
+                $post_id = get_the_ID();
+            }
+            if ( $post_id && get_post_meta( $post_id, '_gabbarinfo_render_optimized_content', true ) === '1' ) {
+                $page_fallback = plugin_dir_path( __FILE__ ) . 'templates/page-optimized.php';
+                if ( file_exists( $page_fallback ) ) {
+                    return $page_fallback;
                 }
             }
         }

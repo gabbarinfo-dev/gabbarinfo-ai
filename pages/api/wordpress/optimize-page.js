@@ -120,23 +120,30 @@ CORE BRAND CONTEXT:
 - Existing Target Keywords: ${JSON.stringify(brandProfile.keywords.slice(0, 10))}
 
 CRITICAL ARCHITECTURAL RULES:
-1. STRICT DOM & LAYOUT PRESERVATION (NEVER BREAK THE THEME OR DESIGN):
+1. "1:1 VOLUMETRIC SLOT BUDGETING" (ZERO CLS / ZERO LAYOUT BREAKAGE RULE):
+   - The theme designer already chose font size, line-height, letter-spacing, padding, and grid width specifically for the exact original amount of text.
+   - You MUST enforce a strict ±1 to 2 word count budget on EVERY existing element in the DOM:
+     * HEADLINES & HERO HEADINGS: If an existing headline has 7 words, your rewritten headline MUST be 7 to 8 words. It occupies the exact same pixel height and line breaks on mobile and desktop without spilling over.
+     * MULTI-COLUMN CARDS & GRIDS: If Card A has 20 words, Card B has 22 words, and Card C has 19 words, rewrite each card description to match its respective slot size (±1 to 2 words). The bottom borders and CTA buttons remain level across all columns with zero uneven blank spaces.
+     * BUTTONS & CTAs: A 3-word button (e.g. "Get Started Today") MUST remain 3 words (e.g. "Claim Free Audit"), preventing buttons from wrapping into awkward multi-line shapes.
+     * BODY PARAGRAPHS: Rewrite to match the original word count within ±2 words. Do not bloat or expand existing paragraphs inside visual sections.
+   - WHAT ACTUALLY GETS UPGRADED:
+     * Upgrade the density, persuasion, and commercial impact of the words INSIDE each slot.
+     * Swap generic filler words for high-intent commercial keywords and buyer-intent phrasing.
+     * Ingest localized authority signals (e.g. "${brandProfile.location}") seamlessly into existing slots.
+     * Enhance conversion hooks and clarity without expanding the physical geometric footprint.
+   - WHAT IF THE PAGE NEEDS MORE WORDS FOR GOOGLE RANKING?
+     * ALL existing visual sections remain locked to their exact 1:1 word counts.
+     * Any extra depth, comprehensive service explanations, or FAQs MUST be appended in a clean, self-contained FAQ section or Structured Value Block at the very bottom, leaving the original visual design untouched.
+
+2. STRICT DOM & CONTAINER PRESERVATION:
    - The input content is live WordPress HTML (from Elementor, Divi, Gutenberg, or custom theme templates).
-   - You MUST PRESERVE all existing HTML container tags: <div>, <section>, <article>, <form>, <input>, <textarea>, <button>, <select>, <iframe>, <img>, and wrapper classes (e.g. elementor-*, container, col-*, row, grid, wp-block-*).
+   - PRESERVE 100% of existing HTML container tags: <div>, <section>, <article>, <form>, <input>, <textarea>, <button>, <select>, <iframe>, <img>, <video>, and wrapper classes (e.g. elementor-*, container, col-*, row, grid, wp-block-*, seo-*).
    - NEVER delete, damage, or strip forms, interactive inputs, buttons, or CSS classes.
-   - You only replace, enrich, polish, and upgrade the text copy inside headings (<h1>, <h2>, <h3>), paragraphs (<p>), list items (<li>), blockquotes, and value proposition cards.
-   - If the existing page has very thin copy, seamlessly add rich semantic sections above/below (such as High-Impact Value Pillars, What Sets Us Apart, 4-Step Proven Process, and FAQ Accordions) that use clean, responsive semantic HTML without conflicting with theme styles.
 
-2. HIGH-IMPACT HEADLINES & CONTENT DEPTH:
-   - Upgrade the main headline (H1) from boring generic text into a high-converting, commercial headline that communicates immediate value, target keywords, and authority.
-   - Structure the page logically with scannable H2 and H3 subheadings.
-   - Naturally weave in the Primary Focus Keyword and 3-5 LSI secondary keywords.
-   - Add local geographic relevance where natural (e.g. "${brandProfile.location}").
-   - Upgrade readability, tone, and persuasiveness to top agency standards.
-
-3. STRUCTURED DATA & SEARCH READINESS:
-   - Include 3 to 5 frequently asked questions (FAQs) with crisp answers to win Google Featured Snippets and Generative Search Engine (GEO) AI citations.
-   - Ensure clear, compelling Calls to Action (CTAs).
+3. PAGE NAVIGATION TITLE vs H1 HEADLINE (DO NOT BREAK MENUS):
+   - In WordPress, the page title ("page_title") is used in navigation menus and dropdowns. It MUST remain short and clean (2-4 words, e.g. "SEO & Content Writing"). NEVER put a 15-word headline into "page_title"!
+   - The commercial, high-converting headline belongs exclusively in "h1_headline" and inside the content's <h1> element.
 
 4. SERP & METADATA SPECIFICATIONS:
    - focus_keyword: The single most authoritative, high-intent 2-4 word search query for this page.
@@ -147,17 +154,18 @@ CRITICAL ARCHITECTURAL RULES:
 OUTPUT FORMAT:
 Output strictly valid JSON with no markdown backticks, matching this exact schema:
 {
-  "optimized_title": "High-Converting Upgraded H1 Headline",
-  "optimized_content": "<section>...Upgraded HTML with 100% layout and container classes preserved...</section>",
+  "page_title": "Clean Short Page Name (2-4 words for navigation menus, e.g. 'SEO & Content Writing')",
+  "h1_headline": "High-Converting Upgraded H1 Headline (fits slot budget)",
+  "optimized_content": "<section>...Upgraded HTML with 100% layout and container classes preserved under 1:1 slot budgeting...</section>",
   "focus_keyword": "primary target search keyword",
   "meta_title": "Google SERP Title (50-60 chars)",
   "meta_description": "Google SERP Description (135-155 chars)",
   "slug": "optimized-permalink-slug",
   "audit_improvements": [
-    "Upgraded generic H1 into high-conversion commercial headline",
+    "Applied 1:1 Volumetric Slot Budgeting (±1-2 words per slot) for zero visual shift and level cards",
     "Preserved 100% of existing theme layout, Elementor classes, and contact form",
-    "Expanded content depth with comprehensive service pillars and proof points",
-    "Injected local geographic authority and primary target keywords",
+    "Injected high-intent commercial keywords and localized authority signals",
+    "Protected navigation menu title while upgrading main hero H1 headline",
     "Added structured FAQ section for Google Featured Snippets & AI citations"
   ],
   "audit_score": 96
@@ -256,13 +264,18 @@ Perform the complete optimization and return strictly valid JSON.`;
     .replace(/```/g, "")
     .trim();
 
+  // Protect navigation menu title: if existing title is clean, keep it
+  const cleanPageTitle = (title && title.length < 50) ? title : (resultJson.page_title || title);
+
   return res.status(200).json({
     ok: true,
     pageId,
-    title: resultJson.optimized_title || title,
+    title: cleanPageTitle,
+    page_title: cleanPageTitle,
+    h1_headline: resultJson.h1_headline || resultJson.optimized_title || title,
     content: cleanContent,
     focus_keyword: resultJson.focus_keyword || focusKeyword || title,
-    meta_title: resultJson.meta_title || `${title} | ${brandProfile.businessName}`,
+    meta_title: resultJson.meta_title || `${cleanPageTitle} | ${brandProfile.businessName}`,
     meta_description: resultJson.meta_description || "",
     slug: resultJson.slug || "",
     audit_improvements: resultJson.audit_improvements || [],

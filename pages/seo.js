@@ -673,6 +673,8 @@ export default function SeoHubPage() {
           updateData: {
             post_id: editingArticle.id,
             title: editingArticle.title,
+            post_type: editingArticle.post_type || editingArticle.type || "page",
+            preserve_title: Boolean(editingArticle.post_type === "page" || editingArticle.type === "page" || (editingArticle.title && editingArticle.title.length < 50)),
             content: editingArticle.content,
             slug: editingArticle.slug,
             status: targetStatus,
@@ -806,15 +808,20 @@ export default function SeoHubPage() {
       }
 
       if (data.ok) {
-        setEditingArticle((prev) => ({
-          ...prev,
-          title: data.title || prev.title,
-          content: data.content || prev.content,
-          focus_keyword: data.focus_keyword || prev.focus_keyword,
-          meta_title: data.meta_title || prev.meta_title,
-          meta_description: data.meta_description || prev.meta_description,
-          slug: data.slug || prev.slug,
-        }));
+        setEditingArticle((prev) => {
+          const isPage = prev.post_type === "page" || prev.type === "page" || !prev.post_type;
+          // Protect page navigation title: never overwrite an existing page title with an H1 headline!
+          const safeTitle = isPage ? prev.title : (data.title || prev.title);
+          return {
+            ...prev,
+            title: safeTitle,
+            content: data.content || prev.content,
+            focus_keyword: data.focus_keyword || prev.focus_keyword,
+            meta_title: data.meta_title || prev.meta_title,
+            meta_description: data.meta_description || prev.meta_description,
+            slug: data.slug || prev.slug,
+          };
+        });
 
         const newScore = data.audit_score || 96;
         setAiPostScore(newScore);
