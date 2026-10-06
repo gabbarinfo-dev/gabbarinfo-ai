@@ -12,10 +12,10 @@
  * Featuring clean per-asset isolated quotas (strictly 30 blogs/site, 30 posts/brand, 2 GAds + 2 Meta Ads per account).
  */
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useRouter } from "next/router";
 import { useSession } from "next-auth/react";
-import { SUBSCRIPTION_PLANS } from "../../lib/billing/plans";
+import { SUBSCRIPTION_PLANS, getPlanConfig } from "../../lib/billing/plans";
 
 const MODULAR_SUB_CATEGORIES = [
   { key: "social", label: "📱 Social Media Autopilot", desc: "Automate Facebook & Instagram with scheduled posts & AI visuals" },
@@ -68,6 +68,20 @@ export default function SubscriptionModal({
   const [orderResult, setOrderResult] = useState(null);
   const [errorMsg, setErrorMsg] = useState(null);
 
+  // Currency & Cadence Switcher State
+  const [currency, setCurrency] = useState("USD"); // "USD" | "INR"
+  const [cadence, setCadence] = useState("30"); // "30" (Daily) | "15" (Alt Days) | "8" (2/wk)
+
+  useEffect(() => {
+    try {
+      const tz = Intl.DateTimeFormat().resolvedOptions().timeZone || "";
+      const isIndia = tz.includes("Calcutta") || tz.includes("Kolkata") || tz.includes("India");
+      setCurrency(isIndia ? "INR" : "USD");
+    } catch (_) {
+      setCurrency("USD");
+    }
+  }, []);
+
   if (!isOpen) return null;
 
   function handleClose() {
@@ -108,7 +122,10 @@ export default function SubscriptionModal({
       const res = await fetch("/api/billing/razorpay/create-order", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ planId: selectedPlan.id }),
+        body: JSON.stringify({
+          planId: selectedPlan.id,
+          currency: currency,
+        }),
       });
 
       const orderData = await res.json();
@@ -208,12 +225,27 @@ export default function SubscriptionModal({
     }
   }
 
-  const filteredPlans = MODULAR_PLANS.filter((p) => {
+  const filteredPlans = (() => {
     if (mainTab === "suite") {
-      return p.category === "suite";
+      return MODULAR_PLANS.filter((p) => p.category === "suite");
     }
-    return p.category === selectedCategory;
-  });
+    if (selectedCategory === "seo") {
+      return [
+        getPlanConfig(`seo_1_${cadence}`),
+        getPlanConfig(`seo_2_${cadence}`),
+        getPlanConfig(`seo_3_${cadence}`),
+      ].filter(Boolean);
+    }
+    if (selectedCategory === "social") {
+      return [
+        getPlanConfig(`social_1_${cadence}`),
+        getPlanConfig(`social_2_${cadence}`),
+        getPlanConfig(`social_3_${cadence}`),
+        getPlanConfig("social_4"),
+      ].filter(Boolean);
+    }
+    return MODULAR_PLANS.filter((p) => p.category === selectedCategory);
+  })();
 
   return (
     <div
@@ -576,7 +608,7 @@ export default function SubscriptionModal({
                   style={{
                     display: "flex",
                     gap: 8,
-                    marginBottom: 24,
+                    marginBottom: 20,
                     overflowX: "auto",
                     paddingBottom: 4,
                     borderBottom: "1px solid rgba(255, 255, 255, 0.06)",
@@ -608,6 +640,165 @@ export default function SubscriptionModal({
                       </button>
                     );
                   })}
+                </div>
+              )}
+
+              {/* Currency & Starting Motivator Bar */}
+              <div
+                style={{
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "space-between",
+                  marginBottom: 18,
+                  padding: "12px 18px",
+                  borderRadius: 16,
+                  background: "linear-gradient(135deg, rgba(37, 99, 235, 0.08) 0%, rgba(16, 185, 129, 0.05) 100%)",
+                  border: "1px solid rgba(255, 255, 255, 0.08)",
+                  flexWrap: "wrap",
+                  gap: 12,
+                }}
+              >
+                <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+                  <span style={{ fontSize: 18 }}>✨</span>
+                  <div>
+                    <div style={{ fontSize: 13.5, color: "#38bdf8", fontWeight: 800, letterSpacing: "-0.01em" }}>
+                      Autopilot Starting @ {currency === "USD" ? "$3.99" : "₹399"} / mo
+                    </div>
+                    <div style={{ fontSize: 11, color: "#94a3b8" }}>
+                      Transparent isolated quotas &bull; 30-day billing cycle &bull; Switch anytime
+                    </div>
+                  </div>
+                </div>
+
+                {/* Currency Switcher Toggle */}
+                <div
+                  style={{
+                    display: "flex",
+                    alignItems: "center",
+                    background: "rgba(0, 0, 0, 0.5)",
+                    borderRadius: 12,
+                    padding: 3,
+                    border: "1px solid rgba(255, 255, 255, 0.12)",
+                  }}
+                >
+                  <button
+                    type="button"
+                    onClick={() => setCurrency("USD")}
+                    style={{
+                      padding: "6px 14px",
+                      borderRadius: 10,
+                      border: "none",
+                      background: currency === "USD" ? "#2563eb" : "transparent",
+                      color: currency === "USD" ? "#ffffff" : "#94a3b8",
+                      fontWeight: 800,
+                      fontSize: 12,
+                      cursor: "pointer",
+                      boxShadow: currency === "USD" ? "0 2px 8px rgba(37, 99, 235, 0.5)" : "none",
+                      transition: "all 0.15s ease",
+                    }}
+                  >
+                    🇺🇸 USD ($)
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setCurrency("INR")}
+                    style={{
+                      padding: "6px 14px",
+                      borderRadius: 10,
+                      border: "none",
+                      background: currency === "INR" ? "#10b981" : "transparent",
+                      color: currency === "INR" ? "#ffffff" : "#94a3b8",
+                      fontWeight: 800,
+                      fontSize: 12,
+                      cursor: "pointer",
+                      boxShadow: currency === "INR" ? "0 2px 8px rgba(16, 185, 129, 0.5)" : "none",
+                      transition: "all 0.15s ease",
+                    }}
+                  >
+                    🇮🇳 INR (₹)
+                  </button>
+                </div>
+              </div>
+
+              {/* Cadence Switcher Bar (For WordPress SEO & Social Autopilot) */}
+              {(selectedCategory === "seo" || selectedCategory === "social") && mainTab === "modular" && (
+                <div
+                  style={{
+                    display: "flex",
+                    justifyContent: "center",
+                    gap: 10,
+                    marginBottom: 24,
+                    flexWrap: "wrap",
+                  }}
+                >
+                  <button
+                    type="button"
+                    onClick={() => setCadence("8")}
+                    style={{
+                      padding: "10px 18px",
+                      borderRadius: 14,
+                      border: cadence === "8" ? "1.5px solid #38bdf8" : "1px solid rgba(255, 255, 255, 0.08)",
+                      background: cadence === "8" ? "rgba(56, 189, 248, 0.15)" : "rgba(255, 255, 255, 0.03)",
+                      color: cadence === "8" ? "#ffffff" : "#94a3b8",
+                      fontWeight: 700,
+                      fontSize: 12.5,
+                      cursor: "pointer",
+                      display: "flex",
+                      alignItems: "center",
+                      gap: 6,
+                      boxShadow: cadence === "8" ? "0 0 15px rgba(56, 189, 248, 0.25)" : "none",
+                      transition: "all 0.2s ease",
+                    }}
+                  >
+                    <span>📅</span> 8 {selectedCategory === "seo" ? "Blogs" : "Posts"} / mo (2 / Wk)
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => setCadence("15")}
+                    style={{
+                      padding: "10px 18px",
+                      borderRadius: 14,
+                      border: cadence === "15" ? "1.5px solid #a855f7" : "1px solid rgba(255, 255, 255, 0.08)",
+                      background: cadence === "15" ? "rgba(168, 85, 247, 0.15)" : "rgba(255, 255, 255, 0.03)",
+                      color: cadence === "15" ? "#ffffff" : "#94a3b8",
+                      fontWeight: 700,
+                      fontSize: 12.5,
+                      cursor: "pointer",
+                      display: "flex",
+                      alignItems: "center",
+                      gap: 6,
+                      boxShadow: cadence === "15" ? "0 0 15px rgba(168, 85, 247, 0.25)" : "none",
+                      transition: "all 0.2s ease",
+                    }}
+                  >
+                    <span>⚡</span> 15 {selectedCategory === "seo" ? "Blogs" : "Posts"} / mo (Alt Days)
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => setCadence("30")}
+                    style={{
+                      padding: "10px 18px",
+                      borderRadius: 14,
+                      border: cadence === "30" ? "1.5px solid #10b981" : "1px solid rgba(255, 255, 255, 0.08)",
+                      background: cadence === "30" ? "rgba(16, 185, 129, 0.18)" : "rgba(255, 255, 255, 0.03)",
+                      color: cadence === "30" ? "#ffffff" : "#94a3b8",
+                      fontWeight: 800,
+                      fontSize: 12.5,
+                      cursor: "pointer",
+                      display: "flex",
+                      alignItems: "center",
+                      gap: 6,
+                      boxShadow: cadence === "30" ? "0 0 20px rgba(16, 185, 129, 0.3)" : "none",
+                      transition: "all 0.2s ease",
+                    }}
+                  >
+                    <span>🚀</span> 30 {selectedCategory === "seo" ? "Blogs" : "Posts"} / 30 Days (Daily)
+                    <span style={{ fontSize: 9.5, padding: "2px 6px", borderRadius: 6, background: "#10b981", color: "#052e16", fontWeight: 900 }}>
+                      🔥 MOST POPULAR
+                    </span>
+                  </button>
                 </div>
               )}
 
@@ -698,12 +889,17 @@ export default function SubscriptionModal({
                         </p>
 
                         <div style={{ marginBottom: 20, paddingBottom: 16, borderBottom: "1px solid rgba(255, 255, 255, 0.08)" }}>
-                          <span style={{ fontSize: 28, fontWeight: 800, color: "#ffffff" }}>
-                            ₹{p.priceINR.toLocaleString("en-IN")}
-                          </span>
-                          <span style={{ fontSize: 12, color: "#94a3b8" }}>
-                            {p.billingCycle === "trial_7d" ? " / 7-day trial" : " / month"}
-                          </span>
+                          <div style={{ display: "flex", alignItems: "baseline", gap: 6 }}>
+                            <span style={{ fontSize: 28, fontWeight: 800, color: "#ffffff" }}>
+                              {currency === "USD" ? `$${p.priceUSD || Number((p.priceINR / 96).toFixed(2))}` : `₹${p.priceINR.toLocaleString("en-IN")}`}
+                            </span>
+                            <span style={{ fontSize: 12, color: "#94a3b8" }}>
+                              {p.billingCycle === "trial_7d" ? " / 7-day trial" : " / month"}
+                            </span>
+                          </div>
+                          <div style={{ fontSize: 11, color: "#38bdf8", fontWeight: 700, marginTop: 4 }}>
+                            ⚡ Starting @ {currency === "USD" ? "$3.99" : "₹399"} / mo
+                          </div>
                         </div>
 
                         {/* Feature Bullet Allowances */}
@@ -801,7 +997,9 @@ export default function SubscriptionModal({
                           transition: "all 0.15s ease",
                         }}
                       >
-                        {isCurrent ? "Active Plan" : `Select ${p.name}`}
+                        {isCurrent
+                          ? "Active Plan"
+                          : `Select ${p.name.split("(")[0].trim()} — ${currency === "USD" ? `$${p.priceUSD || Number((p.priceINR / 96).toFixed(2))}` : `₹${p.priceINR.toLocaleString("en-IN")}`}`}
                       </button>
                     </div>
                   );
@@ -837,7 +1035,9 @@ export default function SubscriptionModal({
                     {selectedPlan.billingCycle === "trial_7d" ? "Total Trial Price:" : "Total Monthly Price:"}
                   </span>
                   <span style={{ fontWeight: 800, color: "#34d399", fontSize: 18 }}>
-                    ₹{selectedPlan.priceINR.toLocaleString("en-IN")}
+                    {currency === "USD"
+                      ? `$${selectedPlan.priceUSD || Number((selectedPlan.priceINR / 96).toFixed(2))}`
+                      : `₹${selectedPlan.priceINR.toLocaleString("en-IN")}`}
                   </span>
                 </div>
               </div>

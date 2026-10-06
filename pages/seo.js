@@ -3055,7 +3055,53 @@ export default function SeoHubPage() {
                   )}
                 </div>
 
-                {/* Weekly Authority Sprint */}
+                {/* Alternate Day Cadence (15 Blogs / Mo) */}
+                <div
+                  onClick={() => {
+                    if (isTrial99 || !canUseSeoAutopilot) {
+                      setShowSubscriptionModal(true);
+                      return;
+                    }
+                    setCadence("alternate");
+                  }}
+                  style={{
+                    background: cadence === "alternate" && !isTrial99 && canUseSeoAutopilot ? "rgba(16, 185, 129, 0.08)" : "rgba(13, 20, 35, 0.7)",
+                    border: cadence === "alternate" && !isTrial99 && canUseSeoAutopilot ? "1.5px solid #10b981" : "1px solid rgba(255, 255, 255, 0.1)",
+                    borderRadius: 12,
+                    padding: 20,
+                    cursor: (isTrial99 || !canUseSeoAutopilot) ? "not-allowed" : "pointer",
+                    opacity: (isTrial99 || !canUseSeoAutopilot) ? 0.45 : 1,
+                    filter: (isTrial99 || !canUseSeoAutopilot) ? "grayscale(0.4)" : "none",
+                    position: "relative",
+                    transition: "all 0.2s ease",
+                    display: "flex",
+                    flexDirection: "column",
+                    justifyContent: "space-between",
+                  }}
+                >
+                  <div>
+                    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 8 }}>
+                      <div style={{ fontSize: 16, fontWeight: 800, color: "#fff", display: "flex", alignItems: "center", gap: 6 }}>
+                        {(isTrial99 || !canUseSeoAutopilot) && <span style={{ fontSize: 14 }}>🔒</span>}
+                        Alternate Day Cadence
+                      </div>
+                      <span style={{ fontSize: 9, padding: "3px 8px", borderRadius: 12, background: "rgba(168, 85, 247, 0.15)", color: "#c084fc", fontWeight: 700, border: "1px solid rgba(168, 85, 247, 0.3)", letterSpacing: "0.4px" }}>
+                        BALANCED
+                      </span>
+                    </div>
+                    <div style={{ fontSize: 13, fontWeight: 700, color: "#38bdf8", marginBottom: 8 }}>15 Articles Monthly (1 Every 2 Days)</div>
+                    <p style={{ margin: 0, color: "#94a3b8", fontSize: 12, lineHeight: 1.5 }}>
+                      Optimally paced releases engineered for steady audience retention and consistent search crawl velocity.
+                    </p>
+                  </div>
+                  {cadence === "alternate" && !isTrial99 && canUseSeoAutopilot && (
+                    <div style={{ marginTop: 14, display: "flex", justifyContent: "flex-end" }}>
+                      <span style={{ width: 22, height: 22, borderRadius: "50%", background: "#10b981", color: "#052e16", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 13, fontWeight: 900 }}>✓</span>
+                    </div>
+                  )}
+                </div>
+
+                {/* Bi-Weekly Authority Cadence (8 Blogs / Mo) */}
                 <div
                   onClick={() => {
                     if (isTrial99 || !canUseSeoAutopilot) {
@@ -3083,64 +3129,18 @@ export default function SeoHubPage() {
                     <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 8 }}>
                       <div style={{ fontSize: 16, fontWeight: 800, color: "#fff", display: "flex", alignItems: "center", gap: 6 }}>
                         {(isTrial99 || !canUseSeoAutopilot) && <span style={{ fontSize: 14 }}>🔒</span>}
-                        Weekly Authority Sprint
+                        Bi-Weekly Authority Cadence
                       </div>
                       <span style={{ fontSize: 9, padding: "3px 8px", borderRadius: 12, background: "rgba(56, 189, 248, 0.15)", color: "#38bdf8", fontWeight: 700, border: "1px solid rgba(56, 189, 248, 0.3)", letterSpacing: "0.4px" }}>
                         STEADY
                       </span>
                     </div>
-                    <div style={{ fontSize: 13, fontWeight: 700, color: "#38bdf8", marginBottom: 8 }}>4 High-Impact Articles / Month</div>
+                    <div style={{ fontSize: 13, fontWeight: 700, color: "#38bdf8", marginBottom: 8 }}>8 Articles Monthly (2 per Week)</div>
                     <p style={{ margin: 0, color: "#94a3b8", fontSize: 12, lineHeight: 1.5 }}>
-                      Evenly paced weekly releases engineered for consistent crawler crawl rates and steady audience engagement.
+                      Targeted bi-weekly releases (e.g. Tuesday & Friday) ideal for steady niche authority expansion.
                     </p>
                   </div>
                   {cadence === "weekly" && !isTrial99 && canUseSeoAutopilot && (
-                    <div style={{ marginTop: 14, display: "flex", justifyContent: "flex-end" }}>
-                      <span style={{ width: 22, height: 22, borderRadius: "50%", background: "#10b981", color: "#052e16", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 13, fontWeight: 900 }}>✓</span>
-                    </div>
-                  )}
-                </div>
-
-                {/* Monthly Flagship Pillar */}
-                <div
-                  onClick={() => {
-                    if (isTrial99 || !canUseSeoAutopilot) {
-                      setShowSubscriptionModal(true);
-                      return;
-                    }
-                    setCadence("monthly");
-                  }}
-                  style={{
-                    background: cadence === "monthly" && !isTrial99 && canUseSeoAutopilot ? "rgba(16, 185, 129, 0.08)" : "rgba(13, 20, 35, 0.7)",
-                    border: cadence === "monthly" && !isTrial99 && canUseSeoAutopilot ? "1.5px solid #10b981" : "1px solid rgba(255, 255, 255, 0.1)",
-                    borderRadius: 12,
-                    padding: 20,
-                    cursor: (isTrial99 || !canUseSeoAutopilot) ? "not-allowed" : "pointer",
-                    opacity: (isTrial99 || !canUseSeoAutopilot) ? 0.45 : 1,
-                    filter: (isTrial99 || !canUseSeoAutopilot) ? "grayscale(0.4)" : "none",
-                    position: "relative",
-                    transition: "all 0.2s ease",
-                    display: "flex",
-                    flexDirection: "column",
-                    justifyContent: "space-between",
-                  }}
-                >
-                  <div>
-                    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 8 }}>
-                      <div style={{ fontSize: 16, fontWeight: 800, color: "#fff", display: "flex", alignItems: "center", gap: 6 }}>
-                        {(isTrial99 || !canUseSeoAutopilot) && <span style={{ fontSize: 14 }}>🔒</span>}
-                        Monthly Flagship Pillar
-                      </div>
-                      <span style={{ fontSize: 9, padding: "3px 8px", borderRadius: 12, background: "rgba(168, 85, 247, 0.15)", color: "#c084fc", fontWeight: 700, border: "1px solid rgba(168, 85, 247, 0.3)", letterSpacing: "0.4px" }}>
-                        PILLAR
-                      </span>
-                    </div>
-                    <div style={{ fontSize: 13, fontWeight: 700, color: "#38bdf8", marginBottom: 8 }}>1 Cornerstone Guide / Month</div>
-                    <p style={{ margin: 0, color: "#94a3b8", fontSize: 12, lineHeight: 1.5 }}>
-                      Deep-tier monthly cornerstone resource designed to anchor core search rankings and earn long-term backlinks.
-                    </p>
-                  </div>
-                  {cadence === "monthly" && !isTrial99 && canUseSeoAutopilot && (
                     <div style={{ marginTop: 14, display: "flex", justifyContent: "flex-end" }}>
                       <span style={{ width: 22, height: 22, borderRadius: "50%", background: "#10b981", color: "#052e16", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 13, fontWeight: 900 }}>✓</span>
                     </div>

@@ -24,7 +24,7 @@ export default async function handler(req, res) {
     }
 
     const userEmail = session.user.email.toLowerCase().trim();
-    const { planId } = req.body || {};
+    const { planId, currency: requestedCurrency } = req.body || {};
 
     if (!planId) {
       return res.status(400).json({ error: "planId is required" });
@@ -66,20 +66,24 @@ export default async function handler(req, res) {
       key_secret: keySecret,
     });
 
-    // Razorpay amounts are in the smallest currency sub-unit (paise for INR, 1 INR = 100 paise)
-    const amountInPaise = Math.round(plan.priceINR * 100);
+    const isUSD = (requestedCurrency || "").toUpperCase() === "USD";
+    const selectedCurrency = isUSD ? "USD" : "INR";
+    const targetAmount = isUSD
+      ? Math.round((plan.priceUSD || Number((plan.priceINR / 96).toFixed(2))) * 100)
+      : Math.round(plan.priceINR * 100);
 
     // Order receipt ID (max 40 chars)
     const receipt = `rcpt_${Date.now().toString(36)}_${plan.id.slice(0, 10)}`;
 
     const orderOptions = {
-      amount: amountInPaise,
-      currency: "INR",
+      amount: targetAmount,
+      currency: selectedCurrency,
       receipt,
       notes: {
         user_email: userEmail,
         plan_id: plan.id,
         plan_name: plan.name,
+        currency: selectedCurrency,
         business_id: businessId || "",
       },
     };
@@ -96,6 +100,7 @@ export default async function handler(req, res) {
         id: plan.id,
         name: plan.name,
         priceINR: plan.priceINR,
+        priceUSD: plan.priceUSD || Number((plan.priceINR / 96).toFixed(2)),
       },
       customer: {
         name: session.user.name || "Customer",
