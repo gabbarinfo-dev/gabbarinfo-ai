@@ -183,8 +183,8 @@ async function optimizePageContent({
     }
   }
 
-  const isRichHtml = content.length > 2000;
-  const semanticSlots = isRichHtml ? extractSemanticSlots(content) : [];
+  const semanticSlots = extractSemanticSlots(content);
+  const useSlots = semanticSlots.length > 0;
   logger(`[OptimizeWorker] Extracted ${semanticSlots.length} semantic slots for optimization`);
 
   // 2. Prepare Prompts
@@ -236,12 +236,12 @@ OUTPUT SCHEMA (STRICT JSON):
   "meta_title": "Google SERP Title (50-60 chars)",
   "meta_description": "Google SERP Description (135-155 chars)",
   "slug": "optimized-slug",
-  "replacements": [
+  ${useSlots ? `"replacements": [
     {
       "original": "exact original snippet from slot",
       "optimized": "brand new high-converting copy matching slot word budget (±1-2 words) that aggressively sells user's strategic intent"
     }
-  ],
+  ],` : `"optimized_content": "Full upgraded HTML content with strategic positioning and preserved layout tags",`}
   "faq_items": [
     { "question": "High-value FAQ addressing user's key offering/target market?", "answer": "Authoritative direct answer establishing trust and capability." },
     { "question": "FAQ on delivery, quality, or engagement model?", "answer": "Clear reassurance addressing client objections." },
@@ -258,7 +258,7 @@ OUTPUT SCHEMA (STRICT JSON):
 }`;
 
   let userPrompt = "";
-  if (isRichHtml && semanticSlots.length > 0) {
+  if (useSlots) {
     userPrompt = `OPTIMIZE THIS WEBPAGE:
 - URL: ${url || "N/A"}
 - Current Title: "${title || "Untitled"}"
@@ -337,7 +337,7 @@ Respond strictly with valid JSON matching the schema.`;
 
   // Assemble clean content
   let cleanContent = "";
-  if (isRichHtml) {
+  if (useSlots) {
     let upgraded = applySlotReplacements(content, resultJson.replacements);
 
     if (Array.isArray(resultJson.faq_items) && resultJson.faq_items.length > 0) {
