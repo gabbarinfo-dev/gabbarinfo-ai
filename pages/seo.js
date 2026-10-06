@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, useRef, useMemo } from "react";
 import { useSession } from "next-auth/react";
 import { useRouter } from "next/router";
 import Head from "next/head";
@@ -129,6 +129,16 @@ export default function SeoHubPage() {
   // ── WRITING & OPTIMIZATION SUITE STATE (Draft & Edit) ──
   const [editingArticle, setEditingArticle] = useState(null);
   const [editorMode, setEditorMode] = useState("visual"); // 'visual' | 'html'
+  const visualEditorRef = useRef(null);
+
+  useEffect(() => {
+    if (editorMode === "visual" && visualEditorRef.current && editingArticle) {
+      const incoming = editingArticle.content || "";
+      if (visualEditorRef.current.innerHTML !== incoming) {
+        visualEditorRef.current.innerHTML = incoming;
+      }
+    }
+  }, [editingArticle?.id, editingArticle?.content, editorMode]);
   const [serpPreviewMode, setSerpPreviewMode] = useState("desktop"); // 'desktop' | 'mobile'
   const [savingArticle, setSavingArticle] = useState(false);
   const [publishingArticle, setPublishingArticle] = useState(false);
@@ -514,14 +524,15 @@ export default function SeoHubPage() {
       ? connection.siteUrl.replace(/^https?:\/\//, "").replace(/\/.*$/, "")
       : "gabbarinfo.com";
 
+    const cleanDomain = siteDomain.replace(/\./g, "\\.");
     const internalLinksCount = (
       rawContent.match(
-        new RegExp(`href=["'](https?:\\/\\/(www\\.)?${siteDomain.replace(".", "\\.")}|\\/[^"'])`, "gi")
+        new RegExp(`href=["'](https?:\\/\\/(?:www\\.)?${cleanDomain}|\\/[^"'#])`, "gi")
       ) || []
     ).length;
     const externalLinksCount = (
       rawContent.match(
-        new RegExp(`href=["']https?:\\/\\/(?!(www\\.)?${siteDomain.replace(".", "\\.")})[^"']+`, "gi")
+        new RegExp(`href=["']https?:\\/\\/(?!(?:www\\.)?${cleanDomain})[^"']+`, "gi")
       ) || []
     ).length;
 
@@ -2011,12 +2022,16 @@ export default function SeoHubPage() {
                     {/* Content Editor Body */}
                     {editorMode === "visual" ? (
                       <div
+                        ref={visualEditorRef}
                         contentEditable
                         suppressContentEditableWarning
+                        spellCheck={false}
                         onBlur={(e) => {
-                          setEditingArticle({ ...editingArticle, content: e.currentTarget.innerHTML });
+                          const newHtml = e.currentTarget.innerHTML;
+                          if (newHtml !== editingArticle?.content) {
+                            setEditingArticle((prev) => ({ ...prev, content: newHtml }));
+                          }
                         }}
-                        dangerouslySetInnerHTML={{ __html: editingArticle.content || "" }}
                         style={{
                           minHeight: 480,
                           outline: "none",

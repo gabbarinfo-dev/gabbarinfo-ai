@@ -247,11 +247,20 @@ Perform the complete optimization and return strictly valid JSON.`;
     });
   }
 
+  // Sanitize content to prevent browser freeze (strip scripts, noscripts, and raw backticks)
+  let cleanContent = String(resultJson.optimized_content || "");
+  cleanContent = cleanContent
+    .replace(/<script\b[^<]*(?:(?!<\/script>)<[^<]*)*<\/script>/gi, "")
+    .replace(/<noscript\b[^<]*(?:(?!<\/noscript>)<[^<]*)*<\/noscript>/gi, "")
+    .replace(/```(?:html)?/gi, "")
+    .replace(/```/g, "")
+    .trim();
+
   return res.status(200).json({
     ok: true,
     pageId,
     title: resultJson.optimized_title || title,
-    content: resultJson.optimized_content,
+    content: cleanContent,
     focus_keyword: resultJson.focus_keyword || focusKeyword || title,
     meta_title: resultJson.meta_title || `${title} | ${brandProfile.businessName}`,
     meta_description: resultJson.meta_description || "",
