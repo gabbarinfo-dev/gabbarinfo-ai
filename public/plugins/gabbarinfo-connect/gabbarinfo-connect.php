@@ -1,11 +1,11 @@
 <?php
 /**
  * Plugin Name: GabbarInfo AI Connect
- * Plugin URI: https://gabbarinfo.ai/
+ * Plugin URI: https://www.gabbarinfo.com/
  * Description: Connects your WordPress & WooCommerce site to GabbarInfo AI for automated Google Ads conversion tracking (gtag.js), Meta Pixel, dynamic purchase tracking, and autonomous SEO & blogging.
  * Version: 1.3.0
  * Author: GabbarInfo AI
- * Author URI: https://gabbarinfo.ai/
+ * Author URI: https://www.gabbarinfo.com/
  * License: GPL v2 or later
  * Text Domain: gabbarinfo-connect
  */
@@ -41,27 +41,6 @@ class GabbarInfo_Connect {
         add_action( 'gabbarinfo_media_bridge_cleanup_cron', array( $this, 'run_media_bridge_cleanup' ) );
         if ( ! wp_next_scheduled( 'gabbarinfo_media_bridge_cleanup_cron' ) ) {
             wp_schedule_event( time(), 'hourly', 'gabbarinfo_media_bridge_cleanup_cron' );
-        }
-
-        // Auto-cleanup legacy stuck folder from previous Windows backslash upload
-        $this->cleanup_legacy_stuck_folder();
-    }
-
-    /**
-     * Delete legacy stuck folder (/wp-content/plugins/gabbarinfo-connect) if left behind by backslash bug
-     */
-    private function cleanup_legacy_stuck_folder() {
-        $legacy_dir = WP_PLUGIN_DIR . '/gabbarinfo-connect';
-        if ( is_dir( $legacy_dir ) ) {
-            $files = @scandir( $legacy_dir );
-            if ( is_array( $files ) ) {
-                foreach ( $files as $f ) {
-                    if ( $f !== '.' && $f !== '..' ) {
-                        @unlink( $legacy_dir . '/' . $f );
-                    }
-                }
-            }
-            @rmdir( $legacy_dir );
         }
     }
 
@@ -428,6 +407,13 @@ document.addEventListener('DOMContentLoaded', function() {
         register_rest_route( 'gabbarinfo/v1', '/media-bridge/cleanup', array(
             'methods'             => array( 'GET', 'POST' ),
             'callback'            => array( $this, 'rest_media_bridge_cleanup' ),
+            'permission_callback' => array( $this, 'authenticate_agent_request' ),
+        ) );
+
+        // 1-Click Remote In-App Plugin Upgrade
+        register_rest_route( 'gabbarinfo/v1', '/upgrade-plugin', array(
+            'methods'             => 'POST',
+            'callback'            => array( $this, 'rest_upgrade_plugin' ),
             'permission_callback' => array( $this, 'authenticate_agent_request' ),
         ) );
     }
@@ -1268,6 +1254,48 @@ document.addEventListener('DOMContentLoaded', function() {
             }
         }
         return $template;
+    }
+
+    /**
+     * POST /wp-json/gabbarinfo/v1/upgrade-plugin (OTA 1-Click Remote Upgrade)
+     */
+    public function rest_upgrade_plugin( $request ) {
+        require_once ABSPATH . 'wp-admin/includes/file.php';
+        require_once ABSPATH . 'wp-admin/includes/misc.php';
+        require_once ABSPATH . 'wp-admin/includes/class-wp-upgrader.php';
+        require_once ABSPATH . 'wp-admin/includes/plugin.php';
+
+        $params = $request->get_json_params();
+        if ( empty( $params ) ) $params = $request->get_params();
+
+        $package_url = ! empty( $params['package_url'] ) 
+            ? esc_url_raw( $params['package_url'] ) 
+            : 'https://app.gabbarinfo.com/plugins/gabbarinfo-connect.zip';
+
+        $tmp_file = download_url( $package_url, 300 );
+        if ( is_wp_error( $tmp_file ) ) {
+            return new WP_Error( 'download_failed', 'Failed to download plugin package: ' . $tmp_file->get_error_message(), array( 'status' => 500 ) );
+        }
+
+        $skin = new Automatic_Upgrader_Skin();
+        $upgrader = new Plugin_Upgrader( $skin );
+        $result = $upgrader->install( $tmp_file, array( 'overwrite_package' => true ) );
+        @unlink( $tmp_file );
+
+        if ( is_wp_error( $result ) ) {
+            return new WP_Error( 'upgrade_failed', 'Upgrade failed: ' . $result->get_error_message(), array( 'status' => 500 ) );
+        }
+
+        $plugin_file = 'gabbarinfo-connect/gabbarinfo-connect.php';
+        if ( ! is_plugin_active( $plugin_file ) ) {
+            activate_plugin( $plugin_file );
+        }
+
+        return rest_ensure_response( array(
+            'ok'             => true,
+            'message'        => 'GabbarInfo AI Connect upgraded and activated successfully.',
+            'plugin_version' => self::VERSION,
+        ) );
     }
 }
 

@@ -645,6 +645,30 @@ export default async function handler(req, res) {
     }
 
     // ----------------------------------------------------------------
+    // 6.5 UPGRADE PLUGIN (OTA 1-Click Remote Upgrade)
+    // ----------------------------------------------------------------
+    if (action === "upgrade-plugin") {
+      try {
+        const appUrl = process.env.NEXTAUTH_URL || "https://app.gabbarinfo.com";
+        const packageUrl = `${appUrl}/plugins/gabbarinfo-connect.zip`;
+
+        const resp = await fetch(`${activeUrl}/wp-json/gabbarinfo/v1/upgrade-plugin`, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${activeKey}`,
+          },
+          body: JSON.stringify({ package_url: packageUrl }),
+        });
+
+        const data = await resp.json().catch(() => ({}));
+        return res.status(resp.status || 200).json(data);
+      } catch (e) {
+        return res.status(500).json({ ok: false, error: e.message });
+      }
+    }
+
+    // ----------------------------------------------------------------
     // 7. CREATE POST / BLOG
     // ----------------------------------------------------------------
     if (action === "create-post") {
