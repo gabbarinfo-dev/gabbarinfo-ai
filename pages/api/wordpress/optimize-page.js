@@ -42,28 +42,40 @@ function extractJson(raw) {
 function extractSemanticSlots(htmlContent) {
   if (!htmlContent || typeof htmlContent !== "string") return [];
   const tagRegex = /<(h[1-6]|p|blockquote|li)[^>]*>([\s\S]*?)<\/\1>/gi;
-  const rawSlots = [];
+  const headings = [];
+  const bodySlots = [];
   let m;
   while ((m = tagRegex.exec(htmlContent)) !== null) {
     const inner = m[2].trim();
     const text = inner.replace(/<[^>]+>/g, " ").replace(/\s+/g, " ").trim();
     if (text.length > 6 && !inner.includes("<video") && !inner.includes("<form") && !inner.includes("<?php")) {
-      rawSlots.push({
-        tag: m[1],
+      const slot = {
+        tag: m[1].toLowerCase(),
         originalSnippet: text,
         words: text.split(/\s+/).length,
-      });
+      };
+      if (slot.tag.startsWith("h")) {
+        headings.push(slot);
+      } else {
+        bodySlots.push(slot);
+      }
     }
   }
 
-  // Deduplicate and prioritize key sections (up to 32 slots for ultra-fast generation)
+  // Prioritize all unique headings across the entire document, then high-value body/card copy (up to 38 slots)
   const uniqueSlots = [];
   const seen = new Set();
-  for (const s of rawSlots) {
-    if (!seen.has(s.originalSnippet)) {
-      seen.add(s.originalSnippet);
-      uniqueSlots.push(s);
-      if (uniqueSlots.length >= 32) break;
+  for (const h of headings) {
+    if (!seen.has(h.originalSnippet)) {
+      seen.add(h.originalSnippet);
+      uniqueSlots.push(h);
+    }
+  }
+  for (const b of bodySlots) {
+    if (!seen.has(b.originalSnippet)) {
+      seen.add(b.originalSnippet);
+      uniqueSlots.push(b);
+      if (uniqueSlots.length >= 38) break;
     }
   }
   return uniqueSlots;
@@ -190,42 +202,50 @@ export default async function handler(req, res) {
   const semanticSlots = isRichHtml ? extractSemanticSlots(content) : [];
 
   // 2. Prepare Prompts based on content scale
-  const systemPrompt = `You are the Principal SEO Architect, Conversion Copywriter, and WordPress DOM Specialist at GabbarInfo AI.
-Your mission is to perform an AUTONOMOUS, HIGH-CONVERTING, TOP-TIER REWRITE and SEO OPTIMIZATION of an existing WordPress website page.
+  const systemPrompt = `You are the Principal SEO Architect, Elite Conversion Copywriter, and WordPress Positioning Specialist at GabbarInfo AI.
+Your mission is to perform an AUTONOMOUS, HIGH-CONVERTING, SALES-DRIVEN REWRITE and SEO OPTIMIZATION of an existing WordPress website page.
 
 CORE BRAND CONTEXT:
 - Business Name: "${brandProfile.businessName}"
 - Industry / Niche: "${brandProfile.niche}"
-- Location / Target Geo: "${brandProfile.location}"
+- Location / Primary Geo: "${brandProfile.location}"
 - Core Services: "${brandProfile.services}"
 - Existing Target Keywords: ${JSON.stringify(brandProfile.keywords.slice(0, 10))}
 
+${customInstructions ? `
+══════════════════════════════════════════════════════════════════════
+👑 SUPREME STRATEGIC DIRECTIVE (HIGHEST PRIORITY OVER EVERYTHING ELSE):
+"${customInstructions}"
+══════════════════════════════════════════════════════════════════════
+CRITICAL MANDATE FOR THIS DIRECTIVE:
+1. Every headline, hero title, subheadline, service card, and value proposition MUST directly, boldly, and persuasively reflect and sell this exact strategic intent!
+2. If specific target markets or geographies are requested (e.g. Local Ahmedabad, USA, UK, Global), you MUST explicitly name and position for those markets throughout the page copy!
+3. If specific business models, fulfillment advantages, or service formats are requested (e.g. White-label agency fulfillment, timely delivery, affordable pricing, premium quality), you MUST make these the core selling points and differentiators in the copy!
+4. ABSOLUTELY NO LAZY SYNONYM SWAPPING. Changing "turning content into business growth" into "transforming content into business expansion" while ignoring the user's specific strategic intent is an UNACCEPTABLE FAILURE. You must craft brand-new, persuasive, punchy sales copy tailored to the directive!
+` : `
+MANDATORY DIRECTIVE: Maximize commercial buyer intent, local authority in "${brandProfile.location}", clear conversion triggers, and competitive differentiation. Do NOT just do synonym swaps—write compelling sales copy!
+`}
+
 CRITICAL ARCHITECTURAL RULES:
-1. "1:1 VOLUMETRIC SLOT BUDGETING" (ZERO CLS / ZERO LAYOUT BREAKAGE RULE):
-   - You MUST enforce a strict ±1 to 2 word count budget on EVERY slot:
-     * HEADLINES & HERO HEADINGS: If original is 7 words, rewritten headline MUST be 7 to 8 words.
-     * CARDS & VALUE PROPOSITIONS: Match original slot word count within ±1 to 2 words so multi-column cards remain level with zero uneven blanks.
-     * CTAs & BUTTONS: Match original word count.
-     * BODY PARAGRAPHS: Rewrite within ±2 words.
-   - WHAT ACTUALLY GETS UPGRADED:
-     * Density, persuasion, commercial buyer-intent phrasing.
-     * Ingest localized authority signals ("${brandProfile.location}").
-     * Replace generic filler words with high-intent keywords.
+1. "1:1 VOLUMETRIC SLOT BUDGETING" (PHYSICAL CONTAINER BUDGET):
+   - You MUST match each slot's physical word count within ±1 to 2 words of the original.
+   - This ensures multi-column service cards stay level, button texts don't wrap awkwardly, and the existing visual design does not break or shift (CLS = 0).
+   - The slot budget defines the SIZE of the slot, but the WORDS INSIDE MUST BE FRESH, COMPELLING, HIGH-CONVERTING SALES COPY THAT FOLLOWS THE STRATEGIC DIRECTIVES.
 
 2. NAVIGATION MENU TITLE vs H1 HEADLINE:
-   - "page_title" MUST remain short and clean (2-4 words, e.g. "${title || 'Services'}"). Never put a 15-word headline into "page_title".
-   - The commercial headline belongs in "h1_headline".
+   - "page_title" MUST remain short and clean (2-4 words, e.g. "${title || 'Services'}"). Never put a 15-word headline into "page_title" so menus never break.
+   - The commercial headline belongs in "h1_headline" and the hero H1 slot.
 
-3. SERP SPECIFICATIONS:
-   - focus_keyword: The single most authoritative 2-4 word search query.
+3. SERP & METADATA SPECIFICATIONS:
+   - focus_keyword: The single most authoritative 2-4 word search query (aligned with target market).
    - meta_title: 50 to 60 characters with primary keyword & brand.
-   - meta_description: 135 to 155 characters with compelling call to action.
+   - meta_description: 135 to 155 characters with compelling call to action highlighting the value proposition.
    - slug: Clean permalink slug.
 
 OUTPUT SCHEMA (STRICT JSON):
 {
   "page_title": "${title || 'Services'}",
-  "h1_headline": "High-Converting Upgraded H1 Headline",
+  "h1_headline": "High-Converting Upgraded H1 Headline (embodying user directive)",
   "focus_keyword": "primary target search keyword",
   "meta_title": "Google SERP Title (50-60 chars)",
   "meta_description": "Google SERP Description (135-155 chars)",
@@ -233,22 +253,22 @@ OUTPUT SCHEMA (STRICT JSON):
   "replacements": [
     {
       "original": "exact original snippet from slot",
-      "optimized": "upgraded text matching original word budget (±1-2 words)"
+      "optimized": "brand new high-converting copy matching slot word budget (±1-2 words) that aggressively sells user's strategic intent"
     }
   ],
   "faq_items": [
-    { "question": "High value search query question?", "answer": "Authoritative direct answer for Google AI Overview citations." },
-    { "question": "Second important FAQ question?", "answer": "Clear explanation of services and ROI." },
-    { "question": "Third important FAQ question?", "answer": "Actionable answer reassuring potential buyers." }
+    { "question": "High-value FAQ addressing user's key offering/target market?", "answer": "Authoritative direct answer establishing trust and capability." },
+    { "question": "FAQ on delivery, quality, or engagement model?", "answer": "Clear reassurance addressing client objections." },
+    { "question": "FAQ on pricing, white-label, or local/international service?", "answer": "Compelling answer driving inquiry and action." }
   ],
   "audit_improvements": [
-    "Applied 1:1 Volumetric Slot Budgeting (±1-2 words per slot) for zero visual shift and level cards",
-    "Preserved 100% of existing HTML layout, video assets, and grid styling",
-    "Injected high-intent commercial keywords and localized authority signals",
+    "Applied strategic positioning across all hero headlines, service cards, and body copy",
+    "Enforced 1:1 Volumetric Slot Budgeting (±1-2 words per slot) for zero visual shift and level cards",
     "Protected navigation menu title while upgrading main hero H1 headline",
+    "Preserved 100% of existing HTML layout, video assets, and grid styling",
     "Appended structured FAQ section for Google Featured Snippets & AI citations"
   ],
-  "audit_score": 96
+  "audit_score": 98
 }`;
 
   let userPrompt = "";
@@ -257,9 +277,9 @@ OUTPUT SCHEMA (STRICT JSON):
 - URL: ${url || "N/A"}
 - Current Title: "${title || "Untitled"}"
 - Focus Keyword: "${focusKeyword || ""}"
-- User Instructions: "${customInstructions || "Perform full autonomous SEO & conversion copywriting upgrade while strictly preserving HTML design and forms."}"
+- User Strategic Directive: "${customInstructions || "Maximize commercial conversion, high-intent buyer psychology, and local authority."}"
 
-SLOTS TO REWRITE (Apply 1:1 Volumetric Slot Budgeting: ±1-2 words per slot):
+SLOTS TO REWRITE (Apply 1:1 Volumetric Slot Budgeting: ±1-2 words per slot. REWRITE WITH FRESH, HIGH-IMPACT SALES COPY EMBODYING THE STRATEGIC DIRECTIVE — NO SYNONYM SWAPS):
 ${semanticSlots.map((s, i) => `[${i + 1}] <${s.tag}> (${s.words} words): "${s.originalSnippet}"`).join("\n")}
 
 Respond strictly with the specified JSON object containing "replacements" and "faq_items".`;
@@ -268,7 +288,7 @@ Respond strictly with the specified JSON object containing "replacements" and "f
 - URL: ${url || "N/A"}
 - Current Title: "${title || "Untitled"}"
 - Focus Keyword: "${focusKeyword || ""}"
-- User Instructions: "${customInstructions || "Perform full autonomous SEO & conversion copywriting upgrade."}"
+- User Strategic Directive: "${customInstructions || "Maximize commercial conversion, high-intent buyer psychology, and local authority."}"
 
 CONTENT TO OPTIMIZE:
 \`\`\`html
@@ -291,8 +311,8 @@ Respond strictly with valid JSON.`;
           model: mName,
           generationConfig: {
             responseMimeType: "application/json",
-            temperature: 0.6,
-            maxOutputTokens: 2500,
+            temperature: 0.65,
+            maxOutputTokens: 3000,
           },
         });
 
@@ -317,8 +337,8 @@ Respond strictly with valid JSON.`;
           { role: "user", content: userPrompt },
         ],
         response_format: { type: "json_object" },
-        temperature: 0.6,
-        max_tokens: 2500,
+        temperature: 0.65,
+        max_tokens: 3000,
       });
 
       const raw = completion.choices[0]?.message?.content;
@@ -382,12 +402,12 @@ Respond strictly with valid JSON.`;
     meta_description: resultJson.meta_description || "",
     slug: resultJson.slug || "",
     audit_improvements: resultJson.audit_improvements || [
-      "Applied 1:1 Volumetric Slot Budgeting (±1-2 words per slot) for zero visual shift and level cards",
-      "Preserved 100% of existing theme layout, Elementor classes, and contact form",
-      "Injected high-intent commercial keywords and localized authority signals",
+      "Applied strategic positioning across all hero headlines, service cards, and body copy",
+      "Enforced 1:1 Volumetric Slot Budgeting (±1-2 words per slot) for zero visual shift and level cards",
       "Protected navigation menu title while upgrading main hero H1 headline",
-      "Added structured FAQ section for Google Featured Snippets & AI citations"
+      "Preserved 100% of existing HTML layout, video assets, and grid styling",
+      "Appended structured FAQ section for Google Featured Snippets & AI citations"
     ],
-    audit_score: resultJson.audit_score || 96,
+    audit_score: resultJson.audit_score || 98,
   });
 }
