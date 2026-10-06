@@ -758,7 +758,8 @@ export default function SeoHubPage() {
   // Autonomous Full AI Page Optimizer & Copy Rewriter (Preserving Layout & Forms)
   const handleRunAiPageOptimization = async (customPrompt = "") => {
     if (!editingArticle) return;
-    const currentScore = audit.score;
+    const currentAudit = computeAuditScore(editingArticle);
+    const currentScore = currentAudit?.score || 50;
     setAiPreScore(currentScore);
     setIsOptimizingWithAi(true);
     setShowAiOptimizeModal(false);
@@ -4569,111 +4570,114 @@ export default function SeoHubPage() {
       )}
 
       {/* ── MODAL 5: AUTONOMOUS AI PAGE OPTIMIZER ── */}
-      {showAiOptimizeModal && editingArticle && (
-        <div style={{ position: "fixed", top: 0, left: 0, right: 0, bottom: 0, background: "rgba(0,0,0,0.85)", backdropFilter: "blur(6px)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 1000, padding: 16 }}>
-          <div style={{ background: "#0b1120", border: "1px solid rgba(168, 85, 247, 0.4)", borderRadius: 16, maxWidth: 640, width: "100%", padding: 28, boxShadow: "0 20px 50px rgba(0,0,0,0.8), 0 0 30px rgba(168, 85, 247, 0.25)" }}>
-            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 14 }}>
-              <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
-                <div style={{ width: 40, height: 40, borderRadius: 10, background: "linear-gradient(135deg, #6366f1, #a855f7)", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 20 }}>
-                  🤖
-                </div>
-                <div>
-                  <h3 style={{ margin: 0, fontSize: 18, color: "#fff", fontWeight: 800 }}>Autonomous AI Page Optimizer</h3>
-                  <p style={{ margin: 0, fontSize: 12, color: "#a855f7" }}>Full-Page Copy & SEO Overhaul (Zero Layout Breakage)</p>
-                </div>
-              </div>
-              <button onClick={() => setShowAiOptimizeModal(false)} style={{ border: "none", background: "none", color: "#94a3b8", fontSize: 20, cursor: "pointer" }}>✕</button>
-            </div>
-
-            <div style={{ background: "rgba(168, 85, 247, 0.08)", border: "1px solid rgba(168, 85, 247, 0.2)", borderRadius: 10, padding: "14px 16px", marginBottom: 18 }}>
-              <div style={{ fontSize: 13, color: "#e2e8f0", lineHeight: 1.6 }}>
-                Target Page: <strong style={{ color: "#ffffff" }}>{editingArticle.title}</strong> (<em>/{editingArticle.slug || "page"}</em>)
-              </div>
-              <div style={{ marginTop: 10, display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10, fontSize: 12, color: "#c084fc" }}>
-                <div>🛡️ <strong>Layout Preservation:</strong> 100% theme & form tags kept</div>
-                <div>🎯 <strong>Headline Upgrade:</strong> High-intent commercial H1/H2</div>
-                <div>📍 <strong>Geo & Keywords:</strong> Local authority signals injected</div>
-                <div>📑 <strong>FAQ & Proof Points:</strong> GEO AI snippet structure added</div>
-              </div>
-
-              {/* Live Pre vs Post Score Preview in Modal */}
-              <div style={{ marginTop: 14, padding: "10px 14px", background: "rgba(0,0,0,0.4)", borderRadius: 8, display: "flex", alignItems: "center", justifyContent: "space-between", border: "1px solid rgba(255,255,255,0.08)" }}>
-                <div>
-                  <div style={{ fontSize: 10, color: "#94a3b8", fontWeight: 700 }}>CURRENT PRE-OPTIMIZATION AUDIT</div>
-                  <div style={{ fontSize: 16, fontWeight: 900, color: audit.score >= 80 ? "#34d399" : audit.score >= 60 ? "#fbbf24" : "#f87171" }}>
-                    {audit.score}/100 <span style={{ fontSize: 11, fontWeight: 600 }}>({audit.grade})</span>
+      {showAiOptimizeModal && editingArticle && (() => {
+        const modalAudit = computeAuditScore(editingArticle);
+        return (
+          <div style={{ position: "fixed", top: 0, left: 0, right: 0, bottom: 0, background: "rgba(0,0,0,0.85)", backdropFilter: "blur(6px)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 1000, padding: 16 }}>
+            <div style={{ background: "#0b1120", border: "1px solid rgba(168, 85, 247, 0.4)", borderRadius: 16, maxWidth: 640, width: "100%", padding: 28, boxShadow: "0 20px 50px rgba(0,0,0,0.8), 0 0 30px rgba(168, 85, 247, 0.25)" }}>
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 14 }}>
+                <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+                  <div style={{ width: 40, height: 40, borderRadius: 10, background: "linear-gradient(135deg, #6366f1, #a855f7)", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 20 }}>
+                    🤖
+                  </div>
+                  <div>
+                    <h3 style={{ margin: 0, fontSize: 18, color: "#fff", fontWeight: 800 }}>Autonomous AI Page Optimizer</h3>
+                    <p style={{ margin: 0, fontSize: 12, color: "#a855f7" }}>Full-Page Copy & SEO Overhaul (Zero Layout Breakage)</p>
                   </div>
                 </div>
-                <div style={{ fontSize: 18, color: "#a855f7", fontWeight: 900 }}>➔</div>
-                <div style={{ textAlign: "right" }}>
-                  <div style={{ fontSize: 10, color: "#34d399", fontWeight: 700 }}>TARGET POST-OPTIMIZATION SCORE</div>
-                  <div style={{ fontSize: 16, fontWeight: 900, color: "#34d399" }}>
-                    96+/100 <span style={{ fontSize: 11, fontWeight: 600 }}>(READY TO RANK)</span>
+                <button onClick={() => setShowAiOptimizeModal(false)} style={{ border: "none", background: "none", color: "#94a3b8", fontSize: 20, cursor: "pointer" }}>✕</button>
+              </div>
+
+              <div style={{ background: "rgba(168, 85, 247, 0.08)", border: "1px solid rgba(168, 85, 247, 0.2)", borderRadius: 10, padding: "14px 16px", marginBottom: 18 }}>
+                <div style={{ fontSize: 13, color: "#e2e8f0", lineHeight: 1.6 }}>
+                  Target Page: <strong style={{ color: "#ffffff" }}>{editingArticle.title}</strong> (<em>/{editingArticle.slug || "page"}</em>)
+                </div>
+                <div style={{ marginTop: 10, display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10, fontSize: 12, color: "#c084fc" }}>
+                  <div>🛡️ <strong>Layout Preservation:</strong> 100% theme & form tags kept</div>
+                  <div>🎯 <strong>Headline Upgrade:</strong> High-intent commercial H1/H2</div>
+                  <div>📍 <strong>Geo & Keywords:</strong> Local authority signals injected</div>
+                  <div>📑 <strong>FAQ & Proof Points:</strong> GEO AI snippet structure added</div>
+                </div>
+
+                {/* Live Pre vs Post Score Preview in Modal */}
+                <div style={{ marginTop: 14, padding: "10px 14px", background: "rgba(0,0,0,0.4)", borderRadius: 8, display: "flex", alignItems: "center", justifyContent: "space-between", border: "1px solid rgba(255,255,255,0.08)" }}>
+                  <div>
+                    <div style={{ fontSize: 10, color: "#94a3b8", fontWeight: 700 }}>CURRENT PRE-OPTIMIZATION AUDIT</div>
+                    <div style={{ fontSize: 16, fontWeight: 900, color: modalAudit?.score >= 80 ? "#34d399" : modalAudit?.score >= 60 ? "#fbbf24" : "#f87171" }}>
+                      {modalAudit?.score || 50}/100 <span style={{ fontSize: 11, fontWeight: 600 }}>({modalAudit?.grade || "NEEDS OPTIMIZATION"})</span>
+                    </div>
+                  </div>
+                  <div style={{ fontSize: 18, color: "#a855f7", fontWeight: 900 }}>➔</div>
+                  <div style={{ textAlign: "right" }}>
+                    <div style={{ fontSize: 10, color: "#34d399", fontWeight: 700 }}>TARGET POST-OPTIMIZATION SCORE</div>
+                    <div style={{ fontSize: 16, fontWeight: 900, color: "#34d399" }}>
+                      96+/100 <span style={{ fontSize: 11, fontWeight: 600 }}>(READY TO RANK)</span>
+                    </div>
                   </div>
                 </div>
               </div>
-            </div>
 
-            <div style={{ marginBottom: 20 }}>
-              <label style={{ fontSize: 12, color: "#cbd5e1", fontWeight: 700, display: "block", marginBottom: 6 }}>
-                Custom Focus / Strategic Guidance (Optional):
-              </label>
-              <textarea
-                value={aiCustomInstructions}
-                onChange={(e) => setAiCustomInstructions(e.target.value)}
-                placeholder="e.g. Focus on local clients in Ahmedabad, highlight transparent pricing, target enterprise B2B clients (or leave blank for full autonomous optimization)"
-                rows={3}
-                style={{
-                  width: "100%",
-                  padding: "10px 14px",
-                  borderRadius: 8,
-                  border: "1px solid rgba(255, 255, 255, 0.14)",
-                  background: "#050811",
-                  color: "#ffffff",
-                  fontSize: 13,
-                  lineHeight: 1.5,
-                  resize: "vertical",
-                  boxSizing: "border-box",
-                }}
-              />
-              <span style={{ fontSize: 11, color: "#64748b", marginTop: 4, display: "block" }}>
-                Leave blank to let GabbarInfo AI autonomously audit, research, and optimize using your brand memory and market profile.
-              </span>
-            </div>
+              <div style={{ marginBottom: 20 }}>
+                <label style={{ fontSize: 12, color: "#cbd5e1", fontWeight: 700, display: "block", marginBottom: 6 }}>
+                  Custom Focus / Strategic Guidance (Optional):
+                </label>
+                <textarea
+                  value={aiCustomInstructions}
+                  onChange={(e) => setAiCustomInstructions(e.target.value)}
+                  placeholder="e.g. Focus on local clients in Ahmedabad, highlight transparent pricing, target enterprise B2B clients (or leave blank for full autonomous optimization)"
+                  rows={3}
+                  style={{
+                    width: "100%",
+                    padding: "10px 14px",
+                    borderRadius: 8,
+                    border: "1px solid rgba(255, 255, 255, 0.14)",
+                    background: "#050811",
+                    color: "#ffffff",
+                    fontSize: 13,
+                    lineHeight: 1.5,
+                    resize: "vertical",
+                    boxSizing: "border-box",
+                  }}
+                />
+                <span style={{ fontSize: 11, color: "#64748b", marginTop: 4, display: "block" }}>
+                  Leave blank to let GabbarInfo AI autonomously audit, research, and optimize using your brand memory and market profile.
+                </span>
+              </div>
 
-            <div style={{ display: "flex", justifyContent: "flex-end", gap: 10 }}>
-              <button
-                type="button"
-                onClick={() => setShowAiOptimizeModal(false)}
-                style={{ padding: "9px 16px", borderRadius: 8, border: "1px solid #1e293b", background: "transparent", color: "#94a3b8", cursor: "pointer", fontSize: 13 }}
-              >
-                Cancel
-              </button>
-              <button
-                type="button"
-                onClick={() => handleRunAiPageOptimization(aiCustomInstructions)}
-                disabled={isOptimizingWithAi}
-                style={{
-                  padding: "10px 22px",
-                  borderRadius: 8,
-                  border: "none",
-                  background: "linear-gradient(135deg, #4f46e5 0%, #7c3aed 50%, #9333ea 100%)",
-                  color: "#ffffff",
-                  fontWeight: 800,
-                  fontSize: 13,
-                  cursor: isOptimizingWithAi ? "not-allowed" : "pointer",
-                  boxShadow: "0 4px 15px rgba(124, 58, 237, 0.5)",
-                  display: "inline-flex",
-                  alignItems: "center",
-                  gap: 8,
-                }}
-              >
-                <span>⚡</span> {isOptimizingWithAi ? "Optimizing Page…" : "Run Full Autonomous AI Rewrite (1 Click) ↗"}
-              </button>
+              <div style={{ display: "flex", justifyContent: "flex-end", gap: 10 }}>
+                <button
+                  type="button"
+                  onClick={() => setShowAiOptimizeModal(false)}
+                  style={{ padding: "9px 16px", borderRadius: 8, border: "1px solid #1e293b", background: "transparent", color: "#94a3b8", cursor: "pointer", fontSize: 13 }}
+                >
+                  Cancel
+                </button>
+                <button
+                  type="button"
+                  onClick={() => handleRunAiPageOptimization(aiCustomInstructions)}
+                  disabled={isOptimizingWithAi}
+                  style={{
+                    padding: "10px 22px",
+                    borderRadius: 8,
+                    border: "none",
+                    background: "linear-gradient(135deg, #4f46e5 0%, #7c3aed 50%, #9333ea 100%)",
+                    color: "#ffffff",
+                    fontWeight: 800,
+                    fontSize: 13,
+                    cursor: isOptimizingWithAi ? "not-allowed" : "pointer",
+                    boxShadow: "0 4px 15px rgba(124, 58, 237, 0.5)",
+                    display: "inline-flex",
+                    alignItems: "center",
+                    gap: 8,
+                  }}
+                >
+                  <span>⚡</span> {isOptimizingWithAi ? "Optimizing Page…" : "Run Full Autonomous AI Rewrite (1 Click) ↗"}
+                </button>
+              </div>
             </div>
           </div>
-        </div>
-      )}
+        );
+      })()}
 
       {/* ── MODAL: CONNECT NEW WEBSITE (IN SEO SUITE) ── */}
       {showAddSiteModal && (
