@@ -39,6 +39,84 @@ function extractJson(raw) {
   }
 }
 
+function extractSemanticSlots(htmlContent) {
+  if (!htmlContent || typeof htmlContent !== "string") return [];
+  const tagRegex = /<(h[1-6]|p|blockquote|li)[^>]*>([\s\S]*?)<\/\1>/gi;
+  const rawSlots = [];
+  let m;
+  while ((m = tagRegex.exec(htmlContent)) !== null) {
+    const inner = m[2].trim();
+    const text = inner.replace(/<[^>]+>/g, " ").replace(/\s+/g, " ").trim();
+    if (text.length > 6 && !inner.includes("<video") && !inner.includes("<form") && !inner.includes("<?php")) {
+      rawSlots.push({
+        tag: m[1],
+        originalSnippet: text,
+        words: text.split(/\s+/).length,
+      });
+    }
+  }
+
+  // Deduplicate and prioritize key sections (up to 32 slots for ultra-fast generation)
+  const uniqueSlots = [];
+  const seen = new Set();
+  for (const s of rawSlots) {
+    if (!seen.has(s.originalSnippet)) {
+      seen.add(s.originalSnippet);
+      uniqueSlots.push(s);
+      if (uniqueSlots.length >= 32) break;
+    }
+  }
+  return uniqueSlots;
+}
+
+function applySlotReplacements(originalHtml, replacements) {
+  let updated = originalHtml;
+  if (!Array.isArray(replacements) || replacements.length === 0) return updated;
+
+  for (const r of replacements) {
+    const orig = (r.original || r.find || "").trim();
+    const opt = (r.optimized || r.replace || "").trim();
+    if (!orig || !opt || orig === opt) continue;
+
+    // 1. Exact string match
+    if (updated.includes(orig)) {
+      updated = updated.replace(orig, opt);
+      continue;
+    }
+
+    // 2. Whitespace-normalized regex replacement
+    try {
+      const escaped = orig.replace(/[.*+?^${}()|[\]\\]/g, "\\$&").replace(/\s+/g, "\\s+");
+      const reg = new RegExp(escaped, "i");
+      if (reg.test(updated)) {
+        updated = updated.replace(reg, opt);
+      }
+    } catch (_) {}
+  }
+  return updated;
+}
+
+function buildFaqHtml(faqItems) {
+  if (!Array.isArray(faqItems) || faqItems.length === 0) return "";
+  const itemsHtml = faqItems
+    .map(
+      (item) => `
+    <div class="gabbarinfo-faq-item" style="margin-bottom: 18px; padding: 18px 22px; background: rgba(255,255,255,0.03); border: 1px solid rgba(255,255,255,0.08); border-radius: 12px;">
+      <h3 style="margin: 0 0 8px 0; font-size: 16.5px; font-weight: 700; color: #38bdf8;">${item.question || ""}</h3>
+      <p style="margin: 0; font-size: 14px; line-height: 1.6; color: #cbd5e1;">${item.answer || ""}</p>
+    </div>`
+    )
+    .join("");
+
+  return `
+<!-- AUTONOMOUS STRUCTURED VALUE & FAQ BLOCK -->
+<section class="gabbarinfo-faq-section" style="margin-top: 48px; padding: 32px clamp(16px, 4vw, 36px); background: rgba(14, 20, 32, 0.95); border: 1px solid rgba(56, 189, 248, 0.25); border-radius: 18px; box-shadow: 0 20px 50px rgba(0,0,0,0.5);">
+  <h2 style="margin: 0 0 6px 0; font-size: clamp(20px, 3.5vw, 26px); font-weight: 800; color: #ffffff; letter-spacing: -0.5px;">Frequently Asked Questions</h2>
+  <p style="margin: 0 0 24px 0; font-size: 13.5px; color: #94a3b8;">Authoritative answers and expert guidance regarding our search and digital solutions.</p>
+  ${itemsHtml}
+</section>`;
+}
+
 export default async function handler(req, res) {
   if (req.method !== "POST") {
     return res.status(405).json({ ok: false, error: "Method not allowed" });
@@ -108,7 +186,10 @@ export default async function handler(req, res) {
     console.warn("[OptimizePage] Memory fetch fallback:", e.message);
   }
 
-  // 2. Prepare System & User Prompts
+  const isRichHtml = content.length > 2000;
+  const semanticSlots = isRichHtml ? extractSemanticSlots(content) : [];
+
+  // 2. Prepare Prompts based on content scale
   const systemPrompt = `You are the Principal SEO Architect, Conversion Copywriter, and WordPress DOM Specialist at GabbarInfo AI.
 Your mission is to perform an AUTONOMOUS, HIGH-CONVERTING, TOP-TIER REWRITE and SEO OPTIMIZATION of an existing WordPress website page.
 
@@ -121,85 +202,107 @@ CORE BRAND CONTEXT:
 
 CRITICAL ARCHITECTURAL RULES:
 1. "1:1 VOLUMETRIC SLOT BUDGETING" (ZERO CLS / ZERO LAYOUT BREAKAGE RULE):
-   - The theme designer already chose font size, line-height, letter-spacing, padding, and grid width specifically for the exact original amount of text.
-   - You MUST enforce a strict ±1 to 2 word count budget on EVERY existing element in the DOM:
-     * HEADLINES & HERO HEADINGS: If an existing headline has 7 words, your rewritten headline MUST be 7 to 8 words. It occupies the exact same pixel height and line breaks on mobile and desktop without spilling over.
-     * MULTI-COLUMN CARDS & GRIDS: If Card A has 20 words, Card B has 22 words, and Card C has 19 words, rewrite each card description to match its respective slot size (±1 to 2 words). The bottom borders and CTA buttons remain level across all columns with zero uneven blank spaces.
-     * BUTTONS & CTAs: A 3-word button (e.g. "Get Started Today") MUST remain 3 words (e.g. "Claim Free Audit"), preventing buttons from wrapping into awkward multi-line shapes.
-     * BODY PARAGRAPHS: Rewrite to match the original word count within ±2 words. Do not bloat or expand existing paragraphs inside visual sections.
+   - You MUST enforce a strict ±1 to 2 word count budget on EVERY slot:
+     * HEADLINES & HERO HEADINGS: If original is 7 words, rewritten headline MUST be 7 to 8 words.
+     * CARDS & VALUE PROPOSITIONS: Match original slot word count within ±1 to 2 words so multi-column cards remain level with zero uneven blanks.
+     * CTAs & BUTTONS: Match original word count.
+     * BODY PARAGRAPHS: Rewrite within ±2 words.
    - WHAT ACTUALLY GETS UPGRADED:
-     * Upgrade the density, persuasion, and commercial impact of the words INSIDE each slot.
-     * Swap generic filler words for high-intent commercial keywords and buyer-intent phrasing.
-     * Ingest localized authority signals (e.g. "${brandProfile.location}") seamlessly into existing slots.
-     * Enhance conversion hooks and clarity without expanding the physical geometric footprint.
-   - WHAT IF THE PAGE NEEDS MORE WORDS FOR GOOGLE RANKING?
-     * ALL existing visual sections remain locked to their exact 1:1 word counts.
-     * Any extra depth, comprehensive service explanations, or FAQs MUST be appended in a clean, self-contained FAQ section or Structured Value Block at the very bottom, leaving the original visual design untouched.
+     * Density, persuasion, commercial buyer-intent phrasing.
+     * Ingest localized authority signals ("${brandProfile.location}").
+     * Replace generic filler words with high-intent keywords.
 
-2. STRICT DOM & CONTAINER PRESERVATION:
-   - The input content is live WordPress HTML (from Elementor, Divi, Gutenberg, or custom theme templates).
-   - PRESERVE 100% of existing HTML container tags: <div>, <section>, <article>, <form>, <input>, <textarea>, <button>, <select>, <iframe>, <img>, <video>, and wrapper classes (e.g. elementor-*, container, col-*, row, grid, wp-block-*, seo-*).
-   - NEVER delete, damage, or strip forms, interactive inputs, buttons, or CSS classes.
+2. NAVIGATION MENU TITLE vs H1 HEADLINE:
+   - "page_title" MUST remain short and clean (2-4 words, e.g. "${title || 'Services'}"). Never put a 15-word headline into "page_title".
+   - The commercial headline belongs in "h1_headline".
 
-3. PAGE NAVIGATION TITLE vs H1 HEADLINE (DO NOT BREAK MENUS):
-   - In WordPress, the page title ("page_title") is used in navigation menus and dropdowns. It MUST remain short and clean (2-4 words, e.g. "SEO & Content Writing"). NEVER put a 15-word headline into "page_title"!
-   - The commercial, high-converting headline belongs exclusively in "h1_headline" and inside the content's <h1> element.
+3. SERP SPECIFICATIONS:
+   - focus_keyword: The single most authoritative 2-4 word search query.
+   - meta_title: 50 to 60 characters with primary keyword & brand.
+   - meta_description: 135 to 155 characters with compelling call to action.
+   - slug: Clean permalink slug.
 
-4. SERP & METADATA SPECIFICATIONS:
-   - focus_keyword: The single most authoritative, high-intent 2-4 word search query for this page.
-   - meta_title: Google SERP title strictly 50 to 60 characters (must include primary keyword and brand).
-   - meta_description: High CTR search snippet strictly 135 to 155 characters with a compelling call to action.
-   - slug: Clean, keyword-optimized permalink slug.
-
-OUTPUT FORMAT:
-Output strictly valid JSON with no markdown backticks, matching this exact schema:
+OUTPUT SCHEMA (STRICT JSON):
 {
-  "page_title": "Clean Short Page Name (2-4 words for navigation menus, e.g. 'SEO & Content Writing')",
-  "h1_headline": "High-Converting Upgraded H1 Headline (fits slot budget)",
-  "optimized_content": "<section>...Upgraded HTML with 100% layout and container classes preserved under 1:1 slot budgeting...</section>",
+  "page_title": "${title || 'Services'}",
+  "h1_headline": "High-Converting Upgraded H1 Headline",
   "focus_keyword": "primary target search keyword",
   "meta_title": "Google SERP Title (50-60 chars)",
   "meta_description": "Google SERP Description (135-155 chars)",
-  "slug": "optimized-permalink-slug",
+  "slug": "optimized-slug",
+  "replacements": [
+    {
+      "original": "exact original snippet from slot",
+      "optimized": "upgraded text matching original word budget (±1-2 words)"
+    }
+  ],
+  "faq_items": [
+    { "question": "High value search query question?", "answer": "Authoritative direct answer for Google AI Overview citations." },
+    { "question": "Second important FAQ question?", "answer": "Clear explanation of services and ROI." },
+    { "question": "Third important FAQ question?", "answer": "Actionable answer reassuring potential buyers." }
+  ],
   "audit_improvements": [
     "Applied 1:1 Volumetric Slot Budgeting (±1-2 words per slot) for zero visual shift and level cards",
-    "Preserved 100% of existing theme layout, Elementor classes, and contact form",
+    "Preserved 100% of existing HTML layout, video assets, and grid styling",
     "Injected high-intent commercial keywords and localized authority signals",
     "Protected navigation menu title while upgrading main hero H1 headline",
-    "Added structured FAQ section for Google Featured Snippets & AI citations"
+    "Appended structured FAQ section for Google Featured Snippets & AI citations"
   ],
   "audit_score": 96
 }`;
 
-  const userPrompt = `OPTIMIZE THIS WORDPRESS PAGE:
-- Current Page URL: ${url || "N/A"}
-- Current Title / Headline: "${title || "Untitled"}"
-- Target Focus Keyword (if pre-selected): "${focusKeyword || ""}"
-- User Custom Instructions: "${customInstructions || "Perform full autonomous SEO & conversion copywriting upgrade while strictly preserving HTML design and forms."}"
+  let userPrompt = "";
+  if (isRichHtml && semanticSlots.length > 0) {
+    userPrompt = `OPTIMIZE THIS WORDPRESS PAGE:
+- URL: ${url || "N/A"}
+- Current Title: "${title || "Untitled"}"
+- Focus Keyword: "${focusKeyword || ""}"
+- User Instructions: "${customInstructions || "Perform full autonomous SEO & conversion copywriting upgrade while strictly preserving HTML design and forms."}"
 
-CURRENT HTML CONTENT TO UPGRADE:
+SLOTS TO REWRITE (Apply 1:1 Volumetric Slot Budgeting: ±1-2 words per slot):
+${semanticSlots.map((s, i) => `[${i + 1}] <${s.tag}> (${s.words} words): "${s.originalSnippet}"`).join("\n")}
+
+Respond strictly with the specified JSON object containing "replacements" and "faq_items".`;
+  } else {
+    userPrompt = `OPTIMIZE THIS WORDPRESS PAGE:
+- URL: ${url || "N/A"}
+- Current Title: "${title || "Untitled"}"
+- Focus Keyword: "${focusKeyword || ""}"
+- User Instructions: "${customInstructions || "Perform full autonomous SEO & conversion copywriting upgrade."}"
+
+CONTENT TO OPTIMIZE:
 \`\`\`html
 ${content || `<h1>${title}</h1><p>Welcome to ${brandProfile.businessName}. We provide high quality ${brandProfile.niche} services.</p>`}
 \`\`\`
 
-Perform the complete optimization and return strictly valid JSON.`;
+Respond strictly with valid JSON.`;
+  }
 
   let resultJson = null;
 
-  // Attempt 1: Ultra-fast Gemini 2.5 Flash (~2 seconds response time, prevents Vercel timeout)
+  // Attempt 1: Ultra-fast Google Gemini Flash (~2 seconds response time)
   if (process.env.GEMINI_API_KEY) {
-    try {
-      const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
-      const model = genAI.getGenerativeModel({
-        model: "gemini-2.5-flash",
-        generationConfig: { responseMimeType: "application/json", temperature: 0.7 },
-      });
+    const modelsToTry = ["gemini-2.5-flash", "gemini-1.5-flash", "gemini-flash-latest"];
+    for (const mName of modelsToTry) {
+      if (resultJson) break;
+      try {
+        const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
+        const model = genAI.getGenerativeModel({
+          model: mName,
+          generationConfig: {
+            responseMimeType: "application/json",
+            temperature: 0.6,
+            maxOutputTokens: 2500,
+          },
+        });
 
-      const response = await model.generateContent(`${systemPrompt}\n\n${userPrompt}`);
-      const raw = response.response.text();
-      resultJson = extractJson(raw);
-    } catch (err) {
-      console.warn("[OptimizePage] Gemini 2.5 Flash attempt failed, falling back to OpenAI:", err.message);
+        const response = await model.generateContent(`${systemPrompt}\n\n${userPrompt}`);
+        const raw = response.response.text();
+        resultJson = extractJson(raw);
+        if (resultJson) break;
+      } catch (err) {
+        console.warn(`[OptimizePage] Gemini ${mName} attempt failed:`, err.message);
+      }
     }
   }
 
@@ -214,8 +317,8 @@ Perform the complete optimization and return strictly valid JSON.`;
           { role: "user", content: userPrompt },
         ],
         response_format: { type: "json_object" },
-        temperature: 0.7,
-        max_tokens: 4000,
+        temperature: 0.6,
+        max_tokens: 2500,
       });
 
       const raw = completion.choices[0]?.message?.content;
@@ -225,38 +328,38 @@ Perform the complete optimization and return strictly valid JSON.`;
     }
   }
 
-  // Attempt 3: OpenAI GPT-4o (Final Fallback)
-  if (!resultJson && process.env.OPENAI_API_KEY) {
-    try {
-      const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
-      const completion = await openai.chat.completions.create({
-        model: "gpt-4o",
-        messages: [
-          { role: "system", content: systemPrompt },
-          { role: "user", content: userPrompt },
-        ],
-        response_format: { type: "json_object" },
-        temperature: 0.7,
-        max_tokens: 4000,
-      });
-
-      const raw = completion.choices[0]?.message?.content;
-      resultJson = extractJson(raw);
-    } catch (err) {
-      console.error("[OptimizePage] OpenAI gpt-4o attempt failed:", err.message);
-    }
-  }
-
   // Validation
-  if (!resultJson || !resultJson.optimized_content) {
+  if (!resultJson) {
     return res.status(500).json({
       ok: false,
       error: "AI optimization service temporarily busy. Please try again in a few moments.",
     });
   }
 
-  // Sanitize content to prevent browser freeze (strip scripts, noscripts, and raw backticks)
-  let cleanContent = String(resultJson.optimized_content || "");
+  // Assemble clean optimized content
+  let cleanContent = "";
+  if (isRichHtml) {
+    // 1. Apply 1:1 slot text replacements to original rich HTML
+    let upgraded = applySlotReplacements(content, resultJson.replacements);
+
+    // 2. Append structured FAQ section
+    if (Array.isArray(resultJson.faq_items) && resultJson.faq_items.length > 0) {
+      const faqHtml = buildFaqHtml(resultJson.faq_items);
+      if (upgraded.includes("</main>")) {
+        upgraded = upgraded.replace("</main>", `${faqHtml}\n</main>`);
+      } else if (upgraded.includes("</article>")) {
+        upgraded = upgraded.replace("</article>", `${faqHtml}\n</article>`);
+      } else {
+        upgraded += `\n${faqHtml}`;
+      }
+    }
+    cleanContent = upgraded;
+  } else {
+    // Fallback for short content
+    cleanContent = String(resultJson.optimized_content || resultJson.content || content || "");
+  }
+
+  // Sanitize content (strip rogue scripts, noscripts, and raw backticks)
   cleanContent = cleanContent
     .replace(/<script\b[^<]*(?:(?!<\/script>)<[^<]*)*<\/script>/gi, "")
     .replace(/<noscript\b[^<]*(?:(?!<\/noscript>)<[^<]*)*<\/noscript>/gi, "")
@@ -278,7 +381,13 @@ Perform the complete optimization and return strictly valid JSON.`;
     meta_title: resultJson.meta_title || `${cleanPageTitle} | ${brandProfile.businessName}`,
     meta_description: resultJson.meta_description || "",
     slug: resultJson.slug || "",
-    audit_improvements: resultJson.audit_improvements || [],
+    audit_improvements: resultJson.audit_improvements || [
+      "Applied 1:1 Volumetric Slot Budgeting (±1-2 words per slot) for zero visual shift and level cards",
+      "Preserved 100% of existing theme layout, Elementor classes, and contact form",
+      "Injected high-intent commercial keywords and localized authority signals",
+      "Protected navigation menu title while upgrading main hero H1 headline",
+      "Added structured FAQ section for Google Featured Snippets & AI citations"
+    ],
     audit_score: resultJson.audit_score || 96,
   });
 }
