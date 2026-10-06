@@ -675,47 +675,53 @@ export default function SubscriptionModal({
                   style={{
                     display: "flex",
                     alignItems: "center",
-                    background: "rgba(0, 0, 0, 0.5)",
+                    background: "rgba(0, 0, 0, 0.6)",
                     borderRadius: 12,
-                    padding: 3,
-                    border: "1px solid rgba(255, 255, 255, 0.12)",
+                    padding: 4,
+                    border: "1px solid rgba(255, 255, 255, 0.15)",
                   }}
                 >
                   <button
                     type="button"
                     onClick={() => setCurrency("USD")}
                     style={{
-                      padding: "6px 14px",
+                      padding: "6px 16px",
                       borderRadius: 10,
                       border: "none",
                       background: currency === "USD" ? "#2563eb" : "transparent",
-                      color: currency === "USD" ? "#ffffff" : "#94a3b8",
+                      color: currency === "USD" ? "#ffffff" : "#cbd5e1",
                       fontWeight: 800,
-                      fontSize: 12,
+                      fontSize: 12.5,
                       cursor: "pointer",
-                      boxShadow: currency === "USD" ? "0 2px 8px rgba(37, 99, 235, 0.5)" : "none",
+                      boxShadow: currency === "USD" ? "0 2px 10px rgba(37, 99, 235, 0.6)" : "none",
                       transition: "all 0.15s ease",
+                      display: "flex",
+                      alignItems: "center",
+                      gap: 6,
                     }}
                   >
-                    🇺🇸 USD ($)
+                    <span style={{ fontSize: 13, fontWeight: 900 }}>$</span> USD
                   </button>
                   <button
                     type="button"
                     onClick={() => setCurrency("INR")}
                     style={{
-                      padding: "6px 14px",
+                      padding: "6px 16px",
                       borderRadius: 10,
                       border: "none",
                       background: currency === "INR" ? "#10b981" : "transparent",
-                      color: currency === "INR" ? "#ffffff" : "#94a3b8",
+                      color: currency === "INR" ? "#ffffff" : "#cbd5e1",
                       fontWeight: 800,
-                      fontSize: 12,
+                      fontSize: 12.5,
                       cursor: "pointer",
-                      boxShadow: currency === "INR" ? "0 2px 8px rgba(16, 185, 129, 0.5)" : "none",
+                      boxShadow: currency === "INR" ? "0 2px 10px rgba(16, 185, 129, 0.6)" : "none",
                       transition: "all 0.15s ease",
+                      display: "flex",
+                      alignItems: "center",
+                      gap: 6,
                     }}
                   >
-                    🇮🇳 INR (₹)
+                    <span style={{ fontSize: 13, fontWeight: 900 }}>₹</span> INR
                   </button>
                 </div>
               </div>
@@ -726,76 +732,124 @@ export default function SubscriptionModal({
                   style={{
                     display: "flex",
                     justifyContent: "center",
-                    gap: 10,
+                    gap: 12,
                     marginBottom: 24,
                     flexWrap: "wrap",
                   }}
                 >
+                  {/* 8 Posts/Blogs (Cyan / Sky Blue) */}
                   <button
                     type="button"
                     onClick={() => setCadence("8")}
                     style={{
                       padding: "10px 18px",
                       borderRadius: 14,
-                      border: cadence === "8" ? "1.5px solid #38bdf8" : "1px solid rgba(255, 255, 255, 0.08)",
-                      background: cadence === "8" ? "rgba(56, 189, 248, 0.15)" : "rgba(255, 255, 255, 0.03)",
-                      color: cadence === "8" ? "#ffffff" : "#94a3b8",
-                      fontWeight: 700,
-                      fontSize: 12.5,
+                      border: cadence === "8" ? "2px solid #38bdf8" : "1.5px solid rgba(56, 189, 248, 0.4)",
+                      background: cadence === "8"
+                        ? "linear-gradient(135deg, rgba(14, 165, 233, 0.3) 0%, rgba(2, 132, 199, 0.2) 100%)"
+                        : "rgba(56, 189, 248, 0.08)",
+                      color: cadence === "8" ? "#ffffff" : "#7dd3fc",
+                      fontWeight: cadence === "8" ? 800 : 700,
+                      fontSize: 13,
                       cursor: "pointer",
                       display: "flex",
                       alignItems: "center",
-                      gap: 6,
-                      boxShadow: cadence === "8" ? "0 0 15px rgba(56, 189, 248, 0.25)" : "none",
+                      gap: 8,
+                      boxShadow: cadence === "8" ? "0 0 25px rgba(56, 189, 248, 0.45), inset 0 0 10px rgba(56, 189, 248, 0.2)" : "0 2px 8px rgba(0,0,0,0.2)",
                       transition: "all 0.2s ease",
                     }}
                   >
-                    <span>📅</span> 8 {selectedCategory === "seo" ? "Blogs" : "Posts"} / mo (2 / Wk)
+                    <span>📅</span>
+                    <span>8 {selectedCategory === "seo" ? "Blogs" : "Posts"} / mo (2 / Wk)</span>
+                    <span
+                      style={{
+                        fontSize: 9.5,
+                        padding: "2px 7px",
+                        borderRadius: 6,
+                        background: cadence === "8" ? "#38bdf8" : "rgba(56, 189, 248, 0.2)",
+                        color: cadence === "8" ? "#0c4a6e" : "#38bdf8",
+                        fontWeight: 900,
+                        border: "1px solid rgba(56, 189, 248, 0.3)",
+                      }}
+                    >
+                      STEADY
+                    </span>
                   </button>
 
+                  {/* 15 Posts/Blogs (Purple / Violet) */}
                   <button
                     type="button"
                     onClick={() => setCadence("15")}
                     style={{
                       padding: "10px 18px",
                       borderRadius: 14,
-                      border: cadence === "15" ? "1.5px solid #a855f7" : "1px solid rgba(255, 255, 255, 0.08)",
-                      background: cadence === "15" ? "rgba(168, 85, 247, 0.15)" : "rgba(255, 255, 255, 0.03)",
-                      color: cadence === "15" ? "#ffffff" : "#94a3b8",
-                      fontWeight: 700,
-                      fontSize: 12.5,
+                      border: cadence === "15" ? "2px solid #a855f7" : "1.5px solid rgba(168, 85, 247, 0.4)",
+                      background: cadence === "15"
+                        ? "linear-gradient(135deg, rgba(168, 85, 247, 0.3) 0%, rgba(126, 34, 206, 0.2) 100%)"
+                        : "rgba(168, 85, 247, 0.08)",
+                      color: cadence === "15" ? "#ffffff" : "#d8b4fe",
+                      fontWeight: cadence === "15" ? 800 : 700,
+                      fontSize: 13,
                       cursor: "pointer",
                       display: "flex",
                       alignItems: "center",
-                      gap: 6,
-                      boxShadow: cadence === "15" ? "0 0 15px rgba(168, 85, 247, 0.25)" : "none",
+                      gap: 8,
+                      boxShadow: cadence === "15" ? "0 0 25px rgba(168, 85, 247, 0.45), inset 0 0 10px rgba(168, 85, 247, 0.2)" : "0 2px 8px rgba(0,0,0,0.2)",
                       transition: "all 0.2s ease",
                     }}
                   >
-                    <span>⚡</span> 15 {selectedCategory === "seo" ? "Blogs" : "Posts"} / mo (Alt Days)
+                    <span>⚡</span>
+                    <span>15 {selectedCategory === "seo" ? "Blogs" : "Posts"} / mo (Alt Days)</span>
+                    <span
+                      style={{
+                        fontSize: 9.5,
+                        padding: "2px 7px",
+                        borderRadius: 6,
+                        background: cadence === "15" ? "#a855f7" : "rgba(168, 85, 247, 0.2)",
+                        color: cadence === "15" ? "#ffffff" : "#c084fc",
+                        fontWeight: 900,
+                        border: "1px solid rgba(168, 85, 247, 0.3)",
+                      }}
+                    >
+                      BALANCED
+                    </span>
                   </button>
 
+                  {/* 30 Posts/Blogs (Emerald Green) */}
                   <button
                     type="button"
                     onClick={() => setCadence("30")}
                     style={{
                       padding: "10px 18px",
                       borderRadius: 14,
-                      border: cadence === "30" ? "1.5px solid #10b981" : "1px solid rgba(255, 255, 255, 0.08)",
-                      background: cadence === "30" ? "rgba(16, 185, 129, 0.18)" : "rgba(255, 255, 255, 0.03)",
-                      color: cadence === "30" ? "#ffffff" : "#94a3b8",
-                      fontWeight: 800,
-                      fontSize: 12.5,
+                      border: cadence === "30" ? "2px solid #10b981" : "1.5px solid rgba(16, 185, 129, 0.4)",
+                      background: cadence === "30"
+                        ? "linear-gradient(135deg, rgba(16, 185, 129, 0.32) 0%, rgba(5, 150, 105, 0.22) 100%)"
+                        : "rgba(16, 185, 129, 0.08)",
+                      color: cadence === "30" ? "#ffffff" : "#6ee7b7",
+                      fontWeight: 900,
+                      fontSize: 13,
                       cursor: "pointer",
                       display: "flex",
                       alignItems: "center",
-                      gap: 6,
-                      boxShadow: cadence === "30" ? "0 0 20px rgba(16, 185, 129, 0.3)" : "none",
+                      gap: 8,
+                      boxShadow: cadence === "30" ? "0 0 25px rgba(16, 185, 129, 0.5), inset 0 0 10px rgba(16, 185, 129, 0.2)" : "0 2px 8px rgba(0,0,0,0.2)",
                       transition: "all 0.2s ease",
                     }}
                   >
-                    <span>🚀</span> 30 {selectedCategory === "seo" ? "Blogs" : "Posts"} / 30 Days (Daily)
-                    <span style={{ fontSize: 9.5, padding: "2px 6px", borderRadius: 6, background: "#10b981", color: "#052e16", fontWeight: 900 }}>
+                    <span>🚀</span>
+                    <span>30 {selectedCategory === "seo" ? "Blogs" : "Posts"} / 30 Days (Daily)</span>
+                    <span
+                      style={{
+                        fontSize: 9.5,
+                        padding: "2px 7px",
+                        borderRadius: 6,
+                        background: "#10b981",
+                        color: "#052e16",
+                        fontWeight: 900,
+                        boxShadow: "0 2px 6px rgba(16, 185, 129, 0.4)",
+                      }}
+                    >
                       🔥 MOST POPULAR
                     </span>
                   </button>
