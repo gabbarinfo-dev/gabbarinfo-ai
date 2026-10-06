@@ -928,7 +928,8 @@ export default function SeoHubPage() {
 
   // Filtered Content
   const filteredContent = contentList.filter((item) => {
-    if (contentFilter !== "all" && item.type !== contentFilter) return false;
+    const itemType = item.type || item.post_type;
+    if (contentFilter !== "all" && itemType !== contentFilter) return false;
     if (searchQuery.trim()) {
       const q = searchQuery.toLowerCase();
       return (item.title || "").toLowerCase().includes(q) || (item.slug || "").toLowerCase().includes(q);

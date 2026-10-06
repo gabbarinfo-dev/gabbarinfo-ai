@@ -479,7 +479,7 @@ async function runSocialAutopilotCycle({ supabase, openai, force = false, email 
       );
       if (siteUrl && candidateServices.length === 0 && !isShopifyBrand) {
         try {
-          const pagesRes = await fetch(`${siteUrl}/wp-json/wp/v2/pages?per_page=50&_fields=title,slug`);
+          const pagesRes = await fetch(`${siteUrl}/wp-json/wp/v2/pages?per_page=100&_fields=title,slug`);
           if (pagesRes.ok) {
             const pages = await pagesRes.json();
             const utilitySlugs = /^(home.*|about.*|contact.*|privacy.*|terms.*|faq.*|cart.*|checkout.*|my-account.*|sample-page.*|disclaimer.*|shipping.*|refund.*|cancellation.*|test.*|blogs.*|services|shop|account)$/i;

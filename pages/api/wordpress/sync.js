@@ -404,16 +404,43 @@ export default async function handler(req, res) {
       let pageItems = pagesData?.ok && Array.isArray(pagesData?.items) ? pagesData.items : [];
       let postItems = postsData?.ok && Array.isArray(postsData?.items) ? postsData.items : [];
 
+      // Auto-paginate pages up to 500 items if a site has > 100 pages
+      if (pageItems.length === 100) {
+        let pageNum = 2;
+        while (pageNum <= 5) {
+          try {
+            const nextResp = await fetch(`${activeUrl}/wp-json/gabbarinfo/v1/list-content?type=page&per_page=100&page=${pageNum}`, {
+              headers: authHeader,
+            });
+            if (!nextResp.ok) break;
+            const nextData = await nextResp.json().catch(() => null);
+            const nextItems = nextData?.ok && Array.isArray(nextData?.items) ? nextData.items : [];
+            if (nextItems.length === 0) break;
+            pageItems.push(...nextItems);
+            if (nextItems.length < 100) break;
+            pageNum++;
+          } catch (_) {
+            break;
+          }
+        }
+      }
+
       // Fallback: If plugin returned empty pages (or plugin not active), query standard WP REST API /wp/v2/pages
       if (pageItems.length === 0) {
         try {
-          const wpPagesResp = await fetch(`${activeUrl}/wp-json/wp/v2/pages?per_page=100`, {
-            headers: authHeader,
-          });
-          if (wpPagesResp.ok) {
+          let pageNum = 1;
+          while (pageNum <= 5) {
+            const wpPagesResp = await fetch(`${activeUrl}/wp-json/wp/v2/pages?per_page=100&page=${pageNum}&status=publish`, {
+              headers: authHeader,
+            });
+            if (!wpPagesResp.ok) break;
             const rawPages = await wpPagesResp.json().catch(() => []);
-            if (Array.isArray(rawPages)) {
-              pageItems = rawPages.map((p) => mapStandardWpItem(p, "page"));
+            if (Array.isArray(rawPages) && rawPages.length > 0) {
+              pageItems.push(...rawPages.map((p) => mapStandardWpItem(p, "page")));
+              if (rawPages.length < 100) break;
+              pageNum++;
+            } else {
+              break;
             }
           }
         } catch (_) {}

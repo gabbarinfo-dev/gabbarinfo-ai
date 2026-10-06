@@ -510,7 +510,7 @@ async function runSeoAutopilotCycle({ supabase, openai, force = false, email = n
 
         const [postsResp, pagesResp] = await Promise.all([
           fetch(`${siteUrl}/wp-json/wp/v2/posts?per_page=50&_fields=id,title,slug,link`, { headers: wpReqHeaders }),
-          fetch(`${siteUrl}/wp-json/wp/v2/pages?per_page=50&_fields=id,title,slug,link`, { headers: wpReqHeaders })
+          fetch(`${siteUrl}/wp-json/wp/v2/pages?per_page=100&_fields=id,title,slug,link`, { headers: wpReqHeaders })
         ]);
         if (postsResp.ok) {
           const rawPosts = await postsResp.json();
