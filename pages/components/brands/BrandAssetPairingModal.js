@@ -92,8 +92,8 @@ export default function BrandAssetPairingModal({ onClose, onSaved }) {
       const brandKeys = Object.keys(existing);
 
       if (brandKeys.length > 0) {
-        setPairings(
-          brandKeys.map((key) => {
+        const loadedPairings = await Promise.all(
+          brandKeys.map(async (key) => {
             const b = existing[key];
             const nameToMatch = b.businessName || b.pageName || key;
             const autoSite = findBestSiteMatch(nameToMatch);
@@ -101,6 +101,19 @@ export default function BrandAssetPairingModal({ onClose, onSaved }) {
             const chosenUrl = verifiedSite ? verifiedSite.url : "";
             const chosenType = verifiedSite ? verifiedSite.type : "";
             const metaPageWebsite = b.website || b.websiteUrl || "";
+
+            let lUrl = b.logo_url || null;
+            let lFile = b.logo_filename || null;
+            if (!lUrl) {
+              try {
+                const autoRes = await fetch(`/api/social/autopilot-config?businessName=${encodeURIComponent(nameToMatch)}`).then((r) => r.json());
+                if (autoRes?.config?.logo_url) {
+                  lUrl = autoRes.config.logo_url;
+                  lFile = autoRes.config.logo_filename || "brand_logo.png";
+                }
+              } catch (_) {}
+            }
+
             return {
               brandKey: key,
               businessName: nameToMatch,
@@ -114,9 +127,12 @@ export default function BrandAssetPairingModal({ onClose, onSaved }) {
               websiteUrl: chosenUrl,
               websiteType: chosenType,
               metaPageWebsite,
+              logo_url: lUrl,
+              logo_filename: lFile,
             };
           })
         );
+        setPairings(loadedPairings);
       } else if (metaRes.meta) {
         const autoSite = findBestSiteMatch(metaRes.meta.business_name);
         setPairings([
@@ -132,6 +148,8 @@ export default function BrandAssetPairingModal({ onClose, onSaved }) {
             adAccountName: null,
             websiteUrl: autoSite?.url || "",
             websiteType: autoSite?.type || "wordpress",
+            logo_url: null,
+            logo_filename: null,
           },
         ]);
       }
@@ -139,6 +157,71 @@ export default function BrandAssetPairingModal({ onClose, onSaved }) {
       console.error("Failed to load pairing assets:", err);
     } finally {
       setLoading(false);
+    }
+  };
+
+  const handleUploadLogoForBrand = async (index, file) => {
+    if (!file) return;
+    const pairing = pairings[index];
+    const brandName = pairing.businessName || pairing.pageName;
+    const reader = new FileReader();
+    reader.onload = async (e) => {
+      try {
+        const res = await fetch("/api/social/autopilot-config", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            action: "upload-logo",
+            businessName: brandName,
+            logoBase64: e.target.result,
+            filename: file.name,
+          }),
+        });
+        const data = await res.json();
+        if (data.ok && data.logo_url) {
+          setPairings((prev) => {
+            const copy = [...prev];
+            copy[index] = {
+              ...copy[index],
+              logo_url: data.logo_url,
+              logo_filename: data.logo_filename || file.name,
+            };
+            return copy;
+          });
+        } else {
+          alert("Failed to upload logo: " + (data.error || "Unknown error"));
+        }
+      } catch (err) {
+        alert("Upload error: " + err.message);
+      }
+    };
+    reader.readAsDataURL(file);
+  };
+
+  const handleRemoveLogoForBrand = async (index) => {
+    const pairing = pairings[index];
+    const brandName = pairing.businessName || pairing.pageName;
+    if (!confirm(`Are you sure you want to remove the logo for ${brandName}?`)) return;
+    try {
+      await fetch("/api/social/autopilot-config", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          action: "remove-logo",
+          businessName: brandName,
+        }),
+      });
+      setPairings((prev) => {
+        const copy = [...prev];
+        copy[index] = {
+          ...copy[index],
+          logo_url: null,
+          logo_filename: null,
+        };
+        return copy;
+      });
+    } catch (err) {
+      alert("Error removing logo: " + err.message);
     }
   };
 
@@ -440,6 +523,116 @@ export default function BrandAssetPairingModal({ onClose, onSaved }) {
                           )}
                         </div>
                       )}
+                    </div>
+
+                    {/* Brand Logo Binding */}
+                    <div style={{ gridColumn: "1 / -1", marginTop: 4 }}>
+                      <label style={{ fontSize: 11, fontWeight: 700, color: "#94a3b8", display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 6 }}>
+                        <span>🖼️ Brand Logo (PNG / Optional):</span>
+                        <span style={{ fontSize: 10, color: "#64748b", fontWeight: 400 }}>
+                          Overlaid on top-left of AI social creatives
+                        </span>
+                      </label>
+                      <div
+                        style={{
+                          background: "#080c14",
+                          border: pairing.logo_url ? "1px solid rgba(16, 185, 129, 0.35)" : "1px dashed rgba(255, 255, 255, 0.15)",
+                          borderRadius: 8,
+                          padding: "8px 12px",
+                          display: "flex",
+                          alignItems: "center",
+                          justifyContent: "space-between",
+                          gap: 12,
+                          flexWrap: "wrap",
+                        }}
+                      >
+                        {pairing.logo_url ? (
+                          <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+                            <div
+                              style={{
+                                width: 34,
+                                height: 34,
+                                borderRadius: 6,
+                                background: "#050810",
+                                border: "1px solid rgba(255,255,255,0.1)",
+                                display: "flex",
+                                alignItems: "center",
+                                justifyContent: "center",
+                                padding: 2,
+                              }}
+                            >
+                              <img
+                                src={pairing.logo_url}
+                                alt="Logo"
+                                style={{ maxWidth: "100%", maxHeight: "100%", objectFit: "contain" }}
+                              />
+                            </div>
+                            <div>
+                              <div style={{ fontSize: 12, fontWeight: 700, color: "#34d399" }}>
+                                {pairing.logo_filename || "brand_logo.png"}
+                              </div>
+                              <div style={{ fontSize: 10, color: "#64748b" }}>
+                                Official brand logo active for this profile
+                              </div>
+                            </div>
+                          </div>
+                        ) : (
+                          <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                            <span style={{ fontSize: 16 }}>🎨</span>
+                            <div style={{ fontSize: 12, color: "#94a3b8" }}>
+                              No logo uploaded <span style={{ color: "#64748b" }}>(AI will auto-generate stylized typography headers)</span>
+                            </div>
+                          </div>
+                        )}
+
+                        <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                          <label
+                            style={{
+                              background: pairing.logo_url ? "rgba(56, 189, 248, 0.12)" : "linear-gradient(135deg, rgba(56, 189, 248, 0.2) 0%, rgba(16, 185, 129, 0.2) 100%)",
+                              border: "1px solid rgba(56, 189, 248, 0.35)",
+                              color: "#38bdf8",
+                              borderRadius: 6,
+                              padding: "5px 10px",
+                              fontSize: 11,
+                              fontWeight: 700,
+                              cursor: "pointer",
+                              display: "inline-flex",
+                              alignItems: "center",
+                              gap: 4,
+                            }}
+                          >
+                            <span>{pairing.logo_url ? "🔄 Replace Logo" : "📁 Upload Logo (PNG)"}</span>
+                            <input
+                              type="file"
+                              accept="image/png,image/jpeg,image/webp,image/svg+xml"
+                              style={{ display: "none" }}
+                              onChange={(e) => {
+                                if (e.target.files?.[0]) {
+                                  handleUploadLogoForBrand(index, e.target.files[0]);
+                                }
+                              }}
+                            />
+                          </label>
+                          {pairing.logo_url && (
+                            <button
+                              type="button"
+                              onClick={() => handleRemoveLogoForBrand(index)}
+                              style={{
+                                background: "rgba(239, 68, 68, 0.12)",
+                                border: "1px solid rgba(239, 68, 68, 0.3)",
+                                color: "#f87171",
+                                borderRadius: 6,
+                                padding: "5px 10px",
+                                fontSize: 11,
+                                fontWeight: 700,
+                                cursor: "pointer",
+                              }}
+                            >
+                              Remove
+                            </button>
+                          )}
+                        </div>
+                      </div>
                     </div>
                   </div>
                 </div>

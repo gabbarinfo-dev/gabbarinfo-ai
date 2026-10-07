@@ -8,6 +8,7 @@ export default function BrandLogoModal({
   onClose,
   brandName,
   currentLogoUrl,
+  currentLogoFilename,
   onLogoUpdated,
 }) {
   const [uploading, setUploading] = useState(false);
@@ -44,11 +45,12 @@ export default function BrandLogoModal({
               action: "upload-logo",
               businessName: brandName,
               logoBase64: e.target.result,
+              filename: file.name,
             }),
           });
           const data = await res.json();
           if (data.ok && data.logo_url) {
-            if (onLogoUpdated) onLogoUpdated(data.logo_url);
+            if (onLogoUpdated) onLogoUpdated(data.logo_url, data.logo_filename || file.name);
           } else {
             setErrorMsg(data.error || "Failed to upload logo. Please try again.");
           }
@@ -224,9 +226,14 @@ export default function BrandLogoModal({
               gap: "12px",
             }}
           >
-            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", flexWrap: "wrap", gap: 8 }}>
               <div style={{ fontSize: "12px", fontWeight: 700, color: "#34d399", display: "flex", alignItems: "center", gap: "6px" }}>
                 <span>✅</span> Active Logo Loaded
+                {currentLogoFilename && (
+                  <code style={{ background: "rgba(56, 189, 248, 0.15)", color: "#38bdf8", padding: "2px 6px", borderRadius: 4, fontSize: "11px", fontWeight: 600 }}>
+                    {currentLogoFilename}
+                  </code>
+                )}
               </div>
               <span style={{ fontSize: "11px", color: "#64748b" }}>Overlay: Top-Left Header</span>
             </div>

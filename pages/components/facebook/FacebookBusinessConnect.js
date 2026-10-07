@@ -16,6 +16,7 @@ export default function FacebookBusinessConnect({ onOpenSocialPlanner }) {
   const [showDisconnectModal, setShowDisconnectModal] = useState(false);
   const [showLogoModal, setShowLogoModal] = useState(false);
   const [brandLogoUrl, setBrandLogoUrl] = useState(null);
+  const [brandLogoFilename, setBrandLogoFilename] = useState(null);
   const [logoLoading, setLogoLoading] = useState(false);
   const [disconnecting, setDisconnecting] = useState(false);
   const isLocked = status === "connected";
@@ -57,18 +58,22 @@ export default function FacebookBusinessConnect({ onOpenSocialPlanner }) {
       const bName = activeProfile?.businessName || activeProfile?.pageName || brandKey || meta?.business_name;
       if (!bName) {
         setBrandLogoUrl(null);
+        setBrandLogoFilename(null);
         return;
       }
       const res = await fetch(`/api/social/autopilot-config?businessName=${encodeURIComponent(bName)}`);
       const data = await res.json();
       if (data?.config?.logo_url) {
         setBrandLogoUrl(data.config.logo_url);
+        setBrandLogoFilename(data.config.logo_filename || "brand_logo.png");
       } else {
         setBrandLogoUrl(null);
+        setBrandLogoFilename(null);
       }
     } catch (e) {
       console.warn("Failed to fetch brand logo:", e);
       setBrandLogoUrl(null);
+      setBrandLogoFilename(null);
     } finally {
       setLogoLoading(false);
     }
@@ -648,6 +653,76 @@ export default function FacebookBusinessConnect({ onOpenSocialPlanner }) {
                     <code style={{ background: "rgba(255, 255, 255, 0.06)", padding: "3px 6px", borderRadius: 6, color: "#60a5fa" }}>{adAcc}</code>
                   </li>
                 )}
+
+                <li style={{ marginBottom: 6, display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+                  <span style={{ fontWeight: 600, color: "#cbd5e1" }}>Brand Logo:</span>{" "}
+                  {brandLogoUrl ? (
+                    <div style={{ display: "inline-flex", alignItems: "center", gap: 8 }}>
+                      <span
+                        style={{
+                          background: "rgba(16, 185, 129, 0.12)",
+                          border: "1px solid rgba(16, 185, 129, 0.35)",
+                          padding: "2px 8px",
+                          borderRadius: 6,
+                          color: "#34d399",
+                          fontWeight: 700,
+                          fontSize: "12px",
+                          display: "inline-flex",
+                          alignItems: "center",
+                          gap: 6,
+                        }}
+                      >
+                        <img
+                          src={brandLogoUrl}
+                          alt="Brand Logo"
+                          style={{ height: 16, maxWidth: 24, objectFit: "contain", verticalAlign: "middle" }}
+                        />
+                        <span>{brandLogoFilename || "brand_logo.png"}</span>
+                      </span>
+                      <button
+                        type="button"
+                        onClick={() => setShowLogoModal(true)}
+                        style={{
+                          background: "rgba(56, 189, 248, 0.12)",
+                          border: "1px solid rgba(56, 189, 248, 0.3)",
+                          color: "#38bdf8",
+                          fontSize: "11px",
+                          fontWeight: 700,
+                          borderRadius: 6,
+                          padding: "2px 8px",
+                          cursor: "pointer",
+                        }}
+                      >
+                        🔄 Change Logo
+                      </button>
+                    </div>
+                  ) : (
+                    <div style={{ display: "inline-flex", alignItems: "center", gap: 8 }}>
+                      <span style={{ color: "#94a3b8", fontSize: "12px", fontStyle: "italic" }}>
+                        Not Uploaded (AI Typography &amp; Custom Headers)
+                      </span>
+                      <button
+                        type="button"
+                        onClick={() => setShowLogoModal(true)}
+                        style={{
+                          background: "linear-gradient(135deg, rgba(245, 158, 11, 0.2) 0%, rgba(217, 119, 6, 0.2) 100%)",
+                          border: "1px solid rgba(245, 158, 11, 0.4)",
+                          color: "#fbbf24",
+                          fontSize: "11px",
+                          fontWeight: 700,
+                          borderRadius: 6,
+                          padding: "2px 8px",
+                          cursor: "pointer",
+                          display: "inline-flex",
+                          alignItems: "center",
+                          gap: 4,
+                        }}
+                      >
+                        📁 Upload Logo (PNG)
+                      </button>
+                    </div>
+                  )}
+                </li>
                 {meta?.fb_catalog_id && (
                   <li style={{ marginBottom: 6 }}>
                     <span style={{ fontWeight: 600, color: "#cbd5e1" }}>Catalog ID:</span>{" "}
@@ -1284,6 +1359,7 @@ export default function FacebookBusinessConnect({ onOpenSocialPlanner }) {
                   setAllMetaConnections(d.allMetaConnections || {});
                 }
               });
+            fetchActiveBrandLogo(selectedBrand);
           }}
         />
       )}
@@ -1300,8 +1376,10 @@ export default function FacebookBusinessConnect({ onOpenSocialPlanner }) {
             "Active Brand"
           }
           currentLogoUrl={brandLogoUrl}
-          onLogoUpdated={(newUrl) => {
+          currentLogoFilename={brandLogoFilename}
+          onLogoUpdated={(newUrl, newFilename) => {
             setBrandLogoUrl(newUrl);
+            setBrandLogoFilename(newFilename);
           }}
         />
       )}

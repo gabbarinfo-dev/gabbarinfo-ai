@@ -40,6 +40,8 @@ export default async function handler(req, res) {
         adAccountName: item.adAccountName || null,
         websiteUrl: item.websiteUrl || null,
         websiteType: item.websiteType || "wordpress", // "wordpress" | "shopify" | "custom"
+        logo_url: item.logo_url || null,
+        logo_filename: item.logo_filename || null,
         connectedAt: new Date().toISOString(),
       };
 
@@ -57,6 +59,38 @@ export default async function handler(req, res) {
         console.error(`Failed to upsert meta_conn_${normName}:`, upsertErr);
       } else {
         savedProfiles.push({ key: normName, ...brandPayload });
+
+        // Also synchronize logo into social_autopilot memory if present
+        if (item.logo_url) {
+          try {
+            const autoKey = `social_autopilot_${email}_${normName}`;
+            const { data: autoData } = await supabaseServer
+              .from("agent_memory")
+              .select("content")
+              .eq("email", email)
+              .eq("memory_type", autoKey)
+              .maybeSingle();
+
+            let autoObj = {};
+            if (autoData?.content) {
+              try { autoObj = JSON.parse(autoData.content); } catch (_) {}
+            }
+            autoObj.logo_url = item.logo_url;
+            autoObj.logo_filename = item.logo_filename || "brand_logo.png";
+
+            await supabaseServer.from("agent_memory").upsert(
+              {
+                email,
+                memory_type: autoKey,
+                content: JSON.stringify(autoObj),
+                updated_at: new Date().toISOString(),
+              },
+              { onConflict: "email,memory_type" }
+            );
+          } catch (syncErr) {
+            console.warn(`Failed to sync logo to ${normName} autopilot:`, syncErr);
+          }
+        }
       }
     }
 

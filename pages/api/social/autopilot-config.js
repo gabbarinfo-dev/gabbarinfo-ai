@@ -550,6 +550,7 @@ export default async function handler(req, res) {
         lastPublishedAt: saved?.lastPublishedAt || null,
         history: saved?.history || [],
         logo_url: saved?.logo_url || null,
+        logo_filename: saved?.logo_filename || null,
       };
 
       // Resolve Instagram username via Graph API (matching Instagram Insights)
@@ -787,9 +788,11 @@ export default async function handler(req, res) {
             .getPublicUrl(fileName);
 
           const logoUrl = pubData.publicUrl;
+          const originalFilename = req.body.filename || req.body.logoFilename || req.body.fileName || "brand_logo.png";
           const merged = {
             ...current,
             logo_url: logoUrl,
+            logo_filename: originalFilename,
             updatedAt: new Date().toISOString(),
           };
 
@@ -803,7 +806,40 @@ export default async function handler(req, res) {
             { onConflict: "email,memory_type" }
           );
 
-          return res.status(200).json({ ok: true, logo_url: logoUrl, config: merged });
+          // Also synchronize directly into meta_conn_${normBusiness} so Pair Assets & Meta card stay 100% in sync
+          if (normBusiness) {
+            try {
+              const { data: existingConn } = await supabase
+                .from("agent_memory")
+                .select("content")
+                .eq("email", normalizedEmail)
+                .eq("memory_type", `meta_conn_${normBusiness}`)
+                .maybeSingle();
+
+              let connObj = {};
+              if (existingConn?.content) {
+                try {
+                  connObj = JSON.parse(existingConn.content);
+                } catch (_) {}
+              }
+              connObj.logo_url = logoUrl;
+              connObj.logo_filename = originalFilename;
+
+              await supabase.from("agent_memory").upsert(
+                {
+                  email: normalizedEmail,
+                  memory_type: `meta_conn_${normBusiness}`,
+                  content: JSON.stringify(connObj),
+                  updated_at: new Date().toISOString(),
+                },
+                { onConflict: "email,memory_type" }
+              );
+            } catch (syncErr) {
+              console.warn("[Social Autopilot] Syncing logo to meta_conn failed:", syncErr);
+            }
+          }
+
+          return res.status(200).json({ ok: true, logo_url: logoUrl, logo_filename: originalFilename, config: merged });
         } catch (logoErr) {
           console.error("[Social Autopilot] Logo processing error:", logoErr.message);
           return res.status(500).json({ ok: false, error: logoErr.message });
@@ -815,6 +851,7 @@ export default async function handler(req, res) {
         const merged = {
           ...current,
           logo_url: null,
+          logo_filename: null,
           updatedAt: new Date().toISOString(),
         };
 
@@ -827,6 +864,32 @@ export default async function handler(req, res) {
           },
           { onConflict: "email,memory_type" }
         );
+
+        if (normBusiness) {
+          try {
+            const { data: existingConn } = await supabase
+              .from("agent_memory")
+              .select("content")
+              .eq("email", normalizedEmail)
+              .eq("memory_type", `meta_conn_${normBusiness}`)
+              .maybeSingle();
+
+            if (existingConn?.content) {
+              let connObj = JSON.parse(existingConn.content);
+              connObj.logo_url = null;
+              connObj.logo_filename = null;
+              await supabase.from("agent_memory").upsert(
+                {
+                  email: normalizedEmail,
+                  memory_type: `meta_conn_${normBusiness}`,
+                  content: JSON.stringify(connObj),
+                  updated_at: new Date().toISOString(),
+                },
+                { onConflict: "email,memory_type" }
+              );
+            }
+          } catch (_) {}
+        }
 
         return res.status(200).json({ ok: true, message: "Logo removed. AI will design native brand headers.", config: merged });
       }

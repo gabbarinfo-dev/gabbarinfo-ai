@@ -167,11 +167,16 @@ export default function SocialMediaPlannerModal({ onClose, isTrial99: propIsTria
               action: "upload-logo",
               businessName: selectedBrand || config.businessName,
               logoBase64: e.target.result,
+              filename: file.name,
             }),
           });
           const data = await res.json();
           if (data.ok && data.logo_url) {
-            setConfig((prev) => ({ ...prev, logo_url: data.logo_url }));
+            setConfig((prev) => ({
+              ...prev,
+              logo_url: data.logo_url,
+              logo_filename: data.logo_filename || file.name,
+            }));
           } else {
             alert("Failed to upload logo: " + (data.error || "Unknown error"));
           }
@@ -202,7 +207,7 @@ export default function SocialMediaPlannerModal({ onClose, isTrial99: propIsTria
       });
       const data = await res.json();
       if (data.ok) {
-        setConfig((prev) => ({ ...prev, logo_url: null }));
+        setConfig((prev) => ({ ...prev, logo_url: null, logo_filename: null }));
       } else {
         alert("Failed to remove logo: " + (data.error || "Unknown error"));
       }
@@ -1982,7 +1987,14 @@ export default function SocialMediaPlannerModal({ onClose, isTrial99: propIsTria
                         style={{ maxHeight: 42, maxWidth: 100, objectFit: "contain" }}
                       />
                       <div>
-                        <div style={{ fontSize: 12, fontWeight: 700, color: "#38bdf8" }}>✓ Active Brand Logo</div>
+                        <div style={{ fontSize: 12, fontWeight: 700, color: "#38bdf8", display: "flex", alignItems: "center", gap: 6 }}>
+                          <span>✓ Active Brand Logo</span>
+                          {config.logo_filename && (
+                            <code style={{ color: "#34d399", background: "rgba(16, 185, 129, 0.12)", padding: "1px 6px", borderRadius: 4, fontSize: 11 }}>
+                              {config.logo_filename}
+                            </code>
+                          )}
+                        </div>
                         <div style={{ fontSize: 11, color: "#64748b" }}>Seamlessly applied to upcoming creatives</div>
                       </div>
                       <button
@@ -2121,9 +2133,14 @@ export default function SocialMediaPlannerModal({ onClose, isTrial99: propIsTria
                       gap: 14,
                     }}
                   >
-                    <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+                    <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", flexWrap: "wrap", gap: 8 }}>
                       <div style={{ fontSize: 13, fontWeight: 700, color: "#34d399", display: "flex", alignItems: "center", gap: 6 }}>
-                        <span>✅</span> Logo Active &amp; Ready
+                        <span>✅</span> Logo Active &amp; Ready:
+                        {config.logo_filename && (
+                          <code style={{ color: "#38bdf8", background: "rgba(56, 189, 248, 0.12)", padding: "2px 8px", borderRadius: 4, fontSize: 12 }}>
+                            {config.logo_filename}
+                          </code>
+                        )}
                       </div>
                       <span style={{ fontSize: 11, color: "#64748b" }}>Placement: Top-Left Header</span>
                     </div>
