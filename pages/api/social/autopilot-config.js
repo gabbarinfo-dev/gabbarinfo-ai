@@ -548,7 +548,8 @@ export default async function handler(req, res) {
         freeTestPostsRemaining: freeRemaining,
         hasUsedFreeTestPost: hasUsedFreeAll,
         lastPublishedAt: saved?.lastPublishedAt || null,
-        history: saved?.history || []
+        history: saved?.history || [],
+        logo_url: saved?.logo_url || null,
       };
 
       // Resolve Instagram username via Graph API (matching Instagram Insights)
@@ -759,6 +760,75 @@ export default async function handler(req, res) {
         // Do NOT cross-pollute WordPress sites or other brands with these locations.
 
         return res.status(200).json({ ok: true, message: "Autopilot configuration saved.", config: merged });
+      }
+
+      // ── ACTION: UPLOAD BRAND LOGO ──
+      if (action === "upload-logo") {
+        const { logoBase64 } = req.body || {};
+        if (!logoBase64) {
+          return res.status(400).json({ ok: false, error: "Missing logo data" });
+        }
+        try {
+          const rawData = logoBase64.replace(/^data:image\/\w+;base64,/, "");
+          const buffer = Buffer.from(rawData, "base64");
+          const fileName = `brand_logo_${normalizedEmail.replace(/[^a-z0-9]/g, "_")}_${(normBusiness || "default")}_${Date.now()}.png`;
+
+          const { error: upErr } = await supabase.storage
+            .from("instagram-creatives")
+            .upload(fileName, buffer, { contentType: "image/png", upsert: true });
+
+          if (upErr) {
+            console.error("[Social Autopilot] Failed to upload logo to storage:", upErr.message);
+            return res.status(500).json({ ok: false, error: upErr.message });
+          }
+
+          const { data: pubData } = supabase.storage
+            .from("instagram-creatives")
+            .getPublicUrl(fileName);
+
+          const logoUrl = pubData.publicUrl;
+          const merged = {
+            ...current,
+            logo_url: logoUrl,
+            updatedAt: new Date().toISOString(),
+          };
+
+          await supabase.from("agent_memory").upsert(
+            {
+              email: normalizedEmail,
+              memory_type: autoMemoryKey,
+              content: JSON.stringify(merged),
+              updated_at: new Date().toISOString(),
+            },
+            { onConflict: "email,memory_type" }
+          );
+
+          return res.status(200).json({ ok: true, logo_url: logoUrl, config: merged });
+        } catch (logoErr) {
+          console.error("[Social Autopilot] Logo processing error:", logoErr.message);
+          return res.status(500).json({ ok: false, error: logoErr.message });
+        }
+      }
+
+      // ── ACTION: REMOVE BRAND LOGO ──
+      if (action === "remove-logo") {
+        const merged = {
+          ...current,
+          logo_url: null,
+          updatedAt: new Date().toISOString(),
+        };
+
+        await supabase.from("agent_memory").upsert(
+          {
+            email: normalizedEmail,
+            memory_type: autoMemoryKey,
+            content: JSON.stringify(merged),
+            updated_at: new Date().toISOString(),
+          },
+          { onConflict: "email,memory_type" }
+        );
+
+        return res.status(200).json({ ok: true, message: "Logo removed. AI will design native brand headers.", config: merged });
       }
 
       // ── ACTION: GENERATE FULL 30-DAY QUEUE (AI SYNTHESIS) ──
@@ -1563,4 +1633,9 @@ export const maxDuration = 60;
 
 export const config = {
   maxDuration: 60,
+  api: {
+    bodyParser: {
+      sizeLimit: "10mb",
+    },
+  },
 };

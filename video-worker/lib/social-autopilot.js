@@ -1,6 +1,7 @@
 // video-worker/lib/social-autopilot.js
 const { createClient } = require("@supabase/supabase-js");
 const OpenAI = require("openai");
+const sharp = require("sharp");
 const { ensureInstagramCompatibleJpeg } = require("./instagram-image-helper");
 const {
   buildCrossBrandNegativeList,
@@ -221,11 +222,15 @@ function getCreativeArchetypes(service, industry, limitationProfile) {
   ];
 }
 
-function buildGraphicPrompt(businessName, service, industry, hook, topic, limitationProfile) {
+function buildGraphicPrompt(businessName, service, industry, hook, topic, limitationProfile, hasUploadedLogo = false) {
   const userIndustry = industry || businessName || "Professional Services";
   const profile = limitationProfile || getBusinessLimitationProfile({ businessName, industry: userIndustry, services: [service] });
   const archetypes = getCreativeArchetypes(service, userIndustry, profile);
   const archetype = archetypes[Math.floor(Math.random() * archetypes.length)];
+
+  const logoDirective = hasUploadedLogo
+    ? "\n- Top-Left Header: Keep the top-left area clean and uncluttered against the background for the brand mark. Do NOT draw any fictional mascot or fake logo symbol in the top-left."
+    : "";
 
   return `You are an award-winning commercial graphic designer creating a finished agency-grade commercial ad poster for social media advertising.
 
@@ -243,7 +248,7 @@ ${archetype.description}
 - Accurately honor verified service scope: ${profile.allowedCapabilities}
 - NEVER depict random unrelated stock scenes or physical delivery trucks unless specifically requested.
 - Sleek studio lighting, high contrast, clean commercial composition, pristine 4K quality.
-- Absolutely NO text watermarks or random gibberish letters.
+- Absolutely NO text watermarks or random gibberish letters.${logoDirective}
 - ${profile.visualDirectives.negativeConstraints}`;
 }
 
@@ -821,14 +826,16 @@ ${ctaDirectives}`
       }
 
       // 5. Generate Bespoke Visual via gpt-image-2 (ZERO STOCK PHOTOS, Hardened with Brand Integrity Guard)
-      logger(`[Social Autopilot] Generating commercial ad visual for "${activeService}"...`);
+      const hasUploadedLogo = Boolean(config.logo_url);
+      logger(`[Social Autopilot] Generating commercial ad visual for "${activeService}" (Authentic Logo: ${hasUploadedLogo})...`);
       let graphicPrompt = buildGraphicPrompt(
         resolvedBrandName,
         activeService,
         businessIndustry,
         selectedHook,
         topicTitle,
-        limitationProfile
+        limitationProfile,
+        hasUploadedLogo
       );
 
       const imgPromptCheck = validateContentLimitations({ text: graphicPrompt, limitationProfile, logger });
@@ -872,6 +879,81 @@ ${ctaDirectives}`
         logger(`[Social Autopilot] CRITICAL: All approved gpt-image models failed. Aborting post for ${item.email} rather than using degraded models.`);
         results.push({ email: item.email, status: "skipped", reason: "image_generation_failed" });
         continue;
+      }
+
+      // 5.5 Optional: Seamless Brand Logo Overlay
+      // ONLY if user uploaded an authentic logo for this brand
+      if (config.logo_url) {
+        try {
+          const logoFetchRes = await fetch(config.logo_url);
+          if (logoFetchRes.ok) {
+            const rawLogoBuffer = Buffer.from(await logoFetchRes.arrayBuffer());
+            const logoMeta = await sharp(rawLogoBuffer).metadata();
+            const origW = logoMeta.width || 100;
+            const origH = logoMeta.height || 100;
+            const aspectRatio = origW / origH;
+
+            let targetW, targetH;
+            if (aspectRatio > 1.6) {
+              targetW = 260;
+              targetH = 90;
+            } else if (aspectRatio >= 1.1) {
+              targetW = 200;
+              targetH = 110;
+            } else {
+              targetW = 135;
+              targetH = 135;
+            }
+
+            const resizedLogo = await sharp(rawLogoBuffer)
+              .resize({
+                width: targetW,
+                height: targetH,
+                fit: "inside",
+                withoutEnlargement: true,
+              })
+              .png()
+              .toBuffer();
+
+            const resizedMeta = await sharp(resizedLogo).metadata();
+            const shadowPadding = 12;
+            const canvasW = resizedMeta.width + shadowPadding * 2;
+            const canvasH = resizedMeta.height + shadowPadding * 2;
+
+            const logoWithShadow = await sharp({
+              create: {
+                width: canvasW,
+                height: canvasH,
+                channels: 4,
+                background: { r: 0, g: 0, b: 0, alpha: 0 },
+              },
+            })
+              .composite([
+                {
+                  input: resizedLogo,
+                  top: shadowPadding,
+                  left: shadowPadding,
+                },
+              ])
+              .png()
+              .toBuffer();
+
+            imageBuffer = await sharp(imageBuffer)
+              .composite([
+                {
+                  input: logoWithShadow,
+                  top: 32,
+                  left: 32,
+                },
+              ])
+              .png()
+              .toBuffer();
+
+            logger(`[Social Autopilot] Successfully overlaid authentic brand logo for "${resolvedBrandName || cleanBizKey}" at top-left`);
+          }
+        } catch (logoErr) {
+          logger(`[Social Autopilot] Warning: Logo overlay failed (${logoErr.message}), continuing with base creative`);
+        }
       }
 
       // 6. Upload image to Supabase storage ('instagram-creatives')

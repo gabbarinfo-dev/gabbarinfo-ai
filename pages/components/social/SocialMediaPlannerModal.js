@@ -50,6 +50,7 @@ export default function SocialMediaPlannerModal({ onClose, isTrial99: propIsTria
   const [selectedBrand, setSelectedBrand] = useState(initialBrand || "");
   const [syncingMeta, setSyncingMeta] = useState(false);
   const [refreshingTopics, setRefreshingTopics] = useState(false);
+  const [uploadingLogo, setUploadingLogo] = useState(false);
 
   // Load initial config
   useEffect(() => {
@@ -151,6 +152,66 @@ export default function SocialMediaPlannerModal({ onClose, isTrial99: propIsTria
       setSaving(false);
     }
   }
+
+  const handleUploadBrandLogo = async (file) => {
+    if (!file) return;
+    setUploadingLogo(true);
+    try {
+      const reader = new FileReader();
+      reader.onload = async (e) => {
+        try {
+          const res = await fetch("/api/social/autopilot-config", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              action: "upload-logo",
+              businessName: selectedBrand || config.businessName,
+              logoBase64: e.target.result,
+            }),
+          });
+          const data = await res.json();
+          if (data.ok && data.logo_url) {
+            setConfig((prev) => ({ ...prev, logo_url: data.logo_url }));
+          } else {
+            alert("Failed to upload logo: " + (data.error || "Unknown error"));
+          }
+        } catch (err) {
+          alert("Logo upload error: " + err.message);
+        } finally {
+          setUploadingLogo(false);
+        }
+      };
+      reader.readAsDataURL(file);
+    } catch (err) {
+      setUploadingLogo(false);
+      alert("Could not read file: " + err.message);
+    }
+  };
+
+  const handleRemoveBrandLogo = async () => {
+    if (!confirm("Are you sure you want to remove your brand logo? AI will design native brand headers for future posts.")) return;
+    setUploadingLogo(true);
+    try {
+      const res = await fetch("/api/social/autopilot-config", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          action: "remove-logo",
+          businessName: selectedBrand || config.businessName,
+        }),
+      });
+      const data = await res.json();
+      if (data.ok) {
+        setConfig((prev) => ({ ...prev, logo_url: null }));
+      } else {
+        alert("Failed to remove logo: " + (data.error || "Unknown error"));
+      }
+    } catch (err) {
+      alert("Error removing logo: " + err.message);
+    } finally {
+      setUploadingLogo(false);
+    }
+  };
 
   async function handleToggleEnabled() {
     if (isRestricted && !config.enabled) {
@@ -1887,6 +1948,91 @@ export default function SocialMediaPlannerModal({ onClose, isTrial99: propIsTria
                   <div style={{ fontSize: 11.5, color: "#64748b", marginTop: 10 }}>
                     💡 <em>Saved automatically and synchronized with your SEO Suite Autopilot. Supports multiple countries or cities.</em>
                   </div>
+                </div>
+              </div>
+
+              {/* 5. Authentic Brand Logo (Optional) */}
+              <div
+                style={{
+                  padding: "20px 24px",
+                  borderRadius: 16,
+                  background: "rgba(255, 255, 255, 0.02)",
+                  border: "1px solid rgba(255, 255, 255, 0.08)",
+                  marginTop: 16,
+                }}
+              >
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", flexWrap: "wrap", gap: 10, marginBottom: 8 }}>
+                  <div>
+                    <h3 style={{ margin: "0 0 6px 0", fontSize: 16, fontWeight: 800, color: "#fff", display: "flex", alignItems: "center", gap: 8 }}>
+                      <span>🖼️</span> 5. Authentic Brand Logo (Optional)
+                    </h3>
+                    <p style={{ margin: 0, fontSize: 13, color: "#94a3b8", lineHeight: 1.5, maxWidth: 680 }}>
+                      Upload your official transparent PNG logo to feature it at the top-left of all commercial creatives for <strong>{config.businessName || selectedBrand}</strong>. If left empty, our AI will automatically design and style a native brand header for you.
+                    </p>
+                  </div>
+                </div>
+
+                <div style={{ display: "flex", alignItems: "center", gap: 16, marginTop: 14, flexWrap: "wrap" }}>
+                  {config.logo_url ? (
+                    <div style={{ display: "flex", alignItems: "center", gap: 14, padding: "10px 14px", background: "rgba(15, 23, 42, 0.8)", border: "1px solid rgba(56, 189, 248, 0.4)", borderRadius: 12 }}>
+                      <img
+                        src={config.logo_url}
+                        alt="Current brand logo"
+                        style={{ maxHeight: 42, maxWidth: 100, objectFit: "contain" }}
+                      />
+                      <div>
+                        <div style={{ fontSize: 12, fontWeight: 700, color: "#38bdf8" }}>✓ Active Brand Logo</div>
+                        <div style={{ fontSize: 11, color: "#64748b" }}>Seamlessly applied to upcoming creatives</div>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={handleRemoveBrandLogo}
+                        disabled={uploadingLogo}
+                        style={{
+                          marginLeft: 10,
+                          padding: "6px 10px",
+                          borderRadius: 8,
+                          background: "rgba(239, 68, 68, 0.15)",
+                          border: "1px solid rgba(239, 68, 68, 0.3)",
+                          color: "#f87171",
+                          fontSize: 11,
+                          fontWeight: 700,
+                          cursor: "pointer",
+                        }}
+                      >
+                        Remove Logo
+                      </button>
+                    </div>
+                  ) : (
+                    <div style={{ fontSize: 12, color: "#64748b", fontStyle: "italic" }}>
+                      No logo uploaded. AI will automatically design a custom brand header.
+                    </div>
+                  )}
+
+                  <label
+                    style={{
+                      padding: "9px 16px",
+                      borderRadius: 10,
+                      background: uploadingLogo ? "rgba(255, 255, 255, 0.1)" : "linear-gradient(135deg, rgba(56, 189, 248, 0.2) 0%, rgba(16, 185, 129, 0.2) 100%)",
+                      border: "1px solid rgba(56, 189, 248, 0.35)",
+                      color: "#38bdf8",
+                      fontSize: 12,
+                      fontWeight: 700,
+                      cursor: uploadingLogo ? "not-allowed" : "pointer",
+                      display: "inline-flex",
+                      alignItems: "center",
+                      gap: 6,
+                    }}
+                  >
+                    <span>{uploadingLogo ? "Uploading..." : config.logo_url ? "🔄 Replace Logo (PNG)" : "📁 Upload Brand Logo (PNG)"}</span>
+                    <input
+                      type="file"
+                      accept="image/png,image/jpeg,image/webp,image/svg+xml"
+                      disabled={uploadingLogo}
+                      style={{ display: "none" }}
+                      onChange={(e) => handleUploadBrandLogo(e.target.files[0])}
+                    />
+                  </label>
                 </div>
               </div>
             </div>
