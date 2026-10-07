@@ -817,6 +817,7 @@ export default function SocialMediaPlannerModal({ onClose, isTrial99: propIsTria
           {[
             { id: "planner", label: "🗓️ 30-Day Queue", count: config.queue?.length || 0 },
             { id: "settings", label: "⚙️ Schedule & Settings" },
+            { id: "logo", label: config.logo_url ? "🖼️ Brand Logo ✓" : "🖼️ Brand Logo (Optional)" },
             { id: "history", label: "📜 Published", count: config.history?.length || config.publishedCount || 0 },
           ].map((tab) => (
             <button
@@ -2033,6 +2034,231 @@ export default function SocialMediaPlannerModal({ onClose, isTrial99: propIsTria
                       onChange={(e) => handleUploadBrandLogo(e.target.files[0])}
                     />
                   </label>
+                </div>
+              </div>
+            </div>
+          ) : activeTab === "logo" ? (
+            /* ═══════════════════════════════════════════
+               TAB: AUTHENTIC BRAND LOGO MANAGEMENT
+            ═══════════════════════════════════════════ */
+            <div style={{ maxWidth: 720, margin: "0 auto", display: "flex", flexDirection: "column", gap: 18 }}>
+              <div
+                style={{
+                  padding: "24px 26px",
+                  borderRadius: 18,
+                  background: "rgba(255, 255, 255, 0.03)",
+                  border: "1px solid rgba(255, 255, 255, 0.09)",
+                }}
+              >
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", flexWrap: "wrap", gap: 12, marginBottom: 14 }}>
+                  <div>
+                    <h3 style={{ margin: "0 0 6px 0", fontSize: 18, fontWeight: 800, color: "#fff", display: "flex", alignItems: "center", gap: 8 }}>
+                      <span>🖼️</span> Authentic Brand Logo (Optional)
+                    </h3>
+                    <p style={{ margin: 0, fontSize: 13, color: "#94a3b8", lineHeight: 1.5 }}>
+                      Manage the authentic official logo for <strong style={{ color: "#38bdf8" }}>{config.businessName || selectedBrand}</strong>.
+                    </p>
+                  </div>
+                  {availableBrands.length > 1 && (
+                    <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                      <span style={{ fontSize: 12, color: "#cbd5e1" }}>Brand:</span>
+                      <select
+                        value={selectedBrand}
+                        onChange={(e) => handleBrandChange(e.target.value)}
+                        style={{
+                          padding: "6px 12px",
+                          borderRadius: 8,
+                          background: "#0d111c",
+                          border: "1px solid rgba(255, 255, 255, 0.16)",
+                          color: "#38bdf8",
+                          fontWeight: 700,
+                          fontSize: 12,
+                          cursor: "pointer",
+                        }}
+                      >
+                        {availableBrands.map((b) => (
+                          <option key={b.key} value={b.key}>
+                            ✓ {b.businessName || b.pageName}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+                  )}
+                </div>
+
+                {/* Brand Isolation Notice */}
+                <div
+                  style={{
+                    background: "rgba(56, 189, 248, 0.08)",
+                    border: "1px solid rgba(56, 189, 248, 0.25)",
+                    borderRadius: 12,
+                    padding: "12px 14px",
+                    marginBottom: 18,
+                    fontSize: 12.5,
+                    lineHeight: 1.5,
+                    color: "#bae6fd",
+                    display: "flex",
+                    gap: 10,
+                  }}
+                >
+                  <span style={{ fontSize: 16 }}>🔒</span>
+                  <div>
+                    <strong>Strict Brand Isolation:</strong> This logo is assigned exclusively to <strong>{config.businessName || selectedBrand}</strong>. Switching brands will never mix or bleed logos across accounts.
+                  </div>
+                </div>
+
+                {/* Logo Preview or Empty State */}
+                {config.logo_url ? (
+                  <div
+                    style={{
+                      background: "rgba(15, 23, 42, 0.7)",
+                      border: "1px solid rgba(16, 185, 129, 0.35)",
+                      borderRadius: 14,
+                      padding: "20px",
+                      marginBottom: 18,
+                      display: "flex",
+                      flexDirection: "column",
+                      gap: 14,
+                    }}
+                  >
+                    <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+                      <div style={{ fontSize: 13, fontWeight: 700, color: "#34d399", display: "flex", alignItems: "center", gap: 6 }}>
+                        <span>✅</span> Logo Active &amp; Ready
+                      </div>
+                      <span style={{ fontSize: 11, color: "#64748b" }}>Placement: Top-Left Header</span>
+                    </div>
+
+                    <div
+                      style={{
+                        width: "100%",
+                        height: "140px",
+                        borderRadius: 10,
+                        background: "radial-gradient(#1e293b 2px, transparent 2px) 0 0/16px 16px, #0f172a",
+                        border: "1px solid rgba(255, 255, 255, 0.1)",
+                        display: "flex",
+                        alignItems: "center",
+                        justifyContent: "center",
+                        padding: 16,
+                      }}
+                    >
+                      <img
+                        src={config.logo_url}
+                        alt="Current brand logo"
+                        style={{ maxHeight: "100%", maxWidth: "100%", objectFit: "contain", filter: "drop-shadow(0 4px 10px rgba(0,0,0,0.5))" }}
+                      />
+                    </div>
+
+                    <div style={{ display: "flex", gap: 10, justifyContent: "flex-end", flexWrap: "wrap" }}>
+                      <label
+                        style={{
+                          padding: "9px 16px",
+                          borderRadius: 8,
+                          background: "rgba(56, 189, 248, 0.15)",
+                          border: "1px solid rgba(56, 189, 248, 0.35)",
+                          color: "#38bdf8",
+                          fontSize: 12,
+                          fontWeight: 700,
+                          cursor: uploadingLogo ? "not-allowed" : "pointer",
+                          display: "inline-flex",
+                          alignItems: "center",
+                          gap: 6,
+                        }}
+                      >
+                        <span>{uploadingLogo ? "Uploading..." : "🔄 Replace Logo (PNG)"}</span>
+                        <input
+                          type="file"
+                          accept="image/png,image/jpeg,image/webp,image/svg+xml"
+                          disabled={uploadingLogo}
+                          style={{ display: "none" }}
+                          onChange={(e) => handleUploadBrandLogo(e.target.files[0])}
+                        />
+                      </label>
+
+                      <button
+                        type="button"
+                        onClick={handleRemoveBrandLogo}
+                        disabled={uploadingLogo}
+                        style={{
+                          padding: "9px 16px",
+                          borderRadius: 8,
+                          background: "rgba(239, 68, 68, 0.12)",
+                          border: "1px solid rgba(239, 68, 68, 0.35)",
+                          color: "#fca5a5",
+                          fontSize: 12,
+                          fontWeight: 700,
+                          cursor: uploadingLogo ? "not-allowed" : "pointer",
+                        }}
+                      >
+                        🗑️ Remove Logo
+                      </button>
+                    </div>
+                  </div>
+                ) : (
+                  <div
+                    style={{
+                      border: "2px dashed rgba(255, 255, 255, 0.2)",
+                      borderRadius: 14,
+                      padding: "36px 20px",
+                      textAlign: "center",
+                      marginBottom: 18,
+                      background: "rgba(255, 255, 255, 0.02)",
+                    }}
+                  >
+                    <div style={{ fontSize: 36, marginBottom: 10 }}>📁</div>
+                    <div style={{ fontSize: 15, fontWeight: 700, color: "#f8fafc", marginBottom: 6 }}>
+                      No Logo Uploaded Yet
+                    </div>
+                    <p style={{ margin: "0 auto 16px", fontSize: 13, color: "#94a3b8", maxWidth: 440 }}>
+                      AI is currently designing stylized brand typography &amp; headers automatically. If you have an official logo, upload a transparent PNG below.
+                    </p>
+                    <label
+                      style={{
+                        padding: "10px 22px",
+                        borderRadius: 10,
+                        background: "linear-gradient(135deg, #38bdf8 0%, #3b82f6 100%)",
+                        color: "#030712",
+                        fontSize: 13,
+                        fontWeight: 800,
+                        cursor: uploadingLogo ? "not-allowed" : "pointer",
+                        display: "inline-flex",
+                        alignItems: "center",
+                        gap: 8,
+                        boxShadow: "0 0 20px rgba(56, 189, 248, 0.35)",
+                      }}
+                    >
+                      <span>{uploadingLogo ? "Uploading..." : "📁 Upload Brand Logo (PNG)"}</span>
+                      <input
+                        type="file"
+                        accept="image/png,image/jpeg,image/webp,image/svg+xml"
+                        disabled={uploadingLogo}
+                        style={{ display: "none" }}
+                        onChange={(e) => handleUploadBrandLogo(e.target.files[0])}
+                      />
+                    </label>
+                  </div>
+                )}
+
+                {/* Explanatory Guide */}
+                <div
+                  style={{
+                    background: "rgba(255, 255, 255, 0.02)",
+                    border: "1px solid rgba(255, 255, 255, 0.07)",
+                    borderRadius: 12,
+                    padding: "14px 16px",
+                    fontSize: 12.5,
+                    color: "#94a3b8",
+                    lineHeight: 1.6,
+                  }}
+                >
+                  <div style={{ fontWeight: 700, color: "#e2e8f0", marginBottom: 6, display: "flex", alignItems: "center", gap: 6 }}>
+                    <span>💡</span> Important Notes:
+                  </div>
+                  <div>
+                    • <strong>Logo is 100% Optional:</strong> If not provided, existing campaigns continue without interruption. AI designs native typography and graphics without leaving empty space.
+                  </div>
+                  <div>
+                    • <strong>Optimal Format:</strong> High-resolution transparent PNG (either horizontal rectangle or square). Antigravity automatically scales and composites it at top-left <code>(32, 32)</code> with soft shadows.
+                  </div>
                 </div>
               </div>
             </div>

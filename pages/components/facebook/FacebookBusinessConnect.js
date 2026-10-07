@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import BoostModal from "./meta/BoostModal";
 import BrandAssetPairingModal from "../brands/BrandAssetPairingModal";
+import BrandLogoModal from "../brands/BrandLogoModal";
 
 export default function FacebookBusinessConnect({ onOpenSocialPlanner }) {
   const [status, setStatus] = useState("idle"); // idle | connected | loading
@@ -13,6 +14,9 @@ export default function FacebookBusinessConnect({ onOpenSocialPlanner }) {
   const [showConnectWarningModal, setShowConnectWarningModal] = useState(false);
   const [showPairingModal, setShowPairingModal] = useState(false);
   const [showDisconnectModal, setShowDisconnectModal] = useState(false);
+  const [showLogoModal, setShowLogoModal] = useState(false);
+  const [brandLogoUrl, setBrandLogoUrl] = useState(null);
+  const [logoLoading, setLogoLoading] = useState(false);
   const [disconnecting, setDisconnecting] = useState(false);
   const isLocked = status === "connected";
 
@@ -46,6 +50,30 @@ export default function FacebookBusinessConnect({ onOpenSocialPlanner }) {
     }
   };
 
+  const fetchActiveBrandLogo = async (brandKey) => {
+    try {
+      setLogoLoading(true);
+      const activeProfile = (brandKey && allMetaConnections[brandKey]) || meta;
+      const bName = activeProfile?.businessName || activeProfile?.pageName || brandKey || meta?.business_name;
+      if (!bName) {
+        setBrandLogoUrl(null);
+        return;
+      }
+      const res = await fetch(`/api/social/autopilot-config?businessName=${encodeURIComponent(bName)}`);
+      const data = await res.json();
+      if (data?.config?.logo_url) {
+        setBrandLogoUrl(data.config.logo_url);
+      } else {
+        setBrandLogoUrl(null);
+      }
+    } catch (e) {
+      console.warn("Failed to fetch brand logo:", e);
+      setBrandLogoUrl(null);
+    } finally {
+      setLogoLoading(false);
+    }
+  };
+
   useEffect(() => {
     fetchStatus();
 
@@ -63,8 +91,15 @@ export default function FacebookBusinessConnect({ onOpenSocialPlanner }) {
     };
   }, [status]);
 
+  useEffect(() => {
+    if (selectedBrand || meta?.business_name) {
+      fetchActiveBrandLogo(selectedBrand || meta?.business_name);
+    }
+  }, [selectedBrand, status]);
+
   const handleBrandChange = async (newBrandKey) => {
     setSelectedBrand(newBrandKey);
+    fetchActiveBrandLogo(newBrandKey);
     try {
       await fetch("/api/meta/select-profile", {
         method: "POST",
@@ -429,6 +464,26 @@ export default function FacebookBusinessConnect({ onOpenSocialPlanner }) {
                 >
                   ⚙️ Pair Assets ↗
                 </button>
+                <button
+                  type="button"
+                  onClick={() => setShowLogoModal(true)}
+                  style={{
+                    background: brandLogoUrl ? "rgba(16, 185, 129, 0.15)" : "rgba(245, 158, 11, 0.12)",
+                    border: brandLogoUrl ? "1px solid rgba(16, 185, 129, 0.4)" : "1px solid rgba(245, 158, 11, 0.35)",
+                    borderRadius: 6,
+                    color: brandLogoUrl ? "#34d399" : "#fbbf24",
+                    fontSize: "11px",
+                    fontWeight: 700,
+                    cursor: "pointer",
+                    padding: "3px 8px",
+                    display: "inline-flex",
+                    alignItems: "center",
+                    gap: 4,
+                  }}
+                  title="Upload or manage authentic PNG logo for this brand"
+                >
+                  {brandLogoUrl ? "🖼️ Brand Logo ✓" : "🖼️ Brand Logo (Optional)"}
+                </button>
               </div>
             </div>
             {Object.keys(allMetaConnections).length > 0 ? (
@@ -462,6 +517,95 @@ export default function FacebookBusinessConnect({ onOpenSocialPlanner }) {
                 Primary: <strong style={{ color: "#38bdf8" }}>{meta?.business_name || "Connected Page"}</strong>
               </div>
             )}
+
+            {/* Dedicated Brand Logo Status Strip */}
+            <div
+              style={{
+                marginTop: "10px",
+                padding: "8px 12px",
+                borderRadius: "8px",
+                background: brandLogoUrl
+                  ? "linear-gradient(135deg, rgba(16, 185, 129, 0.08) 0%, rgba(6, 78, 59, 0.12) 100%)"
+                  : "rgba(255, 255, 255, 0.03)",
+                border: brandLogoUrl
+                  ? "1px solid rgba(16, 185, 129, 0.25)"
+                  : "1px dashed rgba(255, 255, 255, 0.15)",
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "space-between",
+                gap: "10px",
+                fontSize: "12px",
+              }}
+            >
+              <div style={{ display: "flex", alignItems: "center", gap: "10px", minWidth: 0 }}>
+                {brandLogoUrl ? (
+                  <div
+                    style={{
+                      width: "36px",
+                      height: "36px",
+                      borderRadius: "6px",
+                      background: "#0b0f19",
+                      border: "1px solid rgba(255, 255, 255, 0.15)",
+                      display: "flex",
+                      alignItems: "center",
+                      justifyContent: "center",
+                      padding: "3px",
+                      flexShrink: 0,
+                    }}
+                  >
+                    <img
+                      src={brandLogoUrl}
+                      alt="Brand Logo"
+                      style={{ maxWidth: "100%", maxHeight: "100%", objectFit: "contain" }}
+                    />
+                  </div>
+                ) : (
+                  <div
+                    style={{
+                      width: "36px",
+                      height: "36px",
+                      borderRadius: "6px",
+                      background: "rgba(255, 255, 255, 0.05)",
+                      display: "flex",
+                      alignItems: "center",
+                      justifyContent: "center",
+                      fontSize: "16px",
+                      flexShrink: 0,
+                    }}
+                  >
+                    🖼️
+                  </div>
+                )}
+                <div style={{ minWidth: 0, overflow: "hidden" }}>
+                  <div style={{ fontWeight: 700, color: brandLogoUrl ? "#34d399" : "#cbd5e1", fontSize: "12px", whiteSpace: "nowrap", textOverflow: "ellipsis", overflow: "hidden" }}>
+                    {brandLogoUrl ? "Authentic Brand Logo Connected" : "Brand Logo (Optional)"}
+                  </div>
+                  <div style={{ fontSize: "11px", color: "#94a3b8" }}>
+                    {brandLogoUrl
+                      ? "Composited on top-left of AI post creatives"
+                      : "Leave empty for AI auto-typography, or upload PNG"}
+                  </div>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setShowLogoModal(true)}
+                style={{
+                  background: brandLogoUrl ? "rgba(16, 185, 129, 0.18)" : "rgba(245, 158, 11, 0.15)",
+                  border: brandLogoUrl ? "1px solid rgba(16, 185, 129, 0.4)" : "1px solid rgba(245, 158, 11, 0.35)",
+                  color: brandLogoUrl ? "#6ee7b7" : "#fbbf24",
+                  borderRadius: "6px",
+                  fontSize: "11px",
+                  fontWeight: 700,
+                  padding: "5px 10px",
+                  cursor: "pointer",
+                  whiteSpace: "nowrap",
+                  flexShrink: 0,
+                }}
+              >
+                {brandLogoUrl ? "Manage Logo" : "+ Upload Logo"}
+              </button>
+            </div>
           </div>
 
           {(() => {
@@ -565,6 +709,24 @@ export default function FacebookBusinessConnect({ onOpenSocialPlanner }) {
               }}
             >
               Ad Insights
+            </button>
+
+            <button
+              onClick={() => setShowLogoModal(true)}
+              className="btn-gabbar-dark"
+              style={{
+                padding: "8px 14px",
+                fontSize: "12px",
+                border: brandLogoUrl ? "1px solid rgba(16, 185, 129, 0.45)" : "1px solid rgba(245, 158, 11, 0.35)",
+                color: brandLogoUrl ? "#34d399" : "#fbbf24",
+                cursor: "pointer",
+                display: "inline-flex",
+                alignItems: "center",
+                gap: "6px",
+              }}
+              title="Upload or manage authentic PNG logo for this brand"
+            >
+              🖼️ {brandLogoUrl ? "Brand Logo ✓" : "Upload Brand Logo"}
             </button>
 
             <button
@@ -1122,6 +1284,24 @@ export default function FacebookBusinessConnect({ onOpenSocialPlanner }) {
                   setAllMetaConnections(d.allMetaConnections || {});
                 }
               });
+          }}
+        />
+      )}
+
+      {showLogoModal && (
+        <BrandLogoModal
+          isOpen={showLogoModal}
+          onClose={() => setShowLogoModal(false)}
+          brandName={
+            allMetaConnections[selectedBrand]?.businessName ||
+            allMetaConnections[selectedBrand]?.pageName ||
+            meta?.business_name ||
+            selectedBrand ||
+            "Active Brand"
+          }
+          currentLogoUrl={brandLogoUrl}
+          onLogoUpdated={(newUrl) => {
+            setBrandLogoUrl(newUrl);
           }}
         />
       )}
