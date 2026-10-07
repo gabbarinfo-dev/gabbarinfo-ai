@@ -192,7 +192,7 @@ export default function BrandLogoModal({
         >
           <span style={{ fontSize: "14px" }}>🔒</span>
           <div>
-            <strong>Brand-Isolated:</strong> This logo is assigned only to <strong>{brandName || "this brand"}</strong>. If you switch to another brand (like Bella &amp; Diva or Rekha Gyan), it will use that brand's specific logo or AI styling.
+            <strong>Brand-Isolated:</strong> This logo is assigned exclusively to <strong>{brandName || "this active brand"}</strong>. If you connect or switch to another brand profile, each brand will maintain its own independent logo and creative styling.
           </div>
         </div>
 
@@ -367,7 +367,7 @@ export default function BrandLogoModal({
             • <strong>No Logo:</strong> AI designs gorgeous 3D infographics with stylized brand typography and graphics with zero empty spaces.
           </div>
           <div>
-            • <strong>With Logo:</strong> Antigravity overlays your exact authentic PNG at the top-left corner with subtle soft shadows.
+            • <strong>With Logo:</strong> GabbarInfo AI overlays your exact authentic PNG at the top-left corner with subtle soft shadows.
           </div>
         </div>
 

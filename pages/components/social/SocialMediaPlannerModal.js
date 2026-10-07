@@ -2274,7 +2274,7 @@ export default function SocialMediaPlannerModal({ onClose, isTrial99: propIsTria
                     • <strong>Logo is 100% Optional:</strong> If not provided, existing campaigns continue without interruption. AI designs native typography and graphics without leaving empty space.
                   </div>
                   <div>
-                    • <strong>Optimal Format:</strong> High-resolution transparent PNG (either horizontal rectangle or square). Antigravity automatically scales and composites it at top-left <code>(32, 32)</code> with soft shadows.
+                    • <strong>Optimal Format:</strong> High-resolution transparent PNG (either horizontal rectangle or square). GabbarInfo AI automatically scales and composites it at top-left <code>(32, 32)</code> with soft shadows.
                   </div>
                 </div>
               </div>

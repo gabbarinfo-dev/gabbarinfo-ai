@@ -1164,7 +1164,7 @@ export default function ShopifyStoreConnect({ onConnectionChange }) {
               <div style={{ flex: 1, minWidth: 260, position: "relative" }}>
                 <input
                   type="text"
-                  placeholder="e.g. p0n7tf-yp.myshopify.com or www.bellandiva.com"
+                  placeholder="e.g. your-store.myshopify.com or yourbrand.com"
                   value={shopInput}
                   onChange={(e) => setShopInput(e.target.value)}
                   style={{
