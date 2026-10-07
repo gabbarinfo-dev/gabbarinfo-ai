@@ -612,6 +612,42 @@ export default async function handler(req, res) {
         payload.preserve_title = true;
       }
 
+      // Guarantee video tags have direct src="..." attributes so WordPress wp_kses_post never strips video playback
+      if (payload.content) {
+        let healedContent = payload.content;
+        // 1. Desktop Hero Video
+        healedContent = healedContent.replace(
+          /<video([^>]*class=["'][^"']*seo-hero-video[^"']*desktop-only[^"']*["'][^>]*)>([\s\S]*?)<\/video>/gi,
+          `<video src="https://www.gabbarinfo.com/wp-content/themes/gabbarinfo-theme/assets/SEOD.mp4"$1><source src="https://www.gabbarinfo.com/wp-content/themes/gabbarinfo-theme/assets/SEOD.mp4" type="video/mp4"></video>`
+        );
+        // 2. Mobile Hero Video
+        healedContent = healedContent.replace(
+          /<video([^>]*class=["'][^"']*seo-hero-video[^"']*mobile-only[^"']*["'][^>]*)>([\s\S]*?)<\/video>/gi,
+          `<video src="https://www.gabbarinfo.com/wp-content/themes/gabbarinfo-theme/assets/SEOM.mp4"$1><source src="https://www.gabbarinfo.com/wp-content/themes/gabbarinfo-theme/assets/SEOM.mp4" type="video/mp4"></video>`
+        );
+        // 3. Desktop Strategy Video
+        healedContent = healedContent.replace(
+          /<video([^>]*class=["'][^"']*content-strategy-video[^"']*desktop-only[^"']*["'][^>]*)>([\s\S]*?)<\/video>/gi,
+          `<video src="https://www.gabbarinfo.com/wp-content/themes/gabbarinfo-theme/assets/SEOCS4D.mp4"$1><source src="https://www.gabbarinfo.com/wp-content/themes/gabbarinfo-theme/assets/SEOCS4D.mp4" type="video/mp4"></video>`
+        );
+        // 4. Mobile Strategy Video
+        healedContent = healedContent.replace(
+          /<video([^>]*class=["'][^"']*content-strategy-video[^"']*mobile-only[^"']*["'][^>]*)>([\s\S]*?)<\/video>/gi,
+          `<video src="https://www.gabbarinfo.com/wp-content/themes/gabbarinfo-theme/assets/SEOCS4M.mp4"$1><source src="https://www.gabbarinfo.com/wp-content/themes/gabbarinfo-theme/assets/SEOCS4M.mp4" type="video/mp4"></video>`
+        );
+        // 5. Generic videos with inner <source>
+        healedContent = healedContent.replace(/<video([\s\S]*?)>([\s\S]*?)<\/video>/gi, (fullMatch, videoAttrs, innerContent) => {
+          if (!/src=["']/i.test(videoAttrs)) {
+            const sourceMatch = innerContent.match(/<source[^>]*src=["']([^"']+)["']/i);
+            if (sourceMatch && sourceMatch[1]) {
+              return `<video src="${sourceMatch[1]}"${videoAttrs}>${innerContent}</video>`;
+            }
+          }
+          return fullMatch;
+        });
+        payload.content = healedContent;
+      }
+
       let resp;
       try {
         resp = await fetch(`${activeUrl}/wp-json/gabbarinfo/v1/update-content`, {

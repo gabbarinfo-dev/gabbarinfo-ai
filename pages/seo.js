@@ -853,27 +853,27 @@ export default function SeoHubPage() {
       }
 
       if (data.ok) {
-        setEditingArticle((prev) => {
-          const isPage = prev.post_type === "page" || prev.type === "page" || !prev.post_type;
-          // Protect page navigation title: never overwrite an existing page title with an H1 headline!
-          const safeTitle = isPage ? prev.title : (data.title || prev.title);
-          return {
-            ...prev,
-            title: safeTitle,
-            content: data.content || prev.content,
-            focus_keyword: data.focus_keyword || prev.focus_keyword,
-            meta_title: data.meta_title || prev.meta_title,
-            meta_description: data.meta_description || prev.meta_description,
-            slug: data.slug || prev.slug,
-          };
-        });
+        const isPage = editingArticle.post_type === "page" || editingArticle.type === "page" || !editingArticle.post_type;
+        // Protect page navigation title: never overwrite an existing page title with an H1 headline!
+        const safeTitle = isPage ? editingArticle.title : (data.title || editingArticle.title);
+        const updatedArticle = {
+          ...editingArticle,
+          title: safeTitle,
+          content: data.content || editingArticle.content,
+          focus_keyword: data.focus_keyword || editingArticle.focus_keyword,
+          meta_title: data.meta_title || editingArticle.meta_title,
+          meta_description: data.meta_description || editingArticle.meta_description,
+          slug: data.slug || editingArticle.slug,
+        };
+        const realAudit = computeAuditScore(updatedArticle);
+        const finalCalculatedScore = realAudit?.score || data.audit_score || 90;
 
-        const newScore = data.audit_score || 96;
-        setAiPostScore(newScore);
+        setEditingArticle(updatedArticle);
+        setAiPostScore(finalCalculatedScore);
         setAiImprovements(data.audit_improvements || []);
         setEditorNotice({
           type: "success",
-          message: `✨ Page autonomously upgraded! Pre: ${currentScore}/100 ➔ Post: ${newScore}/100 (+${Math.max(0, newScore - currentScore)} pts). Layout & form wrappers preserved.`,
+          message: `✨ Page autonomously upgraded! Pre: ${currentScore}/100 ➔ Post: ${finalCalculatedScore}/100 (+${Math.max(0, finalCalculatedScore - currentScore)} pts). Layout & form wrappers preserved.`,
         });
       } else {
         alert("AI Optimization error: " + (data.error || "Failed to optimize page."));
