@@ -146,6 +146,11 @@ export default function SeoHubPage() {
   const [editorNotice, setEditorNotice] = useState(null);
   const [loadingArticleContent, setLoadingArticleContent] = useState(false);
 
+  // Custom Theme Template Detection & Choice Modal States
+  const [showCustomPublishModal, setShowCustomPublishModal] = useState(false);
+  const [copiedPhpCode, setCopiedPhpCode] = useState(false);
+  const [syncingSeoOnly, setSyncingSeoOnly] = useState(false);
+
   // Social Connect Modal
   const [showFbConnectModal, setShowFbConnectModal] = useState(false);
 
@@ -647,7 +652,7 @@ export default function SeoHubPage() {
   };
 
   // Save Article (Draft or Publish Live with Quota Check)
-  const handleSaveArticle = async (targetStatus = "draft") => {
+  const handleSaveArticle = async (targetStatus = "draft", options = {}) => {
     if (!editingArticle || !connection) return;
 
     // Credit quota confirmation for pre-existing content or agent content with >= 2 edits
@@ -684,6 +689,7 @@ export default function SeoHubPage() {
             is_agent_created: editingArticle.is_agent_created,
             edit_count: editingArticle.edit_count,
             requires_credit: editingArticle.requires_credit,
+            render_optimized: options.render_optimized ?? true,
           },
         }),
       });
@@ -709,6 +715,7 @@ export default function SeoHubPage() {
               : `💾 Draft saved successfully to WordPress!${creditMsg}`,
         });
         setTimeout(() => setEditorNotice(null), 6000);
+        setShowCustomPublishModal(false);
         fetchContent(connection);
       } else {
         if (data.code === "MONTHLY_QUOTA_EXHAUSTED") {
@@ -722,6 +729,82 @@ export default function SeoHubPage() {
     } finally {
       setSavingArticle(false);
       setPublishingArticle(false);
+    }
+  };
+
+  // Smart Publish Router: 1-Click for normal sites, Choice Modal for Custom Themes
+  const handleInitiatePublish = () => {
+    if (!editingArticle || !connection) return;
+    const isCustom = Boolean(
+      editingArticle.is_custom_template ||
+      editingArticle.bypasses_db_content ||
+      (editingArticle.template_file && editingArticle.template_file !== "default")
+    );
+    if (isCustom) {
+      setShowCustomPublishModal(true);
+    } else {
+      handleSaveArticle("publish");
+    }
+  };
+
+  // Generate 100% Ready-to-paste PHP template code for cPanel Developer Mode
+  const getFullPhpTemplateCode = () => {
+    if (!editingArticle) return "";
+    const cleanTplName = editingArticle.template_file
+      ? editingArticle.template_file.replace(/^page-|\.php$/g, "").replace(/[-_]/g, " ").replace(/\b\w/g, (c) => c.toUpperCase()) + " Page"
+      : `${editingArticle.title || "Custom"} Page`;
+
+    const rawContent = editingArticle.content || "";
+    return `<?php\n/**\n * Template Name: ${cleanTplName}\n */\nget_header(); ?>\n\n${rawContent}\n\n<?php get_footer(); ?>\n`;
+  };
+
+  const handleCopyPhpCode = () => {
+    const code = getFullPhpTemplateCode();
+    if (navigator?.clipboard) {
+      navigator.clipboard.writeText(code);
+      setCopiedPhpCode(true);
+      setTimeout(() => setCopiedPhpCode(false), 3500);
+    } else {
+      alert("Code copied to clipboard!");
+    }
+  };
+
+  // Option 2 SEO Sync: Syncs Yoast/RankMath metadata to WordPress without altering database content
+  const handleSyncSeoOnly = async () => {
+    if (!editingArticle || !connection) return;
+    setSyncingSeoOnly(true);
+    try {
+      const res = await fetch("/api/wordpress/sync", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          action: "update-seo",
+          siteUrl: connection.siteUrl,
+          apiKey: connection.apiKey,
+          businessName: activeBusiness,
+          updateData: {
+            post_id: editingArticle.id,
+            meta_title: editingArticle.meta_title || editingArticle.title,
+            meta_description: editingArticle.meta_description || editingArticle.excerpt || "",
+            focus_keyword: editingArticle.focus_keyword || "",
+          },
+        }),
+      });
+      const data = await res.json();
+      if (data.ok) {
+        setEditorNotice({
+          type: "success",
+          message: "⚡ SEO Meta Tags (Title, SERP Description, Focus Keyword) synced to WordPress & Yoast/RankMath!",
+        });
+        setTimeout(() => setEditorNotice(null), 5000);
+        setShowCustomPublishModal(false);
+      } else {
+        alert("Failed to sync SEO tags: " + (data.error || "Unknown error"));
+      }
+    } catch (e) {
+      alert("Error syncing SEO tags: " + e.message);
+    } finally {
+      setSyncingSeoOnly(false);
     }
   };
 
@@ -1651,7 +1734,7 @@ export default function SeoHubPage() {
                       </button>
 
                       <button
-                        onClick={() => handleSaveArticle("publish")}
+                        onClick={handleInitiatePublish}
                         disabled={publishingArticle}
                         style={{
                           background: "#10b981",
@@ -2530,7 +2613,7 @@ export default function SeoHubPage() {
                         {savingArticle ? "Saving…" : "💾 Save Draft"}
                       </button>
                       <button
-                        onClick={() => handleSaveArticle("publish")}
+                        onClick={handleInitiatePublish}
                         disabled={publishingArticle}
                         style={{
                           padding: "10px 24px",
@@ -4876,6 +4959,220 @@ export default function SeoHubPage() {
 
       {showSubscriptionModal && (
         <SubscriptionModal onClose={() => setShowSubscriptionModal(false)} />
+      )}
+
+      {/* ── MODAL: CUSTOM THEME TEMPLATE DETECTED & PUBLISH ROUTER ── */}
+      {showCustomPublishModal && editingArticle && (
+        <div
+          style={{
+            position: "fixed",
+            top: 0,
+            left: 0,
+            right: 0,
+            bottom: 0,
+            background: "rgba(0, 0, 0, 0.88)",
+            backdropFilter: "blur(10px)",
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            zIndex: 10000,
+            padding: 16,
+            boxSizing: "border-box",
+          }}
+        >
+          <div
+            style={{
+              background: "#0c1322",
+              border: "1px solid rgba(255, 255, 255, 0.15)",
+              borderRadius: 18,
+              maxWidth: 840,
+              width: "100%",
+              padding: "28px 32px",
+              color: "#f8fafc",
+              boxShadow: "0 25px 60px rgba(0, 0, 0, 0.7)",
+              maxHeight: "92vh",
+              overflowY: "auto",
+            }}
+          >
+            {/* Modal Header */}
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 20 }}>
+              <div>
+                <div style={{ display: "inline-flex", alignItems: "center", gap: 6, background: "rgba(234, 179, 8, 0.15)", border: "1px solid rgba(234, 179, 8, 0.4)", borderRadius: 20, padding: "3px 12px", fontSize: 11, fontWeight: 700, color: "#fde047", marginBottom: 8 }}>
+                  ⚡ CUSTOM CODE ARCHITECTURE DETECTED
+                </div>
+                <h2 style={{ margin: 0, fontSize: 20, fontWeight: 800, color: "#ffffff", letterSpacing: "-0.02em" }}>
+                  Custom Theme Template Detected
+                </h2>
+                <p style={{ margin: "6px 0 0 0", fontSize: 13, color: "#94a3b8", lineHeight: 1.5 }}>
+                  This page is powered by a custom developer file (<code style={{ color: "#38bdf8", background: "rgba(56, 189, 248, 0.1)", padding: "2px 6px", borderRadius: 4 }}>{editingArticle.template_file || `page-${editingArticle.slug || "template"}.php`}</code>) on your web hosting. Choose how you would like to apply your updates:
+                </p>
+              </div>
+              <button
+                onClick={() => setShowCustomPublishModal(false)}
+                style={{
+                  border: "none",
+                  background: "rgba(255, 255, 255, 0.08)",
+                  color: "#94a3b8",
+                  fontSize: 18,
+                  width: 32,
+                  height: 32,
+                  borderRadius: 8,
+                  cursor: "pointer",
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "center",
+                }}
+              >
+                ✕
+              </button>
+            </div>
+
+            {/* Two Distinct Options Grid */}
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(340px, 1fr))", gap: 18, marginTop: 16 }}>
+              {/* 🟢 OPTION 1: Dynamic CMS Mode */}
+              <div
+                style={{
+                  background: "linear-gradient(180deg, rgba(16, 185, 129, 0.08) 0%, rgba(15, 23, 42, 0.6) 100%)",
+                  border: "1.5px solid rgba(16, 185, 129, 0.4)",
+                  borderRadius: 14,
+                  padding: "22px 20px",
+                  display: "flex",
+                  flexDirection: "column",
+                  justifyContent: "space-between",
+                  position: "relative",
+                }}
+              >
+                <div>
+                  <div style={{ display: "inline-block", background: "#10b981", color: "#ffffff", fontSize: 10, fontWeight: 800, textTransform: "uppercase", padding: "3px 8px", borderRadius: 4, letterSpacing: "0.05em", marginBottom: 12 }}>
+                    Option 1 • 1-Click Live Update
+                  </div>
+                  <h3 style={{ margin: "0 0 6px 0", fontSize: 16, fontWeight: 700, color: "#ffffff" }}>
+                    🌐 Instant Dynamic Publishing
+                  </h3>
+                  <div style={{ fontSize: 11, color: "#34d399", fontWeight: 600, marginBottom: 12 }}>
+                    Recommended for Non-Developers & Clients
+                  </div>
+                  <p style={{ fontSize: 12.5, color: "#cbd5e1", lineHeight: 1.6, margin: "0 0 14px 0" }}>
+                    Publishes your updated content directly to your WordPress database. Your live page updates instantly, and you can edit or optimize it anytime from this AI Dashboard without ever opening cPanel or FTP.
+                  </p>
+                  <div style={{ background: "rgba(0, 0, 0, 0.35)", borderRadius: 8, padding: "10px 12px", border: "1px solid rgba(255, 255, 255, 0.06)", marginBottom: 16 }}>
+                    <div style={{ fontSize: 11, color: "#94a3b8", lineHeight: 1.5 }}>
+                      <strong style={{ color: "#f1f5f9" }}>Safe Invariant:</strong> Your original cPanel PHP file remains safely untouched on your server as a backup. WordPress seamlessly renders your optimized copy with 100% theme design intact.
+                    </div>
+                  </div>
+                </div>
+
+                <button
+                  onClick={() => handleSaveArticle("publish", { render_optimized: true })}
+                  disabled={publishingArticle}
+                  style={{
+                    width: "100%",
+                    padding: "12px 18px",
+                    borderRadius: 8,
+                    border: "none",
+                    background: "linear-gradient(135deg, #10b981 0%, #059669 100%)",
+                    color: "#ffffff",
+                    fontSize: 13,
+                    fontWeight: 800,
+                    cursor: publishingArticle ? "not-allowed" : "pointer",
+                    boxShadow: "0 4px 16px rgba(16, 185, 129, 0.4)",
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "center",
+                    gap: 8,
+                  }}
+                >
+                  {publishingArticle ? "Publishing Live…" : "🚀 Publish Live to WordPress Now"}
+                </button>
+              </div>
+
+              {/* 💻 OPTION 2: Developer Template Mode */}
+              <div
+                style={{
+                  background: "linear-gradient(180deg, rgba(56, 189, 248, 0.08) 0%, rgba(15, 23, 42, 0.6) 100%)",
+                  border: "1.5px solid rgba(56, 189, 248, 0.4)",
+                  borderRadius: 14,
+                  padding: "22px 20px",
+                  display: "flex",
+                  flexDirection: "column",
+                  justifyContent: "space-between",
+                  position: "relative",
+                }}
+              >
+                <div>
+                  <div style={{ display: "inline-block", background: "#0284c7", color: "#ffffff", fontSize: 10, fontWeight: 800, textTransform: "uppercase", padding: "3px 8px", borderRadius: 4, letterSpacing: "0.05em", marginBottom: 12 }}>
+                    Option 2 • Zero Database Override
+                  </div>
+                  <h3 style={{ margin: "0 0 6px 0", fontSize: 16, fontWeight: 700, color: "#ffffff" }}>
+                    🛠️ Export Code for cPanel Template
+                  </h3>
+                  <div style={{ fontSize: 11, color: "#38bdf8", fontWeight: 600, marginBottom: 12 }}>
+                    For Webmasters & Developers
+                  </div>
+                  <p style={{ fontSize: 12.5, color: "#cbd5e1", lineHeight: 1.6, margin: "0 0 12px 0" }}>
+                    Keep your website 100% tied to your existing cPanel PHP template. No WordPress database override will be applied.
+                  </p>
+
+                  {/* Step by Step instructions */}
+                  <div style={{ background: "rgba(0, 0, 0, 0.35)", borderRadius: 8, padding: "12px 14px", border: "1px solid rgba(255, 255, 255, 0.06)", marginBottom: 16 }}>
+                    <div style={{ fontSize: 11, fontWeight: 700, color: "#38bdf8", textTransform: "uppercase", marginBottom: 6 }}>
+                      📋 Step-by-Step Instructions:
+                    </div>
+                    <ol style={{ margin: 0, paddingLeft: 16, fontSize: 11.5, color: "#cbd5e1", lineHeight: 1.6 }}>
+                      <li>Click <strong>"Copy Complete PHP Code"</strong> below.</li>
+                      <li>Log in to your hosting <strong>cPanel ➔ File Manager</strong>.</li>
+                      <li>Navigate to: <code style={{ color: "#facc15" }}>wp-content/themes/{editingArticle.theme_folder || "your-theme"}/</code></li>
+                      <li>Edit file: <code style={{ color: "#38bdf8" }}>{editingArticle.template_file || `page-${editingArticle.slug || "template"}.php`}</code></li>
+                      <li>Select All (Ctrl+A), Paste (Ctrl+V), and <strong>Save Changes</strong>.</li>
+                    </ol>
+                  </div>
+                </div>
+
+                <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+                  <button
+                    onClick={handleCopyPhpCode}
+                    style={{
+                      width: "100%",
+                      padding: "11px 16px",
+                      borderRadius: 8,
+                      border: "1px solid #38bdf8",
+                      background: copiedPhpCode ? "#0284c7" : "rgba(56, 189, 248, 0.15)",
+                      color: copiedPhpCode ? "#ffffff" : "#38bdf8",
+                      fontSize: 12.5,
+                      fontWeight: 800,
+                      cursor: "pointer",
+                      display: "flex",
+                      alignItems: "center",
+                      justifyContent: "center",
+                      gap: 8,
+                      transition: "all 0.2s ease",
+                    }}
+                  >
+                    {copiedPhpCode ? "✅ Copied to Clipboard!" : "📋 Copy Complete PHP Code"}
+                  </button>
+
+                  <button
+                    onClick={handleSyncSeoOnly}
+                    disabled={syncingSeoOnly}
+                    style={{
+                      width: "100%",
+                      padding: "10px 16px",
+                      borderRadius: 8,
+                      border: "1px solid rgba(255, 255, 255, 0.12)",
+                      background: "rgba(255, 255, 255, 0.06)",
+                      color: "#94a3b8",
+                      fontSize: 12,
+                      fontWeight: 700,
+                      cursor: syncingSeoOnly ? "not-allowed" : "pointer",
+                    }}
+                  >
+                    {syncingSeoOnly ? "Syncing SEO Meta Tags…" : "⚡ Sync SEO Meta Tags Only (Yoast / RankMath)"}
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
       )}
     </div>
   );

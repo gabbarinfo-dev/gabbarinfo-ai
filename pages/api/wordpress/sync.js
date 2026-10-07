@@ -681,6 +681,27 @@ export default async function handler(req, res) {
     }
 
     // ----------------------------------------------------------------
+    // 6.2 UPDATE SEO TAGS ONLY (Yoast / RankMath / Native without Content Override)
+    // ----------------------------------------------------------------
+    if (action === "update-seo") {
+      const payload = updateData || seoData || {};
+      try {
+        const resp = await fetch(`${activeUrl}/wp-json/gabbarinfo/v1/update-seo`, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${activeKey}`,
+          },
+          body: JSON.stringify(payload),
+        });
+        const data = await resp.json().catch(() => ({}));
+        return res.status(resp.status || 200).json(data);
+      } catch (e) {
+        return res.status(500).json({ ok: false, error: e.message });
+      }
+    }
+
+    // ----------------------------------------------------------------
     // 6.5 UPGRADE PLUGIN (OTA 1-Click Remote Upgrade)
     // ----------------------------------------------------------------
     if (action === "upgrade-plugin") {
