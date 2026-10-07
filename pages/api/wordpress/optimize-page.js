@@ -180,73 +180,73 @@ export default async function handler(req, res) {
     cleanInputContent = `<h1>${title}</h1><p>Welcome to ${brandProfile.businessName}. We provide high quality ${brandProfile.niche || "professional"} services.</p>`;
   }
 
-  // 4. BULLETPROOF VAULT: Stash Gutenberg blocks, Shortcodes, Media, SVGs, and Images so LLMs NEVER alter them
-  const mediaVault = [];
+  // 4. SURGICAL AST DOM PARSER: Extract ONLY text strings into a JSON map (Zero HTML sent to LLM)
+  const doc = cheerio.load(cleanInputContent, null, false);
+  const elementMap = new Map();
+  const textPayload = {};
+  let textCounter = 0;
 
-  // Vault 1: Gutenberg Block Comments (Crucial for Spectra, Kadence, Core Gutenberg)
-  let vaultedContent = cleanInputContent.replace(/<!--\s*\/?wp:[^>]*-->/gi, (match) => {
-    const token = `<!-- GABBAR_VAULT_BLOCK_${mediaVault.length} -->`;
-    mediaVault.push({ token, original: match, type: "block" });
-    return token;
+  // Extract all Headings
+  doc("h1, h2, h3, h4, h5, h6").each((_, el) => {
+    const rawText = doc(el).text().trim();
+    if (rawText.length > 2) {
+      const key = `${el.tagName.toLowerCase()}_${textCounter++}`;
+      elementMap.set(key, el);
+      textPayload[key] = rawText;
+    }
   });
 
-  // Vault 2: Shortcodes (Contact forms, Sliders, Divi, WPBakery)
-  vaultedContent = vaultedContent.replace(/\[\/?(?:contact-form-7|wpforms|rev_slider|et_pb_[a-z0-9_-]+|vc_[a-z0-9_-]+|woocommerce_[a-z0-9_-]+|gallery|audio|playlist)[^\]]*\]/gi, (match) => {
-    const token = `<!-- GABBAR_VAULT_SHORTCODE_${mediaVault.length} -->`;
-    mediaVault.push({ token, original: match, type: "shortcode" });
-    return token;
+  // Extract all Paragraphs (Skip paragraphs containing forms, inputs, buttons, or iframes)
+  doc("p").each((_, el) => {
+    if (doc(el).find("form, input, button, select, textarea, iframe").length > 0) return;
+    const rawText = doc(el).text().trim();
+    if (rawText.length > 15) {
+      const key = `p_${textCounter++}`;
+      elementMap.set(key, el);
+      textPayload[key] = rawText;
+    }
   });
 
-  // Vault 3: Videos & Iframes
-  vaultedContent = vaultedContent.replace(/<video[\s\S]*?<\/video>/gi, (match) => {
-    const token = `<!-- GABBAR_VAULT_VIDEO_${mediaVault.length} -->`;
-    mediaVault.push({ token, original: match, type: "video" });
-    return token;
-  });
+  // Fallback: If no standard H or P elements found, extract text from list items or fallback
+  if (Object.keys(textPayload).length === 0) {
+    doc("li").each((_, el) => {
+      const rawText = doc(el).text().trim();
+      if (rawText.length > 10) {
+        const key = `li_${textCounter++}`;
+        elementMap.set(key, el);
+        textPayload[key] = rawText;
+      }
+    });
+  }
 
-  vaultedContent = vaultedContent.replace(/<iframe[\s\S]*?<\/iframe>/gi, (match) => {
-    const token = `<!-- GABBAR_VAULT_IFRAME_${mediaVault.length} -->`;
-    mediaVault.push({ token, original: match, type: "iframe" });
-    return token;
-  });
-
-  // Vault 4: Scripts & Styles
-  vaultedContent = vaultedContent.replace(/<script[\s\S]*?<\/script>/gi, (match) => {
-    const token = `<!-- GABBAR_VAULT_SCRIPT_${mediaVault.length} -->`;
-    mediaVault.push({ token, original: match, type: "script" });
-    return token;
-  });
-
-  // Vault 5: Images (preserves src, srcset, dimensions, alt attributes)
-  vaultedContent = vaultedContent.replace(/<img\b[^>]*>/gi, (match) => {
-    const token = `<!-- GABBAR_VAULT_IMG_${mediaVault.length} -->`;
-    mediaVault.push({ token, original: match, type: "image" });
-    return token;
-  });
-
-  // Vault 6: SVGs (preserves vector icons & complex paths)
-  vaultedContent = vaultedContent.replace(/<svg\b[\s\S]*?<\/svg>/gi, (match) => {
-    const token = `<!-- GABBAR_VAULT_SVG_${mediaVault.length} -->`;
-    mediaVault.push({ token, original: match, type: "svg" });
-    return token;
-  });
-
-  // 5. Construct Clean Human-Proven Optimization Prompt
+  // 5. Construct Clean Text-Only JSON Prompt (LLM NEVER SEES ANY HTML TAGS OR LAYOUT CODE)
   const userDirectives = (customInstructions || "").trim();
   const optimalDirectiveClause = userDirectives
-    ? ` also optimize on basis of "${userDirectives}".`
-    : ``;
+    ? `\n- Strategic User Directive: ${userDirectives}`
+    : "";
 
-  const promptText = `I am giving you a custom code with content of a website page. I want its content to be optimised as per keywords.${optimalDirectiveClause} Dont break any code or any other stufs just need to optimise content.
+  const promptText = `You are a world-class SEO copywriter and growth marketer.
+I have extracted the visible text elements of a website page into a JSON map.
+Your task is to rewrite each text string for maximum organic search rankings, high commercial search intent, and local relevance, WITHOUT changing the meaning or layout.
 
-CRITICAL CODE SAFETY RULES:
-1. Do not add, remove, or modify any HTML tags (<div>, <section>, <span>, <p>, <a>, etc.).
-2. Keep all classes, IDs, inline styles, data attributes, hrefs, and buttons exactly as they are.
-3. Keep all <!-- GABBAR_VAULT_... --> tokens exactly in their place. Do NOT delete or modify any token.
-4. Return ONLY the complete updated HTML code starting from the first tag to the last tag. Do not include markdown code fences or conversational text.
+BUSINESS CONTEXT:
+- Business Name: ${brandProfile.businessName}
+- Target Location / Market: ${brandProfile.location || "London"}
+- Industry / Niche: ${brandProfile.niche || "Massage & Wellness Services"}
+- Target Keywords: ${(brandProfile.keywords.length > 0 ? brandProfile.keywords.join(", ") : focusKeyword) || "Brazilian massage"}
+${optimalDirectiveClause}
 
-CODE:
-${vaultedContent}`;
+INPUT TEXT ELEMENTS (JSON):
+${JSON.stringify(textPayload, null, 2)}
+
+CRITICAL RULES:
+1. Return ONLY a valid JSON object matching the EXACT keys provided above, plus 3 SEO meta fields: "meta_title", "meta_description", and "focus_keyword".
+2. For each element key, output the rewritten, high-converting copy.
+3. Maintain similar word count (+/- 20%) to the original text of each element so visual typography remains balanced.
+4. "meta_title": 50-60 characters, including the primary keyword and brand name.
+5. "meta_description": 130-155 characters, high CTR SERP snippet.
+6. "focus_keyword": the primary high-intent search query.
+7. Return PURE JSON only. Do NOT output markdown code fences, HTML tags, or conversational text.`;
 
   let rawOutput = "";
 
@@ -280,9 +280,7 @@ ${vaultedContent}`;
     try {
       const completion = await openai.chat.completions.create({
         model: "gpt-4o",
-        messages: [
-          { role: "user", content: promptText },
-        ],
+        messages: [{ role: "user", content: promptText }],
         temperature: 0.65,
         max_tokens: 8000,
       });
@@ -293,9 +291,7 @@ ${vaultedContent}`;
       try {
         const completion = await openai.chat.completions.create({
           model: "gpt-4o-mini",
-          messages: [
-            { role: "user", content: promptText },
-          ],
+          messages: [{ role: "user", content: promptText }],
           temperature: 0.65,
           max_tokens: 8000,
         });
@@ -314,47 +310,62 @@ ${vaultedContent}`;
     });
   }
 
-  // 6. Clean output and extract metadata
-  let cleanHtml = rawOutput
-    .replace(/^```(?:html)?\s*/i, "")
+  // 6. Clean and parse JSON response
+  let cleanedJsonStr = rawOutput
+    .replace(/^```(?:json)?\s*/i, "")
     .replace(/\s*```$/i, "")
     .trim();
 
-  const { meta, cleanHtml: htmlWithoutMeta } = extractMetaComment(cleanHtml);
-  let finalContent = htmlWithoutMeta;
-
-  // 7. RESTORE BULLETPROOF VAULT (Guaranteed 100% block, media & script integrity)
-  mediaVault.forEach((v) => {
-    if (finalContent.includes(v.token)) {
-      finalContent = finalContent.replace(v.token, v.original);
+  let parsedOutput = {};
+  try {
+    parsedOutput = JSON.parse(cleanedJsonStr);
+  } catch (jsonErr) {
+    // If wrapped in braces or markdown, extract json substring
+    const jsonMatch = cleanedJsonStr.match(/\{[\s\S]*\}/);
+    if (jsonMatch) {
+      try {
+        parsedOutput = JSON.parse(jsonMatch[0]);
+      } catch (_) {}
     }
-  });
+  }
 
-  // Second defense line: Auto-heal any empty videos
+  // 7. SURGICAL TEXT REPLACEMENT (100% of HTML structure, tags, CSS, and block comments remain untouched)
+  let updatedH1Text = "";
+  for (const [key, newText] of Object.entries(parsedOutput)) {
+    if (elementMap.has(key) && typeof newText === "string" && newText.trim()) {
+      const el = elementMap.get(key);
+      const cleanVal = newText.trim();
+      // If element has inner <a> links, don't wipe out the link tag
+      if (doc(el).find("a").length === 0) {
+        doc(el).text(cleanVal);
+      }
+      if (key.startsWith("h1_")) {
+        updatedH1Text = cleanVal;
+      }
+    }
+  }
+
+  let finalContent = doc.html();
   finalContent = autoHealVideos(finalContent);
 
-  // Clean ONLY SEO meta comments, NEVER touch Gutenberg blocks <!-- wp:... -->
-  finalContent = finalContent.replace(/<!--\s*SEO_META:[\s\S]*?-->/gi, "").trim();
-
   // Fallback extraction for H1
-  let extractedH1 = meta?.h1_headline || "";
+  let extractedH1 = updatedH1Text || "";
   if (!extractedH1) {
     try {
-      const $ = cheerio.load(finalContent, { decodeEntities: false });
-      extractedH1 = $("h1").first().text().trim();
+      extractedH1 = doc("h1").first().text().trim();
     } catch (_) {}
   }
 
   // Calibrate SEO Fields for High Real-World Audit Score
-  const detectedKw = meta?.focus_keyword || focusKeyword || brandProfile.keywords[0] || (title.split(" ").slice(0, 3).join(" "));
-  const finalFocusKeyword = detectedKw.trim();
+  const detectedKw = parsedOutput?.focus_keyword || focusKeyword || brandProfile.keywords[0] || (title.split(" ").slice(0, 3).join(" "));
+  const finalFocusKeyword = (detectedKw || "Services").trim();
 
-  let finalMetaTitle = meta?.meta_title || "";
+  let finalMetaTitle = parsedOutput?.meta_title || "";
   if (!finalMetaTitle || finalMetaTitle.length < 45 || finalMetaTitle.length > 65 || !finalMetaTitle.toLowerCase().includes(finalFocusKeyword.toLowerCase())) {
     finalMetaTitle = `${finalFocusKeyword} Services | ${brandProfile.businessName}`.slice(0, 58);
   }
 
-  let finalMetaDesc = meta?.meta_description || "";
+  let finalMetaDesc = parsedOutput?.meta_description || "";
   if (!finalMetaDesc || finalMetaDesc.length < 120 || finalMetaDesc.length > 165 || !finalMetaDesc.toLowerCase().includes(finalFocusKeyword.toLowerCase())) {
     finalMetaDesc = `Explore top-tier ${finalFocusKeyword} services from ${brandProfile.businessName}. Drive organic rankings, high-intent traffic, and commercial ROI today.`.slice(0, 155);
   }
