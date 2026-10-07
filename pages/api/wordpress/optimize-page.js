@@ -269,7 +269,6 @@ ${vaultedContent}`;
       }
     }
   }
-  }
 
   // Validation
   if (!rawOutput) {
