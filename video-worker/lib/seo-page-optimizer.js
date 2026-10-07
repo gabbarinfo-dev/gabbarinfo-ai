@@ -152,7 +152,7 @@ async function optimizePageContent({
   let cleanInputContent = (content || "").trim();
   cleanInputContent = cleanInputContent
     .replace(/<style>\s*\.seo-features-grid[\s\S]*?<\/style>/gi, "")
-    .replace(/<!--[\s\S]*?-->/g, "")
+    .replace(/<!--\s*SEO_META:[\s\S]*?-->/gi, "")
     .trim();
 
   cleanInputContent = autoHealVideos(cleanInputContent);
@@ -161,24 +161,58 @@ async function optimizePageContent({
     cleanInputContent = `<h1>${title}</h1><p>Welcome to ${brandProfile.businessName}. We provide high quality ${brandProfile.niche || "professional"} services.</p>`;
   }
 
-  // 3. MEDIA & SCRIPT VAULT: Stash <video> and <script> tags so LLMs can NEVER delete or alter them
+  // 3. BULLETPROOF VAULT: Stash Gutenberg blocks, Shortcodes, Media, SVGs, and Images so LLMs NEVER alter them
   const mediaVault = [];
 
-  // Vault videos (including inner <source> tags)
-  let vaultedContent = cleanInputContent.replace(/<video[\s\S]*?<\/video>/gi, (match) => {
+  // Vault 1: Gutenberg Block Comments (Crucial for Spectra, Kadence, Core Gutenberg)
+  let vaultedContent = cleanInputContent.replace(/<!--\s*\/?wp:[^>]*-->/gi, (match) => {
+    const token = `<!-- GABBAR_VAULT_BLOCK_${mediaVault.length} -->`;
+    mediaVault.push({ token, original: match, type: "block" });
+    return token;
+  });
+
+  // Vault 2: Shortcodes (Contact forms, Sliders, Divi, WPBakery)
+  vaultedContent = vaultedContent.replace(/\[\/?(?:contact-form-7|wpforms|rev_slider|et_pb_[a-z0-9_-]+|vc_[a-z0-9_-]+|woocommerce_[a-z0-9_-]+|gallery|audio|playlist)[^\]]*\]/gi, (match) => {
+    const token = `<!-- GABBAR_VAULT_SHORTCODE_${mediaVault.length} -->`;
+    mediaVault.push({ token, original: match, type: "shortcode" });
+    return token;
+  });
+
+  // Vault 3: Videos & Iframes
+  vaultedContent = vaultedContent.replace(/<video[\s\S]*?<\/video>/gi, (match) => {
     const token = `<!-- GABBAR_VAULT_VIDEO_${mediaVault.length} -->`;
     mediaVault.push({ token, original: match, type: "video" });
     return token;
   });
 
-  // Vault scripts
+  vaultedContent = vaultedContent.replace(/<iframe[\s\S]*?<\/iframe>/gi, (match) => {
+    const token = `<!-- GABBAR_VAULT_IFRAME_${mediaVault.length} -->`;
+    mediaVault.push({ token, original: match, type: "iframe" });
+    return token;
+  });
+
+  // Vault 4: Scripts & Styles
   vaultedContent = vaultedContent.replace(/<script[\s\S]*?<\/script>/gi, (match) => {
     const token = `<!-- GABBAR_VAULT_SCRIPT_${mediaVault.length} -->`;
     mediaVault.push({ token, original: match, type: "script" });
     return token;
   });
 
-  logger(`[OptimizeWorker] Vaulted ${mediaVault.length} protected media/script elements`);
+  // Vault 5: Images
+  vaultedContent = vaultedContent.replace(/<img\b[^>]*>/gi, (match) => {
+    const token = `<!-- GABBAR_VAULT_IMG_${mediaVault.length} -->`;
+    mediaVault.push({ token, original: match, type: "image" });
+    return token;
+  });
+
+  // Vault 6: SVGs
+  vaultedContent = vaultedContent.replace(/<svg\b[\s\S]*?<\/svg>/gi, (match) => {
+    const token = `<!-- GABBAR_VAULT_SVG_${mediaVault.length} -->`;
+    mediaVault.push({ token, original: match, type: "svg" });
+    return token;
+  });
+
+  logger(`[OptimizeWorker] Vaulted ${mediaVault.length} protected media/script/block elements`);
 
   // 4. Construct Clean Human-Proven Optimization Prompt
   const userDirectives = (customInstructions || "").trim();
@@ -191,7 +225,7 @@ async function optimizePageContent({
 CRITICAL CODE SAFETY RULES:
 1. Do not add, remove, or modify any HTML tags (<div>, <section>, <span>, <p>, <a>, etc.).
 2. Keep all classes, IDs, inline styles, data attributes, hrefs, and buttons exactly as they are.
-3. Keep all <!-- GABBAR_VAULT_... --> tokens exactly in their place.
+3. Keep all <!-- GABBAR_VAULT_... --> tokens exactly in their place. Do NOT delete or modify any token.
 4. Return ONLY the complete updated HTML code starting from the first tag to the last tag. Do not include markdown code fences or conversational text.
 
 CODE:
@@ -251,7 +285,7 @@ ${vaultedContent}`;
   const { meta, cleanHtml: htmlWithoutMeta } = extractMetaComment(cleanHtml);
   let finalContent = htmlWithoutMeta;
 
-  // 6. RESTORE MEDIA VAULT (Guaranteed 100% video & script integrity)
+  // 6. RESTORE BULLETPROOF VAULT (Guaranteed 100% block, media & script integrity)
   mediaVault.forEach((v) => {
     if (finalContent.includes(v.token)) {
       finalContent = finalContent.replace(v.token, v.original);
@@ -261,8 +295,8 @@ ${vaultedContent}`;
   // Second defense line: Auto-heal any empty videos
   finalContent = autoHealVideos(finalContent);
 
-  // Clean any remaining HTML comments to prevent WordPress wpautop issues
-  finalContent = finalContent.replace(/<!--[\s\S]*?-->/g, "").trim();
+  // Clean ONLY SEO meta comments, NEVER touch Gutenberg blocks <!-- wp:... -->
+  finalContent = finalContent.replace(/<!--\s*SEO_META:[\s\S]*?-->/gi, "").trim();
 
   // Fallback extraction for H1
   let extractedH1 = meta?.h1_headline || "";
@@ -290,9 +324,10 @@ ${vaultedContent}`;
   const cleanPageTitle = (title && title.length < 50) ? title : (meta?.meta_title || title);
   const finalH1 = extractedH1 || title;
 
-  logger("[OptimizeWorker] Direct HTML optimization complete. All videos & scripts restored.");
+  logger("[OptimizeWorker] Direct HTML optimization complete. All blocks, videos & scripts restored.");
 
   const existingSlug = (params.slug || "").trim();
+  const safeSlug = existingSlug || (title ? title.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "").slice(0, 48) : "page");
 
   return {
     ok: true,
@@ -304,7 +339,7 @@ ${vaultedContent}`;
     focus_keyword: finalFocusKeyword,
     meta_title: finalMetaTitle,
     meta_description: finalMetaDesc,
-    slug: existingSlug ? existingSlug : finalFocusKeyword.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "").slice(0, 48),
+    slug: safeSlug,
     audit_improvements: [
       "Optimized full page content in-place for high-intent search rankings",
       "Embodied user's strategic business positioning across hero, cards, and CTAs",

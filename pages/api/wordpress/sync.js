@@ -538,10 +538,26 @@ export default async function handler(req, res) {
         }
       }
 
-      // 3. Universal Live Frontend Extraction (For ANY theme / page builder where live page differs from DB)
+      // 3. Live Frontend Extraction: ONLY for custom theme templates that bypass DB content and do NOT have Gutenberg blocks
       if (fetchedData) {
-        const liveUrl = fetchedData.url || targetUrl || `${activeUrl}/${fetchedData.slug}/`;
-        if (postType === "page" || fetchedData.bypasses_db_content) {
+        const hasGutenbergBlocks = Boolean(
+          fetchedData.has_blocks ||
+          (fetchedData.db_content && fetchedData.db_content.includes("<!-- wp:")) ||
+          (fetchedData.content && fetchedData.content.includes("<!-- wp:"))
+        );
+        const isElementor = Boolean(fetchedData.is_elementor);
+        const isDivi = Boolean(fetchedData.is_divi || (fetchedData.db_content && fetchedData.db_content.includes("[et_pb_")));
+
+        // Only run live frontend scraping IF it is a custom theme file that bypasses DB and has NO block builder data!
+        const shouldExtractLiveFrontend = Boolean(
+          fetchedData.bypasses_db_content &&
+          !hasGutenbergBlocks &&
+          !isElementor &&
+          !isDivi
+        );
+
+        if (shouldExtractLiveFrontend) {
+          const liveUrl = fetchedData.url || targetUrl || `${activeUrl}/${fetchedData.slug}/`;
           try {
             const pageResp = await fetch(liveUrl, {
               headers: { "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36" },
@@ -557,7 +573,6 @@ export default async function handler(req, res) {
               if (mainMatch && mainMatch[1].trim().length > 100) {
                 const extractedHtml = mainMatch[1].trim();
                 fetchedData.live_content = extractedHtml;
-                // Always supply live rendered frontend HTML so custom templates/page builders show what is actually live
                 fetchedData.content = extractedHtml;
                 fetchedData.is_live_extracted = true;
               }
@@ -565,6 +580,13 @@ export default async function handler(req, res) {
           } catch (fetchErr) {
             console.warn("Could not extract live page frontend HTML:", fetchErr.message);
           }
+        } else {
+          // For ALL normal sites (Gutenberg, Spectra, Elementor, Divi, Standard pages):
+          // Always ensure native db_content with intact block comments and JSON attributes is used!
+          if (fetchedData.db_content && !fetchedData.content?.includes("<!-- wp:") && fetchedData.db_content.includes("<!-- wp:")) {
+            fetchedData.content = fetchedData.db_content;
+          }
+          fetchedData.is_live_extracted = false;
         }
 
         return res.status(200).json({ ok: true, post: fetchedData });
@@ -606,10 +628,13 @@ export default async function handler(req, res) {
         reservationId = quotaRes.reservationId;
       }
 
-      // Protect WordPress Navigation Menus: Never let long H1 headlines overwrite menu link titles
+      // Protect WordPress Navigation Menus & Slugs: Never let long H1 headlines overwrite menu link titles or alter permalinks
       const isPage = payload.post_type === "page" || payload.type === "page";
-      if (isPage && payload.title && payload.title.length > 45) {
-        payload.preserve_title = true;
+      if (isPage) {
+        if (payload.title && payload.title.length > 45) {
+          payload.preserve_title = true;
+        }
+        delete payload.slug;
       }
 
       // Guarantee video tags have direct src="..." attributes so WordPress wp_kses_post never strips video playback

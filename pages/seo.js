@@ -148,6 +148,8 @@ export default function SeoHubPage() {
 
   // Custom Theme Template Detection & Choice Modal States
   const [showCustomPublishModal, setShowCustomPublishModal] = useState(false);
+  const [customOptimizeMode, setCustomOptimizeMode] = useState("dynamic");
+  const [showDiffTooltip, setShowDiffTooltip] = useState(false);
   const [copiedPhpCode, setCopiedPhpCode] = useState(false);
   const [syncingSeoOnly, setSyncingSeoOnly] = useState(false);
 
@@ -954,11 +956,24 @@ export default function SeoHubPage() {
 
         setEditingArticle(updatedArticle);
         setAiPostScore(finalCalculatedScore);
-        setAiImprovements(data.audit_improvements || []);
-        setEditorNotice({
-          type: "success",
-          message: `✨ Page autonomously upgraded! Pre: ${currentScore}/100 ➔ Post: ${finalCalculatedScore}/100 (+${Math.max(0, finalCalculatedScore - currentScore)} pts). Layout & form wrappers preserved.`,
-        });
+        const isCustom = Boolean(
+          editingArticle.is_custom_template ||
+          editingArticle.bypasses_db_content ||
+          (editingArticle.template_file && editingArticle.template_file !== "default")
+        );
+
+        if (isCustom && customOptimizeMode === "cpanel") {
+          setEditorNotice({
+            type: "success",
+            message: `✨ Content optimized! Developer Mode active: Copy the clean PHP code below into your cPanel template file.`,
+          });
+          setShowCustomPublishModal(true);
+        } else {
+          setEditorNotice({
+            type: "success",
+            message: `✨ Page autonomously upgraded! Pre: ${currentScore}/100 ➔ Post: ${finalCalculatedScore}/100 (+${Math.max(0, finalCalculatedScore - currentScore)} pts). Layout & form wrappers preserved.`,
+          });
+        }
       } else {
         alert("AI Optimization error: " + (data.error || "Failed to optimize page."));
       }
@@ -4814,6 +4829,173 @@ export default function SeoHubPage() {
                 </div>
               </div>
 
+              {/* Mode Selector for Custom Theme Templates */}
+              {Boolean(
+                editingArticle.is_custom_template ||
+                editingArticle.bypasses_db_content ||
+                (editingArticle.template_file && editingArticle.template_file !== "default")
+              ) && (
+                <div style={{ marginBottom: 18, background: "rgba(15, 23, 42, 0.6)", border: "1px solid rgba(255, 255, 255, 0.12)", borderRadius: 12, padding: "14px 16px" }}>
+                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 10, flexWrap: "wrap", gap: 8 }}>
+                    <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                      <span style={{ fontSize: 11, background: "rgba(234, 179, 8, 0.2)", color: "#fde047", padding: "2px 8px", borderRadius: 12, fontWeight: 800 }}>
+                        ⚡ CUSTOM TEMPLATE
+                      </span>
+                      <label style={{ fontSize: 12, color: "#f1f5f9", fontWeight: 700, margin: 0 }}>
+                        Select Architecture Mode:
+                      </label>
+                    </div>
+
+                    {/* ℹ️ What's the difference? Hoverable & Clickable Link */}
+                    <div
+                      style={{ position: "relative" }}
+                      onMouseEnter={() => setShowDiffTooltip(true)}
+                      onMouseLeave={() => setShowDiffTooltip(false)}
+                    >
+                      <button
+                        type="button"
+                        onClick={() => setShowDiffTooltip(!showDiffTooltip)}
+                        style={{
+                          background: "none",
+                          border: "none",
+                          color: "#38bdf8",
+                          fontSize: 11.5,
+                          fontWeight: 700,
+                          cursor: "pointer",
+                          textDecoration: "underline",
+                          padding: 0,
+                          display: "inline-flex",
+                          alignItems: "center",
+                          gap: 4,
+                        }}
+                      >
+                        ℹ️ (What's the difference?)
+                      </button>
+
+                      {/* Hover Tooltip Card */}
+                      {showDiffTooltip && (
+                        <div
+                          style={{
+                            position: "absolute",
+                            right: 0,
+                            top: 22,
+                            width: 530,
+                            maxWidth: "88vw",
+                            background: "#0c1322",
+                            border: "1.5px solid rgba(56, 189, 248, 0.4)",
+                            borderRadius: 12,
+                            padding: 14,
+                            boxShadow: "0 25px 60px rgba(0,0,0,0.95), 0 0 30px rgba(56, 189, 248, 0.25)",
+                            zIndex: 99999,
+                            color: "#f8fafc",
+                            fontSize: 11.5,
+                            lineHeight: 1.5,
+                          }}
+                        >
+                          <div style={{ fontWeight: 800, color: "#38bdf8", marginBottom: 8, fontSize: 12.5, borderBottom: "1px solid rgba(255,255,255,0.1)", paddingBottom: 5, display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                            <span>Architecture Comparison: Dynamic CMS vs cPanel Developer</span>
+                            <span style={{ fontSize: 10, color: "#94a3b8" }}>Hover/Click</span>
+                          </div>
+                          <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 11 }}>
+                            <thead>
+                              <tr style={{ background: "rgba(255,255,255,0.05)", textAlign: "left" }}>
+                                <th style={{ padding: "6px 8px", borderBottom: "1px solid rgba(255,255,255,0.1)", color: "#94a3b8" }}>Feature / Aspect</th>
+                                <th style={{ padding: "6px 8px", color: "#34d399", borderBottom: "1px solid rgba(255,255,255,0.1)" }}>🟢 Instant Dynamic (Non-Coder)</th>
+                                <th style={{ padding: "6px 8px", color: "#60a5fa", borderBottom: "1px solid rgba(255,255,255,0.1)" }}>🔵 cPanel Mode (Developer)</th>
+                              </tr>
+                            </thead>
+                            <tbody>
+                              <tr>
+                                <td style={{ padding: "6px 8px", fontWeight: 700, borderBottom: "1px solid rgba(255,255,255,0.06)", color: "#e2e8f0" }}>cPanel / FTP Login?</td>
+                                <td style={{ padding: "6px 8px", color: "#cbd5e1", borderBottom: "1px solid rgba(255,255,255,0.06)" }}>❌ <strong>No.</strong> 100% managed from AI Dashboard.</td>
+                                <td style={{ padding: "6px 8px", color: "#cbd5e1", borderBottom: "1px solid rgba(255,255,255,0.06)" }}>✅ <strong>Yes.</strong> You copy/paste PHP into hosting file.</td>
+                              </tr>
+                              <tr>
+                                <td style={{ padding: "6px 8px", fontWeight: 700, borderBottom: "1px solid rgba(255,255,255,0.06)", color: "#e2e8f0" }}>cPanel PHP File</td>
+                                <td style={{ padding: "6px 8px", color: "#cbd5e1", borderBottom: "1px solid rgba(255,255,255,0.06)" }}>Untouched backup on server; live site renders via WP DB.</td>
+                                <td style={{ padding: "6px 8px", color: "#cbd5e1", borderBottom: "1px solid rgba(255,255,255,0.06)" }}><strong>cPanel PHP file remains 100% in charge</strong> and directly runs.</td>
+                              </tr>
+                              <tr>
+                                <td style={{ padding: "6px 8px", fontWeight: 700, borderBottom: "1px solid rgba(255,255,255,0.06)", color: "#e2e8f0" }}>Future Content Updates</td>
+                                <td style={{ padding: "6px 8px", color: "#cbd5e1", borderBottom: "1px solid rgba(255,255,255,0.06)" }}>1-Click live updates anytime from AI Dashboard.</td>
+                                <td style={{ padding: "6px 8px", color: "#cbd5e1", borderBottom: "1px solid rgba(255,255,255,0.06)" }}>Manual code paste into cPanel file each time.</td>
+                              </tr>
+                              <tr>
+                                <td style={{ padding: "6px 8px", fontWeight: 700, borderBottom: "1px solid rgba(255,255,255,0.06)", color: "#e2e8f0" }}>Custom PHP Logic</td>
+                                <td style={{ padding: "6px 8px", color: "#cbd5e1", borderBottom: "1px solid rgba(255,255,255,0.06)" }}>Bypassed (WP DB does not execute raw PHP for security).</td>
+                                <td style={{ padding: "6px 8px", color: "#cbd5e1", borderBottom: "1px solid rgba(255,255,255,0.06)" }}><strong>100% Preserved.</strong> All custom PHP loops & queries run intact.</td>
+                              </tr>
+                              <tr>
+                                <td style={{ padding: "6px 8px", fontWeight: 700, color: "#e2e8f0" }}>SEO Meta Tags</td>
+                                <td style={{ padding: "6px 8px", color: "#34d399" }}>Updated directly in WP SEO database.</td>
+                                <td style={{ padding: "6px 8px", color: "#60a5fa" }}>Updated directly in WP SEO database.</td>
+                              </tr>
+                            </tbody>
+                          </table>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+
+                  {/* Two Selectable Option Cards */}
+                  <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
+                    {/* Option 1: Dynamic Mode */}
+                    <div
+                      onClick={() => setCustomOptimizeMode("dynamic")}
+                      style={{
+                        border: customOptimizeMode === "dynamic" ? "2px solid #10b981" : "1px solid rgba(255,255,255,0.12)",
+                        background: customOptimizeMode === "dynamic" ? "rgba(16, 185, 129, 0.12)" : "rgba(255,255,255,0.02)",
+                        borderRadius: 10,
+                        padding: "10px 12px",
+                        cursor: "pointer",
+                        transition: "all 0.15s ease",
+                      }}
+                    >
+                      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 4 }}>
+                        <span style={{ fontSize: 12, fontWeight: 800, color: customOptimizeMode === "dynamic" ? "#34d399" : "#ffffff" }}>
+                          🟢 Instant Dynamic Mode
+                        </span>
+                        {customOptimizeMode === "dynamic" && (
+                          <span style={{ fontSize: 9.5, background: "#10b981", color: "#fff", padding: "1px 5px", borderRadius: 3, fontWeight: 800 }}>
+                            ACTIVE
+                          </span>
+                        )}
+                      </div>
+                      <p style={{ margin: 0, fontSize: 11, color: "#94a3b8", lineHeight: 1.4 }}>
+                        Recommended for Non-Coders. 1-Click live update directly to WordPress database without opening cPanel.
+                      </p>
+                    </div>
+
+                    {/* Option 2: cPanel Developer Mode */}
+                    <div
+                      onClick={() => setCustomOptimizeMode("cpanel")}
+                      style={{
+                        border: customOptimizeMode === "cpanel" ? "2px solid #3b82f6" : "1px solid rgba(255,255,255,0.12)",
+                        background: customOptimizeMode === "cpanel" ? "rgba(59, 130, 246, 0.12)" : "rgba(255,255,255,0.02)",
+                        borderRadius: 10,
+                        padding: "10px 12px",
+                        cursor: "pointer",
+                        transition: "all 0.15s ease",
+                      }}
+                    >
+                      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 4 }}>
+                        <span style={{ fontSize: 12, fontWeight: 800, color: customOptimizeMode === "cpanel" ? "#60a5fa" : "#ffffff" }}>
+                          🔵 cPanel Developer Mode
+                        </span>
+                        {customOptimizeMode === "cpanel" && (
+                          <span style={{ fontSize: 9.5, background: "#3b82f6", color: "#fff", padding: "1px 5px", borderRadius: 3, fontWeight: 800 }}>
+                            ACTIVE
+                          </span>
+                        )}
+                      </div>
+                      <p style={{ margin: 0, fontSize: 11, color: "#94a3b8", lineHeight: 1.4 }}>
+                        For Developers. Generates ready PHP code to paste into cPanel, keeping server-side logic 100% active.
+                      </p>
+                    </div>
+                  </div>
+                </div>
+              )}
+
               <div style={{ marginBottom: 20 }}>
                 <label style={{ fontSize: 12, color: "#cbd5e1", fontWeight: 700, display: "block", marginBottom: 6 }}>
                   Custom Focus / Strategic Guidance (Optional):
@@ -4868,7 +5050,11 @@ export default function SeoHubPage() {
                     gap: 8,
                   }}
                 >
-                  <span>⚡</span> {isOptimizingWithAi ? "Optimizing Page…" : "Run Full Autonomous AI Rewrite (1 Click) ↗"}
+                  <span>⚡</span> {isOptimizingWithAi
+                    ? "Optimizing Page…"
+                    : Boolean(editingArticle.is_custom_template || editingArticle.bypasses_db_content || (editingArticle.template_file && editingArticle.template_file !== "default")) && customOptimizeMode === "cpanel"
+                    ? "Optimize & Generate cPanel Code ↗"
+                    : "Run Full Autonomous AI Rewrite (1 Click) ↗"}
                 </button>
               </div>
             </div>

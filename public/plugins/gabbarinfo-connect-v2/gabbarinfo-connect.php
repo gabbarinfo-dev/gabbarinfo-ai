@@ -889,9 +889,16 @@ document.addEventListener('DOMContentLoaded', function() {
             }
         }
 
-        // Universal Live Extraction: For any page or when template bypasses DB
+        // Detect Builder & Block Structure
+        $has_gutenberg_blocks = ( function_exists( 'has_blocks' ) && has_blocks( $p->post_content ) ) || strpos( $p->post_content, '<!-- wp:' ) !== false;
+        $is_elementor = get_post_meta( $p->ID, '_elementor_edit_mode', true ) === 'builder';
+        $is_divi = strpos( $p->post_content, '[et_pb_' ) !== false;
+        $is_wpbakery = strpos( $p->post_content, '[vc_row' ) !== false;
+        $is_builder_page = $has_gutenberg_blocks || $is_elementor || $is_divi || $is_wpbakery;
+
+        // Live Extraction: ONLY and EXCLUSIVELY for hardcoded PHP theme templates that bypass DB content and have no DB blocks!
         $permalink = get_permalink( $p->ID );
-        if ( ( $bypasses_db_content || $p->post_type === 'page' ) && ! empty( $permalink ) ) {
+        if ( $bypasses_db_content && ! $has_gutenberg_blocks && ! empty( $permalink ) ) {
             $response = wp_remote_get( $permalink, array( 'timeout' => 15, 'sslverify' => false ) );
             if ( ! is_wp_error( $response ) && wp_remote_retrieve_response_code( $response ) === 200 ) {
                 $html = wp_remote_retrieve_body( $response );
@@ -914,10 +921,14 @@ document.addEventListener('DOMContentLoaded', function() {
             'ok'                  => true,
             'id'                  => $p->ID,
             'title'               => $p->post_title,
-            'content'             => ! empty( $live_content ) ? $live_content : $p->post_content,
+            'content'             => ( $bypasses_db_content && ! empty( $live_content ) ) ? $live_content : $p->post_content,
             'db_content'          => $p->post_content,
             'live_content'        => $live_content,
-            'is_live_extracted'   => ! empty( $live_content ),
+            'is_live_extracted'   => ( $bypasses_db_content && ! empty( $live_content ) ),
+            'has_blocks'          => $has_gutenberg_blocks,
+            'is_elementor'        => $is_elementor,
+            'is_divi'             => $is_divi,
+            'builder_type'        => $is_elementor ? 'elementor' : ( $is_divi ? 'divi' : ( $has_gutenberg_blocks ? 'gutenberg' : ( $bypasses_db_content ? 'custom_template' : 'classic' ) ) ),
             'slug'                => $p->post_name,
             'status'              => $p->post_status,
             'type'                => $p->post_type,
@@ -975,7 +986,8 @@ document.addEventListener('DOMContentLoaded', function() {
             $update_data['post_status'] = $params['status'];
         }
 
-        if ( isset( $params['slug'] ) ) {
+        // Protect page permalink & slug integrity! Never alter slugs on existing pages
+        if ( ! $is_page && isset( $params['slug'] ) && ! empty( $params['slug'] ) ) {
             $update_data['post_name'] = sanitize_title( $params['slug'] );
         }
 
@@ -984,8 +996,13 @@ document.addEventListener('DOMContentLoaded', function() {
             return new WP_Error( 'update_failed', $res->get_error_message(), array( 'status' => 500 ) );
         }
 
-        // Mark page for dynamic template rendering so hardcoded theme templates output the new content
-        update_post_meta( $post_id, '_gabbarinfo_render_optimized_content', '1' );
+        // Only mark page for dynamic template rendering IF dynamic CMS mode is explicitly requested
+        // Normal Gutenberg, Astra, Elementor, Divi pages will naturally render via their active theme templates
+        if ( ! empty( $params['use_dynamic_cms_mode'] ) || ! empty( $params['render_dynamic_template'] ) ) {
+            update_post_meta( $post_id, '_gabbarinfo_render_optimized_content', '1' );
+        } else {
+            delete_post_meta( $post_id, '_gabbarinfo_render_optimized_content' );
+        }
 
         // Attach Featured Image if supplied
         if ( ! empty( $params['featured_image_url'] ) ) {
