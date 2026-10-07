@@ -2,11 +2,24 @@
 
 export const runtime = "nodejs";
 
+import { getServerSession } from "next-auth/next";
+import { authOptions } from "../auth/[...nextauth]";
 import { supabaseServer } from "../../../lib/supabaseServer";
 
 export default async function handler(req, res) {
   if (req.method !== "POST") {
     return res.status(405).json({ success: false, message: "Only POST allowed" });
+  }
+
+  const session = await getServerSession(req, res, authOptions);
+  if (!session?.user?.email) {
+    return res.status(401).json({ success: false, message: "Authentication required" });
+  }
+
+  const currentUserEmail = session.user.email.toLowerCase().trim();
+  const isAdmin = currentUserEmail === "ndantare@gmail.com" || session.user.role === "owner" || currentUserEmail.endsWith("@gabbarinfo.com");
+  if (!isAdmin) {
+    return res.status(403).json({ success: false, message: "Admin access required to delete memory" });
   }
 
   try {

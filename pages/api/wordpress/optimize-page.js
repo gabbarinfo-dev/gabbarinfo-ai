@@ -85,7 +85,16 @@ export default async function handler(req, res) {
   }
 
   const session = await getServerSession(req, res, authOptions);
-  const userEmail = session?.user?.email || req.body?.userEmail;
+  const internalSecret = req.headers["x-internal-secret"];
+  const isInternalCall = Boolean(internalSecret && process.env.INTERNAL_AGENT_SECRET && internalSecret === process.env.INTERNAL_AGENT_SECRET);
+
+  if (!session?.user?.email && !isInternalCall) {
+    return res.status(401).json({ ok: false, error: "Please log in to optimize pages." });
+  }
+
+  const sessionEmail = (session?.user?.email || "").toLowerCase().trim();
+  const isAdmin = Boolean(sessionEmail && (sessionEmail === "ndantare@gmail.com" || session?.user?.role === "owner" || sessionEmail.endsWith("@gabbarinfo.com")));
+  const userEmail = (isAdmin || isInternalCall) && req.body?.userEmail ? String(req.body.userEmail).toLowerCase().trim() : sessionEmail;
 
   const {
     pageId,

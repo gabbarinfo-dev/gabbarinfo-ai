@@ -17,11 +17,18 @@ export default async function handler(req, res) {
   }
 
   const session = await getServerSession(req, res, authOptions);
-  const userEmail = session?.user?.email || req.body?.userEmail || req.query?.userEmail;
+  const internalSecret = req.headers["x-internal-secret"];
+  const isInternalCall = Boolean(internalSecret && process.env.INTERNAL_AGENT_SECRET && internalSecret === process.env.INTERNAL_AGENT_SECRET);
 
-  if (!userEmail) {
+  if (!session?.user?.email && !isInternalCall) {
     return res.status(401).json({ ok: false, error: "Unauthorized: Please log in" });
   }
+
+  const sessionEmail = (session?.user?.email || "").toLowerCase().trim();
+  const isAdmin = Boolean(sessionEmail && (sessionEmail === "ndantare@gmail.com" || session?.user?.role === "owner" || sessionEmail.endsWith("@gabbarinfo.com")));
+
+  const requestedEmail = String(req.body?.userEmail || req.query?.userEmail || "").toLowerCase().trim();
+  const userEmail = (isAdmin || isInternalCall) && requestedEmail ? requestedEmail : sessionEmail;
 
   const body = req.method === "POST" ? (req.body || {}) : (req.query || {});
   const {
