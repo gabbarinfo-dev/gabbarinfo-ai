@@ -5317,16 +5317,17 @@ export default function SeoHubPage() {
                 <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
                   <button
                     onClick={handleCopyPhpCode}
+                    disabled={isOptimizingWithAi}
                     style={{
                       width: "100%",
                       padding: "11px 16px",
                       borderRadius: 8,
                       border: "1px solid #38bdf8",
-                      background: copiedPhpCode ? "#0284c7" : "rgba(56, 189, 248, 0.15)",
-                      color: copiedPhpCode ? "#ffffff" : "#38bdf8",
+                      background: isOptimizingWithAi ? "rgba(255, 255, 255, 0.05)" : copiedPhpCode ? "#0284c7" : "rgba(56, 189, 248, 0.15)",
+                      color: isOptimizingWithAi ? "#94a3b8" : copiedPhpCode ? "#ffffff" : "#38bdf8",
                       fontSize: 12.5,
                       fontWeight: 800,
-                      cursor: "pointer",
+                      cursor: isOptimizingWithAi ? "not-allowed" : "pointer",
                       display: "flex",
                       alignItems: "center",
                       justifyContent: "center",
@@ -5334,7 +5335,7 @@ export default function SeoHubPage() {
                       transition: "all 0.2s ease",
                     }}
                   >
-                    {copiedPhpCode ? "✅ Copied to Clipboard!" : "📋 Copy Complete PHP Code"}
+                    {isOptimizingWithAi ? "⏳ AI Optimizing Copy... Please Wait" : copiedPhpCode ? "✅ Copied to Clipboard!" : "📋 Copy Complete PHP Code"}
                   </button>
 
                   <button

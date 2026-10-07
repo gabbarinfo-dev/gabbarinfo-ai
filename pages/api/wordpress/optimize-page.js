@@ -225,15 +225,19 @@ export default async function handler(req, res) {
     ? `\n- Strategic User Directive: ${userDirectives}`
     : "";
 
+  const detectedNiche = brandProfile.niche || (title ? `${title} & Professional Services` : "Professional Digital & Business Services");
+  const detectedLocation = brandProfile.location || "Domestic & International Markets";
+  const detectedKwList = (brandProfile.keywords.length > 0 ? brandProfile.keywords.join(", ") : focusKeyword) || title || "Professional Services";
+
   const promptText = `You are a world-class SEO copywriter and growth marketer.
 I have extracted the visible text elements of a website page into a JSON map.
 Your task is to rewrite each text string for maximum organic search rankings, high commercial search intent, and local relevance, WITHOUT changing the meaning or layout.
 
 BUSINESS CONTEXT:
 - Business Name: ${brandProfile.businessName}
-- Target Location / Market: ${brandProfile.location || "London"}
-- Industry / Niche: ${brandProfile.niche || "Massage & Wellness Services"}
-- Target Keywords: ${(brandProfile.keywords.length > 0 ? brandProfile.keywords.join(", ") : focusKeyword) || "Brazilian massage"}
+- Target Location / Market: ${detectedLocation}
+- Industry / Niche: ${detectedNiche}
+- Target Keywords: ${detectedKwList}
 ${optimalDirectiveClause}
 
 INPUT TEXT ELEMENTS (JSON):
@@ -241,8 +245,8 @@ ${JSON.stringify(textPayload, null, 2)}
 
 CRITICAL RULES:
 1. Return ONLY a valid JSON object matching the EXACT keys provided above, plus 3 SEO meta fields: "meta_title", "meta_description", and "focus_keyword".
-2. For each element key, output the rewritten, high-converting copy.
-3. Maintain similar word count (+/- 20%) to the original text of each element so visual typography remains balanced.
+2. For each element key, output the rewritten, high-converting copy, strictly incorporating any Strategic User Directive provided above.
+3. Maintain similar word count (+/- 25%) to the original text of each element so visual typography remains balanced.
 4. "meta_title": 50-60 characters, including the primary keyword and brand name.
 5. "meta_description": 130-155 characters, high CTR SERP snippet.
 6. "focus_keyword": the primary high-intent search query.
@@ -250,9 +254,9 @@ CRITICAL RULES:
 
   let rawOutput = "";
 
-  // Attempt 1: Google Gemini Flash
+  // Attempt 1: Google Gemini Flash (Prioritize gemini-2.5-flash)
   if (process.env.GEMINI_API_KEY) {
-    const modelsToTry = ["gemini-2.5-flash", "gemini-1.5-flash", "gemini-flash-latest"];
+    const modelsToTry = ["gemini-2.5-flash", "gemini-flash-latest", "gemini-2.5-pro"];
     for (const mName of modelsToTry) {
       if (rawOutput) break;
       try {
