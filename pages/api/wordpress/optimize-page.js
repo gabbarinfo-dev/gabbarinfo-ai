@@ -246,11 +246,14 @@ ${JSON.stringify(textPayload, null, 2)}
 CRITICAL RULES:
 1. Return ONLY a valid JSON object matching the EXACT keys provided above, plus 3 SEO meta fields: "meta_title", "meta_description", and "focus_keyword".
 2. For each element key, output the rewritten, high-converting copy, strictly incorporating any Strategic User Directive provided above.
-3. Maintain similar word count (+/- 25%) to the original text of each element so visual typography remains balanced.
-4. "meta_title": 50-60 characters, including the primary keyword and brand name.
-5. "meta_description": 130-155 characters, high CTR SERP snippet.
-6. "focus_keyword": the primary high-intent search query.
-7. Return PURE JSON only. Do NOT output markdown code fences, HTML tags, or conversational text.`;
+3. PAIRED COLUMN & SIBLING CARD WORDCOUNT BALANCE (CRITICAL FOR VISUAL DESIGN):
+   - For parallel grid cards, feature boxes (e.g. 2-column or 4-box grids), or comparison blocks, keep the word count across sibling cards closely matched (within +/- 5-8% of each other).
+   - This keeps column heights perfectly equal, preserves grid symmetry, and guarantees the design never looks lopsided or stretched.
+4. Maintain similar overall word count (+/- 15%) to each element's original text to protect typographic rhythm.
+5. "meta_title": 50-60 characters, containing the primary keyword and brand name.
+6. "meta_description": 130-155 characters, high-CTR commercial SERP snippet containing the focus keyword.
+7. "focus_keyword": the primary high-intent commercial search query.
+8. Return PURE JSON only. Do NOT output markdown code fences, HTML tags, or conversational text.`;
 
   let rawOutput = "";
 

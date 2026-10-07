@@ -563,7 +563,7 @@ export default function SeoHubPage() {
     const cleanDomain = siteDomain.replace(/\./g, "\\.");
     const internalLinksCount = (
       rawContent.match(
-        new RegExp(`href=["'](https?:\\/\\/(?:www\\.)?${cleanDomain}|\\/[^"'#])`, "gi")
+        new RegExp(`href=["'](https?:\\/\\/(?:www\\.)?${cleanDomain}|\\/[a-zA-Z0-9_-]|tel:|mailto:|https:\\/\\/wa\\.me)`, "gi")
       ) || []
     ).length;
     const externalLinksCount = (
@@ -574,10 +574,13 @@ export default function SeoHubPage() {
 
     const hasSubheadings = (rawContent.match(/<h[23][^>]*>/gi) || []).length >= 2;
     const hasTablesOrLists = /<(table|ul|ol)[^>]*>/i.test(rawContent);
-    const hasExecSummary = /(tl;?dr|executive summary|direct answer|key takeaways|overview|summary)/i.test(rawContent);
-    const hasImage = Boolean(art.featured_image || /<img[^>]*>/i.test(rawContent));
-    const titleCalibrated = metaTitle.length >= 45 && metaTitle.length <= 65;
-    const descCalibrated = metaDesc.length >= 120 && metaDesc.length <= 165;
+    const hasExecSummary = /(tl;?dr|executive summary|direct answer|key takeaways|overview|summary|why choose|what happens|strategy|process|why businesses)/i.test(rawContent);
+    const hasImage = Boolean(art.featured_image || /<(?:img|video)[^>]*>/i.test(rawContent));
+    const titleCalibrated = metaTitle.length >= 40 && metaTitle.length <= 70;
+    const descCalibrated = metaDesc.length >= 115 && metaDesc.length <= 170;
+
+    const isLandingPage = art.post_type === "page" || art.type === "page" || !art.post_type;
+    const targetWordCount = isLandingPage ? 380 : 850;
 
     // 13 Optimization Checklist Items
     const c1 = Boolean(kw && metaTitle.toLowerCase().includes(kw)); // +8 pts
@@ -586,12 +589,12 @@ export default function SeoHubPage() {
     const c4 = Boolean(kw && (title.includes(kw) || introText.includes(kw))); // +5 pts
     const c5 = true; // Generative Engine Optimization (JSON-LD Schema Active) +10 pts
     const c6 = hasSubheadings; // Subheading Hierarchy (2+ H2/H3 Headings) +8 pts
-    const c7 = hasExecSummary; // Executive Summary / Direct Answer Paragraph +7 pts
-    const c8 = wordCount >= 850; // Comprehensive Article Length +6 pts
+    const c7 = hasExecSummary; // Executive Summary / Decision Section +7 pts
+    const c8 = wordCount >= targetWordCount; // Comprehensive Content Length (+6 pts)
     const c9 = hasTablesOrLists; // Structured Data Tables / Bulleted Lists +7 pts
-    const c10 = hasImage; // Featured Banner Image Uploaded / AI Generated +8 pts
-    const c11 = internalLinksCount >= 1; // Internal Site Links (1+ Internal Links) +10 pts
-    const c12 = externalLinksCount >= 1; // External Authority Citations (1+ External Links) +7 pts
+    const c10 = hasImage; // Featured Banner Image or Video Media +8 pts
+    const c11 = internalLinksCount >= 1; // Internal Links / Conversion Anchors +10 pts
+    const c12 = externalLinksCount >= 1; // External Authority Citations +7 pts
     const c13 = titleCalibrated && descCalibrated; // Meta Title & Description Length Calibration +8 pts
 
     const keywordScore = (c1 ? 8 : 0) + (c2 ? 5 : 0) + (c3 ? 7 : 0) + (c4 ? 5 : 0);
