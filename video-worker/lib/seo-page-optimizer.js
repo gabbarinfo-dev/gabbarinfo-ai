@@ -292,6 +292,8 @@ ${vaultedContent}`;
 
   logger("[OptimizeWorker] Direct HTML optimization complete. All videos & scripts restored.");
 
+  const existingSlug = (params.slug || "").trim();
+
   return {
     ok: true,
     pageId,
@@ -302,7 +304,7 @@ ${vaultedContent}`;
     focus_keyword: finalFocusKeyword,
     meta_title: finalMetaTitle,
     meta_description: finalMetaDesc,
-    slug: finalFocusKeyword.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "").slice(0, 48),
+    slug: existingSlug ? existingSlug : finalFocusKeyword.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "").slice(0, 48),
     audit_improvements: [
       "Optimized full page content in-place for high-intent search rankings",
       "Embodied user's strategic business positioning across hero, cards, and CTAs",

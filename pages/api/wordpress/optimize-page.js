@@ -326,6 +326,8 @@ ${vaultedContent}`;
   const cleanPageTitle = (title && title.length < 50) ? title : (meta?.meta_title || title);
   const finalH1 = extractedH1 || title;
 
+  const existingSlug = (req.body?.slug || "").trim();
+
   return res.status(200).json({
     ok: true,
     pageId,
@@ -336,7 +338,7 @@ ${vaultedContent}`;
     focus_keyword: finalFocusKeyword,
     meta_title: finalMetaTitle,
     meta_description: finalMetaDesc,
-    slug: finalFocusKeyword.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "").slice(0, 48),
+    slug: existingSlug ? existingSlug : finalFocusKeyword.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "").slice(0, 48),
     audit_improvements: [
       "Optimized full page content in-place for high-intent search rankings",
       "Embodied user's strategic business positioning across hero, cards, and CTAs",

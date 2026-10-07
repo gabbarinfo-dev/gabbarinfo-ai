@@ -758,7 +758,7 @@ export default function SeoHubPage() {
       focus_keyword: kw,
       meta_title: optimizedTitle,
       meta_description: optimizedDesc,
-      slug: optimizedSlug,
+      slug: (prev?.id && prev?.slug) ? prev.slug : optimizedSlug,
     }));
 
     setEditorNotice({
@@ -795,6 +795,7 @@ export default function SeoHubPage() {
           targetKeywords: keywords || [],
           customInstructions: customPrompt || aiCustomInstructions || "",
           focusKeyword: editingArticle.focus_keyword || "",
+          slug: editingArticle.slug || "",
           userEmail: session?.user?.email,
         }),
       });
@@ -863,7 +864,7 @@ export default function SeoHubPage() {
           focus_keyword: data.focus_keyword || editingArticle.focus_keyword,
           meta_title: data.meta_title || editingArticle.meta_title,
           meta_description: data.meta_description || editingArticle.meta_description,
-          slug: data.slug || editingArticle.slug,
+          slug: (editingArticle?.id && editingArticle?.slug) ? editingArticle.slug : (data.slug || editingArticle.slug),
         };
         const realAudit = computeAuditScore(updatedArticle);
         const finalCalculatedScore = realAudit?.score || data.audit_score || 90;
