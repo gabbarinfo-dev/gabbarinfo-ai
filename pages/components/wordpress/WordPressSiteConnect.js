@@ -377,7 +377,7 @@ export default function WordPressSiteConnect({ onConnectionChange }) {
                   </label>
                   <input
                     type="text"
-                    placeholder="e.g. Divine Auto CNG, MyStore, Woman Massage Hub..."
+                    placeholder="e.g. MyBrand, TechFlow Solutions, Apex Digital..."
                     value={newBizNameInput || customBusiness}
                     onChange={(e) => {
                       setNewBizNameInput(e.target.value);

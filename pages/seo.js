@@ -290,6 +290,7 @@ export default function SeoHubPage() {
       return;
     }
     setActiveBusiness(newBiz);
+    // COMPLETE PURGE OF PREVIOUS BUSINESS CONTEXT (ZERO CROSS-CONTAMINATION)
     setBrandMeta(null);
     setAutoShareFb(false);
     setAutoShareIg(false);
@@ -297,7 +298,17 @@ export default function SeoHubPage() {
     setEditingArticle(null);
     setPublishedResult(null);
     setSocialShareStatus(null);
+    setKeywords([]);
+    setAiCustomInstructions("");
+    setSuggestedTopics([]);
+    setDiscoveredNiche("");
+    setNicheSummary("");
     setAutopilotTargetLocations("");
+    setAiPreScore(null);
+    setAiPostScore(null);
+    setEditorNotice(null);
+    setShowCustomPublishModal(false);
+    setShowAiOptimizeModal(false);
     if (typeof window !== "undefined") {
       localStorage.setItem("gabbar_active_business", newBiz);
     }
@@ -325,11 +336,17 @@ export default function SeoHubPage() {
           setConnection(null);
           await fetchBrandMeta(activeBusiness, null);
           setContentList([]);
+          setKeywords([]);
+          setDiscoveredNiche("");
+          setNicheSummary("");
         }
       } else {
         setConnection(null);
         await fetchBrandMeta(activeBusiness, null);
         setContentList([]);
+        setKeywords([]);
+        setDiscoveredNiche("");
+        setNicheSummary("");
       }
     } catch (e) {
       console.error("Failed to load connection:", e);
@@ -362,21 +379,33 @@ export default function SeoHubPage() {
         setLastPublishedAt(data.config.lastPublishedAt || null);
         if (Array.isArray(data.config.suggestedTopics) && data.config.suggestedTopics.length > 0) {
           setSuggestedTopics(data.config.suggestedTopics);
+        } else {
+          setSuggestedTopics([]);
         }
         if (data.config.discoveredNiche) {
           setDiscoveredNiche(data.config.discoveredNiche);
+        } else {
+          setDiscoveredNiche("");
         }
         if (data.config.nicheSummary) {
           setNicheSummary(data.config.nicheSummary);
+        } else {
+          setNicheSummary("");
         }
         if (Array.isArray(data.config.targetKeywords) && data.config.targetKeywords.length > 0) {
           setKeywords(data.config.targetKeywords);
+        } else {
+          setKeywords([]);
         }
         if (data.config.targetLocations || data.config.targetMarket) {
           setAutopilotTargetLocations(data.config.targetLocations || data.config.targetMarket);
         } else {
           setAutopilotTargetLocations("");
         }
+      } else {
+        setKeywords([]);
+        setDiscoveredNiche("");
+        setNicheSummary("");
       }
     } catch (e) {
       console.warn("Could not load autopilot config:", e);
@@ -5076,7 +5105,7 @@ export default function SeoHubPage() {
                 <label style={{ fontSize: 12, color: "#cbd5e1", display: "block", marginBottom: 4 }}>Business / Website Profile Name</label>
                 <input
                   type="text"
-                  placeholder="e.g. Divine Auto CNG, MyStore, Woman Massage Hub..."
+                  placeholder="e.g. MyBrand, TechFlow Solutions, Apex Digital..."
                   value={addBizName}
                   onChange={(e) => setAddBizName(e.target.value)}
                   style={{ width: "100%", padding: "10px 14px", borderRadius: 8, border: "1px solid #1e293b", background: "#131b2e", color: "#fff", fontSize: 13, boxSizing: "border-box" }}
