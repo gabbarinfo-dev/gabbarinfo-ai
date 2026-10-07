@@ -102,52 +102,8 @@ export default async function handler(req, res) {
     return res.status(400).json({ ok: false, error: "Page title or content is required." });
   }
 
-  // 1. Offload to Railway Worker if configured
-  const workerUrl = process.env.RAILWAY_WORKER_URL || process.env.VIDEO_WORKER_URL || "https://video-worker-production-96d4.up.railway.app";
-  const workerSecret = process.env.WORKER_SECRET_KEY || "gabbar_worker_secret_2026";
-
-  if (!req.body?.forceSync) {
-    try {
-      const controller = new AbortController();
-      const timeoutId = setTimeout(() => controller.abort(), 4000);
-
-      const workerRes = await fetch(`${workerUrl.replace(/\/+$/, "")}/seo/jobs/optimize-page`, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${workerSecret}`,
-        },
-        body: JSON.stringify({
-          userEmail,
-          openaiApiKey: process.env.OPENAI_API_KEY,
-          pageId,
-          url,
-          title,
-          content,
-          businessName,
-          targetKeywords,
-          customInstructions,
-          focusKeyword,
-        }),
-        signal: controller.signal,
-      });
-      clearTimeout(timeoutId);
-
-      if (workerRes.ok) {
-        const workerData = await workerRes.json();
-        if (workerData.ok && workerData.jobId) {
-          return res.status(200).json({
-            ok: true,
-            jobId: workerData.jobId,
-            status: "processing",
-            isAsync: true,
-          });
-        }
-      }
-    } catch (dispatchErr) {
-      console.warn("[OptimizePage] Railway worker dispatch warning (falling back to synchronous processing):", dispatchErr.message);
-    }
-  }
+  // 1. Direct Execution Pipeline (Runs natively on Vercel using Gemini / GPT-4o with zero worker delays)
+  // We bypass external Railway worker offload so page optimization uses the latest prompt immediately with zero timeout.
 
   // 2. Dynamic Brand Name & Context Extraction
   let detectedBrand = (businessName || "").trim();
