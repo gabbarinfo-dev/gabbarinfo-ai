@@ -18,7 +18,7 @@ export default async function handler(req, res) {
     `);
   }
 
-  const clientKey = process.env.TIKTOK_CLIENT_KEY || "awq8sdcr0cy886rc";
+  const clientKey = process.env.TIKTOK_CLIENT_KEY || "sbawrzibqf32wa91qs";
   const redirectUri = process.env.TIKTOK_REDIRECT_URI || "https://ai.gabbarinfo.com/api/tiktok/callback";
 
   // Scopes enabled under Login Kit and Content Posting API in TikTok Developer Portal

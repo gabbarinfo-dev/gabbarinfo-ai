@@ -34,8 +34,8 @@ export default async function handler(req, res) {
     return res.status(400).send("User email missing in OAuth state.");
   }
 
-  const clientKey = process.env.TIKTOK_CLIENT_KEY || "awq8sdcr0cy886rc";
-  const clientSecret = process.env.TIKTOK_CLIENT_SECRET || "WiNPYfwcKqKgLH4gd9TvH4BKKoNHZDUL";
+  const clientKey = process.env.TIKTOK_CLIENT_KEY || "sbawrzibqf32wa91qs";
+  const clientSecret = process.env.TIKTOK_CLIENT_SECRET || "LjGwOhZnUke6YpgYUjYr030CfgxJyvbU";
   const redirectUri = process.env.TIKTOK_REDIRECT_URI || "https://ai.gabbarinfo.com/api/tiktok/callback";
 
   try {
