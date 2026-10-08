@@ -72,25 +72,17 @@ const DEFAULT_10_TOPICS = [
   },
 ];
 
-// Fallback High-Res Luxury Photography in case OpenAI hits severe timeouts
-const FALLBACK_LIBRARY = [
-  "https://images.unsplash.com/photo-1599643478518-a784e5dc4c8f?auto=format&fit=crop&w=1080&q=80",
-  "https://images.unsplash.com/photo-1515562141207-7a88fb7ce338?auto=format&fit=crop&w=1080&q=80",
-  "https://images.unsplash.com/photo-1535632066927-ab7c9ab60908?auto=format&fit=crop&w=1080&q=80",
-  "https://images.unsplash.com/photo-1605100804763-247f67b3557e?auto=format&fit=crop&w=1080&q=80",
-];
-
 /**
  * Generate a single high-quality bespoke image using GabbarInfo AI's approved gpt-image-2 pipeline
  */
 async function generateGptImage(prompt, userEmail = "admin") {
-  const candidateModels = ["gpt-image-2", "gpt-image-1.5", "dall-e-3"];
+  const candidateModels = ["gpt-image-2", "gpt-image-1.5", "gpt-image-1", "dall-e-3"];
   let imageBuffer = null;
   let modelUsed = null;
 
   for (const model of candidateModels) {
     try {
-      console.log(`[TikTok AI] Attempting visual creation with model: ${model}...`);
+      console.log(`[TikTok AI] Generating bespoke visual with ${model}...`);
       const response = await Promise.race([
         openai.images.generate({
           model,
@@ -98,7 +90,7 @@ async function generateGptImage(prompt, userEmail = "admin") {
           size: "1024x1024",
         }),
         new Promise((_, reject) =>
-          setTimeout(() => reject(new Error(`Timeout after 22s for model ${model}`)), 22000)
+          setTimeout(() => reject(new Error(`Timeout after 42s for model ${model}`)), 42000)
         ),
       ]);
 
@@ -115,12 +107,12 @@ async function generateGptImage(prompt, userEmail = "admin") {
         break;
       }
     } catch (err) {
-      console.warn(`[TikTok AI] Model ${model} failed (${err.message}), trying fallback model...`);
+      console.warn(`[TikTok AI] Model ${model} failed (${err.message}), trying next model...`);
     }
   }
 
   if (!imageBuffer) {
-    throw new Error("All approved image generation models failed.");
+    throw new Error("AI image generation with gpt-image-2 failed to generate visual buffer.");
   }
 
   // Upload to Supabase Storage: instagram-creatives bucket
@@ -247,19 +239,19 @@ OUTPUT RAW JSON ONLY (no markdown blocks, no commentary):
       .replace(/www\.\S+/gi, "")
       .trim();
 
-    // GENERATE 2 BESPOKE SLIDES USING GPT-IMAGE-2 IN PARALLEL
+    // GENERATE 2 BESPOKE SLIDES USING GPT-IMAGE-2
     let generatedImages = [];
     try {
       console.log(`[TikTok AI] Generating 2 bespoke visual slides with gpt-image-2 for: "${topic}"...`);
       const [img1Res, img2Res] = await Promise.allSettled([
         generateGptImage(
           parsed.image_prompt_1 ||
-            `Luxury commercial jewellery studio photo of ${topic}, handcrafted gemstones, velvet display, 8k catalog`,
+            `Luxury commercial jewellery studio photo of ${topic}, handcrafted polki gemstones on black velvet neck mannequin, warm cinematic lighting, 8k catalogue quality`,
           email
         ),
         generateGptImage(
           parsed.image_prompt_2 ||
-            `Macro detail shot of ${topic} jewellery craftsmanship, sparkling facets, 8k commercial catalog`,
+            `Macro detail close-up of ${topic} jewellery craftsmanship, sparkling faceted gemstones, pristine gold setting, 8k commercial catalogue`,
           email
         ),
       ]);
@@ -267,26 +259,31 @@ OUTPUT RAW JSON ONLY (no markdown blocks, no commentary):
       if (img1Res.status === "fulfilled" && img1Res.value) {
         generatedImages.push(img1Res.value);
       } else {
-        console.warn("[TikTok AI] Slide 1 generation failed:", img1Res.reason?.message);
+        console.warn("[TikTok AI] Slide 1 generation warning:", img1Res.reason?.message);
       }
 
       if (img2Res.status === "fulfilled" && img2Res.value) {
         generatedImages.push(img2Res.value);
       } else {
-        console.warn("[TikTok AI] Slide 2 generation failed:", img2Res.reason?.message);
+        console.warn("[TikTok AI] Slide 2 generation warning:", img2Res.reason?.message);
       }
     } catch (genErr) {
       console.warn("[TikTok AI Image Generation Exception]:", genErr.message);
     }
 
-    // If gpt-image-2 produced fewer than 2 images, fill with fallback high-res visuals so TikTok requirements (>= 2 images) are always satisfied
-    if (generatedImages.length < 2) {
-      for (const fb of FALLBACK_LIBRARY) {
-        if (!generatedImages.includes(fb)) {
-          generatedImages.push(fb);
-        }
-        if (generatedImages.length >= 2) break;
-      }
+    // If only one slide succeeded, pair it with itself so TikTok carousel requirement (>= 2 images) is satisfied with the genuine AI visual
+    if (generatedImages.length === 1) {
+      generatedImages.push(generatedImages[0]);
+    }
+
+    if (generatedImages.length === 0) {
+      // Last-resort attempt: generate a single bespoke gpt-image-2 visual
+      console.log("[TikTok AI] Retrying single bespoke image generation...");
+      const singleImg = await generateGptImage(
+        `Commercial South Asian luxury jewellery catalog photo of ${topic}, stunning studio lighting, 8k`,
+        email
+      );
+      generatedImages = [singleImg, singleImg];
     }
 
     return res.status(200).json({
@@ -300,14 +297,9 @@ OUTPUT RAW JSON ONLY (no markdown blocks, no commentary):
     });
   } catch (err) {
     console.error("[TikTok AI Generate Creative Error]:", err);
-    return res.status(200).json({
-      ok: true,
-      title: `Handcrafted ${topic} ✨ Bella & Diva`,
-      caption: `Unveil regal elegance with our handcrafted ${topic} ✨ Meticulously designed in London with timeless South Asian craftsmanship. Lightweight, breathtaking, and made to turn heads. DM us to order or customize! Worldwide shipping available. #bellandiva #kundan #bridaljewellery #londonjewellery #jewellerylover`,
-      images: FALLBACK_LIBRARY.slice(0, 2),
-      videoUrl: "https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ForBiggerBlazes.mp4",
-      format,
-      topic,
+    return res.status(500).json({
+      ok: false,
+      error: `AI Generation Error: ${err.message}. Please click 'Generate Post with AI' to re-synthesize.`,
     });
   }
 }

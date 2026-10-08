@@ -65,6 +65,14 @@ const SUGGESTED_TOPICS = [
   },
 ];
 
+const TRENDING_AUDIO_PRESETS = [
+  { id: "viral", name: "🔥 Viral Trending Hits (Auto-Pair)", desc: "TikTok algorithm automatically matches current #1 trending commercial audio" },
+  { id: "sangeet", name: "🦚 Royal Sangeet & Bridal Mood", desc: "Traditional South Asian wedding & festive beats" },
+  { id: "luxe", name: "💎 London Luxury & Runway Vibe", desc: "Upbeat electronic chic for high-end boutique showcases" },
+  { id: "lofi", name: "🌸 Acoustic Lofi & Indie Reverb", desc: "Chill aesthetic vibe for minimalist everyday jewellery" },
+  { id: "none", name: "🔇 Mute / Original Audio (No Music)", desc: "Post clean photo carousel without added soundtrack" },
+];
+
 export default function TikTokPilotConnect() {
   const [status, setStatus] = useState("loading"); // loading | idle | connected
   const [userData, setUserData] = useState(null);
@@ -77,6 +85,7 @@ export default function TikTokPilotConnect() {
   const [selectedTopic, setSelectedTopic] = useState(SUGGESTED_TOPICS[0].title);
   const [customTopic, setCustomTopic] = useState("");
   const [mediaType, setMediaType] = useState("PHOTO"); // "PHOTO" (Carousel) | "VIDEO" (Reel)
+  const [selectedAudioPreset, setSelectedAudioPreset] = useState("viral");
   const [autoAddMusic, setAutoAddMusic] = useState(true); // TikTok auto_add_music flag
   
   // Generation & Publish States
@@ -698,37 +707,67 @@ export default function TikTokPilotConnect() {
 
               {/* Music Option for Direct Post */}
               <div
-                onClick={() => setAutoAddMusic(!autoAddMusic)}
                 style={{
-                  display: "flex",
-                  alignItems: "center",
-                  justifyContent: "space-between",
-                  marginTop: 10,
-                  padding: "10px 14px",
-                  borderRadius: 10,
-                  background: autoAddMusic ? "rgba(254, 44, 85, 0.12)" : "rgba(255, 255, 255, 0.03)",
-                  border: `1px solid ${autoAddMusic ? "#fe2c55" : "rgba(255, 255, 255, 0.08)"}`,
-                  cursor: "pointer",
-                  transition: "all 0.15s ease",
+                  marginTop: 12,
+                  padding: "12px 14px",
+                  borderRadius: 12,
+                  background: autoAddMusic ? "rgba(254, 44, 85, 0.08)" : "rgba(255, 255, 255, 0.03)",
+                  border: `1.5px solid ${autoAddMusic ? "rgba(254, 44, 85, 0.4)" : "rgba(255, 255, 255, 0.08)"}`,
                 }}
               >
-                <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-                  <span style={{ fontSize: 18 }}>🎵</span>
-                  <div>
-                    <div style={{ fontSize: 12, fontWeight: 800, color: "#ffffff" }}>
-                      Auto-Add TikTok Trending Music
-                    </div>
-                    <div style={{ fontSize: 11, color: "#94a3b8" }}>
-                      TikTok will automatically attach recommended trending audio to the photo carousel upon posting
+                <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 10 }}>
+                  <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+                    <span style={{ fontSize: 20 }}>🎵</span>
+                    <div>
+                      <div style={{ fontSize: 12, fontWeight: 800, color: "#ffffff" }}>
+                        Auto-Attach TikTok Trending Music
+                      </div>
+                      <div style={{ fontSize: 11, color: "#94a3b8" }}>
+                        TikTok algorithm pairs recommended trending commercial audio to your carousel upon posting
+                      </div>
                     </div>
                   </div>
+                  <input
+                    type="checkbox"
+                    checked={autoAddMusic}
+                    onChange={(e) => {
+                      const val = e.target.checked;
+                      setAutoAddMusic(val);
+                      if (!val) setSelectedAudioPreset("none");
+                      else if (selectedAudioPreset === "none") setSelectedAudioPreset("viral");
+                    }}
+                    style={{ accentColor: "#fe2c55", width: 20, height: 20, cursor: "pointer" }}
+                  />
                 </div>
-                <input
-                  type="checkbox"
-                  checked={autoAddMusic}
-                  onChange={(e) => setAutoAddMusic(e.target.checked)}
-                  style={{ accentColor: "#fe2c55", width: 18, height: 18, cursor: "pointer" }}
-                />
+
+                {/* Trending Audio Presets */}
+                {autoAddMusic && (
+                  <div style={{ display: "flex", flexWrap: "wrap", gap: 6, marginTop: 8 }}>
+                    {TRENDING_AUDIO_PRESETS.filter(p => p.id !== "none").map((preset) => {
+                      const isSel = selectedAudioPreset === preset.id;
+                      return (
+                        <button
+                          key={preset.id}
+                          type="button"
+                          onClick={() => setSelectedAudioPreset(preset.id)}
+                          style={{
+                            padding: "6px 10px",
+                            borderRadius: 8,
+                            fontSize: 11,
+                            fontWeight: 700,
+                            cursor: "pointer",
+                            background: isSel ? "linear-gradient(135deg, #fe2c55 0%, #25f4ee 100%)" : "rgba(255, 255, 255, 0.05)",
+                            color: isSel ? "#ffffff" : "#cbd5e1",
+                            border: `1px solid ${isSel ? "transparent" : "rgba(255, 255, 255, 0.1)"}`,
+                            transition: "all 0.15s ease",
+                          }}
+                        >
+                          {preset.name}
+                        </button>
+                      );
+                    })}
+                  </div>
+                )}
               </div>
             </div>
 
@@ -877,6 +916,76 @@ export default function TikTokPilotConnect() {
                     <option value="SELF_ONLY">Private / Only Me (Required for Sandbox / Review Demo)</option>
                     <option value="PUBLIC_TO_EVERYONE">Public to Everyone (Available after App Review Approval)</option>
                   </select>
+                </div>
+
+                {/* Audio Track Indicator & Selector for Direct Post */}
+                <div
+                  style={{
+                    padding: "12px 14px",
+                    borderRadius: 10,
+                    background: autoAddMusic ? "rgba(254, 44, 85, 0.08)" : "rgba(255, 255, 255, 0.03)",
+                    border: `1.5px solid ${autoAddMusic ? "rgba(254, 44, 85, 0.35)" : "rgba(255, 255, 255, 0.1)"}`,
+                    display: "flex",
+                    flexDirection: "column",
+                    gap: 8,
+                  }}
+                >
+                  <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+                    <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                      <span style={{ fontSize: 18 }}>🎵</span>
+                      <div>
+                        <div style={{ fontSize: 12, fontWeight: 800, color: "#ffffff" }}>
+                          Attached TikTok Audio: {TRENDING_AUDIO_PRESETS.find(p => p.id === selectedAudioPreset)?.name || "Auto-Pair Trending"}
+                        </div>
+                        <div style={{ fontSize: 11, color: "#94a3b8" }}>
+                          {autoAddMusic
+                            ? "✅ auto_add_music enabled — TikTok will auto-pair with recommended trending sound"
+                            : "🔇 Music disabled — silent photo carousel"}
+                        </div>
+                      </div>
+                    </div>
+                    <label style={{ display: "flex", alignItems: "center", gap: 6, cursor: "pointer", fontSize: 11, color: "#cbd5e1" }}>
+                      <input
+                        type="checkbox"
+                        checked={autoAddMusic}
+                        onChange={(e) => {
+                          const val = e.target.checked;
+                          setAutoAddMusic(val);
+                          if (!val) setSelectedAudioPreset("none");
+                          else if (selectedAudioPreset === "none") setSelectedAudioPreset("viral");
+                        }}
+                        style={{ accentColor: "#fe2c55", width: 18, height: 18 }}
+                      />
+                      <span>{autoAddMusic ? "Music ON" : "Music OFF"}</span>
+                    </label>
+                  </div>
+
+                  {autoAddMusic && (
+                    <div style={{ display: "flex", flexWrap: "wrap", gap: 6, marginTop: 2 }}>
+                      {TRENDING_AUDIO_PRESETS.filter(p => p.id !== "none").map((preset) => {
+                        const isSel = selectedAudioPreset === preset.id;
+                        return (
+                          <button
+                            key={preset.id}
+                            type="button"
+                            onClick={() => setSelectedAudioPreset(preset.id)}
+                            style={{
+                              padding: "4px 8px",
+                              borderRadius: 6,
+                              fontSize: 10,
+                              fontWeight: 700,
+                              cursor: "pointer",
+                              background: isSel ? "linear-gradient(135deg, #fe2c55 0%, #25f4ee 100%)" : "rgba(255, 255, 255, 0.05)",
+                              color: isSel ? "#ffffff" : "#cbd5e1",
+                              border: `1px solid ${isSel ? "transparent" : "rgba(255, 255, 255, 0.1)"}`,
+                            }}
+                          >
+                            {preset.name}
+                          </button>
+                        );
+                      })}
+                    </div>
+                  )}
                 </div>
 
                 {/* Sandbox Private Account Requirement Callout */}
