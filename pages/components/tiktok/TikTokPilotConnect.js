@@ -757,8 +757,22 @@ export default function TikTokPilotConnect() {
                   >
                     <option value="SELF_ONLY">Private / Only Me (Required for Sandbox / Review Demo)</option>
                     <option value="PUBLIC_TO_EVERYONE">Public to Everyone (Available after App Review Approval)</option>
-                    <option value="MUTUAL_FOLLOW_FRIENDS">Friends Only</option>
                   </select>
+                </div>
+
+                {/* Sandbox Private Account Requirement Callout */}
+                <div
+                  style={{
+                    padding: "10px 14px",
+                    borderRadius: 8,
+                    background: "rgba(234, 179, 8, 0.08)",
+                    border: "1px solid rgba(234, 179, 8, 0.25)",
+                    fontSize: 11,
+                    color: "#fef08a",
+                    lineHeight: 1.45,
+                  }}
+                >
+                  ⚠️ <strong>TikTok Sandbox Requirement:</strong> Because this app is in TikTok review/sandbox mode, TikTok strictly requires your connected account (<strong>@indianbellandiva</strong>) to have <strong>&quot;Private Account&quot;</strong> turned ON in the TikTok mobile app (<em>Profile &gt; Settings &amp; Privacy &gt; Privacy &gt; Toggle Private Account: ON</em>). Once TikTok audits and approves the app, public accounts will post publicly.
                 </div>
 
                 {/* PUBLISH BUTTON */}

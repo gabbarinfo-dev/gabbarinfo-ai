@@ -131,9 +131,24 @@ export default async function handler(req, res) {
     const ttData = await ttRes.json();
     if (!ttRes.ok || ttData.error?.code !== "ok") {
       console.error("[TikTok Publish Error]:", ttData);
+
+      const rawMsg = ttData.error?.message || "";
+      const rawCode = ttData.error?.code || "";
+      let friendlyError = rawMsg || "Failed to publish content to TikTok.";
+
+      if (
+        rawCode === "unaudited_client_can_only_post_to_private_accounts" ||
+        rawMsg.includes("content-sharing-guidelines") ||
+        rawMsg.toLowerCase().includes("unaudited")
+      ) {
+        friendlyError =
+          "TikTok Sandbox Policy: Before TikTok approves the app, TikTok strictly requires the connected TikTok account (@indianbellandiva) to be set to 'Private Account' in the mobile app. Please open TikTok on your phone > Profile > Settings & Privacy > Privacy > Toggle 'Private account' ON, then click Publish again.";
+      }
+
       return res.status(400).json({
         ok: false,
-        error: ttData.error?.message || "Failed to publish content to TikTok.",
+        error: friendlyError,
+        rawCode,
         details: ttData,
       });
     }

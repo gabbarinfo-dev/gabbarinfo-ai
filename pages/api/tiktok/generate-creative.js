@@ -2,11 +2,12 @@
 import { getServerSession } from "next-auth/next";
 import { authOptions } from "../auth/[...nextauth]";
 import { GoogleGenerativeAI } from "@google/generative-ai";
+import { generatePlatformGraphic } from "../../../lib/services/image-service";
 
 const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
 
-// Verified 200 OK High-Res Luxury Jewellery Photography (Tested & Accessible by TikTok servers)
-const CURATED_JEWELLERY_LIBRARY = [
+// Fallback High-Res Luxury Photography in case OpenAI/DALL-E reaches rate limits
+const FALLBACK_JEWELLERY_LIBRARY = [
   {
     category: "kundan_bridal",
     keywords: ["kundan", "bridal", "wedding", "necklace", "choker", "royal", "dulhan"],
@@ -98,7 +99,7 @@ export default async function handler(req, res) {
     const model = genAI.getGenerativeModel({ model: modelName });
 
     const prompt = `
-You are the master social media copywriter for "${businessName}", an elite South Asian jewellery brand based in London specializing in:
+You are the master creative director and copywriter for "${businessName}", an elite South Asian jewellery brand based in London specializing in:
 ${niche}.
 
 The user chose to generate a TikTok post for the topic: "${topic}".
@@ -110,14 +111,18 @@ Generate a JSON object with:
    - Irresistible hook (e.g., "The bridal glow everyone will be talking about ✨")
    - Focus on craftsmanship, intricate setting, lightweight feel, and royal aesthetics.
    - Clear CTA to "DM us to order or customize from London! Worldwide shipping available ✨"
-   - STRICT RULE: DO NOT INCLUDE ANY RAW URLS (e.g. do NOT write http or www links) because TikTok Content Sharing Guidelines strictly ban raw URLs in API posts!
+   - STRICT RULE: DO NOT INCLUDE ANY RAW URLS (no http or www links) because TikTok Content Sharing Guidelines strictly ban raw URLs in API posts!
    - 4 to 6 trending hashtags (#bellandiva #kundan #bridaljewellery #londonjewellery #southasianbride #jewellerygoals).
-3. "category": Choose the single closest match from ["kundan_bridal", "american_diamond", "festive_jhumkas"].
+3. "image_prompt_1": A vivid, photorealistic prompt for an AI image generator to create Slide 1. Must specify high-end commercial jewellery studio photography of ${topic}, handcrafted polki kundan gemstones, displayed on dark velvet neck mannequin, warm dramatic lighting, 8k catalogue quality, no text on image.
+4. "image_prompt_2": A vivid, photorealistic prompt for an AI image generator to create Slide 2. Must specify a macro close-up detail shot of ${topic}, showcasing intricate gold finish, hand-set gemstones, exquisite craftsmanship, 8k catalogue quality, no text on image.
+5. "category": Choose the single closest match from ["kundan_bridal", "american_diamond", "festive_jhumkas"].
 
 OUTPUT RAW JSON ONLY (no markdown blocks, no commentary):
 {
   "title": "...",
   "caption": "...",
+  "image_prompt_1": "...",
+  "image_prompt_2": "...",
   "category": "..."
 }
 `;
@@ -133,15 +138,61 @@ OUTPUT RAW JSON ONLY (no markdown blocks, no commentary):
       .replace(/www\.\S+/gi, "")
       .trim();
 
-    const matchedCategory = CURATED_JEWELLERY_LIBRARY.find(
+    const matchedCategory = FALLBACK_JEWELLERY_LIBRARY.find(
       (c) => c.category === parsed.category
-    ) || CURATED_JEWELLERY_LIBRARY[0];
+    ) || FALLBACK_JEWELLERY_LIBRARY[0];
+
+    // ACTUALLY GENERATE REAL AI IMAGES VIA IMAGE-SERVICE (DALL-E)
+    let generatedImages = [];
+    try {
+      console.log(`[TikTok AI] Generating real AI images for: ${topic}...`);
+      const [img1Res, img2Res] = await Promise.allSettled([
+        generatePlatformGraphic({
+          prompt: parsed.image_prompt_1 || `Luxury commercial jewellery studio photo of ${topic}, handcrafted gemstones, 8k catalog`,
+          userEmail: email,
+          businessId: "bella_n_diva",
+          aspectRatio: "1:1",
+          actionType: "IMAGE_GENERATION",
+          meterCredits: false,
+          persistInSupabase: true,
+        }),
+        generatePlatformGraphic({
+          prompt: parsed.image_prompt_2 || `Macro detail shot of ${topic} jewellery craftsmanship, sparkling stones, 8k catalog`,
+          userEmail: email,
+          businessId: "bella_n_diva",
+          aspectRatio: "1:1",
+          actionType: "IMAGE_GENERATION",
+          meterCredits: false,
+          persistInSupabase: true,
+        }),
+      ]);
+
+      if (img1Res.status === "fulfilled" && img1Res.value?.ok && img1Res.value?.imageUrl) {
+        generatedImages.push(img1Res.value.imageUrl);
+      }
+      if (img2Res.status === "fulfilled" && img2Res.value?.ok && img2Res.value?.imageUrl) {
+        generatedImages.push(img2Res.value.imageUrl);
+      }
+    } catch (genErr) {
+      console.warn("[TikTok AI Image Generation Warning]:", genErr.message);
+    }
+
+    // If AI generation produced fewer than 2 images, fill with fallback high-res visuals so TikTok requirements (>= 2 images) are always satisfied
+    if (generatedImages.length < 2) {
+      const fallbackImgs = matchedCategory.images;
+      for (const fb of fallbackImgs) {
+        if (!generatedImages.includes(fb)) {
+          generatedImages.push(fb);
+        }
+        if (generatedImages.length >= 2) break;
+      }
+    }
 
     return res.status(200).json({
       ok: true,
       title: parsed.title || `Bespoke ${topic} ✨ Bella & Diva`,
       caption: cleanCaption,
-      images: matchedCategory.images,
+      images: generatedImages,
       videoUrl: "https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ForBiggerBlazes.mp4",
       category: parsed.category,
       format,
