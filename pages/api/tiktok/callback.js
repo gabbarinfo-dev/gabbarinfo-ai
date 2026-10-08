@@ -57,32 +57,34 @@ export default async function handler(req, res) {
     });
 
     const tokenData = await tokenRes.json();
-    if (!tokenRes.ok || tokenData.error || !tokenData.data?.access_token) {
+    console.log("[TikTok Token Exchange Response]:", JSON.stringify(tokenData));
+
+    // TikTok v2 returns tokens directly at root level (tokenData.access_token) or inside tokenData.data
+    const accessToken = tokenData.access_token || tokenData.data?.access_token;
+    const refreshToken = tokenData.refresh_token || tokenData.data?.refresh_token;
+    const expiresIn = tokenData.expires_in || tokenData.data?.expires_in;
+    const openId = tokenData.open_id || tokenData.data?.open_id;
+    const approvedScopes = tokenData.scope || tokenData.data?.scope;
+
+    if (!tokenRes.ok || tokenData.error || !accessToken) {
       console.error("[TikTok Token Exchange Error]:", tokenData);
+      const errMsg = tokenData.message || tokenData.error_description || tokenData.error || JSON.stringify(tokenData);
       return res.status(400).send(`
         <html>
           <body style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; background: #070a10; color: #f8fafc; padding: 40px; text-align: center;">
             <h2 style="color: #ef4444;">TikTok Token Exchange Failed</h2>
-            <p style="color: #94a3b8; max-width: 600px; margin: 10px auto;">${tokenData.message || tokenData.error_description || "Could not retrieve access token."}</p>
+            <p style="color: #94a3b8; max-width: 600px; margin: 10px auto;">${errMsg}</p>
             <a href="/" style="display:inline-block; margin-top:20px; padding:10px 24px; background:#fe2c55; color:#fff; text-decoration:none; border-radius:8px; font-weight:700;">Back to GabbarInfo AI</a>
           </body>
         </html>
       `);
     }
 
-    const {
-      access_token: accessToken,
-      refresh_token: refreshToken,
-      expires_in: expiresIn,
-      open_id: openId,
-      scope: approvedScopes,
-    } = tokenData.data;
-
-    // 2. Fetch User Profile Info
+    // 2. Fetch User Profile Info (using user.info.basic supported fields)
     let userProfile = { displayName: "TikTok User", openId };
     try {
       const userRes = await fetch(
-        "https://open.tiktokapis.com/v2/user/info/?fields=open_id,union_id,avatar_url,display_name,bio_description,profile_deep_link,is_verified,follower_count,following_count,likes_count",
+        "https://open.tiktokapis.com/v2/user/info/?fields=open_id,union_id,avatar_url,display_name",
         {
           headers: { Authorization: `Bearer ${accessToken}` },
         }
