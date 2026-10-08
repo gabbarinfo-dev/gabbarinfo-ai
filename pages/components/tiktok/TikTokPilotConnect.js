@@ -16,6 +16,10 @@ export default function TikTokPilotConnect() {
   const [imageUrl, setImageUrl] = useState(
     "https://images.unsplash.com/photo-1599643478518-a784e5dc4c8f?w=1080&q=80"
   );
+  const [images, setImages] = useState([
+    "https://images.unsplash.com/photo-1599643478518-a784e5dc4c8f?w=1080&q=80",
+    "https://images.unsplash.com/photo-1535632066927-ab7c9ab60908?w=1080&q=80",
+  ]);
   const [videoUrl, setVideoUrl] = useState(
     "https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ForBiggerBlazes.mp4"
   );
@@ -24,6 +28,35 @@ export default function TikTokPilotConnect() {
   const [publishing, setPublishing] = useState(false);
   const [publishSuccess, setPublishSuccess] = useState(null);
   const [publishError, setPublishError] = useState(null);
+
+  // Live AI Creative Generation States
+  const [aiPrompt, setAiPrompt] = useState("Kundan Bridal Necklace Set for wedding season");
+  const [generatingAi, setGeneratingAi] = useState(false);
+
+  const handleAiGenerate = async () => {
+    if (!aiPrompt.trim()) return;
+    setGeneratingAi(true);
+    setPublishError(null);
+    try {
+      const res = await fetch("/api/tiktok/generate-creative", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ topic: aiPrompt }),
+      });
+      const data = await res.json();
+      if (data.ok) {
+        setCaption(data.caption);
+        if (Array.isArray(data.images) && data.images.length >= 2) {
+          setImages(data.images);
+          setImageUrl(data.images[0]);
+        }
+      }
+    } catch (err) {
+      console.warn("AI generation failed:", err);
+    } finally {
+      setGeneratingAi(false);
+    }
+  };
 
   // Autopilot States
   const [autopilotEnabled, setAutopilotEnabled] = useState(false);
@@ -97,6 +130,7 @@ export default function TikTokPilotConnect() {
         caption,
         privacyLevel,
         imageUrl: mediaType === "PHOTO" ? imageUrl : null,
+        images: mediaType === "PHOTO" ? images : null,
         videoUrl: mediaType === "VIDEO" ? videoUrl : null,
       };
 
@@ -461,17 +495,85 @@ export default function TikTokPilotConnect() {
               </div>
             </div>
 
-            {/* Bella & Diva Jewellery Presets */}
+            {/* AI Direct Creative Generator */}
+            <div
+              style={{
+                background: "linear-gradient(135deg, rgba(254, 44, 85, 0.08), rgba(37, 244, 238, 0.08))",
+                border: "1px solid rgba(254, 44, 85, 0.25)",
+                borderRadius: 14,
+                padding: "16px",
+              }}
+            >
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 8 }}>
+                <span style={{ fontSize: 13, fontWeight: 800, color: "#fff", display: "flex", alignItems: "center", gap: 6 }}>
+                  ✨ AI Creative Generator for Bella & Diva
+                </span>
+                <span style={{ fontSize: 10, color: "#25f4ee", fontWeight: 700, padding: "2px 8px", background: "rgba(37, 244, 238, 0.15)", borderRadius: 12 }}>
+                  LIVE AI ENGINE
+                </span>
+              </div>
+              <p style={{ margin: "0 0 10px 0", fontSize: 11, color: "#94a3b8" }}>
+                Type any jewellery piece or collection below. The AI will generate bespoke copy, viral TikTok hashtags, and matching photo carousel slides in real time.
+              </p>
+              <div style={{ display: "flex", gap: 8 }}>
+                <input
+                  type="text"
+                  value={aiPrompt}
+                  onChange={(e) => setAiPrompt(e.target.value)}
+                  placeholder="e.g. Royal Kundan Bridal Set, Festive Chandbalis, American Diamond Choker..."
+                  style={{
+                    flex: 1,
+                    padding: "9px 12px",
+                    borderRadius: 10,
+                    background: "rgba(0, 0, 0, 0.4)",
+                    border: "1px solid rgba(255, 255, 255, 0.15)",
+                    color: "#fff",
+                    fontSize: 12,
+                  }}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter") {
+                      e.preventDefault();
+                      handleAiGenerate();
+                    }
+                  }}
+                />
+                <button
+                  type="button"
+                  onClick={handleAiGenerate}
+                  disabled={generatingAi || !aiPrompt.trim()}
+                  style={{
+                    padding: "9px 18px",
+                    borderRadius: 10,
+                    background: generatingAi ? "rgba(254, 44, 85, 0.5)" : "linear-gradient(135deg, #fe2c55, #25f4ee)",
+                    color: "#fff",
+                    border: "none",
+                    fontWeight: 700,
+                    fontSize: 12,
+                    cursor: generatingAi ? "not-allowed" : "pointer",
+                    whiteSpace: "nowrap",
+                  }}
+                >
+                  {generatingAi ? "⏳ Generating..." : "🤖 Generate with AI"}
+                </button>
+              </div>
+            </div>
+
+            {/* Bella & Diva Jewellery Quick Presets */}
             <div>
               <label style={{ display: "block", fontSize: 11, fontWeight: 700, color: "#94a3b8", marginBottom: 6 }}>
-                💎 Bella & Diva Jewellery Quick Presets:
+                Or pick a Quick Category:
               </label>
               <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
                 <button
                   type="button"
                   onClick={() => {
                     setMediaType("PHOTO");
-                    setImageUrl("https://images.unsplash.com/photo-1599643478518-a784e5dc4c8f?w=1080&q=80");
+                    const imgs = [
+                      "https://images.unsplash.com/photo-1599643478518-a784e5dc4c8f?w=1080&q=80",
+                      "https://images.unsplash.com/photo-1611591475819-79b8b730ab61?w=1080&q=80",
+                    ];
+                    setImages(imgs);
+                    setImageUrl(imgs[0]);
                     setCaption(
                       "Timeless royalty handcrafted for your special day ✨ Explore our bespoke Kundan & Bridal Choker sets at Bella & Diva. Worldwide delivery from London! DM or visit www.bellandiva.com #bellandiva #kundan #bridaljewellery #indianbride #londonjewellery"
                     );
@@ -493,7 +595,12 @@ export default function TikTokPilotConnect() {
                   type="button"
                   onClick={() => {
                     setMediaType("PHOTO");
-                    setImageUrl("https://images.unsplash.com/photo-1535632066927-ab7c9ab60908?w=1080&q=80");
+                    const imgs = [
+                      "https://images.unsplash.com/photo-1535632066927-ab7c9ab60908?w=1080&q=80",
+                      "https://images.unsplash.com/photo-1605100804763-247f67b3557e?w=1080&q=80",
+                    ];
+                    setImages(imgs);
+                    setImageUrl(imgs[0]);
                     setCaption(
                       "Dazzle every festive night with our high-sheen American Diamond (AD) Choker sets ✨ Affordable luxury handcrafted for royalty. Tap to order! DM us or shop www.bellandiva.com #bellandiva #americandiamond #partywear #jewellerylover"
                     );
@@ -515,7 +622,12 @@ export default function TikTokPilotConnect() {
                   type="button"
                   onClick={() => {
                     setMediaType("PHOTO");
-                    setImageUrl("https://images.unsplash.com/photo-1630019852942-f89202989a59?w=1080&q=80");
+                    const imgs = [
+                      "https://images.unsplash.com/photo-1630019852942-f89202989a59?w=1080&q=80",
+                      "https://images.unsplash.com/photo-1617038260897-41a1f14a8ca0?w=1080&q=80",
+                    ];
+                    setImages(imgs);
+                    setImageUrl(imgs[0]);
                     setCaption(
                       "Elevate your festive look with our signature Chandbalis & Jhumkas 🌸 Lightweight, handcrafted, and stunning from every angle. Available at Bella & Diva London! #bellandiva #jhumkas #festivejewellery #partywear"
                     );
@@ -535,6 +647,47 @@ export default function TikTokPilotConnect() {
                 </button>
               </div>
             </div>
+
+            {/* Carousel Slide Thumbnails */}
+            {mediaType === "PHOTO" && Array.isArray(images) && images.length >= 2 && (
+              <div>
+                <label style={{ display: "block", fontSize: 11, fontWeight: 700, color: "#cbd5e1", marginBottom: 6 }}>
+                  📸 Carousel Slides (2 Images for TikTok Photo Post):
+                </label>
+                <div style={{ display: "flex", gap: 10 }}>
+                  {images.map((img, idx) => (
+                    <div key={idx} style={{ position: "relative" }}>
+                      <img
+                        src={img}
+                        alt={`Slide ${idx + 1}`}
+                        style={{
+                          width: 80,
+                          height: 80,
+                          objectFit: "cover",
+                          borderRadius: 8,
+                          border: "1.5px solid #fe2c55",
+                        }}
+                      />
+                      <span
+                        style={{
+                          position: "absolute",
+                          bottom: 4,
+                          left: 4,
+                          background: "rgba(0,0,0,0.8)",
+                          color: "#fff",
+                          fontSize: 9,
+                          fontWeight: 700,
+                          padding: "1px 5px",
+                          borderRadius: 4,
+                        }}
+                      >
+                        Slide {idx + 1}
+                      </span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
 
             {/* Media URL / Demo Fill */}
             <div>

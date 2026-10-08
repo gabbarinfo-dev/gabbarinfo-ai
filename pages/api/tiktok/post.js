@@ -69,6 +69,22 @@ export default async function handler(req, res) {
     const titleText = (caption || "Bella & Diva Jewellery").slice(0, 85);
     const isVideo = Boolean(videoUrl);
 
+    // Build photo list: TikTok Photo Carousel requires at least 2 images
+    let photoImages = [];
+    if (Array.isArray(req.body?.images) && req.body.images.length >= 2) {
+      photoImages = req.body.images.filter(Boolean);
+    } else if (imageUrl) {
+      photoImages = [
+        imageUrl,
+        req.body?.image2Url || "https://images.unsplash.com/photo-1535632066927-ab7c9ab60908?w=1080&q=80",
+      ];
+    } else {
+      photoImages = [
+        "https://images.unsplash.com/photo-1599643478518-a784e5dc4c8f?w=1080&q=80",
+        "https://images.unsplash.com/photo-1535632066927-ab7c9ab60908?w=1080&q=80",
+      ];
+    }
+
     // TikTok Content Posting API v2 endpoints:
     // Videos use /v2/post/publish/video/init/
     // Photos use /v2/post/publish/content/init/
@@ -101,7 +117,7 @@ export default async function handler(req, res) {
           source_info: {
             source: "PULL_FROM_URL",
             photo_cover_index: 1,
-            photo_images: [imageUrl],
+            photo_images: photoImages,
           },
           post_mode: "DIRECT_POST",
           media_type: "PHOTO",
