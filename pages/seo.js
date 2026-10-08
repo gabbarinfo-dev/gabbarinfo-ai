@@ -4097,16 +4097,50 @@ export default function SeoHubPage() {
                   d.setDate(d.getDate() + offset);
                   const isToday = offset === 0;
 
+                  // Calculate calendar day delta from lastPublishedAt to today
+                  const lastPostDaysAgo = lastPublishedAt ? (() => {
+                    const lastDate = new Date(lastPublishedAt);
+                    const lastMid = new Date(lastDate.getFullYear(), lastDate.getMonth(), lastDate.getDate()).getTime();
+                    const todayMid = new Date(new Date().getFullYear(), new Date().getMonth(), new Date().getDate()).getTime();
+                    return Math.round((todayMid - lastMid) / (24 * 60 * 60 * 1000));
+                  })() : null;
+
                   // Determine if this day is scheduled based on cadence
                   let isScheduled = false;
                   if (autopilotEnabled) {
-                    if (cadence === "daily") {
+                    const cad = (cadence || "daily").toLowerCase();
+                    if (cad === "daily") {
                       isScheduled = true;
-                    } else if (cadence === "weekly" || cadence === "monthly") {
-                      isScheduled = offset === 0;
-                    } else if (cadence === "custom") {
+                    } else if (cad === "alternate" || cad === "every_2_days" || cad === "15") {
+                      if (lastPostDaysAgo === 1) {
+                        // Published yesterday: Today is REST DAY, tomorrow is active
+                        isScheduled = offset % 2 === 1;
+                      } else {
+                        // Published today, 2+ days ago, or never: Today is active / done, alternates every 2 days
+                        isScheduled = offset % 2 === 0;
+                      }
+                    } else if (cad === "weekly" || cad === "bi_weekly" || cad === "8") {
+                      // Bi-weekly authority cadence (~8 blogs / mo = every 3 to 4 days)
+                      if (lastPostDaysAgo === 1) {
+                        isScheduled = [2, 5].includes(offset);
+                      } else if (lastPostDaysAgo === 2) {
+                        isScheduled = [1, 4].includes(offset);
+                      } else {
+                        isScheduled = [0, 3, 6].includes(offset);
+                      }
+                    } else if (cad === "monthly" || cad === "weekly_1" || cad === "4") {
+                      if (lastPostDaysAgo !== null && lastPostDaysAgo < 7) {
+                        isScheduled = offset === (7 - lastPostDaysAgo);
+                      } else {
+                        isScheduled = offset === 0;
+                      }
+                    } else if (cad === "custom") {
                       const interval = Math.max(1, Math.floor(7 / customDaysPerWeek));
-                      isScheduled = offset % interval === 0;
+                      if (lastPostDaysAgo !== null && lastPostDaysAgo < interval) {
+                        isScheduled = offset % interval === (interval - (lastPostDaysAgo % interval)) % interval;
+                      } else {
+                        isScheduled = offset % interval === 0;
+                      }
                     }
                   }
 

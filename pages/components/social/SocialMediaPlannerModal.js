@@ -1645,16 +1645,47 @@ export default function SocialMediaPlannerModal({ onClose, isTrial99: propIsTria
                       d.setDate(d.getDate() + offset);
                       const isToday = offset === 0;
 
+                      // Calculate calendar day delta from lastPublishedAt to today
+                      const lastPostDaysAgo = config.lastPublishedAt ? (() => {
+                        const lastDate = new Date(config.lastPublishedAt);
+                        const lastMid = new Date(lastDate.getFullYear(), lastDate.getMonth(), lastDate.getDate()).getTime();
+                        const todayMid = new Date(new Date().getFullYear(), new Date().getMonth(), new Date().getDate()).getTime();
+                        return Math.round((todayMid - lastMid) / (24 * 60 * 60 * 1000));
+                      })() : null;
+
                       let isScheduled = false;
                       if (config.enabled && !isRestricted && !isTrial99 && canUseAutopilot) {
-                        if (config.cadence === "daily") {
+                        const cad = (config.cadence || "daily").toLowerCase();
+                        if (cad === "daily") {
                           isScheduled = true;
-                        } else if (config.cadence === "alternate") {
-                          isScheduled = offset % 2 === 0;
-                        } else if (config.cadence === "weekly_4") {
-                          isScheduled = [0, 2, 4, 5].includes(offset);
-                        } else if (config.cadence === "weekly") {
-                          isScheduled = offset === 0;
+                        } else if (cad === "alternate" || cad === "every_2_days" || cad === "15") {
+                          if (lastPostDaysAgo === 1) {
+                            // Published yesterday: Today is REST DAY, tomorrow is active
+                            isScheduled = offset % 2 === 1;
+                          } else {
+                            // Published today, 2+ days ago, or never: Today is active / done, alternates every 2 days
+                            isScheduled = offset % 2 === 0;
+                          }
+                        } else if (cad === "weekly_4" || cad === "4_per_week" || cad === "16") {
+                          if (lastPostDaysAgo === 1) {
+                            isScheduled = [1, 3, 4, 6].includes(offset);
+                          } else {
+                            isScheduled = [0, 2, 4, 5].includes(offset);
+                          }
+                        } else if (cad === "twice_weekly" || cad === "8") {
+                          if (lastPostDaysAgo === 1) {
+                            isScheduled = [2, 5].includes(offset);
+                          } else if (lastPostDaysAgo === 2) {
+                            isScheduled = [1, 4].includes(offset);
+                          } else {
+                            isScheduled = [0, 3, 6].includes(offset);
+                          }
+                        } else if (cad === "weekly" || cad === "weekly_1" || cad === "4") {
+                          if (lastPostDaysAgo !== null && lastPostDaysAgo < 7) {
+                            isScheduled = offset === (7 - lastPostDaysAgo);
+                          } else {
+                            isScheduled = offset === 0;
+                          }
                         }
                       }
 

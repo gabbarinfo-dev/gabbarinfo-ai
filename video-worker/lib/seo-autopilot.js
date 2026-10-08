@@ -424,13 +424,39 @@ async function runSeoAutopilotCycle({ supabase, openai, force = false, email = n
 
       logger(`[SEO Autopilot] Processing cycle for ${item.email} (${businessName})...`);
 
-      // 2. Check Cadence velocity (~12 hours for daily)
+      // 2. Strict Cadence Velocity Enforcement
       const lastPublished = config.lastPublishedAt ? new Date(config.lastPublishedAt) : null;
       const now = new Date();
-      const minIntervalMs = 12 * 60 * 60 * 1000;
+      const cadence = (config.cadence || config.frequency || "daily").toLowerCase();
+
+      // Base guard: Never dispatch twice on the exact same calendar day (UTC)
+      if (lastPublished && !force) {
+        const lastDateStr = lastPublished.toISOString().slice(0, 10);
+        const nowDateStr = now.toISOString().slice(0, 10);
+        if (lastDateStr === nowDateStr) {
+          logger(`[SEO Autopilot] Already published today (${nowDateStr}) for ${item.email} (${businessName}). Skipping cycle.`);
+          continue;
+        }
+      }
+
+      let minIntervalMs = 20 * 60 * 60 * 1000; // default daily: ~20 hours
+      if (cadence === "alternate" || cadence === "every_2_days" || cadence === "15") {
+        minIntervalMs = 40 * 60 * 60 * 1000; // alternate (every 2 days): 40 hours minimum gap (strictly enforces Rest Day)
+      } else if (cadence === "weekly_4" || cadence === "4_per_week" || cadence === "16") {
+        minIntervalMs = 36 * 60 * 60 * 1000; // 4 posts / week: 36 hours gap
+      } else if (cadence === "twice_weekly" || cadence === "8" || cadence === "bi_weekly") {
+        minIntervalMs = 3 * 24 * 60 * 60 * 1000; // twice weekly: 72 hours gap
+      } else if (cadence === "weekly" || cadence === "weekly_1" || cadence === "4" || cadence === "monthly") {
+        minIntervalMs = 6 * 24 * 60 * 60 * 1000; // weekly: 6 days (144 hours gap)
+      } else if (cadence === "custom" && config.customDaysPerWeek) {
+        const days = Math.max(1, Math.min(7, parseInt(config.customDaysPerWeek, 10) || 3));
+        minIntervalMs = Math.floor((7 / days) * 24 * 0.85) * 60 * 60 * 1000;
+      }
 
       if (lastPublished && (now - lastPublished) < minIntervalMs && !force) {
-        logger(`[SEO Autopilot] Cadence threshold not reached for ${item.email} (${businessName}). Skipping.`);
+        const elapsedHours = ((now - lastPublished) / (1000 * 60 * 60)).toFixed(1);
+        const requiredHours = Math.round(minIntervalMs / (1000 * 60 * 60));
+        logger(`[SEO Autopilot] Cadence threshold not reached for ${item.email} (${businessName}). Cadence: "${cadence}". Last run: ${config.lastPublishedAt}. Required gap: ${requiredHours}h, Elapsed: ${elapsedHours}h. Skipping cycle (Rest Day).`);
         continue;
       }
 
