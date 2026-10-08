@@ -35,8 +35,9 @@ export default async function handler(req, res) {
   }
 
   const clientKey = "sbawrzibqf32wa91qs";
-  // Force sandbox secret to prevent Vercel production TIKTOK_CLIENT_SECRET env override
-  const clientSecret = process.env.TIKTOK_SANDBOX_SECRET || "LjGwOhZnUke6YpgYUjYr030CfgxJyvbU";
+  // Sandbox secret with exact uppercase J (LJGw...):
+  // NOTE: Production credentials (awq8sdcr0cy886rc / WiNPYfwcKqKgLH4gd9TvH4BKKoNHZDUL) will be switched back once TikTok review is approved.
+  const clientSecret = process.env.TIKTOK_SANDBOX_SECRET || "LJGwOhZnUke6YpgYUjYr030CfgxJyvbU";
   const redirectUri = process.env.TIKTOK_REDIRECT_URI || "https://ai.gabbarinfo.com/api/tiktok/callback";
 
   try {
