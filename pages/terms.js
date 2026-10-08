@@ -59,7 +59,7 @@ export default function Terms() {
                   By accessing or using GabbarInfo AI at <a href="https://ai.gabbarinfo.com" style={styles.link}>ai.gabbarinfo.com</a>, you agree to be bound by these Terms &amp; Conditions and our <Link href="/privacy-policy" style={styles.link}>Privacy Policy</Link>. If you do not agree, do not use this platform.
                 </p>
                 <p style={styles.p}>
-                  These Terms constitute a binding agreement between you and <strong style={styles.white}>Gabbarinfo Digital Solutions</strong> (operated by Nishant Dantare, sole proprietor), registered address: New SG Road, Jagatpur, Ahmedabad, Gujarat 382470, India.
+                  These Terms constitute a binding agreement between you and <strong style={styles.white}>Bella &amp; Diva Ltd</strong> (registered in the United Kingdom), operator and developer of GabbarInfo AI, in association with <strong style={styles.white}>Gabbarinfo Digital Solutions</strong>.
                 </p>
               </section>
 

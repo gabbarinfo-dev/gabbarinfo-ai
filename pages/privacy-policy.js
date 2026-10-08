@@ -59,14 +59,14 @@ export default function PrivacyPolicy() {
               <section style={styles.section}>
                 <h2 style={styles.h2}>1. Who We Are</h2>
                 <div style={styles.infoCard}>
-                  <p style={styles.p}><strong style={styles.white}>Operator:</strong> Nishant Dantare, trading as <strong style={styles.white}>Gabbarinfo Digital Solutions</strong> (Individual / Sole Proprietor)</p>
-                  <p style={styles.p}><strong style={styles.white}>Platform:</strong> GabbarInfo AI — <a href="https://ai.gabbarinfo.com" style={styles.link}>ai.gabbarinfo.com</a></p>
+                  <p style={styles.p}><strong style={styles.white}>Operator & Developer:</strong> <strong style={styles.white}>Bella &amp; Diva Ltd</strong> (Registered in the United Kingdom) / <strong style={styles.white}>Gabbarinfo Digital Solutions</strong></p>
+                  <p style={styles.p}><strong style={styles.white}>Platform:</strong> GabbarInfo AI — <a href="https://ai.gabbarinfo.com" style={styles.link}>ai.gabbarinfo.com</a> (gabbarinfo.com)</p>
                   <p style={styles.p}><strong style={styles.white}>Email:</strong> <a href="mailto:contactus@gabbarinfo.com" style={styles.link}>contactus@gabbarinfo.com</a></p>
                   <p style={styles.p}><strong style={styles.white}>Phone:</strong> +91 97239 27645</p>
                   <p style={{ ...styles.p, marginBottom: 0 }}><strong style={styles.white}>Address:</strong> New SG Road, Jagatpur, Ahmedabad, Gujarat 382470, India</p>
                 </div>
                 <p style={styles.p}>
-                  GabbarInfo AI is operated by an individual (sole proprietor). We are the Data Fiduciary under India&apos;s Digital Personal Data Protection Act 2023 (DPDP Act) and the Data Controller under the EU General Data Protection Regulation (GDPR) for personal data processed through this platform.
+                  GabbarInfo AI (gabbarinfo.com) is operated and developed by Bella &amp; Diva Ltd, registered in the United Kingdom. We are the Data Fiduciary under India&apos;s Digital Personal Data Protection Act 2023 (DPDP Act) and the Data Controller under the UK/EU General Data Protection Regulation (GDPR) for personal data processed through this platform.
                 </p>
               </section>
 
