@@ -67,7 +67,47 @@ export default async function handler(req, res) {
     const orgObj = conn.organizations?.find((o) => o.urn === targetUrn);
     const authorName = orgObj?.name || conn.member?.name || "Business";
 
-    // 3. Autonomously draft post commentary with Gemini
+    // 2.5. Retrieve Brand Intelligence & Non-Repeating Topic Queue
+    const { data: intelRow } = await supabaseServer
+      .from("agent_memory")
+      .select("content")
+      .eq("email", email.toLowerCase())
+      .eq("memory_type", "linkedin_brand_intel")
+      .maybeSingle();
+
+    let brandIntel = null;
+    let chosenTopicObj = null;
+    if (intelRow?.content) {
+      try {
+        brandIntel = JSON.parse(intelRow.content);
+        if (Array.isArray(brandIntel.topicsQueue)) {
+          const nextIdx = brandIntel.topicsQueue.findIndex((t) => t.status !== "published");
+          if (nextIdx !== -1) {
+            chosenTopicObj = brandIntel.topicsQueue[nextIdx];
+            // Mark as published and advance queue
+            brandIntel.topicsQueue[nextIdx].status = "published";
+            brandIntel.topicsQueue[nextIdx].publishedAt = new Date().toISOString();
+            if (brandIntel.topicsQueue[nextIdx + 1]) {
+              brandIntel.topicsQueue[nextIdx + 1].status = "next";
+            }
+            brandIntel.publishedTopicCount = (brandIntel.publishedTopicCount || 0) + 1;
+
+            // Save updated queue to agent_memory
+            await supabaseServer.from("agent_memory").upsert(
+              {
+                email: email.toLowerCase(),
+                memory_type: "linkedin_brand_intel",
+                content: JSON.stringify(brandIntel),
+                updated_at: new Date().toISOString(),
+              },
+              { onConflict: "email,memory_type" }
+            );
+          }
+        }
+      } catch (_) {}
+    }
+
+    // 3. Autonomously draft post commentary with Gemini using learned services & unique topic
     const apiKey = process.env.GEMINI_API_KEY;
     if (!apiKey) {
       return res.status(500).json({ ok: false, error: "Gemini API key is not configured." });
@@ -76,15 +116,19 @@ export default async function handler(req, res) {
     const genAI = new GoogleGenerativeAI(apiKey);
     const model = genAI.getGenerativeModel({ model: "gemini-2.5-flash" });
 
+    const servicesList = brandIntel?.services?.join(", ") || "Professional B2B Services";
     const promptText = `You are GabbarInfo AI, managing an executive B2B LinkedIn presence for "${authorName}".
-Topics: ${config.topics}
+Brand Industry: ${brandIntel?.industry || "B2B Business"}
+Core Services Offered: ${servicesList}
+Target Audience: ${brandIntel?.targetAudience || "Business Decision Makers"}
+${chosenTopicObj ? `Specific Topic Angle (Guaranteed Non-Repeating): "${chosenTopicObj.topic}" (Pillar: ${chosenTopicObj.pillar}, Focus: ${chosenTopicObj.targetService})` : `Topics: ${config.topics}`}
 Tone: ${config.tone}
 
-Draft an original, viral thought-leadership post:
-- Start with a compelling hook line.
-- 3 to 4 actionable insights with clean spacing.
-- Conclude with an engaging discussion question.
-- Include 3 targeted hashtags (e.g. #Leadership #Innovation).
+Draft an original, high-converting thought-leadership post:
+- Start with a scroll-stopping 1-2 sentence hook line.
+- Provide 3 to 4 actionable, real-world takeaways that highlight the value of their services without sounding overly salesy.
+- Conclude with a thought-provoking question to generate comments and engagement.
+- Include 3 targeted hashtags (e.g. #Leadership #B2B #Innovation).
 - Output ONLY the final ready-to-post text without quotes or markdown code blocks.`;
 
     const aiRes = await model.generateContent(promptText);

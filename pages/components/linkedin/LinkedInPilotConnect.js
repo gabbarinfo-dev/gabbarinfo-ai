@@ -18,6 +18,12 @@ export default function LinkedInPilotConnect() {
   const [publishSuccess, setPublishSuccess] = useState(null);
   const [publishError, setPublishError] = useState(null);
 
+  // Brand Intelligence & Non-Repeating Topics States
+  const [brandWebsite, setBrandWebsite] = useState("");
+  const [brandIntel, setBrandIntel] = useState(null);
+  const [crawlingBrand, setCrawlingBrand] = useState(false);
+  const [topicsFilter, setTopicsFilter] = useState("all"); // 'all' | 'queued' | 'published'
+
   // Autopilot States
   const [autopilotConfig, setAutopilotConfig] = useState({
     enabled: false,
@@ -27,7 +33,6 @@ export default function LinkedInPilotConnect() {
   });
   const [savingAutopilot, setSavingAutopilot] = useState(false);
   const [runningAutopilot, setRunningAutopilot] = useState(false);
-  const [postHistory, setPostHistory] = useState([]);
 
   const fetchStatus = async () => {
     try {
@@ -62,9 +67,21 @@ export default function LinkedInPilotConnect() {
     } catch (_) {}
   };
 
+  const fetchBrandIntel = async () => {
+    try {
+      const res = await fetch("/api/linkedin/brand-intel");
+      const data = await res.json();
+      if (data.ok && data.intelligence) {
+        setBrandIntel(data.intelligence);
+        if (data.intelligence.websiteUrl) setBrandWebsite(data.intelligence.websiteUrl);
+      }
+    } catch (_) {}
+  };
+
   useEffect(() => {
     fetchStatus();
     fetchAutopilotConfig();
+    fetchBrandIntel();
 
     if (typeof window !== "undefined") {
       const urlParams = new URLSearchParams(window.location.search);
@@ -103,9 +120,45 @@ export default function LinkedInPilotConnect() {
     }
   };
 
+  const handleCrawlWebsite = async () => {
+    if (!brandWebsite.trim()) {
+      alert("Please enter a valid website URL (e.g. https://example.com)");
+      return;
+    }
+    try {
+      setCrawlingBrand(true);
+      setPublishError(null);
+      const res = await fetch("/api/linkedin/crawl-brand", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          websiteUrl: brandWebsite.trim(),
+          brandName: activeAuthorName,
+        }),
+      });
+      const data = await res.json();
+      if (data.ok && data.intelligence) {
+        setBrandIntel(data.intelligence);
+        alert(`✅ Deep Crawl Complete! Discovered ${data.intelligence.services?.length || 0} core services and formulated 30 unique non-repeating LinkedIn editorial topics!`);
+      } else {
+        alert(data.error || "Failed to analyze website.");
+      }
+    } catch (e) {
+      alert("Crawl error: " + e.message);
+    } finally {
+      setCrawlingBrand(false);
+    }
+  };
+
+  const handleUseTopic = (topicObj) => {
+    setPostTopic(topicObj.topic);
+    setCommentary(`💡 ${topicObj.hook}\n\nWhen scaling ${topicObj.targetService || "your business"}, execution is everything.\n\nHere are the critical lessons:`);
+    window.scrollTo({ top: 400, behavior: "smooth" });
+  };
+
   const handleGenerateAiPost = async () => {
     if (!postTopic.trim()) {
-      alert("Please enter a topic or theme for the AI to draft your post.");
+      alert("Please enter a topic or select one from the 30-Day Queue below.");
       return;
     }
     try {
@@ -251,6 +304,7 @@ export default function LinkedInPilotConnect() {
         });
         if (data.commentary) setCommentary(data.commentary);
         if (data.imageUrl) setImageUrl(data.imageUrl);
+        fetchBrandIntel(); // Refresh topic queue status
       } else {
         setPublishError(data.error || "Auto-Pilot run failed.");
       }
@@ -272,6 +326,13 @@ export default function LinkedInPilotConnect() {
     if (member?.name) return member.name;
     return "Your Brand / Page";
   })();
+
+  const rawTopics = brandIntel?.topicsQueue || [];
+  const filteredTopics = rawTopics.filter((t) => {
+    if (topicsFilter === "queued") return t.status !== "published";
+    if (topicsFilter === "published") return t.status === "published";
+    return true;
+  });
 
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 24, width: "100%" }}>
@@ -328,7 +389,7 @@ export default function LinkedInPilotConnect() {
               </span>
             </div>
             <p style={{ margin: "4px 0 0", fontSize: 13, color: "#94a3b8" }}>
-              Publish high-converting B2B content to your LinkedIn Company Pages & Personal Profiles on autopilot.
+              AI website learning, zero-repetition topic rotation, and automated B2B broadcasting via GabbarInfo AI.
             </p>
           </div>
         </div>
@@ -457,81 +518,218 @@ export default function LinkedInPilotConnect() {
         </div>
       )}
 
-      {/* ── STATUS STRIP ── */}
-      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(280px, 1fr))", gap: 16 }}>
-        {/* Company Page Tile */}
-        <div
-          style={{
-            padding: "16px 20px",
-            borderRadius: 16,
-            background: isPageConnected ? "rgba(10, 102, 194, 0.12)" : "rgba(14, 19, 30, 0.8)",
-            border: `1px solid ${isPageConnected ? "rgba(10, 102, 194, 0.4)" : "rgba(255, 255, 255, 0.08)"}`,
-            display: "flex",
-            justifyContent: "space-between",
-            alignItems: "center",
-          }}
-        >
-          <div>
-            <div style={{ fontSize: 11, fontWeight: 800, color: "#60a5fa", textTransform: "uppercase" }}>
-              🏢 Company Page (B2B)
+      {/* ── 1. BRAND INTELLIGENCE & WEBSITE CRAWLER (ZERO REPETITION ENGINE) ── */}
+      <div
+        style={{
+          padding: "24px 28px",
+          borderRadius: 20,
+          background: "linear-gradient(180deg, rgba(14, 25, 45, 0.85) 0%, rgba(10, 16, 28, 0.95) 100%)",
+          border: "1px solid rgba(56, 189, 248, 0.25)",
+          boxShadow: "0 15px 40px rgba(0,0,0,0.4), 0 0 30px rgba(56, 189, 248, 0.05)",
+        }}
+      >
+        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 18, flexWrap: "wrap", gap: 12 }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+            <div style={{ width: 42, height: 42, borderRadius: 12, background: "rgba(56, 189, 248, 0.15)", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 22, border: "1px solid rgba(56, 189, 248, 0.35)" }}>
+              🧠
             </div>
-            <div style={{ fontSize: 14, fontWeight: 800, color: "#fff", marginTop: 4 }}>
-              {orgs.length > 0 ? orgs[0].name : isPageConnected ? "Company Page Active" : "Not Connected"}
-            </div>
-            <div style={{ fontSize: 11.5, color: "#94a3b8" }}>
-              App: Gabbarinfo AI Pages (`78ypc4d9yfz2qo`)
+            <div>
+              <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+                <h3 style={{ margin: 0, fontSize: 18, fontWeight: 800, color: "#ffffff" }}>
+                  Brand Intelligence & Website Knowledge Crawler
+                </h3>
+                <span style={{ fontSize: 10, fontWeight: 800, padding: "3px 8px", borderRadius: 999, background: "rgba(56, 189, 248, 0.15)", color: "#38bdf8", border: "1px solid rgba(56, 189, 248, 0.3)" }}>
+                  ZERO-REPETITION GUARD ACTIVE
+                </span>
+              </div>
+              <p style={{ margin: "2px 0 0", fontSize: 12.5, color: "#94a3b8" }}>
+                Learns your real business services, target B2B buyers, and formulates 30 unique, non-repeating editorial angles.
+              </p>
             </div>
           </div>
-          <span
-            style={{
-              fontSize: 10,
-              fontWeight: 800,
-              padding: "4px 8px",
-              borderRadius: 999,
-              background: isPageConnected ? "#16a34a" : "rgba(148, 163, 184, 0.2)",
-              color: "#fff",
-            }}
-          >
-            {isPageConnected ? "PAIRED" : "READY"}
-          </span>
         </div>
 
-        {/* Personal Profile Tile */}
-        <div
-          style={{
-            padding: "16px 20px",
-            borderRadius: 16,
-            background: isMemberConnected ? "rgba(16, 185, 129, 0.12)" : "rgba(14, 19, 30, 0.8)",
-            border: `1px solid ${isMemberConnected ? "rgba(16, 185, 129, 0.4)" : "rgba(255, 255, 255, 0.08)"}`,
-            display: "flex",
-            justifyContent: "space-between",
-            alignItems: "center",
-          }}
-        >
-          <div>
-            <div style={{ fontSize: 11, fontWeight: 800, color: "#34d399", textTransform: "uppercase" }}>
-              👤 Personal Profile
-            </div>
-            <div style={{ fontSize: 14, fontWeight: 800, color: "#fff", marginTop: 4 }}>
-              {member?.name || (isMemberConnected ? "Member Profile Active" : "Not Connected")}
-            </div>
-            <div style={{ fontSize: 11.5, color: "#94a3b8" }}>
-              App: Gabbarinfo AI (`77oka1wp8jfhsu`)
-            </div>
-          </div>
-          <span
+        {/* Crawl URL Input Bar */}
+        <div style={{ display: "flex", gap: 10, marginBottom: 20, flexWrap: "wrap" }}>
+          <input
+            type="text"
+            placeholder="Enter your website URL (e.g. https://gabbarinfo.com or https://clientbrand.com)..."
+            value={brandWebsite}
+            onChange={(e) => setBrandWebsite(e.target.value)}
             style={{
-              fontSize: 10,
-              fontWeight: 800,
-              padding: "4px 8px",
-              borderRadius: 999,
-              background: isMemberConnected ? "#16a34a" : "rgba(148, 163, 184, 0.2)",
+              flex: 1,
+              minWidth: 260,
+              padding: "12px 16px",
+              borderRadius: 12,
+              background: "rgba(0,0,0,0.35)",
+              border: "1px solid rgba(255, 255, 255, 0.12)",
               color: "#fff",
+              fontSize: 13.5,
+            }}
+          />
+          <button
+            onClick={handleCrawlWebsite}
+            disabled={crawlingBrand}
+            style={{
+              padding: "12px 22px",
+              borderRadius: 12,
+              background: "linear-gradient(135deg, #0284c7 0%, #0369a1 100%)",
+              border: "none",
+              color: "#fff",
+              fontSize: 13,
+              fontWeight: 800,
+              cursor: "pointer",
+              boxShadow: "0 4px 16px rgba(2, 132, 199, 0.35)",
+              display: "flex",
+              alignItems: "center",
+              gap: 8,
             }}
           >
-            {isMemberConnected ? "PAIRED" : "READY"}
-          </span>
+            <span>{crawlingBrand ? "Crawling & Formulating Topics…" : "🔍 Deep Crawl & Learn Brand Services"}</span>
+          </button>
         </div>
+
+        {/* Learned Knowledge Highlights */}
+        {brandIntel && (
+          <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(240px, 1fr))", gap: 14 }}>
+              <div style={{ padding: "12px 16px", borderRadius: 12, background: "rgba(255,255,255,0.03)", border: "1px solid rgba(255,255,255,0.08)" }}>
+                <div style={{ fontSize: 11, color: "#94a3b8", fontWeight: 700, textTransform: "uppercase" }}>Industry & Niche</div>
+                <div style={{ fontSize: 14, fontWeight: 800, color: "#38bdf8", marginTop: 4 }}>{brandIntel.industry}</div>
+                <div style={{ fontSize: 11.5, color: "#64748b", marginTop: 2 }}>{brandIntel.tagline}</div>
+              </div>
+
+              <div style={{ padding: "12px 16px", borderRadius: 12, background: "rgba(255,255,255,0.03)", border: "1px solid rgba(255,255,255,0.08)" }}>
+                <div style={{ fontSize: 11, color: "#94a3b8", fontWeight: 700, textTransform: "uppercase" }}>Target B2B Audience</div>
+                <div style={{ fontSize: 14, fontWeight: 800, color: "#a855f7", marginTop: 4 }}>{brandIntel.targetAudience}</div>
+                <div style={{ fontSize: 11.5, color: "#64748b", marginTop: 2 }}>Learned from website structure</div>
+              </div>
+            </div>
+
+            {/* Extracted Core Services */}
+            <div>
+              <div style={{ fontSize: 12, fontWeight: 700, color: "#cbd5e1", marginBottom: 8 }}>
+                💼 Discovered Core Services & Capabilities:
+              </div>
+              <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
+                {(brandIntel.services || []).map((service, sIdx) => (
+                  <span
+                    key={sIdx}
+                    style={{
+                      padding: "5px 12px",
+                      borderRadius: 999,
+                      background: "rgba(59, 130, 246, 0.12)",
+                      border: "1px solid rgba(59, 130, 246, 0.3)",
+                      color: "#93c5fd",
+                      fontSize: 12,
+                      fontWeight: 700,
+                    }}
+                  >
+                    ✓ {service}
+                  </span>
+                ))}
+              </div>
+            </div>
+
+            {/* 30-Day Non-Repeating Editorial Queue */}
+            <div style={{ marginTop: 8 }}>
+              <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 12, flexWrap: "wrap", gap: 8 }}>
+                <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                  <span style={{ fontSize: 13, fontWeight: 800, color: "#ffffff" }}>
+                    📅 30-Day Non-Repeating Editorial Queue ({rawTopics.length} Topics Formulated)
+                  </span>
+                </div>
+
+                <div style={{ display: "flex", gap: 6 }}>
+                  {["all", "queued", "published"].map((tab) => (
+                    <button
+                      key={tab}
+                      onClick={() => setTopicsFilter(tab)}
+                      style={{
+                        padding: "4px 10px",
+                        borderRadius: 6,
+                        border: "none",
+                        background: topicsFilter === tab ? "#0a66c2" : "rgba(255,255,255,0.06)",
+                        color: topicsFilter === tab ? "#fff" : "#94a3b8",
+                        fontSize: 11.5,
+                        fontWeight: 700,
+                        cursor: "pointer",
+                        textTransform: "capitalize",
+                      }}
+                    >
+                      {tab}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              {/* Topics Scroll Strip */}
+              <div
+                style={{
+                  maxHeight: 280,
+                  overflowY: "auto",
+                  display: "flex",
+                  flexDirection: "column",
+                  gap: 8,
+                  paddingRight: 6,
+                }}
+              >
+                {filteredTopics.map((item, tIdx) => (
+                  <div
+                    key={tIdx}
+                    style={{
+                      padding: "10px 14px",
+                      borderRadius: 12,
+                      background: item.status === "next" ? "rgba(56, 189, 248, 0.08)" : item.status === "published" ? "rgba(34, 197, 94, 0.06)" : "rgba(255, 255, 255, 0.02)",
+                      border: `1px solid ${item.status === "next" ? "rgba(56, 189, 248, 0.3)" : item.status === "published" ? "rgba(34, 197, 94, 0.2)" : "rgba(255, 255, 255, 0.06)"}`,
+                      display: "flex",
+                      justifyContent: "space-between",
+                      alignItems: "center",
+                      gap: 12,
+                    }}
+                  >
+                    <div style={{ flex: 1, minWidth: 0 }}>
+                      <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 4 }}>
+                        <span style={{ fontSize: 10, fontWeight: 800, padding: "2px 6px", borderRadius: 4, background: "rgba(255,255,255,0.08)", color: "#cbd5e1" }}>
+                          Day {item.scheduledDay}
+                        </span>
+                        <span style={{ fontSize: 11, fontWeight: 700, color: "#38bdf8" }}>
+                          {item.targetService}
+                        </span>
+                        <span style={{ fontSize: 10, padding: "2px 6px", borderRadius: 4, background: item.status === "published" ? "rgba(34,197,94,0.15)" : item.status === "next" ? "rgba(56,189,248,0.2)" : "rgba(148,163,184,0.1)", color: item.status === "published" ? "#4ade80" : item.status === "next" ? "#38bdf8" : "#94a3b8", fontWeight: 800 }}>
+                          {item.status === "published" ? "PUBLISHED" : item.status === "next" ? "NEXT IN QUEUE" : "QUEUED"}
+                        </span>
+                      </div>
+                      <div style={{ fontSize: 12.5, fontWeight: 700, color: "#fff", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
+                        {item.topic}
+                      </div>
+                      <div style={{ fontSize: 11.5, color: "#94a3b8" }}>
+                        Hook: "{item.hook}"
+                      </div>
+                    </div>
+
+                    <button
+                      onClick={() => handleUseTopic(item)}
+                      style={{
+                        padding: "6px 12px",
+                        borderRadius: 8,
+                        background: "rgba(56, 189, 248, 0.15)",
+                        border: "1px solid rgba(56, 189, 248, 0.3)",
+                        color: "#38bdf8",
+                        fontSize: 11,
+                        fontWeight: 700,
+                        cursor: "pointer",
+                        whiteSpace: "nowrap",
+                      }}
+                    >
+                      ⚡ Use In Composer
+                    </button>
+                  </div>
+                ))}
+              </div>
+            </div>
+          </div>
+        )}
       </div>
 
       {/* ── BROADCAST STUDIO & LIVE PREVIEW ── */}
@@ -596,7 +794,7 @@ export default function LinkedInPilotConnect() {
           <div style={{ display: "flex", gap: 10 }}>
             <input
               type="text"
-              placeholder="Enter topic e.g. '5 Lessons in scaling B2B SaaS' or 'Company milestone'..."
+              placeholder="Enter topic or select from 30-Day Queue above..."
               value={postTopic}
               onChange={(e) => setPostTopic(e.target.value)}
               style={{
@@ -851,7 +1049,7 @@ export default function LinkedInPilotConnect() {
               lineHeight: 1.6,
             }}
           >
-            <strong>💡 B2B Marketing Pro-Tip:</strong> Posts paired with an executive visual graphic achieve 2.8x higher engagement and click-through rates across LinkedIn Company Pages and member feeds.
+            <strong>💡 Zero Repetition Guarantee:</strong> GabbarInfo AI rotates through 30 unique editorial angles tailored to your crawled services. When all 30 are used, it automatically formulates a fresh seasonal cycle!
           </div>
         </div>
       </div>
@@ -876,7 +1074,7 @@ export default function LinkedInPilotConnect() {
                 Autonomous LinkedIn Auto-Pilot Engine
               </h3>
               <p style={{ margin: "2px 0 0", fontSize: 12.5, color: "#94a3b8" }}>
-                Automatically researches trending B2B topics, drafts thought-leadership copy, generates AI creatives, and publishes to your selected LinkedIn page or profile.
+                Executes non-repeating B2B topics sequentially from your editorial queue, generating AI visual creatives and broadcasting to your selected LinkedIn destination.
               </p>
             </div>
           </div>
@@ -962,29 +1160,6 @@ export default function LinkedInPilotConnect() {
               </span>
             </label>
           </div>
-        </div>
-
-        {/* Topics keywords */}
-        <div style={{ marginBottom: 20 }}>
-          <label style={{ fontSize: 11.5, color: "#94a3b8", fontWeight: 700, display: "block", marginBottom: 6 }}>
-            Brand Themes & Preferred B2B Topics:
-          </label>
-          <input
-            type="text"
-            value={autopilotConfig.topics}
-            onChange={(e) => setAutopilotConfig({ ...autopilotConfig, topics: e.target.value })}
-            placeholder="e.g. AI Marketing, B2B Growth, SaaS Scaling, Tech Innovation, Digital Strategies..."
-            style={{
-              width: "100%",
-              boxSizing: "border-box",
-              padding: "10px 14px",
-              borderRadius: 10,
-              background: "rgba(0,0,0,0.3)",
-              border: "1px solid rgba(255, 255, 255, 0.12)",
-              color: "#fff",
-              fontSize: 13,
-            }}
-          />
         </div>
 
         {/* Save button */}
