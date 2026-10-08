@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, useRef } from "react";
 
 const SUGGESTED_TOPICS = [
   {
@@ -66,11 +66,83 @@ const SUGGESTED_TOPICS = [
 ];
 
 const TRENDING_AUDIO_PRESETS = [
-  { id: "viral", name: "🔥 Viral Trending Hits (Auto-Pair)", desc: "TikTok algorithm automatically matches current #1 trending commercial audio" },
-  { id: "sangeet", name: "🦚 Royal Sangeet & Bridal Mood", desc: "Traditional South Asian wedding & festive beats" },
-  { id: "luxe", name: "💎 London Luxury & Runway Vibe", desc: "Upbeat electronic chic for high-end boutique showcases" },
-  { id: "lofi", name: "🌸 Acoustic Lofi & Indie Reverb", desc: "Chill aesthetic vibe for minimalist everyday jewellery" },
-  { id: "none", name: "🔇 Mute / Original Audio (No Music)", desc: "Post clean photo carousel without added soundtrack" },
+  {
+    id: "viral",
+    name: "🔥 Viral TikTok Billboard Trending",
+    desc: "Auto-matched current #1 commercial algorithm trend",
+    audioUrl: "/audio/commercial_energetic.mp3",
+    startTime: 15,
+  },
+  {
+    id: "sangeet",
+    name: "🦚 Royal Sangeet & Dhol Beats",
+    desc: "Traditional South Asian wedding & festive celebratory rhythm",
+    audioUrl: "https://www.soundhelix.com/examples/mp3/SoundHelix-Song-1.mp3",
+    startTime: 30,
+  },
+  {
+    id: "luxe",
+    name: "💎 London Luxury & Runway Vibe",
+    desc: "Upbeat electronic chic for high-end boutique & jewellery showcases",
+    audioUrl: "/audio/commercial_energetic.mp3",
+    startTime: 45,
+  },
+  {
+    id: "lofi",
+    name: "🌸 Acoustic Lofi & Indie Reverb",
+    desc: "Chill aesthetic vibe for minimalist everyday jewellery",
+    audioUrl: "/audio/chill_acoustic.mp3",
+    startTime: 10,
+  },
+  {
+    id: "upbeat",
+    name: "⚡ Modern Upbeat Chic & Boutique",
+    desc: "Bouncy energetic rhythm that hooks viewers in first 3 seconds",
+    audioUrl: "/audio/upbeat_lofi.mp3",
+    startTime: 8,
+  },
+  {
+    id: "bollywood",
+    name: "🪕 Bollywood Glitz & Celebration",
+    desc: "Joyful celebratory festival tempo for bridal & festive wear",
+    audioUrl: "https://www.soundhelix.com/examples/mp3/SoundHelix-Song-2.mp3",
+    startTime: 20,
+  },
+  {
+    id: "sufi",
+    name: "✨ Serene Sufi Melodies & Flute",
+    desc: "Soulful timeless acoustic depth for heritage royal craftsmanship",
+    audioUrl: "https://www.soundhelix.com/examples/mp3/SoundHelix-Song-3.mp3",
+    startTime: 35,
+  },
+  {
+    id: "punjabi",
+    name: "🥁 Punjabi Dhol Fusion & Bhangra",
+    desc: "High-octane viral festival beats for wedding statements",
+    audioUrl: "https://www.soundhelix.com/examples/mp3/SoundHelix-Song-4.mp3",
+    startTime: 15,
+  },
+  {
+    id: "ambient",
+    name: "🌙 Minimalist Velvet Ambient",
+    desc: "Soft luxurious background tone keeping pure focus on the visuals",
+    audioUrl: "https://www.soundhelix.com/examples/mp3/SoundHelix-Song-8.mp3",
+    startTime: 12,
+  },
+  {
+    id: "cinematic",
+    name: "👑 Grand Royal Heritage & Strings",
+    desc: "Majestic regal orchestration for royal bride lookbooks",
+    audioUrl: "https://www.soundhelix.com/examples/mp3/SoundHelix-Song-10.mp3",
+    startTime: 24,
+  },
+  {
+    id: "none",
+    name: "🔇 Mute / Clean Visuals (No Music)",
+    desc: "Post clean photo carousel without added soundtrack",
+    audioUrl: null,
+    startTime: 0,
+  },
 ];
 
 export default function TikTokPilotConnect() {
@@ -89,6 +161,68 @@ export default function TikTokPilotConnect() {
   const [selectedAudioPreset, setSelectedAudioPreset] = useState("viral");
   const [autoAddMusic, setAutoAddMusic] = useState(true); // TikTok auto_add_music flag
   
+  // Audio Preview Player State (Plays 5-second sample)
+  const [playingAudioId, setPlayingAudioId] = useState(null);
+  const audioRef = useRef(null);
+  const audioTimerRef = useRef(null);
+
+  const handleToggleAudioPreview = (e, preset) => {
+    if (e) e.stopPropagation();
+    if (!preset.audioUrl) return;
+
+    if (playingAudioId === preset.id) {
+      if (audioRef.current) {
+        audioRef.current.pause();
+      }
+      if (audioTimerRef.current) {
+        clearTimeout(audioTimerRef.current);
+      }
+      setPlayingAudioId(null);
+    } else {
+      if (audioRef.current) {
+        audioRef.current.pause();
+      }
+      if (audioTimerRef.current) {
+        clearTimeout(audioTimerRef.current);
+      }
+
+      const audio = new Audio(preset.audioUrl);
+      audioRef.current = audio;
+      audio.currentTime = preset.startTime || 0;
+
+      audio.play().then(() => {
+        setPlayingAudioId(preset.id);
+        // Play 5.5-second preview then auto-stop
+        audioTimerRef.current = setTimeout(() => {
+          if (audioRef.current === audio) {
+            audio.pause();
+            setPlayingAudioId(null);
+          }
+        }, 5500);
+      }).catch((err) => {
+        console.warn("Audio playback prevented:", err.message);
+        setPlayingAudioId(null);
+      });
+
+      audio.onended = () => {
+        if (audioTimerRef.current) clearTimeout(audioTimerRef.current);
+        setPlayingAudioId(null);
+      };
+    }
+  };
+
+  useEffect(() => {
+    return () => {
+      if (audioRef.current) {
+        audioRef.current.pause();
+        audioRef.current = null;
+      }
+      if (audioTimerRef.current) {
+        clearTimeout(audioTimerRef.current);
+      }
+    };
+  }, []);
+
   // Generation & Publish States
   const [generatingAi, setGeneratingAi] = useState(false);
   const [generationStageText, setGenerationStageText] = useState("");
@@ -167,7 +301,7 @@ export default function TikTokPilotConnect() {
     if (!topicToUse) return;
 
     setGeneratingAi(true);
-    setGenerationStageText("🚀 Connecting to Railway Worker engine...");
+    setGenerationStageText("🚀 Gabbarinfo AI: Initializing ad design engine...");
     setPublishError(null);
     setPublishSuccess(null);
 
@@ -194,9 +328,9 @@ export default function TikTokPilotConnect() {
         throw new Error(`Server returned status ${res.status}: ${txt.slice(0, 100)}`);
       }
 
-      // If Railway Worker queued a background job, poll until completed
+      // If background job queued, poll until completed
       if (data.ok && data.jobId) {
-        setGenerationStageText("🎨 Railway Worker: Synthesizing bespoke visuals with gpt-image-2...");
+        setGenerationStageText("🎨 Gabbarinfo AI: Designing bespoke ad visuals...");
         let completed = false;
         let attempts = 0;
         const maxAttempts = 60; // 2.5 mins max
@@ -209,7 +343,11 @@ export default function TikTokPilotConnect() {
           const pollData = await pollRes.json();
 
           if (pollData.stage) {
-            setGenerationStageText(`🚂 ${pollData.stage}`);
+            const sanitized = String(pollData.stage)
+              .replace(/gpt-image-2|gpt[\w-]*/gi, "Gabbarinfo AI")
+              .replace(/openai|railway worker|railway/gi, "Gabbarinfo AI")
+              .trim();
+            setGenerationStageText(`✨ ${sanitized}`);
           }
 
           if (pollData.status === "completed" && pollData.result) {
@@ -230,12 +368,12 @@ export default function TikTokPilotConnect() {
             });
             break;
           } else if (pollData.status === "failed") {
-            throw new Error(pollData.error || "Creative generation failed on Railway.");
+            throw new Error(pollData.error || "Creative generation failed. Please retry.");
           }
         }
 
         if (!completed) {
-          throw new Error("Creative generation timed out on background worker. Please retry.");
+          throw new Error("Creative generation timed out. Please retry.");
         }
       } else if (data.ok && (data.images || data.caption)) {
         // Direct response
@@ -870,32 +1008,124 @@ export default function TikTokPilotConnect() {
                   />
                 </div>
 
-                {/* Trending Audio Presets */}
+                {/* Trending Audio Presets with 5-Second Preview Player */}
                 {autoAddMusic && (
-                  <div style={{ display: "flex", flexWrap: "wrap", gap: 6, marginTop: 8 }}>
-                    {TRENDING_AUDIO_PRESETS.filter(p => p.id !== "none").map((preset) => {
-                      const isSel = selectedAudioPreset === preset.id;
-                      return (
-                        <button
-                          key={preset.id}
-                          type="button"
-                          onClick={() => setSelectedAudioPreset(preset.id)}
-                          style={{
-                            padding: "6px 10px",
-                            borderRadius: 8,
-                            fontSize: 11,
-                            fontWeight: 700,
-                            cursor: "pointer",
-                            background: isSel ? "linear-gradient(135deg, #fe2c55 0%, #25f4ee 100%)" : "rgba(255, 255, 255, 0.05)",
-                            color: isSel ? "#ffffff" : "#cbd5e1",
-                            border: `1px solid ${isSel ? "transparent" : "rgba(255, 255, 255, 0.1)"}`,
-                            transition: "all 0.15s ease",
-                          }}
-                        >
-                          {preset.name}
-                        </button>
-                      );
-                    })}
+                  <div style={{ marginTop: 10 }}>
+                    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 8 }}>
+                      <span style={{ fontSize: 11, fontWeight: 700, color: "#cbd5e1" }}>
+                        🎧 Choose Soundtrack Vibe ({TRENDING_AUDIO_PRESETS.filter(p => p.id !== "none").length} Presets Available):
+                      </span>
+                      <span style={{ fontSize: 10, color: "#38bdf8", fontWeight: 600 }}>
+                        Tap ▶ to audition 5-second sample
+                      </span>
+                    </div>
+
+                    <div
+                      style={{
+                        display: "grid",
+                        gridTemplateColumns: "repeat(auto-fill, minmax(260px, 1fr))",
+                        gap: 8,
+                        maxHeight: 280,
+                        overflowY: "auto",
+                        paddingRight: 4,
+                      }}
+                    >
+                      {TRENDING_AUDIO_PRESETS.filter((p) => p.id !== "none").map((preset) => {
+                        const isSel = selectedAudioPreset === preset.id;
+                        const isPlaying = playingAudioId === preset.id;
+
+                        return (
+                          <div
+                            key={preset.id}
+                            onClick={() => setSelectedAudioPreset(preset.id)}
+                            style={{
+                              padding: "10px 12px",
+                              borderRadius: 10,
+                              cursor: "pointer",
+                              background: isSel
+                                ? "linear-gradient(135deg, rgba(254, 44, 85, 0.22) 0%, rgba(37, 244, 238, 0.14) 100%)"
+                                : "rgba(255, 255, 255, 0.04)",
+                              border: isSel
+                                ? "1.5px solid #fe2c55"
+                                : isPlaying
+                                ? "1.5px solid #38bdf8"
+                                : "1px solid rgba(255, 255, 255, 0.1)",
+                              display: "flex",
+                              alignItems: "center",
+                              justifyContent: "space-between",
+                              gap: 10,
+                              transition: "all 0.2s ease",
+                              boxShadow: isSel ? "0 4px 14px rgba(254, 44, 85, 0.2)" : "none",
+                            }}
+                          >
+                            <div style={{ flex: 1, minWidth: 0 }}>
+                              <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                                <span
+                                  style={{
+                                    fontSize: 12,
+                                    fontWeight: 800,
+                                    color: isSel ? "#ffffff" : "#f1f5f9",
+                                    whiteSpace: "nowrap",
+                                    overflow: "hidden",
+                                    textOverflow: "ellipsis",
+                                  }}
+                                >
+                                  {preset.name}
+                                </span>
+                              </div>
+                              <div
+                                style={{
+                                  fontSize: 10,
+                                  color: isSel ? "#fbcfe8" : "#94a3b8",
+                                  marginTop: 2,
+                                  lineHeight: 1.3,
+                                  whiteSpace: "nowrap",
+                                  overflow: "hidden",
+                                  textOverflow: "ellipsis",
+                                }}
+                              >
+                                {preset.desc}
+                              </div>
+                              {isPlaying && (
+                                <div style={{ fontSize: 9, color: "#38bdf8", fontWeight: 800, marginTop: 4, display: "flex", alignItems: "center", gap: 4 }}>
+                                  <span>🎵</span> Playing 5s preview sample...
+                                </div>
+                              )}
+                            </div>
+
+                            {/* Play / Pause Audition Button */}
+                            {preset.audioUrl && (
+                              <button
+                                type="button"
+                                onClick={(e) => handleToggleAudioPreview(e, preset)}
+                                title={isPlaying ? "Pause Preview" : "Play 5-second sample"}
+                                style={{
+                                  width: 34,
+                                  height: 34,
+                                  borderRadius: "50%",
+                                  flexShrink: 0,
+                                  cursor: "pointer",
+                                  display: "flex",
+                                  alignItems: "center",
+                                  justifyContent: "center",
+                                  border: isPlaying ? "2px solid #25f4ee" : "1px solid rgba(255, 255, 255, 0.2)",
+                                  background: isPlaying
+                                    ? "linear-gradient(135deg, #25f4ee 0%, #0284c7 100%)"
+                                    : "rgba(255, 255, 255, 0.1)",
+                                  color: isPlaying ? "#0f172a" : "#ffffff",
+                                  fontSize: 13,
+                                  fontWeight: 900,
+                                  boxShadow: isPlaying ? "0 0 12px rgba(37, 244, 238, 0.5)" : "none",
+                                  transition: "all 0.15s ease",
+                                }}
+                              >
+                                {isPlaying ? "⏸" : "▶"}
+                              </button>
+                            )}
+                          </div>
+                        );
+                      })}
+                    </div>
                   </div>
                 )}
               </div>
@@ -924,7 +1154,7 @@ export default function TikTokPilotConnect() {
                 gap: 8,
               }}
             >
-              {generatingAi ? (generationStageText || "⏳ AI Synthesizing Creative on Railway...") : "✨ 3. Generate Post with AI"}
+              {generatingAi ? (generationStageText || "⏳ Gabbarinfo AI: Synthesizing bespoke creative...") : "✨ 3. Generate Post with Gabbarinfo AI"}
             </button>
 
             {/* STEP 4: GENERATED POST PREVIEW & LIVE PUBLISH */}
@@ -1091,15 +1321,41 @@ export default function TikTokPilotConnect() {
                   }}
                 >
                   <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
-                    <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                      <span style={{ fontSize: 18 }}>🎵</span>
+                    <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+                      <span style={{ fontSize: 20 }}>🎵</span>
                       <div>
-                        <div style={{ fontSize: 12, fontWeight: 800, color: "#ffffff" }}>
-                          Attached TikTok Audio: {TRENDING_AUDIO_PRESETS.find(p => p.id === selectedAudioPreset)?.name || "Auto-Pair Trending"}
+                        <div style={{ fontSize: 12, fontWeight: 800, color: "#ffffff", display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+                          <span>Attached TikTok Audio: {TRENDING_AUDIO_PRESETS.find(p => p.id === selectedAudioPreset)?.name || "Auto-Pair Trending"}</span>
+                          {autoAddMusic && (() => {
+                            const curPreset = TRENDING_AUDIO_PRESETS.find(p => p.id === selectedAudioPreset);
+                            if (!curPreset?.audioUrl) return null;
+                            const isPlaying = playingAudioId === curPreset.id;
+                            return (
+                              <button
+                                type="button"
+                                onClick={(e) => handleToggleAudioPreview(e, curPreset)}
+                                style={{
+                                  padding: "2px 8px",
+                                  borderRadius: 12,
+                                  border: isPlaying ? "1px solid #25f4ee" : "1px solid rgba(255, 255, 255, 0.2)",
+                                  background: isPlaying ? "rgba(37, 244, 238, 0.2)" : "rgba(255, 255, 255, 0.1)",
+                                  color: isPlaying ? "#25f4ee" : "#fff",
+                                  fontSize: 10,
+                                  fontWeight: 800,
+                                  cursor: "pointer",
+                                  display: "inline-flex",
+                                  alignItems: "center",
+                                  gap: 4,
+                                }}
+                              >
+                                {isPlaying ? "⏸ Pause (5s)" : "▶ Audition Sound"}
+                              </button>
+                            );
+                          })()}
                         </div>
                         <div style={{ fontSize: 11, color: "#94a3b8" }}>
                           {autoAddMusic
-                            ? "✅ auto_add_music enabled — TikTok will auto-pair with recommended trending sound"
+                            ? "✅ auto_add_music enabled — TikTok will auto-pair with this recommended commercial sound"
                             : "🔇 Music disabled — silent photo carousel"}
                         </div>
                       </div>
@@ -1121,27 +1377,57 @@ export default function TikTokPilotConnect() {
                   </div>
 
                   {autoAddMusic && (
-                    <div style={{ display: "flex", flexWrap: "wrap", gap: 6, marginTop: 2 }}>
+                    <div style={{ display: "flex", flexWrap: "wrap", gap: 6, marginTop: 4 }}>
                       {TRENDING_AUDIO_PRESETS.filter(p => p.id !== "none").map((preset) => {
                         const isSel = selectedAudioPreset === preset.id;
+                        const isPlaying = playingAudioId === preset.id;
                         return (
-                          <button
+                          <div
                             key={preset.id}
-                            type="button"
-                            onClick={() => setSelectedAudioPreset(preset.id)}
                             style={{
-                              padding: "4px 8px",
+                              display: "inline-flex",
+                              alignItems: "center",
                               borderRadius: 6,
-                              fontSize: 10,
-                              fontWeight: 700,
-                              cursor: "pointer",
-                              background: isSel ? "linear-gradient(135deg, #fe2c55 0%, #25f4ee 100%)" : "rgba(255, 255, 255, 0.05)",
-                              color: isSel ? "#ffffff" : "#cbd5e1",
-                              border: `1px solid ${isSel ? "transparent" : "rgba(255, 255, 255, 0.1)"}`,
+                              overflow: "hidden",
+                              border: `1px solid ${isSel ? "#fe2c55" : "rgba(255, 255, 255, 0.1)"}`,
+                              background: isSel ? "linear-gradient(135deg, rgba(254, 44, 85, 0.25) 0%, rgba(37, 244, 238, 0.15) 100%)" : "rgba(255, 255, 255, 0.05)",
                             }}
                           >
-                            {preset.name}
-                          </button>
+                            <button
+                              type="button"
+                              onClick={() => setSelectedAudioPreset(preset.id)}
+                              style={{
+                                padding: "4px 8px",
+                                border: "none",
+                                background: "transparent",
+                                fontSize: 10,
+                                fontWeight: 700,
+                                cursor: "pointer",
+                                color: isSel ? "#ffffff" : "#cbd5e1",
+                              }}
+                            >
+                              {preset.name}
+                            </button>
+                            {preset.audioUrl && (
+                              <button
+                                type="button"
+                                onClick={(e) => handleToggleAudioPreview(e, preset)}
+                                title={isPlaying ? "Pause 5s preview" : "Play 5s preview"}
+                                style={{
+                                  padding: "4px 6px",
+                                  border: "none",
+                                  borderLeft: "1px solid rgba(255, 255, 255, 0.1)",
+                                  background: isPlaying ? "rgba(37, 244, 238, 0.3)" : "rgba(255, 255, 255, 0.05)",
+                                  color: isPlaying ? "#25f4ee" : "#fff",
+                                  fontSize: 9,
+                                  fontWeight: 800,
+                                  cursor: "pointer",
+                                }}
+                              >
+                                {isPlaying ? "⏸" : "▶"}
+                              </button>
+                            )}
+                          </div>
                         );
                       })}
                     </div>
