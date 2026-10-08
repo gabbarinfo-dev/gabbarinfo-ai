@@ -11,9 +11,10 @@ export default async function handler(req, res) {
   const session = await getServerSession(req, res, authOptions);
   const email = session?.user?.email || "ndantare@gmail.com";
 
-  const { caption, imageUrl, videoUrl, privacyLevel = "PUBLIC_TO_EVERYONE" } = req.body || {};
+  const { caption, imageUrl, images, videoUrl, privacyLevel = "PUBLIC_TO_EVERYONE" } = req.body || {};
 
-  if (!imageUrl && !videoUrl) {
+  const hasPhotos = Array.isArray(images) ? images.length > 0 : Boolean(imageUrl);
+  if (!hasPhotos && !videoUrl) {
     return res.status(400).json({ ok: false, error: "Missing imageUrl or videoUrl to post to TikTok." });
   }
 
