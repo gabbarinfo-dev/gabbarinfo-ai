@@ -13,9 +13,21 @@ export default function LinkedInPilotConnect() {
   const [imageUrl, setImageUrl] = useState("");
   const [selectedAuthorUrn, setSelectedAuthorUrn] = useState("");
   const [generating, setGenerating] = useState(false);
+  const [generatingImage, setGeneratingImage] = useState(false);
   const [publishing, setPublishing] = useState(false);
   const [publishSuccess, setPublishSuccess] = useState(null);
   const [publishError, setPublishError] = useState(null);
+
+  // Autopilot States
+  const [autopilotConfig, setAutopilotConfig] = useState({
+    enabled: false,
+    frequency: "daily",
+    topics: "B2B Growth, AI Automation, Tech Innovation",
+    generateImage: true,
+  });
+  const [savingAutopilot, setSavingAutopilot] = useState(false);
+  const [runningAutopilot, setRunningAutopilot] = useState(false);
+  const [postHistory, setPostHistory] = useState([]);
 
   const fetchStatus = async () => {
     try {
@@ -40,10 +52,20 @@ export default function LinkedInPilotConnect() {
     }
   };
 
+  const fetchAutopilotConfig = async () => {
+    try {
+      const res = await fetch("/api/linkedin/autopilot-config");
+      const data = await res.json();
+      if (data.ok && data.config) {
+        setAutopilotConfig(data.config);
+      }
+    } catch (_) {}
+  };
+
   useEffect(() => {
     fetchStatus();
+    fetchAutopilotConfig();
 
-    // Check query params for newly connected notification
     if (typeof window !== "undefined") {
       const urlParams = new URLSearchParams(window.location.search);
       if (urlParams.get("linkedin_connected") === "1") {
@@ -113,6 +135,36 @@ export default function LinkedInPilotConnect() {
     }
   };
 
+  const handleGenerateAiImage = async () => {
+    try {
+      setGeneratingImage(true);
+      setPublishError(null);
+      const activeOrg = orgs.find((o) => o.urn === selectedAuthorUrn);
+      const brandName = activeOrg?.name || member?.name || "B2B Business";
+
+      const res = await fetch("/api/linkedin/generate-image", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          prompt: postTopic ? `Professional 3D isometric B2B visual about ${postTopic}` : null,
+          commentary: commentary.trim() || postTopic,
+          brandName,
+        }),
+      });
+
+      const data = await res.json();
+      if (data.ok && data.imageUrl) {
+        setImageUrl(data.imageUrl);
+      } else {
+        setPublishError(data.error || "Failed to generate AI visual.");
+      }
+    } catch (e) {
+      setPublishError("AI Image error: " + e.message);
+    } finally {
+      setGeneratingImage(false);
+    }
+  };
+
   const handlePublishPost = async () => {
     if (!commentary.trim()) {
       alert("Post commentary cannot be empty.");
@@ -152,6 +204,60 @@ export default function LinkedInPilotConnect() {
       setPublishError("Publishing error: " + e.message);
     } finally {
       setPublishing(false);
+    }
+  };
+
+  const handleSaveAutopilot = async () => {
+    try {
+      setSavingAutopilot(true);
+      const res = await fetch("/api/linkedin/autopilot-config", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          ...autopilotConfig,
+          targetUrn: selectedAuthorUrn || (orgs[0]?.urn || member?.urn),
+        }),
+      });
+      const data = await res.json();
+      if (data.ok) {
+        alert("✅ LinkedIn Auto-Pilot settings saved successfully!");
+      } else {
+        alert(data.error || "Failed to save settings.");
+      }
+    } catch (e) {
+      alert("Error: " + e.message);
+    } finally {
+      setSavingAutopilot(false);
+    }
+  };
+
+  const handleRunAutopilotCycle = async () => {
+    try {
+      setRunningAutopilot(true);
+      setPublishError(null);
+      setPublishSuccess(null);
+
+      const res = await fetch("/api/linkedin/autopilot-run", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+      });
+
+      const data = await res.json();
+      if (data.ok) {
+        setPublishSuccess({
+          message: "⚡ Auto-Pilot cycle completed! New post published autonomously.",
+          postUrl: data.postUrl,
+          postUrn: data.postUrn,
+        });
+        if (data.commentary) setCommentary(data.commentary);
+        if (data.imageUrl) setImageUrl(data.imageUrl);
+      } else {
+        setPublishError(data.error || "Auto-Pilot run failed.");
+      }
+    } catch (e) {
+      setPublishError("Auto-Pilot error: " + e.message);
+    } finally {
+      setRunningAutopilot(false);
     }
   };
 
@@ -428,9 +534,9 @@ export default function LinkedInPilotConnect() {
         </div>
       </div>
 
-      {/* ── COMPOSER & PREVIEW WORKSTATION ── */}
+      {/* ── BROADCAST STUDIO & LIVE PREVIEW ── */}
       <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(min(100%, 460px), 1fr))", gap: 24 }}>
-        {/* Column 1: Broadcast Studio */}
+        {/* Column 1: Post Broadcast Studio */}
         <div
           style={{
             padding: "24px 26px",
@@ -524,7 +630,7 @@ export default function LinkedInPilotConnect() {
 
           {/* Commentary Area */}
           <textarea
-            rows={7}
+            rows={6}
             placeholder="Write your LinkedIn post here..."
             value={commentary}
             onChange={(e) => setCommentary(e.target.value)}
@@ -543,27 +649,76 @@ export default function LinkedInPilotConnect() {
             }}
           />
 
-          {/* Image URL Input */}
-          <div>
-            <label style={{ fontSize: 11.5, color: "#94a3b8", fontWeight: 700, display: "block", marginBottom: 6 }}>
-              Optional Image URL (Public HTTPS link):
-            </label>
-            <input
-              type="text"
-              placeholder="https://example.com/image.jpg"
-              value={imageUrl}
-              onChange={(e) => setImageUrl(e.target.value)}
-              style={{
-                width: "100%",
-                boxSizing: "border-box",
-                padding: "10px 14px",
-                borderRadius: 10,
-                background: "rgba(0,0,0,0.3)",
-                border: "1px solid rgba(255, 255, 255, 0.12)",
-                color: "#fff",
-                fontSize: 12.5,
-              }}
-            />
+          {/* ── AI IMAGE GENERATION & MANUAL URL STRIP ── */}
+          <div
+            style={{
+              padding: "14px 16px",
+              borderRadius: 14,
+              background: "rgba(0, 0, 0, 0.25)",
+              border: "1px solid rgba(255, 255, 255, 0.08)",
+              display: "flex",
+              flexDirection: "column",
+              gap: 12,
+            }}
+          >
+            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", flexWrap: "wrap", gap: 10 }}>
+              <span style={{ fontSize: 12, fontWeight: 700, color: "#cbd5e1" }}>
+                🖼️ Post Creative Visual
+              </span>
+              <button
+                onClick={handleGenerateAiImage}
+                disabled={generatingImage}
+                style={{
+                  padding: "7px 14px",
+                  borderRadius: 8,
+                  background: "linear-gradient(135deg, #a855f7 0%, #6366f1 100%)",
+                  border: "none",
+                  color: "#fff",
+                  fontSize: 11.5,
+                  fontWeight: 700,
+                  cursor: "pointer",
+                  display: "flex",
+                  alignItems: "center",
+                  gap: 6,
+                  boxShadow: "0 2px 10px rgba(168, 85, 247, 0.3)",
+                }}
+              >
+                <span>{generatingImage ? "Generating Visual…" : "✨ AI Generate Visual Creative"}</span>
+              </button>
+            </div>
+
+            {imageUrl ? (
+              <div style={{ display: "flex", alignItems: "center", gap: 12, background: "rgba(255,255,255,0.03)", padding: 8, borderRadius: 10, border: "1px solid rgba(255,255,255,0.08)" }}>
+                <img src={imageUrl} alt="Creative Thumbnail" style={{ width: 44, height: 44, borderRadius: 8, objectFit: "cover" }} />
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <div style={{ fontSize: 11, color: "#4ade80", fontWeight: 700 }}>Visual Attached</div>
+                  <div style={{ fontSize: 11, color: "#94a3b8", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{imageUrl}</div>
+                </div>
+                <button
+                  onClick={() => setImageUrl("")}
+                  style={{ background: "none", border: "none", color: "#f87171", cursor: "pointer", fontSize: 12, fontWeight: 700 }}
+                >
+                  Remove
+                </button>
+              </div>
+            ) : (
+              <input
+                type="text"
+                placeholder="Or paste custom image URL (https://...)..."
+                value={imageUrl}
+                onChange={(e) => setImageUrl(e.target.value)}
+                style={{
+                  width: "100%",
+                  boxSizing: "border-box",
+                  padding: "9px 12px",
+                  borderRadius: 8,
+                  background: "rgba(0,0,0,0.3)",
+                  border: "1px solid rgba(255, 255, 255, 0.1)",
+                  color: "#fff",
+                  fontSize: 12,
+                }}
+              />
+            )}
           </div>
 
           {/* Publish Action Button */}
@@ -696,9 +851,159 @@ export default function LinkedInPilotConnect() {
               lineHeight: 1.6,
             }}
           >
-            <strong>💡 B2B Marketing Pro-Tip:</strong> LinkedIn Company Pages with weekly technical insights, case studies, and brand milestones generate 5x more inbound lead inquiries than stagnant profiles.
+            <strong>💡 B2B Marketing Pro-Tip:</strong> Posts paired with an executive visual graphic achieve 2.8x higher engagement and click-through rates across LinkedIn Company Pages and member feeds.
           </div>
         </div>
+      </div>
+
+      {/* ── AUTONOMOUS LINKEDIN AUTO-PILOT SCHEDULER ── */}
+      <div
+        style={{
+          padding: "26px 28px",
+          borderRadius: 20,
+          background: "linear-gradient(180deg, rgba(16, 24, 38, 0.85) 0%, rgba(10, 15, 26, 0.95) 100%)",
+          border: "1px solid rgba(168, 85, 247, 0.25)",
+          boxShadow: "0 20px 50px rgba(0,0,0,0.5), 0 0 25px rgba(168, 85, 247, 0.06)",
+        }}
+      >
+        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 20, flexWrap: "wrap", gap: 12 }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+            <div style={{ width: 40, height: 40, borderRadius: 12, background: "rgba(168, 85, 247, 0.18)", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 20, border: "1px solid rgba(168, 85, 247, 0.35)" }}>
+              🤖
+            </div>
+            <div>
+              <h3 style={{ margin: 0, fontSize: 18, fontWeight: 800, color: "#ffffff" }}>
+                Autonomous LinkedIn Auto-Pilot Engine
+              </h3>
+              <p style={{ margin: "2px 0 0", fontSize: 12.5, color: "#94a3b8" }}>
+                Automatically researches trending B2B topics, drafts thought-leadership copy, generates AI creatives, and publishes to your selected LinkedIn page or profile.
+              </p>
+            </div>
+          </div>
+
+          <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+            <button
+              onClick={handleRunAutopilotCycle}
+              disabled={runningAutopilot || !status === "connected"}
+              style={{
+                padding: "9px 18px",
+                borderRadius: 10,
+                background: "linear-gradient(135deg, #a855f7 0%, #7c3aed 100%)",
+                border: "none",
+                color: "#ffffff",
+                fontSize: 12.5,
+                fontWeight: 700,
+                cursor: "pointer",
+                boxShadow: "0 4px 14px rgba(168, 85, 247, 0.35)",
+              }}
+            >
+              {runningAutopilot ? "Executing Auto-Pilot Cycle…" : "⚡ Run Auto-Pilot Cycle Now (Test)"}
+            </button>
+          </div>
+        </div>
+
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(240px, 1fr))", gap: 16, marginBottom: 20 }}>
+          {/* Autopilot Enabled Switch */}
+          <div style={{ padding: "14px 16px", borderRadius: 12, background: "rgba(255,255,255,0.03)", border: "1px solid rgba(255,255,255,0.08)" }}>
+            <div style={{ fontSize: 11, color: "#94a3b8", fontWeight: 700, textTransform: "uppercase", marginBottom: 6 }}>
+              Auto-Pilot Status
+            </div>
+            <label style={{ display: "flex", alignItems: "center", gap: 10, cursor: "pointer" }}>
+              <input
+                type="checkbox"
+                checked={autopilotConfig.enabled}
+                onChange={(e) => setAutopilotConfig({ ...autopilotConfig, enabled: e.target.checked })}
+                style={{ width: 18, height: 18, cursor: "pointer", accentColor: "#a855f7" }}
+              />
+              <span style={{ fontSize: 13, fontWeight: 700, color: autopilotConfig.enabled ? "#4ade80" : "#94a3b8" }}>
+                {autopilotConfig.enabled ? "Active Autonomous Publishing" : "Disabled (Manual Only)"}
+              </span>
+            </label>
+          </div>
+
+          {/* Frequency */}
+          <div style={{ padding: "14px 16px", borderRadius: 12, background: "rgba(255,255,255,0.03)", border: "1px solid rgba(255,255,255,0.08)" }}>
+            <div style={{ fontSize: 11, color: "#94a3b8", fontWeight: 700, textTransform: "uppercase", marginBottom: 6 }}>
+              Publishing Cadence
+            </div>
+            <select
+              value={autopilotConfig.frequency}
+              onChange={(e) => setAutopilotConfig({ ...autopilotConfig, frequency: e.target.value })}
+              style={{
+                width: "100%",
+                padding: "8px 10px",
+                borderRadius: 8,
+                background: "#0b1220",
+                border: "1px solid rgba(255, 255, 255, 0.15)",
+                color: "#fff",
+                fontSize: 12.5,
+              }}
+            >
+              <option value="daily">Daily Broadcast (1 Post / Day)</option>
+              <option value="3_per_week">3 Times a Week (Mon, Wed, Fri)</option>
+              <option value="weekly">Weekly Pulse (1 Post / Week)</option>
+            </select>
+          </div>
+
+          {/* AI Creative Generation Toggle */}
+          <div style={{ padding: "14px 16px", borderRadius: 12, background: "rgba(255,255,255,0.03)", border: "1px solid rgba(255,255,255,0.08)" }}>
+            <div style={{ fontSize: 11, color: "#94a3b8", fontWeight: 700, textTransform: "uppercase", marginBottom: 6 }}>
+              Visual Graphic Creation
+            </div>
+            <label style={{ display: "flex", alignItems: "center", gap: 10, cursor: "pointer" }}>
+              <input
+                type="checkbox"
+                checked={autopilotConfig.generateImage}
+                onChange={(e) => setAutopilotConfig({ ...autopilotConfig, generateImage: e.target.checked })}
+                style={{ width: 18, height: 18, cursor: "pointer", accentColor: "#a855f7" }}
+              />
+              <span style={{ fontSize: 13, fontWeight: 700, color: "#fff" }}>
+                Generate 1:1 AI Graphic with every post
+              </span>
+            </label>
+          </div>
+        </div>
+
+        {/* Topics keywords */}
+        <div style={{ marginBottom: 20 }}>
+          <label style={{ fontSize: 11.5, color: "#94a3b8", fontWeight: 700, display: "block", marginBottom: 6 }}>
+            Brand Themes & Preferred B2B Topics:
+          </label>
+          <input
+            type="text"
+            value={autopilotConfig.topics}
+            onChange={(e) => setAutopilotConfig({ ...autopilotConfig, topics: e.target.value })}
+            placeholder="e.g. AI Marketing, B2B Growth, SaaS Scaling, Tech Innovation, Digital Strategies..."
+            style={{
+              width: "100%",
+              boxSizing: "border-box",
+              padding: "10px 14px",
+              borderRadius: 10,
+              background: "rgba(0,0,0,0.3)",
+              border: "1px solid rgba(255, 255, 255, 0.12)",
+              color: "#fff",
+              fontSize: 13,
+            }}
+          />
+        </div>
+
+        {/* Save button */}
+        <button
+          onClick={handleSaveAutopilot}
+          disabled={savingAutopilot}
+          style={{
+            padding: "11px 24px",
+            borderRadius: 10,
+            background: "#2563eb",
+            border: "none",
+            color: "#ffffff",
+            fontSize: 13,
+            fontWeight: 700,
+            cursor: "pointer",
+          }}
+        >
+          {savingAutopilot ? "Saving Settings…" : "💾 Save Auto-Pilot Schedule"}
+        </button>
       </div>
     </div>
   );
