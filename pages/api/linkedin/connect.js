@@ -18,22 +18,31 @@ export default async function handler(req, res) {
     `);
   }
 
-  const clientId = process.env.LINKEDIN_CLIENT_ID;
-  if (!clientId) {
-    return res.status(500).send("LinkedIn Client ID is not configured on server.");
+  const { type = "member" } = req.query; // 'member' or 'page'
+
+  let clientId;
+  let scopes;
+
+  if (type === "page") {
+    clientId = process.env.LINKEDIN_PAGE_CLIENT_ID || process.env.LINKEDIN_CLIENT_ID;
+    // Scopes for Community Management API (LinkedIn Pages / B2B Organizations)
+    scopes = ["w_organization_social", "r_organization_social", "rw_organization_admin"].join(" ");
+  } else {
+    clientId = process.env.LINKEDIN_CLIENT_ID;
+    // Scopes for Member Profile (Sign In + Share on LinkedIn)
+    scopes = ["openid", "profile", "email", "w_member_social"].join(" ");
   }
 
-  // Base production redirect URI; fallback if running on custom port/domain
-  const redirectUri = process.env.LINKEDIN_REDIRECT_URI || "https://ai.gabbarinfo.com/api/linkedin/callback";
+  if (!clientId) {
+    return res.status(500).send(`LinkedIn ${type === "page" ? "Company Page" : "Member"} Client ID is not configured.`);
+  }
 
-  // Scopes requested:
-  // - openid, profile, email: Provided by 'Sign In with LinkedIn using OpenID Connect'
-  // - w_member_social: Provided by 'Share on LinkedIn' product for posting
-  const scopes = ["openid", "profile", "email", "w_member_social"].join(" ");
+  const redirectUri = process.env.LINKEDIN_REDIRECT_URI || "https://ai.gabbarinfo.com/api/linkedin/callback";
 
   const statePayload = Buffer.from(
     JSON.stringify({
       email,
+      appType: type, // 'member' or 'page'
       ts: Date.now(),
       source: "linkedin_pilot",
     })

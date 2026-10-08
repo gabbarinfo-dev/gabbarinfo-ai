@@ -12,7 +12,7 @@ export default async function handler(req, res) {
         <body style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; background: #070a10; color: #f8fafc; padding: 40px; text-align: center;">
           <h2 style="color: #ef4444;">LinkedIn Authorization Failed</h2>
           <p style="color: #94a3b8; max-width: 600px; margin: 10px auto;">${error_description || error}</p>
-          <p style="color: #64748b; font-size: 13px;">Make sure you have approved the permissions dialog or requested access to the products in your LinkedIn Developer portal.</p>
+          <p style="color: #64748b; font-size: 13px;">If you are requesting Company Page access, ensure the Community Management API product is approved in your LinkedIn Developer App.</p>
           <a href="/?tab=linkedin" style="display:inline-block; margin-top:20px; padding:10px 24px; background:#0a66c2; color:#fff; text-decoration:none; border-radius:8px; font-weight:700;">Back to GabbarInfo AI</a>
         </body>
       </html>
@@ -24,9 +24,11 @@ export default async function handler(req, res) {
   }
 
   let email;
+  let appType = "member";
   try {
     const decoded = JSON.parse(Buffer.from(state, "base64").toString("utf8"));
     email = decoded.email?.toLowerCase();
+    appType = decoded.appType || "member";
   } catch (err) {
     console.error("LINKEDIN_STATE_DECODE_ERROR", err);
     return res.status(400).send("Invalid OAuth state received.");
@@ -36,8 +38,14 @@ export default async function handler(req, res) {
     return res.status(400).send("User email missing in OAuth state.");
   }
 
-  const clientId = process.env.LINKEDIN_CLIENT_ID;
-  const clientSecret = process.env.LINKEDIN_CLIENT_SECRET;
+  // Select appropriate App credentials
+  const isPage = appType === "page";
+  const clientId = isPage
+    ? (process.env.LINKEDIN_PAGE_CLIENT_ID || process.env.LINKEDIN_CLIENT_ID)
+    : process.env.LINKEDIN_CLIENT_ID;
+  const clientSecret = isPage
+    ? (process.env.LINKEDIN_PAGE_CLIENT_SECRET || process.env.LINKEDIN_CLIENT_SECRET)
+    : process.env.LINKEDIN_CLIENT_SECRET;
   const redirectUri = process.env.LINKEDIN_REDIRECT_URI || "https://ai.gabbarinfo.com/api/linkedin/callback";
 
   try {
@@ -68,67 +76,106 @@ export default async function handler(req, res) {
       throw new Error("No access_token returned by LinkedIn OAuth.");
     }
 
-    // 2. Fetch authenticated member profile via OpenID UserInfo
-    let profile = null;
-    try {
-      const userinfoRes = await axios.get("https://api.linkedin.com/v2/userinfo", {
-        headers: {
-          Authorization: `Bearer ${accessToken}`,
-        },
-      });
-      profile = userinfoRes.data;
-    } catch (profileErr) {
-      console.warn("[LinkedIn UserInfo Fetch Warning]:", profileErr.response?.data || profileErr.message);
+    // 2. Load existing connection to merge credentials cleanly
+    const { data: existingRow } = await supabaseServer
+      .from("agent_memory")
+      .select("content")
+      .eq("email", email)
+      .eq("memory_type", "linkedin_connection")
+      .maybeSingle();
+
+    let mergedData = {};
+    if (existingRow?.content) {
+      try {
+        mergedData = JSON.parse(existingRow.content);
+      } catch (_) {}
     }
 
-    const memberSub = profile?.sub || "";
-    const memberUrn = memberSub ? `urn:li:person:${memberSub}` : null;
-    const memberName = profile?.name || `${profile?.given_name || ""} ${profile?.family_name || ""}`.trim() || "LinkedIn Member";
-    const memberPicture = profile?.picture || null;
-    const memberEmail = profile?.email || email;
+    if (isPage) {
+      // 3A. COMPANY PAGE APP FLOW
+      // Query organizational entity ACLs (Company Pages user administers)
+      let organizations = [];
+      try {
+        const aclsRes = await axios.get("https://api.linkedin.com/v2/organizationalEntityAcls?q=roleAssignee", {
+          headers: {
+            Authorization: `Bearer ${accessToken}`,
+            "X-Restli-Protocol-Version": "2.0.0",
+          },
+        });
 
-    // 3. Try to discover any administered organizations/pages (if organization permissions are enabled)
-    let organizations = [];
-    try {
-      const aclsRes = await axios.get("https://api.linkedin.com/v2/organizationalEntityAcls?q=roleAssignee", {
-        headers: {
-          Authorization: `Bearer ${accessToken}`,
-          "X-Restli-Protocol-Version": "2.0.0",
-        },
-      });
-      if (aclsRes.data?.elements) {
-        organizations = aclsRes.data.elements.map((el) => ({
-          role: el.role,
-          organizationalTarget: el.organizationalTarget,
-          state: el.state,
-        }));
+        if (aclsRes.data?.elements) {
+          for (const el of aclsRes.data.elements) {
+            const orgUrn = el.organizationalTarget; // e.g. "urn:li:organization:12345"
+            let orgDetails = { urn: orgUrn, role: el.role };
+
+            // Fetch organization name
+            try {
+              const orgId = orgUrn?.replace("urn:li:organization:", "");
+              if (orgId) {
+                const orgRes = await axios.get(`https://api.linkedin.com/v2/organizations/${orgId}`, {
+                  headers: {
+                    Authorization: `Bearer ${accessToken}`,
+                    "X-Restli-Protocol-Version": "2.0.0",
+                  },
+                });
+                orgDetails.name = orgRes.data?.localizedName || orgRes.data?.name || `Organization ${orgId}`;
+                orgDetails.vanityName = orgRes.data?.vanityName || null;
+              }
+            } catch (_) {
+              orgDetails.name = `Company Page (${orgUrn})`;
+            }
+
+            organizations.push(orgDetails);
+          }
+        }
+      } catch (aclErr) {
+        console.warn("[LinkedIn Org ACL Warning]:", aclErr.response?.data || aclErr.message);
       }
-    } catch (_) {
-      // Organization ACLs will 403 gracefully if Community Management API access isn't active yet
-    }
 
-    const linkedinData = {
-      accessToken,
-      refreshToken,
-      expiresIn,
-      connectedAt: new Date().toISOString(),
-      expiresAt: expiresIn ? new Date(Date.now() + expiresIn * 1000).toISOString() : null,
-      member: {
+      mergedData.pageAccessToken = accessToken;
+      mergedData.pageRefreshToken = refreshToken;
+      mergedData.pageConnectedAt = new Date().toISOString();
+      mergedData.pageExpiresAt = expiresIn ? new Date(Date.now() + expiresIn * 1000).toISOString() : null;
+      mergedData.organizations = organizations;
+      mergedData.isPageConnected = true;
+    } else {
+      // 3B. MEMBER PROFILE APP FLOW
+      let profile = null;
+      try {
+        const userinfoRes = await axios.get("https://api.linkedin.com/v2/userinfo", {
+          headers: { Authorization: `Bearer ${accessToken}` },
+        });
+        profile = userinfoRes.data;
+      } catch (profileErr) {
+        console.warn("[LinkedIn UserInfo Warning]:", profileErr.response?.data || profileErr.message);
+      }
+
+      const memberSub = profile?.sub || "";
+      const memberUrn = memberSub ? `urn:li:person:${memberSub}` : null;
+      const memberName = profile?.name || `${profile?.given_name || ""} ${profile?.family_name || ""}`.trim() || "LinkedIn Member";
+      const memberPicture = profile?.picture || null;
+      const memberEmail = profile?.email || email;
+
+      mergedData.accessToken = accessToken;
+      mergedData.refreshToken = refreshToken;
+      mergedData.connectedAt = new Date().toISOString();
+      mergedData.expiresAt = expiresIn ? new Date(Date.now() + expiresIn * 1000).toISOString() : null;
+      mergedData.member = {
         sub: memberSub,
         urn: memberUrn,
         name: memberName,
         picture: memberPicture,
         email: memberEmail,
-      },
-      organizations,
-    };
+      };
+      mergedData.isMemberConnected = true;
+    }
 
-    // 4. Save to Supabase agent_memory
+    // 4. Save merged connection in Supabase agent_memory
     const { error: upsertErr } = await supabaseServer.from("agent_memory").upsert(
       {
         email,
         memory_type: "linkedin_connection",
-        content: JSON.stringify(linkedinData),
+        content: JSON.stringify(mergedData),
         updated_at: new Date().toISOString(),
       },
       { onConflict: "email,memory_type" }
@@ -139,8 +186,8 @@ export default async function handler(req, res) {
       return res.status(500).send("Database connection error while saving LinkedIn credentials.");
     }
 
-    // 5. Success redirect to LinkedIn Pilot tab
-    return res.redirect("/?tab=linkedin&linkedin_connected=1");
+    // 5. Success redirect back to LinkedIn Pilot tab
+    return res.redirect(`/?tab=linkedin&linkedin_connected=1&connected_type=${appType}`);
   } catch (err) {
     console.error("LINKEDIN_CALLBACK_FATAL", err?.response?.data || err.message);
     const detail = err?.response?.data?.error_description || err?.response?.data?.message || err.message;

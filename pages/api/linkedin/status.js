@@ -37,21 +37,21 @@ export default async function handler(req, res) {
       parsed = JSON.parse(data.content);
     } catch (_) {}
 
-    if (!parsed || !parsed.accessToken) {
+    const hasMemberToken = Boolean(parsed?.accessToken);
+    const hasPageToken = Boolean(parsed?.pageAccessToken);
+
+    if (!hasMemberToken && !hasPageToken) {
       return res.status(200).json({ ok: true, connected: false });
     }
-
-    // Mask the access token for security
-    const maskedToken = parsed.accessToken.slice(0, 6) + "..." + parsed.accessToken.slice(-4);
 
     return res.status(200).json({
       ok: true,
       connected: true,
-      member: parsed.member || null,
-      organizations: parsed.organizations || [],
-      connectedAt: parsed.connectedAt || data.updated_at,
-      expiresAt: parsed.expiresAt || null,
-      maskedToken,
+      isMemberConnected: hasMemberToken,
+      isPageConnected: hasPageToken,
+      member: parsed?.member || null,
+      organizations: parsed?.organizations || [],
+      connectedAt: parsed?.connectedAt || parsed?.pageConnectedAt || data.updated_at,
     });
   } catch (err) {
     console.error("[LinkedIn Status Catch]:", err);

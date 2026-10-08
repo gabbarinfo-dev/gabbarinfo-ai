@@ -39,13 +39,19 @@ export default async function handler(req, res) {
     }
 
     const conn = JSON.parse(memRow.content);
-    const accessToken = conn?.accessToken;
-    const defaultAuthorUrn = conn?.member?.urn;
+    const isTargetOrg = targetUrn && targetUrn.startsWith("urn:li:organization:");
+    const activeToken = isTargetOrg
+      ? (conn?.pageAccessToken || conn?.accessToken)
+      : (conn?.accessToken || conn?.pageAccessToken);
 
-    if (!accessToken) {
+    const defaultAuthorUrn = conn?.organizations?.[0]?.urn || conn?.member?.urn;
+
+    if (!activeToken) {
       return res.status(400).json({
         ok: false,
-        error: "Active LinkedIn token not found. Please reconnect your account.",
+        error: isTargetOrg
+          ? "LinkedIn Company Page is not connected or token missing. Please connect Company Page."
+          : "Active LinkedIn token not found. Please reconnect your account.",
       });
     }
 
@@ -58,7 +64,7 @@ export default async function handler(req, res) {
     }
 
     const headers = {
-      Authorization: `Bearer ${accessToken}`,
+      Authorization: `Bearer ${activeToken}`,
       "LinkedIn-Version": "202401",
       "X-Restli-Protocol-Version": "2.0.0",
       "Content-Type": "application/json",
