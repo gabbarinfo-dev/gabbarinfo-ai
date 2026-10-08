@@ -1,6 +1,6 @@
 // pages/api/tiktok/sounds.js
 import https from "https";
-import { DEFAULT_TRENDING_SONGS } from "../../lib/tiktok/sounds-catalog.js";
+import { DEFAULT_TRENDING_SONGS } from "../../../lib/tiktok/sounds-catalog.js";
 
 export { DEFAULT_TRENDING_SONGS };
 
