@@ -10,6 +10,7 @@ import GoogleBusinessConnect from "./components/google/GoogleBusinessConnect";
 import WordPressSiteConnect from "./components/wordpress/WordPressSiteConnect";
 import ShopifyStoreConnect from "./components/shopify/ShopifyStoreConnect";
 import CinemaStudio from "./components/video/CinemaStudio";
+import LinkedInPilotConnect from "./components/linkedin/LinkedInPilotConnect";
 import SubscriptionModal from "./components/SubscriptionModal";
 import SocialMediaPlannerModal from "./components/social/SocialMediaPlannerModal";
 import CyberMatrixBackground from "./components/CyberMatrixBackground";
@@ -81,6 +82,8 @@ export default function HomePage() {
         const urlParams = new URLSearchParams(window.location.search);
         if (urlParams.get("tab") === "shopify" || urlParams.get("shopify_connected") === "1") {
           setActiveTab("shopify");
+        } else if (urlParams.get("tab") === "linkedin" || urlParams.get("linkedin_connected") === "1") {
+          setActiveTab("linkedin");
         } else if (urlParams.get("tab") === "reels" || urlParams.get("youtube_connected") === "true") {
           if (session?.user?.email?.toLowerCase() === ADMIN_EMAIL.toLowerCase()) {
             setActiveTab("reels");
@@ -363,6 +366,7 @@ export default function HomePage() {
   const NAV_ITEMS = [
     { id: "overview", label: "Command Center", icon: "🚀", badge: "Live" },
     { id: "social", label: "Social Pilot/Meta Ads", icon: "📱", badge: "FB + IG" },
+    { id: "linkedin", label: "LinkedIn Pilot", icon: "💼", badge: "Live" },
     { id: "ads", label: "Google Ads Campaigns", icon: "🎯", badge: "PPC" },
     { id: "chat", label: "AI Agent Chat", icon: "💬", badge: "Agent", href: "/chat" },
     { id: "wordpress", label: "WordPress & SEO", icon: "🌐", badge: hasWpConnected ? "Paired" : null },
@@ -1792,6 +1796,11 @@ export default function HomePage() {
                 </div>
               )}
 
+              {/* TAB: LINKEDIN PILOT WORKSTATION */}
+              {activeTab === "linkedin" && (
+                <LinkedInPilotConnect />
+              )}
+
               {/* TAB 4: LOCAL MAPS (GMB) WORKSTATION */}
               {activeTab === "gmb" && (
                 <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(min(100%, 480px), 1fr))", gap: 24 }}>
@@ -2096,6 +2105,19 @@ export default function HomePage() {
                   if (brandKey && typeof brandKey === "string") setActiveSocialBrand(brandKey);
                   setShowSocialPlanner(true);
                 }} />
+              </section>
+
+              {/* LinkedIn Pilot Section (Classic Mode) */}
+              <section
+                id="linkedin-section"
+                style={{
+                  padding: "clamp(16px, 3.5vw, 26px)",
+                  borderRadius: 18,
+                  background: "rgba(14, 19, 30, 0.78)",
+                  border: "1px solid rgba(255, 255, 255, 0.12)",
+                }}
+              >
+                <LinkedInPilotConnect />
               </section>
             </div>
           )}
