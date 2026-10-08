@@ -3006,6 +3006,10 @@ app.post(["/tiktok/jobs/generate-creative", "/tiktok/jobs/create"], requireAuth,
       logoUrl,
       autoAddMusic,
       audioPreset,
+      soundTitle,
+      soundArtist,
+      soundCover,
+      soundPreviewUrl,
     } = req.body || {};
 
     const jobId = `tt_job_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`;
@@ -3039,6 +3043,10 @@ app.post(["/tiktok/jobs/generate-creative", "/tiktok/jobs/create"], requireAuth,
           logoUrl,
           autoAddMusic,
           audioPreset,
+          soundTitle,
+          soundArtist,
+          soundCover,
+          soundPreviewUrl,
           openai,
           supabase,
         });

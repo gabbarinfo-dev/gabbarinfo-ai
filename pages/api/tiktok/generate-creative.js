@@ -107,9 +107,12 @@ export default async function handler(req, res) {
     topic = "Bespoke Collection Showcase",
     format = "CAROUSEL", // "SINGLE_IMAGE" | "CAROUSEL" | "REEL"
     slideCount = 2, // 1 for SINGLE_IMAGE, or 2, 3, 5 for CAROUSEL
-    logoUrl = null,
     autoAddMusic = true,
-    audioPreset = "chill_luxe_vibes",
+    audioPreset = "tt_1669485012",
+    soundTitle = null,
+    soundArtist = null,
+    soundCover = null,
+    soundPreviewUrl = null,
   } = req.body || {};
 
   try {
@@ -123,6 +126,10 @@ export default async function handler(req, res) {
       logoUrl,
       autoAddMusic,
       audioPreset,
+      soundTitle,
+      soundArtist,
+      soundCover,
+      soundPreviewUrl,
     });
 
     if (!dispatchResult.ok) {
