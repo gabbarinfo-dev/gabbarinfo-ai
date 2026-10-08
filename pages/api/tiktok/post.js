@@ -66,20 +66,30 @@ export default async function handler(req, res) {
     const isVideo = Boolean(videoUrl);
 
     // Build photo list: TikTok Photo Carousel requires at least 2 images
-    let photoImages = [];
+    let rawPhotoImages = [];
     if (Array.isArray(req.body?.images) && req.body.images.length >= 2) {
-      photoImages = req.body.images.filter(Boolean);
+      rawPhotoImages = req.body.images.filter(Boolean);
     } else if (imageUrl) {
-      photoImages = [
+      rawPhotoImages = [
         imageUrl,
-        req.body?.image2Url || "https://images.unsplash.com/photo-1535632066927-ab7c9ab60908?w=1080&q=80",
+        req.body?.image2Url || "https://ai.gabbarinfo.com/media/jewellery/slide2.jpg",
       ];
     } else {
-      photoImages = [
-        "https://images.unsplash.com/photo-1599643478518-a784e5dc4c8f?w=1080&q=80",
-        "https://images.unsplash.com/photo-1535632066927-ab7c9ab60908?w=1080&q=80",
+      rawPhotoImages = [
+        "https://ai.gabbarinfo.com/media/jewellery/slide1.jpg",
+        "https://ai.gabbarinfo.com/media/jewellery/slide2.jpg",
       ];
     }
+
+    // MANDATORY TIKTOK RULE: PULL_FROM_URL strictly enforces that all media URLs
+    // belong to the verified domain (https://ai.gabbarinfo.com).
+    const verifiedDomain = "https://ai.gabbarinfo.com";
+    const photoImages = rawPhotoImages.map((imgUrl, idx) => {
+      if (typeof imgUrl === "string" && imgUrl.startsWith(verifiedDomain)) {
+        return imgUrl;
+      }
+      return `${verifiedDomain}/api/tiktok/media-serve?url=${encodeURIComponent(imgUrl)}&slide=${idx + 1}`;
+    });
 
     // TikTok Content Posting API v2 endpoints:
     // Videos use /v2/post/publish/video/init/
