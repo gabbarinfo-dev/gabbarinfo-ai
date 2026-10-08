@@ -1041,9 +1041,23 @@ ${ctaDirectives}`
           } catch (_) {}
         }
 
+        // Resolve active destinations
+        const activeDestinations = Array.isArray(config.destinations) && config.destinations.length > 0
+          ? config.destinations
+          : (config.destination === "FACEBOOK_ONLY"
+              ? ["facebook"]
+              : config.destination === "INSTAGRAM_ONLY"
+              ? ["instagram"]
+              : ["facebook", "instagram"]);
+
+        const shouldPostFb = activeDestinations.includes("facebook");
+        const shouldPostIg = activeDestinations.includes("instagram");
+        const shouldPostLiPage = activeDestinations.includes("linkedin_page");
+        const shouldPostLiProfile = activeDestinations.includes("linkedin_profile");
+        const shouldPostTikTok = activeDestinations.includes("tiktok");
+
         // Publish to Facebook Page
-        const destination = config.destination || "BOTH";
-        if ((destination === "BOTH" || destination === "FACEBOOK_ONLY") && pageId && effectiveToken) {
+        if (shouldPostFb && pageId && effectiveToken) {
           try {
             logger(`[Social Autopilot] Publishing photo post to Facebook Page (${pageId})...`);
             const photoParams = new URLSearchParams();
@@ -1070,7 +1084,7 @@ ${ctaDirectives}`
         }
 
         // Publish to Instagram Profile
-        if ((destination === "BOTH" || destination === "INSTAGRAM_ONLY") && igId && effectiveToken) {
+        if (shouldPostIg && igId && effectiveToken) {
           try {
             logger(`[Social Autopilot] Publishing container to Instagram Profile (${igId})...`);
             const verifiedIgUrl = await ensureInstagramCompatibleJpeg({
@@ -1137,8 +1151,268 @@ ${ctaDirectives}`
         }
       }
 
+      // Publish to LinkedIn Company Page
+      if (activeDestinations?.includes("linkedin_page")) {
+        try {
+          logger(`[Social Autopilot] Publishing to LinkedIn Company Page for ${item.email}...`);
+          const { data: liMem } = await supabase
+            .from("agent_memory")
+            .select("content")
+            .eq("email", item.email.trim())
+            .eq("memory_type", "linkedin_connection")
+            .maybeSingle();
+
+          if (liMem?.content) {
+            const liConn = JSON.parse(liMem.content);
+            const liToken = liConn.pageAccessToken || liConn.accessToken;
+            const orgUrn = liConn.organizations?.[0]?.urn || (liConn.organizations?.[0]?.id ? `urn:li:organization:${liConn.organizations[0].id}` : null);
+
+            if (liToken && orgUrn) {
+              const liHeaders = {
+                Authorization: `Bearer ${liToken}`,
+                "LinkedIn-Version": "202401",
+                "X-Restli-Protocol-Version": "2.0.0",
+                "Content-Type": "application/json",
+              };
+
+              let liImageUrn = null;
+              if (publicImageUrl && publicImageUrl.startsWith("http")) {
+                try {
+                  const initRes = await fetch("https://api.linkedin.com/rest/images?action=initializeUpload", {
+                    method: "POST",
+                    headers: liHeaders,
+                    body: JSON.stringify({ initializeUploadRequest: { owner: orgUrn } }),
+                  });
+                  const initData = await initRes.json();
+                  const uploadUrl = initData?.value?.uploadUrl;
+                  liImageUrn = initData?.value?.image;
+
+                  if (uploadUrl && liImageUrn) {
+                    await fetch(uploadUrl, {
+                      method: "PUT",
+                      headers: { "Content-Type": "image/png" },
+                      body: imageBuffer,
+                    });
+                  }
+                } catch (liImgErr) {
+                  logger(`[Social Autopilot] LinkedIn Page image upload warning: ${liImgErr.message}`);
+                }
+              }
+
+              const postBody = {
+                author: orgUrn,
+                commentary: captionText.trim(),
+                visibility: "PUBLIC",
+                distribution: {
+                  feedDistribution: "MAIN_FEED",
+                  targetEntities: [],
+                  thirdPartyDistributionChannels: [],
+                },
+                lifecycleState: "PUBLISHED",
+                isReshareDisabledByAuthor: false,
+              };
+              if (liImageUrn) {
+                postBody.content = {
+                  media: {
+                    title: selectedHook || "GabbarInfo AI Creative Post",
+                    id: liImageUrn,
+                  },
+                };
+              }
+
+              const liRes = await fetch("https://api.linkedin.com/rest/posts", {
+                method: "POST",
+                headers: liHeaders,
+                body: JSON.stringify(postBody),
+              });
+              const postUrn = liRes.headers.get("x-restli-id");
+              if (liRes.ok || postUrn) {
+                const pUrl = postUrn ? `https://www.linkedin.com/feed/update/${encodeURIComponent(postUrn)}/` : "https://www.linkedin.com";
+                published.linkedin_page = { ok: true, id: postUrn || "posted", postUrl: pUrl };
+                logger(`[Social Autopilot] LinkedIn Company Page post published: ${postUrn}`);
+              } else {
+                const errData = await liRes.json().catch(() => ({}));
+                published.linkedin_page = { ok: false, error: errData.message || `HTTP ${liRes.status}` };
+              }
+            } else {
+              published.linkedin_page = { ok: false, error: "No LinkedIn Company Page linked" };
+            }
+          } else {
+            published.linkedin_page = { ok: false, error: "LinkedIn account not connected" };
+          }
+        } catch (liErr) {
+          published.linkedin_page = { ok: false, error: liErr.message };
+          logger(`[Social Autopilot] LinkedIn Page publish error: ${liErr.message}`);
+        }
+      }
+
+      // Publish to LinkedIn Personal Profile
+      if (activeDestinations?.includes("linkedin_profile")) {
+        try {
+          logger(`[Social Autopilot] Publishing to LinkedIn Profile for ${item.email}...`);
+          const { data: liMem } = await supabase
+            .from("agent_memory")
+            .select("content")
+            .eq("email", item.email.trim())
+            .eq("memory_type", "linkedin_connection")
+            .maybeSingle();
+
+          if (liMem?.content) {
+            const liConn = JSON.parse(liMem.content);
+            const liToken = liConn.accessToken || liConn.pageAccessToken;
+            const personUrn = liConn.member?.urn || (liConn.member?.sub ? `urn:li:person:${liConn.member.sub}` : null);
+
+            if (liToken && personUrn) {
+              const liHeaders = {
+                Authorization: `Bearer ${liToken}`,
+                "LinkedIn-Version": "202401",
+                "X-Restli-Protocol-Version": "2.0.0",
+                "Content-Type": "application/json",
+              };
+
+              let liImageUrn = null;
+              if (publicImageUrl && publicImageUrl.startsWith("http")) {
+                try {
+                  const initRes = await fetch("https://api.linkedin.com/rest/images?action=initializeUpload", {
+                    method: "POST",
+                    headers: liHeaders,
+                    body: JSON.stringify({ initializeUploadRequest: { owner: personUrn } }),
+                  });
+                  const initData = await initRes.json();
+                  const uploadUrl = initData?.value?.uploadUrl;
+                  liImageUrn = initData?.value?.image;
+
+                  if (uploadUrl && liImageUrn) {
+                    await fetch(uploadUrl, {
+                      method: "PUT",
+                      headers: { "Content-Type": "image/png" },
+                      body: imageBuffer,
+                    });
+                  }
+                } catch (liImgErr) {
+                  logger(`[Social Autopilot] LinkedIn Profile image upload warning: ${liImgErr.message}`);
+                }
+              }
+
+              const postBody = {
+                author: personUrn,
+                commentary: captionText.trim(),
+                visibility: "PUBLIC",
+                distribution: {
+                  feedDistribution: "MAIN_FEED",
+                  targetEntities: [],
+                  thirdPartyDistributionChannels: [],
+                },
+                lifecycleState: "PUBLISHED",
+                isReshareDisabledByAuthor: false,
+              };
+              if (liImageUrn) {
+                postBody.content = {
+                  media: {
+                    title: selectedHook || "GabbarInfo AI Creative Post",
+                    id: liImageUrn,
+                  },
+                };
+              }
+
+              const liRes = await fetch("https://api.linkedin.com/rest/posts", {
+                method: "POST",
+                headers: liHeaders,
+                body: JSON.stringify(postBody),
+              });
+              const postUrn = liRes.headers.get("x-restli-id");
+              if (liRes.ok || postUrn) {
+                const pUrl = postUrn ? `https://www.linkedin.com/feed/update/${encodeURIComponent(postUrn)}/` : "https://www.linkedin.com";
+                published.linkedin_profile = { ok: true, id: postUrn || "posted", postUrl: pUrl };
+                logger(`[Social Autopilot] LinkedIn Profile post published: ${postUrn}`);
+              } else {
+                const errData = await liRes.json().catch(() => ({}));
+                published.linkedin_profile = { ok: false, error: errData.message || `HTTP ${liRes.status}` };
+              }
+            } else {
+              published.linkedin_profile = { ok: false, error: "No LinkedIn Profile member URN found" };
+            }
+          } else {
+            published.linkedin_profile = { ok: false, error: "LinkedIn account not connected" };
+          }
+        } catch (liErr) {
+          published.linkedin_profile = { ok: false, error: liErr.message };
+          logger(`[Social Autopilot] LinkedIn Profile publish error: ${liErr.message}`);
+        }
+      }
+
+      // Publish to TikTok
+      if (activeDestinations?.includes("tiktok")) {
+        try {
+          logger(`[Social Autopilot] Publishing to TikTok for ${item.email}...`);
+          const { data: ttMem } = await supabase
+            .from("agent_memory")
+            .select("content")
+            .eq("email", item.email.trim())
+            .eq("memory_type", "tiktok_connection")
+            .maybeSingle();
+
+          if (ttMem?.content) {
+            const ttConn = JSON.parse(ttMem.content);
+            const ttToken = ttConn.accessToken;
+
+            if (ttToken && publicImageUrl) {
+              const ttPayload = {
+                post_info: {
+                  title: captionText.slice(0, 150),
+                  description: captionText,
+                  privacy_level: "PUBLIC_TO_EVERYONE",
+                  disable_comment: false,
+                },
+                source_info: {
+                  source: "PULL_FROM_URL",
+                  photo_cover_index: 1,
+                  photo_images: [publicImageUrl],
+                },
+                post_mode: "DIRECT_POST",
+                media_type: "PHOTO",
+              };
+
+              const ttRes = await fetch("https://open.tiktokapis.com/v2/post/publish/content/init/", {
+                method: "POST",
+                headers: {
+                  Authorization: `Bearer ${ttToken}`,
+                  "Content-Type": "application/json",
+                },
+                body: JSON.stringify(ttPayload),
+              });
+              const ttData = await ttRes.json().catch(() => ({}));
+
+              if (ttRes.ok && ttData.data?.publish_id) {
+                published.tiktok = {
+                  ok: true,
+                  id: ttData.data.publish_id,
+                  postUrl: "https://www.tiktok.com",
+                };
+                logger(`[Social Autopilot] TikTok post published: ${ttData.data.publish_id}`);
+              } else {
+                published.tiktok = { ok: false, error: ttData.error?.message || "TikTok publish error" };
+              }
+            } else {
+              published.tiktok = { ok: false, error: "TikTok token or image missing" };
+            }
+          } else {
+            published.tiktok = { ok: false, error: "TikTok account not connected" };
+          }
+        } catch (ttErr) {
+          published.tiktok = { ok: false, error: ttErr.message };
+          logger(`[Social Autopilot] TikTok publish error: ${ttErr.message}`);
+        }
+      }
+
       // 7. Persist updated state to Supabase agent_memory ONLY IF POST SUCCEEDED
-      const didPublishSuccessfully = Boolean(published.facebook?.ok || published.instagram?.ok);
+      const didPublishSuccessfully = Boolean(
+        published.facebook?.ok ||
+        published.instagram?.ok ||
+        published.linkedin_page?.ok ||
+        published.linkedin_profile?.ok ||
+        published.tiktok?.ok
+      );
 
       if (didPublishSuccessfully) {
         config.lastPublishedAt = now.toISOString();
@@ -1154,6 +1428,7 @@ ${ctaDirectives}`
           topic: topicTitle || activeService,
           imageUrl: publicImageUrl,
           publishedTo: published,
+          destinations: activeDestinations,
         });
         if (config.history.length > 30) config.history = config.history.slice(0, 30);
 

@@ -1520,18 +1520,27 @@ Respond ONLY in JSON: { "hook": "short catchy hook (4-7 words)", "topic": "speci
         const [captionResult, imageUrl] = await Promise.all([captionTask, imageTask]);
         const caption = captionResult.caption;
 
-        // Determine destination: respect current.destination, fallback to connection capability
-        let destination = current.destination || (hasFacebook && !hasInstagram ? "FACEBOOK_ONLY" : "BOTH");
-        if (destination === "BOTH" && !hasInstagram && hasFacebook) {
-          destination = "FACEBOOK_ONLY";
-        }
+        // Determine active destination channels
+        const activeDestinations = Array.isArray(current.destinations) && current.destinations.length > 0
+          ? current.destinations
+          : (current.destination === "FACEBOOK_ONLY"
+              ? ["facebook"]
+              : current.destination === "INSTAGRAM_ONLY"
+              ? ["instagram"]
+              : ["facebook", "instagram"]);
+
+        const shouldPostFb = activeDestinations.includes("facebook");
+        const shouldPostIg = activeDestinations.includes("instagram");
+        const shouldPostLiPage = activeDestinations.includes("linkedin_page");
+        const shouldPostLiProfile = activeDestinations.includes("linkedin_profile");
+        const shouldPostTikTok = activeDestinations.includes("tiktok");
 
         const publishedTo = {};
         let fbPostUrl = null;
         let igPostUrl = null;
 
-        // 1. Facebook
-        if (destination === "BOTH" || destination === "FACEBOOK_ONLY") {
+        // 1. Facebook Page
+        if (shouldPostFb) {
           try {
             const fbResult = await executeFacebookPost({
               userEmail: normalizedEmail,
@@ -1552,7 +1561,7 @@ Respond ONLY in JSON: { "hook": "short catchy hook (4-7 words)", "topic": "speci
         }
 
         // 2. Instagram
-        if (destination === "BOTH" || destination === "INSTAGRAM_ONLY") {
+        if (shouldPostIg) {
           try {
             const igResult = await executeInstagramPost({
               userEmail: normalizedEmail,
@@ -1572,15 +1581,275 @@ Respond ONLY in JSON: { "hook": "short catchy hook (4-7 words)", "topic": "speci
           }
         }
 
-        // Check if publication succeeded for designated target
-        const fbFailed = (destination === "BOTH" || destination === "FACEBOOK_ONLY") && !publishedTo.facebook?.ok;
-        const igFailed = (destination === "BOTH" || destination === "INSTAGRAM_ONLY") && !publishedTo.instagram?.ok;
+        // 3. LinkedIn Company Page
+        if (shouldPostLiPage) {
+          try {
+            const { data: liMem } = await supabase
+              .from("agent_memory")
+              .select("content")
+              .eq("email", normalizedEmail)
+              .eq("memory_type", "linkedin_connection")
+              .maybeSingle();
 
-        if (fbFailed && (igFailed || destination === "FACEBOOK_ONLY")) {
-          const errors = [
-            publishedTo.facebook?.error ? `Facebook: ${publishedTo.facebook.error}` : null,
-            publishedTo.instagram?.error ? `Instagram: ${publishedTo.instagram.error}` : null,
-          ].filter(Boolean).join(" | ");
+            if (liMem?.content) {
+              const liConn = JSON.parse(liMem.content);
+              const liToken = liConn.pageAccessToken || liConn.accessToken;
+              const orgUrn = liConn.organizations?.[0]?.urn || (liConn.organizations?.[0]?.id ? `urn:li:organization:${liConn.organizations[0].id}` : null);
+
+              if (liToken && orgUrn) {
+                const liHeaders = {
+                  Authorization: `Bearer ${liToken}`,
+                  "LinkedIn-Version": "202401",
+                  "X-Restli-Protocol-Version": "2.0.0",
+                  "Content-Type": "application/json",
+                };
+
+                let liImageUrn = null;
+                if (imageUrl && imageUrl.startsWith("http")) {
+                  try {
+                    const imgRes = await fetch(imageUrl);
+                    const imgBuf = Buffer.from(await imgRes.arrayBuffer());
+                    const cType = imgRes.headers.get("content-type") || "image/jpeg";
+
+                    const initRes = await fetch("https://api.linkedin.com/rest/images?action=initializeUpload", {
+                      method: "POST",
+                      headers: liHeaders,
+                      body: JSON.stringify({
+                        initializeUploadRequest: { owner: orgUrn },
+                      }),
+                    });
+                    const initData = await initRes.json();
+                    const uploadUrl = initData?.value?.uploadUrl;
+                    liImageUrn = initData?.value?.image;
+
+                    if (uploadUrl && liImageUrn) {
+                      await fetch(uploadUrl, {
+                        method: "PUT",
+                        headers: { "Content-Type": cType },
+                        body: imgBuf,
+                      });
+                    }
+                  } catch (imgErr) {
+                    console.warn("[Social Autopilot] LinkedIn Page image upload warning:", imgErr.message);
+                  }
+                }
+
+                const postBody = {
+                  author: orgUrn,
+                  commentary: caption.trim(),
+                  visibility: "PUBLIC",
+                  distribution: {
+                    feedDistribution: "MAIN_FEED",
+                    targetEntities: [],
+                    thirdPartyDistributionChannels: [],
+                  },
+                  lifecycleState: "PUBLISHED",
+                  isReshareDisabledByAuthor: false,
+                };
+                if (liImageUrn) {
+                  postBody.content = {
+                    media: {
+                      title: targetItem.hook || "GabbarInfo AI Creative Post",
+                      id: liImageUrn,
+                    },
+                  };
+                }
+
+                const liRes = await fetch("https://api.linkedin.com/rest/posts", {
+                  method: "POST",
+                  headers: liHeaders,
+                  body: JSON.stringify(postBody),
+                });
+
+                const postUrn = liRes.headers.get("x-restli-id");
+                if (liRes.ok || postUrn) {
+                  const pUrl = postUrn ? `https://www.linkedin.com/feed/update/${encodeURIComponent(postUrn)}/` : "https://www.linkedin.com";
+                  publishedTo.linkedin_page = { ok: true, id: postUrn || "posted", postUrl: pUrl };
+                } else {
+                  const errData = await liRes.json().catch(() => ({}));
+                  publishedTo.linkedin_page = { ok: false, error: errData.message || `API error ${liRes.status}` };
+                }
+              } else {
+                publishedTo.linkedin_page = { ok: false, error: "No LinkedIn Company Page linked" };
+              }
+            } else {
+              publishedTo.linkedin_page = { ok: false, error: "LinkedIn account not connected" };
+            }
+          } catch (liErr) {
+            console.error("[Social Autopilot] LinkedIn Page publish error:", liErr.message);
+            publishedTo.linkedin_page = { ok: false, error: liErr.message };
+          }
+        }
+
+        // 4. LinkedIn Personal Profile
+        if (shouldPostLiProfile) {
+          try {
+            const { data: liMem } = await supabase
+              .from("agent_memory")
+              .select("content")
+              .eq("email", normalizedEmail)
+              .eq("memory_type", "linkedin_connection")
+              .maybeSingle();
+
+            if (liMem?.content) {
+              const liConn = JSON.parse(liMem.content);
+              const liToken = liConn.accessToken || liConn.pageAccessToken;
+              const personUrn = liConn.member?.urn || (liConn.member?.sub ? `urn:li:person:${liConn.member.sub}` : null);
+
+              if (liToken && personUrn) {
+                const liHeaders = {
+                  Authorization: `Bearer ${liToken}`,
+                  "LinkedIn-Version": "202401",
+                  "X-Restli-Protocol-Version": "2.0.0",
+                  "Content-Type": "application/json",
+                };
+
+                let liImageUrn = null;
+                if (imageUrl && imageUrl.startsWith("http")) {
+                  try {
+                    const imgRes = await fetch(imageUrl);
+                    const imgBuf = Buffer.from(await imgRes.arrayBuffer());
+                    const cType = imgRes.headers.get("content-type") || "image/jpeg";
+
+                    const initRes = await fetch("https://api.linkedin.com/rest/images?action=initializeUpload", {
+                      method: "POST",
+                      headers: liHeaders,
+                      body: JSON.stringify({
+                        initializeUploadRequest: { owner: personUrn },
+                      }),
+                    });
+                    const initData = await initRes.json();
+                    const uploadUrl = initData?.value?.uploadUrl;
+                    liImageUrn = initData?.value?.image;
+
+                    if (uploadUrl && liImageUrn) {
+                      await fetch(uploadUrl, {
+                        method: "PUT",
+                        headers: { "Content-Type": cType },
+                        body: imgBuf,
+                      });
+                    }
+                  } catch (imgErr) {
+                    console.warn("[Social Autopilot] LinkedIn Profile image upload warning:", imgErr.message);
+                  }
+                }
+
+                const postBody = {
+                  author: personUrn,
+                  commentary: caption.trim(),
+                  visibility: "PUBLIC",
+                  distribution: {
+                    feedDistribution: "MAIN_FEED",
+                    targetEntities: [],
+                    thirdPartyDistributionChannels: [],
+                  },
+                  lifecycleState: "PUBLISHED",
+                  isReshareDisabledByAuthor: false,
+                };
+                if (liImageUrn) {
+                  postBody.content = {
+                    media: {
+                      title: targetItem.hook || "GabbarInfo AI Creative Post",
+                      id: liImageUrn,
+                    },
+                  };
+                }
+
+                const liRes = await fetch("https://api.linkedin.com/rest/posts", {
+                  method: "POST",
+                  headers: liHeaders,
+                  body: JSON.stringify(postBody),
+                });
+
+                const postUrn = liRes.headers.get("x-restli-id");
+                if (liRes.ok || postUrn) {
+                  const pUrl = postUrn ? `https://www.linkedin.com/feed/update/${encodeURIComponent(postUrn)}/` : "https://www.linkedin.com";
+                  publishedTo.linkedin_profile = { ok: true, id: postUrn || "posted", postUrl: pUrl };
+                } else {
+                  const errData = await liRes.json().catch(() => ({}));
+                  publishedTo.linkedin_profile = { ok: false, error: errData.message || `API error ${liRes.status}` };
+                }
+              } else {
+                publishedTo.linkedin_profile = { ok: false, error: "No LinkedIn Profile member URN found" };
+              }
+            } else {
+              publishedTo.linkedin_profile = { ok: false, error: "LinkedIn account not connected" };
+            }
+          } catch (liErr) {
+            console.error("[Social Autopilot] LinkedIn Profile publish error:", liErr.message);
+            publishedTo.linkedin_profile = { ok: false, error: liErr.message };
+          }
+        }
+
+        // 5. TikTok Direct Post
+        if (shouldPostTikTok) {
+          try {
+            const { data: ttMem } = await supabase
+              .from("agent_memory")
+              .select("content")
+              .eq("email", normalizedEmail)
+              .eq("memory_type", "tiktok_connection")
+              .maybeSingle();
+
+            if (ttMem?.content) {
+              const ttConn = JSON.parse(ttMem.content);
+              const ttToken = ttConn.accessToken;
+
+              if (ttToken && imageUrl) {
+                const ttPayload = {
+                  post_info: {
+                    title: (caption || "GabbarInfo AI Creative Post").slice(0, 150),
+                    description: caption || "",
+                    privacy_level: "PUBLIC_TO_EVERYONE",
+                    disable_comment: false,
+                  },
+                  source_info: {
+                    source: "PULL_FROM_URL",
+                    photo_cover_index: 1,
+                    photo_images: [imageUrl],
+                  },
+                  post_mode: "DIRECT_POST",
+                  media_type: "PHOTO",
+                };
+
+                const ttRes = await fetch("https://open.tiktokapis.com/v2/post/publish/content/init/", {
+                  method: "POST",
+                  headers: {
+                    Authorization: `Bearer ${ttToken}`,
+                    "Content-Type": "application/json",
+                  },
+                  body: JSON.stringify(ttPayload),
+                });
+                const ttData = await ttRes.json().catch(() => ({}));
+
+                if (ttRes.ok && ttData.data?.publish_id) {
+                  publishedTo.tiktok = {
+                    ok: true,
+                    id: ttData.data.publish_id,
+                    postUrl: "https://www.tiktok.com",
+                  };
+                } else {
+                  publishedTo.tiktok = { ok: false, error: ttData.error?.message || "TikTok publish error" };
+                }
+              } else {
+                publishedTo.tiktok = { ok: false, error: "TikTok token or image missing" };
+              }
+            } else {
+              publishedTo.tiktok = { ok: false, error: "TikTok account not connected" };
+            }
+          } catch (ttErr) {
+            console.error("[Social Autopilot] TikTok publish error:", ttErr.message);
+            publishedTo.tiktok = { ok: false, error: ttErr.message };
+          }
+        }
+
+        // Check if publication succeeded for at least one designated channel
+        const anySucceeded = Object.values(publishedTo).some((p) => p?.ok);
+
+        if (!anySucceeded) {
+          const errors = Object.entries(publishedTo)
+            .map(([k, v]) => `${k}: ${v?.error || "failed"}`)
+            .join(" | ");
 
           if (quotaRes?.reservationId) {
             await releaseQuota({
@@ -1588,7 +1857,7 @@ Respond ONLY in JSON: { "hook": "short catchy hook (4-7 words)", "topic": "speci
               businessId: quotaRes.businessId,
               cycleStart: quotaRes.cycleStart,
               actionType: "SOCIAL_POST",
-              reason: "Publishing to social network failed",
+              reason: "Publishing to social networks failed",
             });
           }
 
@@ -1601,7 +1870,7 @@ Respond ONLY in JSON: { "hook": "short catchy hook (4-7 words)", "topic": "speci
             });
           }
 
-          return res.status(400).json({ ok: false, error: errors || "Publishing to designated destination failed." });
+          return res.status(400).json({ ok: false, error: errors || "Publishing to designated destination channels failed." });
         }
 
         // Commit successful post quota
@@ -1644,7 +1913,9 @@ Respond ONLY in JSON: { "hook": "short catchy hook (4-7 words)", "topic": "speci
         current.lastPublishedAt = now.toISOString();
         current.publishedCount = (current.publishedCount || 0) + 1;
         current.testPostsUsed = (current.testPostsUsed || 0) + 1;
-        current.destination = destination;
+        current.destinations = activeDestinations;
+        const legacyDest = (shouldPostFb && shouldPostIg) ? "BOTH" : shouldPostFb ? "FACEBOOK_ONLY" : shouldPostIg ? "INSTAGRAM_ONLY" : "CUSTOM";
+        current.destination = legacyDest;
 
         if (!Array.isArray(current.history)) current.history = [];
         current.history.unshift({
@@ -1654,9 +1925,10 @@ Respond ONLY in JSON: { "hook": "short catchy hook (4-7 words)", "topic": "speci
           hook,
           service,
           imageUrl,
-          destination,
+          destination: legacyDest,
+          destinations: activeDestinations,
           publishedTo,
-          postUrl: fbPostUrl || igPostUrl || null,
+          postUrl: fbPostUrl || igPostUrl || publishedTo.linkedin_page?.postUrl || publishedTo.linkedin_profile?.postUrl || publishedTo.tiktok?.postUrl || null,
         });
 
         if (current.history.length > 50) current.history = current.history.slice(0, 50);

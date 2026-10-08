@@ -52,6 +52,12 @@ export default function SocialMediaPlannerModal({ onClose, isTrial99: propIsTria
   const [refreshingTopics, setRefreshingTopics] = useState(false);
   const [uploadingLogo, setUploadingLogo] = useState(false);
 
+  // Cross-Network States (LinkedIn & TikTok)
+  const [hasLinkedIn, setHasLinkedIn] = useState(false);
+  const [linkedInDetails, setLinkedInDetails] = useState({ memberName: "", organizations: [] });
+  const [hasTikTok, setHasTikTok] = useState(false);
+  const [tikTokDetails, setTikTokDetails] = useState({ displayName: "", username: "" });
+
   // Load initial config
   useEffect(() => {
     fetchConfig(initialBrand || selectedBrand);
@@ -91,6 +97,35 @@ export default function SocialMediaPlannerModal({ onClose, isTrial99: propIsTria
           setSelectedBrand(data.activeBrand);
         }
       }
+      // Check LinkedIn status
+      try {
+        const liRes = await fetch("/api/linkedin/status");
+        const liData = await liRes.json();
+        if (liData.ok && liData.connected) {
+          setHasLinkedIn(true);
+          setLinkedInDetails({
+            memberName: liData.member?.name || "Connected Profile",
+            organizations: liData.organizations || [],
+          });
+        } else {
+          setHasLinkedIn(false);
+        }
+      } catch (_) {}
+
+      // Check TikTok status
+      try {
+        const ttRes = await fetch("/api/tiktok/status");
+        const ttData = await ttRes.json();
+        if (ttData.ok && ttData.connected) {
+          setHasTikTok(true);
+          setTikTokDetails({
+            displayName: ttData.user?.displayName || "Connected TikTok",
+            username: ttData.user?.openId ? `@${(ttData.user.displayName || "tiktok").replace(/\s+/g, "").toLowerCase()}` : "",
+          });
+        } else {
+          setHasTikTok(false);
+        }
+      } catch (_) {}
     } catch (e) {
       console.error("Failed to load social config:", e);
     } finally {
@@ -344,12 +379,18 @@ export default function SocialMediaPlannerModal({ onClose, isTrial99: propIsTria
       return;
     }
 
-    const destLabel =
-      config.destination === "BOTH"
-        ? "Both Facebook Page & Instagram"
-        : config.destination === "FACEBOOK_ONLY"
-        ? "Facebook Page"
-        : "Instagram";
+    const activeDests = Array.isArray(config.destinations) && config.destinations.length > 0
+      ? config.destinations
+      : (config.destination === "FACEBOOK_ONLY" ? ["facebook"] : config.destination === "INSTAGRAM_ONLY" ? ["instagram"] : ["facebook", "instagram"]);
+
+    const channelNames = {
+      facebook: "Facebook Page",
+      instagram: "Instagram Feed",
+      linkedin_page: "LinkedIn Company Page",
+      linkedin_profile: "LinkedIn Profile",
+      tiktok: "TikTok Account",
+    };
+    const destLabel = activeDests.map((d) => channelNames[d] || d).join(", ") || "Selected Channels";
 
     const topicLabel = typeof selectedTopic === "string" && selectedTopic.trim()
       ? ` on topic:\n"${selectedTopic.trim()}"`
@@ -879,11 +920,19 @@ export default function SocialMediaPlannerModal({ onClose, isTrial99: propIsTria
                 <div>
                   <span style={{ fontSize: 12, color: "#94a3b8" }}>Target: </span>
                   <strong style={{ color: "#38bdf8", fontSize: 12 }}>
-                    {config.destination === "BOTH"
-                      ? "Both FB & IG"
-                      : config.destination === "FACEBOOK_ONLY"
-                      ? "Facebook Only"
-                      : "Instagram Only"}
+                    {(() => {
+                      const list = Array.isArray(config.destinations) && config.destinations.length > 0
+                        ? config.destinations
+                        : (config.destination === "FACEBOOK_ONLY" ? ["facebook"] : config.destination === "INSTAGRAM_ONLY" ? ["instagram"] : ["facebook", "instagram"]);
+                      const mapNames = {
+                        facebook: "FB",
+                        instagram: "IG",
+                        linkedin_page: "LI Page",
+                        linkedin_profile: "LI Profile",
+                        tiktok: "TikTok",
+                      };
+                      return list.map((k) => mapNames[k] || k).join(" + ") || "None";
+                    })()}
                   </strong>
                   <span style={{ color: "#475569", margin: "0 6px" }}>•</span>
                   <span style={{ fontSize: 12, color: "#94a3b8" }}>Cadence: </span>
@@ -1388,101 +1437,281 @@ export default function SocialMediaPlannerModal({ onClose, isTrial99: propIsTria
                   )}
                 </div>
 
-                <h3 style={{ margin: "0 0 6px 0", fontSize: 15, fontWeight: 800 }}>
-                  1. Posting Destination Channel
-                </h3>
-                <p style={{ margin: "0 0 14px 0", fontSize: 13, color: "#94a3b8" }}>
-                  Choose where your autonomous graphics and captions will be published for <strong>{config.businessName || selectedBrand}</strong>:
-                </p>
+                {(() => {
+                  const currentDests = Array.isArray(config.destinations) && config.destinations.length > 0
+                    ? config.destinations
+                    : (config.destination === "FACEBOOK_ONLY"
+                        ? ["facebook"]
+                        : config.destination === "INSTAGRAM_ONLY"
+                        ? ["instagram"]
+                        : ["facebook", "instagram"]);
 
-                <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(140px, 1fr))", gap: 10 }}>
-                  {[
+                  const handleToggleDest = (id) => {
+                    let next;
+                    if (currentDests.includes(id)) {
+                      if (currentDests.length <= 1) {
+                        alert("At least one publishing channel must remain selected.");
+                        return;
+                      }
+                      next = currentDests.filter((d) => d !== id);
+                    } else {
+                      next = [...currentDests, id];
+                    }
+                    const hasFb = next.includes("facebook");
+                    const hasIg = next.includes("instagram");
+                    const legacy = (hasFb && hasIg) ? "BOTH" : hasFb ? "FACEBOOK_ONLY" : hasIg ? "INSTAGRAM_ONLY" : "CUSTOM";
+                    saveConfig({ destinations: next, destination: legacy });
+                  };
+
+                  const handleApplyPreset = (presetList) => {
+                    const hasFb = presetList.includes("facebook");
+                    const hasIg = presetList.includes("instagram");
+                    const legacy = (hasFb && hasIg) ? "BOTH" : hasFb ? "FACEBOOK_ONLY" : hasIg ? "INSTAGRAM_ONLY" : "CUSTOM";
+                    saveConfig({ destinations: presetList, destination: legacy });
+                  };
+
+                  const channels = [
                     {
-                      id: "BOTH",
-                      title: "Both Facebook & Instagram",
-                      desc: "Simultaneous cross-posting for maximum reach and audience growth.",
-                      badge: "Recommended",
-                      icon: "✨",
-                    },
-                    {
-                      id: "FACEBOOK_ONLY",
-                      title: "Facebook Page Only",
-                      desc: "Publishes graphics & link updates exclusively to your Facebook Page feed.",
+                      id: "facebook",
+                      title: "Facebook Page",
+                      subtitle: "Publishes graphics & captions to your Page feed",
                       icon: "📘",
+                      platform: "Meta",
+                      connected: hasFacebook,
+                      statusBadge: hasFacebook ? `Connected (${fbPageName || "Page Linked"})` : "Not Connected",
+                      connectUrl: null,
                     },
                     {
-                      id: "INSTAGRAM_ONLY",
-                      title: "Instagram Only",
-                      desc: "Publishes high-aesthetic 1:1 image cards and hashtags exclusively to Instagram.",
+                      id: "instagram",
+                      title: "Instagram Feed",
+                      subtitle: "Publishes 1:1 image cards & hashtags to Instagram",
                       icon: "📸",
+                      platform: "Meta",
+                      connected: hasInstagram,
+                      statusBadge: hasInstagram ? `Connected (${igUsername ? `@${igUsername.replace(/^@/, "")}` : "Active"})` : "Not Connected",
+                      connectUrl: null,
+                      tip: !hasInstagram && hasFacebook ? "Link Instagram Professional to your FB Page in Meta Business Suite" : null,
                     },
-                  ].map((opt) => (
-                    <div
-                      key={opt.id}
-                      onClick={() => saveConfig({ destination: opt.id })}
-                      style={{
-                        padding: "14px 16px",
-                        borderRadius: 14,
-                        cursor: "pointer",
-                        background:
-                          config.destination === opt.id
-                            ? "linear-gradient(135deg, rgba(56, 189, 248, 0.12) 0%, rgba(16, 185, 129, 0.08) 100%)"
-                            : "rgba(255, 255, 255, 0.03)",
-                        border: `1.5px solid ${
-                          config.destination === opt.id ? "#38bdf8" : "rgba(255, 255, 255, 0.08)"
-                        }`,
-                        boxShadow: config.destination === opt.id ? "0 0 25px rgba(56, 189, 248, 0.15)" : "none",
-                        transition: "all 0.2s ease",
-                      }}
-                    >
-                      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 8 }}>
-                        <span style={{ fontSize: 20 }}>{opt.icon}</span>
-                        {opt.badge && (
-                          <span
+                    {
+                      id: "linkedin_page",
+                      title: "LinkedIn Company Page",
+                      subtitle: "Broadcasts to corporate followers & industry leads",
+                      icon: "🏢",
+                      platform: "LinkedIn B2B",
+                      connected: hasLinkedIn && Boolean(linkedInDetails.organizations?.length > 0),
+                      statusBadge: hasLinkedIn && linkedInDetails.organizations?.length > 0 ? `Connected (${linkedInDetails.organizations[0].name || "Page Linked"})` : "Not Connected",
+                      connectUrl: "/api/linkedin/connect?type=page",
+                    },
+                    {
+                      id: "linkedin_profile",
+                      title: "LinkedIn Profile",
+                      subtitle: "Shares thought leadership to personal connections",
+                      icon: "💼",
+                      platform: "LinkedIn Personal",
+                      connected: hasLinkedIn && Boolean(linkedInDetails.memberName),
+                      statusBadge: hasLinkedIn && linkedInDetails.memberName ? `Connected (${linkedInDetails.memberName})` : "Not Connected",
+                      connectUrl: "/api/linkedin/connect?type=member",
+                    },
+                    {
+                      id: "tiktok",
+                      title: "TikTok Account",
+                      subtitle: "Publishes direct photo & video creative carousels",
+                      icon: "🎵",
+                      platform: "TikTok Direct",
+                      connected: hasTikTok,
+                      statusBadge: hasTikTok ? `Connected (${tikTokDetails.username || tikTokDetails.displayName || "Active"})` : "Not Connected",
+                      connectUrl: "/api/tiktok/connect",
+                    },
+                  ];
+
+                  return (
+                    <div>
+                      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", flexWrap: "wrap", gap: 10, marginBottom: 8 }}>
+                        <div>
+                          <h3 style={{ margin: "0 0 4px 0", fontSize: 15, fontWeight: 800 }}>
+                            1. Posting Destination Channels
+                          </h3>
+                          <p style={{ margin: 0, fontSize: 13, color: "#94a3b8" }}>
+                            Choose where your autonomous posts will be published for <strong>{config.businessName || selectedBrand}</strong>:
+                          </p>
+                        </div>
+
+                        {/* Quick Presets */}
+                        <div style={{ display: "flex", gap: 6, flexWrap: "wrap", alignItems: "center" }}>
+                          <span style={{ fontSize: 11, color: "#64748b", fontWeight: 700, marginRight: 2 }}>Presets:</span>
+                          <button
+                            type="button"
+                            onClick={() => handleApplyPreset(["facebook", "instagram", "linkedin_page", "linkedin_profile", "tiktok"])}
                             style={{
-                              fontSize: 10,
-                              fontWeight: 800,
-                              padding: "2px 8px",
-                              borderRadius: 999,
-                              background: "rgba(16, 185, 129, 0.2)",
-                              color: "#34d399",
-                              border: "1px solid rgba(16, 185, 129, 0.4)",
+                              padding: "4px 9px",
+                              fontSize: 11,
+                              fontWeight: 700,
+                              borderRadius: 8,
+                              background: currentDests.length === 5 ? "rgba(56, 189, 248, 0.2)" : "rgba(255, 255, 255, 0.05)",
+                              color: currentDests.length === 5 ? "#38bdf8" : "#94a3b8",
+                              border: `1px solid ${currentDests.length === 5 ? "#38bdf8" : "rgba(255, 255, 255, 0.1)"}`,
+                              cursor: "pointer",
                             }}
                           >
-                            {opt.badge}
+                            ✨ All 4 Platforms
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => handleApplyPreset(["facebook", "instagram"])}
+                            style={{
+                              padding: "4px 9px",
+                              fontSize: 11,
+                              fontWeight: 700,
+                              borderRadius: 8,
+                              background: (currentDests.length === 2 && currentDests.includes("facebook") && currentDests.includes("instagram")) ? "rgba(56, 189, 248, 0.2)" : "rgba(255, 255, 255, 0.05)",
+                              color: (currentDests.length === 2 && currentDests.includes("facebook") && currentDests.includes("instagram")) ? "#38bdf8" : "#94a3b8",
+                              border: `1px solid ${(currentDests.length === 2 && currentDests.includes("facebook") && currentDests.includes("instagram")) ? "#38bdf8" : "rgba(255, 255, 255, 0.1)"}`,
+                              cursor: "pointer",
+                            }}
+                          >
+                            🌐 Meta (FB + IG)
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => handleApplyPreset(["facebook", "instagram", "linkedin_page", "linkedin_profile"])}
+                            style={{
+                              padding: "4px 9px",
+                              fontSize: 11,
+                              fontWeight: 700,
+                              borderRadius: 8,
+                              background: (currentDests.length === 4 && !currentDests.includes("tiktok")) ? "rgba(56, 189, 248, 0.2)" : "rgba(255, 255, 255, 0.05)",
+                              color: (currentDests.length === 4 && !currentDests.includes("tiktok")) ? "#38bdf8" : "#94a3b8",
+                              border: `1px solid ${(currentDests.length === 4 && !currentDests.includes("tiktok")) ? "#38bdf8" : "rgba(255, 255, 255, 0.1)"}`,
+                              cursor: "pointer",
+                            }}
+                          >
+                            💼 B2B + Social
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => handleApplyPreset(["facebook", "instagram", "tiktok"])}
+                            style={{
+                              padding: "4px 9px",
+                              fontSize: 11,
+                              fontWeight: 700,
+                              borderRadius: 8,
+                              background: (currentDests.length === 3 && currentDests.includes("tiktok")) ? "rgba(56, 189, 248, 0.2)" : "rgba(255, 255, 255, 0.05)",
+                              color: (currentDests.length === 3 && currentDests.includes("tiktok")) ? "#38bdf8" : "#94a3b8",
+                              border: `1px solid ${(currentDests.length === 3 && currentDests.includes("tiktok")) ? "#38bdf8" : "rgba(255, 255, 255, 0.1)"}`,
+                              cursor: "pointer",
+                            }}
+                          >
+                            🎵 TikTok + Meta
+                          </button>
+                        </div>
+                      </div>
+
+                      {/* 5 Destination Cards */}
+                      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(210px, 1fr))", gap: 10, marginTop: 12 }}>
+                        {channels.map((chan) => {
+                          const isSelected = currentDests.includes(chan.id);
+                          return (
+                            <div
+                              key={chan.id}
+                              onClick={() => handleToggleDest(chan.id)}
+                              style={{
+                                padding: "14px 14px",
+                                borderRadius: 14,
+                                cursor: "pointer",
+                                background: isSelected
+                                  ? "linear-gradient(135deg, rgba(56, 189, 248, 0.14) 0%, rgba(16, 185, 129, 0.08) 100%)"
+                                  : "rgba(255, 255, 255, 0.03)",
+                                border: `1.5px solid ${isSelected ? "#38bdf8" : "rgba(255, 255, 255, 0.08)"}`,
+                                boxShadow: isSelected ? "0 0 20px rgba(56, 189, 248, 0.18)" : "none",
+                                transition: "all 0.2s ease",
+                                display: "flex",
+                                flexDirection: "column",
+                                justifyContent: "space-between",
+                                minHeight: 125,
+                              }}
+                            >
+                              <div>
+                                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 8 }}>
+                                  <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                                    <span style={{ fontSize: 22 }}>{chan.icon}</span>
+                                    <span style={{ fontSize: 10, fontWeight: 700, color: "#64748b", textTransform: "uppercase", letterSpacing: "0.5px" }}>
+                                      {chan.platform}
+                                    </span>
+                                  </div>
+                                  <div
+                                    style={{
+                                      width: 20,
+                                      height: 20,
+                                      borderRadius: 6,
+                                      display: "flex",
+                                      alignItems: "center",
+                                      justifyContent: "center",
+                                      background: isSelected ? "linear-gradient(135deg, #38bdf8, #10b981)" : "rgba(255, 255, 255, 0.08)",
+                                      border: `1px solid ${isSelected ? "#38bdf8" : "rgba(255, 255, 255, 0.2)"}`,
+                                      color: "#ffffff",
+                                      fontSize: 12,
+                                      fontWeight: 900,
+                                    }}
+                                  >
+                                    {isSelected ? "✓" : ""}
+                                  </div>
+                                </div>
+                                <h4 style={{ margin: "0 0 4px 0", fontSize: 13, fontWeight: 700, color: "#ffffff" }}>
+                                  {chan.title}
+                                </h4>
+                                <p style={{ margin: 0, fontSize: 11, color: "#94a3b8", lineHeight: 1.35 }}>
+                                  {chan.subtitle}
+                                </p>
+                              </div>
+
+                              <div style={{ marginTop: 10, paddingTop: 8, borderTop: "1px solid rgba(255, 255, 255, 0.06)", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                                <span style={{ fontSize: 11, color: chan.connected ? "#34d399" : "#94a3b8", fontWeight: 600 }}>
+                                  {chan.connected ? `🟢 ${chan.statusBadge}` : `⚪ ${chan.statusBadge}`}
+                                </span>
+                                {!chan.connected && chan.connectUrl && (
+                                  <button
+                                    type="button"
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      window.open(chan.connectUrl, "_blank");
+                                    }}
+                                    style={{
+                                      padding: "3px 8px",
+                                      fontSize: 10,
+                                      fontWeight: 800,
+                                      borderRadius: 6,
+                                      background: "rgba(56, 189, 248, 0.15)",
+                                      color: "#38bdf8",
+                                      border: "1px solid rgba(56, 189, 248, 0.3)",
+                                      cursor: "pointer",
+                                    }}
+                                  >
+                                    Connect ↗
+                                  </button>
+                                )}
+                              </div>
+                            </div>
+                          );
+                        })}
+                      </div>
+
+                      {/* Info & Sync Guidance */}
+                      <div style={{ marginTop: 12, display: "flex", gap: 12, fontSize: 11, color: "#94a3b8", flexWrap: "wrap", alignItems: "center" }}>
+                        <span>
+                          Selected channels ({currentDests.length}):{" "}
+                          <strong style={{ color: "#38bdf8" }}>
+                            {currentDests.map((d) => channels.find((c) => c.id === d)?.title || d).join(", ")}
+                          </strong>
+                        </span>
+                        {!hasInstagram && hasFacebook && (
+                          <span style={{ color: "#cbd5e1", background: "rgba(255, 255, 255, 0.05)", padding: "3px 8px", borderRadius: 6, border: "1px solid rgba(255, 255, 255, 0.1)" }}>
+                            💡 Tip: To enable Instagram, link your Instagram Professional account to your Facebook Page in Meta Business Suite, then click "Sync Business Info".
                           </span>
                         )}
                       </div>
-                      <h4 style={{ margin: "0 0 4px 0", fontSize: 13, fontWeight: 700, color: "#ffffff" }}>
-                        {opt.title}
-                      </h4>
-                      <p style={{ margin: 0, fontSize: 11, color: "#94a3b8", lineHeight: 1.4 }}>
-                        {opt.desc}
-                      </p>
                     </div>
-                  ))}
-                </div>
-
-                {/* Connection verification status */}
-                <div style={{ marginTop: 14, display: "flex", gap: 16, fontSize: 12, color: "#94a3b8", flexWrap: "wrap", alignItems: "center" }}>
-                  <span style={{ display: "inline-flex", alignItems: "center", gap: 6 }}>
-                    <span>Facebook:</span>
-                    <strong style={{ color: hasFacebook ? "#34d399" : "#f87171" }}>
-                      {hasFacebook ? `✅ Connected (${fbPageName || "Page Linked"})` : "❌ Not Connected"}
-                    </strong>
-                  </span>
-                  <span style={{ display: "inline-flex", alignItems: "center", gap: 6 }}>
-                    <span>Instagram:</span>
-                    <strong style={{ color: hasInstagram ? "#34d399" : "#f87171" }}>
-                      {hasInstagram ? `✅ Connected (${igUsername ? `@${igUsername.replace(/^@/, "")}` : "Active"})` : "❌ Not Connected"}
-                    </strong>
-                  </span>
-                  {!hasInstagram && hasFacebook && (
-                    <span style={{ fontSize: 11, color: "#cbd5e1", background: "rgba(255, 255, 255, 0.05)", padding: "3px 8px", borderRadius: 6, border: "1px solid rgba(255, 255, 255, 0.1)" }}>
-                      💡 Tip: To enable Instagram, link an Instagram Professional account to your Facebook Page in Meta Business Suite, then click "Sync Business Info".
-                    </span>
-                  )}
-                </div>
+                  );
+                })()}
               </div>
 
               {/* 2. Frequency & Cadence */}
@@ -2364,7 +2593,9 @@ export default function SocialMediaPlannerModal({ onClose, isTrial99: propIsTria
                               color: "#34d399",
                             }}
                           >
-                            {hist.destination}
+                            {Array.isArray(hist.destinations)
+                              ? hist.destinations.map((d) => d.replace("_", " ")).join(", ")
+                              : hist.destination || "Published"}
                           </span>
                         </div>
 
