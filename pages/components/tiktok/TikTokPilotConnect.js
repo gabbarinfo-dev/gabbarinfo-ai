@@ -131,7 +131,14 @@ export default function TikTokPilotConnect() {
         }),
       });
 
-      const data = await res.json();
+      const contentType = res.headers.get("content-type") || "";
+      let data = {};
+      if (contentType.includes("application/json")) {
+        data = await res.json();
+      } else {
+        const txt = await res.text();
+        throw new Error(`Server returned status ${res.status}: ${txt.slice(0, 100)}`);
+      }
       if (data.ok) {
         setCaption(data.caption);
         setImages(data.images || []);
@@ -338,16 +345,15 @@ export default function TikTokPilotConnect() {
             >
               <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 16 }}>
                 <div style={{ display: "flex", alignItems: "center", gap: 14 }}>
-                  {/* Luxury Emerald & Gold Brand Monogram Avatar */}
+                  {/* Real TikTok Profile Avatar or Fallback */}
                   <div
                     style={{
                       width: 58,
                       height: 58,
                       borderRadius: "50%",
-                      background: "linear-gradient(135deg, #134e4a 0%, #064e3b 100%)",
-                      border: "2px solid #facc15",
+                      background: "#182234",
+                      border: "2px solid #fe2c55",
                       display: "flex",
-                      flexDirection: "column",
                       alignItems: "center",
                       justifyContent: "center",
                       boxShadow: "0 4px 15px rgba(0,0,0,0.5)",
@@ -355,26 +361,52 @@ export default function TikTokPilotConnect() {
                       overflow: "hidden",
                     }}
                   >
-                    <span style={{ fontSize: 16, fontWeight: 900, color: "#fef08a", letterSpacing: 1, fontFamily: "serif" }}>
-                      bd
-                    </span>
-                    <span style={{ fontSize: 7, fontWeight: 800, color: "#a7f3d0", letterSpacing: 1, textTransform: "uppercase" }}>
-                      JEWELLERY
-                    </span>
+                    {userData?.avatarUrl ? (
+                      <img
+                        src={userData.avatarUrl}
+                        alt={userData?.displayName || "TikTok Account"}
+                        style={{
+                          width: "100%",
+                          height: "100%",
+                          objectFit: "cover",
+                        }}
+                        onError={(e) => {
+                          e.target.style.display = "none";
+                        }}
+                      />
+                    ) : (
+                      <div
+                        style={{
+                          display: "flex",
+                          alignItems: "center",
+                          justifyContent: "center",
+                          width: "100%",
+                          height: "100%",
+                          background: "linear-gradient(135deg, #1f2937 0%, #111827 100%)",
+                          color: "#f43f5e",
+                          fontSize: 24,
+                          fontWeight: 800,
+                        }}
+                      >
+                        {userData?.displayName?.charAt(0) || "B"}
+                      </div>
+                    )}
                     <div
                       style={{
                         position: "absolute",
                         bottom: 0,
                         right: 0,
-                        width: 14,
-                        height: 14,
+                        width: 16,
+                        height: 16,
                         background: "#fe2c55",
                         borderRadius: "50%",
                         display: "flex",
                         alignItems: "center",
                         justifyContent: "center",
-                        fontSize: 8,
+                        fontSize: 9,
+                        border: "1.5px solid #0b0f19",
                       }}
+                      title="TikTok Verified Account"
                     >
                       🎵
                     </div>
