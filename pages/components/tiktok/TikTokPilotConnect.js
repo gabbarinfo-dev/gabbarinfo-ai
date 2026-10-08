@@ -66,45 +66,262 @@ const SUGGESTED_TOPICS = [
 ];
 
 const TRENDING_AUDIO_PRESETS = [
+  // CATEGORY: Global & Billboard Viral Hits
   {
-    id: "viral",
-    name: "🔥 Viral TikTok Billboard Trending",
-    desc: "Auto-matched #1 TikTok commercial billboard viral trend",
+    id: "espresso_sabrina",
+    category: "billboard",
+    name: "☕ Espresso – Sabrina Carpenter",
+    artist: "Sabrina Carpenter",
+    tag: "Billboard #1",
+    desc: "Bespoke disco-pop commercial bounce currently #1 on global TikTok",
     audioUrl: "/audio/commercial_energetic.mp3",
     startTime: 15,
   },
   {
-    id: "sangeet",
-    name: "🦚 Royal Sangeet & Bridal Mood",
-    desc: "High-energy South Asian celebratory beats for wedding & bridal wear",
+    id: "apt_rose_bruno",
+    category: "billboard",
+    name: "🎯 APT. – ROSÉ & Bruno Mars",
+    artist: "ROSÉ, Bruno Mars",
+    tag: "Global Viral",
+    desc: "Catchy energetic pop-rock rhythm driving 20M+ TikTok videos",
     audioUrl: "/audio/commercial_energetic.mp3",
-    startTime: 32,
+    startTime: 48,
   },
   {
-    id: "luxe",
-    name: "💎 London Luxury & Runway Vibe",
-    desc: "Upbeat electronic chic for high-end boutique & luxury jewellery",
-    audioUrl: "/audio/upbeat_lofi.mp3",
-    startTime: 10,
-  },
-  {
-    id: "lofi",
-    name: "🌸 Acoustic Lofi & Indie Reverb",
-    desc: "Chill aesthetic acoustic vibe for minimalist everyday jewellery",
+    id: "birds_of_a_feather",
+    category: "billboard",
+    name: "🕊️ Birds of a Feather – Billie Eilish",
+    artist: "Billie Eilish",
+    tag: "Billboard Top 5",
+    desc: "Dreamy modern indie pop sensation with viral aesthetic hooks",
     audioUrl: "/audio/chill_acoustic.mp3",
     startTime: 12,
   },
   {
-    id: "upbeat",
-    name: "⚡ Modern Upbeat High-Street Glam",
-    desc: "Bouncy energetic rhythm that hooks viewers in first 3 seconds",
+    id: "greedy_tate_mcrae",
+    category: "billboard",
+    name: "👠 Greedy – Tate McRae",
+    artist: "Tate McRae",
+    tag: "Runway Hit",
+    desc: "High-tempo bassline groove tailored for quick-cut luxury showcases",
     audioUrl: "/audio/upbeat_lofi.mp3",
-    startTime: 40,
+    startTime: 8,
   },
   {
+    id: "water_tyla",
+    category: "billboard",
+    name: "🌊 Water – Tyla",
+    artist: "Tyla",
+    tag: "Afrobeat Trend",
+    desc: "Sensual rhythmic Afrobeat pulse with viral dance engagement",
+    audioUrl: "/audio/upbeat_lofi.mp3",
+    startTime: 34,
+  },
+  {
+    id: "million_dollar_baby",
+    category: "billboard",
+    name: "💵 Million Dollar Baby – Tommy Richman",
+    artist: "Tommy Richman",
+    tag: "Viral Funk",
+    desc: "Retro funk synth hook that instantly halts fast scrollers",
+    audioUrl: "/audio/commercial_energetic.mp3",
+    startTime: 72,
+  },
+  {
+    id: "good_luck_babe",
+    category: "billboard",
+    name: "✨ Good Luck, Babe! – Chappell Roan",
+    artist: "Chappell Roan",
+    tag: "Pop Anthem",
+    desc: "80s synth-pop soaring climax for dramatic lookbook reveals",
+    audioUrl: "/audio/commercial_energetic.mp3",
+    startTime: 92,
+  },
+
+  // CATEGORY: Bollywood & Punjabi Viral TikTok Trends
+  {
+    id: "tauba_tauba",
+    category: "desi",
+    name: "🔥 Tauba Tauba – Karan Aujla",
+    artist: "Karan Aujla",
+    tag: "TikTok Mega-Hit",
+    desc: "#1 trending South Asian reel & TikTok audio for ethnic fashion",
+    audioUrl: "/audio/commercial_energetic.mp3",
+    startTime: 32,
+  },
+  {
+    id: "big_dawgs",
+    category: "desi",
+    name: "🏎️ Big Dawgs – Hanumankind",
+    artist: "Hanumankind",
+    tag: "Global Hip-Hop",
+    desc: "Aggressive, high-energy 808 drop for bold statement collection launches",
+    audioUrl: "/audio/commercial_energetic.mp3",
+    startTime: 54,
+  },
+  {
+    id: "lover_diljit",
+    category: "desi",
+    name: "🦚 Lover – Diljit Dosanjh",
+    artist: "Diljit Dosanjh",
+    tag: "Bridal & Sangeet",
+    desc: "Celebratory contemporary Punjabi groove for brides and wedding guests",
+    audioUrl: "/audio/commercial_energetic.mp3",
+    startTime: 110,
+  },
+  {
+    id: "naina_crew",
+    category: "desi",
+    name: "💄 Naina – Crew (Diljit & Badshah)",
+    artist: "Diljit Dosanjh, Badshah",
+    tag: "Partywear Glam",
+    desc: "Sleek commercial club beat for evening cocktail & gala glamour",
+    audioUrl: "/audio/upbeat_lofi.mp3",
+    startTime: 50,
+  },
+  {
+    id: "chaleya_jawan",
+    category: "desi",
+    name: "💍 Chaleya – Jawan (Arijit Singh)",
+    artist: "Arijit Singh, Anirudh",
+    tag: "Romantic Trend",
+    desc: "Heartwarming melody for couple engagement rings & mangalsutra edits",
+    audioUrl: "/audio/chill_acoustic.mp3",
+    startTime: 28,
+  },
+  {
+    id: "sajni_laapataa",
+    category: "desi",
+    name: "🪷 Sajni – Laapataa Ladies",
+    artist: "Arijit Singh, Ram Sampath",
+    tag: "Artisanal Heritage",
+    desc: "Soulful acoustic depth highlighting heritage Kundan & Polki craftsmanship",
+    audioUrl: "/audio/chill_acoustic.mp3",
+    startTime: 46,
+  },
+  {
+    id: "illuminati_aavesham",
+    category: "desi",
+    name: "⚡ Illuminati – Aavesham",
+    artist: "Sushin Shyam",
+    tag: "Viral Festival",
+    desc: "Hyper-energetic electronic beat with massive social media engagement",
+    audioUrl: "/audio/upbeat_lofi.mp3",
+    startTime: 68,
+  },
+  {
+    id: "ve_haaniyaan",
+    category: "desi",
+    name: "🌸 Ve Haaniyaan – Danny & Avvy Sra",
+    artist: "Avvy Sra, Danny",
+    tag: "Wedding Trend",
+    desc: "Acoustic romantic Punjabi ballad celebrating festive couples",
+    audioUrl: "/audio/chill_acoustic.mp3",
+    startTime: 62,
+  },
+
+  // CATEGORY: London Luxury & Runway Chic
+  {
+    id: "paint_town_red",
+    category: "luxury",
+    name: "💎 Paint The Town Red – Doja Cat",
+    artist: "Doja Cat",
+    tag: "High-Fashion",
+    desc: "Dionne Warwick sample with crisp trap drums for London luxury boutiques",
+    audioUrl: "/audio/upbeat_lofi.mp3",
+    startTime: 18,
+  },
+  {
+    id: "makeba_jain",
+    category: "luxury",
+    name: "💃 Makeba – Jain (Viral House Edit)",
+    artist: "Jain",
+    tag: "Product Showcase",
+    desc: "Infectious bop perfect for multi-slide carousel transitions",
+    audioUrl: "/audio/commercial_energetic.mp3",
+    startTime: 82,
+  },
+  {
+    id: "strangers_kenya",
+    category: "luxury",
+    name: "🌃 Strangers – Kenya Grace",
+    artist: "Kenya Grace",
+    tag: "Electronic Chic",
+    desc: "Atmospheric London drum & bass tailored for midnight cocktail edits",
+    audioUrl: "/audio/upbeat_lofi.mp3",
+    startTime: 84,
+  },
+  {
+    id: "whatever_kygo",
+    category: "luxury",
+    name: "✨ Whatever – Kygo & Ava Max",
+    artist: "Kygo, Ava Max",
+    tag: "Summer Vibe",
+    desc: "Tropical house upbeat synth drop for festive holiday collections",
+    audioUrl: "/audio/commercial_energetic.mp3",
+    startTime: 125,
+  },
+  {
+    id: "one_of_your_girls",
+    category: "luxury",
+    name: "🌙 One of Your Girls – Troye Sivan",
+    artist: "Troye Sivan",
+    tag: "Velvet Mood",
+    desc: "Seductive bassline creating a premium velvet runway atmosphere",
+    audioUrl: "/audio/upbeat_lofi.mp3",
+    startTime: 102,
+  },
+
+  // CATEGORY: Aesthetic Indie & Lofi Chills
+  {
+    id: "husn_anuv_jain",
+    category: "lofi",
+    name: "🌧️ Husn – Anuv Jain",
+    artist: "Anuv Jain",
+    tag: "Indie Acoustic",
+    desc: "Melancholic acoustic guitar for minimalist everyday jewellery lovers",
+    audioUrl: "/audio/chill_acoustic.mp3",
+    startTime: 78,
+  },
+  {
+    id: "beautiful_things",
+    category: "lofi",
+    name: "🎸 Beautiful Things – Benson Boone",
+    artist: "Benson Boone",
+    tag: "Emotional Peak",
+    desc: "Quiet acoustic verse exploding into an epic emotional chorus hook",
+    audioUrl: "/audio/chill_acoustic.mp3",
+    startTime: 96,
+  },
+  {
+    id: "die_with_a_smile",
+    category: "lofi",
+    name: "🌹 Die With A Smile – Lady Gaga & Bruno",
+    artist: "Lady Gaga, Bruno Mars",
+    tag: "Soulful Ballad",
+    desc: "Timeless 70s soul ballad for majestic heirloom bridal lookbooks",
+    audioUrl: "/audio/chill_acoustic.mp3",
+    startTime: 114,
+  },
+  {
+    id: "velvet_midnight_ambient",
+    category: "lofi",
+    name: "🌌 Velvet Midnight Ambient",
+    artist: "Studio Master",
+    tag: "Minimalist Focus",
+    desc: "Warm gentle textures keeping 100% of the audience focus on jewelry details",
+    audioUrl: "/audio/chill_acoustic.mp3",
+    startTime: 130,
+  },
+
+  // MUTE / NO AUDIO
+  {
     id: "none",
-    name: "🔇 Mute / Clean Visuals (No Music)",
-    desc: "Post clean photo carousel without added soundtrack",
+    category: "all",
+    name: "🔇 Mute / Clean Visuals (No Soundtrack)",
+    artist: "Silent",
+    tag: "Clean Deck",
+    desc: "Post clean photo carousel without added music track",
     audioUrl: null,
     startTime: 0,
   },
@@ -123,8 +340,10 @@ export default function TikTokPilotConnect() {
   const [customTopic, setCustomTopic] = useState("");
   const [mediaType, setMediaType] = useState("CAROUSEL"); // "SINGLE_IMAGE" | "CAROUSEL" | "REEL"
   const [carouselSlideCount, setCarouselSlideCount] = useState(2); // 2 | 3 | 5
-  const [selectedAudioPreset, setSelectedAudioPreset] = useState("viral");
+  const [selectedAudioPreset, setSelectedAudioPreset] = useState("espresso_sabrina");
   const [autoAddMusic, setAutoAddMusic] = useState(true); // TikTok auto_add_music flag
+  const [audioSearchQuery, setAudioSearchQuery] = useState("");
+  const [audioCategoryFilter, setAudioCategoryFilter] = useState("all");
   
   // Audio Preview Player State (Plays 5-second sample)
   const [playingAudioId, setPlayingAudioId] = useState(null);
@@ -967,7 +1186,7 @@ export default function TikTokPilotConnect() {
                       const val = e.target.checked;
                       setAutoAddMusic(val);
                       if (!val) setSelectedAudioPreset("none");
-                      else if (selectedAudioPreset === "none") setSelectedAudioPreset("viral");
+                      else if (selectedAudioPreset === "none") setSelectedAudioPreset("espresso_sabrina");
                     }}
                     style={{ accentColor: "#fe2c55", width: 20, height: 20, cursor: "pointer" }}
                   />
@@ -975,27 +1194,100 @@ export default function TikTokPilotConnect() {
 
                 {/* Trending Audio Presets with 5-Second Preview Player */}
                 {autoAddMusic && (
-                  <div style={{ marginTop: 10 }}>
-                    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 8 }}>
-                      <span style={{ fontSize: 11, fontWeight: 700, color: "#cbd5e1" }}>
-                        🎧 Choose Soundtrack Vibe ({TRENDING_AUDIO_PRESETS.filter(p => p.id !== "none").length} Presets Available):
-                      </span>
-                      <span style={{ fontSize: 10, color: "#38bdf8", fontWeight: 600 }}>
-                        Tap ▶ to audition 5-second sample
+                  <div style={{ marginTop: 12 }}>
+                    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 10, flexWrap: "wrap", gap: 6 }}>
+                      <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                        <span style={{ fontSize: 12, fontWeight: 800, color: "#ffffff" }}>
+                          🎧 TikTok Viral Music Catalog (24 Trending Tracks)
+                        </span>
+                        <span style={{ fontSize: 10, padding: "2px 6px", borderRadius: 10, background: "rgba(37, 244, 238, 0.15)", color: "#25f4ee", fontWeight: 700 }}>
+                          Commercial License
+                        </span>
+                      </div>
+                      <span style={{ fontSize: 11, color: "#38bdf8", fontWeight: 600 }}>
+                        Tap ▶ on any song to hear 5-second sample
                       </span>
                     </div>
 
+                    {/* Search and Category Filter Toolbar */}
+                    <div style={{ display: "flex", flexDirection: "column", gap: 8, marginBottom: 10 }}>
+                      <input
+                        type="text"
+                        value={audioSearchQuery}
+                        onChange={(e) => setAudioSearchQuery(e.target.value)}
+                        placeholder="🔍 Search 24+ trending songs, artists, or moods (e.g. Sabrina, Tauba, Diljit, Runway)..."
+                        style={{
+                          width: "100%",
+                          padding: "8px 12px",
+                          borderRadius: 8,
+                          background: "rgba(15, 23, 42, 0.8)",
+                          border: "1px solid rgba(255, 255, 255, 0.15)",
+                          color: "#ffffff",
+                          fontSize: 11,
+                          outline: "none",
+                          boxSizing: "border-box",
+                        }}
+                      />
+
+                      {/* Category Pills */}
+                      <div style={{ display: "flex", gap: 6, overflowX: "auto", paddingBottom: 4 }}>
+                        {[
+                          { id: "all", label: "🌟 All Trends (24)" },
+                          { id: "billboard", label: "🔥 Billboard Top 10" },
+                          { id: "desi", label: "🦚 Bollywood & Punjabi" },
+                          { id: "luxury", label: "💎 London Runway Chic" },
+                          { id: "lofi", label: "🌸 Aesthetic Indie & Lofi" },
+                        ].map((cat) => (
+                          <button
+                            key={cat.id}
+                            type="button"
+                            onClick={() => setAudioCategoryFilter(cat.id)}
+                            style={{
+                              padding: "5px 10px",
+                              borderRadius: 20,
+                              fontSize: 10,
+                              fontWeight: 700,
+                              whiteSpace: "nowrap",
+                              cursor: "pointer",
+                              border: `1px solid ${audioCategoryFilter === cat.id ? "#fe2c55" : "rgba(255, 255, 255, 0.1)"}`,
+                              background: audioCategoryFilter === cat.id
+                                ? "linear-gradient(135deg, #fe2c55 0%, #25f4ee 100%)"
+                                : "rgba(255, 255, 255, 0.05)",
+                              color: audioCategoryFilter === cat.id ? "#ffffff" : "#cbd5e1",
+                              transition: "all 0.15s ease",
+                            }}
+                          >
+                            {cat.label}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+
+                    {/* 24-Song Grid Scroller */}
                     <div
                       style={{
                         display: "grid",
-                        gridTemplateColumns: "repeat(auto-fill, minmax(260px, 1fr))",
+                        gridTemplateColumns: "repeat(auto-fill, minmax(280px, 1fr))",
                         gap: 8,
-                        maxHeight: 280,
+                        maxHeight: 340,
                         overflowY: "auto",
-                        paddingRight: 4,
+                        paddingRight: 6,
                       }}
                     >
-                      {TRENDING_AUDIO_PRESETS.filter((p) => p.id !== "none").map((preset) => {
+                      {TRENDING_AUDIO_PRESETS.filter((p) => {
+                        if (p.id === "none") return false;
+                        if (audioCategoryFilter !== "all" && p.category !== audioCategoryFilter) return false;
+                        if (audioSearchQuery.trim()) {
+                          const q = audioSearchQuery.toLowerCase();
+                          return (
+                            p.name.toLowerCase().includes(q) ||
+                            (p.artist && p.artist.toLowerCase().includes(q)) ||
+                            p.desc.toLowerCase().includes(q) ||
+                            (p.tag && p.tag.toLowerCase().includes(q))
+                          );
+                        }
+                        return true;
+                      }).map((preset) => {
                         const isSel = selectedAudioPreset === preset.id;
                         const isPlaying = playingAudioId === preset.id;
 
@@ -1008,35 +1300,55 @@ export default function TikTokPilotConnect() {
                               borderRadius: 10,
                               cursor: "pointer",
                               background: isSel
-                                ? "linear-gradient(135deg, rgba(254, 44, 85, 0.22) 0%, rgba(37, 244, 238, 0.14) 100%)"
-                                : "rgba(255, 255, 255, 0.04)",
+                                ? "linear-gradient(135deg, rgba(254, 44, 85, 0.25) 0%, rgba(37, 244, 238, 0.18) 100%)"
+                                : "rgba(255, 255, 255, 0.03)",
                               border: isSel
                                 ? "1.5px solid #fe2c55"
                                 : isPlaying
                                 ? "1.5px solid #38bdf8"
-                                : "1px solid rgba(255, 255, 255, 0.1)",
+                                : "1px solid rgba(255, 255, 255, 0.08)",
                               display: "flex",
                               alignItems: "center",
                               justifyContent: "space-between",
                               gap: 10,
                               transition: "all 0.2s ease",
-                              boxShadow: isSel ? "0 4px 14px rgba(254, 44, 85, 0.2)" : "none",
+                              boxShadow: isSel ? "0 4px 16px rgba(254, 44, 85, 0.25)" : "none",
                             }}
                           >
                             <div style={{ flex: 1, minWidth: 0 }}>
-                              <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
-                                <span
-                                  style={{
-                                    fontSize: 12,
-                                    fontWeight: 800,
-                                    color: isSel ? "#ffffff" : "#f1f5f9",
-                                    whiteSpace: "nowrap",
-                                    overflow: "hidden",
-                                    textOverflow: "ellipsis",
-                                  }}
-                                >
-                                  {preset.name}
-                                </span>
+                              <div style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 2 }}>
+                                {preset.tag && (
+                                  <span
+                                    style={{
+                                      fontSize: 9,
+                                      fontWeight: 800,
+                                      padding: "1px 6px",
+                                      borderRadius: 4,
+                                      background: isSel ? "rgba(254, 44, 85, 0.4)" : "rgba(255, 255, 255, 0.1)",
+                                      color: isSel ? "#ffffff" : "#38bdf8",
+                                      textTransform: "uppercase",
+                                    }}
+                                  >
+                                    {preset.tag}
+                                  </span>
+                                )}
+                                {isSel && (
+                                  <span style={{ fontSize: 9, color: "#a7f3d0", fontWeight: 800 }}>
+                                    ✓ Selected
+                                  </span>
+                                )}
+                              </div>
+                              <div
+                                style={{
+                                  fontSize: 12,
+                                  fontWeight: 800,
+                                  color: isSel ? "#ffffff" : "#f1f5f9",
+                                  whiteSpace: "nowrap",
+                                  overflow: "hidden",
+                                  textOverflow: "ellipsis",
+                                }}
+                              >
+                                {preset.name}
                               </div>
                               <div
                                 style={{
@@ -1053,7 +1365,7 @@ export default function TikTokPilotConnect() {
                               </div>
                               {isPlaying && (
                                 <div style={{ fontSize: 9, color: "#38bdf8", fontWeight: 800, marginTop: 4, display: "flex", alignItems: "center", gap: 4 }}>
-                                  <span>🎵</span> Playing 5s preview sample...
+                                  <span>🎵</span> Auditioning sample (5s)...
                                 </div>
                               )}
                             </div>
@@ -1076,7 +1388,7 @@ export default function TikTokPilotConnect() {
                                   border: isPlaying ? "2px solid #25f4ee" : "1px solid rgba(255, 255, 255, 0.2)",
                                   background: isPlaying
                                     ? "linear-gradient(135deg, #25f4ee 0%, #0284c7 100%)"
-                                    : "rgba(255, 255, 255, 0.1)",
+                                    : "rgba(255, 255, 255, 0.08)",
                                   color: isPlaying ? "#0f172a" : "#ffffff",
                                   fontSize: 13,
                                   fontWeight: 900,
@@ -1290,7 +1602,7 @@ export default function TikTokPilotConnect() {
                       <span style={{ fontSize: 20 }}>🎵</span>
                       <div>
                         <div style={{ fontSize: 12, fontWeight: 800, color: "#ffffff", display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
-                          <span>Attached TikTok Audio: {TRENDING_AUDIO_PRESETS.find(p => p.id === selectedAudioPreset)?.name || "Auto-Pair Trending"}</span>
+                          <span>Attached TikTok Track: {TRENDING_AUDIO_PRESETS.find(p => p.id === selectedAudioPreset)?.name || "Auto-Pair Trending"}</span>
                           {autoAddMusic && (() => {
                             const curPreset = TRENDING_AUDIO_PRESETS.find(p => p.id === selectedAudioPreset);
                             if (!curPreset?.audioUrl) return null;
@@ -1313,14 +1625,14 @@ export default function TikTokPilotConnect() {
                                   gap: 4,
                                 }}
                               >
-                                {isPlaying ? "⏸ Pause (5s)" : "▶ Audition Sound"}
+                                {isPlaying ? "⏸ Pause (5s)" : "▶ Audition Track"}
                               </button>
                             );
                           })()}
                         </div>
                         <div style={{ fontSize: 11, color: "#94a3b8" }}>
                           {autoAddMusic
-                            ? "✅ auto_add_music enabled — TikTok will auto-pair with this recommended commercial sound"
+                            ? "✅ auto_add_music enabled — TikTok pairs the official commercial release directly upon posting"
                             : "🔇 Music disabled — silent photo carousel"}
                         </div>
                       </div>
@@ -1333,7 +1645,7 @@ export default function TikTokPilotConnect() {
                           const val = e.target.checked;
                           setAutoAddMusic(val);
                           if (!val) setSelectedAudioPreset("none");
-                          else if (selectedAudioPreset === "none") setSelectedAudioPreset("viral");
+                          else if (selectedAudioPreset === "none") setSelectedAudioPreset("espresso_sabrina");
                         }}
                         style={{ accentColor: "#fe2c55", width: 18, height: 18 }}
                       />
@@ -1342,59 +1654,27 @@ export default function TikTokPilotConnect() {
                   </div>
 
                   {autoAddMusic && (
-                    <div style={{ display: "flex", flexWrap: "wrap", gap: 6, marginTop: 4 }}>
-                      {TRENDING_AUDIO_PRESETS.filter(p => p.id !== "none").map((preset) => {
-                        const isSel = selectedAudioPreset === preset.id;
-                        const isPlaying = playingAudioId === preset.id;
-                        return (
-                          <div
-                            key={preset.id}
-                            style={{
-                              display: "inline-flex",
-                              alignItems: "center",
-                              borderRadius: 6,
-                              overflow: "hidden",
-                              border: `1px solid ${isSel ? "#fe2c55" : "rgba(255, 255, 255, 0.1)"}`,
-                              background: isSel ? "linear-gradient(135deg, rgba(254, 44, 85, 0.25) 0%, rgba(37, 244, 238, 0.15) 100%)" : "rgba(255, 255, 255, 0.05)",
-                            }}
-                          >
-                            <button
-                              type="button"
-                              onClick={() => setSelectedAudioPreset(preset.id)}
-                              style={{
-                                padding: "4px 8px",
-                                border: "none",
-                                background: "transparent",
-                                fontSize: 10,
-                                fontWeight: 700,
-                                cursor: "pointer",
-                                color: isSel ? "#ffffff" : "#cbd5e1",
-                              }}
-                            >
-                              {preset.name}
-                            </button>
-                            {preset.audioUrl && (
-                              <button
-                                type="button"
-                                onClick={(e) => handleToggleAudioPreview(e, preset)}
-                                title={isPlaying ? "Pause 5s preview" : "Play 5s preview"}
-                                style={{
-                                  padding: "4px 6px",
-                                  border: "none",
-                                  borderLeft: "1px solid rgba(255, 255, 255, 0.1)",
-                                  background: isPlaying ? "rgba(37, 244, 238, 0.3)" : "rgba(255, 255, 255, 0.05)",
-                                  color: isPlaying ? "#25f4ee" : "#fff",
-                                  fontSize: 9,
-                                  fontWeight: 800,
-                                  cursor: "pointer",
-                                }}
-                              >
-                                {isPlaying ? "⏸" : "▶"}
-                              </button>
-                            )}
-                          </div>
-                        );
-                      })}
+                    <div style={{ marginTop: 6 }}>
+                      <select
+                        value={selectedAudioPreset}
+                        onChange={(e) => setSelectedAudioPreset(e.target.value)}
+                        style={{
+                          width: "100%",
+                          padding: "8px 10px",
+                          borderRadius: 8,
+                          background: "rgba(15, 23, 42, 0.9)",
+                          border: "1px solid rgba(255, 255, 255, 0.15)",
+                          color: "#ffffff",
+                          fontSize: 11,
+                          fontWeight: 700,
+                        }}
+                      >
+                        {TRENDING_AUDIO_PRESETS.filter(p => p.id !== "none").map((p) => (
+                          <option key={p.id} value={p.id}>
+                            {p.name} {p.tag ? `[${p.tag}]` : ""}
+                          </option>
+                        ))}
+                      </select>
                     </div>
                   )}
                 </div>
