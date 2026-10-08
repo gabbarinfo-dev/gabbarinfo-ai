@@ -57,15 +57,37 @@ export default async function handler(req, res) {
 
   const { q } = req.query || {};
 
-  // If search query provided, search live via iTunes
+  // If search query provided, search both curated catalog and live iTunes
   if (q && String(q).trim().length > 0) {
     try {
-      const results = await searchITunes(String(q), 25);
+      const queryStr = String(q).trim().toLowerCase();
+
+      // 1. Check local curated trending catalog first (contains exact screenshot songs + viral hits)
+      const localMatches = DEFAULT_TRENDING_SONGS.filter((s) =>
+        (s.title && s.title.toLowerCase().includes(queryStr)) ||
+        (s.artist && s.artist.toLowerCase().includes(queryStr)) ||
+        (s.tag && s.tag.toLowerCase().includes(queryStr))
+      );
+
+      // 2. Search live iTunes API for global vocal hits in real-time
+      const liveResults = await searchITunes(String(q), 25);
+
+      // 3. Deduplicate and merge
+      const seen = new Set(localMatches.map((m) => `${m.title.toLowerCase()}||${m.artist.toLowerCase()}`));
+      const combined = [...localMatches];
+      for (const song of liveResults) {
+        const key = `${song.title.toLowerCase()}||${song.artist.toLowerCase()}`;
+        if (!seen.has(key)) {
+          seen.add(key);
+          combined.push(song);
+        }
+      }
+
       return res.status(200).json({
         ok: true,
         query: q,
-        count: results.length,
-        songs: results,
+        count: combined.length,
+        songs: combined,
       });
     } catch (err) {
       return res.status(200).json({
