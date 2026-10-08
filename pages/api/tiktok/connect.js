@@ -21,14 +21,11 @@ export default async function handler(req, res) {
   const clientKey = process.env.TIKTOK_CLIENT_KEY || "awq8sdcr0cy886rc";
   const redirectUri = process.env.TIKTOK_REDIRECT_URI || "https://ai.gabbarinfo.com/api/tiktok/callback";
 
-  // Standard scopes for Login Kit & Content Posting API
+  // Scopes enabled under Login Kit and Content Posting API in TikTok Developer Portal
   const scopes = [
     "user.info.basic",
-    "user.info.profile",
-    "user.info.stats",
     "video.upload",
     "video.publish",
-    "video.list",
   ].join(",");
 
   const statePayload = Buffer.from(
