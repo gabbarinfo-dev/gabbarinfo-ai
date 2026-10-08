@@ -8,18 +8,18 @@ export default function TikTokPilotConnect() {
   const [openId, setOpenId] = useState(null);
   const [disconnecting, setDisconnecting] = useState(false);
 
-  // Composer States
+  // Composer States - Pre-configured for Bella & Diva Jewellery
   const [mediaType, setMediaType] = useState("PHOTO"); // "PHOTO" | "VIDEO"
   const [caption, setCaption] = useState(
-    "Dominate digital growth with autonomous marketing workflows! 🚀 Follow for daily tech insights. #marketing #ai #growth #viral"
+    "Timeless royalty handcrafted for your special day ✨ Explore our bespoke Kundan & Bridal Choker sets at Bella & Diva. Worldwide delivery from London! DM or visit www.bellandiva.com #bellandiva #kundan #bridaljewellery #indianbride #londonjewellery"
   );
   const [imageUrl, setImageUrl] = useState(
-    "https://images.unsplash.com/photo-1618005182384-a83a8bd57fbe?w=1080&q=80"
+    "https://images.unsplash.com/photo-1599643478518-a784e5dc4c8f?w=1080&q=80"
   );
   const [videoUrl, setVideoUrl] = useState(
     "https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ForBiggerBlazes.mp4"
   );
-  const [privacyLevel, setPrivacyLevel] = useState("PUBLIC_TO_EVERYONE");
+  const [privacyLevel, setPrivacyLevel] = useState("SELF_ONLY"); // Sandbox apps require SELF_ONLY
   const [uploadingCustom, setUploadingCustom] = useState(false);
   const [publishing, setPublishing] = useState(false);
   const [publishSuccess, setPublishSuccess] = useState(null);
@@ -461,6 +461,81 @@ export default function TikTokPilotConnect() {
               </div>
             </div>
 
+            {/* Bella & Diva Jewellery Presets */}
+            <div>
+              <label style={{ display: "block", fontSize: 11, fontWeight: 700, color: "#94a3b8", marginBottom: 6 }}>
+                💎 Bella & Diva Jewellery Quick Presets:
+              </label>
+              <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setMediaType("PHOTO");
+                    setImageUrl("https://images.unsplash.com/photo-1599643478518-a784e5dc4c8f?w=1080&q=80");
+                    setCaption(
+                      "Timeless royalty handcrafted for your special day ✨ Explore our bespoke Kundan & Bridal Choker sets at Bella & Diva. Worldwide delivery from London! DM or visit www.bellandiva.com #bellandiva #kundan #bridaljewellery #indianbride #londonjewellery"
+                    );
+                  }}
+                  style={{
+                    padding: "6px 12px",
+                    borderRadius: 8,
+                    background: "rgba(255, 215, 0, 0.1)",
+                    border: "1px solid rgba(255, 215, 0, 0.3)",
+                    color: "#fde047",
+                    fontSize: 11,
+                    fontWeight: 700,
+                    cursor: "pointer",
+                  }}
+                >
+                  👑 Kundan Bridal Set
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setMediaType("PHOTO");
+                    setImageUrl("https://images.unsplash.com/photo-1535632066927-ab7c9ab60908?w=1080&q=80");
+                    setCaption(
+                      "Dazzle every festive night with our high-sheen American Diamond (AD) Choker sets ✨ Affordable luxury handcrafted for royalty. Tap to order! DM us or shop www.bellandiva.com #bellandiva #americandiamond #partywear #jewellerylover"
+                    );
+                  }}
+                  style={{
+                    padding: "6px 12px",
+                    borderRadius: 8,
+                    background: "rgba(56, 189, 248, 0.1)",
+                    border: "1px solid rgba(56, 189, 248, 0.3)",
+                    color: "#38bdf8",
+                    fontSize: 11,
+                    fontWeight: 700,
+                    cursor: "pointer",
+                  }}
+                >
+                  💎 American Diamond
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setMediaType("PHOTO");
+                    setImageUrl("https://images.unsplash.com/photo-1630019852942-f89202989a59?w=1080&q=80");
+                    setCaption(
+                      "Elevate your festive look with our signature Chandbalis & Jhumkas 🌸 Lightweight, handcrafted, and stunning from every angle. Available at Bella & Diva London! #bellandiva #jhumkas #festivejewellery #partywear"
+                    );
+                  }}
+                  style={{
+                    padding: "6px 12px",
+                    borderRadius: 8,
+                    background: "rgba(254, 44, 85, 0.1)",
+                    border: "1px solid rgba(254, 44, 85, 0.3)",
+                    color: "#fe2c55",
+                    fontSize: 11,
+                    fontWeight: 700,
+                    cursor: "pointer",
+                  }}
+                >
+                  ✨ Festive Jhumkas
+                </button>
+              </div>
+            </div>
+
             {/* Media URL / Demo Fill */}
             <div>
               <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 6 }}>
@@ -471,7 +546,7 @@ export default function TikTokPilotConnect() {
                   type="button"
                   onClick={() => {
                     if (mediaType === "PHOTO") {
-                      setImageUrl("https://images.unsplash.com/photo-1618005182384-a83a8bd57fbe?w=1080&q=80");
+                      setImageUrl("https://images.unsplash.com/photo-1599643478518-a784e5dc4c8f?w=1080&q=80");
                     } else {
                       setVideoUrl("https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ForBiggerBlazes.mp4");
                     }
@@ -534,7 +609,7 @@ export default function TikTokPilotConnect() {
             {/* Privacy Setting */}
             <div>
               <label style={{ display: "block", fontSize: 12, fontWeight: 700, color: "#cbd5e1", marginBottom: 6 }}>
-                Privacy Setting:
+                Privacy Setting (Sandbox accounts require Self Only):
               </label>
               <select
                 value={privacyLevel}
@@ -549,9 +624,9 @@ export default function TikTokPilotConnect() {
                   fontSize: 12,
                 }}
               >
-                <option value="PUBLIC_TO_EVERYONE">Public to Everyone</option>
+                <option value="SELF_ONLY">Private / Only Me (Required for Sandbox / Review Demo)</option>
+                <option value="PUBLIC_TO_EVERYONE">Public to Everyone (Available after App Approval)</option>
                 <option value="MUTUAL_FOLLOW_FRIENDS">Friends Only</option>
-                <option value="SELF_ONLY">Private (Only Me)</option>
               </select>
             </div>
 

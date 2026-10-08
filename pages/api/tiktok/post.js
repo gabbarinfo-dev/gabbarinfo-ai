@@ -40,30 +40,63 @@ export default async function handler(req, res) {
       return res.status(400).json({ ok: false, error: "TikTok access token missing or expired." });
     }
 
-    const titleText = (caption || "GabbarInfo AI Creative Post").slice(0, 150);
+    // 1. Fetch Creator Info to determine allowed privacy levels
+    let effectivePrivacy = privacyLevel || "SELF_ONLY";
+    try {
+      const creatorRes = await fetch("https://open.tiktokapis.com/v2/post/publish/creator_info/query/", {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${accessToken}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({}),
+      });
+      const creatorData = await creatorRes.json();
+      const allowed = creatorData.data?.privacy_level_options;
+      if (Array.isArray(allowed) && allowed.length > 0) {
+        if (!allowed.includes(effectivePrivacy)) {
+          console.log(`[TikTok Post] Privacy ${effectivePrivacy} not allowed. Using ${allowed[0]}`);
+          effectivePrivacy = allowed[0];
+        }
+      } else {
+        effectivePrivacy = "SELF_ONLY";
+      }
+    } catch (cErr) {
+      console.warn("[TikTok Creator Info Check Warn]:", cErr);
+      effectivePrivacy = "SELF_ONLY";
+    }
+
+    const titleText = (caption || "Bella & Diva Jewellery").slice(0, 85);
     const isVideo = Boolean(videoUrl);
 
-    // TikTok Content Posting API v2 endpoint
+    // TikTok Content Posting API v2 endpoints:
+    // Videos use /v2/post/publish/video/init/
+    // Photos use /v2/post/publish/content/init/
+    const targetEndpoint = isVideo
+      ? "https://open.tiktokapis.com/v2/post/publish/video/init/"
+      : "https://open.tiktokapis.com/v2/post/publish/content/init/";
+
     const postPayload = isVideo
       ? {
           post_info: {
-            title: titleText,
-            privacy_level: privacyLevel,
+            title: (caption || "Bella & Diva Jewellery").slice(0, 2000),
+            privacy_level: effectivePrivacy,
             disable_comment: false,
+            disable_duet: false,
+            disable_stitch: false,
           },
           source_info: {
             source: "PULL_FROM_URL",
             video_url: videoUrl,
           },
-          post_mode: "DIRECT_POST",
-          media_type: "VIDEO",
         }
       : {
           post_info: {
             title: titleText,
             description: caption || "",
-            privacy_level: privacyLevel,
+            privacy_level: effectivePrivacy,
             disable_comment: false,
+            auto_add_music: false,
           },
           source_info: {
             source: "PULL_FROM_URL",
@@ -74,7 +107,7 @@ export default async function handler(req, res) {
           media_type: "PHOTO",
         };
 
-    const ttRes = await fetch("https://open.tiktokapis.com/v2/post/publish/content/init/", {
+    const ttRes = await fetch(targetEndpoint, {
       method: "POST",
       headers: {
         Authorization: `Bearer ${accessToken}`,
