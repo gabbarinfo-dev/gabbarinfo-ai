@@ -84,7 +84,8 @@ export default function TikTokPilotConnect() {
   const [refreshingTopics, setRefreshingTopics] = useState(false);
   const [selectedTopic, setSelectedTopic] = useState(SUGGESTED_TOPICS[0].title);
   const [customTopic, setCustomTopic] = useState("");
-  const [mediaType, setMediaType] = useState("PHOTO"); // "PHOTO" (Carousel) | "VIDEO" (Reel)
+  const [mediaType, setMediaType] = useState("CAROUSEL"); // "SINGLE_IMAGE" | "CAROUSEL" | "REEL"
+  const [carouselSlideCount, setCarouselSlideCount] = useState(2); // 2 | 3 | 5
   const [selectedAudioPreset, setSelectedAudioPreset] = useState("viral");
   const [autoAddMusic, setAutoAddMusic] = useState(true); // TikTok auto_add_music flag
   
@@ -174,8 +175,9 @@ export default function TikTokPilotConnect() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           topic: topicToUse,
-          format: mediaType === "PHOTO" ? "CAROUSEL" : "REEL",
-          businessName: "Bella & Diva Jewellery",
+          format: mediaType,
+          slideCount: mediaType === "SINGLE_IMAGE" ? 1 : carouselSlideCount,
+          businessName: userData?.displayName || "Bella & Diva Jewellery",
         }),
       });
 
@@ -195,8 +197,10 @@ export default function TikTokPilotConnect() {
           title: data.title,
           caption: data.caption,
           images: data.images || [],
+          slides: data.slides || [],
           videoUrl: data.videoUrl,
           mediaType,
+          slideCount: data.slideCount || (mediaType === "SINGLE_IMAGE" ? 1 : carouselSlideCount),
           topic: topicToUse,
         });
       } else {
@@ -237,10 +241,10 @@ export default function TikTokPilotConnect() {
       const payload = {
         caption,
         privacyLevel,
-        imageUrl: mediaType === "PHOTO" && images.length > 0 ? images[0] : null,
-        images: mediaType === "PHOTO" ? images : null,
-        videoUrl: mediaType === "VIDEO" ? videoUrl : null,
-        autoAddMusic,
+        imageUrl: images.length > 0 ? images[0] : null,
+        images: mediaType === "REEL" ? null : images,
+        videoUrl: mediaType === "REEL" ? videoUrl : null,
+        autoAddMusic: mediaType !== "REEL" ? autoAddMusic : false,
       };
 
       const res = await fetch("/api/tiktok/post", {
@@ -662,48 +666,124 @@ export default function TikTokPilotConnect() {
               <label style={{ display: "block", fontSize: 12, fontWeight: 800, color: "#f8fafc", marginBottom: 8, textTransform: "uppercase", letterSpacing: "0.5px" }}>
                 2. Select Content Format:
               </label>
-              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
+              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 10 }}>
+                {/* 1. Single Image Ad */}
                 <button
                   type="button"
-                  onClick={() => setMediaType("PHOTO")}
+                  onClick={() => setMediaType("SINGLE_IMAGE")}
                   style={{
-                    padding: "12px",
+                    padding: "12px 8px",
                     borderRadius: 10,
-                    background: mediaType === "PHOTO" ? "rgba(254, 44, 85, 0.2)" : "rgba(255, 255, 255, 0.04)",
-                    border: `1.5px solid ${mediaType === "PHOTO" ? "#fe2c55" : "rgba(255, 255, 255, 0.1)"}`,
-                    color: mediaType === "PHOTO" ? "#fe2c55" : "#94a3b8",
+                    background: mediaType === "SINGLE_IMAGE" ? "rgba(254, 44, 85, 0.2)" : "rgba(255, 255, 255, 0.04)",
+                    border: `1.5px solid ${mediaType === "SINGLE_IMAGE" ? "#fe2c55" : "rgba(255, 255, 255, 0.1)"}`,
+                    color: mediaType === "SINGLE_IMAGE" ? "#fe2c55" : "#94a3b8",
                     fontSize: 12,
                     fontWeight: 800,
                     cursor: "pointer",
                     display: "flex",
+                    flexDirection: "column",
                     alignItems: "center",
-                    justifyContent: "center",
-                    gap: 6,
+                    gap: 4,
                   }}
                 >
-                  📸 AI Photo Carousel (2 Slides)
+                  <span style={{ fontSize: 18 }}>📸</span>
+                  <span>Single Image Ad</span>
+                  <span style={{ fontSize: 10, color: "#cbd5e1", fontWeight: 500 }}>Insta/FB Ad Style</span>
                 </button>
+
+                {/* 2. Photo Carousel */}
                 <button
                   type="button"
-                  onClick={() => setMediaType("VIDEO")}
+                  onClick={() => setMediaType("CAROUSEL")}
                   style={{
-                    padding: "12px",
+                    padding: "12px 8px",
                     borderRadius: 10,
-                    background: mediaType === "VIDEO" ? "rgba(37, 244, 238, 0.2)" : "rgba(255, 255, 255, 0.04)",
-                    border: `1.5px solid ${mediaType === "VIDEO" ? "#25f4ee" : "rgba(255, 255, 255, 0.1)"}`,
-                    color: mediaType === "VIDEO" ? "#25f4ee" : "#94a3b8",
+                    background: mediaType === "CAROUSEL" ? "rgba(254, 44, 85, 0.2)" : "rgba(255, 255, 255, 0.04)",
+                    border: `1.5px solid ${mediaType === "CAROUSEL" ? "#fe2c55" : "rgba(255, 255, 255, 0.1)"}`,
+                    color: mediaType === "CAROUSEL" ? "#fe2c55" : "#94a3b8",
                     fontSize: 12,
                     fontWeight: 800,
                     cursor: "pointer",
                     display: "flex",
+                    flexDirection: "column",
                     alignItems: "center",
-                    justifyContent: "center",
-                    gap: 6,
+                    gap: 4,
                   }}
                 >
-                  🎬 9:16 Vertical Video Reel
+                  <span style={{ fontSize: 18 }}>🖼️</span>
+                  <span>Photo Carousel</span>
+                  <span style={{ fontSize: 10, color: "#cbd5e1", fontWeight: 500 }}>Multi-Slide Story</span>
+                </button>
+
+                {/* 3. 9:16 Video Reel */}
+                <button
+                  type="button"
+                  onClick={() => setMediaType("REEL")}
+                  style={{
+                    padding: "12px 8px",
+                    borderRadius: 10,
+                    background: mediaType === "REEL" ? "rgba(37, 244, 238, 0.2)" : "rgba(255, 255, 255, 0.04)",
+                    border: `1.5px solid ${mediaType === "REEL" ? "#25f4ee" : "rgba(255, 255, 255, 0.1)"}`,
+                    color: mediaType === "REEL" ? "#25f4ee" : "#94a3b8",
+                    fontSize: 12,
+                    fontWeight: 800,
+                    cursor: "pointer",
+                    display: "flex",
+                    flexDirection: "column",
+                    alignItems: "center",
+                    gap: 4,
+                  }}
+                >
+                  <span style={{ fontSize: 18 }}>🎬</span>
+                  <span>9:16 Video Reel</span>
+                  <span style={{ fontSize: 10, color: "#cbd5e1", fontWeight: 500 }}>Vertical Motion</span>
                 </button>
               </div>
+
+              {/* Slide Count Selector for Carousel */}
+              {mediaType === "CAROUSEL" && (
+                <div
+                  style={{
+                    marginTop: 10,
+                    padding: "10px 14px",
+                    borderRadius: 10,
+                    background: "rgba(254, 44, 85, 0.06)",
+                    border: "1px solid rgba(254, 44, 85, 0.25)",
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "space-between",
+                  }}
+                >
+                  <span style={{ fontSize: 11, fontWeight: 700, color: "#f8fafc" }}>
+                    Select Carousel Slide Count:
+                  </span>
+                  <div style={{ display: "flex", gap: 6 }}>
+                    {[
+                      { count: 2, label: "2 Slides (Quick Pitch)" },
+                      { count: 3, label: "3 Slides (Value Deck)" },
+                      { count: 5, label: "5 Slides (Full Lookbook)" },
+                    ].map((opt) => (
+                      <button
+                        key={opt.count}
+                        type="button"
+                        onClick={() => setCarouselSlideCount(opt.count)}
+                        style={{
+                          padding: "5px 10px",
+                          borderRadius: 6,
+                          fontSize: 11,
+                          fontWeight: 800,
+                          cursor: "pointer",
+                          background: carouselSlideCount === opt.count ? "linear-gradient(135deg, #fe2c55 0%, #25f4ee 100%)" : "rgba(255,255,255,0.06)",
+                          color: carouselSlideCount === opt.count ? "#ffffff" : "#cbd5e1",
+                          border: `1px solid ${carouselSlideCount === opt.count ? "transparent" : "rgba(255,255,255,0.12)"}`,
+                        }}
+                      >
+                        {opt.label}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              )}
 
               {/* Music Option for Direct Post */}
               <div
@@ -820,20 +900,50 @@ export default function TikTokPilotConnect() {
                 </div>
 
                 {/* Media Preview */}
-                {mediaType === "PHOTO" ? (
+                {mediaType === "SINGLE_IMAGE" ? (
                   <div>
                     <div style={{ fontSize: 11, fontWeight: 700, color: "#cbd5e1", marginBottom: 6 }}>
-                      Carousel Deck ({images.length} Verified Slides):
+                      📸 Single Ad Poster Creative (1 Slide):
                     </div>
-                    <div style={{ display: "flex", gap: 10 }}>
+                    {images.length > 0 && (
+                      <div style={{ position: "relative", maxWidth: 240, borderRadius: 10, overflow: "hidden", border: "1.5px solid #fe2c55" }}>
+                        <img
+                          src={images[0]}
+                          alt="Single Ad Poster"
+                          style={{ width: "100%", height: "auto", display: "block" }}
+                        />
+                        <span
+                          style={{
+                            position: "absolute",
+                            bottom: 6,
+                            left: 6,
+                            background: "rgba(0,0,0,0.85)",
+                            color: "#fff",
+                            fontSize: 10,
+                            fontWeight: 800,
+                            padding: "2px 8px",
+                            borderRadius: 4,
+                          }}
+                        >
+                          1:1 Ad Poster
+                        </span>
+                      </div>
+                    )}
+                  </div>
+                ) : mediaType === "CAROUSEL" ? (
+                  <div>
+                    <div style={{ fontSize: 11, fontWeight: 700, color: "#cbd5e1", marginBottom: 6 }}>
+                      🖼️ Connected Carousel Deck ({images.length} Verified Slides):
+                    </div>
+                    <div style={{ display: "flex", gap: 10, overflowX: "auto", paddingBottom: 6 }}>
                       {images.map((img, i) => (
-                        <div key={i} style={{ position: "relative" }}>
+                        <div key={i} style={{ position: "relative", flexShrink: 0 }}>
                           <img
                             src={img}
                             alt={`Slide ${i + 1}`}
                             style={{
-                              width: 90,
-                              height: 90,
+                              width: 100,
+                              height: 100,
                               objectFit: "cover",
                               borderRadius: 8,
                               border: "1.5px solid #fe2c55",
@@ -844,7 +954,7 @@ export default function TikTokPilotConnect() {
                               position: "absolute",
                               bottom: 4,
                               left: 4,
-                              background: "rgba(0,0,0,0.8)",
+                              background: "rgba(0,0,0,0.85)",
                               color: "#fff",
                               fontSize: 9,
                               fontWeight: 800,
@@ -861,7 +971,7 @@ export default function TikTokPilotConnect() {
                 ) : (
                   <div>
                     <div style={{ fontSize: 11, fontWeight: 700, color: "#cbd5e1", marginBottom: 6 }}>
-                      9:16 Video Reel Source:
+                      🎬 9:16 Video Reel Source:
                     </div>
                     <video
                       src={videoUrl}

@@ -189,11 +189,23 @@ Output JSON ONLY as an array of 10 objects:
     });
   }
 
-  // ACTION 2: GENERATE POST CONTENT & BESPOKE GPT-IMAGE-2 VISUALS
+  // ACTION 2: GENERATE CONNECTED BRAND CAMPAIGN (SINGLE IMAGE, 2/3/5 CAROUSEL, OR REEL)
   const {
-    topic = "Royal Kundan Bridal Choker Set",
-    format = "CAROUSEL", // "CAROUSEL" | "REEL"
+    topic = "Bespoke Collection Showcase",
+    format = "CAROUSEL", // "SINGLE_IMAGE" | "CAROUSEL" | "REEL"
+    slideCount = 2, // 1 for SINGLE_IMAGE, or 2, 3, 5 for CAROUSEL
+    logoUrl = null,
   } = req.body || {};
+
+  let targetSlides = 2;
+  if (format === "SINGLE_IMAGE") {
+    targetSlides = 1;
+  } else if (format === "CAROUSEL") {
+    const requested = Number(slideCount);
+    targetSlides = [2, 3, 5].includes(requested) ? requested : 2;
+  } else {
+    targetSlides = 1;
+  }
 
   try {
     let modelName = process.env.GEMINI_MODEL || "gemini-1.5-flash";
@@ -202,29 +214,67 @@ Output JSON ONLY as an array of 10 objects:
     const model = genAI.getGenerativeModel({ model: modelName });
 
     const prompt = `
-You are the master creative director and copywriter for "${businessName}", an elite South Asian jewellery brand in London specializing in:
-${niche}.
+You are an award-winning Creative Director & Copywriter developing a finished, high-converting commercial brand advertising campaign for:
+Brand Name: "${businessName}"
+Industry / Niche: ${niche}
+Topic / Focus: "${topic}"
+Format: ${format} (${targetSlides} Connected Slide${targetSlides > 1 ? "s" : ""})
+${logoUrl ? `Brand Logo: Provided (${logoUrl}) - Anchor brand mark prominently on every slide.` : `Brand Logo: Use official typographic brand monogram for "${businessName}".`}
 
-The user selected topic: "${topic}".
-Content Format: ${format === "CAROUSEL" ? "Photo Carousel Slideshow (2 Slides)" : "Vertical Video Reel"}.
+[CAMPAIGN NARRATIVE BLUEPRINT]
+Create a connected, multi-slide promotional campaign promoting "${businessName}".
+This is NOT just generic photos of objects; each slide must have a distinct, connected role in driving brand awareness and customer conversion:
 
-Generate a JSON object with:
-1. "title": Short catchy title under 70 characters (Strict limit for TikTok).
-2. "caption": A breathtaking, viral TikTok caption (120-180 words) featuring:
-   - Irresistible hook (e.g., "The bridal glow everyone will be talking about ✨")
-   - Focus on craftsmanship, intricate setting, lightweight feel, and royal aesthetics.
-   - Clear CTA to "DM us to order or customize from London! Worldwide shipping available ✨"
-   - STRICT RULE: DO NOT INCLUDE ANY RAW URLS (no http or www links) because TikTok Content Sharing Guidelines strictly ban raw URLs in API posts!
-   - 4 to 6 trending hashtags (#bellandiva #kundan #bridaljewellery #londonjewellery #southasianbride #jewellerygoals).
-3. "image_prompt_1": A vivid, photorealistic prompt for an AI image generator to create Slide 1. Must specify high-end commercial jewellery studio photography of ${topic}, handcrafted polki kundan gemstones, displayed on dark emerald/black velvet neck mannequin, warm dramatic lighting, 8k catalogue quality, no text on image.
-4. "image_prompt_2": A vivid, photorealistic prompt for an AI image generator to create Slide 2. Must specify a macro close-up detail shot of ${topic}, showcasing intricate gold finish, hand-set gemstones, exquisite craftsmanship, 8k catalogue quality, no text on image.
+${targetSlides === 1 ? `
+- Slide 1 (Single Hero Ad Poster): An agency-grade finished commercial ad poster (like Instagram/FB sponsored ads). Features brand logo/monogram in top corner, bold display headline for "${topic}", hero commercial visual, 3 value/trust badges (e.g. Premium Quality, Fast Dispatch, Verified), and a sleek Call to Action pill button ("DM to Order", "Book Now", "Enquire Today").
+` : ""}
 
-OUTPUT RAW JSON ONLY (no markdown blocks, no commentary):
+${targetSlides === 2 ? `
+- Slide 1 (The Hook & Hero Showcase): High-impact visual hook highlighting the customer desire or problem + bold typography headline + brand mark "${businessName}".
+- Slide 2 (The Solution & Conversion): The brand's craftsmanship, key service benefits, 3 trust badges + prominent Call to Action button ("DM to Customise", "Book Consultation", "Order Now").
+` : ""}
+
+${targetSlides === 3 ? `
+- Slide 1 (The Curiosity / Problem Hook): The scroll-stopping question or hook highlighting the client's desire/pain point + brand header.
+- Slide 2 (The Craftsmanship & Deep Value): In-depth look at materials, unique method, or bespoke service pillars + 3 feature badges.
+- Slide 3 (The Offer & Direct CTA): Irresistible offer, customer guarantee seals, and high-visibility Call to Action banner.
+` : ""}
+
+${targetSlides === 5 ? `
+- Slide 1 (Cover / Guide Title Card): Bold editorial title card (e.g. "The 5 Secrets to..." or "2026 Bridal Edit Vol. 1") + brand monogram.
+- Slide 2 (Pillar 1): First key feature/style/benefit + high-end commercial visual.
+- Slide 3 (Pillar 2): Second key feature/style/benefit + high-end commercial visual.
+- Slide 4 (Pillar 3): Third key feature/style/benefit + high-end commercial visual.
+- Slide 5 (Closing Card & Conversion): Brand trust summary + guarantee seals + clear DM/Booking prompt.
+` : ""}
+
+[STRICT POSTER ART DIRECTION FOR EACH SLIDE]
+All slides must share the same high-end agency design style, harmonious brand color palette, and professional typography.
+For each of the ${targetSlides} slide(s), construct an image prompt for gpt-image-2 that specifies:
+1. Agency ad poster layout (1024x1024).
+2. Top-Left: Crisp brand monogram/logo and brand name "${businessName}".
+3. Headline: Exact quoted headline text in bold display typography.
+4. Value Badges: 2 to 3 minimalist pill badges tailored to ${niche}.
+5. CTA Button: Sleek bottom CTA button.
+6. Lighting & Studio finish: High-contrast luxury commercial art direction.
+7. Anti-gibberish rule: Render ONLY specified quoted text cleanly and correctly spelled, no random fake letters.
+
+Also generate:
+- "title": Short catchy TikTok title under 70 characters.
+- "caption": Engaging, viral TikTok caption (120-180 words) with hook, storytelling, value points, clear CTA, and 4-6 hashtags. (STRICT: NO RAW HTTP/WWW URLS).
+
+OUTPUT RAW JSON ONLY (no markdown blocks):
 {
   "title": "...",
   "caption": "...",
-  "image_prompt_1": "...",
-  "image_prompt_2": "..."
+  "slides": [
+    {
+      "slide_number": 1,
+      "slide_title": "...",
+      "slide_subtitle": "...",
+      "image_prompt": "..."
+    }
+  ]
 }
 `;
 
@@ -233,73 +283,79 @@ OUTPUT RAW JSON ONLY (no markdown blocks, no commentary):
     const cleanJson = text.replace(/^```json\s*/, "").replace(/^```\s*/, "").replace(/\s*```$/, "");
     const parsed = JSON.parse(cleanJson);
 
-    // Filter and sanitize caption: Remove any accidental raw URLs to guarantee TikTok compliance
+    // Sanitize caption: Remove raw URLs for TikTok compliance
     let cleanCaption = (parsed.caption || "")
       .replace(/https?:\/\/\S+/gi, "")
       .replace(/www\.\S+/gi, "")
       .trim();
 
-    // GENERATE 2 BESPOKE SLIDES USING GPT-IMAGE-2
+    // Prepare slide prompts
+    const slideItems = Array.isArray(parsed.slides) ? parsed.slides.slice(0, targetSlides) : [];
+    const promptsToRun = [];
+
+    for (let i = 0; i < targetSlides; i++) {
+      const s = slideItems[i];
+      if (s?.image_prompt) {
+        promptsToRun.push(s.image_prompt);
+      } else {
+        promptsToRun.push(
+          `Finished agency commercial ad poster for "${businessName}", promoting "${topic}", Slide ${i + 1} of ${targetSlides}, brand logo header for "${businessName}", bold typography headline, 3 minimalist trust badges, sleek CTA button, 8k luxury commercial catalog`
+        );
+      }
+    }
+
+    console.log(`[TikTok AI] Generating ${promptsToRun.length} bespoke campaign slides with gpt-image-2 for: "${businessName}" - "${topic}"...`);
+
+    // Execute image generation with gpt-image-2
+    const settledResults = await Promise.allSettled(
+      promptsToRun.map((p) => generateGptImage(p, email))
+    );
+
     let generatedImages = [];
-    try {
-      console.log(`[TikTok AI] Generating 2 bespoke visual slides with gpt-image-2 for: "${topic}"...`);
-      const [img1Res, img2Res] = await Promise.allSettled([
-        generateGptImage(
-          parsed.image_prompt_1 ||
-            `Luxury commercial jewellery studio photo of ${topic}, handcrafted polki gemstones on black velvet neck mannequin, warm cinematic lighting, 8k catalogue quality`,
-          email
-        ),
-        generateGptImage(
-          parsed.image_prompt_2 ||
-            `Macro detail close-up of ${topic} jewellery craftsmanship, sparkling faceted gemstones, pristine gold setting, 8k commercial catalogue`,
-          email
-        ),
-      ]);
-
-      if (img1Res.status === "fulfilled" && img1Res.value) {
-        generatedImages.push(img1Res.value);
+    settledResults.forEach((res, idx) => {
+      if (res.status === "fulfilled" && res.value) {
+        generatedImages.push(res.value);
       } else {
-        console.warn("[TikTok AI] Slide 1 generation warning:", img1Res.reason?.message);
+        console.warn(`[TikTok AI] Slide ${idx + 1} failed:`, res.reason?.message);
       }
+    });
 
-      if (img2Res.status === "fulfilled" && img2Res.value) {
-        generatedImages.push(img2Res.value);
-      } else {
-        console.warn("[TikTok AI] Slide 2 generation warning:", img2Res.reason?.message);
+    // If any slide failed, backfill from successfully generated slides
+    if (generatedImages.length > 0 && generatedImages.length < targetSlides) {
+      const sourceImg = generatedImages[0];
+      while (generatedImages.length < targetSlides) {
+        generatedImages.push(sourceImg);
       }
-    } catch (genErr) {
-      console.warn("[TikTok AI Image Generation Exception]:", genErr.message);
     }
 
-    // If only one slide succeeded, pair it with itself so TikTok carousel requirement (>= 2 images) is satisfied with the genuine AI visual
-    if (generatedImages.length === 1) {
-      generatedImages.push(generatedImages[0]);
-    }
-
+    // If completely empty, make one single fallback attempt
     if (generatedImages.length === 0) {
-      // Last-resort attempt: generate a single bespoke gpt-image-2 visual
-      console.log("[TikTok AI] Retrying single bespoke image generation...");
+      console.log("[TikTok AI] Retrying single emergency bespoke image generation...");
       const singleImg = await generateGptImage(
-        `Commercial South Asian luxury jewellery catalog photo of ${topic}, stunning studio lighting, 8k`,
+        `Commercial agency advertisement poster for "${businessName}", promoting "${topic}", luxury brand styling, bold typography, trust badges, 8k commercial finish`,
         email
       );
-      generatedImages = [singleImg, singleImg];
+      while (generatedImages.length < targetSlides) {
+        generatedImages.push(singleImg);
+      }
     }
 
     return res.status(200).json({
       ok: true,
-      title: parsed.title || `Bespoke ${topic} ✨ Bella & Diva`,
+      title: parsed.title || `Bespoke ${topic} ✨ ${businessName}`,
       caption: cleanCaption,
       images: generatedImages,
+      slides: slideItems,
       videoUrl: "https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ForBiggerBlazes.mp4",
       format,
+      slideCount: targetSlides,
       topic,
     });
   } catch (err) {
     console.error("[TikTok AI Generate Creative Error]:", err);
     return res.status(500).json({
       ok: false,
-      error: `AI Generation Error: ${err.message}. Please click 'Generate Post with AI' to re-synthesize.`,
+      error: `AI Campaign Generation Error: ${err.message}. Please click 'Generate Post with AI' to re-synthesize.`,
     });
   }
 }

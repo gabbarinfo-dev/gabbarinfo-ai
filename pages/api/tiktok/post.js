@@ -66,20 +66,14 @@ export default async function handler(req, res) {
     const titleText = (caption || "Bella & Diva Jewellery").slice(0, 85);
     const isVideo = Boolean(videoUrl);
 
-    // Build photo list: TikTok Photo Carousel requires at least 2 images
+    // Build photo list: TikTok Content Posting API supports 1 to 35 photos
     let rawPhotoImages = [];
-    if (Array.isArray(req.body?.images) && req.body.images.length >= 2) {
+    if (Array.isArray(req.body?.images) && req.body.images.length > 0) {
       rawPhotoImages = req.body.images.filter(Boolean);
     } else if (imageUrl) {
-      rawPhotoImages = [
-        imageUrl,
-        req.body?.image2Url || "https://ai.gabbarinfo.com/media/jewellery/slide2.jpg",
-      ];
+      rawPhotoImages = [imageUrl];
     } else {
-      rawPhotoImages = [
-        "https://ai.gabbarinfo.com/media/jewellery/slide1.jpg",
-        "https://ai.gabbarinfo.com/media/jewellery/slide2.jpg",
-      ];
+      return res.status(400).json({ ok: false, error: "No media provided to publish." });
     }
 
     // MANDATORY TIKTOK RULE: PULL_FROM_URL strictly enforces that all media URLs
