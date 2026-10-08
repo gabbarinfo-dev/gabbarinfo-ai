@@ -1,9 +1,11 @@
 // pages/api/tiktok/media-serve.js
 /**
  * Serves media from the verified domain (ai.gabbarinfo.com) for TikTok Content Posting API.
- * TikTok strictly verifies domain ownership for PULL_FROM_URL.
- * This endpoint proxies any media buffer directly as image/jpeg without redirects.
+ * TikTok strictly verifies domain ownership for PULL_FROM_URL and requires JPEG.
+ * This endpoint converts any image format to pristine JPEG directly without redirects.
  */
+
+import sharp from "sharp";
 
 export default async function handler(req, res) {
   const { url, slide = "1" } = req.query;
@@ -23,16 +25,19 @@ export default async function handler(req, res) {
     }
 
     const arrayBuffer = await response.arrayBuffer();
-    const buffer = Buffer.from(arrayBuffer);
+    const rawBuffer = Buffer.from(arrayBuffer);
 
-    const contentType = response.headers.get("content-type") || "image/jpeg";
+    // TikTok prefers standardized JPEG for carousel slides
+    const jpegBuffer = await sharp(rawBuffer)
+      .jpeg({ quality: 92, chromaSubsampling: "4:4:4" })
+      .toBuffer();
 
-    res.setHeader("Content-Type", contentType);
-    res.setHeader("Content-Length", buffer.length);
+    res.setHeader("Content-Type", "image/jpeg");
+    res.setHeader("Content-Length", jpegBuffer.length);
     res.setHeader("Cache-Control", "public, max-age=86400, s-maxage=86400, stale-while-revalidate=604800");
     res.setHeader("Access-Control-Allow-Origin", "*");
 
-    return res.status(200).send(buffer);
+    return res.status(200).send(jpegBuffer);
   } catch (err) {
     console.error("[TikTok Media Serve Error]:", err);
     return res.status(500).json({ ok: false, error: err.message });

@@ -27,6 +27,42 @@ const SUGGESTED_TOPICS = [
     desc: "Traditional South Asian artistry blended with contemporary London luxury.",
     tag: "Heritage",
   },
+  {
+    id: "meenakari_hasli",
+    title: "🦚 Handcrafted Meenakari Hasli",
+    desc: "Torque collar choker with peacock enamel work & cluster pearls.",
+    tag: "Royal Hasli",
+  },
+  {
+    id: "modern_mangalsutra",
+    title: "💍 Modern Diamond Mangalsutra",
+    desc: "Minimalist dual-chain 18k design crafted for contemporary working brides.",
+    tag: "Everyday Chic",
+  },
+  {
+    id: "temple_haram",
+    title: "🛕 Antique Temple Gold Haram",
+    desc: "Deep nakshi carving featuring Goddess Lakshmi motifs and ruby cabochons.",
+    tag: "Traditional",
+  },
+  {
+    id: "passa_maangtikka",
+    title: "🌙 Bridal Maang Tikka & Passa Set",
+    desc: "Nawabi side-hair ornament & forehead pendant for majestic bridal profiles.",
+    tag: "Bridal Accents",
+  },
+  {
+    id: "mirror_polki_ring",
+    title: "✨ Oversized Mirror Polki Finger Ring",
+    desc: "Adjustable royal cocktail ring with floral cluster perimeter.",
+    tag: "Cocktail Edit",
+  },
+  {
+    id: "layering_guide",
+    title: "🎀 Layered Velvet Choker & Rani Haar",
+    desc: "Multi-strand layering guide combining chokers with long royal pearls.",
+    tag: "Styling Hack",
+  },
 ];
 
 export default function TikTokPilotConnect() {
@@ -36,9 +72,12 @@ export default function TikTokPilotConnect() {
   const [disconnecting, setDisconnecting] = useState(false);
 
   // Workflow State: Step 1 (Topic), Step 2 (Format), Step 3 (Generated Post), Step 4 (Publish)
+  const [topics, setTopics] = useState(SUGGESTED_TOPICS);
+  const [refreshingTopics, setRefreshingTopics] = useState(false);
   const [selectedTopic, setSelectedTopic] = useState(SUGGESTED_TOPICS[0].title);
   const [customTopic, setCustomTopic] = useState("");
   const [mediaType, setMediaType] = useState("PHOTO"); // "PHOTO" (Carousel) | "VIDEO" (Reel)
+  const [autoAddMusic, setAutoAddMusic] = useState(true); // TikTok auto_add_music flag
   
   // Generation & Publish States
   const [generatingAi, setGeneratingAi] = useState(false);
@@ -161,6 +200,23 @@ export default function TikTokPilotConnect() {
     }
   };
 
+  const handleRefreshTopics = async () => {
+    setRefreshingTopics(true);
+    try {
+      const res = await fetch("/api/tiktok/generate-creative?action=refresh-topics");
+      const data = await res.json();
+      if (data.ok && Array.isArray(data.topics) && data.topics.length > 0) {
+        setTopics(data.topics);
+        setSelectedTopic(data.topics[0].title);
+        setCustomTopic("");
+      }
+    } catch (e) {
+      console.warn("Failed to refresh topics:", e);
+    } finally {
+      setRefreshingTopics(false);
+    }
+  };
+
   // STEP 4: USER PUBLISHES LIVE TO TIKTOK
   const handlePublish = async () => {
     if (!caption) return;
@@ -175,6 +231,7 @@ export default function TikTokPilotConnect() {
         imageUrl: mediaType === "PHOTO" && images.length > 0 ? images[0] : null,
         images: mediaType === "PHOTO" ? images : null,
         videoUrl: mediaType === "VIDEO" ? videoUrl : null,
+        autoAddMusic,
       };
 
       const res = await fetch("/api/tiktok/post", {
@@ -505,23 +562,50 @@ export default function TikTokPilotConnect() {
                 <label style={{ fontSize: 12, fontWeight: 800, color: "#f8fafc", textTransform: "uppercase", letterSpacing: "0.5px" }}>
                   1. Choose AI Topic for Bella &amp; Diva:
                 </label>
-                <span style={{ fontSize: 11, color: "#a7f3d0", fontWeight: 700 }}>
-                  Tailored to Jewellery Niche
-                </span>
+                <button
+                  type="button"
+                  onClick={handleRefreshTopics}
+                  disabled={refreshingTopics}
+                  style={{
+                    background: "rgba(255,255,255,0.06)",
+                    border: "1px solid rgba(255,255,255,0.12)",
+                    borderRadius: 6,
+                    padding: "3px 10px",
+                    color: "#a7f3d0",
+                    fontSize: 11,
+                    fontWeight: 700,
+                    cursor: refreshingTopics ? "wait" : "pointer",
+                    display: "flex",
+                    alignItems: "center",
+                    gap: 4,
+                  }}
+                >
+                  {refreshingTopics ? "⏳ Synthesizing..." : "🔄 AI Refresh 10 Topics"}
+                </button>
               </div>
 
-              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10, marginBottom: 10 }}>
-                {SUGGESTED_TOPICS.map((t) => {
+              <div
+                style={{
+                  display: "grid",
+                  gridTemplateColumns: "1fr 1fr",
+                  gap: 10,
+                  marginBottom: 10,
+                  maxHeight: 260,
+                  overflowY: "auto",
+                  paddingRight: 4,
+                }}
+              >
+                {topics.map((t) => {
                   const isSelected = selectedTopic === t.title && !customTopic;
                   return (
                     <div
-                      key={t.id}
+                      key={t.id || t.title}
                       onClick={() => {
                         setSelectedTopic(t.title);
                         setCustomTopic("");
                       }}
                       style={{
-                        padding: "12px",
+                        padding: "11px",
                         borderRadius: 12,
                         background: isSelected ? "rgba(254, 44, 85, 0.15)" : "rgba(255, 255, 255, 0.03)",
                         border: `1.5px solid ${isSelected ? "#fe2c55" : "rgba(255, 255, 255, 0.08)"}`,
@@ -610,6 +694,41 @@ export default function TikTokPilotConnect() {
                 >
                   🎬 9:16 Vertical Video Reel
                 </button>
+              </div>
+
+              {/* Music Option for Direct Post */}
+              <div
+                onClick={() => setAutoAddMusic(!autoAddMusic)}
+                style={{
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "space-between",
+                  marginTop: 10,
+                  padding: "10px 14px",
+                  borderRadius: 10,
+                  background: autoAddMusic ? "rgba(254, 44, 85, 0.12)" : "rgba(255, 255, 255, 0.03)",
+                  border: `1px solid ${autoAddMusic ? "#fe2c55" : "rgba(255, 255, 255, 0.08)"}`,
+                  cursor: "pointer",
+                  transition: "all 0.15s ease",
+                }}
+              >
+                <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+                  <span style={{ fontSize: 18 }}>🎵</span>
+                  <div>
+                    <div style={{ fontSize: 12, fontWeight: 800, color: "#ffffff" }}>
+                      Auto-Add TikTok Trending Music
+                    </div>
+                    <div style={{ fontSize: 11, color: "#94a3b8" }}>
+                      TikTok will automatically attach recommended trending audio to the photo carousel upon posting
+                    </div>
+                  </div>
+                </div>
+                <input
+                  type="checkbox"
+                  checked={autoAddMusic}
+                  onChange={(e) => setAutoAddMusic(e.target.checked)}
+                  style={{ accentColor: "#fe2c55", width: 18, height: 18, cursor: "pointer" }}
+                />
               </div>
             </div>
 

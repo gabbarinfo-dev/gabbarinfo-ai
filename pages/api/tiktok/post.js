@@ -11,7 +11,7 @@ export default async function handler(req, res) {
   const session = await getServerSession(req, res, authOptions);
   const email = session?.user?.email || "ndantare@gmail.com";
 
-  const { caption, imageUrl, images, videoUrl, privacyLevel = "PUBLIC_TO_EVERYONE" } = req.body || {};
+  const { caption, imageUrl, images, videoUrl, autoAddMusic = true, privacyLevel = "PUBLIC_TO_EVERYONE" } = req.body || {};
 
   const hasPhotos = Array.isArray(images) ? images.length > 0 : Boolean(imageUrl);
   if (!hasPhotos && !videoUrl) {
@@ -119,7 +119,7 @@ export default async function handler(req, res) {
             description: caption || "",
             privacy_level: effectivePrivacy,
             disable_comment: false,
-            auto_add_music: false,
+            auto_add_music: autoAddMusic !== false,
           },
           source_info: {
             source: "PULL_FROM_URL",
