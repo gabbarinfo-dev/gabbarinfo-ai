@@ -24,6 +24,12 @@ const {
   executeFullMetaCampaign,
 } = require("./lib/meta-campaign-service");
 const { optimizePageContent } = require("./lib/seo-page-optimizer");
+const {
+  suggestTopics,
+  generateTikTokCreative,
+  DEFAULT_10_TOPICS,
+  TRENDING_AUDIO_PRESETS,
+} = require("./lib/tiktok-creative-service");
 
 const app = express();
 app.use(cors());
@@ -2930,6 +2936,130 @@ app.get("/autopilot/status", requireAuth, (req, res) => {
   });
 });
 
+// -------------------------------------------------------------
+// TikTok Creative & Carousel / Reel Generator (Railway Engine)
+// -------------------------------------------------------------
+app.get("/tiktok/suggest-topics", requireAuth, async (req, res) => {
+  try {
+    const { businessName, niche } = req.query || {};
+    const topics = await suggestTopics(businessName, niche);
+    res.json({ ok: true, topics });
+  } catch (err) {
+    res.json({ ok: true, topics: DEFAULT_10_TOPICS });
+  }
+});
+
+app.post("/tiktok/suggest-topics", requireAuth, async (req, res) => {
+  try {
+    const { businessName, niche } = req.body || {};
+    const topics = await suggestTopics(businessName, niche);
+    res.json({ ok: true, topics });
+  } catch (err) {
+    res.json({ ok: true, topics: DEFAULT_10_TOPICS });
+  }
+});
+
+app.post("/tiktok/generate-creative", requireAuth, async (req, res) => {
+  try {
+    const {
+      businessName,
+      niche,
+      topic,
+      format,
+      slideCount,
+      logoUrl,
+      autoAddMusic,
+      audioPreset,
+    } = req.body || {};
+
+    log("TIKTOK", `Generating ${format || "CAROUSEL"} (${slideCount || 2} slides) for "${businessName}" - "${topic}"`);
+
+    const result = await generateTikTokCreative({
+      businessName,
+      niche,
+      topic,
+      format,
+      slideCount,
+      logoUrl,
+      autoAddMusic,
+      audioPreset,
+      openai,
+      supabase,
+    });
+
+    log("TIKTOK", `Creative successfully generated with ${result.images?.length || 0} slides`);
+    res.json(result);
+  } catch (err) {
+    log("TIKTOK", `Generation error: ${err.message}`);
+    res.status(500).json({ ok: false, error: err.message });
+  }
+});
+
+app.post(["/tiktok/jobs/generate-creative", "/tiktok/jobs/create"], requireAuth, async (req, res) => {
+  try {
+    const {
+      businessName,
+      niche,
+      topic,
+      format,
+      slideCount,
+      logoUrl,
+      autoAddMusic,
+      audioPreset,
+    } = req.body || {};
+
+    const jobId = `tt_job_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`;
+    const job = {
+      id: jobId,
+      type: "tiktok_creative",
+      businessName: businessName || "Bella & Diva Jewellery",
+      topic: topic || "Bespoke Collection Showcase",
+      format: format || "CAROUSEL",
+      status: "processing",
+      progress: 15,
+      stage: `Synthesizing connected ad concepts with gpt-image-2 for ${format || "CAROUSEL"}...`,
+      result: null,
+      error: null,
+      createdAt: new Date().toISOString(),
+    };
+    jobs.set(jobId, job);
+    log(jobId, `Queued background TikTok creative job for "${businessName}" - "${topic}"`);
+
+    res.json({ ok: true, jobId, status: "processing" });
+
+    setImmediate(async () => {
+      try {
+        job.progress = 30;
+        const result = await generateTikTokCreative({
+          businessName,
+          niche,
+          topic,
+          format,
+          slideCount,
+          logoUrl,
+          autoAddMusic,
+          audioPreset,
+          openai,
+          supabase,
+        });
+        job.status = "completed";
+        job.progress = 100;
+        job.stage = "Creative generation complete!";
+        job.completedAt = new Date().toISOString();
+        job.result = result;
+        log(jobId, `TikTok creative job successfully completed!`);
+      } catch (err) {
+        log(jobId, `TikTok creative job failed: ${err.message}`);
+        job.status = "failed";
+        job.error = err.message;
+        job.completedAt = new Date().toISOString();
+      }
+    });
+  } catch (err) {
+    res.status(500).json({ ok: false, error: err.message });
+  }
+});
+
 app.post("/system/reload", requireAuth, (req, res) => {
   try {
     const modules = [
@@ -2938,6 +3068,7 @@ app.post("/system/reload", requireAuth, (req, res) => {
       "./lib/social-autopilot",
       "./lib/shopify-autopilot",
       "./lib/meta-campaign-service",
+      "./lib/tiktok-creative-service",
     ];
     const reloaded = [];
     for (const mod of modules) {

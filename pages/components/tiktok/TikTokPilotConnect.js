@@ -91,6 +91,7 @@ export default function TikTokPilotConnect() {
   
   // Generation & Publish States
   const [generatingAi, setGeneratingAi] = useState(false);
+  const [generationStageText, setGenerationStageText] = useState("");
   const [generatedPost, setGeneratedPost] = useState(null); // null until user generates!
   const [caption, setCaption] = useState("");
   const [images, setImages] = useState([]);
@@ -160,12 +161,13 @@ export default function TikTokPilotConnect() {
     }
   };
 
-  // STEP 3: USER GENERATES POST WITH AI
+  // STEP 3: USER GENERATES POST WITH AI (Offloaded to Railway Worker - Zero Vercel Timeouts)
   const handleGeneratePost = async () => {
     const topicToUse = customTopic.trim() || selectedTopic;
     if (!topicToUse) return;
 
     setGeneratingAi(true);
+    setGenerationStageText("🚀 Connecting to Railway Worker engine...");
     setPublishError(null);
     setPublishSuccess(null);
 
@@ -178,6 +180,8 @@ export default function TikTokPilotConnect() {
           format: mediaType,
           slideCount: mediaType === "SINGLE_IMAGE" ? 1 : carouselSlideCount,
           businessName: userData?.displayName || "Bella & Diva Jewellery",
+          autoAddMusic,
+          audioPreset: selectedAudioPreset,
         }),
       });
 
@@ -189,7 +193,52 @@ export default function TikTokPilotConnect() {
         const txt = await res.text();
         throw new Error(`Server returned status ${res.status}: ${txt.slice(0, 100)}`);
       }
-      if (data.ok) {
+
+      // If Railway Worker queued a background job, poll until completed
+      if (data.ok && data.jobId) {
+        setGenerationStageText("🎨 Railway Worker: Synthesizing bespoke visuals with gpt-image-2...");
+        let completed = false;
+        let attempts = 0;
+        const maxAttempts = 60; // 2.5 mins max
+
+        while (!completed && attempts < maxAttempts) {
+          attempts++;
+          await new Promise((r) => setTimeout(r, 2500));
+          const pollRes = await fetch(`/api/tiktok/job-status?jobId=${encodeURIComponent(data.jobId)}`);
+          if (!pollRes.ok) continue;
+          const pollData = await pollRes.json();
+
+          if (pollData.stage) {
+            setGenerationStageText(`🚂 ${pollData.stage}`);
+          }
+
+          if (pollData.status === "completed" && pollData.result) {
+            completed = true;
+            const resData = pollData.result;
+            setCaption(resData.caption);
+            setImages(resData.images || []);
+            setVideoUrl(resData.videoUrl || "https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ForBiggerBlazes.mp4");
+            setGeneratedPost({
+              title: resData.title,
+              caption: resData.caption,
+              images: resData.images || [],
+              slides: resData.slides || [],
+              videoUrl: resData.videoUrl,
+              mediaType,
+              slideCount: resData.slideCount || (mediaType === "SINGLE_IMAGE" ? 1 : carouselSlideCount),
+              topic: topicToUse,
+            });
+            break;
+          } else if (pollData.status === "failed") {
+            throw new Error(pollData.error || "Creative generation failed on Railway.");
+          }
+        }
+
+        if (!completed) {
+          throw new Error("Creative generation timed out on background worker. Please retry.");
+        }
+      } else if (data.ok && (data.images || data.caption)) {
+        // Direct response
         setCaption(data.caption);
         setImages(data.images || []);
         setVideoUrl(data.videoUrl || "https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ForBiggerBlazes.mp4");
@@ -210,6 +259,7 @@ export default function TikTokPilotConnect() {
       setPublishError("AI generation error: " + err.message);
     } finally {
       setGeneratingAi(false);
+      setGenerationStageText("");
     }
   };
 
@@ -874,7 +924,7 @@ export default function TikTokPilotConnect() {
                 gap: 8,
               }}
             >
-              {generatingAi ? "⏳ AI Synthesizing Creative..." : "✨ 3. Generate Post with AI"}
+              {generatingAi ? (generationStageText || "⏳ AI Synthesizing Creative on Railway...") : "✨ 3. Generate Post with AI"}
             </button>
 
             {/* STEP 4: GENERATED POST PREVIEW & LIVE PUBLISH */}
