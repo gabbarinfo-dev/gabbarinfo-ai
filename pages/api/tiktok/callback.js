@@ -143,19 +143,19 @@ export default async function handler(req, res) {
             <p style="color: #94a3b8; font-size: 14px; margin-bottom: 24px;">
               Connected as <strong style="color: #fff;">${userProfile.displayName}</strong>. You can now publish and schedule creative posts directly to your TikTok account.
             </p>
-            <button onclick="if(window.opener){window.opener.location.reload(); window.close();}else{window.location.href='/';}" style="display:inline-block; padding:12px 28px; background:#fe2c55; color:#fff; border:none; border-radius:8px; font-weight:700; cursor:pointer;">
-              Continue to Dashboard →
+            <button onclick="if(window.opener){window.opener.location.href='/?tab=tiktok&tiktok_connected=1'; window.close();}else{window.location.href='/?tab=tiktok&tiktok_connected=1';}" style="display:inline-block; padding:12px 28px; background:#fe2c55; color:#fff; border:none; border-radius:8px; font-weight:700; cursor:pointer;">
+              Continue to TikTok Pilot →
             </button>
           </div>
           <script>
             setTimeout(() => {
               if (window.opener) {
-                window.opener.location.reload();
+                window.opener.location.href = '/?tab=tiktok&tiktok_connected=1';
                 window.close();
               } else {
-                window.location.href = '/';
+                window.location.href = '/?tab=tiktok&tiktok_connected=1';
               }
-            }, 2500);
+            }, 2000);
           </script>
         </body>
       </html>

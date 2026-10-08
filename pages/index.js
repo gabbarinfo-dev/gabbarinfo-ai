@@ -11,6 +11,7 @@ import WordPressSiteConnect from "./components/wordpress/WordPressSiteConnect";
 import ShopifyStoreConnect from "./components/shopify/ShopifyStoreConnect";
 import CinemaStudio from "./components/video/CinemaStudio";
 import LinkedInPilotConnect from "./components/linkedin/LinkedInPilotConnect";
+import TikTokPilotConnect from "./components/tiktok/TikTokPilotConnect";
 import SubscriptionModal from "./components/SubscriptionModal";
 import SocialMediaPlannerModal from "./components/social/SocialMediaPlannerModal";
 import CyberMatrixBackground from "./components/CyberMatrixBackground";
@@ -84,6 +85,8 @@ export default function HomePage() {
           setActiveTab("shopify");
         } else if (urlParams.get("tab") === "linkedin" || urlParams.get("linkedin_connected") === "1") {
           setActiveTab("linkedin");
+        } else if (urlParams.get("tab") === "tiktok" || urlParams.get("tiktok_connected") === "1") {
+          setActiveTab("tiktok");
         } else if (urlParams.get("tab") === "reels" || urlParams.get("youtube_connected") === "true") {
           if (session?.user?.email?.toLowerCase() === ADMIN_EMAIL.toLowerCase()) {
             setActiveTab("reels");
@@ -367,6 +370,7 @@ export default function HomePage() {
     { id: "overview", label: "Command Center", icon: "🚀", badge: "Live" },
     { id: "social", label: "Social Pilot/Meta Ads", icon: "📱", badge: "FB + IG" },
     { id: "linkedin", label: "LinkedIn Pilot", icon: "💼", badge: "Live" },
+    { id: "tiktok", label: "TikTok Pilot", icon: "🎵", badge: "Live" },
     { id: "ads", label: "Google Ads Campaigns", icon: "🎯", badge: "PPC" },
     { id: "chat", label: "AI Agent Chat", icon: "💬", badge: "Agent", href: "/chat" },
     { id: "wordpress", label: "WordPress & SEO", icon: "🌐", badge: hasWpConnected ? "Paired" : null },
@@ -1801,6 +1805,11 @@ export default function HomePage() {
                 <LinkedInPilotConnect />
               )}
 
+              {/* TAB: TIKTOK PILOT WORKSTATION */}
+              {activeTab === "tiktok" && (
+                <TikTokPilotConnect />
+              )}
+
               {/* TAB 4: LOCAL MAPS (GMB) WORKSTATION */}
               {activeTab === "gmb" && (
                 <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(min(100%, 480px), 1fr))", gap: 24 }}>
@@ -2118,6 +2127,20 @@ export default function HomePage() {
                 }}
               >
                 <LinkedInPilotConnect />
+              </section>
+
+              {/* TikTok Pilot Section (Classic Mode) */}
+              <section
+                id="tiktok-section"
+                style={{
+                  padding: "clamp(16px, 3.5vw, 26px)",
+                  borderRadius: 18,
+                  background: "rgba(14, 19, 30, 0.78)",
+                  border: "1px solid rgba(254, 44, 85, 0.2)",
+                  marginTop: 20,
+                }}
+              >
+                <TikTokPilotConnect />
               </section>
             </div>
           )}
