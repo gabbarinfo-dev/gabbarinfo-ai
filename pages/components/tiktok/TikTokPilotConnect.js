@@ -373,6 +373,9 @@ export default function TikTokPilotConnect() {
         setGeneratedPost(null);
         setPublishSuccess(null);
         setPublishError(null);
+        if (typeof window !== "undefined") {
+          window.history.replaceState({}, document.title, window.location.pathname + "?tab=tiktok");
+        }
       } else {
         alert("Failed to disconnect: " + (data.error || "Unknown error"));
       }
