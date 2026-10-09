@@ -7,10 +7,16 @@ export default function LinkedInPilotConnect() {
   const [connData, setConnData] = useState(null);
   const [disconnecting, setDisconnecting] = useState(false);
 
-  // Composer States
   const [postTopic, setPostTopic] = useState("");
   const [commentary, setCommentary] = useState("");
   const [imageUrl, setImageUrl] = useState("");
+  const [postFormat, setPostFormat] = useState("text"); // 'text' | 'image' | 'carousel' | 'video'
+  const [videoUrl, setVideoUrl] = useState("");
+  const [documentUrl, setDocumentUrl] = useState("");
+  const [carouselUrls, setCarouselUrls] = useState([]);
+  const [newSlideInput, setNewSlideInput] = useState("");
+  const [activeSlideIndex, setActiveSlideIndex] = useState(0);
+  const [generatingCarousel, setGeneratingCarousel] = useState(false);
   const [selectedAuthorUrn, setSelectedAuthorUrn] = useState("");
   const [generating, setGenerating] = useState(false);
   const [generatingImage, setGeneratingImage] = useState(false);
@@ -98,18 +104,22 @@ export default function LinkedInPilotConnect() {
     window.location.href = `/api/linkedin/connect?type=${type}`;
   };
 
-  const handleDisconnect = async () => {
-    if (!window.confirm("Are you sure you want to disconnect your LinkedIn account from GabbarInfo AI?")) {
+  const handleDisconnect = async (target = "all") => {
+    const label = target === "member" ? "Personal Profile" : target === "page" ? "Company Page" : "LinkedIn account";
+    if (!window.confirm(`Are you sure you want to disconnect your LinkedIn ${label} from GabbarInfo AI?`)) {
       return;
     }
     try {
       setDisconnecting(true);
-      const res = await fetch("/api/linkedin/disconnect", { method: "POST" });
+      const res = await fetch("/api/linkedin/disconnect", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ target }),
+      });
       const data = await res.json();
       if (data.ok) {
-        setStatus("idle");
-        setConnData(null);
-        setPublishSuccess(null);
+        await fetchStatus();
+        setPublishSuccess({ message: data.message || `LinkedIn ${label} disconnected successfully.` });
       } else {
         alert(data.error || "Failed to disconnect account.");
       }
@@ -218,6 +228,50 @@ export default function LinkedInPilotConnect() {
     }
   };
 
+  const handleGenerateAiCarousel = async () => {
+    try {
+      setGeneratingCarousel(true);
+      setPublishError(null);
+      const activeOrg = orgs.find((o) => o.urn === selectedAuthorUrn);
+      const brandName = activeOrg?.name || member?.name || "B2B Brand";
+
+      const prompts = [
+        `Slide 1 Title Card: ${postTopic || "Key B2B Insights & Strategies"} - Bold modern infographic title card for ${brandName}`,
+        `Slide 2 Core Insights: Actionable Takeaways & Growth Framework for ${postTopic || "Scaling"} - Clean presentation graphic`,
+        `Slide 3 Summary: Final Takeaways & Executive Call to Action for ${brandName} - Tech leadership style`,
+      ];
+
+      const slideUrls = [];
+      for (const p of prompts) {
+        const res = await fetch("/api/linkedin/generate-image", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            prompt: p,
+            commentary: commentary.trim() || postTopic,
+            brandName,
+          }),
+        });
+        const data = await res.json();
+        if (data.ok && data.imageUrl) {
+          slideUrls.push(data.imageUrl);
+        }
+      }
+
+      if (slideUrls.length > 0) {
+        setCarouselUrls(slideUrls);
+        setPostFormat("carousel");
+        setActiveSlideIndex(0);
+      } else {
+        setPublishError("Failed to generate AI carousel slides.");
+      }
+    } catch (e) {
+      setPublishError("AI Carousel generation error: " + e.message);
+    } finally {
+      setGeneratingCarousel(false);
+    }
+  };
+
   const handlePublishPost = async () => {
     if (!commentary.trim()) {
       alert("Post commentary cannot be empty.");
@@ -235,8 +289,12 @@ export default function LinkedInPilotConnect() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           commentary: commentary.trim(),
-          imageUrl: imageUrl.trim() || null,
+          imageUrl: postFormat === "image" ? (imageUrl.trim() || null) : null,
+          videoUrl: postFormat === "video" ? (videoUrl.trim() || null) : null,
+          carouselUrls: postFormat === "carousel" ? (carouselUrls.length > 0 ? carouselUrls : null) : null,
+          documentUrl: postFormat === "carousel" ? (documentUrl.trim() || null) : null,
           targetUrn,
+          title: postTopic ? `GabbarInfo AI: ${postTopic}` : "GabbarInfo AI Broadcast",
         }),
       });
 
@@ -249,6 +307,9 @@ export default function LinkedInPilotConnect() {
         });
         setCommentary("");
         setImageUrl("");
+        setVideoUrl("");
+        setCarouselUrls([]);
+        setDocumentUrl("");
         setPostTopic("");
       } else {
         setPublishError(data.error || "Failed to publish post.");
@@ -337,6 +398,7 @@ export default function LinkedInPilotConnect() {
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 24, width: "100%" }}>
       {/* ── TOP HERO BANNER ── */}
+      {/* ── HEADER BANNER ── */}
       <div
         style={{
           padding: "24px 28px",
@@ -397,7 +459,7 @@ export default function LinkedInPilotConnect() {
         <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
           {status === "connected" && (
             <button
-              onClick={handleDisconnect}
+              onClick={() => handleDisconnect("all")}
               disabled={disconnecting}
               style={{
                 padding: "9px 16px",
@@ -405,55 +467,234 @@ export default function LinkedInPilotConnect() {
                 background: "rgba(239, 68, 68, 0.12)",
                 border: "1px solid rgba(239, 68, 68, 0.3)",
                 color: "#f87171",
-                fontSize: 12.5,
+                fontSize: 12,
                 fontWeight: 700,
                 cursor: "pointer",
               }}
             >
-              {disconnecting ? "Disconnecting…" : "Disconnect"}
+              {disconnecting ? "Disconnecting…" : "Disconnect All"}
             </button>
           )}
+        </div>
+      </div>
 
-          <button
-            onClick={() => handleConnect("page")}
-            style={{
-              padding: "10px 18px",
-              borderRadius: 10,
-              background: "#0a66c2",
-              border: "none",
-              color: "#ffffff",
-              fontSize: 12.5,
-              fontWeight: 800,
-              cursor: "pointer",
-              boxShadow: "0 4px 14px rgba(10, 102, 194, 0.4)",
-              display: "flex",
-              alignItems: "center",
-              gap: 8,
-            }}
-          >
-            <span>🏢 Connect Company Page</span>
-            <span>↗</span>
-          </button>
+      {/* ── DEDICATED LINKEDIN ACCOUNTS & PAGES HUB ── */}
+      <div
+        style={{
+          display: "grid",
+          gridTemplateColumns: "repeat(auto-fit, minmax(320px, 1fr))",
+          gap: 16,
+        }}
+      >
+        {/* Card 1: Personal Profile */}
+        <div
+          style={{
+            padding: "18px 22px",
+            borderRadius: 16,
+            background: "rgba(14, 19, 30, 0.8)",
+            border: `1px solid ${connData?.isMemberConnected ? "rgba(10, 102, 194, 0.45)" : "rgba(255, 255, 255, 0.08)"}`,
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "space-between",
+            gap: 14,
+            boxShadow: connData?.isMemberConnected ? "0 4px 20px rgba(10, 102, 194, 0.15)" : "none",
+          }}
+        >
+          <div style={{ display: "flex", alignItems: "center", gap: 14, minWidth: 0 }}>
+            {connData?.isMemberConnected && member?.picture ? (
+              <img
+                src={member.picture}
+                alt={member.name || "Profile"}
+                style={{
+                  width: 50,
+                  height: 50,
+                  borderRadius: "50%",
+                  objectFit: "cover",
+                  border: "2px solid #0a66c2",
+                  boxShadow: "0 2px 10px rgba(10, 102, 194, 0.35)",
+                  flexShrink: 0,
+                }}
+              />
+            ) : (
+              <div
+                style={{
+                  width: 50,
+                  height: 50,
+                  borderRadius: "50%",
+                  background: "linear-gradient(135deg, #0a66c2 0%, #004182 100%)",
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  color: "#fff",
+                  fontWeight: 800,
+                  fontSize: 18,
+                  flexShrink: 0,
+                }}
+              >
+                {member?.name ? member.name.charAt(0) : "👤"}
+              </div>
+            )}
+            <div style={{ minWidth: 0 }}>
+              <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                <span style={{ fontSize: 14.5, fontWeight: 800, color: "#fff", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                  {connData?.isMemberConnected ? (member?.name || "Personal Profile") : "Personal Profile"}
+                </span>
+                <span
+                  style={{
+                    fontSize: 9.5,
+                    fontWeight: 800,
+                    padding: "2px 7px",
+                    borderRadius: 999,
+                    background: connData?.isMemberConnected ? "rgba(34, 197, 94, 0.15)" : "rgba(148, 163, 184, 0.15)",
+                    color: connData?.isMemberConnected ? "#4ade80" : "#94a3b8",
+                    border: `1px solid ${connData?.isMemberConnected ? "rgba(34, 197, 94, 0.3)" : "rgba(148, 163, 184, 0.2)"}`,
+                  }}
+                >
+                  {connData?.isMemberConnected ? "● CONNECTED" : "○ NOT LINKED"}
+                </span>
+              </div>
+              <p style={{ margin: "3px 0 0", fontSize: 11.5, color: "#94a3b8", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                {connData?.isMemberConnected ? (member?.email || "Personal Feed Broadcasting") : "Self-serve direct feed posting"}
+              </p>
+            </div>
+          </div>
 
-          <button
-            onClick={() => handleConnect("member")}
-            style={{
-              padding: "10px 18px",
-              borderRadius: 10,
-              background: "rgba(255, 255, 255, 0.08)",
-              border: "1px solid rgba(255, 255, 255, 0.15)",
-              color: "#e2e8f0",
-              fontSize: 12.5,
-              fontWeight: 700,
-              cursor: "pointer",
-              display: "flex",
-              alignItems: "center",
-              gap: 8,
-            }}
-          >
-            <span>👤 Connect Personal Profile</span>
-            <span>↗</span>
-          </button>
+          <div>
+            {connData?.isMemberConnected ? (
+              <button
+                onClick={() => handleDisconnect("member")}
+                disabled={disconnecting}
+                style={{
+                  padding: "8px 14px",
+                  borderRadius: 10,
+                  background: "rgba(239, 68, 68, 0.1)",
+                  border: "1px solid rgba(239, 68, 68, 0.35)",
+                  color: "#f87171",
+                  fontSize: 11.5,
+                  fontWeight: 700,
+                  cursor: "pointer",
+                  whiteSpace: "nowrap",
+                }}
+              >
+                Disconnect
+              </button>
+            ) : (
+              <button
+                onClick={() => handleConnect("member")}
+                style={{
+                  padding: "9px 15px",
+                  borderRadius: 10,
+                  background: "#0a66c2",
+                  border: "none",
+                  color: "#fff",
+                  fontSize: 12,
+                  fontWeight: 800,
+                  cursor: "pointer",
+                  boxShadow: "0 4px 12px rgba(10, 102, 194, 0.35)",
+                  whiteSpace: "nowrap",
+                }}
+              >
+                Connect Profile ↗
+              </button>
+            )}
+          </div>
+        </div>
+
+        {/* Card 2: Company Page Syndicate */}
+        <div
+          style={{
+            padding: "18px 22px",
+            borderRadius: 16,
+            background: "rgba(14, 19, 30, 0.8)",
+            border: `1px solid ${connData?.isPageConnected ? "rgba(56, 189, 248, 0.45)" : "rgba(255, 255, 255, 0.08)"}`,
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "space-between",
+            gap: 14,
+            boxShadow: connData?.isPageConnected ? "0 4px 20px rgba(56, 189, 248, 0.15)" : "none",
+          }}
+        >
+          <div style={{ display: "flex", alignItems: "center", gap: 14, minWidth: 0 }}>
+            <div
+              style={{
+                width: 50,
+                height: 50,
+                borderRadius: 12,
+                background: "linear-gradient(135deg, #1e293b 0%, #0f172a 100%)",
+                border: "1px solid rgba(255, 255, 255, 0.12)",
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
+                fontSize: 22,
+                flexShrink: 0,
+              }}
+            >
+              🏢
+            </div>
+            <div style={{ minWidth: 0 }}>
+              <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                <span style={{ fontSize: 14.5, fontWeight: 800, color: "#fff", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                  {connData?.isPageConnected && orgs.length > 0 ? orgs[0].name : "Company Page"}
+                </span>
+                <span
+                  style={{
+                    fontSize: 9.5,
+                    fontWeight: 800,
+                    padding: "2px 7px",
+                    borderRadius: 999,
+                    background: connData?.isPageConnected ? "rgba(34, 197, 94, 0.15)" : "rgba(148, 163, 184, 0.15)",
+                    color: connData?.isPageConnected ? "#4ade80" : "#94a3b8",
+                    border: `1px solid ${connData?.isPageConnected ? "rgba(34, 197, 94, 0.3)" : "rgba(148, 163, 184, 0.2)"}`,
+                  }}
+                >
+                  {connData?.isPageConnected ? "● CONNECTED" : "○ NOT LINKED"}
+                </span>
+              </div>
+              <p style={{ margin: "3px 0 0", fontSize: 11.5, color: "#94a3b8", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                {connData?.isPageConnected ? (orgs.length > 1 ? `${orgs.length} Pages Managed (Admin Access)` : "B2B Brand Page Broadcasting") : "Requires Page Admin Permissions"}
+              </p>
+            </div>
+          </div>
+
+          <div>
+            {connData?.isPageConnected ? (
+              <button
+                onClick={() => handleDisconnect("page")}
+                disabled={disconnecting}
+                style={{
+                  padding: "8px 14px",
+                  borderRadius: 10,
+                  background: "rgba(239, 68, 68, 0.1)",
+                  border: "1px solid rgba(239, 68, 68, 0.35)",
+                  color: "#f87171",
+                  fontSize: 11.5,
+                  fontWeight: 700,
+                  cursor: "pointer",
+                  whiteSpace: "nowrap",
+                }}
+              >
+                Disconnect
+              </button>
+            ) : (
+              <button
+                onClick={() => handleConnect("page")}
+                style={{
+                  padding: "9px 15px",
+                  borderRadius: 10,
+                  background: "linear-gradient(135deg, #0284c7 0%, #0369a1 100%)",
+                  border: "none",
+                  color: "#fff",
+                  fontSize: 12,
+                  fontWeight: 800,
+                  cursor: "pointer",
+                  boxShadow: "0 4px 12px rgba(2, 132, 199, 0.35)",
+                  whiteSpace: "nowrap",
+                }}
+              >
+                Connect Page ↗
+              </button>
+            )}
+          </div>
         </div>
       </div>
 
@@ -847,77 +1088,279 @@ export default function LinkedInPilotConnect() {
             }}
           />
 
-          {/* ── AI IMAGE GENERATION & MANUAL URL STRIP ── */}
-          <div
-            style={{
-              padding: "14px 16px",
-              borderRadius: 14,
-              background: "rgba(0, 0, 0, 0.25)",
-              border: "1px solid rgba(255, 255, 255, 0.08)",
-              display: "flex",
-              flexDirection: "column",
-              gap: 12,
-            }}
-          >
-            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", flexWrap: "wrap", gap: 10 }}>
-              <span style={{ fontSize: 12, fontWeight: 700, color: "#cbd5e1" }}>
-                🖼️ Post Creative Visual
-              </span>
-              <button
-                onClick={handleGenerateAiImage}
-                disabled={generatingImage}
-                style={{
-                  padding: "7px 14px",
-                  borderRadius: 8,
-                  background: "linear-gradient(135deg, #a855f7 0%, #6366f1 100%)",
-                  border: "none",
-                  color: "#fff",
-                  fontSize: 11.5,
-                  fontWeight: 700,
-                  cursor: "pointer",
-                  display: "flex",
-                  alignItems: "center",
-                  gap: 6,
-                  boxShadow: "0 2px 10px rgba(168, 85, 247, 0.3)",
-                }}
-              >
-                <span>{generatingImage ? "Generating Visual…" : "✨ AI Generate Visual Creative"}</span>
-              </button>
-            </div>
-
-            {imageUrl ? (
-              <div style={{ display: "flex", alignItems: "center", gap: 12, background: "rgba(255,255,255,0.03)", padding: 8, borderRadius: 10, border: "1px solid rgba(255,255,255,0.08)" }}>
-                <img src={imageUrl} alt="Creative Thumbnail" style={{ width: 44, height: 44, borderRadius: 8, objectFit: "cover" }} />
-                <div style={{ flex: 1, minWidth: 0 }}>
-                  <div style={{ fontSize: 11, color: "#4ade80", fontWeight: 700 }}>Visual Attached</div>
-                  <div style={{ fontSize: 11, color: "#94a3b8", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{imageUrl}</div>
-                </div>
+          {/* ── FORMAT SWITCHER TABS ── */}
+          <div>
+            <label style={{ fontSize: 11.5, color: "#94a3b8", fontWeight: 700, display: "block", marginBottom: 6 }}>
+              Post Format:
+            </label>
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 6 }}>
+              {[
+                { id: "text", label: "✍️ Text", desc: "Thought post" },
+                { id: "image", label: "🖼️ Image", desc: "Single visual" },
+                { id: "carousel", label: "📑 Carousel", desc: "PDF Slide deck" },
+                { id: "video", label: "🎥 Reel", desc: "Native MP4 video" },
+              ].map((fmt) => (
                 <button
-                  onClick={() => setImageUrl("")}
-                  style={{ background: "none", border: "none", color: "#f87171", cursor: "pointer", fontSize: 12, fontWeight: 700 }}
+                  key={fmt.id}
+                  type="button"
+                  onClick={() => setPostFormat(fmt.id)}
+                  style={{
+                    padding: "8px 6px",
+                    borderRadius: 10,
+                    background: postFormat === fmt.id ? "rgba(10, 102, 194, 0.25)" : "rgba(255, 255, 255, 0.04)",
+                    border: `1px solid ${postFormat === fmt.id ? "#0a66c2" : "rgba(255, 255, 255, 0.1)"}`,
+                    color: postFormat === fmt.id ? "#38bdf8" : "#94a3b8",
+                    fontSize: 11.5,
+                    fontWeight: postFormat === fmt.id ? 800 : 600,
+                    cursor: "pointer",
+                    textAlign: "center",
+                  }}
                 >
-                  Remove
+                  <div>{fmt.label}</div>
+                  <div style={{ fontSize: 9.5, color: postFormat === fmt.id ? "#93c5fd" : "#64748b", marginTop: 2 }}>{fmt.desc}</div>
+                </button>
+              ))}
+            </div>
+          </div>
+
+          {/* ── FORMAT-SPECIFIC MEDIA ATTACHMENTS ── */}
+          {postFormat === "image" && (
+            <div
+              style={{
+                padding: "14px 16px",
+                borderRadius: 14,
+                background: "rgba(0, 0, 0, 0.25)",
+                border: "1px solid rgba(255, 255, 255, 0.08)",
+                display: "flex",
+                flexDirection: "column",
+                gap: 12,
+              }}
+            >
+              <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", flexWrap: "wrap", gap: 10 }}>
+                <span style={{ fontSize: 12, fontWeight: 700, color: "#cbd5e1" }}>
+                  🖼️ Single Image Creative
+                </span>
+                <button
+                  onClick={handleGenerateAiImage}
+                  disabled={generatingImage}
+                  style={{
+                    padding: "7px 14px",
+                    borderRadius: 8,
+                    background: "linear-gradient(135deg, #a855f7 0%, #6366f1 100%)",
+                    border: "none",
+                    color: "#fff",
+                    fontSize: 11.5,
+                    fontWeight: 700,
+                    cursor: "pointer",
+                    boxShadow: "0 2px 10px rgba(168, 85, 247, 0.3)",
+                  }}
+                >
+                  <span>{generatingImage ? "Generating Visual…" : "✨ AI Generate Visual Creative"}</span>
                 </button>
               </div>
-            ) : (
-              <input
-                type="text"
-                placeholder="Or paste custom image URL (https://...)..."
-                value={imageUrl}
-                onChange={(e) => setImageUrl(e.target.value)}
-                style={{
-                  width: "100%",
-                  boxSizing: "border-box",
-                  padding: "9px 12px",
-                  borderRadius: 8,
-                  background: "rgba(0,0,0,0.3)",
-                  border: "1px solid rgba(255, 255, 255, 0.1)",
-                  color: "#fff",
-                  fontSize: 12,
-                }}
-              />
-            )}
-          </div>
+
+              {imageUrl ? (
+                <div style={{ display: "flex", alignItems: "center", gap: 12, background: "rgba(255,255,255,0.03)", padding: 8, borderRadius: 10, border: "1px solid rgba(255,255,255,0.08)" }}>
+                  <img src={imageUrl} alt="Thumbnail" style={{ width: 44, height: 44, borderRadius: 8, objectFit: "cover" }} />
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <div style={{ fontSize: 11, color: "#4ade80", fontWeight: 700 }}>Visual Attached</div>
+                    <div style={{ fontSize: 11, color: "#94a3b8", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{imageUrl}</div>
+                  </div>
+                  <button
+                    onClick={() => setImageUrl("")}
+                    style={{ background: "none", border: "none", color: "#f87171", cursor: "pointer", fontSize: 12, fontWeight: 700 }}
+                  >
+                    Remove
+                  </button>
+                </div>
+              ) : (
+                <input
+                  type="text"
+                  placeholder="Or paste custom image URL (https://...)..."
+                  value={imageUrl}
+                  onChange={(e) => setImageUrl(e.target.value)}
+                  style={{
+                    width: "100%",
+                    boxSizing: "border-box",
+                    padding: "9px 12px",
+                    borderRadius: 8,
+                    background: "rgba(0,0,0,0.3)",
+                    border: "1px solid rgba(255, 255, 255, 0.1)",
+                    color: "#fff",
+                    fontSize: 12,
+                  }}
+                />
+              )}
+            </div>
+          )}
+
+          {postFormat === "carousel" && (
+            <div
+              style={{
+                padding: "14px 16px",
+                borderRadius: 14,
+                background: "rgba(0, 0, 0, 0.25)",
+                border: "1px solid rgba(56, 189, 248, 0.2)",
+                display: "flex",
+                flexDirection: "column",
+                gap: 12,
+              }}
+            >
+              <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", flexWrap: "wrap", gap: 10 }}>
+                <span style={{ fontSize: 12, fontWeight: 700, color: "#38bdf8" }}>
+                  📑 Multi-Slide Carousel Deck ({carouselUrls.length} slides)
+                </span>
+                <button
+                  onClick={handleGenerateAiCarousel}
+                  disabled={generatingCarousel}
+                  style={{
+                    padding: "7px 14px",
+                    borderRadius: 8,
+                    background: "linear-gradient(135deg, #0284c7 0%, #0369a1 100%)",
+                    border: "none",
+                    color: "#fff",
+                    fontSize: 11.5,
+                    fontWeight: 700,
+                    cursor: "pointer",
+                    boxShadow: "0 2px 10px rgba(2, 132, 199, 0.3)",
+                  }}
+                >
+                  <span>{generatingCarousel ? "Generating 3-Slide Deck…" : "✨ AI Generate 3-Slide Carousel"}</span>
+                </button>
+              </div>
+
+              {carouselUrls.length > 0 ? (
+                <div style={{ display: "flex", gap: 8, overflowX: "auto", paddingBottom: 6 }}>
+                  {carouselUrls.map((sUrl, sIdx) => (
+                    <div key={sIdx} style={{ position: "relative", flexShrink: 0, width: 64, height: 64, borderRadius: 8, overflow: "hidden", border: activeSlideIndex === sIdx ? "2px solid #38bdf8" : "1px solid rgba(255,255,255,0.15)", cursor: "pointer" }} onClick={() => setActiveSlideIndex(sIdx)}>
+                      <img src={sUrl} alt={`Slide ${sIdx + 1}`} style={{ width: "100%", height: "100%", objectFit: "cover" }} />
+                      <div style={{ position: "absolute", bottom: 2, left: 3, fontSize: 9, background: "rgba(0,0,0,0.7)", color: "#fff", padding: "1px 4px", borderRadius: 4 }}>
+                        #{sIdx + 1}
+                      </div>
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          const updated = carouselUrls.filter((_, idx) => idx !== sIdx);
+                          setCarouselUrls(updated);
+                          if (activeSlideIndex >= updated.length) setActiveSlideIndex(Math.max(0, updated.length - 1));
+                        }}
+                        style={{ position: "absolute", top: 2, right: 2, background: "rgba(239,68,68,0.85)", border: "none", color: "#fff", borderRadius: "50%", width: 16, height: 16, fontSize: 10, cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center" }}
+                      >
+                        ×
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              ) : null}
+
+              <div style={{ display: "flex", gap: 8 }}>
+                <input
+                  type="text"
+                  placeholder="Paste slide image URL (https://...)..."
+                  value={newSlideInput}
+                  onChange={(e) => setNewSlideInput(e.target.value)}
+                  style={{
+                    flex: 1,
+                    padding: "9px 12px",
+                    borderRadius: 8,
+                    background: "rgba(0,0,0,0.3)",
+                    border: "1px solid rgba(255, 255, 255, 0.1)",
+                    color: "#fff",
+                    fontSize: 12,
+                  }}
+                />
+                <button
+                  type="button"
+                  onClick={() => {
+                    if (newSlideInput.trim()) {
+                      setCarouselUrls([...carouselUrls, newSlideInput.trim()]);
+                      setNewSlideInput("");
+                    }
+                  }}
+                  style={{ padding: "8px 14px", borderRadius: 8, background: "rgba(255,255,255,0.1)", border: "1px solid rgba(255,255,255,0.2)", color: "#fff", fontSize: 12, fontWeight: 700, cursor: "pointer" }}
+                >
+                  + Add Slide
+                </button>
+              </div>
+
+              <div style={{ borderTop: "1px solid rgba(255,255,255,0.06)", paddingTop: 8 }}>
+                <input
+                  type="text"
+                  placeholder="Or paste direct multi-page PDF document URL (https://...)..."
+                  value={documentUrl}
+                  onChange={(e) => setDocumentUrl(e.target.value)}
+                  style={{
+                    width: "100%",
+                    boxSizing: "border-box",
+                    padding: "8px 12px",
+                    borderRadius: 8,
+                    background: "rgba(0,0,0,0.2)",
+                    border: "1px solid rgba(255, 255, 255, 0.08)",
+                    color: "#94a3b8",
+                    fontSize: 11.5,
+                  }}
+                />
+              </div>
+            </div>
+          )}
+
+          {postFormat === "video" && (
+            <div
+              style={{
+                padding: "14px 16px",
+                borderRadius: 14,
+                background: "rgba(0, 0, 0, 0.25)",
+                border: "1px solid rgba(168, 85, 247, 0.25)",
+                display: "flex",
+                flexDirection: "column",
+                gap: 12,
+              }}
+            >
+              <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+                <span style={{ fontSize: 12, fontWeight: 700, color: "#c084fc" }}>
+                  🎥 Native Video Reel (MP4 / MOV)
+                </span>
+                <span style={{ fontSize: 11, color: "#94a3b8" }}>
+                  Autoplays natively in LinkedIn feed
+                </span>
+              </div>
+
+              {videoUrl ? (
+                <div style={{ display: "flex", alignItems: "center", gap: 12, background: "rgba(255,255,255,0.03)", padding: 8, borderRadius: 10, border: "1px solid rgba(255,255,255,0.08)" }}>
+                  <div style={{ width: 44, height: 44, borderRadius: 8, background: "#000", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 18 }}>
+                    🎬
+                  </div>
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <div style={{ fontSize: 11, color: "#c084fc", fontWeight: 700 }}>Video Attached</div>
+                    <div style={{ fontSize: 11, color: "#94a3b8", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{videoUrl}</div>
+                  </div>
+                  <button
+                    onClick={() => setVideoUrl("")}
+                    style={{ background: "none", border: "none", color: "#f87171", cursor: "pointer", fontSize: 12, fontWeight: 700 }}
+                  >
+                    Remove
+                  </button>
+                </div>
+              ) : (
+                <input
+                  type="text"
+                  placeholder="Paste direct Video Reel MP4 URL (from Reels Studio or CDN)..."
+                  value={videoUrl}
+                  onChange={(e) => setVideoUrl(e.target.value)}
+                  style={{
+                    width: "100%",
+                    boxSizing: "border-box",
+                    padding: "9px 12px",
+                    borderRadius: 8,
+                    background: "rgba(0,0,0,0.3)",
+                    border: "1px solid rgba(255, 255, 255, 0.1)",
+                    color: "#fff",
+                    fontSize: 12,
+                  }}
+                />
+              )}
+            </div>
+          )}
 
           {/* Publish Action Button */}
           <button
@@ -973,7 +1416,7 @@ export default function LinkedInPilotConnect() {
                 style={{
                   width: 44,
                   height: 44,
-                  borderRadius: selectedAuthorUrn?.startsWith("urn:li:organization:") ? 6 : "50%",
+                  borderRadius: selectedAuthorUrn?.startsWith("urn:li:organization:") ? 8 : "50%",
                   background: "#0a66c2",
                   display: "flex",
                   alignItems: "center",
@@ -981,9 +1424,14 @@ export default function LinkedInPilotConnect() {
                   color: "#fff",
                   fontWeight: 800,
                   fontSize: 16,
+                  overflow: "hidden",
                 }}
               >
-                {selectedAuthorUrn?.startsWith("urn:li:organization:") ? "🏢" : "IN"}
+                {!selectedAuthorUrn?.startsWith("urn:li:organization:") && member?.picture ? (
+                  <img src={member.picture} alt={member.name || "Author"} style={{ width: "100%", height: "100%", objectFit: "cover" }} />
+                ) : (
+                  selectedAuthorUrn?.startsWith("urn:li:organization:") ? "🏢" : "IN"
+                )}
               </div>
               <div>
                 <div style={{ fontSize: 14, fontWeight: 700, color: "#ffffff" }}>
@@ -996,7 +1444,7 @@ export default function LinkedInPilotConnect() {
             </div>
 
             {/* Body */}
-            <div style={{ padding: "16px 18px", fontSize: 13.5, color: "#e2e8f0", lineHeight: 1.6, whiteSpace: "pre-wrap", minHeight: 120 }}>
+            <div style={{ padding: "16px 18px", fontSize: 13.5, color: "#e2e8f0", lineHeight: 1.6, whiteSpace: "pre-wrap", minHeight: 90 }}>
               {commentary.trim() || (
                 <span style={{ color: "#64748b", fontStyle: "italic" }}>
                   Your LinkedIn post content will appear here in real time as you write or generate it with AI...
@@ -1004,8 +1452,8 @@ export default function LinkedInPilotConnect() {
               )}
             </div>
 
-            {/* Image Preview */}
-            {imageUrl.trim() && (
+            {/* Media Previews */}
+            {postFormat === "image" && imageUrl.trim() && (
               <div style={{ width: "100%", maxHeight: 320, overflow: "hidden", background: "#000", display: "flex", justifyContent: "center" }}>
                 <img
                   src={imageUrl.trim()}
@@ -1015,6 +1463,60 @@ export default function LinkedInPilotConnect() {
                   }}
                   style={{ width: "100%", maxHeight: 320, objectFit: "cover" }}
                 />
+              </div>
+            )}
+
+            {postFormat === "video" && videoUrl.trim() && (
+              <div style={{ width: "100%", maxHeight: 320, background: "#000" }}>
+                <video
+                  src={videoUrl.trim()}
+                  controls
+                  style={{ width: "100%", maxHeight: 320, background: "#000" }}
+                />
+              </div>
+            )}
+
+            {postFormat === "carousel" && carouselUrls.length > 0 && (
+              <div style={{ position: "relative", width: "100%", background: "#0f172a", borderTop: "1px solid rgba(255,255,255,0.08)", borderBottom: "1px solid rgba(255,255,255,0.08)" }}>
+                <div style={{ display: "flex", justifyContent: "center", alignItems: "center", minHeight: 220, maxHeight: 320, overflow: "hidden" }}>
+                  <img
+                    src={carouselUrls[activeSlideIndex] || carouselUrls[0]}
+                    alt={`Slide ${activeSlideIndex + 1}`}
+                    style={{ maxHeight: 320, width: "100%", objectFit: "contain" }}
+                  />
+                </div>
+                {/* Carousel Controls */}
+                <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "8px 14px", background: "rgba(0,0,0,0.6)" }}>
+                  <button
+                    type="button"
+                    onClick={() => setActiveSlideIndex((prev) => Math.max(0, prev - 1))}
+                    disabled={activeSlideIndex === 0}
+                    style={{ padding: "4px 10px", borderRadius: 6, background: "rgba(255,255,255,0.15)", border: "none", color: "#fff", fontSize: 11, cursor: activeSlideIndex === 0 ? "not-allowed" : "pointer" }}
+                  >
+                    ◀ Prev
+                  </button>
+                  <span style={{ fontSize: 11, fontWeight: 700, color: "#38bdf8" }}>
+                    Slide {activeSlideIndex + 1} of {carouselUrls.length}
+                  </span>
+                  <button
+                    type="button"
+                    onClick={() => setActiveSlideIndex((prev) => Math.min(carouselUrls.length - 1, prev + 1))}
+                    disabled={activeSlideIndex === carouselUrls.length - 1}
+                    style={{ padding: "4px 10px", borderRadius: 6, background: "rgba(255,255,255,0.15)", border: "none", color: "#fff", fontSize: 11, cursor: activeSlideIndex === carouselUrls.length - 1 ? "not-allowed" : "pointer" }}
+                  >
+                    Next ▶
+                  </button>
+                </div>
+              </div>
+            )}
+
+            {postFormat === "carousel" && carouselUrls.length === 0 && documentUrl.trim() && (
+              <div style={{ padding: "16px 20px", background: "rgba(56, 189, 248, 0.08)", borderTop: "1px solid rgba(56, 189, 248, 0.2)", display: "flex", alignItems: "center", gap: 12 }}>
+                <span style={{ fontSize: 24 }}>📑</span>
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <div style={{ fontSize: 12.5, fontWeight: 700, color: "#38bdf8" }}>Interactive Document Carousel Deck Attached</div>
+                  <div style={{ fontSize: 11, color: "#94a3b8", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{documentUrl}</div>
+                </div>
               </div>
             )}
 

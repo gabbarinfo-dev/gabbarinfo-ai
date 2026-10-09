@@ -3,6 +3,52 @@ import axios from "axios";
 import { getServerSession } from "next-auth/next";
 import { authOptions } from "../auth/[...nextauth]";
 import { supabaseServer } from "../../../lib/supabaseServer";
+import { PDFDocument } from "pdf-lib";
+
+async function assemblePdfFromImages(imageUrls) {
+  const pdfDoc = await PDFDocument.create();
+  for (const url of imageUrls) {
+    if (!url || typeof url !== "string") continue;
+    try {
+      const imgRes = await axios.get(url, {
+        responseType: "arraybuffer",
+        timeout: 15000,
+      });
+      const imgBuffer = Buffer.from(imgRes.data);
+      const contentType = (imgRes.headers["content-type"] || "").toLowerCase();
+      let embeddedImage;
+
+      if (contentType.includes("png") || url.toLowerCase().endsWith(".png")) {
+        try {
+          embeddedImage = await pdfDoc.embedPng(imgBuffer);
+        } catch (_) {
+          embeddedImage = await pdfDoc.embedJpg(imgBuffer);
+        }
+      } else {
+        try {
+          embeddedImage = await pdfDoc.embedJpg(imgBuffer);
+        } catch (_) {
+          embeddedImage = await pdfDoc.embedPng(imgBuffer);
+        }
+      }
+
+      if (embeddedImage) {
+        const page = pdfDoc.addPage([embeddedImage.width, embeddedImage.height]);
+        page.drawImage(embeddedImage, {
+          x: 0,
+          y: 0,
+          width: embeddedImage.width,
+          height: embeddedImage.height,
+        });
+      }
+    } catch (slideErr) {
+      console.warn("[PDF Carousel Slide Warning]: Failed to embed image", url, slideErr.message);
+    }
+  }
+
+  const pdfBytes = await pdfDoc.save();
+  return Buffer.from(pdfBytes);
+}
 
 export default async function handler(req, res) {
   if (req.method !== "POST") {
@@ -16,7 +62,15 @@ export default async function handler(req, res) {
     return res.status(401).json({ ok: false, error: "Unauthorized" });
   }
 
-  const { commentary, imageUrl, targetUrn, title } = req.body || {};
+  const {
+    commentary,
+    imageUrl,
+    videoUrl,
+    documentUrl,
+    carouselUrls,
+    targetUrn,
+    title,
+  } = req.body || {};
 
   if (!commentary || !commentary.trim()) {
     return res.status(400).json({ ok: false, error: "Post commentary text cannot be empty." });
@@ -44,14 +98,16 @@ export default async function handler(req, res) {
       ? (conn?.pageAccessToken || conn?.accessToken)
       : (conn?.accessToken || conn?.pageAccessToken);
 
-    const defaultAuthorUrn = conn?.organizations?.[0]?.urn || conn?.member?.urn;
+    const defaultAuthorUrn = isTargetOrg
+      ? (conn?.organizations?.[0]?.urn || conn?.member?.urn)
+      : (conn?.member?.urn || conn?.organizations?.[0]?.urn);
 
     if (!activeToken) {
       return res.status(400).json({
         ok: false,
         error: isTargetOrg
-          ? "LinkedIn Company Page is not connected or token missing. Please connect Company Page."
-          : "Active LinkedIn token not found. Please reconnect your account.",
+          ? "LinkedIn Company Page token is not found. Please connect your Company Page."
+          : "LinkedIn Personal Profile token is not found. Please connect your Personal Profile.",
       });
     }
 
@@ -70,12 +126,97 @@ export default async function handler(req, res) {
       "Content-Type": "application/json",
     };
 
-    let imageUrn = null;
+    let mediaUrn = null;
+    let mediaType = "NONE";
 
-    // 2. If imageUrl is supplied, upload image to LinkedIn
-    if (imageUrl && typeof imageUrl === "string" && imageUrl.startsWith("http")) {
+    // 2A. Handle Video Reel Upload
+    if (videoUrl && typeof videoUrl === "string" && videoUrl.startsWith("http")) {
       try {
-        // Fetch binary image data
+        const videoRes = await axios.get(videoUrl, {
+          responseType: "arraybuffer",
+          timeout: 45000,
+        });
+        const videoBuffer = Buffer.from(videoRes.data);
+        const videoContentType = videoRes.headers["content-type"] || "video/mp4";
+
+        const initRes = await axios.post(
+          "https://api.linkedin.com/rest/videos?action=initializeUpload",
+          {
+            initializeUploadRequest: {
+              owner: authorUrn,
+              fileSizeBytes: videoBuffer.length,
+              uploadCaptions: false,
+              uploadThumbnail: false,
+            },
+          },
+          { headers }
+        );
+
+        const uploadUrl =
+          initRes.data?.value?.uploadInstructions?.[0]?.uploadUrl ||
+          initRes.data?.value?.uploadUrl;
+        const vUrn = initRes.data?.value?.video;
+
+        if (uploadUrl && vUrn) {
+          await axios.put(uploadUrl, videoBuffer, {
+            headers: { "Content-Type": videoContentType },
+            maxBodyLength: Infinity,
+            maxContentLength: Infinity,
+          });
+          mediaUrn = vUrn;
+          mediaType = "VIDEO";
+        }
+      } catch (vidErr) {
+        console.warn("[LinkedIn Video Upload Warning]:", vidErr?.response?.data || vidErr.message);
+      }
+    }
+
+    // 2B. Handle Carousel / PDF Document Upload
+    if (!mediaUrn && ((Array.isArray(carouselUrls) && carouselUrls.length > 0) || (documentUrl && typeof documentUrl === "string"))) {
+      try {
+        let pdfBuffer = null;
+        if (Array.isArray(carouselUrls) && carouselUrls.length > 0) {
+          pdfBuffer = await assemblePdfFromImages(carouselUrls);
+        } else if (documentUrl && documentUrl.startsWith("http")) {
+          const docRes = await axios.get(documentUrl, {
+            responseType: "arraybuffer",
+            timeout: 25000,
+          });
+          pdfBuffer = Buffer.from(docRes.data);
+        }
+
+        if (pdfBuffer && pdfBuffer.length > 0) {
+          const initRes = await axios.post(
+            "https://api.linkedin.com/rest/documents?action=initializeUpload",
+            {
+              initializeUploadRequest: {
+                owner: authorUrn,
+              },
+            },
+            { headers }
+          );
+
+          const uploadUrl = initRes.data?.value?.uploadUrl;
+          const dUrn = initRes.data?.value?.document;
+
+          if (uploadUrl && dUrn) {
+            await axios.put(uploadUrl, pdfBuffer, {
+              headers: { "Content-Type": "application/pdf" },
+              maxBodyLength: Infinity,
+              maxContentLength: Infinity,
+            });
+            mediaUrn = dUrn;
+            mediaType = "DOCUMENT";
+          }
+        }
+      } catch (docErr) {
+        console.warn("[LinkedIn Document Carousel Warning]:", docErr?.response?.data || docErr.message);
+      }
+    }
+
+    // 2C. Handle Single Image Upload
+    if (!mediaUrn && imageUrl && typeof imageUrl === "string" && imageUrl.startsWith("http")) {
+      try {
         const imageRes = await axios.get(imageUrl, {
           responseType: "arraybuffer",
           timeout: 15000,
@@ -83,7 +224,6 @@ export default async function handler(req, res) {
         const contentType = imageRes.headers["content-type"] || "image/jpeg";
         const imageBuffer = Buffer.from(imageRes.data);
 
-        // Initialize upload with LinkedIn REST API
         const initRes = await axios.post(
           "https://api.linkedin.com/rest/images?action=initializeUpload",
           {
@@ -95,21 +235,19 @@ export default async function handler(req, res) {
         );
 
         const uploadUrl = initRes.data?.value?.uploadUrl;
-        imageUrn = initRes.data?.value?.image;
+        const imgUrn = initRes.data?.value?.image;
 
-        if (uploadUrl && imageUrn) {
-          // Upload binary to uploadUrl
+        if (uploadUrl && imgUrn) {
           await axios.put(uploadUrl, imageBuffer, {
-            headers: {
-              "Content-Type": contentType,
-            },
+            headers: { "Content-Type": contentType },
             maxBodyLength: Infinity,
             maxContentLength: Infinity,
           });
+          mediaUrn = imgUrn;
+          mediaType = "IMAGE";
         }
       } catch (imgErr) {
         console.warn("[LinkedIn Image Upload Warning]:", imgErr?.response?.data || imgErr.message);
-        // Fallback: Proceed with text post if image upload fails
       }
     }
 
@@ -127,11 +265,11 @@ export default async function handler(req, res) {
       isReshareDisabledByAuthor: false,
     };
 
-    if (imageUrn) {
+    if (mediaUrn) {
       postBody.content = {
         media: {
-          title: title || "GabbarInfo AI Broadcast",
-          id: imageUrn,
+          title: title || (mediaType === "VIDEO" ? "GabbarInfo AI Video Reel" : mediaType === "DOCUMENT" ? "GabbarInfo AI Carousel Deck" : "GabbarInfo AI Broadcast"),
+          id: mediaUrn,
         },
       };
     }
@@ -145,32 +283,36 @@ export default async function handler(req, res) {
     } catch (primaryErr) {
       console.warn("[LinkedIn REST posts error]:", primaryErr?.response?.data || primaryErr.message);
 
-      // Graceful fallback to legacy /v2/ugcPosts endpoint if rest/posts returns specific schema mismatch
-      const ugcPayload = {
-        author: authorUrn,
-        lifecycleState: "PUBLISHED",
-        specificContent: {
-          "com.linkedin.ugc.ShareContent": {
-            shareCommentary: {
-              text: commentary.trim(),
+      // Fallback for text-only posts
+      if (!mediaUrn) {
+        const ugcPayload = {
+          author: authorUrn,
+          lifecycleState: "PUBLISHED",
+          specificContent: {
+            "com.linkedin.ugc.ShareContent": {
+              shareCommentary: {
+                text: commentary.trim(),
+              },
+              shareMediaCategory: "NONE",
             },
-            shareMediaCategory: "NONE",
           },
-        },
-        visibility: {
-          "com.linkedin.ugc.MemberNetworkVisibility": "PUBLIC",
-        },
-      };
+          visibility: {
+            "com.linkedin.ugc.MemberNetworkVisibility": "PUBLIC",
+          },
+        };
 
-      const ugcRes = await axios.post("https://api.linkedin.com/v2/ugcPosts", ugcPayload, {
-        headers: {
-          Authorization: `Bearer ${accessToken}`,
-          "X-Restli-Protocol-Version": "2.0.0",
-          "Content-Type": "application/json",
-        },
-      });
+        const ugcRes = await axios.post("https://api.linkedin.com/v2/ugcPosts", ugcPayload, {
+          headers: {
+            Authorization: `Bearer ${activeToken}`,
+            "X-Restli-Protocol-Version": "2.0.0",
+            "Content-Type": "application/json",
+          },
+        });
 
-      postUrn = ugcRes.data?.id || ugcRes.headers["x-restli-id"] || null;
+        postUrn = ugcRes.data?.id || ugcRes.headers["x-restli-id"] || null;
+      } else {
+        throw primaryErr;
+      }
     }
 
     if (postUrn) {
@@ -184,7 +326,7 @@ export default async function handler(req, res) {
         url: postUrl,
         author: authorUrn,
         preview: commentary.trim().slice(0, 140),
-        hasImage: Boolean(imageUrn),
+        mediaType,
         publishedAt: new Date().toISOString(),
       };
 
@@ -222,6 +364,7 @@ export default async function handler(req, res) {
       message: "Successfully posted to LinkedIn!",
       postUrn,
       postUrl,
+      mediaType,
     });
   } catch (err) {
     console.error("[LinkedIn Post Fatal]:", err?.response?.data || err.message);
