@@ -113,6 +113,7 @@ export default async function handler(req, res) {
     soundArtist = null,
     soundCover = null,
     soundPreviewUrl = null,
+    logoUrl = null,
   } = req.body || {};
 
   try {
