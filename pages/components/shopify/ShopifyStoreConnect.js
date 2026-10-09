@@ -2,11 +2,12 @@
 
 import { useEffect, useState } from "react";
 import BrandAssetPairingModal from "../brands/BrandAssetPairingModal";
-import SubscriptionModal from "../SubscriptionModal";
+import ShopifyBillingModal from "./ShopifyBillingModal";
 
 export default function ShopifyStoreConnect({ onConnectionChange }) {
   const [subData, setSubData] = useState(null);
-  const [showSubscriptionModal, setShowSubscriptionModal] = useState(false);
+  const [showShopifyBillingModal, setShowShopifyBillingModal] = useState(false);
+  const [shopifyPlanState, setShopifyPlanState] = useState(null);
   const [loading, setLoading] = useState(true);
   const [connection, setConnection] = useState(null);
   const [allConnections, setAllConnections] = useState([]);
@@ -135,8 +136,23 @@ export default function ShopifyStoreConnect({ onConnectionChange }) {
     fetchConnection();
   }, []);
 
+  const fetchShopifyBillingStatus = async (targetShop = null) => {
+    const shopToUse = targetShop || selectedShop || connection?.shop;
+    if (!shopToUse) return;
+    try {
+      const res = await fetch(`/api/shopify/billing/status?shop=${encodeURIComponent(shopToUse)}`);
+      if (res.ok) {
+        const data = await res.json();
+        if (data.ok) setShopifyPlanState(data.state);
+      }
+    } catch (e) {
+      console.warn("Shopify billing status fetch error:", e);
+    }
+  };
+
   const fetchAutopilotConfig = async (targetShop = null) => {
     const shopToUse = targetShop || selectedShop || connection?.shop;
+    fetchShopifyBillingStatus(shopToUse);
     setAutopilotLoading(true);
     try {
       const q = shopToUse ? `&shop=${encodeURIComponent(shopToUse)}` : "";
@@ -337,7 +353,7 @@ export default function ShopifyStoreConnect({ onConnectionChange }) {
   const handleSaveAutopilot = async (overrideEnabled = null) => {
     const isEnabled = typeof overrideEnabled === "boolean" ? overrideEnabled : autopilotConfig.enabled;
     if (isEnabled && (isTrial99 || !canUseShopifyAutopilot)) {
-      setShowSubscriptionModal(true);
+      setShowShopifyBillingModal(true);
       return;
     }
     setAutopilotSaving(true);
@@ -1372,6 +1388,70 @@ export default function ShopifyStoreConnect({ onConnectionChange }) {
               <span>Currency: <strong style={{ color: "#e2e8f0" }}>{connection.currency}</strong></span>
               {connection.country && <span>Market: <strong style={{ color: "#e2e8f0" }}>{connection.country}</strong></span>}
             </div>
+
+            {/* Shopify Store Quota & Subscription Status Badge */}
+            {shopifyPlanState && (
+              <div
+                style={{
+                  marginTop: 10,
+                  display: "flex",
+                  alignItems: "center",
+                  gap: 12,
+                  flexWrap: "wrap",
+                  background: "rgba(15, 23, 42, 0.6)",
+                  border: "1px solid rgba(255, 255, 255, 0.1)",
+                  padding: "6px 12px",
+                  borderRadius: 10,
+                  fontSize: 12,
+                }}
+              >
+                <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                  <span style={{ color: "#38bdf8", fontWeight: 800 }}>
+                    📦 {shopifyPlanState.plan?.name || "Free Trial"}
+                  </span>
+                  {shopifyPlanState.isPaid ? (
+                    <span style={{ color: "#34d399", fontWeight: 700, fontSize: 11, background: "rgba(16, 185, 129, 0.15)", padding: "1px 6px", borderRadius: 6 }}>
+                      ACTIVE (${shopifyPlanState.plan?.priceUSD}/mo)
+                    </span>
+                  ) : (
+                    <span style={{ color: shopifyPlanState.trialExhausted ? "#f87171" : "#f59e0b", fontWeight: 700, fontSize: 11, background: "rgba(245, 158, 11, 0.15)", padding: "1px 6px", borderRadius: 6 }}>
+                      {shopifyPlanState.trialExhausted ? "TRIAL EXHAUSTED" : "FREE TRIAL"}
+                    </span>
+                  )}
+                </div>
+
+                <div style={{ color: "#94a3b8" }}>•</div>
+
+                <div style={{ color: "#cbd5e1" }}>
+                  Blogs: <strong style={{ color: shopifyPlanState.blogsRemaining > 0 ? "#fff" : "#f87171" }}>{shopifyPlanState.blogsRemaining}</strong>/{shopifyPlanState.plan?.blogLimit} remaining
+                </div>
+
+                <div style={{ color: "#94a3b8" }}>•</div>
+
+                <div style={{ color: "#cbd5e1" }}>
+                  Product Opts: <strong style={{ color: shopifyPlanState.productOptsRemaining > 0 ? "#fff" : "#f87171" }}>{shopifyPlanState.productOptsRemaining}</strong>/{shopifyPlanState.plan?.productOptLimit} remaining
+                </div>
+
+                <button
+                  type="button"
+                  onClick={() => setShowShopifyBillingModal(true)}
+                  style={{
+                    marginLeft: "auto",
+                    padding: "4px 12px",
+                    borderRadius: 8,
+                    background: "linear-gradient(135deg, #3b82f6 0%, #1d4ed8 100%)",
+                    border: "none",
+                    color: "#fff",
+                    fontWeight: 800,
+                    fontSize: 11.5,
+                    cursor: "pointer",
+                    boxShadow: "0 2px 8px rgba(59, 130, 246, 0.3)",
+                  }}
+                >
+                  Manage / Upgrade Plan ↗
+                </button>
+              </div>
+            )}
 
             {/* Multi-Store Switcher Dropdown */}
             {allConnections.length > 1 && (
@@ -2666,7 +2746,7 @@ export default function ShopifyStoreConnect({ onConnectionChange }) {
                   type="button"
                   onClick={() => {
                     if ((isTrial99 || !canUseShopifyAutopilot) && !autopilotConfig.enabled) {
-                      setShowSubscriptionModal(true);
+                      setShowShopifyBillingModal(true);
                       return;
                     }
                     handleSaveAutopilot(!autopilotConfig.enabled);
@@ -2895,7 +2975,7 @@ export default function ShopifyStoreConnect({ onConnectionChange }) {
               </div>
               <button
                 type="button"
-                onClick={() => setShowSubscriptionModal(true)}
+                onClick={() => setShowShopifyBillingModal(true)}
                 style={{
                   padding: "9px 20px",
                   borderRadius: 10,
@@ -2909,7 +2989,7 @@ export default function ShopifyStoreConnect({ onConnectionChange }) {
                   boxShadow: "0 0 15px rgba(245, 158, 11, 0.35)",
                 }}
               >
-                Upgrade to Monthly ↗
+                Upgrade Plan ↗
               </button>
             </div>
           )}
@@ -2937,7 +3017,7 @@ export default function ShopifyStoreConnect({ onConnectionChange }) {
                       onClick={(e) => {
                         if (isLocked) {
                           e.preventDefault();
-                          setShowSubscriptionModal(true);
+                          setShowShopifyBillingModal(true);
                         }
                       }}
                       style={{
@@ -4854,6 +4934,15 @@ export default function ShopifyStoreConnect({ onConnectionChange }) {
         <BrandAssetPairingModal
           onClose={() => setShowPairingModal(false)}
           onSaved={() => fetchAutopilotConfig(selectedShop)}
+        />
+      )}
+
+      {showShopifyBillingModal && (
+        <ShopifyBillingModal
+          isOpen={showShopifyBillingModal}
+          onClose={() => setShowShopifyBillingModal(false)}
+          shop={selectedShop}
+          currentPlanState={shopifyPlanState}
         />
       )}
     </div>

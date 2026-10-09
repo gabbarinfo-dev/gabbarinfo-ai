@@ -18,7 +18,6 @@ import { SUBSCRIPTION_PLANS, getPlanConfig } from "../lib/billing/plans";
 const CATEGORIES = [
   { key: "suite",   emoji: "⚡", label: "All-in-One Suites" },
   { key: "social",  emoji: "📱", label: "Social Autopilot" },
-  { key: "shopify", emoji: "🛍️", label: "Shopify Store SEO" },
   { key: "seo",     emoji: "📝", label: "WordPress SEO" },
   { key: "ads",     emoji: "🚀", label: "Performance Ads" },
   { key: "gmb",     emoji: "📍", label: "Local Maps" },
@@ -36,9 +35,6 @@ const ALL_PLANS = [
   SUBSCRIPTION_PLANS.social_2,
   SUBSCRIPTION_PLANS.social_3,
   SUBSCRIPTION_PLANS.social_4,
-  SUBSCRIPTION_PLANS.shopify_1,
-  SUBSCRIPTION_PLANS.shopify_2,
-  SUBSCRIPTION_PLANS.shopify_3,
   SUBSCRIPTION_PLANS.seo_1,
   SUBSCRIPTION_PLANS.seo_2,
   SUBSCRIPTION_PLANS.seo_3,

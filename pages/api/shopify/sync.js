@@ -10,6 +10,7 @@ import { runShopifyAutopilotCycle } from "../../../lib/shopify/shopify-autopilot
 import { ensureInstagramCompatibleJpeg } from "../../../lib/instagram-image-helper.js";
 import { buildCrossBrandNegativeList, validateTopicRelevance } from "../../../lib/brand-integrity-guard.js";
 import { reserveQuota, commitQuota, releaseQuota } from "../../../lib/billing/quota-service";
+import { checkShopifyQuota, incrementShopifyUsage } from "../../../lib/shopify/trial-guard";
 
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL,
@@ -769,6 +770,19 @@ export default async function handler(req, res) {
         return res.status(400).json({ ok: false, error: "Product title is required." });
       }
 
+      // 🛡️ SHOPIFY QUOTA & TRIAL GUARD
+      if (shop) {
+        const shopifyQuota = await checkShopifyQuota(shop, "product_opt");
+        if (!shopifyQuota.allowed) {
+          return res.status(403).json({
+            ok: false,
+            code: "SHOPIFY_QUOTA_EXHAUSTED",
+            error: shopifyQuota.reason,
+            state: shopifyQuota.state,
+          });
+        }
+      }
+
       // 🛡️ SERVER-SIDE ENTITLEMENT & QUOTA GATE: PRODUCT_DESC
       const reservation = await reserveQuota({
         session,
@@ -784,6 +798,35 @@ export default async function handler(req, res) {
         });
       }
 
+      // DUAL-MODE INTELLIGENCE: Condition A (Existing) vs Condition B (Non-Existing)
+      const cleanRawDesc = String(currentDescription || "")
+        .replace(/<[^>]*>/g, " ")
+        .replace(/\s+/g, " ")
+        .trim();
+      const hasExistingDesc = cleanRawDesc.length > 20;
+
+      let optimizationDirectives = "";
+      if (hasExistingDesc) {
+        optimizationDirectives = `
+MODE A: EXISTING PRODUCT DESCRIPTION DETECTED (REWRITE & ELEVATE)
+Existing Raw Description:
+"""
+${cleanRawDesc.substring(0, 1500)}
+"""
+MANDATE:
+1. Deeply analyze the specifications, materials, design ethos, and functional characteristics from the existing copy above.
+2. Eliminate all outdated fluff, boring repetitive adjectives, and passive statements.
+3. Elevate and rewrite the description into a captivating, conversion-optimized ecommerce showcase with clear benefits and objections addressed.`;
+      } else {
+        optimizationDirectives = `
+MODE B: NO EXISTING DESCRIPTION (CREATION FROM INTELLIGENCE)
+The product has no previous description written.
+MANDATE:
+1. Synthesize the true nature of this product using the Title ("${title}"), Brand ("${vendor || conn?.shopName || 'Brand'}"), Category ("${category || 'General'}"), and Target Keywords ("${keywords || title}").
+2. Deduce the craft, ergonomics, premium materials, ideal customer use case, and styling lifestyle from ecommerce market intelligence and catalog context.
+3. Construct a complete, realistic, and alluring product listing from scratch that inspires instant confidence and purchase intent.`;
+      }
+
       const prompt = `You are a world-class luxury ecommerce copywriter and SEO specialist.
 Write a comprehensive, high-converting product listing for the following product:
 
@@ -792,7 +835,8 @@ VENDOR/BRAND: ${vendor || conn?.shopName || "Brand"}
 CATEGORY: ${category || "General"}
 TARGET KEYWORDS: ${keywords || title}
 DESIRED TONE: ${tone}
-CURRENT / RAW DESCRIPTION: ${currentDescription.substring(0, 1000)}
+
+${optimizationDirectives}
 
 Your output MUST be in valid JSON format only, matching this structure:
 {
@@ -852,6 +896,11 @@ Respond ONLY with the raw JSON object. Do not include markdown code block backti
         userEmail,
         actionType: "PRODUCT_DESC",
       });
+
+      // Increment Shopify Quota usage
+      if (shop) {
+        await incrementShopifyUsage(shop, "product_opt");
+      }
 
       return res.status(200).json({
         ok: true,
@@ -1369,6 +1418,19 @@ Respond ONLY with a valid JSON object matching this structure:
         return res.status(400).json({ ok: false, error: "Blog ID, Title, and Article HTML are required." });
       }
 
+      // 🛡️ SHOPIFY QUOTA & TRIAL GUARD: BLOGS
+      if (shop) {
+        const blogQuota = await checkShopifyQuota(shop, "blog");
+        if (!blogQuota.allowed) {
+          return res.status(403).json({
+            ok: false,
+            code: "SHOPIFY_QUOTA_EXHAUSTED",
+            error: blogQuota.reason,
+            state: blogQuota.state,
+          });
+        }
+      }
+
       let sanitizedPublishBody = String(bodyHtml || "").trim();
       sanitizedPublishBody = sanitizedPublishBody.replace(/^```html\s*/i, "").replace(/^```\s*/i, "").replace(/\s*```$/i, "").trim();
       sanitizedPublishBody = sanitizedPublishBody.replace(/^\s*<h1[^>]*>[\s\S]*?<\/h1>\s*/i, "");
@@ -1452,6 +1514,12 @@ Respond ONLY with a valid JSON object matching this structure:
       }
 
       const data = await articleRes.json();
+
+      // Increment Shopify Quota usage
+      if (shop) {
+        await incrementShopifyUsage(shop, "blog");
+      }
+
       const chosenBlogHandle = payload.blogHandle || "news";
       const storeHandle = shop.replace(".myshopify.com", "");
       const adminDraftUrl = `https://admin.shopify.com/store/${storeHandle}/articles/${data.article?.id}`;

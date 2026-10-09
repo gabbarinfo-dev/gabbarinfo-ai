@@ -19,7 +19,6 @@ import { SUBSCRIPTION_PLANS, getPlanConfig } from "../../lib/billing/plans";
 
 const MODULAR_SUB_CATEGORIES = [
   { key: "social", label: "📱 Social Media Autopilot", desc: "Automate Facebook & Instagram with scheduled posts & AI visuals" },
-  { key: "shopify", label: "🛍️ Shopify Store SEO", desc: "Product-linked blogs & high-converting product descriptions" },
   { key: "seo", label: "📝 WordPress SEO Suite", desc: "Autonomous long-form SEO articles & service landing pages" },
   { key: "ads", label: "🚀 Performance Ads (+ Free GMB)", desc: "Launch high-ROI Google & Meta ads with free local maps booster" },
   { key: "gmb", label: "📍 Solo Local Maps (GMB)", desc: "Rank in Google Maps Local 3-Pack with 5-min AI review responder" },
@@ -34,9 +33,6 @@ const MODULAR_PLANS = [
   SUBSCRIPTION_PLANS.social_2,
   SUBSCRIPTION_PLANS.social_3,
   SUBSCRIPTION_PLANS.social_4,
-  SUBSCRIPTION_PLANS.shopify_1,
-  SUBSCRIPTION_PLANS.shopify_2,
-  SUBSCRIPTION_PLANS.shopify_3,
   SUBSCRIPTION_PLANS.seo_1,
   SUBSCRIPTION_PLANS.seo_2,
   SUBSCRIPTION_PLANS.seo_3,
