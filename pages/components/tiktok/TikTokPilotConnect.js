@@ -80,6 +80,81 @@ const TRENDING_AUDIO_PRESETS = [
   },
 ];
 
+const POPULAR_TIKTOK_SEARCH_SUGGESTIONS = [
+  "oasis songs",
+  "Obsessed",
+  "ocean eyes",
+  "Olivia Rodrigo",
+  "One Piece",
+  "olivia dean songs",
+  "oasis",
+  "one direction",
+  "My Mom",
+  "Michelle Van Campen",
+  "Let The Cold In",
+  "Maëlys",
+  "salt & ember",
+  "I'll Send It Tomorrow",
+  "It Keeps Me Warm",
+  "Halcyon",
+  "Blessed With Love",
+  "Dr. Dion Todd Graham",
+  "original sound",
+  "original sound - ummii_photographer",
+  "UmEr",
+  "Candace Thompson",
+  "Ain't Gonna Waste My Time",
+  "Am a Man",
+  "Azrah Harry",
+  "Shades of time",
+  "Mohira Tillayeva",
+  "Cosmic",
+  "Trần Anh Dũng",
+  "Luxury Fashion",
+  "Max-Music",
+  "Espresso",
+  "Taste",
+  "Sabrina Carpenter",
+  "BIRDS OF A FEATHER",
+  "Billie Eilish",
+  "APT.",
+  "ROSÉ",
+  "Bruno Mars",
+  "Die With A Smile",
+  "Lady Gaga",
+  "Greedy",
+  "Tate McRae",
+  "Water",
+  "Tyla",
+  "MILLION DOLLAR BABY",
+  "Tommy Richman",
+  "Lose Control",
+  "Teddy Swims",
+  "Beautiful Things",
+  "Benson Boone",
+  "End of Beginning",
+  "Djo",
+  "Houdini",
+  "Dua Lipa",
+  "Saturn",
+  "SZA",
+  "360",
+  "Charli xcx",
+  "Good Luck, Babe!",
+  "Chappell Roan",
+  "Not Like Us",
+  "Kendrick Lamar",
+  "Too Sweet",
+  "Hozier",
+  "Taylor Swift",
+  "Drake",
+  "Eminem",
+  "The Weeknd",
+  "Justin Bieber",
+  "Post Malone",
+  "Morgan Wallen",
+];
+
 export default function TikTokPilotConnect() {
   const [status, setStatus] = useState("loading"); // loading | idle | connected
   const [userData, setUserData] = useState(null);
@@ -94,11 +169,12 @@ export default function TikTokPilotConnect() {
   const [mediaType, setMediaType] = useState("CAROUSEL"); // "SINGLE_IMAGE" | "CAROUSEL" | "REEL"
   const [carouselSlideCount, setCarouselSlideCount] = useState(2); // 2 | 3 | 5
   // TikTok Sounds & Modal State
-  const [selectedSound, setSelectedSound] = useState(DEFAULT_TRENDING_SONGS[0]); // Default: Ain't Gonna Waste My Time – Candace Thompson
+  const [selectedSound, setSelectedSound] = useState(DEFAULT_TRENDING_SONGS[0]); // Default: My Mom – Michelle Van Campen (Matches TikTok Studio)
   const [selectedAudioPreset, setSelectedAudioPreset] = useState(DEFAULT_TRENDING_SONGS[0].id);
   const [autoAddMusic, setAutoAddMusic] = useState(true); // TikTok auto_add_music flag
   const [showSoundsModal, setShowSoundsModal] = useState(false);
   const [soundSearchQuery, setSoundSearchQuery] = useState("");
+  const [showSearchSuggestions, setShowSearchSuggestions] = useState(false);
   const [soundSearchResults, setSoundSearchResults] = useState(null);
   const [searchingSounds, setSearchingSounds] = useState(false);
   const [soundsActiveTab, setSoundsActiveTab] = useState("foryou"); // "foryou" | "favorites" | "recent"
@@ -1018,9 +1094,13 @@ export default function TikTokPilotConnect() {
                       const val = e.target.checked;
                       setAutoAddMusic(val);
                       if (!val) setSelectedAudioPreset("none");
-                      else if (selectedAudioPreset === "none") setSelectedAudioPreset("espresso_sabrina");
+                      else if (selectedAudioPreset === "none") setSelectedAudioPreset(selectedSound?.id || "espresso_sabrina");
                     }}
-                    style={{                {/* Active TikTok Sound Card & Library Selector */}
+                    style={{ accentColor: "#fe2c55", width: 18, height: 18, cursor: "pointer" }}
+                  />
+                </div>
+
+                {/* Active TikTok Sound Card & Library Selector */}
                 {autoAddMusic && (
                   <div style={{ marginTop: 14 }}>
                     <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 10, flexWrap: "wrap", gap: 6 }}>
@@ -1118,17 +1198,17 @@ export default function TikTokPilotConnect() {
                         </div>
                       </div>
 
-                      {/* Launch Sounds Modal Button */}
+                      {/* Launch Sounds Modal Button (TikTok Studio '+ Add sound' Style) */}
                       <button
                         type="button"
                         onClick={() => setShowSoundsModal(true)}
                         style={{
-                          padding: "10px 16px",
+                          padding: "10px 18px",
                           borderRadius: 10,
                           background: "#fe2c55",
                           color: "#ffffff",
                           border: "none",
-                          fontSize: 12,
+                          fontSize: 13,
                           fontWeight: 800,
                           cursor: "pointer",
                           display: "flex",
@@ -1141,18 +1221,18 @@ export default function TikTokPilotConnect() {
                         onMouseEnter={(e) => (e.currentTarget.style.background = "#e02047")}
                         onMouseLeave={(e) => (e.currentTarget.style.background = "#fe2c55")}
                       >
-                        <span>🔍</span>
-                        <span>Search &amp; Browse Sounds</span>
+                        <span style={{ fontSize: 16, fontWeight: 900 }}>+</span>
+                        <span>Add sound</span>
                       </button>
                     </div>
 
                     {/* Quick Trending Hits Pills */}
                     <div style={{ marginTop: 10 }}>
                       <div style={{ fontSize: 10, color: "#94a3b8", fontWeight: 700, marginBottom: 6, textTransform: "uppercase", letterSpacing: "0.5px" }}>
-                        ⚡ Quick Trending Picks (1-Tap Select):
+                        ⚡ TikTok Studio Trending Picks (1-Tap Select):
                       </div>
                       <div style={{ display: "flex", gap: 6, overflowX: "auto", paddingBottom: 4 }}>
-                        {DEFAULT_TRENDING_SONGS.slice(0, 7).map((s) => {
+                        {DEFAULT_TRENDING_SONGS.slice(0, 8).map((s) => {
                           const isSel = selectedSound?.id === s.id;
                           return (
                             <button
@@ -1640,8 +1720,8 @@ export default function TikTokPilotConnect() {
               </button>
             </div>
 
-            {/* Search Bar Input (Matching Screenshot Pill) */}
-            <div style={{ padding: "0 24px 14px" }}>
+            {/* Search Bar Input (Matching Screenshot Pill with Autocomplete) */}
+            <div style={{ padding: "0 24px 14px", position: "relative" }}>
               <div
                 style={{
                   background: "#f1f1f2",
@@ -1656,7 +1736,11 @@ export default function TikTokPilotConnect() {
                 <input
                   type="text"
                   value={soundSearchQuery}
-                  onChange={(e) => setSoundSearchQuery(e.target.value)}
+                  onChange={(e) => {
+                    setSoundSearchQuery(e.target.value);
+                    setShowSearchSuggestions(true);
+                  }}
+                  onFocus={() => setShowSearchSuggestions(true)}
                   placeholder="Search sounds"
                   autoFocus
                   style={{
@@ -1672,7 +1756,10 @@ export default function TikTokPilotConnect() {
                 {soundSearchQuery && (
                   <button
                     type="button"
-                    onClick={() => setSoundSearchQuery("")}
+                    onClick={() => {
+                      setSoundSearchQuery("");
+                      setShowSearchSuggestions(false);
+                    }}
                     style={{
                       background: "#e4e4e6",
                       border: "none",
@@ -1691,6 +1778,73 @@ export default function TikTokPilotConnect() {
                   </button>
                 )}
               </div>
+
+              {/* TikTok Live Search Suggestions Dropdown (Screenshot 3 Autocomplete) */}
+              {showSearchSuggestions && soundSearchQuery.trim().length > 0 && (
+                <div
+                  style={{
+                    position: "absolute",
+                    top: "100%",
+                    left: 24,
+                    right: 24,
+                    background: "#ffffff",
+                    borderRadius: 12,
+                    boxShadow: "0 12px 36px rgba(0, 0, 0, 0.18)",
+                    border: "1px solid #e4e4e6",
+                    zIndex: 200,
+                    overflow: "hidden",
+                    maxHeight: 280,
+                    overflowY: "auto",
+                  }}
+                >
+                  {POPULAR_TIKTOK_SEARCH_SUGGESTIONS.filter((s) =>
+                    s.toLowerCase().includes(soundSearchQuery.trim().toLowerCase())
+                  )
+                    .slice(0, 8)
+                    .map((sug, idx, arr) => {
+                      const qLower = soundSearchQuery.trim().toLowerCase();
+                      const matchIdx = sug.toLowerCase().indexOf(qLower);
+                      return (
+                        <div
+                          key={idx}
+                          onClick={() => {
+                            setSoundSearchQuery(sug);
+                            setShowSearchSuggestions(false);
+                          }}
+                          style={{
+                            padding: "10px 16px",
+                            fontSize: 14,
+                            fontWeight: 500,
+                            color: "#161823",
+                            cursor: "pointer",
+                            display: "flex",
+                            alignItems: "center",
+                            gap: 10,
+                            borderBottom: idx < arr.length - 1 ? "1px solid #f4f4f5" : "none",
+                            transition: "background 0.12s ease",
+                          }}
+                          onMouseEnter={(e) => (e.currentTarget.style.background = "#f8f8f8")}
+                          onMouseLeave={(e) => (e.currentTarget.style.background = "#ffffff")}
+                        >
+                          <span style={{ color: "#25f4ee", fontWeight: 700, fontSize: 13 }}>🔍</span>
+                          <span style={{ flex: 1 }}>
+                            {matchIdx >= 0 ? (
+                              <>
+                                {sug.slice(0, matchIdx)}
+                                <strong style={{ color: "#0ea5e9" }}>
+                                  {sug.slice(matchIdx, matchIdx + qLower.length)}
+                                </strong>
+                                {sug.slice(matchIdx + qLower.length)}
+                              </>
+                            ) : (
+                              sug
+                            )}
+                          </span>
+                        </div>
+                      );
+                    })}
+                </div>
+              )}
             </div>
 
             {/* Tabs: For You | Favorites | Recent */}
