@@ -24,11 +24,11 @@ export default async function handler(req, res) {
   let scopes;
 
   if (type === "page") {
-    clientId = process.env.LINKEDIN_PAGE_CLIENT_ID || process.env.LINKEDIN_CLIENT_ID;
+    clientId = process.env.LINKEDIN_PAGE_CLIENT_ID || process.env.LINKEDIN_CLIENT_ID || "78ypc4d9yfz2qo";
     // Scopes for Community Management API (LinkedIn Pages / B2B Organizations)
     scopes = ["w_organization_social", "r_organization_social", "rw_organization_admin"].join(" ");
   } else {
-    clientId = process.env.LINKEDIN_CLIENT_ID;
+    clientId = process.env.LINKEDIN_CLIENT_ID || "77oka1wp8jfhsu";
     // Scopes for Member Profile (Sign In + Share on LinkedIn)
     scopes = ["openid", "profile", "email", "w_member_social"].join(" ");
   }
