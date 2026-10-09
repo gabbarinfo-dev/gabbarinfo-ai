@@ -16,6 +16,7 @@ export default function LinkedInPilotConnect() {
   const [carouselUrls, setCarouselUrls] = useState([]);
   const [newSlideInput, setNewSlideInput] = useState("");
   const [activeSlideIndex, setActiveSlideIndex] = useState(0);
+  const [slideCount, setSlideCount] = useState(3); // 2 to 5 slides
   const [generatingCarousel, setGeneratingCarousel] = useState(false);
   const [selectedAuthorUrn, setSelectedAuthorUrn] = useState("");
   const [generating, setGenerating] = useState(false);
@@ -166,7 +167,7 @@ export default function LinkedInPilotConnect() {
     window.scrollTo({ top: 400, behavior: "smooth" });
   };
 
-  const handleGenerateAiPost = async () => {
+  const handleGenerateAiCreativePackage = async () => {
     if (!postTopic.trim()) {
       alert("Please enter a topic or select one from the 30-Day Queue below.");
       return;
@@ -177,25 +178,37 @@ export default function LinkedInPilotConnect() {
       const activeOrg = orgs.find((o) => o.urn === selectedAuthorUrn);
       const brandName = activeOrg?.name || member?.name || "Business";
 
-      const res = await fetch("/api/linkedin/generate", {
+      const res = await fetch("/api/linkedin/generate-creative", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           topic: postTopic,
           brandName,
+          format: postFormat,
+          slideCount,
         }),
       });
       const data = await res.json();
-      if (data.ok && data.content) {
-        setCommentary(data.content);
+      if (data.ok) {
+        if (data.commentary) setCommentary(data.commentary);
+        if (data.imageUrl) setImageUrl(data.imageUrl);
+        if (data.carouselUrls && data.carouselUrls.length > 0) {
+          setCarouselUrls(data.carouselUrls);
+          setActiveSlideIndex(0);
+        }
+        if (data.videoUrl) setVideoUrl(data.videoUrl);
       } else {
-        setPublishError(data.error || "Failed to generate post copy.");
+        setPublishError(data.error || "Failed to generate AI creative package.");
       }
     } catch (e) {
       setPublishError("AI generation failed: " + e.message);
     } finally {
       setGenerating(false);
     }
+  };
+
+  const handleGenerateAiPost = async () => {
+    return handleGenerateAiCreativePackage();
   };
 
   const handleGenerateAiImage = async () => {
@@ -1031,89 +1044,33 @@ export default function LinkedInPilotConnect() {
             </select>
           </div>
 
-          {/* AI Prompt Input */}
-          <div style={{ display: "flex", gap: 10 }}>
-            <input
-              type="text"
-              placeholder="Enter topic or select from 30-Day Queue above..."
-              value={postTopic}
-              onChange={(e) => setPostTopic(e.target.value)}
-              style={{
-                flex: 1,
-                padding: "10px 14px",
-                borderRadius: 10,
-                background: "rgba(0,0,0,0.3)",
-                border: "1px solid rgba(255, 255, 255, 0.12)",
-                color: "#fff",
-                fontSize: 13,
-              }}
-            />
-            <button
-              onClick={handleGenerateAiPost}
-              disabled={generating}
-              style={{
-                padding: "10px 16px",
-                borderRadius: 10,
-                background: "linear-gradient(135deg, #3b82f6 0%, #1d4ed8 100%)",
-                border: "none",
-                color: "#fff",
-                fontSize: 12.5,
-                fontWeight: 700,
-                cursor: "pointer",
-                whiteSpace: "nowrap",
-              }}
-            >
-              {generating ? "Drafting…" : "✨ AI Draft"}
-            </button>
-          </div>
-
-          {/* Commentary Area */}
-          <textarea
-            rows={6}
-            placeholder="Write your LinkedIn post here..."
-            value={commentary}
-            onChange={(e) => setCommentary(e.target.value)}
-            style={{
-              width: "100%",
-              boxSizing: "border-box",
-              padding: "12px 14px",
-              borderRadius: 12,
-              background: "rgba(0,0,0,0.35)",
-              border: "1px solid rgba(255, 255, 255, 0.12)",
-              color: "#fff",
-              fontSize: 13.5,
-              lineHeight: 1.6,
-              resize: "vertical",
-              fontFamily: "inherit",
-            }}
-          />
-
           {/* ── FORMAT SWITCHER TABS ── */}
           <div>
             <label style={{ fontSize: 11.5, color: "#94a3b8", fontWeight: 700, display: "block", marginBottom: 6 }}>
-              Post Format:
+              1. Choose Post Format to Generate:
             </label>
             <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 6 }}>
               {[
-                { id: "text", label: "✍️ Text", desc: "Thought post" },
-                { id: "image", label: "🖼️ Image", desc: "Single visual" },
-                { id: "carousel", label: "📑 Carousel", desc: "PDF Slide deck" },
-                { id: "video", label: "🎥 Reel", desc: "Native MP4 video" },
+                { id: "text", label: "✍️ Text Only", desc: "Thought post" },
+                { id: "image", label: "🖼️ Post + Image", desc: "AI Visual" },
+                { id: "carousel", label: "📑 Post + Carousel", desc: `${slideCount}-Slide Deck` },
+                { id: "video", label: "🎥 Post + Video", desc: "B2B Reel" },
               ].map((fmt) => (
                 <button
                   key={fmt.id}
                   type="button"
                   onClick={() => setPostFormat(fmt.id)}
                   style={{
-                    padding: "8px 6px",
+                    padding: "10px 6px",
                     borderRadius: 10,
-                    background: postFormat === fmt.id ? "rgba(10, 102, 194, 0.25)" : "rgba(255, 255, 255, 0.04)",
-                    border: `1px solid ${postFormat === fmt.id ? "#0a66c2" : "rgba(255, 255, 255, 0.1)"}`,
+                    background: postFormat === fmt.id ? "rgba(10, 102, 194, 0.3)" : "rgba(255, 255, 255, 0.04)",
+                    border: `1.5px solid ${postFormat === fmt.id ? "#0a66c2" : "rgba(255, 255, 255, 0.1)"}`,
                     color: postFormat === fmt.id ? "#38bdf8" : "#94a3b8",
-                    fontSize: 11.5,
+                    fontSize: 12,
                     fontWeight: postFormat === fmt.id ? 800 : 600,
                     cursor: "pointer",
                     textAlign: "center",
+                    boxShadow: postFormat === fmt.id ? "0 2px 10px rgba(10, 102, 194, 0.25)" : "none",
                   }}
                 >
                   <div>{fmt.label}</div>
@@ -1121,6 +1078,117 @@ export default function LinkedInPilotConnect() {
                 </button>
               ))}
             </div>
+
+            {/* Slide Count Selector when Carousel is chosen */}
+            {postFormat === "carousel" && (
+              <div style={{ marginTop: 10, padding: "8px 12px", borderRadius: 8, background: "rgba(56, 189, 248, 0.08)", border: "1px solid rgba(56, 189, 248, 0.2)", display: "flex", alignItems: "center", justifyContent: "space-between", flexWrap: "wrap", gap: 8 }}>
+                <span style={{ fontSize: 11.5, color: "#38bdf8", fontWeight: 700 }}>
+                  Select Carousel Slides to Generate:
+                </span>
+                <div style={{ display: "flex", gap: 6 }}>
+                  {[2, 3, 4, 5].map((cnt) => (
+                    <button
+                      key={cnt}
+                      type="button"
+                      onClick={() => setSlideCount(cnt)}
+                      style={{
+                        padding: "4px 10px",
+                        borderRadius: 6,
+                        background: slideCount === cnt ? "#0284c7" : "rgba(255, 255, 255, 0.06)",
+                        border: `1px solid ${slideCount === cnt ? "#38bdf8" : "rgba(255, 255, 255, 0.15)"}`,
+                        color: "#fff",
+                        fontSize: 11,
+                        fontWeight: 700,
+                        cursor: "pointer",
+                      }}
+                    >
+                      {cnt} Slides {cnt === 3 ? "(Popular)" : ""}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            )}
+          </div>
+
+          {/* AI Prompt Input & One-Click Generation */}
+          <div>
+            <label style={{ fontSize: 11.5, color: "#94a3b8", fontWeight: 700, display: "block", marginBottom: 6 }}>
+              2. Enter Topic or Select from 30-Day Queue below:
+            </label>
+            <div style={{ display: "flex", gap: 10 }}>
+              <input
+                type="text"
+                placeholder="Enter topic or click any topic from 30-Day Queue below..."
+                value={postTopic}
+                onChange={(e) => setPostTopic(e.target.value)}
+                style={{
+                  flex: 1,
+                  padding: "11px 14px",
+                  borderRadius: 10,
+                  background: "rgba(0,0,0,0.3)",
+                  border: "1px solid rgba(255, 255, 255, 0.12)",
+                  color: "#fff",
+                  fontSize: 13,
+                }}
+              />
+              <button
+                onClick={handleGenerateAiCreativePackage}
+                disabled={generating}
+                style={{
+                  padding: "11px 20px",
+                  borderRadius: 10,
+                  background: "linear-gradient(135deg, #0284c7 0%, #0a66c2 100%)",
+                  border: "none",
+                  color: "#fff",
+                  fontSize: 13,
+                  fontWeight: 800,
+                  cursor: "pointer",
+                  whiteSpace: "nowrap",
+                  boxShadow: "0 4px 14px rgba(10, 102, 194, 0.4)",
+                  display: "flex",
+                  alignItems: "center",
+                  gap: 8,
+                }}
+              >
+                <span>
+                  {generating
+                    ? "Generating Package…"
+                    : postFormat === "carousel"
+                    ? `✨ Generate Post + ${slideCount}-Slide Carousel`
+                    : postFormat === "video"
+                    ? "✨ Generate Post + Video Reel"
+                    : postFormat === "image"
+                    ? "✨ Generate Post + Image Creative"
+                    : "✨ Generate Post Copy & Hashtags"}
+                </span>
+              </button>
+            </div>
+          </div>
+
+          {/* Commentary Area */}
+          <div>
+            <label style={{ fontSize: 11.5, color: "#94a3b8", fontWeight: 700, display: "block", marginBottom: 6 }}>
+              3. Review Post Copy & Hashtags:
+            </label>
+            <textarea
+              rows={6}
+              placeholder="Your generated LinkedIn post commentary, hook, bullet points, and hashtags will appear here..."
+              value={commentary}
+              onChange={(e) => setCommentary(e.target.value)}
+              style={{
+                width: "100%",
+                boxSizing: "border-box",
+                padding: "12px 14px",
+                borderRadius: 12,
+                background: "rgba(0,0,0,0.35)",
+                border: "1px solid rgba(255, 255, 255, 0.12)",
+                color: "#fff",
+                fontSize: 13.5,
+                lineHeight: 1.6,
+                resize: "vertical",
+                fontFamily: "inherit",
+              }}
+            />
           </div>
 
           {/* ── FORMAT-SPECIFIC MEDIA ATTACHMENTS ── */}
