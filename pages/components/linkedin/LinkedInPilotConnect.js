@@ -2,6 +2,279 @@
 
 import { useEffect, useState } from "react";
 
+const DEFAULT_30_DAY_LINKEDIN_QUEUE = [
+  {
+    id: 1,
+    scheduledDay: 1,
+    pillar: "thought_leadership",
+    targetService: "Strategic Vision",
+    hook: "Most founders spend 80% of their time solving symptoms instead of root causes.",
+    topic: "Root-Cause Leadership: Why 80% of B2B Roadblocks Stem from 2 Workflow Gaps",
+    status: "next",
+  },
+  {
+    id: 2,
+    scheduledDay: 2,
+    pillar: "actionable_playbook",
+    targetService: "AI Automation",
+    hook: "We replaced a 14-hour manual reporting cycle with a 3-step automated pipeline.",
+    topic: "Step-by-Step AI Workflow Architecture for Enterprise Teams",
+    status: "queued",
+  },
+  {
+    id: 3,
+    scheduledDay: 3,
+    pillar: "case_study_win",
+    targetService: "Client Acquisition",
+    hook: "Zero ad spend, 42 qualified B2B inbound leads in 30 days. Here is the exact breakdown.",
+    topic: "Organic B2B Inbound Engine: Anatomy of a Zero-Ad Customer Acquisition System",
+    status: "queued",
+  },
+  {
+    id: 4,
+    scheduledDay: 4,
+    pillar: "myth_busting",
+    targetService: "Operational Efficiency",
+    hook: "Hiring more headcount is often the most expensive way to disguise poor processes.",
+    topic: "The Headcount Fallacy: Why High-Growth Teams Automate Before Hiring",
+    status: "queued",
+  },
+  {
+    id: 5,
+    scheduledDay: 5,
+    pillar: "service_spotlight",
+    targetService: "Digital Transformation",
+    hook: "Legacy software doesn't hold businesses back. Legacy workflows do.",
+    topic: "Modernizing Legacy Enterprise Stacks Without Breaking Daily Operations",
+    status: "queued",
+  },
+  {
+    id: 6,
+    scheduledDay: 6,
+    pillar: "community_discussion",
+    targetService: "Executive Strategy",
+    hook: "Unpopular opinion: Long sales cycles are created by sellers, not buyers.",
+    topic: "Shortening Enterprise Sales Velocity by Removing Friction in Discovery Calls",
+    status: "queued",
+  },
+  {
+    id: 7,
+    scheduledDay: 7,
+    pillar: "thought_leadership",
+    targetService: "Retention & LTV",
+    hook: "Customer retention is not an account management job—it is a product & delivery job.",
+    topic: "Engineering 95%+ Net Revenue Retention (NRR) in B2B Services",
+    status: "queued",
+  },
+  {
+    id: 8,
+    scheduledDay: 8,
+    pillar: "actionable_playbook",
+    targetService: "Brand Positioning",
+    hook: "If you speak to everyone in B2B, nobody listens. The 1-sentence niche positioning matrix.",
+    topic: "The 1-Sentence Positioning Framework That Converts Cold Prospects",
+    status: "queued",
+  },
+  {
+    id: 9,
+    scheduledDay: 9,
+    pillar: "case_study_win",
+    targetService: "Tech Modernization",
+    hook: "How we cut infrastructure costs by 40% while doubling API response throughput.",
+    topic: "Cloud Cost Optimization & Scalability: A Technical Post-Mortem",
+    status: "queued",
+  },
+  {
+    id: 10,
+    scheduledDay: 10,
+    pillar: "myth_busting",
+    targetService: "Sales & Marketing",
+    hook: "MQLs (Marketing Qualified Leads) are vanity. Pipeline generated is the only metric that matters.",
+    topic: "Why We Killed Traditional MQL Tracking in Favor of Revenue Pipeline Velocity",
+    status: "queued",
+  },
+  {
+    id: 11,
+    scheduledDay: 11,
+    pillar: "service_spotlight",
+    targetService: "AI Integration",
+    hook: "AI agents don't replace humans—they eliminate 30 hours of administrative drudgery per week.",
+    topic: "Autonomous AI Workflows in Daily Operations: Real-World ROI Metrics",
+    status: "queued",
+  },
+  {
+    id: 12,
+    scheduledDay: 12,
+    pillar: "thought_leadership",
+    targetService: "Culture & Execution",
+    hook: "Speed of execution is the only sustainable competitive advantage left.",
+    topic: "Cultivating High-Velocity Decision Making in Mid-Size Organizations",
+    status: "queued",
+  },
+  {
+    id: 13,
+    scheduledDay: 13,
+    pillar: "actionable_playbook",
+    targetService: "Pricing Strategy",
+    hook: "Stop billing by the hour. Value-based pricing transformed our client relationships.",
+    topic: "Transitioning from Hourly Billing to Value-Based Retainers",
+    status: "queued",
+  },
+  {
+    id: 14,
+    scheduledDay: 14,
+    pillar: "case_study_win",
+    targetService: "Workflow Automation",
+    hook: "From manual chaos to zero-touch fulfillment: Client onboarding walkthrough.",
+    topic: "Zero-Touch Client Onboarding: Designing an Automated Customer Journey",
+    status: "queued",
+  },
+  {
+    id: 15,
+    scheduledDay: 15,
+    pillar: "myth_busting",
+    targetService: "Organic Growth",
+    hook: "LinkedIn isn't for posting resume updates anymore. It's the #1 B2B media channel.",
+    topic: "Treating Your Personal Profile as a Media Platform to Drive High-Ticket Deals",
+    status: "queued",
+  },
+  {
+    id: 16,
+    scheduledDay: 16,
+    pillar: "community_discussion",
+    targetService: "Remote Work",
+    hook: "Hybrid vs Remote vs In-Office: The real bottleneck isn't location, it's documentation.",
+    topic: "Asynchronous Work Systems: How Top Teams Deliver Without Endless Zoom Calls",
+    status: "queued",
+  },
+  {
+    id: 17,
+    scheduledDay: 17,
+    pillar: "service_spotlight",
+    targetService: "Security & Governance",
+    hook: "Data privacy isn't compliance paperwork—it's your biggest sales enablement asset.",
+    topic: "Enterprise Security Compliance as a Trust Accelerator in B2B Deals",
+    status: "queued",
+  },
+  {
+    id: 18,
+    scheduledDay: 18,
+    pillar: "thought_leadership",
+    targetService: "Product Strategy",
+    hook: "Features don't sell software. The emotional relief of solving a burning problem sells.",
+    topic: "Product-Led vs Problem-Led Messaging: What Actually Converts Enterprise Buyers",
+    status: "queued",
+  },
+  {
+    id: 19,
+    scheduledDay: 19,
+    pillar: "actionable_playbook",
+    targetService: "Talent & Delegation",
+    hook: "How to delegate without losing quality: The 5-level ownership hierarchy.",
+    topic: "The Delegation Framework: Handing Off Critical Operations Without Quality Drop",
+    status: "queued",
+  },
+  {
+    id: 20,
+    scheduledDay: 20,
+    pillar: "case_study_win",
+    targetService: "Conversion Optimization",
+    hook: "A 2-word copy tweak doubled landing page demo requests. Here is the data.",
+    topic: "Micro-Copy Optimization: Increasing High-Intent Demo Conversions by 114%",
+    status: "queued",
+  },
+  {
+    id: 21,
+    scheduledDay: 21,
+    pillar: "myth_busting",
+    targetService: "Bootstrapping vs VC",
+    hook: "Profitability is the new hypergrowth. The shift back to solid unit economics.",
+    topic: "Sustainable Unit Economics: Why Bootstrapped Metrics Win in 2026",
+    status: "queued",
+  },
+  {
+    id: 22,
+    scheduledDay: 22,
+    pillar: "service_spotlight",
+    targetService: "Custom Integrations",
+    hook: "Siloed SaaS tools are killing employee productivity. Connect your data pipelines.",
+    topic: "Unified Data Architecture: Eliminating Data Silos Across Sales, Ops, and Support",
+    status: "queued",
+  },
+  {
+    id: 23,
+    scheduledDay: 23,
+    pillar: "community_discussion",
+    targetService: "AI Governance",
+    hook: "Will AI replace software developers or supercharge them 10x? Here is what our team found.",
+    topic: "The Future of Full-Stack Development in an AI-Augmented Era",
+    status: "queued",
+  },
+  {
+    id: 24,
+    scheduledDay: 24,
+    pillar: "thought_leadership",
+    targetService: "B2B Marketing",
+    hook: "Cold outreach isn't dead, but lazy generic templates certainly are.",
+    topic: "High-Relevance Personalization: The New Standard for B2B Account Outreach",
+    status: "queued",
+  },
+  {
+    id: 25,
+    scheduledDay: 25,
+    pillar: "actionable_playbook",
+    targetService: "KPI Tracking",
+    hook: "The 3 metrics every B2B executive should check on Monday morning before anything else.",
+    topic: "The Executive Monday Scorecard: Cutting Through Analytics Noise",
+    status: "queued",
+  },
+  {
+    id: 26,
+    scheduledDay: 26,
+    pillar: "case_study_win",
+    targetService: "Scalability",
+    hook: "Handling a 10x sudden traffic surge without a single server hiccup: Lessons learned.",
+    topic: "Architecting Resilient Infrastructure for High-Traffic Peak Demands",
+    status: "queued",
+  },
+  {
+    id: 27,
+    scheduledDay: 27,
+    pillar: "myth_busting",
+    targetService: "Customer Success",
+    hook: "Churn doesn't happen at renewal time. It happens in the first 14 days of onboarding.",
+    topic: "The First-14-Days Principle: Stopping Customer Churn Before It Starts",
+    status: "queued",
+  },
+  {
+    id: 28,
+    scheduledDay: 28,
+    pillar: "service_spotlight",
+    targetService: "Performance Marketing",
+    hook: "Why creative testing matters 5x more than audience targeting on modern ad platforms.",
+    topic: "Algorithmic Ad Optimization: Why Creative Variety Is the Real Targeting Variable",
+    status: "queued",
+  },
+  {
+    id: 29,
+    scheduledDay: 29,
+    pillar: "community_discussion",
+    targetService: "Tech Trends",
+    hook: "What technology bet are you making for the next 3 years that most people disagree with?",
+    topic: "Contrarian Tech Bets: Where B2B Technology Is Actually Headed by 2028",
+    status: "queued",
+  },
+  {
+    id: 30,
+    scheduledDay: 30,
+    pillar: "thought_leadership",
+    targetService: "Continuous Growth",
+    hook: "30 days of consistent B2B posting transformed our brand visibility. Here are the 3 big takeaways.",
+    topic: "The Compounding Effect of 30-Day B2B Content Consistency on Pipeline",
+    status: "queued",
+  },
+];
+
 export default function LinkedInPilotConnect() {
   const [status, setStatus] = useState("loading"); // loading | idle | connected
   const [connData, setConnData] = useState(null);
@@ -30,6 +303,9 @@ export default function LinkedInPilotConnect() {
   const [brandIntel, setBrandIntel] = useState(null);
   const [crawlingBrand, setCrawlingBrand] = useState(false);
   const [topicsFilter, setTopicsFilter] = useState("all"); // 'all' | 'queued' | 'published'
+  const [selectedTopicId, setSelectedTopicId] = useState(null);
+  const [queueSearch, setQueueSearch] = useState("");
+  const [queueViewMode, setQueueViewMode] = useState("cards"); // 'cards' | 'chips'
 
   // Autopilot States
   const [autopilotConfig, setAutopilotConfig] = useState({
@@ -162,9 +438,11 @@ export default function LinkedInPilotConnect() {
   };
 
   const handleUseTopic = (topicObj) => {
+    setSelectedTopicId(topicObj.id);
     setPostTopic(topicObj.topic);
-    setCommentary(`💡 ${topicObj.hook}\n\nWhen scaling ${topicObj.targetService || "your business"}, execution is everything.\n\nHere are the critical lessons:`);
-    window.scrollTo({ top: 400, behavior: "smooth" });
+    if (!commentary.trim() || commentary.startsWith("💡")) {
+      setCommentary(`💡 ${topicObj.hook}\n\nWhen scaling ${topicObj.targetService || "your business"}, execution is everything.\n\nHere are the critical lessons:`);
+    }
   };
 
   const handleGenerateAiCreativePackage = async () => {
@@ -401,10 +679,20 @@ export default function LinkedInPilotConnect() {
     return "Your Brand / Page";
   })();
 
-  const rawTopics = brandIntel?.topicsQueue || [];
+  const rawTopics = brandIntel?.topicsQueue?.length > 0
+    ? brandIntel.topicsQueue
+    : DEFAULT_30_DAY_LINKEDIN_QUEUE;
+
   const filteredTopics = rawTopics.filter((t) => {
     if (topicsFilter === "queued") return t.status !== "published";
     if (topicsFilter === "published") return t.status === "published";
+    if (queueSearch.trim()) {
+      const q = queueSearch.toLowerCase();
+      const topicText = (t.topic || "").toLowerCase();
+      const hookText = (t.hook || "").toLowerCase();
+      const srvText = (t.targetService || "").toLowerCase();
+      return topicText.includes(q) || hookText.includes(q) || srvText.includes(q);
+    }
     return true;
   });
 
@@ -774,6 +1062,7 @@ export default function LinkedInPilotConnect() {
 
       {/* ── 1. BRAND INTELLIGENCE & WEBSITE CRAWLER (ZERO REPETITION ENGINE) ── */}
       <div
+        id="brand-crawler-section"
         style={{
           padding: "24px 28px",
           borderRadius: 20,
@@ -1112,9 +1401,14 @@ export default function LinkedInPilotConnect() {
 
           {/* AI Prompt Input & One-Click Generation */}
           <div>
-            <label style={{ fontSize: 11.5, color: "#94a3b8", fontWeight: 700, display: "block", marginBottom: 6 }}>
-              2. Enter Topic or Select from 30-Day Queue below:
-            </label>
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 6 }}>
+              <label style={{ fontSize: 11.5, color: "#94a3b8", fontWeight: 700 }}>
+                2. Enter Topic or Select from 30-Day Queue below:
+              </label>
+              <div style={{ fontSize: 11, color: "#38bdf8", fontWeight: 700 }}>
+                {brandIntel?.brandName ? "✨ Crawled Brand Queue Active" : "🌟 30-Day Master Queue Ready"}
+              </div>
+            </div>
             <div style={{ display: "flex", gap: 10 }}>
               <input
                 type="text"
@@ -1162,6 +1456,364 @@ export default function LinkedInPilotConnect() {
                     : "✨ Generate Post Copy & Hashtags"}
                 </span>
               </button>
+            </div>
+
+            {/* ── 30-DAY EDITORIAL QUEUE SHELF (DIRECTLY UNDER INPUT) ── */}
+            <div
+              style={{
+                marginTop: 12,
+                borderRadius: 14,
+                background: "linear-gradient(180deg, rgba(15, 23, 42, 0.8) 0%, rgba(10, 15, 29, 0.95) 100%)",
+                border: "1px solid rgba(14, 165, 233, 0.25)",
+                padding: "14px 16px",
+                boxShadow: "0 8px 24px rgba(0, 0, 0, 0.25)",
+              }}
+            >
+              {/* Header with Title, Source Badge, and Controls */}
+              <div
+                style={{
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "space-between",
+                  marginBottom: 12,
+                  flexWrap: "wrap",
+                  gap: 10,
+                }}
+              >
+                <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+                  <span style={{ fontSize: 12.5, fontWeight: 800, color: "#ffffff", display: "flex", alignItems: "center", gap: 6 }}>
+                    📅 30-Day Non-Repeating Editorial Queue
+                    <span
+                      style={{
+                        fontSize: 10.5,
+                        fontWeight: 800,
+                        padding: "2px 7px",
+                        borderRadius: 999,
+                        background: "rgba(56, 189, 248, 0.15)",
+                        color: "#38bdf8",
+                        border: "1px solid rgba(56, 189, 248, 0.3)",
+                      }}
+                    >
+                      {rawTopics.length} Topics
+                    </span>
+                  </span>
+
+                  <span
+                    style={{
+                      fontSize: 10.5,
+                      fontWeight: 700,
+                      padding: "2px 8px",
+                      borderRadius: 6,
+                      background: brandIntel?.brandName ? "rgba(34, 197, 94, 0.12)" : "rgba(148, 163, 184, 0.12)",
+                      color: brandIntel?.brandName ? "#4ade80" : "#94a3b8",
+                      border: `1px solid ${brandIntel?.brandName ? "rgba(34, 197, 94, 0.25)" : "rgba(148, 163, 184, 0.2)"}`,
+                    }}
+                  >
+                    {brandIntel?.brandName ? `✓ Crawled for ${brandIntel.brandName}` : "⚡ Master B2B Strategy Queue"}
+                  </span>
+                </div>
+
+                <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+                  {/* Search input */}
+                  <input
+                    type="text"
+                    placeholder="🔍 Filter..."
+                    value={queueSearch}
+                    onChange={(e) => setQueueSearch(e.target.value)}
+                    style={{
+                      padding: "4px 8px",
+                      borderRadius: 6,
+                      background: "rgba(0, 0, 0, 0.35)",
+                      border: "1px solid rgba(255, 255, 255, 0.1)",
+                      color: "#fff",
+                      fontSize: 11,
+                      width: 90,
+                    }}
+                  />
+
+                  {/* Filter tabs */}
+                  <div style={{ display: "flex", gap: 4 }}>
+                    {["all", "queued", "published"].map((tab) => (
+                      <button
+                        key={tab}
+                        type="button"
+                        onClick={() => setTopicsFilter(tab)}
+                        style={{
+                          padding: "3px 8px",
+                          borderRadius: 6,
+                          border: "none",
+                          background: topicsFilter === tab ? "#0a66c2" : "rgba(255,255,255,0.06)",
+                          color: topicsFilter === tab ? "#fff" : "#94a3b8",
+                          fontSize: 10.5,
+                          fontWeight: 700,
+                          cursor: "pointer",
+                          textTransform: "capitalize",
+                        }}
+                      >
+                        {tab}
+                      </button>
+                    ))}
+                  </div>
+
+                  {/* View Mode Toggle */}
+                  <div style={{ display: "flex", gap: 2, background: "rgba(0,0,0,0.3)", borderRadius: 6, padding: 2 }}>
+                    <button
+                      type="button"
+                      onClick={() => setQueueViewMode("cards")}
+                      style={{
+                        padding: "3px 7px",
+                        borderRadius: 4,
+                        border: "none",
+                        background: queueViewMode === "cards" ? "rgba(56, 189, 248, 0.2)" : "transparent",
+                        color: queueViewMode === "cards" ? "#38bdf8" : "#64748b",
+                        fontSize: 10,
+                        fontWeight: 700,
+                        cursor: "pointer",
+                      }}
+                      title="Detailed Cards"
+                    >
+                      Cards
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setQueueViewMode("chips")}
+                      style={{
+                        padding: "3px 7px",
+                        borderRadius: 4,
+                        border: "none",
+                        background: queueViewMode === "chips" ? "rgba(56, 189, 248, 0.2)" : "transparent",
+                        color: queueViewMode === "chips" ? "#38bdf8" : "#64748b",
+                        fontSize: 10,
+                        fontWeight: 700,
+                        cursor: "pointer",
+                      }}
+                      title="Compact Chips"
+                    >
+                      Chips
+                    </button>
+                  </div>
+                </div>
+              </div>
+
+              {/* View Mode: Chips */}
+              {queueViewMode === "chips" && (
+                <div style={{ display: "flex", flexWrap: "wrap", gap: 6, maxHeight: 180, overflowY: "auto", paddingRight: 4 }}>
+                  {filteredTopics.map((item) => {
+                    const isSelected = postTopic === item.topic || selectedTopicId === item.id;
+                    return (
+                      <button
+                        key={item.id}
+                        type="button"
+                        onClick={() => handleUseTopic(item)}
+                        style={{
+                          padding: "5px 10px",
+                          borderRadius: 8,
+                          background: isSelected ? "rgba(14, 165, 233, 0.25)" : "rgba(255, 255, 255, 0.04)",
+                          border: `1px solid ${isSelected ? "#38bdf8" : "rgba(255, 255, 255, 0.08)"}`,
+                          color: isSelected ? "#38bdf8" : "#cbd5e1",
+                          fontSize: 11,
+                          fontWeight: isSelected ? 800 : 600,
+                          cursor: "pointer",
+                          display: "flex",
+                          alignItems: "center",
+                          gap: 6,
+                          textAlign: "left",
+                          transition: "all 0.15s ease",
+                        }}
+                      >
+                        <span style={{ fontSize: 9.5, opacity: 0.7, padding: "1px 4px", borderRadius: 4, background: "rgba(0,0,0,0.3)" }}>
+                          Day {item.scheduledDay}
+                        </span>
+                        <span>{item.topic}</span>
+                        {isSelected && <span style={{ color: "#38bdf8" }}>✓</span>}
+                      </button>
+                    );
+                  })}
+                </div>
+              )}
+
+              {/* View Mode: Cards */}
+              {queueViewMode === "cards" && (
+                <div
+                  style={{
+                    maxHeight: 230,
+                    overflowY: "auto",
+                    display: "flex",
+                    flexDirection: "column",
+                    gap: 6,
+                    paddingRight: 4,
+                  }}
+                >
+                  {filteredTopics.map((item) => {
+                    const isSelected = postTopic === item.topic || selectedTopicId === item.id;
+                    const pillarIcon =
+                      item.pillar === "thought_leadership" ? "💡" :
+                      item.pillar === "actionable_playbook" ? "🛠️" :
+                      item.pillar === "case_study_win" ? "📈" :
+                      item.pillar === "myth_busting" ? "⚡" :
+                      item.pillar === "service_spotlight" ? "🔍" : "💬";
+
+                    return (
+                      <div
+                        key={item.id}
+                        onClick={() => handleUseTopic(item)}
+                        style={{
+                          padding: "9px 12px",
+                          borderRadius: 10,
+                          background: isSelected
+                            ? "linear-gradient(135deg, rgba(14, 165, 233, 0.18) 0%, rgba(2, 132, 199, 0.08) 100%)"
+                            : item.status === "next"
+                            ? "rgba(56, 189, 248, 0.06)"
+                            : "rgba(255, 255, 255, 0.02)",
+                          border: `1px solid ${
+                            isSelected
+                              ? "#38bdf8"
+                              : item.status === "next"
+                              ? "rgba(56, 189, 248, 0.25)"
+                              : "rgba(255, 255, 255, 0.06)"
+                          }`,
+                          display: "flex",
+                          justifyContent: "space-between",
+                          alignItems: "center",
+                          gap: 10,
+                          cursor: "pointer",
+                          transition: "all 0.15s ease",
+                        }}
+                      >
+                        <div style={{ flex: 1, minWidth: 0 }}>
+                          <div style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 3, flexWrap: "wrap" }}>
+                            <span
+                              style={{
+                                fontSize: 9.5,
+                                fontWeight: 800,
+                                padding: "1px 5px",
+                                borderRadius: 4,
+                                background: "rgba(255,255,255,0.08)",
+                                color: "#e2e8f0",
+                              }}
+                            >
+                              Day {item.scheduledDay}
+                            </span>
+                            <span style={{ fontSize: 10.5, fontWeight: 700, color: "#38bdf8" }}>
+                              {pillarIcon} {item.targetService || "B2B Insight"}
+                            </span>
+                            <span
+                              style={{
+                                fontSize: 9,
+                                padding: "1px 5px",
+                                borderRadius: 4,
+                                background:
+                                  item.status === "published"
+                                    ? "rgba(34,197,94,0.15)"
+                                    : item.status === "next"
+                                    ? "rgba(56,189,248,0.2)"
+                                    : "rgba(148,163,184,0.1)",
+                                color:
+                                  item.status === "published"
+                                    ? "#4ade80"
+                                    : item.status === "next"
+                                    ? "#38bdf8"
+                                    : "#94a3b8",
+                                fontWeight: 800,
+                              }}
+                            >
+                              {item.status === "published" ? "PUBLISHED" : item.status === "next" ? "NEXT UP" : "QUEUED"}
+                            </span>
+                          </div>
+
+                          <div
+                            style={{
+                              fontSize: 12,
+                              fontWeight: 700,
+                              color: isSelected ? "#38bdf8" : "#ffffff",
+                              whiteSpace: "nowrap",
+                              overflow: "hidden",
+                              textOverflow: "ellipsis",
+                            }}
+                          >
+                            {item.topic}
+                          </div>
+
+                          {item.hook && (
+                            <div
+                              style={{
+                                fontSize: 11,
+                                color: "#94a3b8",
+                                whiteSpace: "nowrap",
+                                overflow: "hidden",
+                                textOverflow: "ellipsis",
+                                marginTop: 1,
+                              }}
+                            >
+                              Hook: "{item.hook}"
+                            </div>
+                          )}
+                        </div>
+
+                        <button
+                          type="button"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            handleUseTopic(item);
+                          }}
+                          style={{
+                            padding: "5px 10px",
+                            borderRadius: 6,
+                            background: isSelected ? "#0a66c2" : "rgba(56, 189, 248, 0.12)",
+                            border: `1px solid ${isSelected ? "#38bdf8" : "rgba(56, 189, 248, 0.25)"}`,
+                            color: isSelected ? "#ffffff" : "#38bdf8",
+                            fontSize: 10.5,
+                            fontWeight: 700,
+                            cursor: "pointer",
+                            whiteSpace: "nowrap",
+                          }}
+                        >
+                          {isSelected ? "✓ Selected" : "⚡ Use Topic"}
+                        </button>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+
+              {/* Bottom Quick Action Bar */}
+              <div
+                style={{
+                  marginTop: 10,
+                  paddingTop: 8,
+                  borderTop: "1px solid rgba(255, 255, 255, 0.06)",
+                  display: "flex",
+                  justifyContent: "space-between",
+                  alignItems: "center",
+                  flexWrap: "wrap",
+                  gap: 8,
+                }}
+              >
+                <div style={{ fontSize: 10.5, color: "#64748b" }}>
+                  💡 Click any topic above to load it directly into the input & commentary draft.
+                </div>
+                {!brandIntel?.brandName && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const el = document.getElementById("brand-crawler-section");
+                      if (el) el.scrollIntoView({ behavior: "smooth" });
+                    }}
+                    style={{
+                      background: "none",
+                      border: "none",
+                      color: "#38bdf8",
+                      fontSize: 11,
+                      fontWeight: 700,
+                      cursor: "pointer",
+                      padding: 0,
+                      textDecoration: "underline",
+                    }}
+                  >
+                    🌐 Want custom topics tailored to your exact website? Crawl brand website ➔
+                  </button>
+                )}
+              </div>
             </div>
           </div>
 
