@@ -1810,10 +1810,6 @@ export default function HomePage() {
                 <TikTokPilotConnect />
               )}
 
-              {/* TAB: AI CINEMA & VIDEO STUDIO */}
-              {activeTab === "cinema" && (
-                <CinemaStudio />
-              )}
 
               {/* TAB 4: LOCAL MAPS (GMB) WORKSTATION */}
               {activeTab === "gmb" && (

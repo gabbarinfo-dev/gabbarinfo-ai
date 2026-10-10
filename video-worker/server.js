@@ -1272,12 +1272,20 @@ async function processReelVideo(job, jobDir) {
     let sceneCountReq = targetSecs <= 15 ? "3 to 4 sequential scenes" : targetSecs <= 30 ? "4 to 6 sequential scenes" : "6 to 8 sequential scenes";
 
     const promoPrompt = `You are an elite commercial video director creating a high-converting ${targetSecs}-second vertical promo ad for Instagram Reels, TikTok, and YouTube Shorts.
-Brand Name: "${brandName || "Our Brand"}"
-Product / Service: "${serviceToPromote || "Premium Services"}"
+Creative Brief / User Concept: "${topic}"
+Brand Name: "${brandName || "Featured Brand"}"
+Product / Service: "${serviceToPromote || "Signature Offering"}"
 Special Offer: "${specialOffer || "Exclusive Limited-Time Deal"}"
-Call to Action: "${promoCTA}"
+Call to Action: "${promoCTA || "Order Now"}"
 ${langRule}
 ${angleRule}
+
+STRICT CREATIVE DIRECTIVE:
+1. THE CREATIVE BRIEF ("${topic}") IS YOUR PRIMARY INSPIRATION:
+   - Base all visual scenes and spoken dialogue directly on what the user specified in the brief.
+   - If the brief mentions a specific person/model (e.g. stylish Indian woman in Garba Chaniya Choli, jewellery), feature this exact character in all visual prompts!
+   - If the brief contains spoken dialogue (e.g. says: '...'), use those exact spoken lines in 'spokenAudio'!
+   - ABSOLUTELY DO NOT read out descriptive camera or stage directions (e.g. NEVER speak "A gorgeous stylish Indian woman in London dressed in..."). Only speak natural human dialogue!
 
 Requirements:
 - Structure: ${sceneCountReq} totaling ~${targetSecs} seconds.
@@ -1458,11 +1466,13 @@ Requirements:
   };
   const ALLOWED_VOICES = ["nova", "shimmer", "echo", "onyx", "fable", "alloy", "ash", "sage", "coral"];
 
-  let ttsVoice = String(voice || (language === "en_uk" ? "fable" : "alloy")).toLowerCase().trim();
+  const isFemaleContext = /(woman|girl|female|lady|bride|actress|she|her|queen|mom|daughter|choli|saree|garba|model|jewellery)/i.test((topic || "") + " " + (reelScript?.fullScript || ""));
+  let defaultVoice = isFemaleContext ? "nova" : (language === "en_uk" ? "fable" : "alloy");
+  let ttsVoice = String(voice || defaultVoice).toLowerCase().trim();
   if (OPENAI_VOICE_MAP[ttsVoice]) {
     ttsVoice = OPENAI_VOICE_MAP[ttsVoice];
   } else if (!ALLOWED_VOICES.includes(ttsVoice)) {
-    ttsVoice = language === "en_uk" ? "fable" : "alloy";
+    ttsVoice = defaultVoice;
   }
 
   job.progress = 25;
@@ -1857,6 +1867,27 @@ Requirements:
         }
       } catch (lipSyncErr) {
         log(job.id, `Precision lip-sync (${filenamePrefix}) notice: ${lipSyncErr.message}`);
+      }
+
+      // 4. Living Cinematic Video Fallback: Animate the portrait into real motion via Minimax Video-01
+      try {
+        log(job.id, `Animating actor portrait into living video motion via Minimax/Wan...`);
+        const animatedVidUrl = await generateGenerativeClip({
+          prompt: `${characterImgPrompt}, subtle natural head motion, warm natural smile, looking at camera, fluid movement, cinematic lighting, photorealistic 8k`,
+          isWidescreen: false,
+          jobId: job.id,
+          firstFrameUrl: imgPubUrl,
+        });
+        if (animatedVidUrl) {
+          const fetchAnim = await fetch(animatedVidUrl);
+          if (fetchAnim.ok) {
+            fs.writeFileSync(vidPath, Buffer.from(await fetchAnim.arrayBuffer()));
+            log(job.id, `Living actor video clip successfully generated for ${filenamePrefix}`);
+            return { type: "video", path: vidPath, imagePath: imgPath, hasEmbeddedAudio: false, audioPath };
+          }
+        }
+      } catch (animErr) {
+        log(job.id, `Living video fallback notice: ${animErr.message}`);
       }
 
       return { type: "image", path: imgPath, imagePath: imgPath, hasEmbeddedAudio: false, audioPath };
