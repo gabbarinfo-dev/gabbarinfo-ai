@@ -492,6 +492,55 @@ async function generateWanVideo({ prompt, isWidescreen, jobId }) {
   throw new Error("Wan Video prediction timed out after 240s");
 }
 
+async function generateReplicateWav2Lip({ videoUrl, audioUrl, jobId, log = console.log }) {
+  const token = process.env.REPLICATE_API_TOKEN;
+  if (!token) return null;
+
+  log(jobId, `Dispatching Wav2Lip to Replicate (devxpy/cog-wav2lip)...`);
+  const createRes = await fetch("https://api.replicate.com/v1/predictions", {
+    method: "POST",
+    headers: {
+      "Authorization": `Bearer ${token}`,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({
+      version: "8d65e3f4f4298520e079198b493c25adfc43c058ffec924f2aefc8010ed25eef",
+      input: {
+        face: videoUrl,
+        audio: audioUrl,
+        smooth: true,
+      },
+    }),
+  });
+
+  if (!createRes.ok) {
+    const errT = await createRes.text();
+    throw new Error(`Wav2Lip create failed (${createRes.status}): ${errT}`);
+  }
+
+  const prediction = await createRes.json();
+  const getUrl = prediction.urls?.get;
+  if (!getUrl) throw new Error("No polling URL returned by Replicate for Wav2Lip");
+
+  const startTime = Date.now();
+  while (Date.now() - startTime < 180000) {
+    await new Promise(r => setTimeout(r, 4000));
+    const pollRes = await fetch(getUrl, {
+      headers: { "Authorization": `Bearer ${token}` },
+    });
+    if (!pollRes.ok) continue;
+    const pollData = await pollRes.json();
+    if (pollData.status === "succeeded") {
+      log(jobId, `Wav2Lip succeeded: ${pollData.output}`);
+      return pollData.output;
+    }
+    if (pollData.status === "failed" || pollData.status === "canceled") {
+      throw new Error(`Wav2Lip failed: ${pollData.error || pollData.status}`);
+    }
+  }
+  throw new Error("Wav2Lip timed out after 180s");
+}
+
 function resolveVoice(char) {
   if (!char) return "onyx";
   const voice = (char.voice || "").toLowerCase();
@@ -2155,19 +2204,39 @@ Requirements:
                       const pubVidUrl = await uploadPublicFile(scVidPath, `sync_vid_${job.id}_sc${i}.mp4`, "video/mp4");
 
                       if (pubAudioUrl && pubVidUrl) {
-                        const syncedVidUrl = await generateSyncLabsLipSync({
+                        const syncRes = await generateSyncLabsLipSync({
                           videoUrl: pubVidUrl,
                           audioUrl: pubAudioUrl,
                           model: "sync-3",
                           jobId: job.id,
                           log,
                         });
-                        if (syncedVidUrl) {
-                          const fSync = await fetch(syncedVidUrl);
+                        if (syncRes && syncRes.ok && syncRes.videoUrl) {
+                          const fSync = await fetch(syncRes.videoUrl);
                           if (fSync.ok) {
                             fs.writeFileSync(scVidPath, Buffer.from(await fSync.arrayBuffer()));
                             isLipSynced = true;
                             log(job.id, `Scene ${i + 1} moving video successfully lip-synced with SyncLabs sync-3!`);
+                          }
+                        } else if (process.env.REPLICATE_API_TOKEN) {
+                          try {
+                            log(job.id, `SyncLabs unavailable (${syncRes?.error || 'failed'}), seamlessly using Replicate Wav2Lip fallback...`);
+                            const wav2lipUrl = await generateReplicateWav2Lip({
+                              videoUrl: pubVidUrl,
+                              audioUrl: pubAudioUrl,
+                              jobId: job.id,
+                              log,
+                            });
+                            if (wav2lipUrl) {
+                              const fWav = await fetch(wav2lipUrl);
+                              if (fWav.ok) {
+                                fs.writeFileSync(scVidPath, Buffer.from(await fWav.arrayBuffer()));
+                                isLipSynced = true;
+                                log(job.id, `Scene ${i + 1} moving video successfully lip-synced with Replicate Wav2Lip!`);
+                              }
+                            }
+                          } catch (wErr) {
+                            log(job.id, `Replicate Wav2Lip fallback notice: ${wErr.message}`);
                           }
                         }
                       }
