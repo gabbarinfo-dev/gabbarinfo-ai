@@ -31,7 +31,7 @@ export default async function handler(req, res) {
     niche = "business",
     language = "en_us",
     audioMode = "music_only",
-    voice = "alloy",
+    voice = null,
     backgroundBeat = "upbeat_lofi",
     selectedStyle = "cinema_unified",
   } = req.body;

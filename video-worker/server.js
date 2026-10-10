@@ -2115,6 +2115,7 @@ Requirements:
             if (fVid.ok) {
               fs.writeFileSync(scVidPath, Buffer.from(await fVid.arrayBuffer()));
 
+              let isLipSynced = false;
               // Precision Lip-Sync on Moving Video via SyncLabs sync-3
               if (audioMode === "dialogue_lipsync" && process.env.SYNC_LABS_API_KEY) {
                 try {
@@ -2165,6 +2166,7 @@ Requirements:
                           const fSync = await fetch(syncedVidUrl);
                           if (fSync.ok) {
                             fs.writeFileSync(scVidPath, Buffer.from(await fSync.arrayBuffer()));
+                            isLipSynced = true;
                             log(job.id, `Scene ${i + 1} moving video successfully lip-synced with SyncLabs sync-3!`);
                           }
                         }
@@ -2176,8 +2178,8 @@ Requirements:
                 }
               }
 
-              sceneVisuals.push({ type: "video", path: scVidPath });
-              log(job.id, `Scene ${i + 1} video successfully generated & saved!`);
+              sceneVisuals.push({ type: "video", path: scVidPath, hasEmbeddedAudio: isLipSynced });
+              log(job.id, `Scene ${i + 1} video successfully generated & saved (LipSync: ${isLipSynced})!`);
               job.progress = 45 + Math.round(((i + 1) / reelScript.scenes.length) * 32);
 
               // Extract last frame for seamless chaining into the next scene
@@ -2400,12 +2402,12 @@ async function assembleFFmpegVideo({ jobDir, scenes, audioFiles, visuals, output
         const segListPath = path.join(jobDir, "seglist.txt");
         fs.writeFileSync(segListPath, segmentFiles.map(f => `file '${f.replace(/\\/g, "/")}'`).join("\n"));
 
-        const allHaveAudio = visuals.length > 0 && visuals.every(v => v.hasEmbeddedAudio);
+        const anyHaveAudio = visuals.length > 0 && visuals.some(v => v.hasEmbeddedAudio);
 
         let finalArgs;
-        if (allHaveAudio) {
-          // Both/all segments have native synchronized audio from SadTalker GPU!
-          // Concatenate segments directly preserving frame-perfect lip-sync:
+        if (anyHaveAudio) {
+          // Native synchronized audio from character lip-sync!
+          // Concatenate segments directly preserving character speech:
           finalArgs = [
             "-y",
             "-f", "concat",
