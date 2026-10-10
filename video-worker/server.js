@@ -392,14 +392,7 @@ async function generateGenerativeClip({ prompt, isWidescreen, jobId, firstFrameU
       });
       if (hfRes && hfRes.videoUrl) return hfRes.videoUrl;
     } catch (hfErr) {
-      if (
-        hfErr.message.includes("credit balance is too low") ||
-        hfErr.message.includes("not_enough_credits") ||
-        hfErr.message.includes("TOPUP_REQUIRED")
-      ) {
-        throw new Error("HIGGSFIELD_CREDITS_EXHAUSTED: Your Higgsfield balance is $0.00. Please recharge your credits at open.higgsfield.ai to generate videos on Seedance 2.5.");
-      }
-      log(jobId, `Higgsfield AI notice: ${hfErr.message}, falling back to Minimax Video-01...`);
+      log(jobId, `Higgsfield AI notice (${hfErr.message}), seamlessly falling back to Minimax Video-01...`);
     }
   }
 
@@ -1316,61 +1309,61 @@ Requirements:
     reelScript = JSON.parse(completion.choices[0].message.content);
   } else if (payload.workflowType === "creative_film" || selectedStyle === "cinema_unified" || selectedStyle === "generative_cinematic" || audioMode === "foley_sfx") {
     // DEDICATED HOLLYWOOD ACTION & CINEMA FILM DIRECTOR (Strict Subject Continuity & Zero Marketing Fluff)
-    log(job.id, `Generating Hollywood Action Film Screenplay for topic: "${topic}"`);
-    const filmPrompt = `You are an elite Hollywood Director of Photography and Action Filmmaker creating a thrilling continuous ${targetSecs}-second movie scene in vertical 9:16 Arri Alexa 35mm format.
+    log(job.id, `Generating Hollywood Director Cinematic Screenplay for topic: "${topic}" (Duration: ${targetSecs}s)`);
+    const filmPrompt = `You are an elite Hollywood Director and Action/Cinematic Filmmaker creating a world-class continuous ${targetSecs}-second cinematic film sequence in 35mm Arri Alexa format.
 Topic / Scene Concept: "${topic}"
 
-STRICT CINEMATIC CONTINUITY RULES:
-1. LOCKED HERO SUBJECT:
-   - Define a single, ultra-detailed "heroSubject" (e.g. "Matte-black 2026 widebody sports hypercar with glowing crimson angular LED tail-lights, gloss carbon-fiber rear wing, twin hexagonal titanium exhausts, and low-slung wide track").
-   - Define a single "environmentSetting" (e.g. "Wet midnight rain-slicked Tokyo expressway under glowing neon skyscrapers, moody atmospheric mist, reflective asphalt puddles").
-   - All 3 scenes MUST feature this EXACT SAME HERO VEHICLE / SUBJECT in this EXACT SAME ENVIRONMENT. No switching cars, no switching locations!
-2. ZERO MARKETING OR TEXT OVERLAYS:
-   - This is a cinematic feature film sequence. ABSOLUTELY NO CALLS TO ACTION, NO MARKETING SLOGANS, NO OVERLAYS, NO TEXT, NO BADGES, NO LOGOS, NO CAPTIONS.
-3. THREE DISTINCT, VARIED CINEMATIC CAMERA ANGLES (NEVER use 3 rear shots!):
-   - Scene 1 (The Head-On Approach, 0-5s): Low-angle front 3/4 tracking shot skimming 1 foot off the wet asphalt, revealing the aggressive front grille, front bumper, blazing xenon headlights, and spinning alloy rims charging directly towards the camera.
-   - Scene 2 (The Sideways Drift, 5-10s): High-speed side-profile / wheel-arch tracking camera capturing the vehicle drifting violently sideways, voluminous white tire smoke billowing from the spinning rear tires, true motion blur.
-   - Scene 3 (The High-Speed Chase, 10-15s): Dynamic rear-quarter tracking camera pulling up and back as the car screams down the highway straightaway, tail-lights glowing red into the dark atmospheric rain mist.
-4. GRITTY HOLLYWOOD REALISM (NO ARCADE CARTOONS):
-   - Gritty 35mm Arri Alexa film grain, authentic wet black asphalt with realistic puddle reflections, natural xenon headlights, authentic rubber tire smoke.
-   - ABSOLUTELY NO PSYCHEDELIC RAINBOW LIGHT TRAILS, NO NEON LIGHT RIBBONS, NO GLOWING LASER STREAKS, NO ARCADE/CARTOON CGI SATURATION.
-5. VISCERAL FOLEY SOUND DESIGN:
-   - Provide realistic, visceral physical Foley sound prompts tailored to each scene (screaming high-rev twin-turbo engine, loud tire screech on asphalt drift, metallic brake squeal, turbo blow-off valve flutter).
+DIRECTORIAL CONTINUITY & LIVING WORLD RULES:
+1. LIVING, BREATHING ENVIRONMENT:
+   - The environment must feel deeply ALIVE and dynamic (e.g. if a restaurant/cafe: crowded background with patrons talking and waiters passing by with trays, rain streaming down window glass, warm amber practical lighting; if a street/car scene: wet asphalt puddles, passing neon city lights, atmospheric fog/rain mist).
+   - Lock down a single, highly cohesive "environmentSetting" across all 3 shots.
+2. HERO SUBJECT & CHARACTERS:
+   - Identify the primary subject(s) or character(s) from the topic (e.g. "Two stylish patrons sitting at a marble bistro table by the rain-streaked window", or "Hero character in tailored dark trench coat", or "Matte-black widebody sports hypercar").
+   - Maintain 100% visual consistency of this subject across all 3 shots.
+3. THREE CINEMATOGRAPHIC SHOTS (CONTINUOUS NARRATIVE RHYTHM):
+   - Shot 1 (Establishing & Living Atmosphere, 0-6s): Dynamic wide or medium-wide tracking/dolly shot introducing the alive environment, setting the mood, ambient background movement.
+   - Shot 2 (Core Action & Connection, 6-13s): Over-the-shoulder or medium tracking camera focusing on the core action/dialogue/motion with realistic physics and expressive motion.
+   - Shot 3 (Hero Detail & Emotional Climax, 13-20s): Intimate close-up or punchy reaction/action shot (e.g. picking up glass with clink, authentic facial reaction, high-speed getaway, or striking product macro).
+4. LAYERED CINEMATIC AUDIO & SOUND DESIGN:
+   - "ambience": Rich environmental room tone (e.g. "Bustling restaurant crowd murmur with soft jazz, gentle rain tapping against windowpane" or "Distant city siren, wet asphalt rain mist").
+   - "foleySoundPrompt": Precise physical sound effects (e.g. "Ceramic coffee cup clink, quiet sigh, footsteps on polished wood" or "Aggressive V8 engine roar, tire screech on wet asphalt, metallic brake hiss").
+5. ABSOLUTELY ZERO MARKETING FLUFF:
+   - Pure cinematic realism. No calls to action, no subtitles, no logos, no watermark, no neon rainbow laser ribbons.
 
 Return ONLY valid JSON:
 {
-  "title": "Action Movie Scene",
-  "heroSubject": "Exact locked description of the hero vehicle or subject (e.g. Matte-black customized hypercar, menacing front grille, aggressive aerodynamic body lines, low-slung stance)",
-  "environmentSetting": "Exact locked description of the environment (e.g. Dark wet asphalt expressway at midnight, atmospheric fog, moody cinematic film noir lighting)",
-  "fullScript": "",
+  "title": "Cinematic Film Scene",
+  "heroSubject": "Ultra-detailed description of the hero character(s) or subject",
+  "environmentSetting": "Detailed living environment setting with atmosphere, lighting, and background life",
+  "ambience": "Detailed environmental ambient room tone description",
+  "fullScript": "Brief cinematic description of the 3-shot sequence",
   "scenes": [
     {
       "sceneNumber": 1,
-      "text": "Scene 1 front approach action description",
-      "spokenAudio": "",
-      "visualPrompt": "Low-angle front 3/4 tracking shot skimming the wet asphalt as the heroSubject charges forward, menacing front headlights blazing, real-world grit, 35mm film still. Gritty photorealism, no rainbow light trails, no cartoon effects.",
-      "cameraMotion": "Low-angle front tracking shot skimming asphalt 1 foot off ground",
-      "foleySoundPrompt": "Aggressive twin-turbo V8 engine roar, loud tire screech on asphalt drift, metallic brake squeal"
+      "text": "Shot 1 action description",
+      "spokenAudio": "Dialogue line if talking, otherwise empty string",
+      "visualPrompt": "Detailed 35mm film visual prompt for Shot 1 with living background elements and camera movement",
+      "cameraMotion": "Specific professional camera movement (e.g. Smooth dolly-in tracking past ambient foreground elements)",
+      "foleySoundPrompt": "Precise Foley sound effects for Shot 1"
     },
     {
       "sceneNumber": 2,
-      "text": "Scene 2 side drift action description",
-      "spokenAudio": "",
-      "visualPrompt": "Close side-profile tracking shot of the exact same heroSubject drifting violently sideways around a sharp corner, white tire smoke pouring from spinning alloy wheels, authentic physics. Gritty photorealism, no rainbow light trails.",
-      "cameraMotion": "Fast dynamic side-profile push-in on the smoking tires and drift angle",
-      "foleySoundPrompt": "High-RPM screaming engine, sharp tire squeal on asphalt, violent downshift exhaust pop"
+      "text": "Shot 2 action description",
+      "spokenAudio": "Dialogue line if talking, otherwise empty string",
+      "visualPrompt": "Detailed visual prompt for Shot 2 maintaining exact continuity of hero and living background",
+      "cameraMotion": "Over-the-shoulder or dynamic tracking camera motion",
+      "foleySoundPrompt": "Precise Foley sound effects for Shot 2"
     },
     {
       "sceneNumber": 3,
-      "text": "Scene 3 straightaway chase action description",
-      "spokenAudio": "",
-      "visualPrompt": "Dynamic rear-quarter chase camera tracking the exact same heroSubject accelerating at top speed down the dark straightaway into moody atmospheric mist. Gritty photorealism, no rainbow light trails.",
-      "cameraMotion": "High-speed tracking shot pulling back as the car rockets into the distance",
-      "foleySoundPrompt": "Twin-turbo engine roaring down the straightaway, echoing exhaust fade, whooshing air"
+      "text": "Shot 3 action description",
+      "spokenAudio": "Dialogue line if talking, otherwise empty string",
+      "visualPrompt": "Detailed visual prompt for Shot 3 focusing on close-up detail, reaction, or dramatic resolution",
+      "cameraMotion": "Intimate close-up push-in or dynamic pull-back",
+      "foleySoundPrompt": "Precise Foley sound effects for Shot 3"
     }
   ]
 }`;
-
     const completion = await openai.chat.completions.create({
       model: "gpt-4o",
       temperature: 0.7,

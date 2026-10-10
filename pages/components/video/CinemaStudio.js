@@ -20,7 +20,7 @@ export default function CinemaStudio() {
   // Prompt & Options State
   const [promptText, setPromptText] = useState("");
   const [aspectRatio, setAspectRatio] = useState("9:16"); // "9:16" | "16:9"
-  const [durationSeconds, setDurationSeconds] = useState(30); // 15 | 30 | 60 | 120 | 300
+  const [durationSeconds, setDurationSeconds] = useState(20); // 20 | 30 | 60 | 120 | 300
   const [visualAesthetic, setVisualAesthetic] = useState("photoreal_cinema"); // "photoreal_cinema" | "pixar_3d" | "anime_cel" | "commercial_studio"
   const [workflowType, setWorkflowType] = useState("creative_film"); // "product_ad" | "creative_film" | "character_story" | "episodic_series"
   const [language, setLanguage] = useState("en_us"); // "en_us" | "en_uk" | "hindi" | "auto"
@@ -642,11 +642,11 @@ export default function CinemaStudio() {
                   onChange={(e) => setDurationSeconds(Number(e.target.value))}
                   style={{ width: "100%", padding: "9px 12px", borderRadius: 10, background: "rgba(15, 23, 42, 0.9)", border: "1px solid rgba(99, 102, 241, 0.25)", color: "#fff", fontSize: 12.5, outline: "none" }}
                 >
-                  <option value={15}>⏱️ 15s (Viral Hook)</option>
-                  <option value={30}>⏱️ 30s (Direct Response)</option>
+                  <option value={20}>⏱️ 20s (Cinematic Reel / Short)</option>
+                  <option value={30}>⏱️ 30s (Commercial Ad)</option>
                   <option value={60}>⏱️ 60s (Complete Story)</option>
-                  <option value={120}>⏱️ 2 Mins (Long-Form)</option>
-                  <option value={300}>⏱️ 5 Mins (Episodic)</option>
+                  <option value={120}>⏱️ 2 Mins (Docu / Explainer)</option>
+                  <option value={300}>⏱️ 5 Mins (Episodic Film)</option>
                 </select>
               </div>
 
