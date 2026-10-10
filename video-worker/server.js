@@ -1438,6 +1438,13 @@ Requirements:
     }
   }
 
+  let fullSpokenText = "";
+  if (reelScript && reelScript.scenes) {
+    fullSpokenText = reelScript.scenes.map(s => sanitizeDialogue(s.spokenAudio || s.text || "")).filter(Boolean).join(" ");
+  } else if (reelScript && reelScript.fullScript) {
+    fullSpokenText = sanitizeDialogue(reelScript.fullScript);
+  }
+
   const OPENAI_VOICE_MAP = {
     adam: "alloy",
     charlie: "onyx",
@@ -1674,7 +1681,9 @@ Requirements:
     // Baseline combined voiceover
     job.stage = "Synthesizing studio voiceover audio with GabbarInfo Audio Engine...";
     log(job.id, `Synthesizing audio with voice: ${ttsVoice} (Lang: ${language})`);
-    const fullSpokenText = reelScript.scenes.map(s => sanitizeDialogue(s.spokenAudio || s.text)).join(" ");
+    if (!fullSpokenText && reelScript && reelScript.scenes) {
+      fullSpokenText = reelScript.scenes.map(s => sanitizeDialogue(s.spokenAudio || s.text)).join(" ");
+    }
     const baselineGender = (ttsVoice === "shimmer" || ttsVoice === "nova") ? "female" : "male";
     const fullAudioRes = await generateStudioSpeech({
       text: fullSpokenText.replace(/^["']|["']$/g, ""),
@@ -1925,7 +1934,7 @@ Requirements:
       job.stage = "Rendering spokesperson actor & GPU lip-sync...";
       const presenterSeg = await renderTalkingActorScene({
         characterImgPrompt: presenterPrompt,
-        spokenText: fullSpokenText,
+        spokenText: fullSpokenText || topic,
         voiceToUse: ttsVoice,
         filenamePrefix: "spokesperson",
       });
