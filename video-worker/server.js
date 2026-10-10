@@ -1407,42 +1407,50 @@ Requirements:
   } else if (payload.workflowType === "creative_film" || selectedStyle === "cinema_unified" || selectedStyle === "generative_cinematic" || audioMode === "foley_sfx") {
     // DEDICATED HOLLYWOOD ACTION & CINEMA FILM DIRECTOR (Strict Subject Continuity & Zero Marketing Fluff)
     log(job.id, `Generating Hollywood Director Cinematic Screenplay for topic: "${topic}" (Duration: ${targetSecs}s)`);
-    const filmPrompt = `You are an elite Hollywood Director and Action/Cinematic Filmmaker creating a world-class continuous ${targetSecs}-second cinematic film sequence in 35mm Arri Alexa format.
-Topic / Scene Concept: "${visualTopic}"
+    const filmPrompt = `You are an elite Hollywood Director and Cinematic Filmmaker creating a world-class continuous ${targetSecs}-second vertical cinematic reel (35mm Arri Alexa format).
+Creative Concept / Topic: "${visualTopic}"
 ${extractedUserDialogue ? `Character Dialogue To Speak: "${extractedUserDialogue}"` : ""}
 
-DIRECTORIAL CONTINUITY & LIVING WORLD RULES:
+UNIVERSAL DIRECTORIAL CONTINUITY RULES (APPLIES TO ANY INDUSTRY, PERSONA, OR GENRE):
 1. LIVING, BREATHING ENVIRONMENT:
-   - The environment must feel deeply ALIVE and dynamic (e.g. if a festive Dandiya/Garba hall: crowds dancing in background with colorful Dandiya sticks, warm fairy lights, shimmering lanterns; if a restaurant: patrons, waiters, rain on glass).
-   - Lock down a single, highly cohesive "environmentSetting" across all 3 shots.
+   - The environment must feel deeply ALIVE and dynamic (matched strictly to the user's concept, whether a tech datacenter, fitness gym, culinary kitchen, art studio, hospital, luxury real estate, nature landscape, festival, podcast set, or street scene).
+   - Lock down a single, highly cohesive "environmentSetting" across all shots.
 2. HERO SUBJECT & CHARACTERS:
-   - Identify the primary subject(s) or character(s) from the topic (e.g. "A gorgeous stylish Indian woman in London dressed in an exquisite designer Garba Chaniya Choli, wearing stunning handcrafted Kundan bridal jewellery").
-   - Maintain 100% visual consistency of this subject across all 3 shots.
+   - Identify the primary subject(s) or character(s) from the concept. Determine their gender ("female" or "male"), attire, styling, and persona strictly based on the prompt.
+   - Maintain 100% visual consistency of this subject across all shots.
 3. THREE CINEMATOGRAPHIC SHOTS (CONTINUOUS NARRATIVE RHYTHM):
-   - Shot 1 (Establishing & Living Atmosphere, 0-6s): Dynamic wide or medium-wide tracking/dolly shot introducing the alive environment, setting the mood, ambient background movement.
-   - Shot 2 (Hero Product & Detail Macro, 6-13s): Camera glides close on the hero product/jewellery/detail with authentic lighting refractions and motion.
-   - Shot 3 (Hero Detail & Emotional Climax, 13-20s): Intimate close-up of hero looking at camera with warm smile and confident energy.
+   - Shot 1 (Establishing & Living Atmosphere, 0-6s): Dynamic wide or medium-wide tracking/dolly shot introducing the hero in their living environment with ambient background life.
+   - Shot 2 (Core Action & Detail Focus, 6-13s): Camera glides or tracks closely on the hero's core craft, product, interaction, or expression with authentic lighting and motion.
+   - Shot 3 (Hero Detail & Emotional Climax, 13-20s): Intimate close-up of hero looking into camera with natural confidence, connection, or punchy resolution.
 4. STRICT DIALOGUE vs ACTION SEPARATION:
-   - "spokenAudio": ${extractedUserDialogue ? `MUST BE: "${extractedUserDialogue}".` : `ONLY actual human dialogue. Absolutely NEVER put visual action descriptions in 'spokenAudio'! If no dialogue is spoken, leave it as an empty string.`}
+   - "spokenAudio": ${extractedUserDialogue ? `MUST BE: "${extractedUserDialogue}".` : `ONLY genuine spoken human dialogue if an actor speaks. Absolutely NEVER put visual action descriptions in 'spokenAudio'! If no dialogue is spoken, leave it as an empty string.`}
 
 Return ONLY valid JSON:
 {
-  "title": "Cinematic Film Scene",
-  "heroSubject": "Ultra-detailed description of the hero character(s) or subject",
-  "environmentSetting": "Detailed living environment setting with atmosphere, lighting, and background life",
+  "title": "Cinematic Scene Title",
+  "primaryCharacter": {
+    "name": "Character Name or Archetype",
+    "gender": "female or male",
+    "appearance": "Detailed physical description and attire based strictly on user prompt"
+  },
+  "environmentSetting": "Detailed living environment setting with atmosphere, lighting, and ambient life",
   "ambience": "Detailed environmental ambient room tone description",
   "fullScript": "Brief cinematic description of the 3-shot sequence",
   "scenes": [
     {
       "sceneNumber": 1,
+      "speaker": "Name or role of speaker",
+      "speakerGender": "female or male",
       "text": "Shot 1 action description",
       "spokenAudio": "Dialogue line if talking, otherwise empty string",
       "visualPrompt": "Detailed 35mm film visual prompt for Shot 1 with living background elements and camera movement",
-      "cameraMotion": "Specific professional camera movement (e.g. Smooth dolly-in tracking past ambient foreground elements)",
+      "cameraMotion": "Specific professional camera movement",
       "foleySoundPrompt": "Precise Foley sound effects for Shot 1"
     },
     {
       "sceneNumber": 2,
+      "speaker": "Name or role of speaker",
+      "speakerGender": "female or male",
       "text": "Shot 2 action description",
       "spokenAudio": "Dialogue line if talking, otherwise empty string",
       "visualPrompt": "Detailed visual prompt for Shot 2 maintaining exact continuity of hero and living background",
@@ -1451,6 +1459,8 @@ Return ONLY valid JSON:
     },
     {
       "sceneNumber": 3,
+      "speaker": "Name or role of speaker",
+      "speakerGender": "female or male",
       "text": "Shot 3 action description",
       "spokenAudio": "Dialogue line if talking, otherwise empty string",
       "visualPrompt": "Detailed visual prompt for Shot 3 focusing on close-up detail, reaction, or dramatic resolution",
@@ -1531,6 +1541,12 @@ Requirements:
         spokenAudio: sanitizeDialogue(s.spokenAudio || s.text),
       }));
     }
+  }
+
+  const detectedCharacterGender = reelScript?.primaryCharacter?.gender || (isFemaleContext ? "female" : "male");
+  const isFemaleCharacter = detectedCharacterGender === "female";
+  if (!voice) {
+    ttsVoice = isFemaleCharacter ? "nova" : (language === "en_uk" ? "fable" : "onyx");
   }
 
   let fullSpokenText = extractedUserDialogue || "";
