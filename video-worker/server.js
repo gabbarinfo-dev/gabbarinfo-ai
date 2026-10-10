@@ -1187,7 +1187,7 @@ async function processReelVideo(job, jobDir) {
     selectedStyle = "cinema_unified", // "cinema_unified" | "talking_avatar" | "generative_cinematic"
     language = "en_us",
     audioMode = "music_only", // "music_only" | "voiceover" | "dialogue_lipsync"
-    voice = "alloy",
+    voice = null,
     niche = "business",
     backgroundBeat = "upbeat_lofi",
     durationSeconds = 15,
@@ -1200,9 +1200,49 @@ async function processReelVideo(job, jobDir) {
   const targetSecs = Math.max(10, Math.min(60, Number(durationSeconds) || 15));
   const isWidescreen = false;
 
+  // 1. Precise Dialogue vs Visual Separation
+  let extractedUserDialogue = null;
+  let visualTopic = topic;
+  const quoteMatch = (topic || "").match(/(?:says|said|speaks|saying|tells|shouts|whispers)?\s*[:\-–—]?\s*['"“‘]([^'"”’]{10,})['"”’]/i);
+  if (quoteMatch) {
+    extractedUserDialogue = quoteMatch[1].trim();
+    visualTopic = topic.replace(quoteMatch[0], "").replace(/says\s*passionately\s*[:\-–—]?/i, "").trim();
+    log(job.id, `Extracted direct character dialogue (${extractedUserDialogue.length} chars) from prompt: "${extractedUserDialogue.slice(0, 80)}..."`);
+  }
+
+  // 2. Auto-detect Female Context & Hindi Language
+  const isFemaleContext = /(woman|girl|female|lady|bride|actress|she|her|queen|mom|daughter|choli|saree|garba|model|jewellery|dandiya)/i.test((topic || "") + " " + (customScript || ""));
+  const dialogueSample = extractedUserDialogue || topic || "";
+  const isHindiText = /(mein|hai|kijiye|liye|aur|aap|bhi|hum|karo|dekho|choli|garba|navratri|sundar|bolegi|bolti|bhai|sirf)/i.test(dialogueSample);
+  if (isHindiText && language === "en_us") {
+    language = "hindi";
+    log(job.id, `Detected Hindi dialogue. Auto-switching TTS engine to Hindi for natural Indian pronunciation.`);
+  }
+
+  const OPENAI_VOICE_MAP = {
+    adam: "alloy",
+    charlie: "onyx",
+    roger: "echo",
+    george: "fable",
+    arnold: "alloy",
+    rachel: "nova",
+    sarah: "shimmer",
+    lily: "nova",
+    emily: "nova",
+  };
+  const ALLOWED_VOICES = ["nova", "shimmer", "echo", "onyx", "fable", "alloy", "ash", "sage", "coral"];
+
+  let defaultVoice = isFemaleContext ? "nova" : (language === "en_uk" ? "fable" : "alloy");
+  let ttsVoice = String(voice || defaultVoice).toLowerCase().trim();
+  if (OPENAI_VOICE_MAP[ttsVoice]) {
+    ttsVoice = OPENAI_VOICE_MAP[ttsVoice];
+  } else if (!ALLOWED_VOICES.includes(ttsVoice)) {
+    ttsVoice = defaultVoice;
+  }
+
   job.progress = 10;
   job.stage = `Generating ~${targetSecs}s viral reel script...`;
-  log(job.id, `Starting dedicated fast Reel pipeline (${targetSecs}s) [Style: ${selectedStyle}, Lang: ${language}, Mode: ${scriptMode}]`);
+  log(job.id, `Starting dedicated fast Reel pipeline (${targetSecs}s) [Style: ${selectedStyle}, Lang: ${language}, Voice: ${ttsVoice}, Female: ${isFemaleContext}]`);
 
   const hasCustomScript = !!(customScript && customScript.trim());
   function sanitizeDialogue(str) {
@@ -1319,24 +1359,22 @@ Requirements:
     // DEDICATED HOLLYWOOD ACTION & CINEMA FILM DIRECTOR (Strict Subject Continuity & Zero Marketing Fluff)
     log(job.id, `Generating Hollywood Director Cinematic Screenplay for topic: "${topic}" (Duration: ${targetSecs}s)`);
     const filmPrompt = `You are an elite Hollywood Director and Action/Cinematic Filmmaker creating a world-class continuous ${targetSecs}-second cinematic film sequence in 35mm Arri Alexa format.
-Topic / Scene Concept: "${topic}"
+Topic / Scene Concept: "${visualTopic}"
+${extractedUserDialogue ? `Character Dialogue To Speak: "${extractedUserDialogue}"` : ""}
 
 DIRECTORIAL CONTINUITY & LIVING WORLD RULES:
 1. LIVING, BREATHING ENVIRONMENT:
-   - The environment must feel deeply ALIVE and dynamic (e.g. if a restaurant/cafe: crowded background with patrons talking and waiters passing by with trays, rain streaming down window glass, warm amber practical lighting; if a street/car scene: wet asphalt puddles, passing neon city lights, atmospheric fog/rain mist).
+   - The environment must feel deeply ALIVE and dynamic (e.g. if a festive Dandiya/Garba hall: crowds dancing in background with colorful Dandiya sticks, warm fairy lights, shimmering lanterns; if a restaurant: patrons, waiters, rain on glass).
    - Lock down a single, highly cohesive "environmentSetting" across all 3 shots.
 2. HERO SUBJECT & CHARACTERS:
-   - Identify the primary subject(s) or character(s) from the topic (e.g. "Two stylish patrons sitting at a marble bistro table by the rain-streaked window", or "Hero character in tailored dark trench coat", or "Matte-black widebody sports hypercar").
+   - Identify the primary subject(s) or character(s) from the topic (e.g. "A gorgeous stylish Indian woman in London dressed in an exquisite designer Garba Chaniya Choli, wearing stunning handcrafted Kundan bridal jewellery").
    - Maintain 100% visual consistency of this subject across all 3 shots.
 3. THREE CINEMATOGRAPHIC SHOTS (CONTINUOUS NARRATIVE RHYTHM):
    - Shot 1 (Establishing & Living Atmosphere, 0-6s): Dynamic wide or medium-wide tracking/dolly shot introducing the alive environment, setting the mood, ambient background movement.
-   - Shot 2 (Core Action & Connection, 6-13s): Over-the-shoulder or medium tracking camera focusing on the core action/dialogue/motion with realistic physics and expressive motion.
-   - Shot 3 (Hero Detail & Emotional Climax, 13-20s): Intimate close-up or punchy reaction/action shot (e.g. picking up glass with clink, authentic facial reaction, high-speed getaway, or striking product macro).
-4. LAYERED CINEMATIC AUDIO & SOUND DESIGN:
-   - "ambience": Rich environmental room tone (e.g. "Bustling restaurant crowd murmur with soft jazz, gentle rain tapping against windowpane" or "Distant city siren, wet asphalt rain mist").
-   - "foleySoundPrompt": Precise physical sound effects (e.g. "Ceramic coffee cup clink, quiet sigh, footsteps on polished wood" or "Aggressive V8 engine roar, tire screech on wet asphalt, metallic brake hiss").
-5. ABSOLUTELY ZERO MARKETING FLUFF:
-   - Pure cinematic realism. No calls to action, no subtitles, no logos, no watermark, no neon rainbow laser ribbons.
+   - Shot 2 (Hero Product & Detail Macro, 6-13s): Camera glides close on the hero product/jewellery/detail with authentic lighting refractions and motion.
+   - Shot 3 (Hero Detail & Emotional Climax, 13-20s): Intimate close-up of hero looking at camera with warm smile and confident energy.
+4. STRICT DIALOGUE vs ACTION SEPARATION:
+   - "spokenAudio": ${extractedUserDialogue ? `MUST BE: "${extractedUserDialogue}".` : `ONLY actual human dialogue. Absolutely NEVER put visual action descriptions in 'spokenAudio'! If no dialogue is spoken, leave it as an empty string.`}
 
 Return ONLY valid JSON:
 {
@@ -1446,33 +1484,20 @@ Requirements:
     }
   }
 
-  let fullSpokenText = "";
-  if (reelScript && reelScript.scenes) {
-    fullSpokenText = reelScript.scenes.map(s => sanitizeDialogue(s.spokenAudio || s.text || "")).filter(Boolean).join(" ");
-  } else if (reelScript && reelScript.fullScript) {
-    fullSpokenText = sanitizeDialogue(reelScript.fullScript);
-  }
-
-  const OPENAI_VOICE_MAP = {
-    adam: "alloy",
-    charlie: "onyx",
-    roger: "echo",
-    george: "fable",
-    arnold: "alloy",
-    rachel: "nova",
-    sarah: "shimmer",
-    lily: "nova",
-    emily: "nova",
-  };
-  const ALLOWED_VOICES = ["nova", "shimmer", "echo", "onyx", "fable", "alloy", "ash", "sage", "coral"];
-
-  const isFemaleContext = /(woman|girl|female|lady|bride|actress|she|her|queen|mom|daughter|choli|saree|garba|model|jewellery)/i.test((topic || "") + " " + (reelScript?.fullScript || ""));
-  let defaultVoice = isFemaleContext ? "nova" : (language === "en_uk" ? "fable" : "alloy");
-  let ttsVoice = String(voice || defaultVoice).toLowerCase().trim();
-  if (OPENAI_VOICE_MAP[ttsVoice]) {
-    ttsVoice = OPENAI_VOICE_MAP[ttsVoice];
-  } else if (!ALLOWED_VOICES.includes(ttsVoice)) {
-    ttsVoice = defaultVoice;
+  let fullSpokenText = extractedUserDialogue || "";
+  if (!fullSpokenText) {
+    if (reelScript && reelScript.scenes) {
+      const spokenLines = reelScript.scenes
+        .map(s => sanitizeDialogue(s.spokenAudio || ""))
+        .filter(l => l && !l.includes("Shot ") && !l.includes("action description") && l.length > 5);
+      if (spokenLines.length > 0) {
+        fullSpokenText = spokenLines.join(" ");
+      } else if (reelScript.fullScript && !reelScript.fullScript.toLowerCase().includes("action description")) {
+        fullSpokenText = sanitizeDialogue(reelScript.fullScript);
+      }
+    } else if (reelScript && reelScript.fullScript) {
+      fullSpokenText = sanitizeDialogue(reelScript.fullScript);
+    }
   }
 
   job.progress = 25;
