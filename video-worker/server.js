@@ -1749,7 +1749,7 @@ Requirements:
     log(job.id, isSkitJob ? "Rendering 2-character skit with alternating Customer & Founder actors..." : "Generating talking avatar lip-sync with Sync Labs / Precision Engine...");
 
     // Helper to generate a precision lip-synced scene video with native embedded audio
-    async function renderTalkingActorScene({ characterImgPrompt, spokenText, voiceToUse, filenamePrefix }) {
+    async function renderTalkingActorScene({ characterImgPrompt, spokenText, voiceToUse, filenamePrefix, reusedImgPath = null }) {
       const imgPath = path.join(jobDir, `${filenamePrefix}_char.png`);
       const audioPath = path.join(jobDir, `${filenamePrefix}_audio.mp3`);
       const vidPath = path.join(jobDir, `${filenamePrefix}_talking.mp4`);
