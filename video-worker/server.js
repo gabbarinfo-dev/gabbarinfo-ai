@@ -1746,10 +1746,8 @@ Requirements:
   job.progress = 45;
   const sceneVisuals = [];
 
-  const wantsTalkingActor = audioMode === "dialogue_lipsync" ||
-                            selectedStyle === "talking_avatar" ||
-                            (payload.workflowType === "character_story" && !isMusicOnly) ||
-                            isSkitJob;
+  // Pure cinematic generative video is the gold standard for all Cinema Studio reels & ads
+  const wantsTalkingActor = selectedStyle === "talking_avatar" && !isMusicOnly;
 
   if (wantsTalkingActor) {
     // TRUE LIP-SYNC TALKING AVATAR (Sync Labs Precision Lip-Sync + Replicate Fallback)
@@ -1993,7 +1991,9 @@ Requirements:
 
       try {
         let smartPrompt;
-        if (scriptMode === "product_promo") {
+        if (sc.visualPrompt && sc.visualPrompt.trim().length > 15) {
+          smartPrompt = `Vertical 9:16 cinematic film scene. ${sc.visualPrompt.trim()}. 35mm Arri Alexa lens, raytraced lighting, fluid motion, authentic physics, masterpiece 8k, photorealistic. Absolutely NO text, NO letters, NO words, NO subtitles, NO watermark, NO logo.`;
+        } else if (scriptMode === "product_promo") {
           smartPrompt = getSmartVisualPrompt(sc.text, sc.speaker, i, reelScript.scenes.length, brandName, serviceToPromote);
         } else {
           let cleanAction = (sc.visualPrompt || sc.text || "")
