@@ -18,8 +18,8 @@ const ELEVENLABS_VOICES = {
   en_uk_female: "pFZP5JQG7iQjIQuC4Bku",   // Lily - Articulate British female
 
   // Hindi Multilingual Voices (eleven_multilingual_v2 natively handles Hindi devanagari & hinglish)
-  hindi_male: "VR6AewLTigWG4xSOukaG",     // Arnold / Multilingual deep male
-  hindi_female: "LcfcDJNUP1GQjkzn1xUU",   // Emily / Multilingual warm female
+  hindi_male: "pNInz6obpgDQGcFmaJgB",     // Adam / Multilingual narrator
+  hindi_female: "21m00Tcm4TlvDq8ikWAM",   // Rachel / Multilingual built-in female (works on all plans)
 };
 
 const VOICE_MAP = {
@@ -27,22 +27,22 @@ const VOICE_MAP = {
   alloy: {
     en_us: "pNInz6obpgDQGcFmaJgB", // Adam
     en_uk: "JBFqnCBsd6RMkjVDRZzb", // George
-    hindi: "VR6AewLTigWG4xSOukaG", // Arnold
+    hindi: "pNInz6obpgDQGcFmaJgB", // Adam
   },
   onyx: {
     en_us: "IKne3meq5aSn9XLyUdCD", // Charlie
     en_uk: "JBFqnCBsd6RMkjVDRZzb", // George
-    hindi: "VR6AewLTigWG4xSOukaG", // Arnold
+    hindi: "IKne3meq5aSn9XLyUdCD", // Charlie
   },
   nova: {
     en_us: "21m00Tcm4TlvDq8ikWAM", // Rachel
     en_uk: "pFZP5JQG7iQjIQuC4Bku", // Lily
-    hindi: "LcfcDJNUP1GQjkzn1xUU", // Emily
+    hindi: "21m00Tcm4TlvDq8ikWAM", // Rachel (Built-in multilingual female)
   },
   shimmer: {
     en_us: "EXAVITQu4vr4xnSDxMaL", // Sarah
     en_uk: "pFZP5JQG7iQjIQuC4Bku", // Lily
-    hindi: "LcfcDJNUP1GQjkzn1xUU", // Emily
+    hindi: "EXAVITQu4vr4xnSDxMaL", // Sarah
   },
   fable: {
     en_us: "JBFqnCBsd6RMkjVDRZzb", // George
@@ -155,7 +155,7 @@ async function generateStudioSpeech({
   if (openai || process.env.OPENAI_API_KEY) {
     try {
       const aiInstance = openai || new (require("openai"))({ apiKey: process.env.OPENAI_API_KEY });
-      const openaiVoice = gender === "female" ? "shimmer" : "onyx";
+      const openaiVoice = gender === "female" ? "nova" : "onyx";
 
       let mp3Res;
       try {

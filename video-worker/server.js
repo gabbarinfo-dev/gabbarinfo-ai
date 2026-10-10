@@ -1716,17 +1716,17 @@ Requirements:
       p.on("error", reject);
     });
     log(job.id, "Multi-character skit voiceover successfully concatenated!");
-  } else {
-    // Baseline combined voiceover
-    job.stage = "Synthesizing studio voiceover audio with GabbarInfo Audio Engine...";
-    log(job.id, `Synthesizing audio with voice: ${ttsVoice} (Lang: ${language})`);
+  } else if (audioMode === "voiceover") {
+    // Narrator Voiceover + Music mode ONLY
+    job.stage = "Synthesizing studio narrator voiceover audio...";
+    log(job.id, `Synthesizing voiceover audio with voice: ${ttsVoice} (Lang: ${language})`);
     if (!fullSpokenText && reelScript && reelScript.scenes) {
-      fullSpokenText = reelScript.scenes.map(s => sanitizeDialogue(s.spokenAudio || s.text)).join(" ");
+      fullSpokenText = reelScript.scenes.map(s => sanitizeDialogue(s.spokenAudio || "")).filter(Boolean).join(" ");
     }
-    const baselineGender = (ttsVoice === "shimmer" || ttsVoice === "nova") ? "female" : "male";
+    const baselineGender = isFemaleContext ? "female" : "male";
     const fullAudioRes = await generateStudioSpeech({
-      text: fullSpokenText.replace(/^["']|["']$/g, ""),
-      language: language || "en_us",
+      text: (fullSpokenText || topic).replace(/^["']|["']$/g, ""),
+      language: language || "hindi",
       gender: baselineGender,
       voiceId: ttsVoice,
       openai,
@@ -1768,6 +1768,26 @@ Requirements:
       });
     } else {
       fs.writeFileSync(reelAudioPath, fullAudioRes.buffer);
+    }
+  } else {
+    // audioMode === "dialogue_lipsync", "music_only", "foley_sfx", etc.:
+    // ABSOLUTELY NO GLOBAL VOICEOVER!
+    log(job.id, `Audio Mode: "${audioMode}". No global narrator voiceover applied. Dialogue is spoken directly by characters in video.`);
+    if (hasBgMusic) {
+      fs.copyFileSync(bgMusicPath, reelAudioPath);
+    } else {
+      await new Promise((resolve) => {
+        const p = spawn("ffmpeg", [
+          "-y",
+          "-f", "lavfi",
+          "-i", "anullsrc=r=44100:cl=stereo",
+          "-t", String(targetSecs),
+          "-c:a", "libmp3lame",
+          reelAudioPath,
+        ]);
+        p.on("close", resolve);
+        p.on("error", resolve);
+      });
     }
   }
 
@@ -2051,7 +2071,7 @@ Requirements:
           try {
             log(job.id, `Generating high-res FLUX.1 master anchor frame for Scene 1 (${visualAesthetic})...`);
             const fluxRes = await generateConsistentCharacterPortrait({
-              prompt: heroSubject ? `Vertical 9:16 cinematic movie still. Front 3/4 low angle tracking shot of ${heroSubject} in ${environmentSetting}. Menacing front bumper, headlights cutting through dark rain mist, gritty wet asphalt, master film lighting, 35mm Arri Alexa film still. Absolutely NO rainbow light trails, NO neon ribbons, NO cartoon CGI, no text, no watermark.` : smartPrompt,
+              prompt: smartPrompt,
               aspectRatio: "9:16",
               visualAesthetic,
               jobId: job.id,
@@ -2098,10 +2118,23 @@ Requirements:
               // Precision Lip-Sync on Moving Video via SyncLabs sync-3
               if (audioMode === "dialogue_lipsync" && process.env.SYNC_LABS_API_KEY) {
                 try {
-                  const sceneDialogue = sanitizeDialogue(sc.spokenAudio || (i === 0 ? fullSpokenText : ""));
+                  const dialogueSentences = (extractedUserDialogue || fullSpokenText || "")
+                    .split(/(?<=[.!?।])\s+/)
+                    .map(s => s.trim())
+                    .filter(Boolean);
+
+                  let sceneDialogue = sanitizeDialogue(sc.spokenAudio || "");
+                  if (!sceneDialogue && dialogueSentences.length > 0) {
+                    if (i === 0) {
+                      sceneDialogue = dialogueSentences[0];
+                    } else if (i === reelScript.scenes.length - 1 && dialogueSentences.length > 1) {
+                      sceneDialogue = dialogueSentences.slice(1).join(" ");
+                    }
+                  }
+
                   if (sceneDialogue && sceneDialogue.length > 5) {
                     job.stage = `Applying SyncLabs sync-3 lip-sync to moving video (Scene ${i + 1})...`;
-                    log(job.id, `Applying SyncLabs sync-3 precision lip-sync to moving video (Scene ${i + 1})...`);
+                    log(job.id, `Applying SyncLabs sync-3 precision lip-sync to moving video (Scene ${i + 1}) [${sceneDialogue.length} chars]...`);
 
                     const scGender = isFemaleContext ? "female" : "male";
                     const scVoiceId = scGender === "female" ? "nova" : "onyx";
