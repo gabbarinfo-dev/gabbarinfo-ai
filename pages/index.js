@@ -379,8 +379,8 @@ export default function HomePage() {
       id: "cinema",
       label: "AI Cinema & Video Studio",
       icon: "🎬",
-      badge: isAdmin ? "Admin Preview" : "Coming Soon",
-      isLocked: !isAdmin,
+      badge: "Live Studio",
+      isLocked: false,
     },
     {
       id: "reel-studio",
@@ -1808,6 +1808,11 @@ export default function HomePage() {
               {/* TAB: TIKTOK PILOT WORKSTATION */}
               {activeTab === "tiktok" && (
                 <TikTokPilotConnect />
+              )}
+
+              {/* TAB: AI CINEMA & VIDEO STUDIO */}
+              {activeTab === "cinema" && (
+                <CinemaStudio />
               )}
 
               {/* TAB 4: LOCAL MAPS (GMB) WORKSTATION */}
