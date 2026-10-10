@@ -1656,27 +1656,31 @@ Requirements:
   } else if (isSkitJob && reelScript.scenes.length >= 2) {
     job.stage = "Synthesizing alternating 2-character skit voiceover...";
     log(job.id, "Synthesizing alternating 2-character skit voiceover (Customer + Founder)...");
-    let customerVoice = "nova";
-    if (["nova", "shimmer"].includes(ttsVoice.toLowerCase())) {
-      customerVoice = language === "en_uk" ? "fable" : "onyx";
-    } else {
-      customerVoice = "nova";
+    
+    function resolveSpeakerVoice(speakerName = "", speakerRole = "", dialogueText = "", fallbackGender = "male", lang = "en_us") {
+      const textToScan = `${speakerName} ${speakerRole} ${dialogueText}`.toLowerCase();
+      const isFem = /(woman|girl|female|lady|bride|actress|she|her|queen|mom|daughter|priya|neha|anjali|anita|emily|rachel|sarah|choli|jewellery|garba|model)/i.test(textToScan);
+      const isMasc = /(man|guy|male|boy|gentleman|groom|actor|he|him|king|dad|son|rahul|amit|rohit|raj|vikram|adam|charlie|george|arnold)/i.test(textToScan);
+      let g = fallbackGender || "male";
+      if (isFem && !isMasc) g = "female";
+      else if (isMasc && !isFem) g = "male";
+      const v = g === "female" ? "nova" : (lang === "en_uk" ? "fable" : "onyx");
+      return { gender: g, voiceId: v };
     }
-    const ownerVoice = ttsVoice || "alloy";
 
     const sceneAudioPaths = [];
     for (let sIdx = 0; sIdx < reelScript.scenes.length; sIdx++) {
       const sc = reelScript.scenes[sIdx];
-      const isCustomer = sc.speaker === "customer" || sIdx % 2 === 0;
-      const v = isCustomer ? customerVoice : ownerVoice;
-      const g = (v === "nova" || v === "shimmer") ? "female" : "male";
       const cleanText = sanitizeDialogue(sc.spokenAudio || sc.text);
+      const speakerInfo = sc.speaker || (sIdx % 2 === 0 ? "Customer" : "Founder");
+      const defaultG = (sIdx % 2 === 0) ? "male" : "female";
+      const resolved = resolveSpeakerVoice(speakerInfo, sc.role || "", cleanText, defaultG, language);
 
       const sRes = await generateStudioSpeech({
         text: cleanText.replace(/^["']|["']$/g, ""),
         language: language || "en_us",
-        gender: g,
-        voiceId: v,
+        gender: resolved.gender,
+        voiceId: resolved.voiceId,
         openai,
         apiKey: process.env.ELEVENLABS_API_KEY,
       });
@@ -2090,6 +2094,55 @@ Requirements:
             const fVid = await fetch(vidUrl);
             if (fVid.ok) {
               fs.writeFileSync(scVidPath, Buffer.from(await fVid.arrayBuffer()));
+
+              // Precision Lip-Sync on Moving Video via SyncLabs sync-3
+              if (audioMode === "dialogue_lipsync" && process.env.SYNC_LABS_API_KEY) {
+                try {
+                  const sceneDialogue = sanitizeDialogue(sc.spokenAudio || (i === 0 ? fullSpokenText : ""));
+                  if (sceneDialogue && sceneDialogue.length > 5) {
+                    job.stage = `Applying SyncLabs sync-3 lip-sync to moving video (Scene ${i + 1})...`;
+                    log(job.id, `Applying SyncLabs sync-3 precision lip-sync to moving video (Scene ${i + 1})...`);
+
+                    const scGender = isFemaleContext ? "female" : "male";
+                    const scVoiceId = scGender === "female" ? "nova" : "onyx";
+                    const scSpeechRes = await generateStudioSpeech({
+                      text: sceneDialogue.replace(/^["']|["']$/g, ""),
+                      language: language || "hindi",
+                      gender: scGender,
+                      voiceId: scVoiceId,
+                      openai,
+                      apiKey: process.env.ELEVENLABS_API_KEY,
+                    });
+
+                    if (scSpeechRes?.ok && scSpeechRes?.buffer) {
+                      const scAudioFile = path.join(jobDir, `scene_${i}_sync_audio.mp3`);
+                      fs.writeFileSync(scAudioFile, scSpeechRes.buffer);
+                      const pubAudioUrl = await uploadPublicFile(scAudioFile, `sync_audio_${job.id}_sc${i}.mp3`, "audio/mpeg");
+                      const pubVidUrl = await uploadPublicFile(scVidPath, `sync_vid_${job.id}_sc${i}.mp4`, "video/mp4");
+
+                      if (pubAudioUrl && pubVidUrl) {
+                        const syncedVidUrl = await generateSyncLabsLipSync({
+                          videoUrl: pubVidUrl,
+                          audioUrl: pubAudioUrl,
+                          model: "sync-3",
+                          jobId: job.id,
+                          log,
+                        });
+                        if (syncedVidUrl) {
+                          const fSync = await fetch(syncedVidUrl);
+                          if (fSync.ok) {
+                            fs.writeFileSync(scVidPath, Buffer.from(await fSync.arrayBuffer()));
+                            log(job.id, `Scene ${i + 1} moving video successfully lip-synced with SyncLabs sync-3!`);
+                          }
+                        }
+                      }
+                    }
+                  }
+                } catch (syncErr) {
+                  log(job.id, `SyncLabs lip-sync fallback: ${syncErr.message}`);
+                }
+              }
+
               sceneVisuals.push({ type: "video", path: scVidPath });
               log(job.id, `Scene ${i + 1} video successfully generated & saved!`);
               job.progress = 45 + Math.round(((i + 1) / reelScript.scenes.length) * 32);
